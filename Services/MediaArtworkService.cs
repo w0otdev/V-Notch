@@ -19,7 +19,9 @@ public interface IMediaArtworkService
 
 public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 {
-    private const int ArtworkDecodeWidth = 256;
+    // 512 keeps a 16:9 thumbnail sharp after square-crop at up to 200% DPI
+    // (102 DIU display size) and matches the 416px smart-crop model input.
+    private const int ArtworkDecodeWidth = 512;
 
     private static readonly HttpClient _httpClient = new();
     private readonly SmartThumbnailCropService _smartCrop;

@@ -24,6 +24,8 @@ public partial class MainWindow
     private Storyboard? _lyricsSearchShimmerStoryboard;
     private bool _isLyricsSearchVisible;
     private int _lyricsSearchTransitionVersion;
+    private Brush? _lyricsLayerFadeMask;
+    private int _lyricsLineTransitionVersion;
     private bool _isLyricsActive
     {
         get => _notchState.IsLyricsActive;
@@ -992,6 +994,13 @@ public partial class MainWindow
     {
         if (LyricTextA == null || LyricTextB == null) return;
 
+        // The edge fade mask exists only to soften lines sliding in/out. Keeping
+        // it on while a line is at rest dims the first/last text rows whenever
+        // layout hugs the text, so it is applied per-transition and removed once
+        // the incoming line settles.
+        _lyricsLayerFadeMask ??= AnimatedLyricsLayer.OpacityMask;
+        int transitionVersion = ++_lyricsLineTransitionVersion;
+
         bool useA = LyricTextA.Opacity > 0.5;
         TextBlock outgoing = useA ? LyricTextA : LyricTextB;
         TextBlock incoming = useA ? LyricTextB : LyricTextA;
@@ -1017,8 +1026,11 @@ public partial class MainWindow
             incoming.Opacity = 1;
             outTransform.Y = 0;
             inTransform.Y = 0;
+            AnimatedLyricsLayer.OpacityMask = null;
             return;
         }
+
+        AnimatedLyricsLayer.OpacityMask = _lyricsLayerFadeMask;
 
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var outDur = new Duration(TimeSpan.FromMilliseconds(300));
@@ -1043,6 +1055,16 @@ public partial class MainWindow
         {
             EasingFunction = easeOut,
             BeginTime = inDelay
+        };
+        fadeIn.Completed += (s, e) =>
+        {
+            if (transitionVersion != _lyricsLineTransitionVersion) return;
+
+            AnimatedLyricsLayer.OpacityMask = null;
+            incoming.BeginAnimation(OpacityProperty, null);
+            incoming.Opacity = 1;
+            inTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            inTransform.Y = 0;
         };
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(slideIn, fps);

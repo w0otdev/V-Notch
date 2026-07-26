@@ -50,3 +50,4 @@ remove_comments.ps1
 *.cmd
 /Tests/artifacts
 /coco128-tmp
+/tools

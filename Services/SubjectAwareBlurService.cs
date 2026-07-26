@@ -11,9 +11,9 @@ public static class SubjectAwareBlurService
     public static async Task<BitmapSource?> GetSubjectBlurredAsync(
         BitmapSource source,
         SubjectBounds? subject,
-        int downscaleWidth = 96,
-        int backgroundBlurRadius = 8,
-        int subjectBlurRadius = 3)
+        int downscaleWidth = 192,
+        int backgroundBlurRadius = 16,
+        int subjectBlurRadius = 6)
     {
         if (source == null) return null;
 

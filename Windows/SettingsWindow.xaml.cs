@@ -3682,6 +3682,9 @@ public partial class SettingsWindow : Window
         if (isLiquidGlass)
         {
             MainShell.Background = Brushes.Transparent;
+            // Opaque dark base behind the live glass image so a dropped frame
+            // shows dark glass instead of a fully transparent hole.
+            GlassBackdropHost.Background = _glassBaseFill;
             GlassBackdropHost.Visibility = Visibility.Visible;
             GlassTintOverlay.Visibility = Visibility.Visible;
             GlassDarkOverlay.Visibility = Visibility.Visible;
@@ -3699,7 +3702,13 @@ public partial class SettingsWindow : Window
             );
 
             _liquidGlass.HideFromScreenCapture = false;
-            _liquidGlass.SetAnimating(false);
+
+            // The settings window scales during open/close and can be dragged
+            // anywhere, so push the live on-screen rectangle every compositor
+            // frame instead of letting the worker poll a 1 s stale cache.
+            _liquidGlass.SetAnimating(true);
+            CompositionTarget.Rendering -= OnGlassRegionRendering;
+            CompositionTarget.Rendering += OnGlassRegionRendering;
 
             ConfigureGpuRefraction();
             ApplyLiquidGlassConfig();
@@ -3709,13 +3718,31 @@ public partial class SettingsWindow : Window
         else
         {
             MainShell.Background = (Brush)FindResource("WindowGlow");
+            GlassBackdropHost.Background = null;
             GlassBackdropHost.Visibility = Visibility.Collapsed;
             GlassTintOverlay.Visibility = Visibility.Collapsed;
             GlassDarkOverlay.Visibility = Visibility.Collapsed;
 
+            CompositionTarget.Rendering -= OnGlassRegionRendering;
+            _liquidGlass?.ClearLiveRegion();
+            _liquidGlass?.SetAnimating(false);
             _liquidGlass?.Stop();
             DetachGpuRefraction();
         }
+    }
+
+    private static readonly SolidColorBrush _glassBaseFill = CreateFrozenBrush(0x0B, 0x0E, 0x12);
+
+    private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private void OnGlassRegionRendering(object? sender, EventArgs e)
+    {
+        _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
     }
 
     private void ApplyLiquidGlassConfig()
@@ -3734,6 +3761,9 @@ public partial class SettingsWindow : Window
             GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
             GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
         }
+
+        // GPU mode blurs on the host element instead of the CPU box blur.
+        ApplyGpuBlur(cfg.BlurAmount);
 
         GlassBackdropHost.Opacity = Math.Clamp(cfg.Opacity, 0, 1);
 
@@ -3777,14 +3807,33 @@ public partial class SettingsWindow : Window
 
         try
         {
-            var topLeft = MainShell.PointToScreen(new Point(0, 0));
+            // Project both corners so the open/close ShellScale animation is baked
+            // into the sampled footprint; mixing a scaled anchor with the unscaled
+            // ActualWidth footprint makes the reflection drift while animating.
+            var tl = MainShell.PointToScreen(new Point(0, 0));
+            var br = MainShell.PointToScreen(new Point(shellW, shellH));
+
+            int physLeft = (int)Math.Round(tl.X);
+            int physTop = (int)Math.Round(tl.Y);
+            int scaledW = (int)Math.Round(br.X - tl.X);
+            int scaledH = (int)Math.Round(br.Y - tl.Y);
+            if (scaledW > 1) physW = scaledW;
+            if (scaledH > 1) physH = scaledH;
+
+            // Carry the fractional screen position so the present can compensate
+            // with a sub-pixel transform instead of wobbling ±0.5 px.
+            double subX = tl.X - Math.Round(tl.X);
+            double subY = tl.Y - Math.Round(tl.Y);
+
+            if (physTop < 0) { physH += physTop; physTop = 0; }
+            if (physLeft < 0) { physW += physLeft; physLeft = 0; }
+            if (physW <= 1 || physH <= 1) return null;
+
             return new LiquidGlassController.CaptureRegion(
-                (int)Math.Round(topLeft.X),
-                (int)Math.Round(topLeft.Y),
-                physW, physH,
-                _liquidGlass?.SurfaceWidth ?? 0,
-                _liquidGlass?.SurfaceHeight ?? 0
-            );
+                physLeft, physTop, physW, physH,
+                MainShell.CornerRadius.TopLeft,
+                MainShell.CornerRadius.BottomLeft,
+                subX, subY);
         }
         catch
         {
@@ -3829,24 +3878,75 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private System.Windows.Media.Effects.BlurEffect? _glassHostBlur;
+
+    /// <summary>Applies the GPU-mode host blur. CPU Liquid Glass blurs the
+    /// captured source before refraction instead.</summary>
+    private void ApplyGpuBlur(double blurAmount)
+    {
+        bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
+        if (!useGpu || GlassBackdropHost == null) return;
+
+        double radius = Math.Clamp(blurAmount, 0, 1) * 14.0;
+        if (radius < 0.5)
+        {
+            GlassBackdropHost.Effect = null;
+            _glassHostBlur = null;
+            return;
+        }
+
+        if (_glassHostBlur == null)
+        {
+            _glassHostBlur = new System.Windows.Media.Effects.BlurEffect
+            {
+                KernelType = System.Windows.Media.Effects.KernelType.Gaussian,
+                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
+            };
+            GlassBackdropHost.Effect = _glassHostBlur;
+        }
+        _glassHostBlur.Radius = radius;
+    }
+
     private void DetachGpuRefraction()
     {
         _gpuRefractionConfigured = false;
         if (GlassBackdropImage != null && ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
         {
             GlassBackdropImage.Effect = null;
+            // Restore CPU-present layout defaults (GPU mode set explicit size).
+            GlassBackdropImage.Width = double.NaN;
+            GlassBackdropImage.Height = double.NaN;
         }
+        if (GlassBackdropHost != null)
+            GlassBackdropHost.Effect = null;
+        _glassHostBlur = null;
     }
 
+    /// <summary>Pushes the per-frame shader geometry from the controller into the
+    /// effect. The shader samples the presenter's fixed D3D surface, so SrcW/SrcH
+    /// must be the surface dimensions, not the per-frame capture size.</summary>
     private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
     {
-        if (_glassRefractionEffect == null) return;
-        _glassRefractionEffect.SrcW = g.SrcW;
-        _glassRefractionEffect.SrcH = g.SrcH;
-        _glassRefractionEffect.NotchW = g.NotchW;
-        _glassRefractionEffect.NotchH = g.NotchH;
-        _glassRefractionEffect.OffX = g.OffX;
-        _glassRefractionEffect.OffY = g.OffY;
+        var fx = _glassRefractionEffect;
+        var lg = _liquidGlass;
+        if (fx == null || lg == null) return;
+
+        fx.SrcW = lg.SurfaceWidth;
+        fx.SrcH = lg.SurfaceHeight;
+        fx.NotchW = g.NotchW;
+        fx.NotchH = g.NotchH;
+        fx.OffX = g.OffX;
+        fx.OffY = g.OffY;
+        fx.TopCornerR = g.TopCornerR;
+        fx.BottomCornerR = g.BottomCornerR;
+        fx.ZR = g.ZR;
+        fx.Refraction = g.Refraction;
+        fx.EdgeBend = g.EdgeBend;
+        fx.Chroma = g.Chroma;
+        fx.Distort = g.Distort;
+        fx.BevelMode = g.BevelMode;
+        fx.SatFactor = g.SatFactor;
+        fx.BrightAdd = g.BrightAdd;
     }
 
     private void OnGpuRefractionFailure(Exception ex)
@@ -3880,6 +3980,7 @@ public partial class SettingsWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+        CompositionTarget.Rendering -= OnGlassRegionRendering;
         _liquidGlass?.Stop();
         DetachGpuRefraction();
     }
