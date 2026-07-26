@@ -190,7 +190,7 @@ public partial class MainWindow
         StartBreathingAnimation(PrivacyDot);
     }
 
-    private void UpdatePrivacyDotPosition()
+    private void UpdatePrivacyDotPosition(bool animate = false)
     {
         bool compact = _isMusicCompactMode && !_isExpanded;
         double right = compact ? PrivacyDotCompactMusicRightMargin : PrivacyDotDefaultRightMargin;
@@ -205,7 +205,25 @@ public partial class MainWindow
             if (h > 0) top = Math.Max(0, (h - PrivacyDotSize) / 2.0);
         }
 
-        PrivacyIndicatorPanel.Margin = new Thickness(0, top, right, 0);
+        var current = PrivacyIndicatorPanel.Margin;
+        var target = new Thickness(0, top, right, 0);
+
+        PrivacyIndicatorPanel.BeginAnimation(MarginProperty, null);
+        PrivacyIndicatorPanel.Margin = target;
+
+        if (animate && PrivacyIndicatorPanel.Visibility == Visibility.Visible &&
+            (Math.Abs(current.Right - target.Right) > 0.5 || Math.Abs(current.Top - target.Top) > 0.5))
+        {
+            // Matches the 450ms pill width animation in ApplyMusicCompactMode so
+            // the dot glides with the layout instead of snapping to its new spot.
+            var slide = new ThicknessAnimation(current, target, new Duration(TimeSpan.FromMilliseconds(450)))
+            {
+                EasingFunction = _easeExpOut6,
+                FillBehavior = FillBehavior.Stop
+            };
+            Timeline.SetDesiredFrameRate(slide, VNotch.Services.AnimationConfig.TargetFps);
+            PrivacyIndicatorPanel.BeginAnimation(MarginProperty, slide);
+        }
     }
 
     private void ApplyDotColor(PrivacyIndicatorState state, bool animate)

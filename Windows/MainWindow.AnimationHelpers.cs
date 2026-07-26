@@ -15,6 +15,8 @@ public partial class MainWindow
 {
     #region Hover Animations
 
+    private const double NotchHoverScaleX = 1.08;
+
     private bool _compactMarqueeRefreshQueued;
 
     private void AnimateNotchHover(bool isHovered)
@@ -23,7 +25,7 @@ public partial class MainWindow
 
         if (!isHovered && _isGestureActive) return;
 
-        double targetScale = isHovered ? 1.08 : 1.0;
+        double targetScale = isHovered ? NotchHoverScaleX : 1.0;
         var duration = isHovered ? _dur500 : _dur350;
         var easing = isHovered ? (IEasingFunction)_easeSoftSpring : _easeQuadOut;
 
@@ -739,9 +741,13 @@ public partial class MainWindow
         var durPeak = TimeSpan.FromMilliseconds(150);
         var durEnd = TimeSpan.FromMilliseconds(800);
 
+        // While hovered the pill rests at the hover scale, not 1.0 — ending the
+        // bounce there would leave it visibly shrunken until the next hover cycle.
+        double restX = !_isGreetingActive && NotchWrapper.IsMouseOver ? NotchHoverScaleX : 1.0;
+
         var bounceX = new DoubleAnimationUsingKeyFrames();
-        bounceX.KeyFrames.Add(new EasingDoubleKeyFrame(1.12, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
-        bounceX.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(durEnd), _easeSoftSpring));
+        bounceX.KeyFrames.Add(new EasingDoubleKeyFrame(restX + 0.12, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
+        bounceX.KeyFrames.Add(new EasingDoubleKeyFrame(restX, KeyTime.FromTimeSpan(durEnd), _easeSoftSpring));
         Timeline.SetDesiredFrameRate(bounceX, VNotch.Services.AnimationConfig.TargetFps);
 
         var bounceY = new DoubleAnimationUsingKeyFrames();

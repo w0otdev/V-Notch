@@ -96,6 +96,8 @@ public partial class MainWindow
                 }
             }
 
+            QueueCompactMarqueeRefresh();
+
             if (!result.HasRealTrack && !info.IsAnyMediaPlaying)
             {
                 StartTitleShimmer();
@@ -612,6 +614,9 @@ public partial class MainWindow
         MusicViz.BeginAnimation(OpacityProperty, vizFadeIn);
     }
 
+    private DispatcherTimer? _musicCompactExitDebounceTimer;
+    private static readonly TimeSpan MusicCompactExitDebounceDelay = TimeSpan.FromMilliseconds(1500);
+
     private void UpdateMusicCompactMode(MediaInfo info)
     {
         bool shouldBeCompact = _mediaDisplayController.ShouldBeCompactMode(info);
@@ -620,6 +625,7 @@ public partial class MainWindow
 
         if (IsCountdownCompletionVisualActive)
         {
+            CancelPendingMusicCompactExit();
             _isMusicCompactMode = shouldBeCompact;
 
             if (info?.Thumbnail != null)
@@ -632,6 +638,49 @@ public partial class MainWindow
             return;
         }
 
+        if (shouldBeCompact)
+        {
+            CancelPendingMusicCompactExit();
+        }
+        else if (_isMusicCompactMode)
+        {
+            // SMTC drops the session for a moment between tracks (playlist
+            // advance, browser navigation). Defer leaving compact mode so the
+            // pill doesn't flicker out of the music layout and back — and the
+            // privacy dot doesn't hop between positions — on every track change.
+            SchedulePendingMusicCompactExit();
+            return;
+        }
+
+        ApplyMusicCompactMode(shouldBeCompact, info);
+    }
+
+    private void SchedulePendingMusicCompactExit()
+    {
+        if (_musicCompactExitDebounceTimer == null)
+        {
+            _musicCompactExitDebounceTimer = new DispatcherTimer { Interval = MusicCompactExitDebounceDelay };
+            _musicCompactExitDebounceTimer.Tick += (_, _) =>
+            {
+                _musicCompactExitDebounceTimer!.Stop();
+                var current = _currentMediaInfo;
+                if (_isMusicCompactMode && !_mediaDisplayController.ShouldBeCompactMode(current))
+                {
+                    ApplyMusicCompactMode(shouldBeCompact: false, current);
+                }
+            };
+        }
+
+        if (!_musicCompactExitDebounceTimer.IsEnabled)
+        {
+            _musicCompactExitDebounceTimer.Start();
+        }
+    }
+
+    private void CancelPendingMusicCompactExit() => _musicCompactExitDebounceTimer?.Stop();
+
+    private void ApplyMusicCompactMode(bool shouldBeCompact, MediaInfo? info)
+    {
         if (shouldBeCompact == _isMusicCompactMode)
         {
             if (shouldBeCompact)
@@ -668,7 +717,7 @@ public partial class MainWindow
 
         _isMusicCompactMode = shouldBeCompact;
 
-        if (_privacyIndicatorsVisible) UpdatePrivacyDotPosition();
+        if (_privacyIndicatorsVisible) UpdatePrivacyDotPosition(animate: true);
 
         if (!_isExpanded)
         {
@@ -731,6 +780,7 @@ public partial class MainWindow
             {
                 PlayCompactThumbnailExitAnimation(() =>
                 {
+                    if (_isMusicCompactMode) return;
                     FadeSwitch(MusicCompactContent, CollapsedContent);
                 });
             }
