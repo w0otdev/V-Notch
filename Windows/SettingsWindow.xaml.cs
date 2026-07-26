@@ -2104,6 +2104,21 @@ public partial class SettingsWindow : Window
         };
         Timeline.SetDesiredFrameRate(moveLeft, fps);
 
+        // Release the HoldEnd fill once the fly-in finishes so Top/Left track
+        // the window's real position afterwards (e.g. when the user drags it).
+        moveTop.Completed += (s, e) =>
+        {
+            if (_isClosing) return;
+            Top = finalTop;
+            this.BeginAnimation(TopProperty, null);
+        };
+        moveLeft.Completed += (s, e) =>
+        {
+            if (_isClosing) return;
+            Left = finalLeft;
+            this.BeginAnimation(LeftProperty, null);
+        };
+
         expandX.Completed += (s, e) =>
         {
             ShellContent.CacheMode = null;
@@ -2428,8 +2443,20 @@ public partial class SettingsWindow : Window
 
         var totalDur = TimeSpan.FromMilliseconds(650);
 
+        // Window.Top/Left can still be held at the entrance animation's end value
+        // (HoldEnd fill) even after the user drags the window elsewhere, so read
+        // the real on-screen position from Win32 instead.
         double currentTop = Top;
         double currentLeft = Left;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero && Win32Interop.GetWindowRect(hwnd, out var winRect))
+        {
+            var transform = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice;
+            var pos = transform?.Transform(new Point(winRect.Left, winRect.Top))
+                      ?? new Point(winRect.Left, winRect.Top);
+            currentLeft = pos.X;
+            currentTop = pos.Y;
+        }
 
         MainShell.BeginAnimation(OpacityProperty, null);
         ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
