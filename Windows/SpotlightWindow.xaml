@@ -4,8 +4,7 @@
         xmlns:controls="clr-namespace:VNotch.Controls"
         Title="V-Notch Spotlight"
         Width="720"
-        SizeToContent="Height"
-        MaxHeight="650"
+        Height="650"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -17,22 +16,26 @@
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">
     <Window.Resources>
+        <controls:SpotlightHotkeyConverter x:Key="HotkeyConverter"/>
+
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F4FFFFFF"/>
-        <SolidColorBrush x:Key="TitleTextBrush" Color="#C2FFFFFF"/>
+        <SolidColorBrush x:Key="TitleTextBrush" Color="#EDFFFFFF"/>
         <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8AFFFFFF"/>
-        <SolidColorBrush x:Key="TertiaryTextBrush" Color="#54FFFFFF"/>
+        <SolidColorBrush x:Key="TertiaryTextBrush" Color="#5EFFFFFF"/>
         <SolidColorBrush x:Key="AccentBrush" Color="#F2F2F2"/>
-        <SolidColorBrush x:Key="ShellBrush" Color="#F6060608"/>
-        <SolidColorBrush x:Key="ShellBorderBrush" Color="#16FFFFFF"/>
-        <SolidColorBrush x:Key="SelectedItemBrush" Color="#17FFFFFF"/>
-        <SolidColorBrush x:Key="HoverItemBrush" Color="#0CFFFFFF"/>
+        <!-- Fully opaque OLED black to match the notch; any translucency lets
+             the window behind bleed through the search field. -->
+        <SolidColorBrush x:Key="ShellBrush" Color="#FF000000"/>
+        <SolidColorBrush x:Key="ShellBorderBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="SelectedItemBrush" Color="#24FFFFFF"/>
+        <SolidColorBrush x:Key="HoverItemBrush" Color="#10FFFFFF"/>
 
         <Style x:Key="KeyBadgeStyle" TargetType="Border">
-            <Setter Property="Background" Value="#0DFFFFFF"/>
-            <Setter Property="BorderBrush" Value="#1AFFFFFF"/>
+            <Setter Property="Background" Value="#14FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#1CFFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="5"/>
-            <Setter Property="Padding" Value="7,3"/>
+            <Setter Property="Padding" Value="8,3"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
@@ -87,12 +90,57 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SpotlightContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{StaticResource ShellBrush}"
+                                BorderBrush="{StaticResource ShellBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="4">
+                            <StackPanel IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SpotlightMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Root"
+                                CornerRadius="6"
+                                Padding="12,7"
+                                Background="Transparent">
+                            <ContentPresenter ContentSource="Header"
+                                              RecognizesAccessKey="True"
+                                              TextElement.FontFamily="{StaticResource SFProText}"
+                                              TextElement.FontSize="12"
+                                              TextElement.Foreground="{StaticResource PrimaryTextBrush}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ResultItemStyle" TargetType="ListBoxItem">
             <EventSetter Event="MouseLeftButtonUp" Handler="ResultItem_MouseLeftButtonUp"/>
+            <EventSetter Event="MouseRightButtonUp" Handler="ResultItem_MouseRightButtonUp"/>
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin" Value="10,1"/>
+            <Setter Property="Margin" Value="7,2"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -100,35 +148,10 @@
                         <Grid>
                             <Border x:Name="HoverSurface"
                                     Background="{StaticResource HoverItemBrush}"
-                                    CornerRadius="10"
+                                    CornerRadius="8"
                                     Opacity="0"/>
-                            <Border x:Name="SelectionSurface"
-                                    Background="{StaticResource SelectedItemBrush}"
-                                    BorderBrush="#1CFFFFFF"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Visibility="Collapsed"/>
-                            <Border Padding="14,7">
+                            <Border Padding="14,8">
                                 <ContentPresenter/>
-                            </Border>
-                            <Border x:Name="SelectionAccent"
-                                    Width="3"
-                                    Height="24"
-                                    CornerRadius="2"
-                                    Background="{StaticResource AccentBrush}"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    Visibility="Collapsed"
-                                    RenderTransformOrigin="0.5,0.5">
-                                <Border.RenderTransform>
-                                    <ScaleTransform ScaleY="1"/>
-                                </Border.RenderTransform>
-                                <Border.Effect>
-                                    <DropShadowEffect Color="#FFFFFF"
-                                                      BlurRadius="8"
-                                                      ShadowDepth="0"
-                                                      Opacity="0.35"/>
-                                </Border.Effect>
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -154,30 +177,6 @@
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
                             </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="SelectionSurface" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="SelectionAccent" Property="Visibility" Value="Visible"/>
-                                <Trigger.EnterActions>
-                                    <BeginStoryboard>
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="SelectionAccent"
-                                                             Storyboard.TargetProperty="RenderTransform.ScaleY"
-                                                             From="0.4"
-                                                             To="1"
-                                                             Duration="0:0:0.16">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetName="SelectionAccent"
-                                                             Storyboard.TargetProperty="Opacity"
-                                                             From="0"
-                                                             To="1"
-                                                             Duration="0:0:0.12"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </Trigger.EnterActions>
-                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
                             </Trigger>
@@ -188,11 +187,15 @@
         </Style>
     </Window.Resources>
 
+    <!-- The window is a fixed-size transparent canvas; only the shell resizes.
+         Animating an HWND resize on a layered window re-uploads the whole
+         surface every frame and stutters, so the window never changes size. -->
     <Border x:Name="Shell"
-            CornerRadius="20"
+            CornerRadius="14"
             Background="{StaticResource ShellBrush}"
             BorderBrush="{StaticResource ShellBorderBrush}"
             BorderThickness="1"
+            VerticalAlignment="Top"
             ClipToBounds="False"
             Opacity="0"
             RenderTransformOrigin="0.5,0.12">
@@ -200,41 +203,49 @@
             <DropShadowEffect Color="#020408" BlurRadius="42" ShadowDepth="14" Opacity="0.78"/>
         </Border.Effect>
         <Border.RenderTransform>
-            <ScaleTransform x:Name="ShellScale" ScaleX="0.98" ScaleY="0.98"/>
+            <TransformGroup>
+                <ScaleTransform x:Name="ShellScale" ScaleX="0.98" ScaleY="0.98"/>
+                <TranslateTransform x:Name="ShellShake"/>
+            </TransformGroup>
         </Border.RenderTransform>
 
+        <!-- ClipToBounds keeps rows inside the shell while its explicit
+             morph height is smaller than the content's natural height. -->
         <Grid x:Name="ShellContent"
+              ClipToBounds="True"
               RenderTransformOrigin="0.5,0.5">
             <Grid.RenderTransform>
                 <TranslateTransform x:Name="ContentTranslate" Y="0"/>
             </Grid.RenderTransform>
             <Grid.RowDefinitions>
-                <RowDefinition Height="80"/>
+                <RowDefinition Height="64"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Search field -->
-            <Grid Margin="26,0,22,0">
+            <!-- Search field: text on the left, magnifier on the right (Flow Launcher layout). -->
+            <Grid Margin="22,0,20,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="40"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="&#xE721;"
-                           FontFamily="Segoe Fluent Icons"
-                           FontSize="21"
-                           Foreground="{StaticResource AccentBrush}"
-                           HorizontalAlignment="Left"
-                           VerticalAlignment="Center"/>
-
-                <Grid Grid.Column="1" Margin="2,0,18,0">
+                <Grid Margin="0,0,16,0">
+                    <!-- Inline autocomplete: the typed prefix is rendered transparent so
+                         only the dim completion tail shows behind the real caret text. -->
+                    <TextBlock x:Name="AutocompleteText"
+                               FontFamily="{StaticResource SFProDisplay}"
+                               FontSize="20"
+                               FontWeight="Normal"
+                               Margin="1,2,0,0"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False"
+                               Visibility="Collapsed"><Run x:Name="AutocompleteTypedRun" Foreground="Transparent"/><Run x:Name="AutocompleteSuffixRun" Foreground="#48FFFFFF"/></TextBlock>
                     <TextBox x:Name="SearchBox"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
                              TextChanged="SearchBox_TextChanged"
-                             KeyDown="SearchBox_KeyDown"
                              FontFamily="{StaticResource SFProDisplay}"
-                             FontSize="23"
+                             FontSize="20"
                              FontWeight="Normal"
                              Foreground="{StaticResource PrimaryTextBrush}"
                              CaretBrush="{StaticResource AccentBrush}"
@@ -247,14 +258,16 @@
                     <TextBlock x:Name="PlaceholderText"
                                Text="Search apps and files"
                                FontFamily="{StaticResource SFProDisplay}"
-                               FontSize="23"
+                               FontSize="20"
                                FontWeight="Normal"
-                               Foreground="#4CFFFFFF"
+                               Foreground="#44FFFFFF"
                                IsHitTestVisible="False"
                                VerticalAlignment="Center"/>
                 </Grid>
 
-                <Border Grid.Column="2"
+                <Border x:Name="EscBadge"
+                        Grid.Column="1"
+                        Margin="0,0,14,0"
                         Style="{StaticResource KeyBadgeStyle}">
                     <TextBlock Text="ESC"
                                FontFamily="{StaticResource SFProText}"
@@ -262,9 +275,16 @@
                                FontWeight="SemiBold"
                                Foreground="#72FFFFFF"/>
                 </Border>
+
+                <TextBlock Grid.Column="2"
+                           Text="&#xE721;"
+                           FontFamily="Segoe Fluent Icons"
+                           FontSize="19"
+                           Foreground="#7DFFFFFF"
+                           VerticalAlignment="Center"/>
             </Grid>
 
-            <!-- Results and keyboard help appear only after the user starts searching. -->
+            <!-- Results appear only after the user starts searching. -->
             <Border x:Name="ContentRegion"
                     Grid.Row="1"
                     BorderBrush="#14FFFFFF"
@@ -276,61 +296,80 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="42"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="0,2,0,8">
+                    <Grid Grid.Row="0" Margin="0,6,0,7">
                         <ListBox x:Name="ResultsList"
                                  ItemsSource="{Binding Results}"
                                  SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
                                  ItemContainerStyle="{StaticResource ResultItemStyle}"
+                                 SelectionChanged="ResultsList_SelectionChanged"
                                  Background="Transparent"
                                  BorderThickness="0"
                                  MaxHeight="440"
                                  AlternationCount="20"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 VirtualizingPanel.IsVirtualizing="False"
                                  AutomationProperties.Name="Search results">
                             <ListBox.Resources>
                                 <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
                             </ListBox.Resources>
-                            <ListBox.GroupStyle>
-                                <GroupStyle>
-                                    <GroupStyle.HeaderTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Name}"
-                                                       Margin="26,10,25,5"
-                                                       FontFamily="{StaticResource SFProText}"
-                                                       FontSize="10"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="#58FFFFFF"/>
-                                        </DataTemplate>
-                                    </GroupStyle.HeaderTemplate>
-                                </GroupStyle>
-                            </ListBox.GroupStyle>
+                            <ListBox.Template>
+                                <ControlTemplate TargetType="ListBox">
+                                    <!-- The selection highlight is one shared surface that glides
+                                         between rows; it lives inside the scrolled content so it
+                                         stays glued to its row while scrolling. -->
+                                    <ScrollViewer Focusable="False"
+                                                  CanContentScroll="False"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <Grid>
+                                            <Border x:Name="SelectionGlide"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    Background="{StaticResource SelectedItemBrush}"
+                                                    CornerRadius="8"
+                                                    Opacity="0"
+                                                    IsHitTestVisible="False">
+                                                <Border.RenderTransform>
+                                                    <TranslateTransform x:Name="SelectionGlideTransform"/>
+                                                </Border.RenderTransform>
+                                                <!-- Full-height accent bar hugging the row's left edge. -->
+                                                <Border Width="3"
+                                                        Margin="0,4"
+                                                        CornerRadius="1.5"
+                                                        Background="{StaticResource AccentBrush}"
+                                                        HorizontalAlignment="Left"
+                                                        VerticalAlignment="Stretch"/>
+                                            </Border>
+                                            <ItemsPresenter/>
+                                        </Grid>
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </ListBox.Template>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Height="42"
+                                    <Grid MinHeight="38"
                                           AutomationProperties.Name="{Binding Title}"
                                           AutomationProperties.HelpText="{Binding Subtitle}">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="42"/>
+                                            <ColumnDefinition Width="46"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <Grid Width="30"
-                                              Height="30"
+                                        <Grid Width="32"
+                                              Height="32"
                                               HorizontalAlignment="Left"
                                               VerticalAlignment="Center">
                                             <Image Source="{Binding Icon}"
-                                                   Width="28"
-                                                   Height="28"
+                                                   Width="32"
+                                                   Height="32"
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                                             <TextBlock x:Name="FallbackGlyph"
                                                        Text="{Binding Glyph}"
                                                        FontFamily="Segoe Fluent Icons"
-                                                       FontSize="19"
+                                                       FontSize="20"
                                                        Foreground="#B4FFFFFF"
                                                        Visibility="Collapsed"
                                                        HorizontalAlignment="Center"
@@ -343,55 +382,39 @@
                                             <TextBlock controls:HighlightedText.Text="{Binding Title}"
                                                        controls:HighlightedText.Query="{Binding DataContext.Query, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        FontFamily="{StaticResource SFProDisplay}"
-                                                       FontSize="14"
+                                                       FontSize="15"
                                                        FontWeight="SemiBold"
                                                        Foreground="{StaticResource TitleTextBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock Text="{Binding Subtitle}"
-                                                       Margin="0,1,0,0"
+                                            <TextBlock x:Name="SubtitleText"
+                                                       Text="{Binding Subtitle}"
+                                                       Margin="0,2,0,0"
                                                        FontFamily="{StaticResource SFProText}"
-                                                       FontSize="11"
+                                                       FontSize="11.5"
                                                        Foreground="{StaticResource TertiaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
 
-                                        <Border x:Name="OpenBadge"
+                                        <Border x:Name="HotkeyBadge"
                                                 Grid.Column="2"
-                                                Style="{StaticResource KeyBadgeStyle}"
-                                                Padding="7,3"
-                                                Opacity="0">
-                                            <TextBlock Text="&#x21B5;"
+                                                Style="{StaticResource KeyBadgeStyle}">
+                                            <TextBlock x:Name="HotkeyText"
+                                                       Text="{Binding Path=(ItemsControl.AlternationIndex), RelativeSource={RelativeSource AncestorType=ListBoxItem}, Converter={StaticResource HotkeyConverter}}"
                                                        FontFamily="{StaticResource SFProText}"
-                                                       FontSize="11"
-                                                       Foreground="#AFFFFFFF"/>
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#86FFFFFF"/>
                                         </Border>
                                     </Grid>
                                     <DataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
                                             <Setter TargetName="FallbackGlyph" Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                                     Value="True">
-                                            <DataTrigger.EnterActions>
-                                                <BeginStoryboard>
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetName="OpenBadge"
-                                                                         Storyboard.TargetProperty="Opacity"
-                                                                         To="1"
-                                                                         Duration="0:0:0.14"/>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                            <DataTrigger.ExitActions>
-                                                <BeginStoryboard>
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetName="OpenBadge"
-                                                                         Storyboard.TargetProperty="Opacity"
-                                                                         To="0"
-                                                                         Duration="0:0:0.10"/>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </DataTrigger.ExitActions>
+                                        <DataTrigger Binding="{Binding Subtitle}" Value="">
+                                            <Setter TargetName="SubtitleText" Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Text, ElementName=HotkeyText}" Value="">
+                                            <Setter TargetName="HotkeyBadge" Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
@@ -430,71 +453,20 @@
                         </Grid>
                     </Grid>
 
-                    <Border Grid.Row="1"
-                            BorderBrush="#10FFFFFF"
-                            BorderThickness="0,1,0,0">
-                        <Grid Margin="26,0,22,0">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="&#x2191; &#x2193;"
-                                           FontSize="11"
-                                           Foreground="#A6FFFFFF"
-                                           VerticalAlignment="Center"/>
-                                <TextBlock x:Name="NavigateHintText"
-                                           Text="Navigate"
-                                           Margin="7,0,0,0"
-                                           FontFamily="{StaticResource SFProText}"
-                                           FontSize="10"
-                                           Foreground="#5CFFFFFF"
-                                           VerticalAlignment="Center"/>
-                                <Border Width="1" Height="12" Margin="12,0" Background="#1CFFFFFF"/>
-                                <TextBlock Text="&#x21B5;"
-                                           FontSize="12"
-                                           Foreground="#A6FFFFFF"
-                                           VerticalAlignment="Center"/>
-                                <TextBlock x:Name="OpenHintText"
-                                           Text="Open"
-                                           Margin="7,0,0,0"
-                                           FontFamily="{StaticResource SFProText}"
-                                           FontSize="10"
-                                           Foreground="#5CFFFFFF"
-                                           VerticalAlignment="Center"/>
-                                <StackPanel x:Name="RevealHintGroup"
-                                            Orientation="Horizontal"
-                                            Visibility="Collapsed">
-                                    <Border Width="1" Height="12" Margin="12,0" Background="#1CFFFFFF"/>
-                                    <TextBlock Text="Ctrl &#x21B5;"
-                                               FontFamily="{StaticResource SFProText}"
-                                               FontSize="10"
-                                               Foreground="#A6FFFFFF"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="RevealHintText"
-                                               Text="Show in folder"
-                                               Margin="7,0,0,0"
-                                               FontFamily="{StaticResource SFProText}"
-                                               FontSize="10"
-                                               Foreground="#5CFFFFFF"
-                                               VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Center">
-                                <Border Style="{StaticResource KeyBadgeStyle}" Padding="6,2">
-                                    <TextBlock Text="ESC"
-                                               FontFamily="{StaticResource SFProText}"
-                                               FontSize="9"
-                                               FontWeight="SemiBold"
-                                               Foreground="#78FFFFFF"/>
-                                </Border>
-                                <TextBlock x:Name="EscHintText"
-                                           Text="Clear"
-                                           Margin="7,0,0,0"
-                                           FontFamily="{StaticResource SFProText}"
-                                           FontSize="10"
-                                           Foreground="#5CFFFFFF"/>
-                            </StackPanel>
-                        </Grid>
+                    <!-- Only surfaces when a launch fails; there is no permanent footer. -->
+                    <Border x:Name="FailureBar"
+                            Grid.Row="1"
+                            BorderBrush="#12FFFFFF"
+                            BorderThickness="0,1,0,0"
+                            Padding="22,9"
+                            Visibility="Collapsed">
+                        <TextBlock x:Name="FailureText"
+                                   FontFamily="{StaticResource SFProText}"
+                                   FontSize="11"
+                                   Foreground="#E8FFA894"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   AutomationProperties.LiveSetting="Assertive"/>
                     </Border>
                 </Grid>
             </Border>

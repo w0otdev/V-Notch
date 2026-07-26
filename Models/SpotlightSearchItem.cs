@@ -7,7 +7,8 @@ public enum SpotlightResultKind
 {
     Application,
     File,
-    Folder
+    Folder,
+    Calculation
 }
 
 public sealed record SpotlightSearchItem(
@@ -20,13 +21,27 @@ public sealed record SpotlightSearchItem(
 {
     public double Score { get; init; }
     public ImageSource? Icon { get; init; }
-    public string SectionTitle => Loc.Get(Kind == SpotlightResultKind.Application
-        ? "spotlight.section.apps"
-        : "spotlight.section.files");
+
+    /// <summary>
+    /// True for items republished from the launch history on an empty query;
+    /// they group under a "Recents" header regardless of kind.
+    /// </summary>
+    public bool IsRecent { get; init; }
+
+    public string SectionTitle => IsRecent
+        ? Loc.Get("spotlight.section.recents")
+        : Loc.Get(Kind switch
+        {
+            SpotlightResultKind.Application => "spotlight.section.apps",
+            SpotlightResultKind.Calculation => "spotlight.section.calculator",
+            _ => "spotlight.section.files"
+        });
+
     public string Glyph => Kind switch
     {
-        SpotlightResultKind.Application => "\uE8A5",
+        SpotlightResultKind.Application => "\uE71D",
         SpotlightResultKind.Folder => "\uE8B7",
+        SpotlightResultKind.Calculation => "\uE8EF",
         _ => "\uE8A5"
     };
 }

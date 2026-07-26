@@ -39,7 +39,7 @@ public sealed class SpotlightLauncherTests
     }
 
     [Fact]
-    public void CanReveal_AllowsExistingFilesAndFoldersOnly()
+    public void CanReveal_AllowsFileBackedTargetsButNotStoreApps()
     {
         string directory = Directory.CreateTempSubdirectory("vnotch-spotlight-").FullName;
         string file = Path.Combine(directory, "item.txt");
@@ -48,6 +48,7 @@ public sealed class SpotlightLauncherTests
         {
             Assert.True(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.File, file)));
             Assert.True(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.Folder, directory)));
+            Assert.True(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.Application, file)));
             Assert.False(SpotlightLauncher.CanReveal(Item(
                 SpotlightResultKind.Application, "shell:AppsFolder\\PackageFamily!App")));
             Assert.False(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.File, "C:\\missing-file.txt")));
@@ -56,6 +57,53 @@ public sealed class SpotlightLauncherTests
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [Fact]
+    public void CanLaunchElevated_RequiresAFileBackedAppOrFile()
+    {
+        string directory = Directory.CreateTempSubdirectory("vnotch-spotlight-").FullName;
+        string file = Path.Combine(directory, "tool.exe");
+        File.WriteAllText(file, "test");
+        try
+        {
+            Assert.True(SpotlightLauncher.CanLaunchElevated(Item(SpotlightResultKind.Application, file)));
+            Assert.True(SpotlightLauncher.CanLaunchElevated(Item(SpotlightResultKind.File, file)));
+            Assert.False(SpotlightLauncher.CanLaunchElevated(Item(SpotlightResultKind.Folder, directory)));
+            Assert.False(SpotlightLauncher.CanLaunchElevated(Item(
+                SpotlightResultKind.Application, "shell:AppsFolder\\PackageFamily!App")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GetCopyableText_ReturnsPathsForFileBackedItemsAndValuesForCalculations()
+    {
+        string directory = Directory.CreateTempSubdirectory("vnotch-spotlight-").FullName;
+        string file = Path.Combine(directory, "item.txt");
+        File.WriteAllText(file, "test");
+        try
+        {
+            Assert.Equal(file, SpotlightLauncher.GetCopyableText(Item(SpotlightResultKind.File, file)));
+            Assert.Equal(directory, SpotlightLauncher.GetCopyableText(Item(SpotlightResultKind.Folder, directory)));
+            Assert.Equal("42", SpotlightLauncher.GetCopyableText(Item(SpotlightResultKind.Calculation, "42")));
+            Assert.Null(SpotlightLauncher.GetCopyableText(Item(
+                SpotlightResultKind.Application, "shell:AppsFolder\\PackageFamily!App")));
+            Assert.Null(SpotlightLauncher.GetCopyableText(Item(SpotlightResultKind.File, "C:\\missing-file.txt")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void IsValidTarget_RejectsCalculationsFromProcessLaunch()
+    {
+        Assert.False(SpotlightLauncher.IsValidTarget(Item(SpotlightResultKind.Calculation, "42")));
     }
 
     [Fact]

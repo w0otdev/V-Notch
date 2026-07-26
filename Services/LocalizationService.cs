@@ -3830,7 +3830,13 @@ public static class Loc
             ("spotlight.clear", "Clear"),
             ("spotlight.reveal", "Show in folder"),
             ("spotlight.section.apps", "Applications"),
-            ("spotlight.section.files", "Files & folders"));
+            ("spotlight.section.files", "Files & folders"),
+            ("spotlight.section.recents", "Recents"),
+            ("spotlight.section.calculator", "Calculator"),
+            ("spotlight.copy", "Copy"),
+            ("spotlight.copyPath", "Copy path"),
+            ("spotlight.runAsAdmin", "Run as administrator"),
+            ("spotlight.launchFailed", "Couldn't open {0} — it may have been moved or removed"));
         AddStrings("vi",
             ("spotlight.results", "K\u1ebft qu\u1ea3"),
             ("spotlight.navigate", "Di chuy\u1ec3n"),
@@ -3839,7 +3845,13 @@ public static class Loc
             ("spotlight.clear", "Xo\u00e1"),
             ("spotlight.reveal", "M\u1edf th\u01b0 m\u1ee5c ch\u1ee9a"),
             ("spotlight.section.apps", "\u1ee8ng d\u1ee5ng"),
-            ("spotlight.section.files", "T\u1ec7p v\u00e0 th\u01b0 m\u1ee5c"));
+            ("spotlight.section.files", "T\u1ec7p v\u00e0 th\u01b0 m\u1ee5c"),
+            ("spotlight.section.recents", "G\u1ea7n \u0111\u00e2y"),
+            ("spotlight.section.calculator", "M\u00e1y t\u00ednh"),
+            ("spotlight.copy", "Sao ch\u00e9p"),
+            ("spotlight.copyPath", "Sao ch\u00e9p \u0111\u01b0\u1eddng d\u1eabn"),
+            ("spotlight.runAsAdmin", "Ch\u1ea1y v\u1edbi quy\u1ec1n qu\u1ea3n tr\u1ecb"),
+            ("spotlight.launchFailed", "Kh\u00f4ng th\u1ec3 m\u1edf {0} \u2014 m\u1ee5c n\u00e0y c\u00f3 th\u1ec3 \u0111\u00e3 b\u1ecb di chuy\u1ec3n ho\u1eb7c x\u00f3a"));
         AddStrings("es",
             ("spotlight.results", "Resultados"),
             ("spotlight.navigate", "Navegar"),
@@ -3848,7 +3860,13 @@ public static class Loc
             ("spotlight.clear", "Borrar"),
             ("spotlight.reveal", "Mostrar en carpeta"),
             ("spotlight.section.apps", "Aplicaciones"),
-            ("spotlight.section.files", "Archivos y carpetas"));
+            ("spotlight.section.files", "Archivos y carpetas"),
+            ("spotlight.section.recents", "Recientes"),
+            ("spotlight.section.calculator", "Calculadora"),
+            ("spotlight.copy", "Copiar"),
+            ("spotlight.copyPath", "Copiar ruta"),
+            ("spotlight.runAsAdmin", "Ejecutar como administrador"),
+            ("spotlight.launchFailed", "No se pudo abrir {0}; puede que se haya movido o eliminado"));
         AddStrings("fr",
             ("spotlight.results", "R\u00e9sultats"),
             ("spotlight.navigate", "Naviguer"),
@@ -3857,7 +3875,13 @@ public static class Loc
             ("spotlight.clear", "Effacer"),
             ("spotlight.reveal", "Afficher dans le dossier"),
             ("spotlight.section.apps", "Applications"),
-            ("spotlight.section.files", "Fichiers et dossiers"));
+            ("spotlight.section.files", "Fichiers et dossiers"),
+            ("spotlight.section.recents", "Récents"),
+            ("spotlight.section.calculator", "Calculatrice"),
+            ("spotlight.copy", "Copier"),
+            ("spotlight.copyPath", "Copier le chemin"),
+            ("spotlight.runAsAdmin", "Exécuter en tant qu’administrateur"),
+            ("spotlight.launchFailed", "Impossible d’ouvrir {0} — l’élément a peut-être été déplacé ou supprimé"));
         AddStrings("de",
             ("spotlight.results", "Ergebnisse"),
             ("spotlight.navigate", "Navigieren"),
@@ -3866,7 +3890,13 @@ public static class Loc
             ("spotlight.clear", "L\u00f6schen"),
             ("spotlight.reveal", "Im Ordner anzeigen"),
             ("spotlight.section.apps", "Anwendungen"),
-            ("spotlight.section.files", "Dateien und Ordner"));
+            ("spotlight.section.files", "Dateien und Ordner"),
+            ("spotlight.section.recents", "Zuletzt verwendet"),
+            ("spotlight.section.calculator", "Rechner"),
+            ("spotlight.copy", "Kopieren"),
+            ("spotlight.copyPath", "Pfad kopieren"),
+            ("spotlight.runAsAdmin", "Als Administrator ausführen"),
+            ("spotlight.launchFailed", "{0} konnte nicht geöffnet werden – möglicherweise verschoben oder entfernt"));
         AddStrings("ja",
             ("spotlight.results", "\u7d50\u679c"),
             ("spotlight.navigate", "\u79fb\u52d5"),
@@ -3875,7 +3905,13 @@ public static class Loc
             ("spotlight.clear", "\u30af\u30ea\u30a2"),
             ("spotlight.reveal", "\u30d5\u30a9\u30eb\u30c0\u30fc\u3067\u8868\u793a"),
             ("spotlight.section.apps", "\u30a2\u30d7\u30ea\u30b1\u30fc\u30b7\u30e7\u30f3"),
-            ("spotlight.section.files", "\u30d5\u30a1\u30a4\u30eb\u3068\u30d5\u30a9\u30eb\u30c0\u30fc"));
+            ("spotlight.section.files", "\u30d5\u30a1\u30a4\u30eb\u3068\u30d5\u30a9\u30eb\u30c0\u30fc"),
+            ("spotlight.section.recents", "\u6700\u8fd1\u4f7f\u3063\u305f\u9805\u76ee"),
+            ("spotlight.section.calculator", "\u96fb\u5353"),
+            ("spotlight.copy", "\u30b3\u30d4\u30fc"),
+            ("spotlight.copyPath", "\u30d1\u30b9\u3092\u30b3\u30d4\u30fc"),
+            ("spotlight.runAsAdmin", "\u7ba1\u7406\u8005\u3068\u3057\u3066\u5b9f\u884c"),
+            ("spotlight.launchFailed", "{0} \u3092\u958b\u3051\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u79fb\u52d5\u307e\u305f\u306f\u524a\u9664\u3055\u308c\u305f\u53ef\u80fd\u6027\u304c\u3042\u308a\u307e\u3059"));
         AddStrings("hi",
             ("spotlight.results", "\u092a\u0930\u093f\u0923\u093e\u092e"),
             ("spotlight.navigate", "\u0928\u0947\u0935\u093f\u0917\u0947\u091f"),
@@ -3884,7 +3920,13 @@ public static class Loc
             ("spotlight.clear", "\u0938\u093e\u092b\u093c \u0915\u0930\u0947\u0902"),
             ("spotlight.reveal", "\u092b\u093c\u094b\u0932\u094d\u0921\u0930 \u092e\u0947\u0902 \u0926\u093f\u0916\u093e\u090f\u0901"),
             ("spotlight.section.apps", "\u0910\u092a\u094d\u0932\u093f\u0915\u0947\u0936\u0928"),
-            ("spotlight.section.files", "\u092b\u093c\u093e\u0907\u0932\u0947\u0902 \u0914\u0930 \u092b\u093c\u094b\u0932\u094d\u0921\u0930"));
+            ("spotlight.section.files", "\u092b\u093c\u093e\u0907\u0932\u0947\u0902 \u0914\u0930 \u092b\u093c\u094b\u0932\u094d\u0921\u0930"),
+            ("spotlight.section.recents", "\u0939\u093e\u0932 \u0915\u0947"),
+            ("spotlight.section.calculator", "\u0915\u0948\u0932\u0915\u0941\u0932\u0947\u091f\u0930"),
+            ("spotlight.copy", "\u0915\u0949\u092a\u0940 \u0915\u0930\u0947\u0902"),
+            ("spotlight.copyPath", "\u092a\u0925 \u0915\u0949\u092a\u0940 \u0915\u0930\u0947\u0902"),
+            ("spotlight.runAsAdmin", "\u0935\u094d\u092f\u0935\u0938\u094d\u0925\u093e\u092a\u0915 \u0915\u0947 \u0930\u0942\u092a \u092e\u0947\u0902 \u091a\u0932\u093e\u090f\u0901"),
+            ("spotlight.launchFailed", "{0} \u0928\u0939\u0940\u0902 \u0916\u094b\u0932\u093e \u091c\u093e \u0938\u0915\u093e \u2014 \u0936\u093e\u092f\u0926 \u092f\u0939 \u0939\u091f\u093e\u092f\u093e \u092f\u093e \u0938\u094d\u0925\u093e\u0928\u093e\u0902\u0924\u0930\u093f\u0924 \u0915\u093f\u092f\u093e \u0917\u092f\u093e \u0939\u094b"));
     }
 
     private static void AddStrings(string language, params (string Key, string Value)[] entries)

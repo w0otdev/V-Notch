@@ -39,8 +39,54 @@ internal sealed class SpotlightLauncher
         }
     }
 
+    public bool TryLaunchElevated(SpotlightSearchItem item)
+    {
+        if (!CanLaunchElevated(item)) return false;
+
+        try
+        {
+            return Process.Start(new ProcessStartInfo(item.Target)
+            {
+                UseShellExecute = true,
+                Verb = "runas"
+            }) != null;
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            // The user declined the UAC prompt; that is a choice, not a failure.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-LAUNCH", ex, $"Failed to elevate {item.Kind}: {item.Target}");
+            return false;
+        }
+    }
+
     internal static bool CanReveal(SpotlightSearchItem item) =>
-        item.Kind is SpotlightResultKind.File or SpotlightResultKind.Folder && IsValidTarget(item);
+        IsValidTarget(item) && item.Kind switch
+        {
+            SpotlightResultKind.File or SpotlightResultKind.Folder => true,
+            // Shortcuts and exes can be revealed; shell:AppsFolder targets cannot.
+            SpotlightResultKind.Application => File.Exists(item.Target),
+            _ => false
+        };
+
+    internal static bool CanLaunchElevated(SpotlightSearchItem item) =>
+        item.Kind is SpotlightResultKind.Application or SpotlightResultKind.File
+        && IsValidTarget(item)
+        && File.Exists(item.Target);
+
+    /// <summary>
+    /// The text put on the clipboard for "copy path"; the computed value for
+    /// calculations, the target path for everything file-backed.
+    /// </summary>
+    internal static string? GetCopyableText(SpotlightSearchItem item)
+    {
+        if (item.Kind == SpotlightResultKind.Calculation)
+            return string.IsNullOrWhiteSpace(item.Target) ? null : item.Target;
+        return CanReveal(item) ? item.Target : null;
+    }
 
     internal static bool IsValidTarget(SpotlightSearchItem item)
     {
@@ -59,6 +105,7 @@ internal sealed class SpotlightLauncher
                 || Directory.Exists(item.Target),
             SpotlightResultKind.File => File.Exists(item.Target),
             SpotlightResultKind.Folder => Directory.Exists(item.Target),
+            // Calculations are copied by the window, never process-launched.
             _ => false
         };
     }

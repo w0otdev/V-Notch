@@ -1,3 +1,4 @@
+using System.IO;
 using VNotch.Models;
 using VNotch.Services.Spotlight;
 using VNotch.Services.Spotlight.Providers;
@@ -84,7 +85,10 @@ public sealed class SpotlightSearchServiceTests
     public async Task ViewModel_DoesNotPublishAStaleQuery()
     {
         var provider = new ControlledProvider();
-        var viewModel = new SpotlightViewModel(new SpotlightSearchService(new[] { provider }));
+        string usagePath = Path.Combine(Path.GetTempPath(), $"vnotch-usage-{Guid.NewGuid():N}.json");
+        var viewModel = new SpotlightViewModel(
+            new SpotlightSearchService(new[] { provider }),
+            new SpotlightUsageStore(usagePath, () => DateTime.UtcNow));
 
         Task slowSearch = viewModel.SearchAsync("slow");
         await provider.SlowStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));

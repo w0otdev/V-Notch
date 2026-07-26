@@ -10,6 +10,7 @@ internal sealed class AppSearchProvider : ISpotlightProvider
     private readonly Lazy<Task<IReadOnlyList<SpotlightSearchItem>>> _index;
 
     public bool IsAvailable => true;
+    public bool IsInstant => true;
 
     public AppSearchProvider()
     {

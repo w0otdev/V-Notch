@@ -811,6 +811,25 @@ public partial class MainWindow : Window
         return _overlayWindow.GetNotchScreenRect(_collapsedWidth, _collapsedHeight, _cornerRadiusCollapsed);
     }
 
+    /// <summary>
+    /// Screen rect and per-edge corner radii of the collapsed notch visual,
+    /// for the Spotlight morph. Unlike <see cref="GetNotchScreenRect"/> this
+    /// accounts for the dynamic island's top offset and for classic mode's
+    /// square top corners, so the morph lands exactly on the visible shape.
+    /// </summary>
+    internal (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius)
+        GetSpotlightMorphRect()
+    {
+        var rect = GetNotchScreenRect();
+        bool islandMode = _settings.EnableDynamicIslandMode;
+        return (rect.Left,
+            rect.Top + (islandMode ? DynamicIslandTopMargin : 0),
+            rect.Width,
+            rect.Height,
+            islandMode ? rect.CornerRadius : 0,
+            rect.CornerRadius);
+    }
+
     internal void SetSpotlightMorphActive(bool active)
     {
         if (active == _spotlightMorphOwnsNotchVisibility) return;

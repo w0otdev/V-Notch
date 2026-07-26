@@ -9,19 +9,42 @@ internal sealed class SpotlightSearchService
     private const int MaxQueryLength = 256;
     private const int MaxResults = 50;
     private readonly IReadOnlyList<ISpotlightProvider> _providers;
+    private readonly SpotlightUsageStore? _usage;
 
     public bool IsWindowsSearchAvailable =>
         _providers.OfType<WindowsSearchProvider>().FirstOrDefault()?.IsAvailable ?? false;
 
-    public SpotlightSearchService(IEnumerable<ISpotlightProvider> providers)
+    public SpotlightSearchService(
+        IEnumerable<ISpotlightProvider> providers,
+        SpotlightUsageStore? usage = null)
     {
         _providers = providers.ToArray();
+        _usage = usage;
     }
 
     internal Task WarmupAsync() =>
         Task.WhenAll(_providers.OfType<AppSearchProvider>().Select(provider => provider.WarmupAsync()));
 
-    internal async Task<IReadOnlyList<SpotlightSearchItem>> SearchApplicationsAsync(
+    /// <summary>
+    /// In-memory providers (apps, calculator); cheap enough to run per keystroke.
+    /// </summary>
+    internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
+        string query,
+        int limit,
+        CancellationToken cancellationToken) =>
+        SearchGroupAsync(provider => provider.IsInstant, query, limit, cancellationToken);
+
+    /// <summary>
+    /// Expensive providers (the Windows Search index); callers debounce these.
+    /// </summary>
+    internal Task<IReadOnlyList<SpotlightSearchItem>> SearchDeferredAsync(
+        string query,
+        int limit,
+        CancellationToken cancellationToken) =>
+        SearchGroupAsync(provider => !provider.IsInstant, query, limit, cancellationToken);
+
+    private async Task<IReadOnlyList<SpotlightSearchItem>> SearchGroupAsync(
+        Func<ISpotlightProvider, bool> selector,
         string query,
         int limit,
         CancellationToken cancellationToken)
@@ -29,24 +52,21 @@ internal sealed class SpotlightSearchService
         if (!TryNormalizeInput(query, limit, out query, out limit))
             return Array.Empty<SpotlightSearchItem>();
 
-        var results = await Task.WhenAll(_providers.OfType<AppSearchProvider>().Select(provider =>
+        var results = await Task.WhenAll(_providers.Where(selector).Select(provider =>
             SearchProviderAsync(provider, query, limit, cancellationToken))).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        return Merge(results, limit);
+        return Merge(results.Select(ApplyUsageBoost), limit);
     }
 
-    internal async Task<IReadOnlyList<SpotlightSearchItem>> SearchNonApplicationsAsync(
-        string query,
-        int limit,
-        CancellationToken cancellationToken)
+    private IReadOnlyList<SpotlightSearchItem> ApplyUsageBoost(
+        IReadOnlyList<SpotlightSearchItem> results)
     {
-        if (!TryNormalizeInput(query, limit, out query, out limit))
-            return Array.Empty<SpotlightSearchItem>();
-
-        var results = await Task.WhenAll(_providers.Where(provider => provider is not AppSearchProvider).Select(provider =>
-            SearchProviderAsync(provider, query, limit, cancellationToken))).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        return Merge(results, limit);
+        if (_usage == null) return results;
+        return results
+            .Select(item => item.Score > 0
+                ? item with { Score = item.Score + _usage.GetBoost(item.Id) }
+                : item)
+            .ToArray();
     }
 
     public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
@@ -62,7 +82,7 @@ internal sealed class SpotlightSearchService
         var providerResults = await Task.WhenAll(providerTasks).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Merge(providerResults, limit);
+        return Merge(providerResults.Select(ApplyUsageBoost), limit);
     }
 
     internal static IReadOnlyList<SpotlightSearchItem> Merge(
@@ -115,7 +135,7 @@ internal sealed class SpotlightSearchService
         }
     }
 
-    private static SpotlightSearchItem LoadIcon(SpotlightSearchItem item)
+    internal static SpotlightSearchItem LoadIcon(SpotlightSearchItem item)
     {
         string? path = item.IconPath;
         if (item.Icon != null) return item;
