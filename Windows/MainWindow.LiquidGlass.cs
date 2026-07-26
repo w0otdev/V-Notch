@@ -247,10 +247,11 @@ public partial class MainWindow
     private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
     {
         var fx = _glassRefractionEffect;
-        if (fx == null) return;
+        var lg = _liquidGlass;
+        if (fx == null || lg == null) return;
 
-        fx.SrcW = _liquidGlass.SurfaceWidth;
-        fx.SrcH = _liquidGlass.SurfaceHeight;
+        fx.SrcW = lg.SurfaceWidth;
+        fx.SrcH = lg.SurfaceHeight;
         fx.NotchW = g.NotchW;
         fx.NotchH = g.NotchH;
         fx.OffX = g.OffX;
@@ -1062,8 +1063,6 @@ public partial class MainWindow
         });
     }
 
-    private double _lastDarkTintOpacity = -1;
-
     private void UpdateDynamicGlassTint(double bgBrightness)
     {
         if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
@@ -1076,6 +1075,5 @@ public partial class MainWindow
             GlassDarkOverlay.BeginAnimation(OpacityProperty, null);
             GlassDarkOverlay.Opacity = 0;
         }
-        _lastDarkTintOpacity = 0;
     }
 }
