@@ -832,25 +832,85 @@ public partial class MainWindow : Window
 
     internal void SetSpotlightMorphActive(bool active)
     {
-        if (active == _spotlightMorphOwnsNotchVisibility) return;
-        _spotlightMorphOwnsNotchVisibility = active;
-
         NotchWrapper.BeginAnimation(OpacityProperty, null);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         if (active)
         {
-            _spotlightRestoreNotchOpacity = NotchWrapper.Opacity;
-            _spotlightRestoreShadowOpacity = NotchShadowWrapper.Opacity;
-            _spotlightRestoreNotchHitTesting = NotchWrapper.IsHitTestVisible;
+            // Repeated ownership requests are common when a running exit morph
+            // is reversed. Preserve the original restore values, but always
+            // re-assert the hidden state in case another animation touched it.
+            if (!_spotlightMorphOwnsNotchVisibility)
+            {
+                _spotlightRestoreNotchOpacity = NotchWrapper.Opacity;
+                _spotlightRestoreShadowOpacity = NotchShadowWrapper.Opacity;
+                _spotlightRestoreNotchHitTesting = NotchWrapper.IsHitTestVisible;
+            }
+            _spotlightMorphOwnsNotchVisibility = true;
             NotchWrapper.Opacity = 0;
             NotchShadowWrapper.Opacity = 0;
             NotchWrapper.IsHitTestVisible = false;
             return;
         }
 
+        _spotlightMorphOwnsNotchVisibility = false;
         NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
         NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
         NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
+    }
+
+    internal void BeginSpotlightReturnHandoff(TimeSpan duration)
+    {
+        if (!_spotlightMorphOwnsNotchVisibility)
+        {
+            SetSpotlightMorphActive(false);
+            return;
+        }
+
+        _spotlightMorphOwnsNotchVisibility = false;
+        NotchWrapper.BeginAnimation(OpacityProperty, null);
+        NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+        NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
+        NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
+        NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
+        NotchScale.ScaleX = NotchScale.ScaleY = 1;
+        NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
+        if (CompactThumbnailBorder != null) CompactThumbnailBorder.Opacity = 1;
+        if (ThumbnailBorder != null) ThumbnailBorder.Opacity = 1;
+        _isAnimating = false;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var notchFade = new DoubleAnimation(0, _spotlightRestoreNotchOpacity, duration)
+        {
+            EasingFunction = ease
+        };
+        var shadowFade = new DoubleAnimation(0, _spotlightRestoreShadowOpacity, duration)
+        {
+            EasingFunction = ease
+        };
+        // A sub-pixel settle keeps the handoff alive without the old 1.12x
+        // bounce pulling the real notch outside the fake shell's geometry.
+        var settle = new DoubleAnimation(
+            0.992,
+            1,
+            new Duration(duration + TimeSpan.FromMilliseconds(50)))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Timeline.SetDesiredFrameRate(notchFade, AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(shadowFade, AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(settle, AnimationConfig.TargetFps);
+
+        NotchWrapper.BeginAnimation(OpacityProperty, notchFade);
+        NotchShadowWrapper.BeginAnimation(OpacityProperty, shadowFade);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
     }
 
     internal void PlayNotchReturnBounce()

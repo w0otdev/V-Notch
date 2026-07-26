@@ -13,6 +13,7 @@ namespace VNotch;
 public partial class App : Application
 {
     private static SingleInstanceGuard? _guard;
+    private static int _fatalUiExceptionInProgress;
     private const string MutexName = "VNotch_SingleInstance_Mutex";
 
     public static IServiceProvider Services { get; private set; } = null!;
@@ -63,6 +64,15 @@ public partial class App : Application
 
         DispatcherUnhandledException += (s, args) =>
         {
+            // MessageBox.Show runs a nested dispatcher loop. Without this guard,
+            // another queued UI callback can fail while the first fatal dialog is
+            // open and recursively create an entire stack of error dialogs.
+            if (Volatile.Read(ref _fatalUiExceptionInProgress) != 0)
+            {
+                args.Handled = true;
+                return;
+            }
+
             if (IsRecoverableException(args.Exception))
             {
                 RuntimeLog.Error("UNHANDLED-UI-RECOVERED", args.Exception,
@@ -71,9 +81,17 @@ public partial class App : Application
                 return;
             }
 
+            if (Interlocked.Exchange(ref _fatalUiExceptionInProgress, 1) != 0)
+            {
+                args.Handled = true;
+                return;
+            }
+
+            args.Handled = true;
             RuntimeLog.Error("UNHANDLED-UI-FATAL", args.Exception,
                 "Unexpected UI dispatcher exception; shutting down to avoid continuing in an unknown state");
-            args.Handled = true;
+            try { RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1)); }
+            catch { }
 
             try
             {

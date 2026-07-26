@@ -200,7 +200,11 @@
             Opacity="0"
             RenderTransformOrigin="0.5,0.12">
         <Border.Effect>
-            <DropShadowEffect Color="#020408" BlurRadius="42" ShadowDepth="14" Opacity="0.78"/>
+            <DropShadowEffect Color="#020408"
+                              BlurRadius="24"
+                              ShadowDepth="5"
+                              Direction="270"
+                              Opacity="0.48"/>
         </Border.Effect>
         <Border.RenderTransform>
             <TransformGroup>
@@ -209,18 +213,19 @@
             </TransformGroup>
         </Border.RenderTransform>
 
-        <!-- ClipToBounds keeps rows inside the shell while its explicit
-             morph height is smaller than the content's natural height. -->
-        <Grid x:Name="ShellContent"
-              ClipToBounds="True"
-              RenderTransformOrigin="0.5,0.5">
-            <Grid.RenderTransform>
-                <TranslateTransform x:Name="ContentTranslate" Y="0"/>
-            </Grid.RenderTransform>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="64"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <Grid>
+            <!-- ClipToBounds keeps rows inside the shell while its explicit
+                 morph height is smaller than the content's natural height. -->
+            <Grid x:Name="ShellContent"
+                  ClipToBounds="True"
+                  RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="ContentTranslate" Y="0"/>
+                </Grid.RenderTransform>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="64"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
             <!-- Search field: text on the left, magnifier on the right (Flow Launcher layout). -->
             <Grid Margin="22,0,20,0">
@@ -469,7 +474,17 @@
                                    AutomationProperties.LiveSetting="Assertive"/>
                     </Border>
                 </Grid>
-            </Border>
+                </Border>
+            </Grid>
+
+            <!-- Snapshot of the source notch used only during the opening
+                 handoff, above the Spotlight content that fades in below. -->
+            <Image x:Name="NotchMorphSnapshot"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Top"
+                   Stretch="Fill"
+                   IsHitTestVisible="False"
+                   Opacity="0"/>
         </Grid>
     </Border>
 </Window>

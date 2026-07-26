@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using VNotch.Models;
 using VNotch.Services;
@@ -16,6 +17,12 @@ namespace VNotch;
 public partial class SpotlightWindow : Window
 {
     private const double ExpandedCornerRadius = 14;
+    private const double NotchShadowBlurRadius = 20;
+    private const double NotchShadowDepth = 4;
+    private const double NotchShadowOpacity = 0.6;
+    private const double SpotlightShadowBlurRadius = 24;
+    private const double SpotlightShadowDepth = 5;
+    private const double SpotlightShadowOpacity = 0.48;
     private const int PageJump = 4;
     private const double StaleResultsOpacity = 0.55;
     private static readonly TimeSpan MorphDuration = TimeSpan.FromMilliseconds(560);
@@ -68,6 +75,12 @@ public partial class SpotlightWindow : Window
                 SearchBox.Focus();
                 Keyboard.Focus(SearchBox);
             }
+        };
+        IsVisibleChanged += (_, args) =>
+        {
+            // Last-resort ownership invariant: no hidden Spotlight HWND may
+            // leave the source notch transparent after interrupted animations.
+            if (args.NewValue is false) SetNotchMorphActive(false);
         };
 
         // The entrance morph publishes results while the shell is still at
@@ -188,6 +201,12 @@ public partial class SpotlightWindow : Window
 
     internal void ToggleFromHotkey()
     {
+        if (_isClosing)
+        {
+            ReverseExitToEntrance();
+            return;
+        }
+
         if (!IsVisible)
         {
             ShowSpotlight();
@@ -202,8 +221,8 @@ public partial class SpotlightWindow : Window
         if (!IsVisible) return;
         if (_isClosing)
         {
-            // A repeated shortcut must never be swallowed by an in-flight
-            // deactivation animation. Invalidate its callbacks and finish now.
+            // A repeated dismissal must finish an in-flight deactivation
+            // immediately. Invalidate its remaining animation callbacks.
             ++_animationGeneration;
             CompleteHide();
             _lastDismissedQuery = null;
@@ -391,7 +410,14 @@ public partial class SpotlightWindow : Window
     {
         // ApplicationIdle can be starved by the notch's continuous media/render
         // work. Input priority guarantees an outside click dismisses Spotlight.
-        Dispatcher.BeginInvoke(HideSpotlight, DispatcherPriority.Input);
+        // Capture the current session: a queued deactivation from the previous
+        // hide must not close a Spotlight session opened immediately afterward.
+        int generation = _animationGeneration;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (generation != _animationGeneration || !IsVisible || _isClosing) return;
+            HideSpotlight();
+        }, DispatcherPriority.Input);
     }
 
     private void MoveSelection(int direction)
@@ -884,7 +910,11 @@ public partial class SpotlightWindow : Window
         _contentShown = false;
         _contentResizeQueued = false;
         ContentRegion.BeginAnimation(HeightProperty, null);
+        ContentRegion.BeginAnimation(OpacityProperty, null);
+        ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         ContentRegion.Height = double.NaN;
+        ContentRegion.Opacity = 1;
+        ContentRegionTranslate.Y = 0;
         ContentRegion.ClipToBounds = false;
         ContentRegion.Visibility = Visibility.Collapsed;
     }
@@ -997,6 +1027,7 @@ public partial class SpotlightWindow : Window
     {
         if (AnimationConfig.ReduceMotion)
         {
+            ResetNotchMorphSnapshot();
             Left = finalLeft;
             Top = finalTop;
             Shell.Opacity = 1;
@@ -1016,8 +1047,9 @@ public partial class SpotlightWindow : Window
 
         double startLeft = finalLeft;
         double startTop = finalTop;
-        double finalShellWidth = Math.Max(1, Shell.ActualWidth);
-        double finalShellHeight = Math.Max(1, Shell.ActualHeight);
+        var finalShellSize = MeasureEntranceShell();
+        double finalShellWidth = finalShellSize.Width;
+        double finalShellHeight = finalShellSize.Height;
         double startShellWidth = finalShellWidth * 0.97;
         double startShellHeight = finalShellHeight * 0.82;
         double startTopRadius = 10;
@@ -1032,13 +1064,27 @@ public partial class SpotlightWindow : Window
             startLeft = notch.Left + notch.Width / 2.0 - ActualWidth / 2.0;
             startTop = notch.Top;
         }
+        bool hasNotchSnapshot = morphsFromNotch
+            && PrepareNotchMorphSnapshot(startShellWidth, startShellHeight);
 
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
-        Shell.Effect = null;
+        if (morphsFromNotch)
+        {
+            SetMorphShadow(NotchShadowBlurRadius, NotchShadowDepth, NotchShadowOpacity);
+            AnimateMorphShadow(
+                SpotlightShadowBlurRadius,
+                SpotlightShadowDepth,
+                SpotlightShadowOpacity,
+                MorphDuration);
+        }
+        else
+        {
+            RestoreShadow(animate: true);
+        }
 
         // Set final base values first so clearing completed animations cannot snap back.
         Left = finalLeft;
@@ -1065,11 +1111,19 @@ public partial class SpotlightWindow : Window
         var cornerTop = CreateAnimation(startTopRadius, ExpandedCornerRadius, MorphDuration, morphEase, synchronizedMorph: true);
 
         var contentFade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(300), contentEase);
-        contentFade.BeginTime = TimeSpan.FromMilliseconds(morphsFromNotch ? 170 : 60);
+        // The captured notch covers the short content delay. If capture is not
+        // available, reveal Spotlight immediately instead of showing an empty
+        // shell for 170 ms.
+        contentFade.BeginTime = TimeSpan.FromMilliseconds(
+            morphsFromNotch && hasNotchSnapshot ? 60 : morphsFromNotch ? 0 : 60);
         var contentSlide = CreateAnimation(8, 0, TimeSpan.FromMilliseconds(340), contentEase);
         contentSlide.BeginTime = contentFade.BeginTime;
         var blurOut = CreateAnimation(10, 0, TimeSpan.FromMilliseconds(340), contentEase);
         blurOut.BeginTime = contentFade.BeginTime;
+        DoubleAnimation? notchFade = hasNotchSnapshot
+            ? CreateAnimation(1, 0, TimeSpan.FromMilliseconds(260),
+                new CubicEase { EasingMode = EasingMode.EaseInOut })
+            : null;
 
         expandWidth.Completed += (_, _) =>
         {
@@ -1086,10 +1140,120 @@ public partial class SpotlightWindow : Window
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
         contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurOut);
+        if (notchFade != null)
+            NotchMorphSnapshot.BeginAnimation(OpacityProperty, notchFade);
         // The notch has no light outline; the border only belongs to the
         // expanded panel, so it fades in as the shell departs.
         if (morphsFromNotch) AnimateShellBorder(0, 1, MorphDuration);
         if (morphsFromNotch) SetNotchMorphActive(true);
+    }
+
+    private void ReverseExitToEntrance()
+    {
+        int generation = ++_animationGeneration;
+        MorphSnapshot current = FreezeCurrentMorphState();
+        var target = GetSpotlightTarget();
+
+        // Measure the expanded auto-height without exposing an intermediate
+        // layout frame. The current explicit morph size is restored below as
+        // the animation's starting value.
+        Shell.Width = double.NaN;
+        Shell.Height = double.NaN;
+        Size finalSize = MeasureEntranceShell();
+
+        _isClosing = false;
+        _entranceActive = true;
+        _lastDismissedQuery = null;
+        SearchBox.IsEnabled = true;
+        SetResultsDimmed(false, animate: false);
+
+        Shell.RenderTransformOrigin = new Point(0.5, 0.0);
+        Shell.CacheMode = null;
+        ShellContent.CacheMode = null;
+        Shell.HorizontalAlignment = HorizontalAlignment.Center;
+        Shell.VerticalAlignment = VerticalAlignment.Top;
+        ResetNotchMorphSnapshot();
+        AnimateMorphShadow(
+            SpotlightShadowBlurRadius,
+            SpotlightShadowDepth,
+            SpotlightShadowOpacity,
+            MorphDuration);
+
+        // Final base values keep the completed frame stable after its clocks
+        // are cleared. The From values below preserve the exact interrupted
+        // exit frame, so repeated toggles simply reverse direction.
+        Left = target.Left;
+        Top = target.Top;
+        Shell.Opacity = 1;
+        ShellScale.ScaleX = ShellScale.ScaleY = 1;
+        Shell.Width = finalSize.Width;
+        Shell.Height = finalSize.Height;
+        ShellCornerRadius = ExpandedCornerRadius;
+        ShellTopCornerRadius = ExpandedCornerRadius;
+        ShellContent.Opacity = 1;
+        ContentTranslate.Y = 0;
+        ShellContent.Effect = null;
+
+        var morphEase = CreateMorphEase();
+        var contentEase = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
+        var expandWidth = CreateAnimation(current.Width, finalSize.Width,
+            MorphDuration, morphEase, synchronizedMorph: true);
+        var expandHeight = CreateAnimation(current.Height, finalSize.Height,
+            MorphDuration, morphEase, synchronizedMorph: true);
+        var moveLeft = CreateAnimation(current.Left, target.Left,
+            MorphDuration, morphEase, synchronizedMorph: true);
+        var moveTop = CreateAnimation(current.Top, target.Top,
+            MorphDuration, morphEase, synchronizedMorph: true);
+        var corner = CreateAnimation(current.CornerRadius, ExpandedCornerRadius,
+            MorphDuration, morphEase, synchronizedMorph: true);
+        var cornerTop = CreateAnimation(current.TopCornerRadius, ExpandedCornerRadius,
+            MorphDuration, morphEase, synchronizedMorph: true);
+        var contentFade = CreateAnimation(current.ContentOpacity, 1,
+            TimeSpan.FromMilliseconds(240), contentEase);
+        var contentSlide = CreateAnimation(current.ContentTranslateY, 0,
+            TimeSpan.FromMilliseconds(280), contentEase);
+
+        expandWidth.Completed += (_, _) =>
+        {
+            if (generation != _animationGeneration || _isClosing || !IsVisible) return;
+            CompleteEntrance(target.Left, target.Top);
+        };
+
+        Shell.BeginAnimation(WidthProperty, expandWidth);
+        Shell.BeginAnimation(HeightProperty, expandHeight);
+        BeginAnimation(LeftProperty, moveLeft);
+        BeginAnimation(TopProperty, moveTop);
+        BeginAnimation(ShellCornerRadiusProperty, corner);
+        BeginAnimation(ShellTopCornerRadiusProperty, cornerTop);
+        ShellContent.BeginAnimation(OpacityProperty, contentFade);
+        ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
+        AnimateShellBorder(_shellBorderBrush?.Opacity ?? 1, 1, MorphDuration);
+        SetNotchMorphActive(true);
+
+        string query = SearchBox.Text;
+        if (!string.IsNullOrWhiteSpace(query)) _ = _viewModel.SearchAsync(query);
+        FocusSearchBox(generation);
+    }
+
+    private Size MeasureEntranceShell()
+    {
+        // ActualSize can still describe the final notch-sized frame when a
+        // hidden layered window is shown again in the same dispatcher turn.
+        // Measure from the fixed Spotlight canvas instead of reusing that
+        // stale arranged size.
+        double width = ActualWidth;
+        if (!double.IsFinite(width) || width <= 0) width = Width;
+        if (!double.IsFinite(width) || width <= 0) width = 720;
+
+        Shell.Measure(new Size(width, double.PositiveInfinity));
+        double height = Shell.DesiredSize.Height;
+        if (!double.IsFinite(height) || height <= 0)
+            height = Math.Max(1, Shell.ActualHeight);
+
+        RuntimeLog.Debug(
+            "SPOTLIGHT-MORPH",
+            $"Entrance measure: target={width:F1}x{height:F1}, actual={Shell.ActualWidth:F1}x{Shell.ActualHeight:F1}, gen={_animationGeneration}");
+        return new Size(width, height);
     }
 
     private void PlayExit(int generation)
@@ -1121,7 +1285,11 @@ public partial class SpotlightWindow : Window
         ShellContent.CacheMode = null;
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
-        FadeOutShadow(generation);
+        AnimateMorphShadow(
+            NotchShadowBlurRadius,
+            NotchShadowDepth,
+            NotchShadowOpacity,
+            MorphDuration);
 
         double targetWidth = Math.Max(1, notch.Width);
         double targetHeight = Math.Max(1, notch.Height);
@@ -1180,24 +1348,22 @@ public partial class SpotlightWindow : Window
     private void BeginReturnHandoff(int generation)
     {
         if (generation != _animationGeneration || !IsVisible) return;
+        var handoffDuration = TimeSpan.FromMilliseconds(180);
 
         // Keep the morph shell on the exact notch frame while the real notch takes
-        // ownership underneath it. Fading only at this final frame prevents the
-        // source notch from flashing before the moving window has arrived.
+        // ownership underneath it. Both layers cross-fade on the same clock so
+        // the fake shell never visibly snaps to the real dynamic island.
         ClearMorphAnimations();
         // ClearMorphAnimations restored the border's base opacity; the shell
         // must stay borderless while it fades out over the real notch.
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 0;
         if (Owner is MainWindow mainWindow)
-        {
-            mainWindow.SetSpotlightMorphActive(false);
-            mainWindow.PlayNotchReturnBounce();
-        }
+            mainWindow.BeginSpotlightReturnHandoff(handoffDuration);
 
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
-        var handoffFade = CreateAnimation(1, 0, TimeSpan.FromMilliseconds(100),
-            new CubicEase { EasingMode = EasingMode.EaseOut }, synchronizedMorph: true);
+        var handoffFade = CreateAnimation(1, 0, handoffDuration,
+            new CubicEase { EasingMode = EasingMode.EaseInOut }, synchronizedMorph: true);
         handoffFade.Completed += (_, _) =>
         {
             if (generation == _animationGeneration) CompleteHide();
@@ -1208,6 +1374,7 @@ public partial class SpotlightWindow : Window
     private void CompleteEntrance(double finalLeft, double finalTop)
     {
         ClearMorphAnimations();
+        ResetNotchMorphSnapshot();
         Left = finalLeft;
         Top = finalTop;
         Shell.Opacity = 1;
@@ -1221,12 +1388,13 @@ public partial class SpotlightWindow : Window
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
+        Shell.Effect = null;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         // Top-aligned auto-height: the shell hugs its content inside the
         // fixed-size transparent window, so growth never resizes the HWND.
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.RenderTransformOrigin = new Point(0.5, 0.5);
-        RestoreShadow(animate: true);
+        RestoreShadow(animate: false);
 
         // Results that arrived mid-morph waited for the shell to land; play
         // their reveal now that the height is free to animate.
@@ -1261,6 +1429,8 @@ public partial class SpotlightWindow : Window
         _entranceActive = false;
         _pendingContentReveal = false;
         ClearMorphAnimations();
+        ResetNotchMorphSnapshot();
+        Shell.Effect = null;
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
@@ -1279,13 +1449,47 @@ public partial class SpotlightWindow : Window
         ContentTranslate.Y = 0;
     }
 
+    private bool PrepareNotchMorphSnapshot(double width, double height)
+    {
+        ResetNotchMorphSnapshot();
+        if (Owner is not MainWindow mainWindow) return false;
+
+        ImageSource? source = mainWindow.CaptureSpotlightMorphVisual();
+        if (source == null) return false;
+
+        NotchMorphSnapshot.Source = source;
+        NotchMorphSnapshot.Width = Math.Max(1, width);
+        NotchMorphSnapshot.Height = Math.Max(1, height);
+        // The source must already be visible before the first composition.
+        // Relying on a From=1 animation over a zero base can expose a blank
+        // frame when query/results cleanup delays the animation clock.
+        NotchMorphSnapshot.Opacity = 1;
+        return true;
+    }
+
+    private void ResetNotchMorphSnapshot()
+    {
+        NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
+        NotchMorphSnapshot.Opacity = 0;
+        NotchMorphSnapshot.Source = null;
+        NotchMorphSnapshot.Width = double.NaN;
+        NotchMorphSnapshot.Height = double.NaN;
+    }
+
     private MorphSnapshot FreezeCurrentMorphState()
     {
+        var shadow = Shell.Effect as DropShadowEffect;
         var snapshot = new MorphSnapshot(
             Left, Top, Math.Max(1, Shell.ActualWidth), Math.Max(1, Shell.ActualHeight),
             ShellCornerRadius, ShellTopCornerRadius,
-            ShellContent.Opacity, ContentTranslate.Y);
+            ShellContent.Opacity, ContentTranslate.Y,
+            shadow?.BlurRadius ?? NotchShadowBlurRadius,
+            shadow?.ShadowDepth ?? NotchShadowDepth,
+            shadow?.Opacity ?? 0);
         ClearMorphAnimations();
+        // Clearing a fade reveals its base value. Retire the opening snapshot
+        // explicitly before an interrupted entrance is redirected into exit.
+        ResetNotchMorphSnapshot();
         Left = snapshot.Left;
         Top = snapshot.Top;
         ShellScale.ScaleX = 1;
@@ -1296,6 +1500,7 @@ public partial class SpotlightWindow : Window
         ShellTopCornerRadius = snapshot.TopCornerRadius;
         ShellContent.Opacity = snapshot.ContentOpacity;
         ContentTranslate.Y = snapshot.ContentTranslateY;
+        SetMorphShadow(snapshot.ShadowBlurRadius, snapshot.ShadowDepth, snapshot.ShadowOpacity);
         return snapshot;
     }
 
@@ -1314,6 +1519,13 @@ public partial class SpotlightWindow : Window
         _shellBorderBrush?.BeginAnimation(Brush.OpacityProperty, null);
         ShellContent.BeginAnimation(OpacityProperty, null);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
+        if (Shell.Effect is DropShadowEffect shellShadow)
+        {
+            shellShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
+            shellShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
+            shellShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
+        }
         if (ShellContent.Effect is System.Windows.Media.Effects.BlurEffect blur)
             blur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, null);
     }
@@ -1360,38 +1572,68 @@ public partial class SpotlightWindow : Window
 
     private void RestoreShadow(bool animate)
     {
-        var shadow = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            Color = Color.FromRgb(2, 4, 8),
-            BlurRadius = 42,
-            ShadowDepth = 14,
-            Opacity = animate ? 0 : 0.78
-        };
-        Shell.Effect = shadow;
+        SetMorphShadow(
+            SpotlightShadowBlurRadius,
+            SpotlightShadowDepth,
+            animate ? 0 : SpotlightShadowOpacity);
         if (!animate) return;
 
-        var fade = CreateAnimation(0, 0.78, TimeSpan.FromMilliseconds(180),
+        var shadow = (DropShadowEffect)Shell.Effect;
+        shadow.Opacity = SpotlightShadowOpacity;
+        var fade = CreateAnimation(0, SpotlightShadowOpacity, TimeSpan.FromMilliseconds(180),
             new QuadraticEase { EasingMode = EasingMode.EaseOut });
-        shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, fade);
+        shadow.BeginAnimation(DropShadowEffect.OpacityProperty, fade);
     }
 
-    private void FadeOutShadow(int generation)
+    private void SetMorphShadow(double blurRadius, double shadowDepth, double opacity)
     {
-        if (Shell.Effect is not System.Windows.Media.Effects.DropShadowEffect shadow)
+        var shadow = Shell.Effect as DropShadowEffect;
+        if (shadow == null)
         {
-            Shell.Effect = null;
+            shadow = new DropShadowEffect
+            {
+                Color = Color.FromRgb(2, 4, 8),
+                Direction = 270,
+                RenderingBias = RenderingBias.Performance
+            };
+            Shell.Effect = shadow;
+        }
+
+        shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
+        shadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
+        shadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
+        shadow.BlurRadius = blurRadius;
+        shadow.ShadowDepth = shadowDepth;
+        shadow.Opacity = opacity;
+    }
+
+    private void AnimateMorphShadow(
+        double targetBlurRadius,
+        double targetShadowDepth,
+        double targetOpacity,
+        TimeSpan duration)
+    {
+        if (Shell.Effect is not DropShadowEffect shadow)
+        {
+            SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);
             return;
         }
 
-        double currentOpacity = shadow.Opacity;
-        var fade = CreateAnimation(currentOpacity, 0, TimeSpan.FromMilliseconds(150),
-            new CubicEase { EasingMode = EasingMode.EaseOut });
-        fade.Completed += (_, _) =>
-        {
-            if (generation == _animationGeneration && _isClosing)
-                Shell.Effect = null;
-        };
-        shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, fade);
+        double startBlurRadius = shadow.BlurRadius;
+        double startShadowDepth = shadow.ShadowDepth;
+        double startOpacity = shadow.Opacity;
+        SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);
+
+        var ease = CreateMorphEase();
+        shadow.BeginAnimation(
+            DropShadowEffect.BlurRadiusProperty,
+            CreateAnimation(startBlurRadius, targetBlurRadius, duration, ease, synchronizedMorph: true));
+        shadow.BeginAnimation(
+            DropShadowEffect.ShadowDepthProperty,
+            CreateAnimation(startShadowDepth, targetShadowDepth, duration, ease, synchronizedMorph: true));
+        shadow.BeginAnimation(
+            DropShadowEffect.OpacityProperty,
+            CreateAnimation(startOpacity, targetOpacity, duration, ease, synchronizedMorph: true));
     }
 
     private static DoubleAnimation CreateAnimation(
@@ -1456,5 +1698,8 @@ public partial class SpotlightWindow : Window
         double CornerRadius,
         double TopCornerRadius,
         double ContentOpacity,
-        double ContentTranslateY);
+        double ContentTranslateY,
+        double ShadowBlurRadius,
+        double ShadowDepth,
+        double ShadowOpacity);
 }
