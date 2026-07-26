@@ -145,7 +145,7 @@ internal sealed class SpotlightController : ISpotlightController
                 if (!_escapeDown)
                 {
                     _escapeDown = true;
-                    _source?.Dispatcher.BeginInvoke(_window.DismissFromGlobalShortcut);
+                    _source?.Dispatcher.BeginInvoke(_window.HandleGlobalEscape);
                 }
                 return new IntPtr(1);
             }

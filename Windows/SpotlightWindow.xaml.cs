@@ -16,11 +16,13 @@ namespace VNotch;
 public partial class SpotlightWindow : Window
 {
     private const double ExpandedCornerRadius = 20;
+    private const int PageJump = 4;
     private static readonly TimeSpan MorphDuration = TimeSpan.FromMilliseconds(560);
     private readonly SpotlightViewModel _viewModel;
     private readonly SpotlightLauncher _launcher;
     private bool _allowClose;
     private bool _isClosing;
+    private bool _statusPulseActive;
     private int _animationGeneration;
 
     internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher)
@@ -31,11 +33,28 @@ public partial class SpotlightWindow : Window
         DataContext = viewModel;
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         PlaceholderText.Text = Loc.Get("spotlight.placeholder");
-        ResultsHeading.Text = Loc.Get("spotlight.results").ToUpper(Loc.GetCulture());
         NavigateHintText.Text = Loc.Get("spotlight.navigate");
         OpenHintText.Text = Loc.Get("spotlight.open");
-        CloseHintText.Text = Loc.Get("spotlight.close");
+        RevealHintText.Text = Loc.Get("spotlight.reveal");
+        EscHintText.Text = Loc.Get("spotlight.clear");
         SearchBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("spotlight.placeholder"));
+
+        var resultsView = System.Windows.Data.CollectionViewSource.GetDefaultView(_viewModel.Results);
+        resultsView.GroupDescriptions.Add(
+            new System.Windows.Data.PropertyGroupDescription(nameof(SpotlightSearchItem.SectionTitle)));
+
+        // Activation from the global hotkey can land after ShowSpotlight has
+        // already tried to focus; whenever the window becomes active the
+        // search box must own the keyboard.
+        Activated += (_, _) =>
+        {
+            if (!_isClosing && SearchBox.IsEnabled && !SearchBox.IsKeyboardFocused)
+            {
+                SearchBox.Focus();
+                Keyboard.Focus(SearchBox);
+            }
+        };
+
         _viewModel.Results.CollectionChanged += (_, _) => RefreshStatus();
         _viewModel.PropertyChanged += (_, args) =>
         {
@@ -44,6 +63,10 @@ public partial class SpotlightWindow : Window
                 or nameof(SpotlightViewModel.IsWindowsSearchUnavailable))
             {
                 RefreshStatus();
+            }
+            else if (args.PropertyName == nameof(SpotlightViewModel.SelectedResult))
+            {
+                UpdateRevealHint();
             }
         };
     }
@@ -62,9 +85,69 @@ public partial class SpotlightWindow : Window
 
         var target = GetSpotlightTarget();
         PlayEntrance(target.Left, target.Top, generation);
-        Activate();
+        FocusSearchBox(generation);
+    }
+
+    private void FocusSearchBox(int generation)
+    {
+        ForceForeground();
         SearchBox.Focus();
         Keyboard.Focus(SearchBox);
+        if (SearchBox.IsKeyboardFocused) return;
+
+        // Windows can refuse the foreground switch while another process holds
+        // the input lock; retry after the pending input queue settles.
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (generation != _animationGeneration || !IsVisible || _isClosing) return;
+            ForceForeground();
+            SearchBox.Focus();
+            Keyboard.Focus(SearchBox);
+        });
+    }
+
+    private void ForceForeground()
+    {
+        IntPtr hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            Activate();
+            return;
+        }
+
+        IntPtr foreground = GetForegroundWindow();
+        if (foreground == hwnd)
+        {
+            Activate();
+            return;
+        }
+
+        // When Spotlight is toggled from the low-level keyboard hook (Alt+Space
+        // fallback), this process has no foreground-activation grant and plain
+        // SetForegroundWindow/Activate is silently refused. Attaching to the
+        // current foreground thread's input queue lifts that restriction.
+        uint thisThread = GetCurrentThreadId();
+        uint foregroundThread = 0;
+        if (foreground != IntPtr.Zero)
+            foregroundThread = GetWindowThreadProcessId(foreground, out _);
+
+        bool attached = foregroundThread != 0
+            && foregroundThread != thisThread
+            && AttachThreadInput(thisThread, foregroundThread, true);
+        try
+        {
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            Activate();
+        }
+        catch (InvalidOperationException)
+        {
+            // Window is mid-close; nothing to focus.
+        }
+        finally
+        {
+            if (attached) AttachThreadInput(thisThread, foregroundThread, false);
+        }
     }
 
     internal void ToggleFromHotkey()
@@ -91,6 +174,20 @@ public partial class SpotlightWindow : Window
         }
 
         HideSpotlight();
+    }
+
+    internal void HandleGlobalEscape()
+    {
+        if (!IsVisible) return;
+        if (!_isClosing && !string.IsNullOrEmpty(SearchBox.Text))
+        {
+            // First Escape clears the query; a second one dismisses the window.
+            SearchBox.Clear();
+            SearchBox.Focus();
+            return;
+        }
+
+        DismissFromGlobalShortcut();
     }
 
     internal void HideSpotlight()
@@ -136,11 +233,21 @@ public partial class SpotlightWindow : Window
         switch (e.Key)
         {
             case Key.Down:
+            case Key.Tab when Keyboard.Modifiers == ModifierKeys.None:
                 MoveSelection(1);
                 e.Handled = true;
                 break;
             case Key.Up:
+            case Key.Tab when Keyboard.Modifiers == ModifierKeys.Shift:
                 MoveSelection(-1);
+                e.Handled = true;
+                break;
+            case Key.PageDown:
+                MoveSelection(PageJump);
+                e.Handled = true;
+                break;
+            case Key.PageUp:
+                MoveSelection(-PageJump);
                 e.Handled = true;
                 break;
         }
@@ -150,17 +257,25 @@ public partial class SpotlightWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            DismissFromGlobalShortcut();
+            HandleGlobalEscape();
             e.Handled = true;
         }
         else if (e.Key == Key.Enter)
         {
-            LaunchSelected();
+            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) RevealSelected();
+            else LaunchSelected();
             e.Handled = true;
         }
     }
 
-    private void ResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e) => LaunchSelected();
+    private void ResultItem_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem { DataContext: SpotlightSearchItem item }) return;
+        _viewModel.SelectedResult = item;
+        LaunchSelected();
+        // If the launch failed and the window stays open, typing must keep working.
+        if (IsVisible && !_isClosing) SearchBox.Focus();
+    }
 
     private void Window_Deactivated(object? sender, EventArgs e)
     {
@@ -187,6 +302,19 @@ public partial class SpotlightWindow : Window
         if (_launcher.TryLaunch(selected)) HideSpotlight();
     }
 
+    private void RevealSelected()
+    {
+        SpotlightSearchItem? selected = _viewModel.SelectedResult;
+        if (selected == null) return;
+        if (_launcher.TryRevealInExplorer(selected)) HideSpotlight();
+    }
+
+    private void UpdateRevealHint()
+    {
+        bool canReveal = _viewModel.SelectedResult is { } selected && SpotlightLauncher.CanReveal(selected);
+        RevealHintGroup.Visibility = canReveal ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void RefreshStatus()
     {
         int resultCount = _viewModel.Results.Count;
@@ -195,10 +323,13 @@ public partial class SpotlightWindow : Window
         bool showStatus = hasQuery && !hasResults &&
                           (_viewModel.IsSearching || _viewModel.IsWindowsSearchUnavailable || _viewModel.HasNoResults);
 
+        bool contentWasVisible = ContentRegion.Visibility == Visibility.Visible;
         ContentRegion.Visibility = hasQuery ? Visibility.Visible : Visibility.Collapsed;
+        if (hasQuery && !contentWasVisible) PlayContentReveal();
+
         ResultsList.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
-        ResultCountText.Text = resultCount.ToString(Loc.GetCulture());
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
+        UpdateRevealHint();
         string status = _viewModel.IsSearching
             ? "searching"
             : _viewModel.IsWindowsSearchUnavailable
@@ -212,6 +343,41 @@ public partial class SpotlightWindow : Window
         };
         StatusTitle.Text = Loc.Get($"spotlight.{status}");
         StatusHint.Text = Loc.Get($"spotlight.{status}.hint");
+        SetStatusPulse(showStatus && _viewModel.IsSearching);
+    }
+
+    private void PlayContentReveal()
+    {
+        if (AnimationConfig.ReduceMotion) return;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(200), ease);
+        var slide = CreateAnimation(-6, 0, TimeSpan.FromMilliseconds(240), ease);
+        ContentRegion.BeginAnimation(OpacityProperty, fade);
+        ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
+    }
+
+    private void SetStatusPulse(bool active)
+    {
+        if (_statusPulseActive == active) return;
+        _statusPulseActive = active;
+
+        if (active && !AnimationConfig.ReduceMotion)
+        {
+            var pulse = new DoubleAnimation(1, 0.4, TimeSpan.FromMilliseconds(620))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+            Timeline.SetDesiredFrameRate(pulse, 30);
+            StatusGlyph.BeginAnimation(OpacityProperty, pulse);
+        }
+        else
+        {
+            StatusGlyph.BeginAnimation(OpacityProperty, null);
+            StatusGlyph.Opacity = 1;
+        }
     }
 
     private (double Left, double Top) GetSpotlightTarget()

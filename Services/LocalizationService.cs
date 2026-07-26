@@ -3826,37 +3826,65 @@ public static class Loc
             ("spotlight.results", "Results"),
             ("spotlight.navigate", "Navigate"),
             ("spotlight.open", "Open"),
-            ("spotlight.close", "Close"));
+            ("spotlight.close", "Close"),
+            ("spotlight.clear", "Clear"),
+            ("spotlight.reveal", "Show in folder"),
+            ("spotlight.section.apps", "Applications"),
+            ("spotlight.section.files", "Files & folders"));
         AddStrings("vi",
             ("spotlight.results", "K\u1ebft qu\u1ea3"),
             ("spotlight.navigate", "Di chuy\u1ec3n"),
             ("spotlight.open", "M\u1edf"),
-            ("spotlight.close", "\u0110\u00f3ng"));
+            ("spotlight.close", "\u0110\u00f3ng"),
+            ("spotlight.clear", "Xo\u00e1"),
+            ("spotlight.reveal", "M\u1edf th\u01b0 m\u1ee5c ch\u1ee9a"),
+            ("spotlight.section.apps", "\u1ee8ng d\u1ee5ng"),
+            ("spotlight.section.files", "T\u1ec7p v\u00e0 th\u01b0 m\u1ee5c"));
         AddStrings("es",
             ("spotlight.results", "Resultados"),
             ("spotlight.navigate", "Navegar"),
             ("spotlight.open", "Abrir"),
-            ("spotlight.close", "Cerrar"));
+            ("spotlight.close", "Cerrar"),
+            ("spotlight.clear", "Borrar"),
+            ("spotlight.reveal", "Mostrar en carpeta"),
+            ("spotlight.section.apps", "Aplicaciones"),
+            ("spotlight.section.files", "Archivos y carpetas"));
         AddStrings("fr",
             ("spotlight.results", "R\u00e9sultats"),
             ("spotlight.navigate", "Naviguer"),
             ("spotlight.open", "Ouvrir"),
-            ("spotlight.close", "Fermer"));
+            ("spotlight.close", "Fermer"),
+            ("spotlight.clear", "Effacer"),
+            ("spotlight.reveal", "Afficher dans le dossier"),
+            ("spotlight.section.apps", "Applications"),
+            ("spotlight.section.files", "Fichiers et dossiers"));
         AddStrings("de",
             ("spotlight.results", "Ergebnisse"),
             ("spotlight.navigate", "Navigieren"),
             ("spotlight.open", "\u00d6ffnen"),
-            ("spotlight.close", "Schlie\u00dfen"));
+            ("spotlight.close", "Schlie\u00dfen"),
+            ("spotlight.clear", "L\u00f6schen"),
+            ("spotlight.reveal", "Im Ordner anzeigen"),
+            ("spotlight.section.apps", "Anwendungen"),
+            ("spotlight.section.files", "Dateien und Ordner"));
         AddStrings("ja",
             ("spotlight.results", "\u7d50\u679c"),
             ("spotlight.navigate", "\u79fb\u52d5"),
             ("spotlight.open", "\u958b\u304f"),
-            ("spotlight.close", "\u9589\u3058\u308b"));
+            ("spotlight.close", "\u9589\u3058\u308b"),
+            ("spotlight.clear", "\u30af\u30ea\u30a2"),
+            ("spotlight.reveal", "\u30d5\u30a9\u30eb\u30c0\u30fc\u3067\u8868\u793a"),
+            ("spotlight.section.apps", "\u30a2\u30d7\u30ea\u30b1\u30fc\u30b7\u30e7\u30f3"),
+            ("spotlight.section.files", "\u30d5\u30a1\u30a4\u30eb\u3068\u30d5\u30a9\u30eb\u30c0\u30fc"));
         AddStrings("hi",
             ("spotlight.results", "\u092a\u0930\u093f\u0923\u093e\u092e"),
             ("spotlight.navigate", "\u0928\u0947\u0935\u093f\u0917\u0947\u091f"),
             ("spotlight.open", "\u0916\u094b\u0932\u0947\u0902"),
-            ("spotlight.close", "\u092c\u0902\u0926 \u0915\u0930\u0947\u0902"));
+            ("spotlight.close", "\u092c\u0902\u0926 \u0915\u0930\u0947\u0902"),
+            ("spotlight.clear", "\u0938\u093e\u092b\u093c \u0915\u0930\u0947\u0902"),
+            ("spotlight.reveal", "\u092b\u093c\u094b\u0932\u094d\u0921\u0930 \u092e\u0947\u0902 \u0926\u093f\u0916\u093e\u090f\u0901"),
+            ("spotlight.section.apps", "\u0910\u092a\u094d\u0932\u093f\u0915\u0947\u0936\u0928"),
+            ("spotlight.section.files", "\u092b\u093c\u093e\u0907\u0932\u0947\u0902 \u0914\u0930 \u092b\u093c\u094b\u0932\u094d\u0921\u0930"));
     }
 
     private static void AddStrings(string language, params (string Key, string Value)[] entries)

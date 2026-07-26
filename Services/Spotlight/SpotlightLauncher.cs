@@ -21,6 +21,27 @@ internal sealed class SpotlightLauncher
         }
     }
 
+    public bool TryRevealInExplorer(SpotlightSearchItem item)
+    {
+        if (!CanReveal(item)) return false;
+
+        try
+        {
+            return Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.Target}\"")
+            {
+                UseShellExecute = true
+            }) != null;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-LAUNCH", ex, $"Failed to reveal {item.Kind}: {item.Target}");
+            return false;
+        }
+    }
+
+    internal static bool CanReveal(SpotlightSearchItem item) =>
+        item.Kind is SpotlightResultKind.File or SpotlightResultKind.Folder && IsValidTarget(item);
+
     internal static bool IsValidTarget(SpotlightSearchItem item)
     {
         if (string.IsNullOrWhiteSpace(item.Target)

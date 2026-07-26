@@ -39,6 +39,26 @@ public sealed class SpotlightLauncherTests
     }
 
     [Fact]
+    public void CanReveal_AllowsExistingFilesAndFoldersOnly()
+    {
+        string directory = Directory.CreateTempSubdirectory("vnotch-spotlight-").FullName;
+        string file = Path.Combine(directory, "item.txt");
+        File.WriteAllText(file, "test");
+        try
+        {
+            Assert.True(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.File, file)));
+            Assert.True(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.Folder, directory)));
+            Assert.False(SpotlightLauncher.CanReveal(Item(
+                SpotlightResultKind.Application, "shell:AppsFolder\\PackageFamily!App")));
+            Assert.False(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.File, "C:\\missing-file.txt")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void WindowsSearchQuery_RemovesAqsControlCharacters()
     {
         string sanitized = WindowsSearchProvider.SanitizeQuery("report:\"2026\" *(draft)\\'");

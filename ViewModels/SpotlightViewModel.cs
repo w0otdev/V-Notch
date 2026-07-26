@@ -73,7 +73,13 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     {
         string? selectedId = SelectedResult?.Id;
         Results.Clear();
-        foreach (var result in results) Results.Add(result);
+        // Applications always form the first visual section, so the collection
+        // must match that order for index-based keyboard navigation to work.
+        foreach (var result in results.OrderBy(item =>
+                     item.Kind == SpotlightResultKind.Application ? 0 : 1))
+        {
+            Results.Add(result);
+        }
         SelectedResult = selectedId == null
             ? Results.FirstOrDefault()
             : Results.FirstOrDefault(result => result.Id == selectedId) ?? Results.FirstOrDefault();

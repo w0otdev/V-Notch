@@ -54,6 +54,11 @@ public sealed class LiquidGlassController
     private const int MaxWidth = 1600;
     private const int MaxHeight = 600;
     private const int GpuSamplingMarginLimit = 64;
+    // Largest capture region this instance will process/present. Defaults to the
+    // notch envelope; windows with a different footprint (e.g. the settings
+    // window) pass their own so the fixed D3D surface actually covers them.
+    private readonly int _maxRegionW;
+    private readonly int _maxRegionH;
 
     private const double ProcessScale = 0.72;
     private const double MagProcessScale = 0.85;
@@ -184,6 +189,20 @@ public sealed class LiquidGlassController
     private D3DImageFramePresenter? _d3dPresenter;
     private int _gpuFailureSignaled;
 
+    // Unchanged-frame suppression. Re-presenting an identical backdrop is a pure
+    // waste that costs a full window re-render + UpdateLayeredWindow readback per
+    // frame; skip it unless the source pixels, the shader geometry, or the
+    // sub-pixel present offset changed. A periodic forced present self-heals any
+    // stale frame (e.g. after a front-buffer loss).
+    private const int UnchangedRepresentIntervalMs = 500;
+    private ulong _lastCaptureHash;
+    private long _lastPresentTicks;
+    private bool _hasUploadedGpuFrame;
+    private GpuGeometry _lastUploadedGpuGeometry;
+    private bool _hasPresentedCpuFrame;
+    private double _lastPresentedSubX, _lastPresentedSubY;
+    private double _lastPresentedSaturation, _lastPresentedBrightness;
+
     public bool SetGpuMode(bool enabled, Action<GpuGeometry>? onGeometry, Action<Exception>? onFailure = null)
     {
         _onGpuGeometry = onGeometry;
@@ -240,14 +259,14 @@ public sealed class LiquidGlassController
             if (hwnd == IntPtr.Zero)
                 throw new InvalidOperationException("A window handle is required for the D3DImage presenter.");
 
-            // Use one fixed presentation surface for the full supported notch
+            // Use one fixed presentation surface for the full supported region
             // envelope. Captured frames are scaled into it, so animated geometry
             // never forces D3DImage to replace its back buffer mid-transition.
             _d3dPresenter = new D3DImageFramePresenter(
                 _dispatcher,
                 hwnd,
-                MaxWidth + GpuSamplingMarginLimit * 2,
-                MaxHeight + GpuSamplingMarginLimit * 2);
+                _maxRegionW + GpuSamplingMarginLimit * 2,
+                _maxRegionH + GpuSamplingMarginLimit * 2);
             _d3dPresenter.FramePresented += OnD3DFramePresented;
             _d3dPresenter.Failed += OnD3DPresenterFailed;
         }
@@ -306,6 +325,8 @@ public sealed class LiquidGlassController
         }
         _lastPresentedGpuGeometry = default;
         _hasPresentedGpuGeometry = false;
+        _hasUploadedGpuFrame = false;
+        _hasPresentedCpuFrame = false;
     }
 
     private void QueueGpuGeometry(GpuGeometry geom)
@@ -353,8 +374,10 @@ public sealed class LiquidGlassController
 
     public ImageSource? ImageSource => _d3dPresenter?.ImageSource;
 
-    public int SurfaceWidth => MaxWidth + GpuSamplingMarginLimit * 2;
-    public int SurfaceHeight => MaxHeight + GpuSamplingMarginLimit * 2;
+    public int MaxRegionWidth => _maxRegionW;
+    public int MaxRegionHeight => _maxRegionH;
+    public int SurfaceWidth => _maxRegionW + GpuSamplingMarginLimit * 2;
+    public int SurfaceHeight => _maxRegionH + GpuSamplingMarginLimit * 2;
 
     private void OnD3DPresenterFailed(Exception ex)
     {
@@ -403,16 +426,22 @@ public sealed class LiquidGlassController
     private double _dbgLastLogMs;
 
     public LiquidGlassController(Image host, Func<IntPtr> getHwnd, Func<CaptureRegion?> regionProvider,
-        int activeFps = 60)
+        int activeFps = 60, string logTag = "GLASS",
+        int maxRegionWidth = MaxWidth, int maxRegionHeight = MaxHeight)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _getHwnd = getHwnd ?? throw new ArgumentNullException(nameof(getHwnd));
         _regionProvider = regionProvider ?? throw new ArgumentNullException(nameof(regionProvider));
         _dispatcher = host.Dispatcher;
+        _logTag = logTag;
+        _maxRegionW = Math.Clamp(maxRegionWidth, 64, 4096);
+        _maxRegionH = Math.Clamp(maxRegionHeight, 64, 4096);
 
         int active = Math.Clamp(activeFps, 5, MaxTargetFps);
         _activeIntervalMs = 1000.0 / active;
     }
+
+    private readonly string _logTag;
 
     public void UpdateFps(int activeFps)
     {
@@ -483,6 +512,8 @@ public sealed class LiquidGlassController
         _isActive = true;
         _presentationPaused = false;
         _presentInFlight = false;
+        _hasUploadedGpuFrame = false;
+        _hasPresentedCpuFrame = false;
         RequestRenderTimerPeriod();
 
         uint dpiNow = GetDpiForWindow(_getHwnd());
@@ -653,7 +684,7 @@ public sealed class LiquidGlassController
                     double loopFps = _dbgFrameCount * 1000.0 / sinceLastLog;
                     double targetFps = 1000.0 / _activeIntervalMs;
                     RuntimeLog.Log("LIQUIDGLASS",
-                        $"fps={loopFps:F1}/{targetFps:F0} presented={presented} " +
+                        $"[{_logTag}] fps={loopFps:F1}/{targetFps:F0} presented={presented} " +
                         $"renderer={(_gpuMode ? "GPU" : "CPU")}");
                     _dbgFrameCount = 0;
                     _dbgLastLogMs = frameStart;
@@ -965,8 +996,8 @@ public sealed class LiquidGlassController
         _presentSubX = region.SubX;
         _presentSubY = region.SubY;
 
-        int displayW = Math.Min(region.Width, MaxWidth);
-        int displayH = Math.Min(region.Height, MaxHeight);
+        int displayW = Math.Min(region.Width, _maxRegionW);
+        int displayH = Math.Min(region.Height, _maxRegionH);
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
@@ -1023,8 +1054,9 @@ public sealed class LiquidGlassController
 
         bool spatiallyExactSource = useMag || _exactBitBltCapture;
         int mapCaptureShiftY = spatiallyExactSource ? captureShiftY : 0;
+        bool mapsChanged = false;
         if (!gpuMode)
-            EnsureMaps(p, bufW, bufH, srcW, srcH, margin, outW, outH,
+            mapsChanged = EnsureMaps(p, bufW, bufH, srcW, srcH, margin, outW, outH,
                 notchOffX, notchOffY, captureShiftX, mapCaptureShiftY);
 
         IntPtr screenDc = GetDC(IntPtr.Zero);
@@ -1107,15 +1139,47 @@ public sealed class LiquidGlassController
                     double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0,
                     1.0 + p.Saturation, p.Brightness);
 
-                PresentRawGpu(srcW, srcH, geom);
+                ulong sourceHash = ComputeSourceHash(srcW, srcH);
+                long nowTicks = Environment.TickCount64;
+                bool unchanged = _hasUploadedGpuFrame &&
+                    sourceHash == _lastCaptureHash &&
+                    _lastUploadedGpuGeometry.Equals(geom);
+                if (unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+                    return false;
+
+                if (PresentRawGpu(srcW, srcH, geom))
+                {
+                    _hasUploadedGpuFrame = true;
+                    _lastCaptureHash = sourceHash;
+                    _lastUploadedGpuGeometry = geom;
+                    _lastPresentTicks = nowTicks;
+                }
                 return false;
             }
+
+            ulong cpuSourceHash = ComputeSourceHash(srcW, srcH);
+            long cpuNowTicks = Environment.TickCount64;
+            bool cpuUnchanged = _hasPresentedCpuFrame && !mapsChanged &&
+                cpuSourceHash == _lastCaptureHash &&
+                _presentSubX == _lastPresentedSubX &&
+                _presentSubY == _lastPresentedSubY &&
+                p.Saturation == _lastPresentedSaturation &&
+                p.Brightness == _lastPresentedBrightness;
+            if (cpuUnchanged && cpuNowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+                return false;
 
             byte[]? blurredSource = blurSigma > 0
                 ? BlurCapturedSource(srcW, srcH, blurPassRadii)
                 : null;
             Refract(p, blurredSource);
 
+            _hasPresentedCpuFrame = true;
+            _lastCaptureHash = cpuSourceHash;
+            _lastPresentedSubX = _presentSubX;
+            _lastPresentedSubY = _presentSubY;
+            _lastPresentedSaturation = p.Saturation;
+            _lastPresentedBrightness = p.Brightness;
+            _lastPresentTicks = cpuNowTicks;
             return true;
         }
         finally
@@ -1301,44 +1365,56 @@ public sealed class LiquidGlassController
         return checked(((target + quantum - 1) / quantum) * quantum);
     }
 
-    private void PresentRawGpu(int srcW, int srcH, GpuGeometry geom)
+    private bool PresentRawGpu(int srcW, int srcH, GpuGeometry geom)
     {
-        if (!_isActive || _dibBits == IntPtr.Zero) return;
+        if (!_isActive || _dibBits == IntPtr.Zero) return false;
 
         var presenter = _d3dPresenter;
         if (presenter == null)
         {
             OnD3DPresenterFailed(new InvalidOperationException("GPU presenter is not initialized."));
-            return;
+            return false;
         }
 
         QueueGpuGeometry(geom);
         if (!presenter.UploadFrame(_dibBits, srcW, srcH, srcW * 4))
         {
             OnD3DPresenterFailed(new InvalidOperationException("GPU frame upload failed."));
+            return false;
         }
+        return true;
     }
 
 
-    private unsafe ulong ComputeSparseHash(int srcW, int srcH)
+    /// <summary>Exact FNV-1a hash of the captured source frame. Used to skip
+    /// presenting frames whose backdrop did not change: an unchanged present
+    /// still forces a WPF re-render plus a layered-window readback for the whole
+    /// window, which is what saturates the render thread when the notch and the
+    /// settings window run glass simultaneously.</summary>
+    private unsafe ulong ComputeSourceHash(int srcW, int srcH)
     {
         if (_dibBits == IntPtr.Zero || srcW <= 0 || srcH <= 0) return 0;
 
+        const ulong fnvPrime = 1099511628211UL;
+        ulong hash = 14695981039346656037UL;
         byte* src = (byte*)_dibBits;
-        int stride = srcW * 4;
-        ulong hash = 0;
-        for (int gy = 0; gy < 8; gy++)
-        {
-            int y = (srcH - 1) * gy / 7;
-            byte* row = src + (long)y * stride;
-            for (int gx = 0; gx < 8; gx++)
-            {
-                int x = (srcW - 1) * gx / 7;
-                byte* p = row + x * 4;
-                uint pixel = *(uint*)p;
+        int rowBytes = srcW * 4;
+        int qwordsPerRow = rowBytes >> 3;
+        bool hasTail = (rowBytes & 7) != 0;
 
-                hash ^= (ulong)pixel << ((gy * 8 + gx) & 63);
-                hash = (hash << 7) | (hash >> 57); // rotate
+        for (int y = 0; y < srcH; y++)
+        {
+            byte* rowStart = src + (long)y * rowBytes;
+            ulong* row = (ulong*)rowStart;
+            for (int i = 0; i < qwordsPerRow; i++)
+            {
+                hash ^= row[i];
+                hash *= fnvPrime;
+            }
+            if (hasTail)
+            {
+                hash ^= *(uint*)(rowStart + (qwordsPerRow << 3));
+                hash *= fnvPrime;
             }
         }
 
@@ -1435,31 +1511,6 @@ public sealed class LiquidGlassController
             Math.Clamp(lightX, -1.0, 1.0),
             Math.Clamp(lightY, -1.0, 1.0),
             contrast);
-    }
-
-    private ulong ComputeOutputHash()
-    {
-        int w = _outW, h = _outH;
-        if (w <= 0 || h <= 0 || _outBuffer.Length < w * h * 4) return 0;
-
-        ulong hash = 0;
-        for (int gy = 0; gy < 6; gy++)
-        {
-            int y = (h - 1) * gy / 5;
-            int rowBase = y * w * 4;
-            for (int gx = 0; gx < 6; gx++)
-            {
-                int x = (w - 1) * gx / 5;
-                int o = rowBase + x * 4;
-                uint pixel = (uint)(
-                    (_outBuffer[o] & 0xFC) |
-                    ((_outBuffer[o + 1] & 0xFC) << 8) |
-                    ((_outBuffer[o + 2] & 0xFC) << 16));
-                hash ^= (ulong)pixel << ((gy * 6 + gx) & 63);
-                hash = (hash << 11) | (hash >> 53);
-            }
-        }
-        return hash;
     }
 
     private bool EnsureGdiResources(int srcW, int srcH, IntPtr screenDc)

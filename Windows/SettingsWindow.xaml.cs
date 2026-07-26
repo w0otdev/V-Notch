@@ -3687,18 +3687,28 @@ public partial class SettingsWindow : Window
             GlassBackdropHost.Background = _glassBaseFill;
             GlassBackdropHost.Visibility = Visibility.Visible;
             GlassTintOverlay.Visibility = Visibility.Visible;
-            GlassDarkOverlay.Visibility = Visibility.Visible;
+            // The island bypasses its dark dimming overlay entirely (the shader's
+            // saturation/brightness manage contrast). Match it so the settings
+            // glass reads as the same material instead of a darker variant.
+            GlassDarkOverlay.Visibility = Visibility.Collapsed;
 
             if (_hwnd == IntPtr.Zero)
             {
                 _hwnd = new WindowInteropHelper(this).EnsureHandle();
             }
 
+            // Size the presentation surface for this window's real footprint at
+            // the current DPI (the default envelope is shaped for the notch and
+            // both truncates a tall window and wastes per-frame present work).
+            var (envelopeW, envelopeH) = GetGlassSurfaceEnvelope();
             _liquidGlass ??= new LiquidGlassController(
                 GlassBackdropImage,
                 () => _hwnd,
                 GetGlassCaptureRegion,
-                activeFps: Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)
+                activeFps: Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps),
+                logTag: "SETTINGS",
+                maxRegionWidth: envelopeW,
+                maxRegionHeight: envelopeH
             );
 
             _liquidGlass.HideFromScreenCapture = false;
@@ -3738,6 +3748,47 @@ public partial class SettingsWindow : Window
         var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
         brush.Freeze();
         return brush;
+    }
+
+    /// <summary>Physical-pixel envelope the glass surface must cover: the full
+    /// window at the current DPI (the shell always fits inside it, including
+    /// during the open/close scale animation, whose scale never exceeds 1).</summary>
+    private (int Width, int Height) GetGlassSurfaceEnvelope()
+    {
+        double wDip = ActualWidth > 0 ? ActualWidth : Width;
+        double hDip = ActualHeight > 0 ? ActualHeight : Height;
+        if (!double.IsFinite(wDip) || wDip <= 0) wDip = 860;
+        if (!double.IsFinite(hDip) || hDip <= 0) hDip = 620;
+
+        double dpiScale = GetGlassDpiScale();
+        return ((int)Math.Ceiling(wDip * dpiScale), (int)Math.Ceiling(hDip * dpiScale));
+    }
+
+    private bool _glassRebuildQueued;
+
+    /// <summary>PerMonitorV2: moving to a higher-DPI monitor can outgrow the
+    /// fixed presentation surface. Tear the renderer down and rebuild it with a
+    /// fresh envelope instead of presenting a truncated backdrop.</summary>
+    private void QueueGlassRendererRebuildIfTooSmall()
+    {
+        var lg = _liquidGlass;
+        if (lg == null || _glassRebuildQueued) return;
+
+        var (needW, needH) = GetGlassSurfaceEnvelope();
+        if (needW <= lg.MaxRegionWidth && needH <= lg.MaxRegionHeight) return;
+
+        _glassRebuildQueued = true;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _glassRebuildQueued = false;
+            if (_liquidGlass == null) return;
+            CompositionTarget.Rendering -= OnGlassRegionRendering;
+            _liquidGlass.ClearLiveRegion();
+            _liquidGlass.Stop();
+            DetachGpuRefraction();
+            _liquidGlass = null;
+            ApplyLiquidGlassSkin();
+        }));
     }
 
     private void OnGlassRegionRendering(object? sender, EventArgs e)
@@ -3800,6 +3851,7 @@ public partial class SettingsWindow : Window
                 GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
                 GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
             }
+            QueueGlassRendererRebuildIfTooSmall();
         }
 
         int physW = (int)Math.Round(shellW * dpiScale);

@@ -25,7 +25,6 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private IDirect3D9Ex? _direct3D;
     private IDirect3DDevice9Ex? _device;
     private IDirect3DSurface9? _uploadSurface;
-    private IDirect3DSurface9? _frameSurface;
     private IDirect3DSurface9? _renderSurface;
     // The surface currently owned by D3DImage can differ from _renderSurface
     // while a resized frame is being uploaded. Keeping them separate lets WPF
@@ -35,6 +34,13 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private readonly int _surfaceHeight;
     private int _frameWidth;
     private int _frameHeight;
+    // Captured frames occupy only the top-left corner of the fixed presentation
+    // surface. Dirtying the whole surface made WPF's render thread copy the full
+    // envelope every present, which saturates it once two glass windows (notch +
+    // settings) present at once. Track the largest recently presented frame so a
+    // shrinking frame still refreshes the area the previous frame covered.
+    private int _lastDirtyWidth;
+    private int _lastDirtyHeight;
     private bool _pendingFrame;
     private bool _presentQueued;
     private bool _disposed;
@@ -150,8 +156,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
     private void EnsureResources()
     {
-        if (_uploadSurface != null && _frameSurface != null &&
-            _renderSurface != null)
+        if (_uploadSurface != null && _renderSurface != null)
             return;
 
         if (_dispatcher.CheckAccess())
@@ -170,12 +175,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_disposed || _device == null)
             throw new ObjectDisposedException(nameof(D3DImageFramePresenter));
 
-        if (_uploadSurface != null && _frameSurface != null &&
-            _renderSurface != null)
+        if (_uploadSurface != null && _renderSurface != null)
             return;
 
         IDirect3DSurface9? nextUpload = null;
-        IDirect3DSurface9? nextFrame = null;
         IDirect3DSurface9? nextRender = null;
         try
         {
@@ -184,13 +187,6 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 (uint)_surfaceHeight,
                 Format.X8R8G8B8,
                 Pool.SystemMemory);
-            nextFrame = _device.CreateRenderTarget(
-                (uint)_surfaceWidth,
-                (uint)_surfaceHeight,
-                Format.X8R8G8B8,
-                MultisampleType.None,
-                0,
-                lockable: false);
             nextRender = _device.CreateRenderTarget(
                 (uint)_surfaceWidth,
                 (uint)_surfaceHeight,
@@ -202,7 +198,6 @@ internal sealed class D3DImageFramePresenter : IDisposable
         catch
         {
             nextUpload?.Dispose();
-            nextFrame?.Dispose();
             nextRender?.Dispose();
             throw;
         }
@@ -210,15 +205,17 @@ internal sealed class D3DImageFramePresenter : IDisposable
         lock (_surfaceSync)
         {
             _uploadSurface?.Dispose();
-            _frameSurface?.Dispose();
             if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
                 _renderSurface.Dispose();
             _uploadSurface = nextUpload;
-            _frameSurface = nextFrame;
             _renderSurface = nextRender;
 
             _frameWidth = 0;
             _frameHeight = 0;
+            // The fresh render target is uninitialized; the first present must
+            // push its full extent to WPF regardless of the frame's size.
+            _lastDirtyWidth = _surfaceWidth;
+            _lastDirtyHeight = _surfaceHeight;
             _pendingFrame = false;
             _presentQueued = false;
 
@@ -255,7 +252,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
                 if (!_pendingFrame || !_image.IsFrontBufferAvailable ||
                     _device == null || _uploadSurface == null ||
-                    _frameSurface == null || _renderSurface == null)
+                    _renderSurface == null)
                     return;
 
                 int frameWidth = _frameWidth;
@@ -284,8 +281,13 @@ internal sealed class D3DImageFramePresenter : IDisposable
                         _attachedSurface = _renderSurface;
                     }
 
-                    _image.AddDirtyRect(new Int32Rect(
-                        0, 0, _surfaceWidth, _surfaceHeight));
+                    int dirtyW = Math.Min(
+                        Math.Max(frameWidth, _lastDirtyWidth), _surfaceWidth);
+                    int dirtyH = Math.Min(
+                        Math.Max(frameHeight, _lastDirtyHeight), _surfaceHeight);
+                    _image.AddDirtyRect(new Int32Rect(0, 0, dirtyW, dirtyH));
+                    _lastDirtyWidth = frameWidth;
+                    _lastDirtyHeight = frameHeight;
                     _pendingFrame = false;
                     presented = true;
                 }
@@ -346,6 +348,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 D3DResourceType.IDirect3DSurface9,
                 _attachedSurface.NativePointer,
                 enableSoftwareFallback: true);
+            // WPF discards its copy of the surface across a front-buffer loss;
+            // the next present must refresh the full envelope once.
+            _lastDirtyWidth = _surfaceWidth;
+            _lastDirtyHeight = _surfaceHeight;
         }
         finally
         {
@@ -433,14 +439,12 @@ internal sealed class D3DImageFramePresenter : IDisposable
         {
             try { DetachBackBuffer(); } catch { }
             _uploadSurface?.Dispose();
-            _frameSurface?.Dispose();
             if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
                 _renderSurface.Dispose();
             _attachedSurface?.Dispose();
             _device?.Dispose();
             _direct3D?.Dispose();
             _uploadSurface = null;
-            _frameSurface = null;
             _renderSurface = null;
             _attachedSurface = null;
             _frameWidth = 0;

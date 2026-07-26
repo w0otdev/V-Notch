@@ -69,7 +69,8 @@ public partial class MainWindow
                 // This is a hard render cadence: unchanged desktop frames are still
                 // processed and presented at the selected Liquid Glass FPS.
                 activeFps: Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30,
-                    LiquidGlassController.MaxTargetFps));
+                    LiquidGlassController.MaxTargetFps),
+                logTag: "ISLAND");
 
             // Magnifier capture excludes the notch internally while the user-facing
             // overlay remains visible in screenshots and recordings.
