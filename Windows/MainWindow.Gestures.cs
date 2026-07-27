@@ -182,7 +182,7 @@ public partial class MainWindow
             if ((DateTime.Now - _lastMediaActionTime).TotalMilliseconds < 500) return;
             _lastMediaActionTime = DateTime.Now;
 
-            OptimisticPrepareForPreviousTrack();
+            PrepareForPreviousTrackRequest();
             await _mediaService.PreviousTrackAsync();
         }
         catch (Exception ex)

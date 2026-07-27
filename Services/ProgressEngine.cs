@@ -56,6 +56,7 @@ public class ProgressEngine
     private TimeSpan _lastSnapshotPosition = TimeSpan.Zero;
     private DateTime _seekDebounceEndUtc = DateTime.MinValue;
     private DateTime _allowBackwardUntilUtc = DateTime.MinValue;
+    private DateTime _previousTrackRequestUntilUtc = DateTime.MinValue;
     private DateTime _seekPauseGraceUntilUtc = DateTime.MinValue;
     private bool _pendingPauseConfirmation = false;
     private DateTime _pendingPauseStartedUtc = DateTime.MinValue;
@@ -120,6 +121,7 @@ public class ProgressEngine
                 var currentPredicted = PredictPosition(nowUtc);
                 var snapshotPredicted = effectiveSnapshotPosition;
                 var backwardDiff = currentPredicted - snapshotPredicted;
+                bool isExpectedPreviousTrackJump = nowUtc < _previousTrackRequestUntilUtc;
 
                 bool likelySessionSwitch = snapshot.Duration > TimeSpan.Zero &&
                     Math.Abs((snapshot.Duration - _duration).TotalSeconds) > Math.Max(5.0, _duration.TotalSeconds * 0.1);
@@ -134,7 +136,7 @@ public class ProgressEngine
                 bool predictedAtTrackEnd = _duration > TimeSpan.Zero &&
                     currentPredicted.TotalSeconds >= _duration.TotalSeconds - 2.0;
 
-                if (isFalseZeroGlitch && !predictedAtTrackEnd)
+                if (isFalseZeroGlitch && !predictedAtTrackEnd && !isExpectedPreviousTrackJump)
                 {
                     RuntimeLog.Log("PROGRESS-ENGINE-REJECT",
                         $"false-zero-glitch: predicted={currentPredicted.TotalSeconds:F2}s snapshot={snapshotPredicted.TotalSeconds:F2}s " +
@@ -144,7 +146,10 @@ public class ProgressEngine
 
                 double backwardThreshold = snapshot.IsYouTube ? 2.0 : 0.5;
 
-                if (backwardDiff.TotalSeconds > backwardThreshold && !likelySessionSwitch && !likelyUserSeekBackward)
+                if (backwardDiff.TotalSeconds > backwardThreshold
+                    && !likelySessionSwitch
+                    && !likelyUserSeekBackward
+                    && !isExpectedPreviousTrackJump)
                 {
                     RuntimeLog.Log("PROGRESS-ENGINE-REJECT",
                         $"backward-guard: predicted={currentPredicted.TotalSeconds:F2}s snapshot={snapshotPredicted.TotalSeconds:F2}s " +
@@ -434,6 +439,16 @@ public class ProgressEngine
         }
     }
 
+    public void NotifyPreviousTrackRequested()
+    {
+        lock (_lock)
+        {
+            // Arm acceptance of a confirmed backward/zero snapshot without
+            // changing the displayed position optimistically.
+            _previousTrackRequestUntilUtc = DateTime.UtcNow.AddSeconds(3);
+        }
+    }
+
     public void NotifyUserPlayPause(bool isPlaying)
     {
         lock (_lock)
@@ -556,6 +571,7 @@ public class ProgressEngine
             _lastSnapshotPosition = TimeSpan.Zero;
             _seekDebounceEndUtc = DateTime.MinValue;
             _allowBackwardUntilUtc = DateTime.MinValue;
+            _previousTrackRequestUntilUtc = DateTime.MinValue;
             _seekPauseGraceUntilUtc = DateTime.MinValue;
             _pendingPauseConfirmation = false;
             _pendingPauseStartedUtc = DateTime.MinValue;

@@ -62,7 +62,7 @@ public partial class MainWindow
             PlayButtonPressAnimation(PrevButton);
             PlayPrevSkipAnimation();
 
-            OptimisticPrepareForPreviousTrack();
+            PrepareForPreviousTrackRequest();
             await _viewModel.PreviousTrackCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
@@ -131,7 +131,7 @@ public partial class MainWindow
             PlayButtonPressAnimation(InlinePrevButton);
             PlayPrevSkipAnimation(InlinePrevArrow0, InlinePrevArrow1, InlinePrevArrow2);
 
-            OptimisticPrepareForPreviousTrack();
+            PrepareForPreviousTrackRequest();
             await _viewModel.PreviousTrackCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
@@ -140,15 +140,16 @@ public partial class MainWindow
         }
     }
 
-    private void OptimisticPrepareForPreviousTrack()
+    private void PrepareForPreviousTrackRequest()
     {
         try
         {
+            // Previous is only a request: some players ignore it or expose the
+            // control while declining the command. Keep rendering the confirmed
+            // timeline until SMTC reports an actual restart/track change.
             _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
             _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
-            _progressEngine.NotifyUserSeek(TimeSpan.Zero);
-
-            AnimateProgressRewindTo(0);
+            _progressEngine.NotifyPreviousTrackRequested();
         }
         catch (Exception ex)
         {

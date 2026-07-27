@@ -341,6 +341,7 @@ public partial class MainWindow : Window
         _hoverCollapseTimer.Tick += (s, e) =>
         {
             _hoverCollapseTimer.Stop();
+            if (_spotlightMorphOwnsNotchVisibility) return;
             if (_isExpanded && !NotchWrapper.IsMouseOver)
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
@@ -813,22 +814,35 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Screen rect and per-edge corner radii of the collapsed notch visual,
-    /// for the Spotlight morph. Unlike <see cref="GetNotchScreenRect"/> this
-    /// accounts for the dynamic island's top offset and for classic mode's
-    /// square top corners, so the morph lands exactly on the visible shape.
+    /// Screen rect and per-edge corner radii of the currently visible notch,
+    /// for the Spotlight morph. This must use the live arranged size: capturing
+    /// an expanded media view and squeezing it into the collapsed envelope
+    /// distorts the opening handoff before Spotlight begins to expand.
     /// </summary>
     internal (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius)
         GetSpotlightMorphRect()
     {
-        var rect = GetNotchScreenRect();
+        double width = NotchBorder.ActualWidth;
+        double height = NotchBorder.ActualHeight;
+        if (!double.IsFinite(width) || width <= 0) width = _collapsedWidth;
+        if (!double.IsFinite(height) || height <= 0) height = _collapsedHeight;
+
+        CornerRadius corners = NotchBorder.CornerRadius;
+        double topRadius = Math.Max(0, Math.Min(corners.TopLeft, corners.TopRight));
+        double bottomRadius = Math.Max(0, Math.Min(corners.BottomLeft, corners.BottomRight));
+        var rect = _overlayWindow.GetNotchScreenRect(width, height, bottomRadius);
         bool islandMode = _settings.EnableDynamicIslandMode;
+
+        RuntimeLog.Debug("SPOTLIGHT-MORPH", () =>
+            $"Source rect: {width:F1}x{height:F1}, expanded={_isExpanded}, " +
+            $"musicExpanded={_isMusicExpanded}, topRadius={topRadius:F1}, bottomRadius={bottomRadius:F1}");
+
         return (rect.Left,
             rect.Top + (islandMode ? DynamicIslandTopMargin : 0),
             rect.Width,
             rect.Height,
-            islandMode ? rect.CornerRadius : 0,
-            rect.CornerRadius);
+            topRadius,
+            bottomRadius);
     }
 
     internal void SetSpotlightMorphActive(bool active)
@@ -837,6 +851,12 @@ public partial class MainWindow : Window
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         if (active)
         {
+            // Spotlight now owns the visible notch snapshot. Do not let hover
+            // leave collapse the live source behind it while the handoff runs
+            // or while Spotlight is being used.
+            _hoverCollapseTimer.Stop();
+            _hoverThumbnailDelayTimer.Stop();
+
             // Repeated ownership requests are common when a running exit morph
             // is reversed. Preserve the original restore values, but always
             // re-assert the hidden state in case another animation touched it.
@@ -1546,6 +1566,7 @@ public partial class MainWindow : Window
     private void NotchWrapper_MouseLeave(object sender, MouseEventArgs e)
     {
         _hoverThumbnailDelayTimer.Stop();
+        if (_spotlightMorphOwnsNotchVisibility) return;
 
         if (_settings.DisableMouseLeaveAutoClose)
         {
@@ -1602,6 +1623,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             _hoverThumbnailDelayTimer.Stop();
+            if (_spotlightMorphOwnsNotchVisibility) return;
             if (_settings.DisableMouseLeaveAutoClose) return;
             if (_isExpanded && !_isAnimating && !_isSecondaryView)
             {
