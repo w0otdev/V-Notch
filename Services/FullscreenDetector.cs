@@ -167,7 +167,7 @@ internal static class FullscreenDetector
         }
     }
 
-    private static bool IsBlockedClass(IntPtr hwnd)
+    internal static bool IsBlockedClass(IntPtr hwnd)
     {
         var sb = new StringBuilder(160);
         if (GetClassName(hwnd, sb, sb.Capacity) <= 0) return false;
@@ -192,7 +192,7 @@ internal static class FullscreenDetector
         return false;
     }
 
-    private static bool TryGetWindowBounds(IntPtr hwnd, out RECT rect)
+    internal static bool TryGetWindowBounds(IntPtr hwnd, out RECT rect)
     {
         if (DwmGetWindowAttributeRect(
                 hwnd,
@@ -206,7 +206,7 @@ internal static class FullscreenDetector
         return GetWindowRect(hwnd, out rect);
     }
 
-    private static bool IsWindowCloaked(IntPtr hwnd)
+    internal static bool IsWindowCloaked(IntPtr hwnd)
     {
         return DwmGetWindowAttributeInt(
                    hwnd,

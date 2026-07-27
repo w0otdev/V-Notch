@@ -28,14 +28,15 @@ public partial class MainWindow
 
     private void OnMediaChanged(object? sender, MediaInfo info)
     {
-        if (!info.IsThumbnailOnlyUpdate)
+        bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
+        if (!isThumbnailOnlyUpdate)
             _currentMediaInfo = info;
 
         Dispatcher.BeginInvoke(() =>
         {
             WakeFromIdle();
 
-            if (info.IsThumbnailOnlyUpdate && _currentMediaInfo != null)
+            if (isThumbnailOnlyUpdate && _currentMediaInfo != null)
             {
                 string incomingTrack = info.CurrentTrack ?? "";
                 string currentTrack = _currentMediaInfo.CurrentTrack ?? "";
@@ -64,12 +65,12 @@ public partial class MainWindow
             string trackIdentity = result.TrackIdentity;
             string renderedSource = result.RenderedSource;
 
+            UpdateTitleText(result.DisplayText.Title);
+            UpdateArtistText(result.DisplayText.Artist);
+            CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
+
             if (result.IsNewTrack)
             {
-                UpdateTitleText(result.DisplayText.Title);
-                UpdateArtistText(result.DisplayText.Artist);
-                CompactTitleMarquee.Text = result.DisplayText.Title;
-
                 if (result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify)
                 {
                     FetchLyricsForTrack(info).SafeFireAndForget("LYRICS");
@@ -85,10 +86,6 @@ public partial class MainWindow
             }
             else
             {
-                TrackTitle.Text = result.DisplayText.Title;
-                TrackArtist.Text = result.DisplayText.Artist;
-                CompactTitleMarquee.Text = result.DisplayText.Title;
-
                 if (result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.YouTube
                     && !string.IsNullOrEmpty(info.YouTubeVideoId))
                 {

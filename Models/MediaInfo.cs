@@ -45,5 +45,7 @@ public class MediaInfo
     public bool IsVideoSource => Platform is MediaPlatform.YouTube or MediaPlatform.Browser
         or MediaPlatform.Facebook or MediaPlatform.TikTok or MediaPlatform.Instagram or MediaPlatform.Twitter;
 
+    public MediaInfo Clone() => (MediaInfo)MemberwiseClone();
+
     public string GetSignature() => $"{CurrentTrack}|{CurrentArtist}|{MediaSource}";
 }

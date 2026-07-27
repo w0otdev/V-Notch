@@ -225,6 +225,7 @@ public partial class MainWindow
     }
 
     private string _lastSessionId = "";
+    private string _lastProgressSessionInstanceKey = "";
     private string _lastProgressSignature = "";
     private string _lastProgressTimelineKey = "";
     private DateTimeOffset _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
@@ -254,7 +255,11 @@ public partial class MainWindow
 
             string newSignature = $"{info.SourceAppId}|{info.CurrentTrack}|{info.CurrentArtist}";
             bool isTrackChanged = newSignature != _lastProgressSignature;
-            bool isSessionSwitch = !string.IsNullOrEmpty(info.SourceAppId) && info.SourceAppId != _lastSessionId;
+            bool isSessionSwitch = MediaProgressHelpers.HasLogicalSessionChanged(
+                _lastSessionId,
+                _lastProgressSessionInstanceKey,
+                info.SourceAppId,
+                info.SessionInstanceKey);
             bool isFirstEverTrack = string.IsNullOrEmpty(_lastProgressSignature);
 
             if (isTrackChanged && !isFirstEverTrack && !isSessionSwitch && info.IsPlaying && info.Position > TimeSpan.Zero)
@@ -276,7 +281,6 @@ public partial class MainWindow
 
                 if (isSessionSwitch)
                 {
-                    _lastSessionId = info.SourceAppId;
                     HandleSessionTransition();
                 }
 
@@ -353,11 +357,19 @@ public partial class MainWindow
             }
             else if (isSessionSwitch)
             {
-                _lastSessionId = info.SourceAppId;
+                _progressEngine.Reset();
+                _progressSnapshotSequence = 0;
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
+                RuntimeLog.Debug("PROGRESS-SESSION", () =>
+                    $"Logical session changed for same track: " +
+                    $"'{_lastProgressSessionInstanceKey}' -> '{info.SessionInstanceKey}'");
             }
 
-            string timelineKey = $"{info.SourceAppId}|{info.CurrentTrack}|{info.CurrentArtist}|{Math.Round(info.Duration.TotalSeconds):F0}";
+            _lastSessionId = info.SourceAppId ?? "";
+            _lastProgressSessionInstanceKey = info.SessionInstanceKey ?? "";
+
+            string timelineKey = $"{info.SourceAppId}|{info.SessionInstanceKey}|{info.CurrentTrack}|{info.CurrentArtist}|{Math.Round(info.Duration.TotalSeconds):F0}";
             if (timelineKey != _lastProgressTimelineKey)
             {
                 _lastProgressTimelineKey = timelineKey;
@@ -425,6 +437,7 @@ public partial class MainWindow
         {
             UpdateProgressTimerState();
             _lastSessionId = "";
+            _lastProgressSessionInstanceKey = "";
 
             IndeterminateProgress.Visibility = Visibility.Collapsed;
             ProgressBar.Visibility = Visibility.Visible;

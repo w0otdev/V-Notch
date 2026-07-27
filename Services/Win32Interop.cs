@@ -316,6 +316,8 @@ internal static class Win32Interop
     public const int WS_EX_TOPMOST = 0x00000008;
     public const int WS_EX_NOACTIVATE = 0x08000000;
     public const int WS_EX_LAYERED = 0x00080000;
+    public const int WS_EX_TRANSPARENT = 0x00000020;
+    public const int WS_EX_APPWINDOW = 0x00040000;
     public const int WM_WINDOWPOSCHANGING = 0x0046;
     public const int WM_ACTIVATE = 0x0006;
     public const int WM_ACTIVATEAPP = 0x001C;

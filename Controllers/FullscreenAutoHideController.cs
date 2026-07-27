@@ -1,21 +1,25 @@
 using System;
+using System.Windows.Threading;
 using VNotch.Models;
 using VNotch.Services;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
 
-public sealed class FullscreenAutoHideController
+public sealed class FullscreenAutoHideController : IDisposable
 {
     private static readonly TimeSpan FullscreenStateCooldown = TimeSpan.FromMilliseconds(180);
     private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(50);
+    private const int PollIntervalMs = 300;
 
     private readonly Func<IntPtr> _getNotchHwnd;
     private NotchSettings _settings;
+    private readonly DispatcherTimer _pollTimer;
 
     private DateTime _lastCheckUtc = DateTime.MinValue;
     private DateTime _lastStateChangeUtc = DateTime.MinValue;
     private bool _isHiddenByFullscreen;
+    private bool _disposed;
 
     public bool IsHiddenByFullscreen => _isHiddenByFullscreen;
 
@@ -27,11 +31,25 @@ public sealed class FullscreenAutoHideController
     {
         _getNotchHwnd = getNotchHwnd ?? throw new ArgumentNullException(nameof(getNotchHwnd));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+
+        _pollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(PollIntervalMs)
+        };
+        _pollTimer.Tick += PollTimer_Tick;
+        _pollTimer.Start();
+    }
+
+    private void PollTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+        Evaluate(default, force: false);
     }
 
     public void UpdateSettings(NotchSettings settings)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        Evaluate(default, force: true);
     }
 
     public bool Evaluate(IntPtr foregroundHwnd = default, bool force = false)
@@ -138,4 +156,13 @@ public sealed class FullscreenAutoHideController
         FullscreenType.WindowedFullscreen => _settings.HideOnWindowedFullscreen,
         _ => false
     };
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _pollTimer.Stop();
+        _pollTimer.Tick -= PollTimer_Tick;
+    }
 }

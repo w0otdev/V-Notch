@@ -124,6 +124,7 @@ internal static class ThumbnailHeuristics
         public bool IsSoundCloudSource { get; init; }
         public bool IsBrowserOrYouTubePlatform { get; init; }
         public bool TrackChanged { get; init; }
+        public bool BrowserSessionChanged { get; init; }
         public bool HasVerifiedYouTubeThumb { get; init; }
         public bool HasVerifiedSoundCloudThumb { get; init; }
         public bool LikelySoundCloudArtwork { get; init; }
@@ -142,11 +143,18 @@ internal static class ThumbnailHeuristics
 
         double aspect = x.PixelHeight == 0 ? 0 : (double)x.PixelWidth / x.PixelHeight;
         bool isWideVideoFrame = aspect > 1.3;
+        bool skipUnverifiedSmtcThumbAfterBrowserSessionChange =
+            x.IsYouTubeLikeSource &&
+            x.BrowserSessionChanged &&
+            x.TrackChanged &&
+            !x.HasVerifiedYouTubeThumb;
         bool skipSmtcThumbForFreshYouTubeTrack = x.IsYouTubeLikeSource &&
                                                  isWideVideoFrame &&
                                                  (x.TrackChanged || (x.RecentTrackChange && x.CachedThumbnailIsNull));
 
-        if (skipSmtcThumbForFreshSoundCloudTrack || skipSmtcThumbForFreshYouTubeTrack)
+        if (skipSmtcThumbForFreshSoundCloudTrack ||
+            skipSmtcThumbForFreshYouTubeTrack ||
+            skipUnverifiedSmtcThumbAfterBrowserSessionChange)
         {
             return SmtcThumbnailDecision.Reject;
         }

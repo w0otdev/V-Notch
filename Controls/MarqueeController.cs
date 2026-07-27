@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch.Controls;
@@ -16,19 +17,24 @@ internal sealed class MarqueeController
     private readonly TextBlock _compactTitleText;
     private readonly TranslateTransform _compactTitleTranslate;
     private readonly Func<double, double> _getVisibleMediaTextWidth;
+    private readonly DispatcherTimer _titleMorphTimer;
+    private readonly DispatcherTimer _artistMorphTimer;
 
     #endregion
 
     #region State
 
+    private static readonly TimeSpan MorphThrottleInterval = TimeSpan.FromMilliseconds(400);
     private double _titleScrollDistance;
     private double _artistScrollDistance;
-    private string _lastTitleText = string.Empty;
-    private string _lastArtistText = string.Empty;
+    private string _lastTitleText;
+    private string _lastArtistText;
+    private string? _pendingTitleText;
+    private string? _pendingArtistText;
     private bool _isTitleActiveA = true;
     private bool _isArtistActiveA = true;
-    private DateTime _lastTitleMorphTime = DateTime.MinValue;
-    private DateTime _lastArtistMorphTime = DateTime.MinValue;
+    private DateTime _lastTitleMorphTimeUtc = DateTime.MinValue;
+    private DateTime _lastArtistMorphTimeUtc = DateTime.MinValue;
 
     #endregion
 
@@ -45,6 +51,13 @@ internal sealed class MarqueeController
         _compactTitleText = compactTitleText;
         _compactTitleTranslate = compactTitleTranslate;
         _getVisibleMediaTextWidth = getVisibleMediaTextWidth;
+        _lastTitleText = titleA.Text ?? string.Empty;
+        _lastArtistText = artistA.Text ?? string.Empty;
+
+        _titleMorphTimer = new DispatcherTimer(DispatcherPriority.Normal, titleA.Dispatcher);
+        _titleMorphTimer.Tick += TitleMorphTimer_Tick;
+        _artistMorphTimer = new DispatcherTimer(DispatcherPriority.Normal, artistA.Dispatcher);
+        _artistMorphTimer.Tick += ArtistMorphTimer_Tick;
     }
 
     #region Public API
@@ -55,25 +68,43 @@ internal sealed class MarqueeController
     }
     public void UpdateTitleText(string newText)
     {
-        if (newText == _lastTitleText) return;
-        if ((DateTime.Now - _lastTitleMorphTime).TotalMilliseconds < 400) return;
+        newText ??= string.Empty;
+        if (newText == _lastTitleText)
+        {
+            _pendingTitleText = null;
+            _titleMorphTimer.Stop();
+            return;
+        }
 
-        _lastTitleText = newText;
-        _lastTitleMorphTime = DateTime.Now;
+        var remaining = GetRemainingThrottle(_lastTitleMorphTimeUtc);
+        if (remaining > TimeSpan.Zero)
+        {
+            _pendingTitleText = newText;
+            RestartTimer(_titleMorphTimer, remaining);
+            return;
+        }
 
-        MorphAndRestart(_title, ref _isTitleActiveA, newText,
-            setDistance: d => _titleScrollDistance = d);
+        ApplyTitleText(newText);
     }
     public void UpdateArtistText(string newText)
     {
-        if (newText == _lastArtistText) return;
-        if ((DateTime.Now - _lastArtistMorphTime).TotalMilliseconds < 400) return;
+        newText ??= string.Empty;
+        if (newText == _lastArtistText)
+        {
+            _pendingArtistText = null;
+            _artistMorphTimer.Stop();
+            return;
+        }
 
-        _lastArtistText = newText;
-        _lastArtistMorphTime = DateTime.Now;
+        var remaining = GetRemainingThrottle(_lastArtistMorphTimeUtc);
+        if (remaining > TimeSpan.Zero)
+        {
+            _pendingArtistText = newText;
+            RestartTimer(_artistMorphTimer, remaining);
+            return;
+        }
 
-        MorphAndRestart(_artist, ref _isArtistActiveA, newText,
-            setDistance: d => _artistScrollDistance = d);
+        ApplyArtistText(newText);
     }
     public static void StartMarqueeAnimation(TranslateTransform transform, double distance, double durationPerPixel = 40)
     {
@@ -113,6 +144,70 @@ internal sealed class MarqueeController
     #endregion
 
     #region Implementation
+
+    private static TimeSpan GetRemainingThrottle(DateTime lastMorphTimeUtc)
+    {
+        if (lastMorphTimeUtc == DateTime.MinValue)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var remaining = MorphThrottleInterval - (DateTime.UtcNow - lastMorphTimeUtc);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    private static void RestartTimer(DispatcherTimer timer, TimeSpan interval)
+    {
+        timer.Stop();
+        timer.Interval = interval > TimeSpan.Zero ? interval : TimeSpan.FromMilliseconds(1);
+        timer.Start();
+    }
+
+    private void TitleMorphTimer_Tick(object? sender, EventArgs e)
+    {
+        _titleMorphTimer.Stop();
+        var pending = _pendingTitleText;
+        _pendingTitleText = null;
+
+        if (pending != null && pending != _lastTitleText)
+        {
+            ApplyTitleText(pending);
+        }
+    }
+
+    private void ArtistMorphTimer_Tick(object? sender, EventArgs e)
+    {
+        _artistMorphTimer.Stop();
+        var pending = _pendingArtistText;
+        _pendingArtistText = null;
+
+        if (pending != null && pending != _lastArtistText)
+        {
+            ApplyArtistText(pending);
+        }
+    }
+
+    private void ApplyTitleText(string newText)
+    {
+        _pendingTitleText = null;
+        _titleMorphTimer.Stop();
+        _lastTitleText = newText;
+        _lastTitleMorphTimeUtc = DateTime.UtcNow;
+
+        MorphAndRestart(_title, ref _isTitleActiveA, newText,
+            setDistance: d => _titleScrollDistance = d);
+    }
+
+    private void ApplyArtistText(string newText)
+    {
+        _pendingArtistText = null;
+        _artistMorphTimer.Stop();
+        _lastArtistText = newText;
+        _lastArtistMorphTimeUtc = DateTime.UtcNow;
+
+        MorphAndRestart(_artist, ref _isArtistActiveA, newText,
+            setDistance: d => _artistScrollDistance = d);
+    }
 
     private void RestartMarqueeFor(MarqueeTargets t, bool activeA, bool isTitle)
     {
@@ -178,7 +273,7 @@ internal sealed class MarqueeController
 
     private static void AnimateTextMorph(TextBlock current, TextBlock next, TranslateTransform currentMorph, TranslateTransform nextMorph, string newText)
     {
-        next.Text = newText;
+        next.SetCurrentValue(TextBlock.TextProperty, newText);
 
         var dur = _dur600;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;

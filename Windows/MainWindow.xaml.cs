@@ -546,6 +546,7 @@ public partial class MainWindow : Window
         _desktopDemotionDelayTimer?.Stop();
         DetachDesktopTransparentFrameHandler();
         DisposeIdleAutoHide();
+        _fullscreenController?.Dispose();
         _moduleHost?.Dispose();
         _camera?.Dispose();
         _timerManager?.Dispose();

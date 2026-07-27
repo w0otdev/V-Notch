@@ -60,6 +60,30 @@ internal static class MediaProgressHelpers
 
         return false;
     }
+
+    public static bool HasLogicalSessionChanged(
+        string? lastSourceAppId,
+        string? lastSessionInstanceKey,
+        string? currentSourceAppId,
+        string? currentSessionInstanceKey)
+    {
+        if (!string.IsNullOrWhiteSpace(lastSessionInstanceKey) &&
+            !string.IsNullOrWhiteSpace(currentSessionInstanceKey))
+        {
+            return !string.Equals(
+                lastSessionInstanceKey,
+                currentSessionInstanceKey,
+                StringComparison.Ordinal);
+        }
+
+        return !string.IsNullOrWhiteSpace(lastSourceAppId) &&
+               !string.IsNullOrWhiteSpace(currentSourceAppId) &&
+               !string.Equals(
+                   lastSourceAppId,
+                   currentSourceAppId,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string FormatTime(TimeSpan time)
     {
         if (time.TotalHours >= 1)

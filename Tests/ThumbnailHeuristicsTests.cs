@@ -163,6 +163,43 @@ public class ThumbnailHeuristicsTests
     }
 
     [Fact]
+    public void Decide_YouTubeSquareImage_AfterBrowserSessionReplacement_Rejects()
+    {
+        var inputs = new ThumbnailHeuristics.SmtcThumbnailInputs
+        {
+            IsYouTubeLikeSource = true,
+            IsBrowserOrYouTubePlatform = true,
+            TrackChanged = true,
+            BrowserSessionChanged = true,
+            HasVerifiedYouTubeThumb = false,
+            PixelWidth = 512,
+            PixelHeight = 512,
+        };
+
+        Assert.Equal(
+            ThumbnailHeuristics.SmtcThumbnailDecision.Reject,
+            ThumbnailHeuristics.DecideSmtcThumbnail(inputs));
+    }
+
+    [Fact]
+    public void Decide_YouTubeSquareImage_SameSession_CanStillBeAccepted()
+    {
+        var inputs = new ThumbnailHeuristics.SmtcThumbnailInputs
+        {
+            IsYouTubeLikeSource = true,
+            IsBrowserOrYouTubePlatform = true,
+            TrackChanged = true,
+            BrowserSessionChanged = false,
+            PixelWidth = 512,
+            PixelHeight = 512,
+        };
+
+        Assert.Equal(
+            ThumbnailHeuristics.SmtcThumbnailDecision.Accept,
+            ThumbnailHeuristics.DecideSmtcThumbnail(inputs));
+    }
+
+    [Fact]
     public void Decide_YouTubeWideFrame_RecentChangeNoCache_Rejects()
     {
         Assert.Equal(ThumbnailHeuristics.SmtcThumbnailDecision.Reject,

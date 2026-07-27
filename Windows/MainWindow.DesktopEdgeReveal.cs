@@ -20,12 +20,6 @@ public partial class MainWindow
     private EventHandler? _desktopTransparentFrameHandler;
     private int _desktopTransparentFramesObserved;
     private bool _desktopPointerInHoverZone;
-
-    /// <summary>
-    /// Stay-on-desktop normally places the HWND behind regular applications. While
-    /// the top-edge hot zone is active we temporarily opt out, allowing the existing
-    /// overlay/z-order controllers to put V-Notch above the foreground application.
-    /// </summary>
     private bool ShouldStayOnDesktopLayer =>
         _settings.StayBehindWindows && !_isDesktopEdgePromoted;
 
@@ -158,6 +152,58 @@ public partial class MainWindow
         _desktopDemotionDelayTimer?.Stop();
     }
 
+    private bool IsNotchObscuredByAnyWindow()
+    {
+        if (_hwnd == IntPtr.Zero) return false;
+
+        if (!GetWindowRect(_hwnd, out var notchRect))
+            return false;
+
+        if (notchRect.Right <= notchRect.Left || notchRect.Bottom <= notchRect.Top)
+            return false;
+
+        GetWindowThreadProcessId(_hwnd, out uint myPid);
+
+        bool isObscured = false;
+
+        EnumWindows((hwnd, _) =>
+        {
+            if (hwnd == _hwnd) return true;
+
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == myPid) return true;
+
+            if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || FullscreenDetector.IsWindowCloaked(hwnd))
+                return true;
+
+            if (FullscreenDetector.IsBlockedClass(hwnd))
+                return true;
+
+            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+            if ((exStyle & WS_EX_TOOLWINDOW) != 0 && (exStyle & WS_EX_APPWINDOW) == 0)
+                return true;
+
+            if ((exStyle & WS_EX_TRANSPARENT) != 0)
+                return true;
+
+            if (FullscreenDetector.TryGetWindowBounds(hwnd, out var winRect))
+            {
+                if (winRect.Left < notchRect.Right &&
+                    winRect.Right > notchRect.Left &&
+                    winRect.Top < notchRect.Bottom &&
+                    winRect.Bottom > notchRect.Top)
+                {
+                    isObscured = true;
+                    return false;
+                }
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return isObscured;
+    }
+
     private void PromoteFromDesktopLayer()
     {
         if (_isDesktopEdgePromoted)
@@ -167,6 +213,18 @@ public partial class MainWindow
         }
 
         if (_desktopPromotionPending) return;
+
+        // If the notch is not obscured by any window (e.g. on Desktop), promote
+        // immediately without dropping opacity to 0 or playing a fade animation.
+        if (!IsNotchObscuredByAnyWindow())
+        {
+            _desktopPromotionPending = false;
+            _desktopDemotionPending = false;
+            _isDesktopEdgePromoted = true;
+            ConfigureOverlayWindow();
+            SetDesktopRevealOpacityImmediate(1);
+            return;
+        }
 
         // Render one fully transparent frame while the HWND is still behind the
         // foreground application. Promoting first exposes DWM's previous opaque
@@ -218,6 +276,19 @@ public partial class MainWindow
     {
         if (_desktopDemotionPending) return;
         CancelScheduledDesktopDemotion();
+
+        // If the notch is not obscured by any window (e.g. on Desktop), demote
+        // directly without fading opacity out to 0 and back to 1.
+        if (!IsNotchObscuredByAnyWindow())
+        {
+            _desktopDemotionPending = false;
+            _isDesktopEdgePromoted = false;
+            ConfigureOverlayWindow();
+            DwmFlush();
+            SetDesktopRevealOpacityImmediate(1);
+            return;
+        }
+
         _desktopDemotionPending = true;
 
         AnimateDesktopRevealOpacity(0, 240, () =>
