@@ -142,7 +142,7 @@
                         BorderThickness="0"
                         Background="#121212"
                         Foreground="#F3F7FB"
-                        FontFamily="Segoe MDL2 Assets"
+                        FontFamily="{StaticResource IconFont}"
                         FontSize="11"
                         Content="&#xE711;"
                         Click="CancelButton_Click"/>

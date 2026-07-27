@@ -283,7 +283,7 @@
 
                 <TextBlock Grid.Column="2"
                            Text="&#xE721;"
-                           FontFamily="Segoe Fluent Icons"
+                           FontFamily="{StaticResource IconFont}"
                            FontSize="19"
                            Foreground="#7DFFFFFF"
                            VerticalAlignment="Center"/>
@@ -373,7 +373,7 @@
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                                             <TextBlock x:Name="FallbackGlyph"
                                                        Text="{Binding Glyph}"
-                                                       FontFamily="Segoe Fluent Icons"
+                                                       FontFamily="{StaticResource IconFont}"
                                                        FontSize="20"
                                                        Foreground="#B4FFFFFF"
                                                        Visibility="Collapsed"
@@ -435,7 +435,7 @@
                                 <TextBlock x:Name="StatusGlyph"
                                            Text="&#xE721;"
                                            Margin="0,0,0,10"
-                                           FontFamily="Segoe Fluent Icons"
+                                           FontFamily="{StaticResource IconFont}"
                                            FontSize="24"
                                            Foreground="#66FFFFFF"
                                            HorizontalAlignment="Center"/>

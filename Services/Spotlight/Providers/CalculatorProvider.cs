@@ -57,7 +57,8 @@ internal sealed partial class CalculatorProvider : ISpotlightProvider
             // DataTable.Compute performs integer division on integer literals;
             // promoting them to decimals gives calculator semantics (5/2 = 2.5).
             string promoted = IntegerLiteral().Replace(expression, "$1.0");
-            object result = new DataTable().Compute(promoted, null);
+            string computeExpr = Regex.Replace(promoted, @"(\d+)\.0\s*%\s*(\d+)\.0", "$1 % $2");
+            object result = new DataTable().Compute(computeExpr, null);
             if (result is DBNull or null) return false;
             value = Convert.ToDouble(result, CultureInfo.InvariantCulture);
         }

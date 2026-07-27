@@ -632,7 +632,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="13"
                                            Foreground="#666666" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBox x:Name="SettingsSearchBox" Grid.Column="1"
                                          Background="Transparent" BorderThickness="0"
@@ -718,7 +718,7 @@
                             BorderThickness="0"
                             Background="#121212"
                             Foreground="#F3F7FB"
-                            FontFamily="Segoe MDL2 Assets"
+                            FontFamily="{StaticResource IconFont}"
                             FontSize="11"
                             Content="&#xE711;"
                             Click="Cancel_Click"/>
@@ -743,7 +743,7 @@
                                 Background="{StaticResource NavItemActiveBg}"
                                 MouseLeftButtonDown="Nav_Click" Tag="Searching">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
                                            Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                 <TextBlock x:Name="NavSearchingText" Text="Searching" FontSize="13" FontWeight="Bold"
                                            Foreground="White" VerticalAlignment="Center"/>
@@ -819,7 +819,7 @@
                         <Border x:Name="NavPerformance" Style="{StaticResource NavButton}"
                                 MouseLeftButtonDown="Nav_Click" Tag="Performance">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                <TextBlock Text="&#xE950;" FontFamily="{StaticResource IconFont}" FontSize="14"
                                            Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                 <TextBlock x:Name="NavPerformanceText" Text="Performance" FontSize="13" FontWeight="Bold"
                                            Foreground="#AAAAAA" VerticalAlignment="Center"/>
@@ -829,7 +829,7 @@
                         <Border x:Name="NavUpdates" Style="{StaticResource NavButton}"
                                 MouseLeftButtonDown="Nav_Click" Tag="Updates">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE895;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                <TextBlock Text="&#xE895;" FontFamily="{StaticResource IconFont}" FontSize="14"
                                            Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                 <TextBlock x:Name="NavUpdatesText" Text="Updates" FontSize="13" FontWeight="Bold"
                                            Foreground="#AAAAAA" VerticalAlignment="Center"/>

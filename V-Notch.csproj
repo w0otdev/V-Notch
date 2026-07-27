@@ -83,6 +83,7 @@
     <Resource Include="Fonts\SF-Pro-Display-Semibold.otf" />
     <Resource Include="Fonts\SF-Pro-Display-Medium.otf" />
     <Resource Include="Fonts\SF-Pro-Display-Regular.otf" />
+    <Resource Include="Fonts\segmdl2.ttf" />
     <Resource Include="Services\icons\browser.svg" />
     <Resource Include="Services\icons\soundcloud.svg" />
     <Resource Include="Services\icons\spotify.svg" />

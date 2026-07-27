@@ -17,7 +17,26 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         _path = Path.Combine(_directory, "usage.json");
     }
 
-    public void Dispose() => Directory.Delete(_directory, recursive: true);
+    public void Dispose()
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            try
+            {
+                if (Directory.Exists(_directory))
+                    Directory.Delete(_directory, recursive: true);
+                return;
+            }
+            catch (IOException)
+            {
+                Thread.Sleep(50);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Thread.Sleep(50);
+            }
+        }
+    }
 
     private SpotlightUsageStore CreateStore() => new(_path, () => _now);
 

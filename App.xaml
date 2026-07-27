@@ -7,5 +7,7 @@
         <FontFamily x:Key="SFProDisplay">pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
         <!-- SF Pro Text maps to Display since we only ship Display weights -->
         <FontFamily x:Key="SFProText">pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+        <!-- Embedded icon font - works on all machines without Segoe MDL2 Assets or Segoe Fluent Icons installed -->
+        <FontFamily x:Key="IconFont">pack://application:,,,/Fonts/#Segoe MDL2 Assets, Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol, Segoe UI</FontFamily>
     </Application.Resources>
 </Application>

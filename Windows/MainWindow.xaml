@@ -165,7 +165,7 @@
             <Setter Property="Width" Value="22"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="TextAlignment" Value="Center"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
         </Style>
 
         <Style x:Key="TrayContextMenuStyle" TargetType="ContextMenu">
@@ -2058,7 +2058,7 @@
 
                                         <Grid x:Name="VolumeControlArea" Margin="0,0,0,8" HorizontalAlignment="Right">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock x:Name="VolumeIcon" Text="{Binding AudioMixer.IconText}" FontFamily="Segoe MDL2 Assets" Foreground="#888888" FontSize="14" Margin="0,0,4,0" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="VolumeIcon_MouseDown" MouseEnter="VolumeIcon_MouseEnter" MouseLeave="VolumeIcon_MouseLeave" RenderTransformOrigin="0.5,0.5">
+                                                <TextBlock x:Name="VolumeIcon" Text="{Binding AudioMixer.IconText}" FontFamily="{StaticResource IconFont}" Foreground="#888888" FontSize="14" Margin="0,0,4,0" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="VolumeIcon_MouseDown" MouseEnter="VolumeIcon_MouseEnter" MouseLeave="VolumeIcon_MouseLeave" RenderTransformOrigin="0.5,0.5">
                                                     <TextBlock.RenderTransform>
                                                         <ScaleTransform x:Name="VolumeIconScale" ScaleX="1" ScaleY="1"/>
                                                     </TextBlock.RenderTransform>
@@ -3426,7 +3426,7 @@
                                     BorderBrush="#18FFFFFF"
                                     BorderThickness="1">
                                 <TextBlock Text="&#xE995;"
-                                           FontFamily="Segoe MDL2 Assets"
+                                           FontFamily="{StaticResource IconFont}"
                                            FontSize="17"
                                            Foreground="#BFFFFFFF"
                                            HorizontalAlignment="Center"

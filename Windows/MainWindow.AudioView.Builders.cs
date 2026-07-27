@@ -22,7 +22,7 @@ public partial class MainWindow
     private FontFamily? _audioFontCached;
     private FontFamily AudioFont => _audioFontCached ??= (FontFamily)FindResource("MainSystemFont");
 
-    private static readonly FontFamily SegoeSymbolFont = new FontFamily("Segoe MDL2 Assets");
+    private static readonly FontFamily SegoeSymbolFont = new FontFamily("pack://application:,,,/Fonts/#Segoe MDL2 Assets, Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol, Segoe UI");
 
     private const double ColName = 196;
     private const double ColPercent = 50;
