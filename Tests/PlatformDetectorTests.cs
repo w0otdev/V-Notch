@@ -57,6 +57,7 @@ public class PlatformDetectorTests
     [InlineData("msedge.exe", true)]
     [InlineData("firefox.exe", true)]
     [InlineData("Brave.exe", true)]
+    [InlineData("zen.exe", true)]
     [InlineData("Spotify.exe", false)]
     [InlineData("", false)]
     public void IsBrowserApp_IdentifiesCorrectly(string appId, bool expected)

@@ -25,6 +25,7 @@ public static class PlatformDetector
         ("Coccoc", MediaPlatform.Browser),
         ("Arc", MediaPlatform.Browser),
         ("Sidekick", MediaPlatform.Browser),
+        ("Zen", MediaPlatform.Browser),
         ("Browser", MediaPlatform.Browser),
     };
 

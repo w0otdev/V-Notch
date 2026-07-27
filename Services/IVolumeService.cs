@@ -5,6 +5,8 @@ public interface IVolumeService : IDisposable
 
     bool IsAvailable { get; }
 
+    bool RefreshDefaultDevice();
+
     float GetVolume();
 
     bool SetVolume(float volume);

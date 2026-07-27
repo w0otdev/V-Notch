@@ -221,4 +221,49 @@ public class ThumbnailFetchPlannerTests
     }
 
     #endregion
+
+    #region ShouldStartYouTubeFetch
+
+    [Fact]
+    public void YouTubeFetch_NewTrack_StartsImmediately()
+    {
+        Assert.True(ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+        {
+            IsNewTrack = true,
+            SameTrackFetchRunning = true,
+        }));
+    }
+
+    [Fact]
+    public void YouTubeFetch_SameTrackRunning_DoesNotRestart()
+    {
+        Assert.False(ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+        {
+            SameTrackFetchRunning = true,
+            NeedsBetterThumbnail = true,
+            RetryIntervalElapsed = true,
+        }));
+    }
+
+    [Fact]
+    public void YouTubeFetch_FailedAttempt_RetriesAfterInterval()
+    {
+        Assert.True(ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+        {
+            NeedsBetterThumbnail = true,
+            RetryIntervalElapsed = true,
+        }));
+    }
+
+    [Fact]
+    public void YouTubeFetch_FailedAttempt_WaitsForRetryInterval()
+    {
+        Assert.False(ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+        {
+            NeedsBetterThumbnail = true,
+            RetryIntervalElapsed = false,
+        }));
+    }
+
+    #endregion
 }

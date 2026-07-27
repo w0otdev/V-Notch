@@ -28,4 +28,6 @@ public interface IMediaDetectionService : IDisposable
     bool TrySetCurrentSessionVolume(float volume);
 
     bool TryToggleCurrentSessionMute();
+
+    void InvalidateVolumeSessionCache();
 }

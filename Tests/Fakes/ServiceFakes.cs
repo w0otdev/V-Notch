@@ -52,6 +52,7 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
 
     public bool TrySetCurrentSessionVolume(float volume) => false;
     public bool TryToggleCurrentSessionMute() => false;
+    public void InvalidateVolumeSessionCache() { }
 
     public void Dispose() { }
 }
@@ -88,6 +89,8 @@ public sealed class FakeVolumeService : IVolumeService
     public bool IsAvailable { get; }
     public float? LastSetVolume { get; private set; }
     public int ToggleMuteCount { get; private set; }
+
+    public bool RefreshDefaultDevice() => IsAvailable;
 
     public float GetVolume() => _volume;
 

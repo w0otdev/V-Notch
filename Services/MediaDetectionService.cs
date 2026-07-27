@@ -62,10 +62,15 @@ public class MediaDetectionService : IMediaDetectionService
     private readonly MediaTimelineSimulator _timelineSimulator = new();
     private string _lastSoundCloudArtworkIdentity = "";
     private DateTime _lastSoundCloudArtworkAttemptTimeUtc = DateTime.MinValue;
+    private string _youTubeFetchIdentity = "";
+    private DateTime _lastYouTubeThumbnailAttemptTimeUtc = DateTime.MinValue;
+    private int _youTubeFetchGeneration;
+    private int _youTubeFetchInFlight;
     private string _soundCloudFetchIdentity = "";
     private int _soundCloudFetchGeneration = 0;
     private int _soundCloudFetchInFlight = 0;
     private int _thumbnailFetchGeneration = 0;
+    private static readonly TimeSpan YouTubeThumbnailRetryInterval = TimeSpan.FromSeconds(1.1);
     private static readonly TimeSpan SoundCloudArtworkRetryInterval = TimeSpan.FromSeconds(1.1);
 
     private string _lastSource = "";
@@ -960,6 +965,9 @@ public class MediaDetectionService : IMediaDetectionService
         bool isPotentialYouTube = sourcePlan.IsPotentialYouTube;
         bool isPotentialSoundCloud = sourcePlan.IsPotentialSoundCloud;
 
+        string youTubeTrackIdentity = isPotentialYouTube
+            ? $"{BuildTrackIdentity(info.CurrentTrack, "")}|{info.SourceAppId}|{info.SessionInstanceKey}"
+            : "";
         string soundCloudTrackIdentity = isPotentialSoundCloud
             ? BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist)
             : "";
@@ -1006,10 +1014,32 @@ public class MediaDetectionService : IMediaDetectionService
 
         if (isPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack) && needsFetch)
         {
+            bool sameTrackFetchRunning =
+                Volatile.Read(ref _youTubeFetchInFlight) == 1 &&
+                string.Equals(_youTubeFetchIdentity, youTubeTrackIdentity, StringComparison.Ordinal);
+            bool shouldStartYouTubeFetch = ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+            {
+                IsNewTrack = forceFetchForTrackChange,
+                SameTrackFetchRunning = sameTrackFetchRunning,
+                NeedsBetterThumbnail = needsFetch,
+                RetryIntervalElapsed =
+                    (DateTime.UtcNow - _lastYouTubeThumbnailAttemptTimeUtc) >= YouTubeThumbnailRetryInterval,
+            });
 
+            if (!shouldStartYouTubeFetch)
+                return;
+
+            _lastYouTubeThumbnailAttemptTimeUtc = DateTime.UtcNow;
             _thumbCts?.Cancel();
             _thumbCts = new CancellationTokenSource();
             var token = _thumbCts.Token;
+            int fetchGeneration = Interlocked.Increment(ref _youTubeFetchGeneration);
+            _youTubeFetchIdentity = youTubeTrackIdentity;
+            Interlocked.Exchange(ref _youTubeFetchInFlight, 1);
+
+            Interlocked.Increment(ref _soundCloudFetchGeneration);
+            _soundCloudFetchIdentity = "";
+            Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
             bool shouldForceThumbFetch = forceFetchForTrackChange;
 
             string trackDuringFetch = info.CurrentTrack;
@@ -1021,7 +1051,10 @@ public class MediaDetectionService : IMediaDetectionService
             bool isBrowserIcon = info.Thumbnail != null && info.Platform == MediaPlatform.Browser;
             bool needsBetterThumb = shouldForceThumbFetch || info.Thumbnail == null || info.Thumbnail.PixelWidth < 120 || isBrowserIcon;
 
-            _ = Task.Run(() => FetchYouTubeThumbnailAsync(info, token, shouldForceThumbFetch, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, generationAtStart, needsBetterThumb), token);
+            _ = Task.Run(() => FetchYouTubeThumbnailAsync(
+                info, token, shouldForceThumbFetch, trackDuringFetch, artistDuringFetch,
+                sourceAppDuringFetch, sessionKeyDuringFetch, generationAtStart,
+                fetchGeneration, needsBetterThumb), token);
         }
         else if (isPotentialSoundCloud && !isPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack))
         {
@@ -1051,6 +1084,10 @@ public class MediaDetectionService : IMediaDetectionService
                 _soundCloudFetchIdentity = soundCloudTrackIdentity;
                 Interlocked.Exchange(ref _soundCloudFetchInFlight, 1);
 
+                Interlocked.Increment(ref _youTubeFetchGeneration);
+                _youTubeFetchIdentity = "";
+                Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
+
                 string trackDuringFetch = info.CurrentTrack;
                 string artistDuringFetch = info.CurrentArtist;
                 string sourceAppDuringFetch = info.SourceAppId ?? "";
@@ -1066,11 +1103,25 @@ public class MediaDetectionService : IMediaDetectionService
         {
 
             _thumbCts?.Cancel();
+            Interlocked.Increment(ref _youTubeFetchGeneration);
+            _youTubeFetchIdentity = "";
+            Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
+            Interlocked.Increment(ref _soundCloudFetchGeneration);
             _soundCloudFetchIdentity = "";
             Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
         }
     }
-    private async Task FetchYouTubeThumbnailAsync(MediaInfo info, CancellationToken token, bool shouldForceThumbFetch, string trackDuringFetch, string artistDuringFetch, string sourceAppDuringFetch, string sessionKeyDuringFetch, int generationAtStart, bool needsBetterThumb)
+    private async Task FetchYouTubeThumbnailAsync(
+        MediaInfo info,
+        CancellationToken token,
+        bool shouldForceThumbFetch,
+        string trackDuringFetch,
+        string artistDuringFetch,
+        string sourceAppDuringFetch,
+        string sessionKeyDuringFetch,
+        int generationAtStart,
+        int fetchGeneration,
+        bool needsBetterThumb)
     {
         try
         {
@@ -1475,6 +1526,13 @@ public class MediaDetectionService : IMediaDetectionService
         catch (Exception ex)
         {
             RuntimeLog.Error("MEDIA-YOUTUBE-FETCH", ex.ToString());
+        }
+        finally
+        {
+            if (fetchGeneration == Volatile.Read(ref _youTubeFetchGeneration))
+            {
+                Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
+            }
         }
     }
 
@@ -1964,7 +2022,11 @@ public class MediaDetectionService : IMediaDetectionService
             _timelineSimulator.RecoveredThumbnail = null;
             _thumbCts?.Cancel();
             _thumbCts = null;
+            _youTubeFetchIdentity = "";
+            Interlocked.Increment(ref _youTubeFetchGeneration);
+            Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
             _soundCloudFetchIdentity = "";
+            Interlocked.Increment(ref _soundCloudFetchGeneration);
             Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
             Interlocked.Increment(ref _thumbnailFetchGeneration);
         }
@@ -2071,6 +2133,12 @@ public class MediaDetectionService : IMediaDetectionService
             _timelineSimulator.RecoveredThumbnail = null;
             _thumbCts?.Cancel();
             _thumbCts = null;
+            _youTubeFetchIdentity = "";
+            Interlocked.Increment(ref _youTubeFetchGeneration);
+            Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
+            _soundCloudFetchIdentity = "";
+            Interlocked.Increment(ref _soundCloudFetchGeneration);
+            Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
             Interlocked.Increment(ref _thumbnailFetchGeneration);
             RuntimeLog.Debug("MEDIA-THUMB-INVALIDATE", () =>
                 $"Track changed: old='{_lastThumbTrackIdentity}' new='{currentTrackOnlyIdentityForThumb}' — cleared all thumbnail state");
@@ -2326,6 +2394,7 @@ public class MediaDetectionService : IMediaDetectionService
                                 IsYouTubeLikeSource = isYouTubeLikeSource,
                                 IsSoundCloudSource = isSoundCloudSource,
                                 IsBrowserOrYouTubePlatform = info.Platform == MediaPlatform.YouTube || info.Platform == MediaPlatform.Browser,
+                                IsBrowserSession = info.Platform == MediaPlatform.Browser || IsBrowserSourceApp(info.SourceAppId),
                                 TrackChanged = trackChangedForThisPass,
                                 BrowserSessionChanged = browserSessionChanged,
                                 HasVerifiedYouTubeThumb = hasVerifiedYouTubeThumb,
@@ -3115,6 +3184,11 @@ public class MediaDetectionService : IMediaDetectionService
         return _volumeService.TryToggleMute(sourceAppId);
     }
 
+    public void InvalidateVolumeSessionCache()
+    {
+        _volumeService.InvalidateVolumeSessionCache();
+    }
+
     private string GetActiveSourceAppId()
     {
         try
@@ -3135,6 +3209,7 @@ public class MediaDetectionService : IMediaDetectionService
         if (_disposed) return;
         _disposed = true;
         _bgCts?.Cancel();
+        _thumbCts?.Cancel();
         _changeChannel.Writer.TryComplete();
 
         UnsubscribeFromSession();

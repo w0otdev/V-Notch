@@ -8,6 +8,7 @@ namespace VNotch.Services;
 
 public sealed class MediaSessionVolumeService
 {
+    private readonly object _volumeCacheLock = new();
     private string _lastMatchedSessionId = "";
     private uint _lastMatchedProcessId;
     private string _lastMatchedSourceAppId = "";
@@ -40,12 +41,37 @@ public sealed class MediaSessionVolumeService
     {
         float target = Math.Clamp(volume, 0f, 1f);
 
-        if (_cachedSimpleVolume != null &&
-            string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) &&
-            (DateTime.UtcNow - _cachedVolumeSessionAtUtc).TotalMilliseconds < SessionCacheLifetimeMs)
+        lock (_volumeCacheLock)
         {
-            try
+            if (_cachedSimpleVolume != null &&
+                string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) &&
+                (DateTime.UtcNow - _cachedVolumeSessionAtUtc).TotalMilliseconds < SessionCacheLifetimeMs)
             {
+                try
+                {
+                    _cachedSimpleVolume.Volume = target;
+                    if (target > 0.001f && _cachedSimpleVolume.Mute)
+                    {
+                        _cachedSimpleVolume.Mute = false;
+                    }
+                    return true;
+                }
+                catch
+                {
+                    InvalidateVolumeSessionCacheLocked();
+                }
+            }
+        }
+
+        return TryWithAudioSession(sourceAppId, session =>
+        {
+            lock (_volumeCacheLock)
+            {
+                InvalidateVolumeSessionCacheLocked();
+                _cachedSimpleVolume = session.SimpleAudioVolume;
+                _cachedVolumeSourceAppId = sourceAppId;
+                _cachedVolumeSessionAtUtc = DateTime.UtcNow;
+
                 _cachedSimpleVolume.Volume = target;
                 if (target > 0.001f && _cachedSimpleVolume.Mute)
                 {
@@ -53,32 +79,18 @@ public sealed class MediaSessionVolumeService
                 }
                 return true;
             }
-            catch
-            {
-                InvalidateVolumeSessionCache();
-            }
-        }
-
-        return TryWithAudioSession(sourceAppId, session =>
-        {
-            if (_cachedSimpleVolume != null)
-            {
-                try { _cachedSimpleVolume.Dispose(); } catch { }
-            }
-            _cachedSimpleVolume = session.SimpleAudioVolume;
-            _cachedVolumeSourceAppId = sourceAppId;
-            _cachedVolumeSessionAtUtc = DateTime.UtcNow;
-
-            _cachedSimpleVolume.Volume = target;
-            if (target > 0.001f && _cachedSimpleVolume.Mute)
-            {
-                _cachedSimpleVolume.Mute = false;
-            }
-            return true;
         }, skipSimpleVolumeDispose: true);
     }
 
     public void InvalidateVolumeSessionCache()
+    {
+        lock (_volumeCacheLock)
+        {
+            InvalidateVolumeSessionCacheLocked();
+        }
+    }
+
+    private void InvalidateVolumeSessionCacheLocked()
     {
         if (_cachedSimpleVolume != null)
         {
@@ -194,6 +206,7 @@ public sealed class MediaSessionVolumeService
         AddAlias(sourceAppId, candidates, "coccoc", "browser");
         AddAlias(sourceAppId, candidates, "arc", "arc");
         AddAlias(sourceAppId, candidates, "sidekick", "sidekick");
+        AddAlias(sourceAppId, candidates, "zen", "zen");
         AddAlias(sourceAppId, candidates, "applemusic", "AppleMusic");
         AddAlias(sourceAppId, candidates, "apple music", "AppleMusic");
 

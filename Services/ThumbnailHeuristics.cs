@@ -123,6 +123,7 @@ internal static class ThumbnailHeuristics
         public bool IsYouTubeLikeSource { get; init; }
         public bool IsSoundCloudSource { get; init; }
         public bool IsBrowserOrYouTubePlatform { get; init; }
+        public bool IsBrowserSession { get; init; }
         public bool TrackChanged { get; init; }
         public bool BrowserSessionChanged { get; init; }
         public bool HasVerifiedYouTubeThumb { get; init; }
@@ -163,9 +164,13 @@ internal static class ThumbnailHeuristics
         bool isLikelySoundCloudPlaceholder = x.IsSoundCloudSource &&
                                              isSquare &&
                                              (x.PixelWidth <= 320 || x.PixelHeight <= 320);
+        bool isUnverifiedBrowserIcon = x.IsBrowserSession &&
+                                       x.IsBrowserOrYouTubePlatform &&
+                                       !x.HasVerifiedYouTubeThumb &&
+                                       isSquare;
         bool isGenericIcon = (x.IsBrowserOrYouTubePlatform || isLikelySoundCloudPlaceholder) &&
                              isSquare &&
-                             x.PixelWidth <= 300;
+                             (x.PixelWidth <= 300 || isUnverifiedBrowserIcon);
         bool shouldPreferVerifiedYouTubeLookup = x.IsYouTubeLikeSource &&
                                                  !x.HasVerifiedYouTubeThumb &&
                                                  !x.TrackChanged;

@@ -28,6 +28,14 @@ internal readonly struct SoundCloudFetchInputs
     public bool RetryIntervalElapsed { get; init; }
 }
 
+internal readonly struct YouTubeFetchInputs
+{
+    public bool IsNewTrack { get; init; }
+    public bool SameTrackFetchRunning { get; init; }
+    public bool NeedsBetterThumbnail { get; init; }
+    public bool RetryIntervalElapsed { get; init; }
+}
+
 internal static class ThumbnailFetchPlanner
 {
     public static ThumbnailSourcePlan ClassifySources(in ThumbnailSourceInputs x)
@@ -66,5 +74,15 @@ internal static class ThumbnailFetchPlanner
                                       x.RetryIntervalElapsed;
 
         return x.IsNewSoundCloudTrack || shouldRetryPlaceholder;
+    }
+
+    public static bool ShouldStartYouTubeFetch(in YouTubeFetchInputs x)
+    {
+        if (!x.IsNewTrack && x.SameTrackFetchRunning)
+        {
+            return false;
+        }
+
+        return x.IsNewTrack || (x.NeedsBetterThumbnail && x.RetryIntervalElapsed);
     }
 }

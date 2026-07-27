@@ -36,8 +36,59 @@ public sealed class PrivacyIndicatorServiceTests
 
         Assert.True(PrivacyIndicatorService.IsIgnoredMicrophoneConsumer(
             @"C:#ProgramData#Maono#Ai service#MaonoAiServices.exe", noRegisteredServices));
+        Assert.True(PrivacyIndicatorService.IsIgnoredMicrophoneConsumer(
+            "Elgato.WaveLink_g54w8ztgkx496", noRegisteredServices));
         Assert.False(PrivacyIndicatorService.IsIgnoredMicrophoneConsumer(
             @"D:#obs-studio#bin#64bit#obs64.exe", noRegisteredServices));
+    }
+
+    [Fact]
+    public void MicrophoneActivity_RequiresMatchedSessionAndRealSignal()
+    {
+        DateTime now = new(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
+        var gate = new PrivacyIndicatorService.MicrophoneActivityGate(
+            PrivacyIndicatorService.MicrophoneSignalThreshold,
+            PrivacyIndicatorService.MicrophoneSignalHoldDuration);
+
+        Assert.False(gate.Evaluate(
+            hasCandidate: true,
+            hasActiveSession: false,
+            peakLevel: 0.5f,
+            now));
+        Assert.False(gate.Evaluate(
+            hasCandidate: true,
+            hasActiveSession: true,
+            peakLevel: PrivacyIndicatorService.MicrophoneSignalThreshold / 2,
+            now));
+        Assert.True(gate.Evaluate(
+            hasCandidate: true,
+            hasActiveSession: true,
+            peakLevel: PrivacyIndicatorService.MicrophoneSignalThreshold * 2,
+            now));
+    }
+
+    [Fact]
+    public void MicrophoneActivity_HoldsBetweenWordsButClearsOnSilenceOrClosedSession()
+    {
+        DateTime now = new(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc);
+        var gate = new PrivacyIndicatorService.MicrophoneActivityGate(
+            PrivacyIndicatorService.MicrophoneSignalThreshold,
+            PrivacyIndicatorService.MicrophoneSignalHoldDuration);
+
+        Assert.True(gate.Evaluate(true, true, 0.5f, now));
+        Assert.True(gate.Evaluate(
+            true,
+            true,
+            0,
+            now + PrivacyIndicatorService.MicrophoneSignalHoldDuration - TimeSpan.FromMilliseconds(1)));
+        Assert.False(gate.Evaluate(
+            true,
+            true,
+            0,
+            now + PrivacyIndicatorService.MicrophoneSignalHoldDuration + TimeSpan.FromMilliseconds(1)));
+
+        Assert.True(gate.Evaluate(true, true, 0.5f, now.AddSeconds(3)));
+        Assert.False(gate.Evaluate(true, false, 0.5f, now.AddSeconds(3.1)));
     }
 
     [Fact]

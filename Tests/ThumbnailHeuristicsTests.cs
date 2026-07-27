@@ -200,6 +200,25 @@ public class ThumbnailHeuristicsTests
     }
 
     [Fact]
+    public void Decide_LargeSquareBrowserIcon_WithoutVerifiedThumbnail_Skips()
+    {
+        var inputs = new ThumbnailHeuristics.SmtcThumbnailInputs
+        {
+            IsYouTubeLikeSource = true,
+            IsBrowserOrYouTubePlatform = true,
+            IsBrowserSession = true,
+            TrackChanged = true,
+            HasVerifiedYouTubeThumb = false,
+            PixelWidth = 512,
+            PixelHeight = 512,
+        };
+
+        Assert.Equal(
+            ThumbnailHeuristics.SmtcThumbnailDecision.Skip,
+            ThumbnailHeuristics.DecideSmtcThumbnail(inputs));
+    }
+
+    [Fact]
     public void Decide_YouTubeWideFrame_RecentChangeNoCache_Rejects()
     {
         Assert.Equal(ThumbnailHeuristics.SmtcThumbnailDecision.Reject,

@@ -65,8 +65,15 @@ public partial class MainWindow
             string trackIdentity = result.TrackIdentity;
             string renderedSource = result.RenderedSource;
 
-            UpdateTitleText(result.DisplayText.Title);
-            UpdateArtistText(result.DisplayText.Artist);
+            if (result.IsNewTrack)
+            {
+                TransitionTrackText(result.DisplayText.Title, result.DisplayText.Artist);
+            }
+            else
+            {
+                UpdateTitleText(result.DisplayText.Title);
+                UpdateArtistText(result.DisplayText.Artist);
+            }
             CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
 
             if (result.IsNewTrack)

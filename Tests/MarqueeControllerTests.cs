@@ -50,6 +50,33 @@ public class MarqueeControllerTests
         });
     }
 
+    [Fact]
+    public void TrackTransition_BypassesPendingMetadataAndMovesBothRowsTogether()
+    {
+        RunOnStaThread(() =>
+        {
+            var targets = new MarqueeTestTargets("Initial title", "Initial artist");
+            var controller = targets.CreateController();
+
+            controller.TransitionTrackText("First title", "First artist");
+            controller.UpdateTitleText("Stale title");
+            controller.UpdateArtistText("Stale artist");
+            controller.TransitionTrackText("Final title", "Final artist");
+
+            Assert.True(targets.TitleLayerA.HasAnimatedProperties);
+            Assert.True(targets.TitleLayerB.HasAnimatedProperties);
+            Assert.True(targets.ArtistLayerA.HasAnimatedProperties);
+            Assert.True(targets.ArtistLayerB.HasAnimatedProperties);
+
+            PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+
+            Assert.Equal("Final title", targets.TitleA.Text);
+            Assert.Equal("Final artist", targets.ArtistA.Text);
+            Assert.NotEqual("Stale title", targets.TitleB.Text);
+            Assert.NotEqual("Stale artist", targets.ArtistB.Text);
+        });
+    }
+
     private static void PumpDispatcherFor(TimeSpan duration)
     {
         var frame = new DispatcherFrame();
@@ -105,6 +132,10 @@ public class MarqueeControllerTests
         public TextBlock TitleB { get; } = new();
         public TextBlock ArtistA { get; }
         public TextBlock ArtistB { get; } = new();
+        public Grid TitleLayerA { get; } = new() { Opacity = 1 };
+        public Grid TitleLayerB { get; } = new() { Opacity = 0 };
+        public Grid ArtistLayerA { get; } = new() { Opacity = 1 };
+        public Grid ArtistLayerB { get; } = new() { Opacity = 0 };
 
         private readonly TranslateTransform _titleMarqueeA = new();
         private readonly TranslateTransform _titleMorphA = new();
@@ -125,10 +156,10 @@ public class MarqueeControllerTests
 
         public MarqueeController CreateController() =>
             new(
-                TitleA, _titleMarqueeA, _titleMorphA,
-                TitleB, _titleMarqueeB, _titleMorphB,
-                ArtistA, _artistMarqueeA, _artistMorphA,
-                ArtistB, _artistMarqueeB, _artistMorphB,
+                TitleLayerA, TitleA, _titleMarqueeA, _titleMorphA,
+                TitleLayerB, TitleB, _titleMarqueeB, _titleMorphB,
+                ArtistLayerA, ArtistA, _artistMarqueeA, _artistMorphA,
+                ArtistLayerB, ArtistB, _artistMarqueeB, _artistMorphB,
                 _compactTitle, _compactTitleTranslate,
                 width => width);
     }

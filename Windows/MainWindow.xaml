@@ -1732,7 +1732,7 @@
                                             <Canvas x:Name="TitleScrollContainer" Height="20" Width="340" ClipToBounds="True">
                                                 <Grid x:Name="TitleMorphContainer" Canvas.Left="0" Canvas.Top="0">
 
-                                                    <Grid Opacity="{Binding Opacity, ElementName=TrackTitle}">
+                                                    <Grid x:Name="TrackTitleLayer" Opacity="1">
                                                         <Grid.RenderTransform>
                                                             <TransformGroup>
                                                                 <TranslateTransform x:Name="TitleMarqueeTranslate" X="0"/>
@@ -1748,14 +1748,14 @@
                                                                    Margin="0,1,0,0" />
 
                                                         <TextBlock x:Name="TrackTitle"
-                                                                   Text="{Binding Media.Title}"
+                                                                   Text="No media playing"
                                                                    Style="{StaticResource TitleText}"
                                                                    FontSize="14"
                                                                    FontWeight="Bold"
                                                                    Foreground="{DynamicResource TrackTitleGradient}" />
                                                     </Grid>
 
-                                                    <Grid Opacity="{Binding Opacity, ElementName=TrackTitleNext}">
+                                                    <Grid x:Name="TrackTitleNextLayer" Opacity="0">
                                                         <Grid.RenderTransform>
                                                             <TransformGroup>
                                                                 <TranslateTransform x:Name="TitleMarqueeTranslateNext" X="0"/>
@@ -1783,7 +1783,7 @@
                                             <Canvas x:Name="ArtistScrollContainer" Height="18" Width="340" ClipToBounds="True" Margin="0,2,0,0">
                                                 <Grid x:Name="ArtistMorphContainer" Canvas.Left="0" Canvas.Top="0">
 
-                                                    <Grid Opacity="{Binding Opacity, ElementName=TrackArtist}">
+                                                    <Grid x:Name="TrackArtistLayer" Opacity="1">
                                                         <Grid.RenderTransform>
                                                             <TransformGroup>
                                                                 <TranslateTransform x:Name="ArtistMarqueeTranslate" X="0"/>
@@ -1798,13 +1798,13 @@
                                                                    Margin="0,1,0,0" />
 
                                                         <TextBlock x:Name="TrackArtist"
-                                                                     Text="{Binding Media.Artist}"
+                                                                     Text="Artist name"
                                                                      Style="{StaticResource SubtitleText}"
                                                                     Foreground="#BFFFFFFF"
                                                                     FontWeight="Bold" />
                                                      </Grid>
 
-                                                     <Grid Opacity="{Binding Opacity, ElementName=TrackArtistNext}">
+                                                     <Grid x:Name="TrackArtistNextLayer" Opacity="0">
                                                         <Grid.RenderTransform>
                                                             <TransformGroup>
                                                                 <TranslateTransform x:Name="ArtistMarqueeTranslateNext" X="0"/>

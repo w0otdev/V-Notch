@@ -355,7 +355,15 @@ public sealed class AudioMixerService : IDisposable
 
     public bool SetDefaultOutputDevice(string deviceId)
     {
-        return SetDefaultEndpointInternal(deviceId);
+        if (!SetDefaultEndpointInternal(deviceId))
+            return false;
+
+        InvalidateSetCache();
+        lock (_enumLock)
+        {
+            DisposeEnumerator();
+        }
+        return true;
     }
 
     public float GetCaptureVolume()
@@ -458,24 +466,56 @@ public sealed class AudioMixerService : IDisposable
         return devices;
     }
 
-    public bool SetDefaultInputDevice(string deviceId) => SetDefaultEndpointInternal(deviceId);
+    public bool SetDefaultInputDevice(string deviceId)
+    {
+        if (!SetDefaultEndpointInternal(deviceId))
+            return false;
+
+        InvalidateCaptureCache();
+        lock (_enumLock)
+        {
+            DisposeEnumerator();
+        }
+        return true;
+    }
 
     private bool SetDefaultEndpointInternal(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;
+        IPolicyConfig? policyConfig = null;
         try
         {
-            var policyConfig = (IPolicyConfig)new PolicyConfigClient();
-            policyConfig.SetDefaultEndpoint(deviceId, ERole.eConsole);
-            policyConfig.SetDefaultEndpoint(deviceId, ERole.eMultimedia);
-            policyConfig.SetDefaultEndpoint(deviceId, ERole.eCommunications);
-            Marshal.ReleaseComObject(policyConfig);
+            policyConfig = (IPolicyConfig)new PolicyConfigClient();
+            int consoleHr = policyConfig.SetDefaultEndpoint(deviceId, ERole.eConsole);
+            int multimediaHr = policyConfig.SetDefaultEndpoint(deviceId, ERole.eMultimedia);
+            int communicationsHr = policyConfig.SetDefaultEndpoint(deviceId, ERole.eCommunications);
+
+            if (multimediaHr < 0)
+            {
+                RuntimeLog.Warn("AUDIOMIXER-SETDEFAULT",
+                    $"SetDefaultEndpoint failed: console=0x{consoleHr:X8}, multimedia=0x{multimediaHr:X8}, communications=0x{communicationsHr:X8}");
+                return false;
+            }
+
+            if (consoleHr < 0 || communicationsHr < 0)
+            {
+                RuntimeLog.Warn("AUDIOMIXER-SETDEFAULT",
+                    $"Default multimedia endpoint changed, but another role failed: console=0x{consoleHr:X8}, communications=0x{communicationsHr:X8}");
+            }
+
             return true;
         }
         catch (Exception ex)
         {
             RuntimeLog.Log("AUDIOMIXER-SETDEFAULT", ex.Message);
             return false;
+        }
+        finally
+        {
+            if (policyConfig != null)
+            {
+                try { Marshal.ReleaseComObject(policyConfig); } catch { }
+            }
         }
     }
 

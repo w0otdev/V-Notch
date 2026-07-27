@@ -492,7 +492,7 @@ public partial class MainWindow
             systemRows.Children.Add(BuildSystemRow("\uE7F5", OutputIconGeometry, Loc.Get("audio.output"), master,
                 r => { if (MasterVolume.IsAvailable) MasterVolume.SetVolume((float)r); },
                 deviceGlyph: "\uE7F5", deviceText: outName, devices: snap.Output,
-                onDevice: id => { if (AudioMixer.SetDefaultOutputDevice(id)) RefreshAudioData(); },
+                onDevice: SelectDefaultOutputDevice,
                 out _outputSetVol, out _outputDeviceLabel));
 
             systemRows.Children.Add(BuildSystemRow("\uE720", InputIconGeometry, Loc.Get("audio.input"), snap.Capture,
@@ -534,6 +534,17 @@ public partial class MainWindow
 
         if (AudioScrollViewer != null)
             AudioScrollViewer.ScrollToTop();
+    }
+
+    private void SelectDefaultOutputDevice(string deviceId)
+    {
+        if (!AudioMixer.SetDefaultOutputDevice(deviceId))
+            return;
+
+        MasterVolume.RefreshDefaultDevice();
+        _mediaService.InvalidateVolumeSessionCache();
+        _volumeSynced = false;
+        RefreshAudioData();
     }
 
     private double MeasureAudioFitHeight()

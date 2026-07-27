@@ -278,19 +278,13 @@ public partial class MainWindow
             if (isTrackChanged)
             {
                 _lastProgressSignature = newSignature;
-
-                if (isSessionSwitch)
-                {
-                    HandleSessionTransition();
-                }
+                double visibleRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
 
                 _trackChangeSequence++;
 
                 _progressEngine.Reset();
                 StopCatchUpAnimation();
                 StopRewindTextAnimation();
-
-                bool alreadyRewindingToZero = _isRewindAnimating && _progressTargetRatio <= 0.01;
 
                 _isRewindAnimating = false;
                 ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -304,7 +298,7 @@ public partial class MainWindow
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
                 StopSpringRenderLoop();
 
-                double fromRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
+                double fromRatio = visibleRatio;
                 _progressDisplayRatio = fromRatio;
                 _progressTargetRatio = 0;
                 _progressSpringTargetRatio = 0;
@@ -312,12 +306,7 @@ public partial class MainWindow
                 CurrentTimeText.Text = "0:00";
                 RemainingTimeText.Text = info.Duration.TotalSeconds > 0 ? FormatTime(info.Duration) : "--:--";
 
-                if (alreadyRewindingToZero)
-                {
-                    _progressDisplayRatio = 0;
-                    ProgressBarScale.ScaleX = 0;
-                }
-                else if (isFirstEverTrack)
+                if (isFirstEverTrack)
                 {
                     if (info.IsPlaying && info.Position > TimeSpan.Zero && info.Duration.TotalSeconds > 0)
                     {
@@ -338,12 +327,7 @@ public partial class MainWindow
                         ProgressBarScale.ScaleX = 0;
                     }
                 }
-                else if (fromRatio > 0.97)
-                {
-                    _progressDisplayRatio = 0;
-                    ProgressBarScale.ScaleX = 0;
-                }
-                else if (fromRatio > 0.01 && (_isExpanded || _isMusicExpanded))
+                else if (_isExpanded || _isMusicExpanded)
                 {
                     AnimateTrackChangeRewindToZero(fromRatio, info.Duration);
                 }
@@ -458,15 +442,6 @@ public partial class MainWindow
     private static bool IsLikelyBrowserProgressSource(MediaInfo info) =>
         MediaProgressHelpers.IsLikelyBrowserProgressSource(info);
 
-    private void HandleSessionTransition()
-    {
-        var anim = new DoubleAnimation(0.2, 1.0, TimeSpan.FromMilliseconds(400))
-        {
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        MediaWidget.BeginAnimation(OpacityProperty, anim);
-    }
-
     private void StartIndeterminateAnimation()
     {
         if (IndeterminateProgress.Visibility != Visibility.Visible) return;
@@ -482,7 +457,12 @@ public partial class MainWindow
 
     private void ResetProgressUI()
     {
-
+        _trackChangeSequence++;
+        _isRewindAnimating = false;
+        ProgressBarContainer.BeginAnimation(OpacityProperty, null);
+        ProgressBarContainer.Opacity = 1;
+        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        ProgressBarMainScale.ScaleY = 1;
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = 0;
         _progressDisplayRatio = 0;
@@ -1309,9 +1289,10 @@ public partial class MainWindow
         StopSpringRenderLoop();
         _isRewindAnimating = true;
 
-        var duration = TimeSpan.FromMilliseconds(Math.Clamp(280 + fromRatio * 180, 300, 450));
-
         long seqAtStart = _trackChangeSequence;
+        var duration = TimeSpan.FromMilliseconds(Math.Clamp(320 + fromRatio * 150, 340, 470));
+
+        AnimateProgressTrackChangeAppearance(seqAtStart);
 
         var anim = new DoubleAnimation(fromRatio, targetRatio, new Duration(duration))
         {
@@ -1350,6 +1331,50 @@ public partial class MainWindow
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = fromRatio;
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
+    }
+
+    private void AnimateProgressTrackChangeAppearance(long seqAtStart)
+    {
+        double currentOpacity = ProgressBarContainer.Opacity;
+        double currentScaleY = ProgressBarMainScale.ScaleY;
+
+        ProgressBarContainer.BeginAnimation(OpacityProperty, null);
+        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+        var opacity = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = _dur600,
+            FillBehavior = FillBehavior.Stop
+        };
+        opacity.KeyFrames.Add(new DiscreteDoubleKeyFrame(currentOpacity, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        opacity.KeyFrames.Add(new EasingDoubleKeyFrame(0.68, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)), _easeQuadIn));
+        opacity.KeyFrames.Add(new EasingDoubleKeyFrame(0.84, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(320)), _easeExpOut6));
+        opacity.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(600)), _easeExpOut6));
+        Timeline.SetDesiredFrameRate(opacity, VNotch.Services.AnimationConfig.TargetFps);
+
+        var scaleY = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = _dur600,
+            FillBehavior = FillBehavior.Stop
+        };
+        scaleY.KeyFrames.Add(new DiscreteDoubleKeyFrame(currentScaleY, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(0.48, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)), _easeQuadIn));
+        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(0.76, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(320)), _easeExpOut6));
+        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(600)), _easeExpOut6));
+        Timeline.SetDesiredFrameRate(scaleY, VNotch.Services.AnimationConfig.TargetFps);
+
+        opacity.Completed += (_, _) =>
+        {
+            if (_trackChangeSequence != seqAtStart) return;
+
+            ProgressBarContainer.BeginAnimation(OpacityProperty, null);
+            ProgressBarContainer.Opacity = 1;
+            ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            ProgressBarMainScale.ScaleY = 1;
+        };
+
+        ProgressBarContainer.BeginAnimation(OpacityProperty, opacity);
+        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
     }
 
     private void AnimateExternalSeekTo(double targetRatio, UiProgressFrame frame)

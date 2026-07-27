@@ -41,6 +41,7 @@ public class MediaSourceClassifierTests
     [InlineData("Chrome")]
     [InlineData("msedge")]
     [InlineData("Brave.Browser")]
+    [InlineData("Zen")]
     public void ApplyFromAppId_BrowserApp_ResolvesToBrowser(string appId)
     {
         var info = new MediaInfo();

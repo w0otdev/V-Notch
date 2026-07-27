@@ -39,15 +39,17 @@ internal sealed class MarqueeController
     #endregion
 
     public MarqueeController(
-        TextBlock titleA, TranslateTransform titleMarqueeA, TranslateTransform titleMorphA,
-        TextBlock titleB, TranslateTransform titleMarqueeB, TranslateTransform titleMorphB,
-        TextBlock artistA, TranslateTransform artistMarqueeA, TranslateTransform artistMorphA,
-        TextBlock artistB, TranslateTransform artistMarqueeB, TranslateTransform artistMorphB,
+        UIElement titleLayerA, TextBlock titleA, TranslateTransform titleMarqueeA, TranslateTransform titleMorphA,
+        UIElement titleLayerB, TextBlock titleB, TranslateTransform titleMarqueeB, TranslateTransform titleMorphB,
+        UIElement artistLayerA, TextBlock artistA, TranslateTransform artistMarqueeA, TranslateTransform artistMorphA,
+        UIElement artistLayerB, TextBlock artistB, TranslateTransform artistMarqueeB, TranslateTransform artistMorphB,
         TextBlock compactTitleText, TranslateTransform compactTitleTranslate,
         Func<double, double> getVisibleMediaTextWidth)
     {
-        _title = new MarqueeTargets(titleA, titleMarqueeA, titleMorphA, titleB, titleMarqueeB, titleMorphB);
-        _artist = new MarqueeTargets(artistA, artistMarqueeA, artistMorphA, artistB, artistMarqueeB, artistMorphB);
+        _title = new MarqueeTargets(titleLayerA, titleA, titleMarqueeA, titleMorphA,
+            titleLayerB, titleB, titleMarqueeB, titleMorphB);
+        _artist = new MarqueeTargets(artistLayerA, artistA, artistMarqueeA, artistMorphA,
+            artistLayerB, artistB, artistMarqueeB, artistMorphB);
         _compactTitleText = compactTitleText;
         _compactTitleTranslate = compactTitleTranslate;
         _getVisibleMediaTextWidth = getVisibleMediaTextWidth;
@@ -66,6 +68,23 @@ internal sealed class MarqueeController
         RestartMarqueeFor(_title, _isTitleActiveA, isTitle: true);
         RestartMarqueeFor(_artist, _isArtistActiveA, isTitle: false);
     }
+
+    public void TransitionTrackText(string title, string artist)
+    {
+        title ??= string.Empty;
+        artist ??= string.Empty;
+
+        _pendingTitleText = null;
+        _pendingArtistText = null;
+        _titleMorphTimer.Stop();
+        _artistMorphTimer.Stop();
+
+        // A track change is one visual event. Bypass the independent metadata
+        // throttles so both rows swap layers on the same dispatcher frame.
+        ApplyTitleText(title);
+        ApplyArtistText(artist);
+    }
+
     public void UpdateTitleText(string newText)
     {
         newText ??= string.Empty;
@@ -238,12 +257,12 @@ internal sealed class MarqueeController
     {
         if (activeA)
         {
-            AnimateTextMorph(t.TextA, t.TextB, t.MorphA, t.MorphB, newText);
+            AnimateTextMorph(t.LayerA, t.TextA, t.LayerB, t.TextB, t.MorphA, t.MorphB, newText);
             activeA = false;
         }
         else
         {
-            AnimateTextMorph(t.TextB, t.TextA, t.MorphB, t.MorphA, newText);
+            AnimateTextMorph(t.LayerB, t.TextB, t.LayerA, t.TextA, t.MorphB, t.MorphA, newText);
             activeA = true;
         }
 
@@ -271,11 +290,22 @@ internal sealed class MarqueeController
         }
     }
 
-    private static void AnimateTextMorph(TextBlock current, TextBlock next, TranslateTransform currentMorph, TranslateTransform nextMorph, string newText)
+    private static void AnimateTextMorph(
+        UIElement currentLayer,
+        TextBlock current,
+        UIElement nextLayer,
+        TextBlock next,
+        TranslateTransform currentMorph,
+        TranslateTransform nextMorph,
+        string newText)
     {
+        double currentOpacity = Math.Clamp(currentLayer.Opacity, 0, 1);
+        currentLayer.BeginAnimation(UIElement.OpacityProperty, null);
+        nextLayer.BeginAnimation(UIElement.OpacityProperty, null);
+        currentLayer.Opacity = currentOpacity;
+        nextLayer.Opacity = 0;
         next.SetCurrentValue(TextBlock.TextProperty, newText);
 
-        var dur = _dur600;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
         var easeOut = _easeExpOut6;
 
@@ -283,24 +313,27 @@ internal sealed class MarqueeController
         nextMorph.BeginAnimation(TranslateTransform.XProperty, null);
         currentMorph.BeginAnimation(TranslateTransform.YProperty, null);
         nextMorph.BeginAnimation(TranslateTransform.YProperty, null);
+        currentMorph.X = 0;
+        nextMorph.X = 20;
         currentMorph.Y = 0;
         nextMorph.Y = 0;
 
-        var slideOut = MakeAnim(0, -10, dur, easeOut, animFps);
+        var slideOut = MakeAnim(0, -18, _dur400, _easeQuadIn, animFps);
         currentMorph.BeginAnimation(TranslateTransform.XProperty, slideOut);
 
-        var slideIn = MakeAnim(12, 0, dur, easeOut, animFps);
+        var slideIn = MakeAnim(20, 0, _dur600, easeOut, animFps);
         nextMorph.BeginAnimation(TranslateTransform.XProperty, slideIn);
 
-        var fadeOut = MakeAnim(1, 0, dur, easeOut, animFps);
-        current.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        var fadeOut = MakeAnim(currentOpacity, 0, _dur350, _easeQuadIn, animFps);
+        currentLayer.BeginAnimation(UIElement.OpacityProperty, fadeOut);
 
-        var fadeIn = MakeAnim(0, 1, dur, easeOut, animFps);
-        next.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        var fadeIn = MakeAnim(0, 1, _dur500, easeOut, TimeSpan.FromMilliseconds(70));
+        Timeline.SetDesiredFrameRate(fadeIn, animFps);
+        nextLayer.BeginAnimation(UIElement.OpacityProperty, fadeIn);
     }
 
     #endregion
     private sealed record MarqueeTargets(
-            TextBlock TextA, TranslateTransform MarqueeA, TranslateTransform MorphA,
-            TextBlock TextB, TranslateTransform MarqueeB, TranslateTransform MorphB);
+            UIElement LayerA, TextBlock TextA, TranslateTransform MarqueeA, TranslateTransform MorphA,
+            UIElement LayerB, TextBlock TextB, TranslateTransform MarqueeB, TranslateTransform MorphB);
 }

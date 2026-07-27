@@ -6,6 +6,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
 
 namespace VNotch.Services;
 
@@ -16,7 +18,10 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private static readonly TimeSpan ActivePollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan IdlePollInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan MicrophoneFlowPollInterval = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan MinimumScreenRecordingDuration = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan MicrophoneSignalHoldDuration = TimeSpan.FromMilliseconds(1400);
+    internal const float MicrophoneSignalThreshold = 0.0125f;
 
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const int ErrorInsufficientBuffer = 122;
@@ -29,7 +34,7 @@ public sealed class PrivacyIndicatorService : IDisposable
     private static readonly HashSet<string> IgnoredMicrophoneProcessNames =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "audiodg", "svchost", "system", "registry"
+            "audiodg", "svchost", "system", "registry", "elgato.wavelink"
         };
 
     private static readonly Lazy<IReadOnlySet<string>> ServiceExecutablePaths =
@@ -46,7 +51,17 @@ public sealed class PrivacyIndicatorService : IDisposable
     private static extern int GetPackageFamilyName(IntPtr process, ref uint packageFamilyNameLength, IntPtr packageFamilyName);
 
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _microphoneFlowTimer;
     private readonly TimeSpan _activeInterval;
+    private readonly MicrophoneActivityGate _microphoneActivityGate = new(
+        MicrophoneSignalThreshold,
+        MicrophoneSignalHoldDuration);
+    private readonly MicrophoneFlowProbe _microphoneFlowProbe = new();
+    private IReadOnlyList<CapabilityUsage> _microphoneCandidates = Array.Empty<CapabilityUsage>();
+    private IReadOnlyList<string> _microphoneCandidateNames = Array.Empty<string>();
+    private IReadOnlyList<string> _cameraConsumers = Array.Empty<string>();
+    private bool _cameraInUse;
+    private bool _screenRecordingActive;
     private bool _disposed;
     private bool _started;
 
@@ -62,6 +77,12 @@ public sealed class PrivacyIndicatorService : IDisposable
             Interval = _activeInterval
         };
         _timer.Tick += (_, _) => Poll();
+
+        _microphoneFlowTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = MicrophoneFlowPollInterval
+        };
+        _microphoneFlowTimer.Tick += (_, _) => PollMicrophoneFlow();
     }
 
     public void Start()
@@ -78,6 +99,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         if (!_started) return;
         _started = false;
         _timer.Stop();
+        _microphoneFlowTimer.Stop();
     }
 
     public void Dispose()
@@ -85,6 +107,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         if (_disposed) return;
         _disposed = true;
         Stop();
+        _microphoneFlowProbe.Dispose();
     }
 
     private void Poll()
@@ -98,26 +121,29 @@ public sealed class PrivacyIndicatorService : IDisposable
             var borderlessCapture = ScanCapability("graphicsCaptureWithoutBorder");
 
             var running = new ConsumerProcessProbe();
-            var mic = GetRelevantConsumers(
+            _microphoneCandidates = GetRelevantConsumerUsages(
                 micUsage,
                 running,
                 usage => !IsIgnoredMicrophoneConsumer(usage.RawName));
-            var cam = GetRelevantConsumers(camUsage, running);
-            bool screenRec = DetectScreenRecording(
+            _microphoneCandidateNames = GetConsumerNames(_microphoneCandidates);
+
+            var cam = GetRelevantConsumerUsages(camUsage, running);
+            _cameraConsumers = GetConsumerNames(cam);
+            _cameraInUse = _cameraConsumers.Count > 0;
+            _screenRecordingActive = DetectScreenRecording(
                 programmaticCapture.Concat(borderlessCapture), running, utcNow);
 
-            var next = new PrivacyIndicatorState(
-                MicrophoneInUse: mic.Count > 0,
-                CameraInUse: cam.Count > 0,
-                ScreenRecordingActive: screenRec,
-                MicrophoneConsumers: mic,
-                CameraConsumers: cam);
-
-            if (!next.Equals(CurrentState))
+            if (_microphoneCandidates.Count > 0)
             {
-                CurrentState = next;
-                StateChanged?.Invoke(this, next);
+                if (!_microphoneFlowTimer.IsEnabled)
+                    _microphoneFlowTimer.Start();
             }
+            else
+            {
+                _microphoneFlowTimer.Stop();
+            }
+
+            PollMicrophoneFlow(utcNow);
         }
         catch (Exception ex)
         {
@@ -129,6 +155,56 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
     }
 
+    private void PollMicrophoneFlow() => PollMicrophoneFlow(DateTime.UtcNow);
+
+    private void PollMicrophoneFlow(DateTime utcNow)
+    {
+        try
+        {
+            MicrophoneFlowEvidence evidence = _microphoneCandidates.Count > 0
+                ? _microphoneFlowProbe.Probe(_microphoneCandidates)
+                : MicrophoneFlowEvidence.Empty;
+
+            bool microphoneInUse = _microphoneActivityGate.Evaluate(
+                hasCandidate: _microphoneCandidates.Count > 0,
+                hasActiveSession: evidence.HasActiveSession,
+                peakLevel: evidence.PeakLevel,
+                utcNow);
+
+            PublishState(microphoneInUse, evidence);
+        }
+        catch (Exception ex)
+        {
+            _microphoneActivityGate.Reset();
+            PublishState(microphoneInUse: false, MicrophoneFlowEvidence.Empty);
+            RuntimeLog.Error("PRIVACY-MIC", ex, "Microphone flow probe failed");
+        }
+    }
+
+    private void PublishState(bool microphoneInUse, MicrophoneFlowEvidence evidence)
+    {
+        var next = new PrivacyIndicatorState(
+            MicrophoneInUse: microphoneInUse,
+            CameraInUse: _cameraInUse,
+            ScreenRecordingActive: _screenRecordingActive,
+            MicrophoneConsumers: microphoneInUse
+                ? _microphoneCandidateNames
+                : Array.Empty<string>(),
+            CameraConsumers: _cameraConsumers);
+
+        if (next.Equals(CurrentState)) return;
+
+        bool microphoneChanged = next.MicrophoneInUse != CurrentState.MicrophoneInUse;
+        CurrentState = next;
+        if (microphoneChanged)
+        {
+            RuntimeLog.Debug("PRIVACY-MIC", () =>
+                $"visible={microphoneInUse} session={evidence.HasActiveSession} " +
+                $"peak={evidence.PeakLevel:F4} consumers=[{string.Join(", ", _microphoneCandidateNames)}]");
+        }
+        StateChanged?.Invoke(this, next);
+    }
+
     private void AdaptInterval()
     {
         if (!_started) return;
@@ -137,7 +213,7 @@ public sealed class PrivacyIndicatorService : IDisposable
             _timer.Interval = desired;
     }
 
-    private static IReadOnlyList<string> GetRelevantConsumers(
+    private static IReadOnlyList<CapabilityUsage> GetRelevantConsumerUsages(
         IEnumerable<CapabilityUsage> usages,
         ConsumerProcessProbe running,
         Func<CapabilityUsage, bool>? additionalRule = null)
@@ -145,6 +221,14 @@ public sealed class PrivacyIndicatorService : IDisposable
         return usages
             .Where(usage => running.IsRunning(usage.RawName))
             .Where(usage => additionalRule == null || additionalRule(usage))
+            .GroupBy(usage => usage.RawName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderByDescending(usage => usage.LastStartFileTime).First())
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> GetConsumerNames(IEnumerable<CapabilityUsage> usages)
+    {
+        return usages
             .Select(usage => usage.DisplayName)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
@@ -339,6 +423,7 @@ public sealed class PrivacyIndicatorService : IDisposable
     private sealed class ConsumerProcessProbe
     {
         private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, bool> _processMatchCache = new(StringComparer.OrdinalIgnoreCase);
 
         public bool IsRunning(string rawConsumer)
         {
@@ -348,6 +433,20 @@ public sealed class PrivacyIndicatorService : IDisposable
                 : IsPackageFamilyRunning(rawConsumer);
             _cache[rawConsumer] = running;
             return running;
+        }
+
+        public bool MatchesProcess(string rawConsumer, uint processId)
+        {
+            if (processId == 0) return false;
+
+            string key = $"{processId}|{rawConsumer}";
+            if (_processMatchCache.TryGetValue(key, out bool matches)) return matches;
+
+            matches = TryDecodeDesktopConsumerPath(rawConsumer) is { } path
+                ? IsDesktopExecutableProcess(path, processId)
+                : IsPackageFamilyProcess(rawConsumer, processId);
+            _processMatchCache[key] = matches;
+            return matches;
         }
 
         private static bool IsDesktopExecutableRunning(string executablePath)
@@ -377,6 +476,23 @@ public sealed class PrivacyIndicatorService : IDisposable
             return false;
         }
 
+        private static bool IsDesktopExecutableProcess(string executablePath, uint processId)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(checked((int)processId));
+                string? runningPath = process.MainModule?.FileName;
+                return runningPath != null && string.Equals(
+                    NormalizeExecutablePath(runningPath),
+                    executablePath,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static bool IsPackageFamilyRunning(string packageFamily)
         {
             if (string.IsNullOrWhiteSpace(packageFamily)) return false;
@@ -384,42 +500,200 @@ public sealed class PrivacyIndicatorService : IDisposable
             {
                 using (process)
                 {
-                    IntPtr handle = IntPtr.Zero;
-                    try
-                    {
-                        handle = OpenProcess(ProcessQueryLimitedInformation, false, (uint)process.Id);
-                        if (handle == IntPtr.Zero) continue;
-
-                        uint chars = 0;
-                        int result = GetPackageFamilyName(handle, ref chars, IntPtr.Zero);
-                        if (result != ErrorInsufficientBuffer || chars == 0) continue;
-
-                        IntPtr buffer = Marshal.AllocHGlobal(checked((int)chars * sizeof(char)));
-                        try
-                        {
-                            result = GetPackageFamilyName(handle, ref chars, buffer);
-                            if (result != 0) continue;
-                            string? family = Marshal.PtrToStringUni(buffer);
-                            if (string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase))
-                                return true;
-                        }
-                        finally
-                        {
-                            Marshal.FreeHGlobal(buffer);
-                        }
-                    }
-                    catch
-                    {
-                        // Process exited or cannot be queried.
-                    }
-                    finally
-                    {
-                        if (handle != IntPtr.Zero) CloseHandle(handle);
-                    }
+                    if (IsPackageFamilyProcess(packageFamily, (uint)process.Id))
+                        return true;
                 }
             }
             return false;
         }
+
+        private static bool IsPackageFamilyProcess(string packageFamily, uint processId)
+        {
+            if (string.IsNullOrWhiteSpace(packageFamily) || processId == 0) return false;
+
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+                if (handle == IntPtr.Zero) return false;
+
+                uint chars = 0;
+                int result = GetPackageFamilyName(handle, ref chars, IntPtr.Zero);
+                if (result != ErrorInsufficientBuffer || chars == 0) return false;
+
+                IntPtr buffer = Marshal.AllocHGlobal(checked((int)chars * sizeof(char)));
+                try
+                {
+                    result = GetPackageFamilyName(handle, ref chars, buffer);
+                    if (result != 0) return false;
+                    string? family = Marshal.PtrToStringUni(buffer);
+                    return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (handle != IntPtr.Zero) CloseHandle(handle);
+            }
+        }
+    }
+
+    private sealed class MicrophoneFlowProbe : IDisposable
+    {
+        private MMDeviceEnumerator? _enumerator;
+
+        public MicrophoneFlowEvidence Probe(IReadOnlyList<CapabilityUsage> candidates)
+        {
+            if (candidates.Count == 0) return MicrophoneFlowEvidence.Empty;
+
+            bool hasActiveSession = false;
+            float peakLevel = 0;
+            var processProbe = new ConsumerProcessProbe();
+
+            try
+            {
+                _enumerator ??= new MMDeviceEnumerator();
+                var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+
+                foreach (var device in devices)
+                {
+                    using (device)
+                    {
+                        try
+                        {
+                            if (device.AudioEndpointVolume.Mute) continue;
+                        }
+                        catch
+                        {
+                            // Some virtual endpoints do not expose endpoint mute.
+                        }
+
+                        var sessions = device.AudioSessionManager.Sessions;
+                        if (sessions == null) continue;
+
+                        for (int i = 0; i < sessions.Count; i++)
+                        {
+                            var session = sessions[i];
+                            if (session == null) continue;
+
+                            try
+                            {
+                                if (session.State != AudioSessionState.AudioSessionStateActive)
+                                    continue;
+
+                                uint processId = session.GetProcessID;
+                                if (!candidates.Any(candidate =>
+                                        processProbe.MatchesProcess(candidate.RawName, processId)))
+                                    continue;
+
+                                using (var volume = session.SimpleAudioVolume)
+                                {
+                                    if (volume.Mute) continue;
+                                }
+
+                                hasActiveSession = true;
+
+                                float sessionPeak = 0;
+                                bool sessionPeakAvailable = false;
+                                try
+                                {
+                                    sessionPeak = session.AudioMeterInformation.MasterPeakValue;
+                                    sessionPeakAvailable = true;
+                                }
+                                catch
+                                {
+                                    // Fall back to the endpoint meter below.
+                                }
+
+                                float endpointPeak = 0;
+                                if (!sessionPeakAvailable)
+                                {
+                                    try
+                                    {
+                                        endpointPeak = device.AudioMeterInformation.MasterPeakValue;
+                                    }
+                                    catch
+                                    {
+                                        // A matched active session is still valid evidence,
+                                        // but silence must not turn the indicator on.
+                                    }
+                                }
+
+                                peakLevel = Math.Max(peakLevel, Math.Max(sessionPeak, endpointPeak));
+                            }
+                            finally
+                            {
+                                try { session.Dispose(); } catch { }
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                DisposeEnumerator();
+                throw;
+            }
+
+            if (!float.IsFinite(peakLevel) || peakLevel < 0)
+                peakLevel = 0;
+
+            return new MicrophoneFlowEvidence(
+                hasActiveSession,
+                Math.Clamp(peakLevel, 0, 1));
+        }
+
+        public void Dispose() => DisposeEnumerator();
+
+        private void DisposeEnumerator()
+        {
+            if (_enumerator == null) return;
+            try { _enumerator.Dispose(); } catch { }
+            _enumerator = null;
+        }
+    }
+
+    internal sealed class MicrophoneActivityGate
+    {
+        private readonly float _signalThreshold;
+        private readonly TimeSpan _holdDuration;
+        private DateTime _lastSignalUtc = DateTime.MinValue;
+
+        public MicrophoneActivityGate(float signalThreshold, TimeSpan holdDuration)
+        {
+            _signalThreshold = Math.Max(0, signalThreshold);
+            _holdDuration = holdDuration < TimeSpan.Zero ? TimeSpan.Zero : holdDuration;
+        }
+
+        public bool Evaluate(
+            bool hasCandidate,
+            bool hasActiveSession,
+            float peakLevel,
+            DateTime utcNow)
+        {
+            if (!hasCandidate || !hasActiveSession)
+            {
+                Reset();
+                return false;
+            }
+
+            if (float.IsFinite(peakLevel) && peakLevel >= _signalThreshold)
+                _lastSignalUtc = utcNow;
+
+            if (_lastSignalUtc == DateTime.MinValue || utcNow < _lastSignalUtc)
+                return false;
+
+            return utcNow - _lastSignalUtc <= _holdDuration;
+        }
+
+        public void Reset() => _lastSignalUtc = DateTime.MinValue;
     }
 
     private static string NormalizeAppName(string raw)
@@ -447,6 +721,13 @@ internal readonly record struct CapabilityUsage(
     string RawName,
     string DisplayName,
     long LastStartFileTime);
+
+internal readonly record struct MicrophoneFlowEvidence(
+    bool HasActiveSession,
+    float PeakLevel)
+{
+    public static readonly MicrophoneFlowEvidence Empty = new(false, 0);
+}
 
 public sealed record PrivacyIndicatorState(
     bool MicrophoneInUse,

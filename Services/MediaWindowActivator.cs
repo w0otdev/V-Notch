@@ -254,16 +254,17 @@ internal static class MediaWindowActivator
         if (sourceAppId.Contains("vivaldi", StringComparison.OrdinalIgnoreCase)) Add("vivaldi");
         if (sourceAppId.Contains("arc", StringComparison.OrdinalIgnoreCase)) Add("arc");
         if (sourceAppId.Contains("sidekick", StringComparison.OrdinalIgnoreCase)) Add("sidekick");
+        if (sourceAppId.Contains("zen", StringComparison.OrdinalIgnoreCase)) Add("zen");
 
         if (string.IsNullOrWhiteSpace(sourceAppId) &&
             (info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud))
         {
-            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera");
+            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("zen");
         }
 
         if (info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud)
         {
-            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("vivaldi");
+            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("vivaldi"); Add("zen");
         }
 
         return candidates;
@@ -326,7 +327,8 @@ internal static class MediaWindowActivator
                processName.Equals("vivaldi", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("browser", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("arc", StringComparison.OrdinalIgnoreCase) ||
-               processName.Equals("sidekick", StringComparison.OrdinalIgnoreCase);
+               processName.Equals("sidekick", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("zen", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetWindowTitle(IntPtr hwnd)
@@ -367,7 +369,7 @@ internal static class MediaWindowActivator
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
         string normalized = Regex.Replace(value, @"\s+", " ").Trim().ToLowerInvariant();
-        normalized = Regex.Replace(normalized, @"\s+-\s+(youtube|google chrome|microsoft edge|mozilla firefox|brave|opera|vivaldi).*$", "", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\s+-\s+(youtube|google chrome|microsoft edge|mozilla firefox|brave|opera|vivaldi|zen).*$", "", RegexOptions.IgnoreCase);
         return normalized;
     }
 }

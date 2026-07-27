@@ -38,7 +38,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
 
     private static readonly string[] _browserProcessNames =
     {
-        "chrome", "msedge", "firefox", "brave", "opera", "vivaldi"
+        "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "zen"
     };
 
     private readonly object _cacheLock = new();
