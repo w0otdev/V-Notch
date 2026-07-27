@@ -51,6 +51,7 @@ public partial class SpotlightWindow : Window
     private bool _contentShown;
     private int _contentSizeGeneration;
     private bool _contentResizeQueued;
+    private bool _statusRefreshQueued;
     private bool _entranceActive;
     private bool _pendingContentReveal;
     private SolidColorBrush? _shellBorderBrush;
@@ -88,7 +89,11 @@ public partial class SpotlightWindow : Window
         // must re-measure or it keeps the narrow mid-morph width.
         ResultsList.SizeChanged += (_, _) => ScheduleGlideUpdate();
 
-        _viewModel.Results.CollectionChanged += (_, _) => RefreshStatus();
+        // Never measure the ListBox from inside ObservableCollection's
+        // CollectionChanged callback. WPF may not have forwarded that same
+        // event through ListCollectionView/ItemContainerGenerator yet, and a
+        // nested UpdateLayout then sees different source/generator counts.
+        _viewModel.Results.CollectionChanged += (_, _) => ScheduleStatusRefresh();
         _viewModel.ResultsPublished += (_, _) => OnResultsPublished();
         _viewModel.PropertyChanged += (_, args) =>
         {
@@ -295,7 +300,7 @@ public partial class SpotlightWindow : Window
         if (_viewModel.Results.Count > 0 && !string.IsNullOrEmpty(SearchBox.Text))
             SetResultsDimmed(true);
         await _viewModel.SearchAsync(SearchBox.Text);
-        RefreshStatus();
+        ScheduleStatusRefresh();
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -809,6 +814,21 @@ public partial class SpotlightWindow : Window
         // A result-count change while the panel is open resizes it smoothly.
         if (showContent && contentWasShown) ScheduleContentResize();
         SetEscBadgeVisible(!showContent);
+    }
+
+    private void ScheduleStatusRefresh()
+    {
+        if (_statusRefreshQueued || Dispatcher.HasShutdownStarted) return;
+        _statusRefreshQueued = true;
+
+        // Loaded runs after the current collection notification and its queued
+        // data-binding/layout work. Coalescing also prevents ApplyDiff's series
+        // of Insert/Move/Remove events from forcing nested layout passes.
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            _statusRefreshQueued = false;
+            if (!Dispatcher.HasShutdownStarted) RefreshStatus();
+        });
     }
 
     /// <summary>

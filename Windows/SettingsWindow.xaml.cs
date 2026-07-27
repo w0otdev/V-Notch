@@ -3676,69 +3676,21 @@ public partial class SettingsWindow : Window
     {
         if (GlassBackdropHost == null) return;
 
-        bool isLiquidGlass = _settings.EnableDynamicIslandMode &&
-            string.Equals(_settings.NotchStyle, "liquidglass", StringComparison.OrdinalIgnoreCase);
+        // Liquid Glass is a notch skin only. Keeping a second full-window
+        // capture/render pipeline behind Settings adds significant GPU work and
+        // cannot stay spatially correct during WPF's native window drag loop.
+        // Settings therefore always uses its stable opaque material.
+        MainShell.Background = (Brush)FindResource("WindowGlow");
+        GlassBackdropHost.Background = null;
+        GlassBackdropHost.Visibility = Visibility.Collapsed;
+        GlassTintOverlay.Visibility = Visibility.Collapsed;
+        GlassDarkOverlay.Visibility = Visibility.Collapsed;
 
-        if (isLiquidGlass)
-        {
-            MainShell.Background = Brushes.Transparent;
-            // Opaque dark base behind the live glass image so a dropped frame
-            // shows dark glass instead of a fully transparent hole.
-            GlassBackdropHost.Background = _glassBaseFill;
-            GlassBackdropHost.Visibility = Visibility.Visible;
-            GlassTintOverlay.Visibility = Visibility.Visible;
-            // The island bypasses its dark dimming overlay entirely (the shader's
-            // saturation/brightness manage contrast). Match it so the settings
-            // glass reads as the same material instead of a darker variant.
-            GlassDarkOverlay.Visibility = Visibility.Collapsed;
-
-            if (_hwnd == IntPtr.Zero)
-            {
-                _hwnd = new WindowInteropHelper(this).EnsureHandle();
-            }
-
-            // Size the presentation surface for this window's real footprint at
-            // the current DPI (the default envelope is shaped for the notch and
-            // both truncates a tall window and wastes per-frame present work).
-            var (envelopeW, envelopeH) = GetGlassSurfaceEnvelope();
-            _liquidGlass ??= new LiquidGlassController(
-                GlassBackdropImage,
-                () => _hwnd,
-                GetGlassCaptureRegion,
-                activeFps: Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps),
-                logTag: "SETTINGS",
-                maxRegionWidth: envelopeW,
-                maxRegionHeight: envelopeH
-            );
-
-            _liquidGlass.HideFromScreenCapture = false;
-
-            // The settings window scales during open/close and can be dragged
-            // anywhere, so push the live on-screen rectangle every compositor
-            // frame instead of letting the worker poll a 1 s stale cache.
-            _liquidGlass.SetAnimating(true);
-            CompositionTarget.Rendering -= OnGlassRegionRendering;
-            CompositionTarget.Rendering += OnGlassRegionRendering;
-
-            ConfigureGpuRefraction();
-            ApplyLiquidGlassConfig();
-
-            _liquidGlass.Start();
-        }
-        else
-        {
-            MainShell.Background = (Brush)FindResource("WindowGlow");
-            GlassBackdropHost.Background = null;
-            GlassBackdropHost.Visibility = Visibility.Collapsed;
-            GlassTintOverlay.Visibility = Visibility.Collapsed;
-            GlassDarkOverlay.Visibility = Visibility.Collapsed;
-
-            CompositionTarget.Rendering -= OnGlassRegionRendering;
-            _liquidGlass?.ClearLiveRegion();
-            _liquidGlass?.SetAnimating(false);
-            _liquidGlass?.Stop();
-            DetachGpuRefraction();
-        }
+        CompositionTarget.Rendering -= OnGlassRegionRendering;
+        _liquidGlass?.ClearLiveRegion();
+        _liquidGlass?.SetAnimating(false);
+        _liquidGlass?.Stop();
+        DetachGpuRefraction();
     }
 
     private static readonly SolidColorBrush _glassBaseFill = CreateFrozenBrush(0x0B, 0x0E, 0x12);
@@ -3808,7 +3760,10 @@ public partial class SettingsWindow : Window
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
-            _liquidGlass.UpdateFps(Math.Clamp(cfg.TargetFps, 30, LiquidGlassController.MaxTargetFps));
+            _liquidGlass.UpdateFps(Math.Clamp(
+                cfg.TargetFps,
+                AnimationConfig.MinFps,
+                LiquidGlassController.MaxTargetFps));
             GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
             GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
         }
