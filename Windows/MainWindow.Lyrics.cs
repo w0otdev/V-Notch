@@ -632,7 +632,12 @@ public partial class MainWindow
             }
             else if (LyricsPlaceholderPanel.Visibility != Visibility.Visible || LyricsPlaceholderPanel.Opacity < 0.01)
             {
-                string placeholderTitle = isYouTube ? info.CurrentArtist : info.CurrentTrack;
+                bool isYouTubeArtistResolved = isYouTube &&
+                    !string.IsNullOrEmpty(info.CurrentArtist) &&
+                    MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser);
+                string placeholderTitle = isYouTube
+                    ? (isYouTubeArtistResolved ? info.CurrentArtist : info.CurrentTrack)
+                    : info.CurrentTrack;
                 string placeholderArtist = isYouTube ? "" : info.CurrentArtist;
                 ShowLyricsPlaceholder(
                     placeholderTitle,
@@ -952,7 +957,10 @@ public partial class MainWindow
             _currentLyricIndex = -1;
             if (_syncedTextSource == SyncedTextSource.YouTubeSubtitles && _currentMediaInfo != null)
             {
-                ShowLyricsPlaceholder(_currentMediaInfo.CurrentArtist, "", _lyricsProvider);
+                bool ytArtistResolved = !string.IsNullOrEmpty(_currentMediaInfo.CurrentArtist) &&
+                    MediaPlatformExtensions.ParsePlatform(_currentMediaInfo.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser);
+                string ytPlaceholderTitle = ytArtistResolved ? _currentMediaInfo.CurrentArtist : _currentMediaInfo.CurrentTrack;
+                ShowLyricsPlaceholder(ytPlaceholderTitle, "", _lyricsProvider);
             }
             else
             {
