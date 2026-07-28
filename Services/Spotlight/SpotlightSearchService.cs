@@ -11,8 +11,13 @@ internal sealed class SpotlightSearchService
     private readonly IReadOnlyList<ISpotlightProvider> _providers;
     private readonly SpotlightUsageStore? _usage;
 
+    /// <summary>
+    /// File search is healthy when either backend answers: the Windows Search
+    /// index or the Everything IPC engine.
+    /// </summary>
     public bool IsWindowsSearchAvailable =>
-        _providers.OfType<WindowsSearchProvider>().FirstOrDefault()?.IsAvailable ?? false;
+        (_providers.OfType<WindowsSearchProvider>().FirstOrDefault()?.IsAvailable ?? false) ||
+        (_providers.OfType<EverythingSearchProvider>().FirstOrDefault()?.IsAvailable ?? false);
 
     public SpotlightSearchService(
         IEnumerable<ISpotlightProvider> providers,

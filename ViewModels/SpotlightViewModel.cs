@@ -9,9 +9,10 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 {
     private const int ResultLimit = 10;
 
-    // Only the Windows Search phase is debounced; the in-memory providers run
-    // on every keystroke so the first paint is instant.
-    private const int DeferredSearchDebounceMs = 150;
+    // Only the Windows Search index phase is debounced; the in-memory
+    // providers and the Everything IPC provider run on every keystroke so the
+    // first paint is instant.
+    private const int DeferredSearchDebounceMs = 75;
 
     private readonly SpotlightSearchService _search;
     private readonly SpotlightUsageStore _usage;

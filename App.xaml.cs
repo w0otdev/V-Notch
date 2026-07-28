@@ -164,6 +164,7 @@ public partial class App : Application
         services.AddSingleton<IWeatherService, WeatherService>();
         services.AddSingleton<ISpotlightProvider, AppSearchProvider>();
         services.AddSingleton<ISpotlightProvider, SystemFileSearchProvider>();
+        services.AddSingleton<ISpotlightProvider, EverythingSearchProvider>();
         services.AddSingleton<ISpotlightProvider, WindowsSearchProvider>();
         services.AddSingleton<ISpotlightProvider, CalculatorProvider>();
         services.AddSingleton<SpotlightUsageStore>();
