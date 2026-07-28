@@ -1,2 +1,3 @@
 - [Windows-only verification](windows-only-verification.md) — this repo can't build/run on Replit Linux; validate via architect review + tests meant for Windows, and say so honestly.
 - [Everything IPC protocol](everything-ipc.md) — v1 LISTW header is 28 bytes (numitems at offset 20); parser layout is locked by a unit test.
+- [Spotlight morph vs live content](spotlight-morph-content.md) — never animate shell geometry over a live results panel; freeze/collapse content first or the morph drops to a few frames.

@@ -658,7 +658,9 @@ public partial class SpotlightWindow : Window
 
     private void ScheduleGlideUpdate()
     {
-        if (_glideUpdateQueued) return;
+        // A closing shell resizes every frame; recomputing glide geometry per
+        // frame is invisible work that competes with the exit morph.
+        if (_glideUpdateQueued || _isClosing) return;
         _glideUpdateQueued = true;
         // Loaded priority runs after the layout pass, when containers have
         // real positions; batching also collapses select-then-reselect churn
@@ -666,6 +668,7 @@ public partial class SpotlightWindow : Window
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _glideUpdateQueued = false;
+            if (_isClosing) return;
             UpdateSelectionGlide();
         });
     }
@@ -966,7 +969,9 @@ public partial class SpotlightWindow : Window
         ContentRegion.BeginAnimation(HeightProperty, null);
         ContentRegion.BeginAnimation(OpacityProperty, null);
         ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        ContentRegion.Width = double.NaN;
         ContentRegion.Height = double.NaN;
+        ContentRegion.HorizontalAlignment = HorizontalAlignment.Stretch;
         ContentRegion.Opacity = 1;
         ContentRegionTranslate.Y = 0;
         ContentRegion.ClipToBounds = false;
@@ -1249,6 +1254,17 @@ public partial class SpotlightWindow : Window
         MorphSnapshot current = FreezeCurrentMorphState();
         var target = GetSpotlightTarget();
 
+        // PlayExit froze the results region into a fixed clipped box (and
+        // collapses it once its fade lands). Restore auto layout before
+        // measuring, or the reopen target misses the results panel height.
+        ++_contentSizeGeneration;
+        ContentRegion.BeginAnimation(HeightProperty, null);
+        ContentRegion.Width = double.NaN;
+        ContentRegion.Height = double.NaN;
+        ContentRegion.HorizontalAlignment = HorizontalAlignment.Stretch;
+        ContentRegion.ClipToBounds = false;
+        if (_contentShown) ContentRegion.Visibility = Visibility.Visible;
+
         // Measure the expanded auto-height without exposing an intermediate
         // layout frame. The current explicit morph size is restored below as
         // the animation's starting value.
@@ -1418,6 +1434,25 @@ public partial class SpotlightWindow : Window
         var contentBlur = EnsureContentBlurEffect();
         contentBlur.Radius = current.ContentBlurRadius;
 
+        // The entrance morphs a content-free shell (results reveal only after
+        // it lands), but an exit can start with the full results panel live.
+        // Re-measuring the list on every width tick and re-rendering the blur
+        // ramp over it costs more than a frame budget on weaker machines, so
+        // the 560ms morph renders a handful of frames and reads as "skipped".
+        // Freeze the region at its current pixel box and let the shrinking
+        // shell clip it; once the content fade lands it leaves layout, making
+        // the rest of the exit as cheap as the entrance's empty shell.
+        bool hadVisibleContent = ContentRegion.Visibility == Visibility.Visible;
+        if (hadVisibleContent)
+        {
+            ++_contentSizeGeneration;
+            ContentRegion.BeginAnimation(HeightProperty, null);
+            ContentRegion.Width = Math.Max(1, ContentRegion.ActualWidth);
+            ContentRegion.Height = Math.Max(1, ContentRegion.ActualHeight);
+            ContentRegion.HorizontalAlignment = HorizontalAlignment.Left;
+            ContentRegion.ClipToBounds = true;
+        }
+
         var shrinkWidth = CreateAnimation(current.Width, targetWidth,
             MorphDuration, morphEase, synchronizedMorph: true);
         var shrinkHeight = CreateAnimation(current.Height, targetHeight,
@@ -1432,9 +1467,14 @@ public partial class SpotlightWindow : Window
             TimeSpan.FromMilliseconds(170), contentEase);
         var contentSlide = CreateAnimation(current.ContentTranslateY, 9,
             TimeSpan.FromMilliseconds(210), contentEase);
-        var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
-            TimeSpan.FromMilliseconds(210), contentEase);
 
+        contentFade.Completed += (_, _) =>
+        {
+            if (generation != _animationGeneration || !_isClosing) return;
+            // The content is invisible from here on; dropping the frozen
+            // region out of layout removes its render cost entirely.
+            ContentRegion.Visibility = Visibility.Collapsed;
+        };
         shrinkWidth.Completed += (_, _) =>
         {
             if (generation == _animationGeneration) BeginReturnHandoff(generation);
@@ -1449,7 +1489,16 @@ public partial class SpotlightWindow : Window
         Shell.BeginAnimation(OpacityProperty, shellNormalize);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-        contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
+        // The blur ramp is a per-frame GPU pass over the whole content
+        // surface. Over the empty search bar it is cheap and softens the
+        // collapse, but over a live results panel it is the main reason the
+        // exit morph drops frames — the 170ms opacity fade covers it there.
+        if (!hadVisibleContent)
+        {
+            var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
+                TimeSpan.FromMilliseconds(210), contentEase);
+            contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
+        }
         // Shed the panel outline early so the shell arrives looking like the
         // borderless notch.
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));

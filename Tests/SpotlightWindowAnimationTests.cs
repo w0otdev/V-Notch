@@ -160,6 +160,93 @@ public sealed class SpotlightWindowAnimationTests
         });
     }
 
+    [Fact]
+    public void ExitWithVisibleResults_FreezesContentAndRestoresItOnReverse()
+    {
+        RunSta(() =>
+        {
+            bool originalReduceMotion = AnimationConfig.ReduceMotion;
+            string usagePath = Path.Combine(
+                Path.GetTempPath(), $"vnotch-spotlight-exit-freeze-{Guid.NewGuid():N}.json");
+            Application? application = null;
+            SpotlightWindow? window = null;
+
+            try
+            {
+                application = CreateApplicationResources();
+                AnimationConfig.SetReduceMotion(false);
+
+                var service = new SpotlightSearchService([new InstantResultsProvider()]);
+                var viewModel = new SpotlightViewModel(
+                    service,
+                    new SpotlightUsageStore(usagePath, () => DateTime.UtcNow));
+                var morphHost = new FakeMorphHost();
+                window = new SpotlightWindow(viewModel, new SpotlightLauncher())
+                {
+                    Opacity = 0
+                };
+                window.MorphHostOverride = morphHost;
+
+                window.ShowSpotlight();
+                PumpFor(TimeSpan.FromMilliseconds(700));
+                window.SearchBox.Text = "app";
+                PumpUntil(
+                    () => window.ContentRegion.Visibility == Visibility.Visible,
+                    TimeSpan.FromSeconds(3));
+                PumpFor(TimeSpan.FromMilliseconds(320));
+
+                // Closing with live results must freeze the region into a
+                // fixed clipped box so the shrinking shell stops re-measuring
+                // the list (and re-blurring it) on every animation tick.
+                window.HideSpotlight();
+                Assert.True(double.IsFinite(window.ContentRegion.Width));
+                Assert.True(double.IsFinite(window.ContentRegion.Height));
+                Assert.True(window.ContentRegion.ClipToBounds);
+                Assert.Equal(HorizontalAlignment.Left, window.ContentRegion.HorizontalAlignment);
+                // The exit must not start the blur ramp over live results;
+                // that per-frame GPU pass is what starved the morph of frames.
+                Assert.False(
+                    HasActiveBlurAnimation(window),
+                    "Blur ramp must not run over a live results panel.");
+
+                // Reopening mid-close must hand the region back to auto layout
+                // before the reopen target is measured.
+                PumpFor(TimeSpan.FromMilliseconds(60));
+                window.ToggleFromHotkey();
+                Assert.True(double.IsNaN(window.ContentRegion.Width));
+                Assert.True(double.IsNaN(window.ContentRegion.Height));
+                Assert.False(window.ContentRegion.ClipToBounds);
+                Assert.Equal(HorizontalAlignment.Stretch, window.ContentRegion.HorizontalAlignment);
+                Assert.Equal(Visibility.Visible, window.ContentRegion.Visibility);
+
+                // Let the reverse land, then run a full close: once the content
+                // fade finishes the frozen region must leave layout entirely.
+                PumpFor(TimeSpan.FromMilliseconds(700));
+                window.ToggleFromHotkey();
+                PumpFor(TimeSpan.FromMilliseconds(320));
+                Assert.True(window.IsVisible);
+                Assert.Equal(Visibility.Collapsed, window.ContentRegion.Visibility);
+
+                PumpUntil(() => !window.IsVisible, TimeSpan.FromSeconds(3));
+                Assert.True(double.IsNaN(window.ContentRegion.Width));
+                Assert.True(double.IsNaN(window.ContentRegion.Height));
+                Assert.False(window.ContentRegion.ClipToBounds);
+                Assert.Equal(HorizontalAlignment.Stretch, window.ContentRegion.HorizontalAlignment);
+            }
+            finally
+            {
+                window?.Shutdown();
+                AnimationConfig.SetReduceMotion(originalReduceMotion);
+                if (File.Exists(usagePath)) File.Delete(usagePath);
+                application?.Shutdown();
+            }
+        });
+    }
+
+    private static bool HasActiveBlurAnimation(SpotlightWindow window) =>
+        window.ShellContent.Effect is BlurEffect blur
+        && blur.HasAnimatedProperties;
+
     private static Application CreateApplicationResources()
     {
         var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -273,6 +360,30 @@ public sealed class SpotlightWindowAnimationTests
         public void SetSpotlightMorphActive(bool active) => MorphActive = active;
 
         public void BeginSpotlightReturnHandoff(TimeSpan duration) => ++ReturnHandoffCount;
+    }
+
+    private sealed class InstantResultsProvider : ISpotlightProvider
+    {
+        public bool IsAvailable => true;
+
+        public bool IsInstant => true;
+
+        public Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
+            string query,
+            int limit,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<SpotlightSearchItem> items =
+            [
+                new($"test:{query}:1", SpotlightResultKind.Application,
+                    $"{query} One", "Test app", "one.exe"),
+                new($"test:{query}:2", SpotlightResultKind.File,
+                    $"{query} Two", "Test file", @"C:\two.txt"),
+                new($"test:{query}:3", SpotlightResultKind.Folder,
+                    $"{query} Three", "Test folder", @"C:\three")
+            ];
+            return Task.FromResult(items);
+        }
     }
 
     private sealed class DelayedProvider : ISpotlightProvider
