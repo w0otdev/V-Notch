@@ -4,7 +4,7 @@ using System.Windows.Media.Imaging;
 
 namespace VNotch;
 
-public partial class MainWindow
+public partial class MainWindow : ISpotlightMorphHost
 {
     internal ImageSource? CaptureSpotlightMorphVisual()
     {
@@ -32,4 +32,16 @@ public partial class MainWindow
             return null;
         }
     }
+
+    (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius)
+        ISpotlightMorphHost.GetSpotlightMorphRect() => GetSpotlightMorphRect();
+
+    ImageSource? ISpotlightMorphHost.CaptureSpotlightMorphVisual() =>
+        CaptureSpotlightMorphVisual();
+
+    void ISpotlightMorphHost.SetSpotlightMorphActive(bool active) =>
+        SetSpotlightMorphActive(active);
+
+    void ISpotlightMorphHost.BeginSpotlightReturnHandoff(TimeSpan duration) =>
+        BeginSpotlightReturnHandoff(duration);
 }

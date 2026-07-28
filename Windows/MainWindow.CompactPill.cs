@@ -56,24 +56,40 @@ public partial class MainWindow
     private void AnimateCompactWidth(double targetWidth, Duration duration, IEasingFunction ease, int token)
     {
         int version = ++_compactWidthAnimationVersion;
+        double fromWidth = NotchBorder.ActualWidth;
+        if (double.IsNaN(fromWidth) || double.IsInfinity(fromWidth) || fromWidth <= 0)
+        {
+            fromWidth = _collapsedWidth;
+        }
+
+        double previousBaseWidth = (double)NotchBorder.GetAnimationBaseValue(WidthProperty);
 
         var anim = new DoubleAnimation
         {
-            From = NotchBorder.ActualWidth,
+            From = fromWidth,
             To = targetWidth,
             Duration = duration,
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.Stop
+            EasingFunction = ease
         };
         Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
 
         anim.Completed += (_, _) =>
         {
             if (version != _compactWidthAnimationVersion) return;
-            if (token != 0 && !_compactPillArbiter.IsTokenCurrent(token)) return;
 
+            // A dismiss animation is allowed to finish after its compact-slot
+            // token has been released by the shorter content fade. Expansions,
+            // however, must not commit after another notification preempts them.
+            bool returningToRest = Math.Abs(targetWidth - _collapsedWidth) < 0.5;
+            bool canCommitTarget = token == 0
+                || _compactPillArbiter.IsTokenCurrent(token)
+                || returningToRest;
+            double finalWidth = canCommitTarget ? targetWidth : previousBaseWidth;
+
+            // Set the base while HoldEnd still owns the rendered value, then
+            // remove the clock. Clearing first exposes the old base for a frame.
+            NotchBorder.Width = finalWidth;
             NotchBorder.BeginAnimation(WidthProperty, null);
-            NotchBorder.Width = targetWidth;
         };
 
         NotchBorder.BeginAnimation(WidthProperty, anim, HandoffBehavior.SnapshotAndReplace);

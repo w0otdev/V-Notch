@@ -15,6 +15,8 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    private readonly Dictionary<StackPanel, int> _audioSectionAnimationGenerations = new();
+
     private IVolumeService? _masterVolumeCached;
     private IVolumeService MasterVolume =>
         _masterVolumeCached ??= (IVolumeService)App.Services.GetService(typeof(IVolumeService))!;
@@ -572,32 +574,59 @@ public partial class MainWindow
         int fps = AnimationConfig.TargetFps;
         var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut };
         var dur = new Duration(TimeSpan.FromMilliseconds(260));
+        int generation = _audioSectionAnimationGenerations.TryGetValue(rows, out int previousGeneration)
+            ? previousGeneration + 1
+            : 1;
+        _audioSectionAnimationGenerations[rows] = generation;
 
-        var rotAnim = new DoubleAnimation(chevron.Angle, expand ? 0 : -90, dur) { EasingFunction = ease };
+        double currentAngle = chevron.Angle;
+        chevron.BeginAnimation(RotateTransform.AngleProperty, null);
+        chevron.Angle = currentAngle;
+
+        var rotAnim = new DoubleAnimation(currentAngle, expand ? 0 : -90, dur) { EasingFunction = ease };
         Timeline.SetDesiredFrameRate(rotAnim, fps);
-        chevron.BeginAnimation(RotateTransform.AngleProperty, rotAnim);
+        chevron.BeginAnimation(RotateTransform.AngleProperty, rotAnim, HandoffBehavior.SnapshotAndReplace);
 
         if (columnLabels != null)
         {
             foreach (var lbl in columnLabels)
             {
+                bool wasVisible = lbl.Visibility == Visibility.Visible;
+                double labelOpacity = wasVisible ? Math.Clamp(lbl.Opacity, 0.0, 1.0) : 0.0;
                 lbl.BeginAnimation(OpacityProperty, null);
+                lbl.Opacity = labelOpacity;
                 if (expand) lbl.Visibility = Visibility.Visible;
-                var lblFade = new DoubleAnimation(lbl.Opacity, expand ? 1 : 0, dur) { EasingFunction = ease };
+                var lblFade = new DoubleAnimation(labelOpacity, expand ? 1 : 0, dur) { EasingFunction = ease };
                 Timeline.SetDesiredFrameRate(lblFade, fps);
                 var captured = lbl;
                 lblFade.Completed += (_, _) =>
                 {
+                    if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
+                        currentGeneration != generation)
+                    {
+                        return;
+                    }
+
                     captured.BeginAnimation(OpacityProperty, null);
                     captured.Opacity = expand ? 1 : 0;
                     if (!expand) captured.Visibility = Visibility.Collapsed;
                 };
-                lbl.BeginAnimation(OpacityProperty, lblFade);
+                lbl.BeginAnimation(OpacityProperty, lblFade, HandoffBehavior.SnapshotAndReplace);
             }
         }
 
+        bool rowsWereVisible = rows.Visibility == Visibility.Visible;
+        double currentHeight = rowsWereVisible
+            ? Math.Max(0.0, rows.ActualHeight)
+            : 0.0;
+        double rowsOpacity = rowsWereVisible
+            ? Math.Clamp(rows.Opacity, 0.0, 1.0)
+            : 0.0;
+
         rows.BeginAnimation(HeightProperty, null);
         rows.BeginAnimation(OpacityProperty, null);
+        rows.Height = currentHeight;
+        rows.Opacity = rowsOpacity;
 
         double newFit;
 
@@ -614,45 +643,56 @@ public partial class MainWindow
 
             newFit = MeasureAudioFitHeight();
 
-            rows.Height = 0;
-            rows.Opacity = 0;
+            rows.Height = currentHeight;
+            rows.Opacity = rowsOpacity;
 
-            var hAnim = new DoubleAnimation(0, target, dur) { EasingFunction = ease };
-            var oAnim = new DoubleAnimation(0, 1, dur) { EasingFunction = ease };
+            var hAnim = new DoubleAnimation(currentHeight, target, dur) { EasingFunction = ease };
+            var oAnim = new DoubleAnimation(rowsOpacity, 1, dur) { EasingFunction = ease };
             Timeline.SetDesiredFrameRate(hAnim, fps);
             Timeline.SetDesiredFrameRate(oAnim, fps);
             hAnim.Completed += (_, _) =>
             {
+                if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
+                    currentGeneration != generation)
+                {
+                    return;
+                }
+
                 rows.BeginAnimation(HeightProperty, null);
                 rows.Height = double.NaN;
                 rows.BeginAnimation(OpacityProperty, null);
                 rows.Opacity = 1;
             };
-            rows.BeginAnimation(HeightProperty, hAnim);
-            rows.BeginAnimation(OpacityProperty, oAnim);
+            rows.BeginAnimation(HeightProperty, hAnim, HandoffBehavior.SnapshotAndReplace);
+            rows.BeginAnimation(OpacityProperty, oAnim, HandoffBehavior.SnapshotAndReplace);
         }
         else
         {
-            double from = rows.ActualHeight;
-
             rows.Height = 0;
             newFit = MeasureAudioFitHeight();
-            rows.Height = from;
+            rows.Height = currentHeight;
+            rows.Opacity = rowsOpacity;
 
-            var hAnim = new DoubleAnimation(from, 0, dur) { EasingFunction = ease };
-            var oAnim = new DoubleAnimation(rows.Opacity, 0, dur) { EasingFunction = ease };
+            var hAnim = new DoubleAnimation(currentHeight, 0, dur) { EasingFunction = ease };
+            var oAnim = new DoubleAnimation(rowsOpacity, 0, dur) { EasingFunction = ease };
             Timeline.SetDesiredFrameRate(hAnim, fps);
             Timeline.SetDesiredFrameRate(oAnim, fps);
             hAnim.Completed += (_, _) =>
             {
+                if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
+                    currentGeneration != generation)
+                {
+                    return;
+                }
+
                 rows.Visibility = Visibility.Collapsed;
                 rows.BeginAnimation(HeightProperty, null);
                 rows.Height = double.NaN;
                 rows.BeginAnimation(OpacityProperty, null);
                 rows.Opacity = 1;
             };
-            rows.BeginAnimation(HeightProperty, hAnim);
-            rows.BeginAnimation(OpacityProperty, oAnim);
+            rows.BeginAnimation(HeightProperty, hAnim, HandoffBehavior.SnapshotAndReplace);
+            rows.BeginAnimation(OpacityProperty, oAnim, HandoffBehavior.SnapshotAndReplace);
         }
 
         _audioViewHeight = newFit;

@@ -18,7 +18,11 @@ internal sealed class SpotlightUsageStore
     private readonly object _gate = new();
     private readonly string _path;
     private readonly Func<DateTime> _utcNow;
+    private readonly Action<string> _persistSnapshot;
     private Dictionary<string, UsageEntry>? _entries;
+    private long _changeVersion;
+    private bool _saveWorkerRunning;
+    private Task _saveWorker = Task.CompletedTask;
 
     public SpotlightUsageStore()
         : this(Path.Combine(
@@ -30,9 +34,20 @@ internal sealed class SpotlightUsageStore
 
     // Test seam: production callers always use the APPDATA location and wall clock.
     internal SpotlightUsageStore(string path, Func<DateTime> utcNow)
+        : this(path, utcNow, persistSnapshot: null)
+    {
+    }
+
+    // Test seam: allows save interleavings to be controlled without touching
+    // the production APPDATA file.
+    internal SpotlightUsageStore(
+        string path,
+        Func<DateTime> utcNow,
+        Action<string>? persistSnapshot)
     {
         _path = path;
         _utcNow = utcNow;
+        _persistSnapshot = persistSnapshot ?? PersistSnapshot;
     }
 
     public void RecordLaunch(SpotlightSearchItem item)
@@ -65,9 +80,24 @@ internal sealed class SpotlightUsageStore
                     entries.Remove(stale);
                 }
             }
-        }
 
-        Task.Run(Save);
+            _changeVersion++;
+            if (!_saveWorkerRunning)
+            {
+                _saveWorkerRunning = true;
+                _saveWorker = Task.Run(SaveLoop);
+            }
+        }
+    }
+
+    // Captures the current worker so tests can deterministically wait until all
+    // changes that were pending at this point have reached stable storage.
+    internal Task WaitForPendingSavesAsync()
+    {
+        lock (_gate)
+        {
+            return _saveWorker;
+        }
     }
 
     /// <summary>
@@ -142,24 +172,83 @@ internal sealed class SpotlightUsageStore
         return _entries ??= new Dictionary<string, UsageEntry>();
     }
 
-    private void Save()
+    private void SaveLoop()
     {
-        try
+        while (true)
         {
-            string json;
+            long version;
+            string json = string.Empty;
+            Exception? serializationError = null;
+
             lock (_gate)
             {
-                json = JsonSerializer.Serialize(LoadEntries());
+                version = _changeVersion;
+                try
+                {
+                    json = JsonSerializer.Serialize(LoadEntries());
+                }
+                catch (Exception ex)
+                {
+                    // Clear this while holding the same gate RecordLaunch uses,
+                    // so a later launch cannot miss scheduling a replacement.
+                    _saveWorkerRunning = false;
+                    serializationError = ex;
+                }
             }
-            string? directory = Path.GetDirectoryName(_path);
-            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-            string tempPath = _path + ".tmp";
+
+            if (serializationError != null)
+            {
+                RuntimeLog.Error(
+                    "SPOTLIGHT-USAGE",
+                    serializationError,
+                    $"Failed to serialize {_path}");
+                return;
+            }
+
+            try
+            {
+                _persistSnapshot(json);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("SPOTLIGHT-USAGE", ex, $"Failed to write {_path}");
+            }
+
+            lock (_gate)
+            {
+                if (_changeVersion == version)
+                {
+                    _saveWorkerRunning = false;
+                    return;
+                }
+            }
+        }
+    }
+
+    private void PersistSnapshot(string json)
+    {
+        string? directory = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+        // A unique temporary name also avoids collisions if a second store
+        // instance briefly targets the same file (for example during reload).
+        string tempPath = $"{_path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
             File.WriteAllText(tempPath, json);
             File.Move(tempPath, _path, overwrite: true);
         }
-        catch (Exception ex)
+        finally
         {
-            RuntimeLog.Error("SPOTLIGHT-USAGE", ex, $"Failed to write {_path}");
+            try
+            {
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+            }
+            catch
+            {
+                // Best-effort cleanup; the write/move exception is the useful
+                // failure for the caller to log.
+            }
         }
     }
 

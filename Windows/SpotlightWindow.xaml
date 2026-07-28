@@ -12,6 +12,8 @@
         ShowInTaskbar="False"
         Topmost="True"
         WindowStartupLocation="Manual"
+        FontFamily="{StaticResource SFProDisplay}"
+        FontWeight="Bold"
         PreviewKeyDown="Window_PreviewKeyDown"
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">
@@ -119,8 +121,9 @@
                                 Background="Transparent">
                             <ContentPresenter ContentSource="Header"
                                               RecognizesAccessKey="True"
-                                              TextElement.FontFamily="{StaticResource SFProText}"
+                                              TextElement.FontFamily="{StaticResource SFProDisplay}"
                                               TextElement.FontSize="12"
+                                              TextElement.FontWeight="Bold"
                                               TextElement.Foreground="{StaticResource PrimaryTextBrush}"
                                               VerticalAlignment="Center"/>
                         </Border>
@@ -241,7 +244,7 @@
                     <TextBlock x:Name="AutocompleteText"
                                FontFamily="{StaticResource SFProDisplay}"
                                FontSize="20"
-                               FontWeight="Normal"
+                               FontWeight="Bold"
                                Margin="1,2,0,0"
                                VerticalAlignment="Center"
                                IsHitTestVisible="False"
@@ -251,7 +254,7 @@
                              TextChanged="SearchBox_TextChanged"
                              FontFamily="{StaticResource SFProDisplay}"
                              FontSize="20"
-                             FontWeight="Normal"
+                             FontWeight="Bold"
                              Foreground="{StaticResource PrimaryTextBrush}"
                              CaretBrush="{StaticResource AccentBrush}"
                              SelectionBrush="#4DFFFFFF"
@@ -264,7 +267,7 @@
                                Text="Search apps and files"
                                FontFamily="{StaticResource SFProDisplay}"
                                FontSize="20"
-                               FontWeight="Normal"
+                               FontWeight="Bold"
                                Foreground="#44FFFFFF"
                                IsHitTestVisible="False"
                                VerticalAlignment="Center"/>
@@ -275,9 +278,9 @@
                         Margin="0,0,14,0"
                         Style="{StaticResource KeyBadgeStyle}">
                     <TextBlock Text="ESC"
-                               FontFamily="{StaticResource SFProText}"
+                               FontFamily="{StaticResource SFProDisplay}"
                                FontSize="9"
-                               FontWeight="SemiBold"
+                               FontWeight="Bold"
                                Foreground="#72FFFFFF"/>
                 </Border>
 
@@ -285,6 +288,7 @@
                            Text="&#xE721;"
                            FontFamily="{StaticResource IconFont}"
                            FontSize="19"
+                           FontWeight="Normal"
                            Foreground="#7DFFFFFF"
                            VerticalAlignment="Center"/>
             </Grid>
@@ -375,6 +379,7 @@
                                                        Text="{Binding Glyph}"
                                                        FontFamily="{StaticResource IconFont}"
                                                        FontSize="20"
+                                                       FontWeight="Normal"
                                                        Foreground="#B4FFFFFF"
                                                        Visibility="Collapsed"
                                                        HorizontalAlignment="Center"
@@ -388,14 +393,15 @@
                                                        controls:HighlightedText.Query="{Binding DataContext.Query, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="15"
-                                                       FontWeight="SemiBold"
+                                                       FontWeight="Bold"
                                                        Foreground="{StaticResource TitleTextBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
                                             <TextBlock x:Name="SubtitleText"
                                                        Text="{Binding Subtitle}"
                                                        Margin="0,2,0,0"
-                                                       FontFamily="{StaticResource SFProText}"
+                                                       FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="11.5"
+                                                       FontWeight="Bold"
                                                        Foreground="{StaticResource TertiaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
@@ -405,9 +411,9 @@
                                                 Style="{StaticResource KeyBadgeStyle}">
                                             <TextBlock x:Name="HotkeyText"
                                                        Text="{Binding Path=(ItemsControl.AlternationIndex), RelativeSource={RelativeSource AncestorType=ListBoxItem}, Converter={StaticResource HotkeyConverter}}"
-                                                       FontFamily="{StaticResource SFProText}"
+                                                       FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="10"
-                                                       FontWeight="SemiBold"
+                                                       FontWeight="Bold"
                                                        Foreground="#86FFFFFF"/>
                                         </Border>
                                     </Grid>
@@ -437,19 +443,21 @@
                                            Margin="0,0,0,10"
                                            FontFamily="{StaticResource IconFont}"
                                            FontSize="24"
+                                           FontWeight="Normal"
                                            Foreground="#66FFFFFF"
                                            HorizontalAlignment="Center"/>
                                 <TextBlock x:Name="StatusTitle"
                                            FontFamily="{StaticResource SFProDisplay}"
                                            FontSize="14"
-                                           FontWeight="SemiBold"
+                                           FontWeight="Bold"
                                            Foreground="#D8FFFFFF"
                                            HorizontalAlignment="Center"/>
                                 <TextBlock x:Name="StatusHint"
                                            MaxWidth="520"
                                            Margin="0,4,0,0"
-                                           FontFamily="{StaticResource SFProText}"
+                                           FontFamily="{StaticResource SFProDisplay}"
                                            FontSize="11"
+                                           FontWeight="Bold"
                                            Foreground="{StaticResource SecondaryTextBrush}"
                                            TextAlignment="Center"
                                            TextWrapping="Wrap"
@@ -466,8 +474,9 @@
                             Padding="22,9"
                             Visibility="Collapsed">
                         <TextBlock x:Name="FailureText"
-                                   FontFamily="{StaticResource SFProText}"
+                                   FontFamily="{StaticResource SFProDisplay}"
                                    FontSize="11"
+                                   FontWeight="Bold"
                                    Foreground="#E8FFA894"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"

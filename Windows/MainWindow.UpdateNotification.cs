@@ -24,9 +24,22 @@ public partial class MainWindow
 
     private async Task CheckForUpdatesAsync()
     {
+        int generation = System.Threading.Interlocked.Increment(ref _updateCheckGeneration);
+
+        if (_isUpdateInstalling)
+            return;
+
         try
         {
             var updateInfo = await _updateService.CheckForUpdatesAsync();
+
+            // A later manual/timer check owns the UI state. Never let an older
+            // response overwrite it, or alter the notification during install.
+            if (generation != System.Threading.Volatile.Read(ref _updateCheckGeneration) ||
+                _isUpdateInstalling)
+            {
+                return;
+            }
 
             if (updateInfo != null && updateInfo.IsNewerVersion)
             {
@@ -55,12 +68,19 @@ public partial class MainWindow
             return;
         }
 
+        int visibilityGeneration = ++_updateVisibilityGeneration;
         bool wasVisible = UpdateNotificationButton.Visibility == Visibility.Visible;
+
+        // A visible button may actually be halfway through a stale fade-out.
+        // Remove that clock before restoring its visible base state.
+        UpdateNotificationButton.BeginAnimation(OpacityProperty, null);
+        UpdateNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         UpdateNotificationButton.Visibility = Visibility.Visible;
         UpdateNotificationButton.IsHitTestVisible = true;
         UpdateNotificationButton.Tag = Loc.Get("update.version", _availableUpdate?.Version?.ToString() ?? "-");
         UpdateNotificationButton.Cursor = Cursors.Hand;
         UpdateNotificationButton.Opacity = 1.0;
+        UpdateNotificationTranslate.Y = 0;
         SetUpdateInlineTooltipContent(
             Loc.Get("update.version", _availableUpdate?.Version?.ToString() ?? "-"),
             Loc.Get("update.clickToInstall"));
@@ -97,6 +117,14 @@ public partial class MainWindow
         {
             Dispatcher.BeginInvoke(new Action(() =>
             {
+                if (visibilityGeneration != _updateVisibilityGeneration ||
+                    !_isUpdateAvailable ||
+                    _isUpdateInstalling ||
+                    UpdateNotificationButton.Visibility != Visibility.Visible)
+                {
+                    return;
+                }
+
                 StartUpdatePulseAnimation();
             }), DispatcherPriority.Render);
         };
@@ -109,12 +137,17 @@ public partial class MainWindow
 
     private void HideUpdateNotification()
     {
+        int visibilityGeneration = ++_updateVisibilityGeneration;
         HideUpdateInlineTooltip();
+        StopUpdatePulseAnimation();
 
         if (UpdateNotificationButton.Visibility == Visibility.Collapsed)
+        {
+            UpdateNotificationButton.BeginAnimation(OpacityProperty, null);
+            UpdateNotificationButton.Opacity = 0;
             return;
+        }
 
-        StopUpdatePulseAnimation();
         UpdateNotificationButton.IsHitTestVisible = false;
         UpdateNotificationButton.Cursor = Cursors.Hand;
 
@@ -127,7 +160,12 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, e) =>
         {
+            if (visibilityGeneration != _updateVisibilityGeneration || _isUpdateAvailable)
+                return;
+
             UpdateNotificationButton.Visibility = Visibility.Collapsed;
+            UpdateNotificationButton.BeginAnimation(OpacityProperty, null);
+            UpdateNotificationButton.Opacity = 0;
         };
 
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOut, VNotch.Services.AnimationConfig.TargetFps);
@@ -136,7 +174,13 @@ public partial class MainWindow
 
     private void StartUpdatePulseAnimation()
     {
-        if (UpdateIconBrush == null) return;
+        if (UpdateIconBrush == null ||
+            !_isUpdateAvailable ||
+            _isUpdateInstalling ||
+            UpdateNotificationButton.Visibility != Visibility.Visible)
+        {
+            return;
+        }
 
         UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
         UpdateIconBrush.Color = Color.FromRgb(48, 209, 88);

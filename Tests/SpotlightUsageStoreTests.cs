@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using VNotch.Models;
 using VNotch.Services.Spotlight;
 using Xunit;
@@ -111,6 +112,83 @@ public sealed class SpotlightUsageStoreTests : IDisposable
 
         var reloaded = CreateStore();
         Assert.True(reloaded.GetBoost("app:one") > 0);
+    }
+
+    [Fact]
+    public async Task RecordLaunch_CoalescesOverlappingSavesAndPersistsNewestSnapshot()
+    {
+        using var firstWriteStarted = new ManualResetEventSlim();
+        using var releaseFirstWrite = new ManualResetEventSlim();
+        var persistedCounts = new List<int>();
+        int activeWriters = 0;
+        int maxActiveWriters = 0;
+
+        void PersistSnapshot(string json)
+        {
+            int active = Interlocked.Increment(ref activeWriters);
+            int observed;
+            do
+            {
+                observed = Volatile.Read(ref maxActiveWriters);
+            } while (active > observed &&
+                     Interlocked.CompareExchange(ref maxActiveWriters, active, observed) != observed);
+
+            try
+            {
+                int count = JsonDocument.Parse(json)
+                    .RootElement.GetProperty("app:one")
+                    .GetProperty("Count")
+                    .GetInt32();
+
+                lock (persistedCounts)
+                {
+                    persistedCounts.Add(count);
+                }
+
+                if (count == 1)
+                {
+                    firstWriteStarted.Set();
+                    if (!releaseFirstWrite.Wait(TimeSpan.FromSeconds(5)))
+                        throw new TimeoutException("Timed out waiting to release the first save.");
+                }
+
+                File.WriteAllText(_path, json);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref activeWriters);
+            }
+        }
+
+        var store = new SpotlightUsageStore(_path, () => _now, PersistSnapshot);
+        var item = Item("app:one", "shell:AppsFolder\\One!App");
+
+        try
+        {
+            store.RecordLaunch(item);
+            Assert.True(firstWriteStarted.Wait(TimeSpan.FromSeconds(5)));
+
+            // Mutate while the first snapshot is already in the persistence
+            // callback. The same writer must notice the newer version and
+            // persist it after the stale snapshot, without a concurrent writer.
+            store.RecordLaunch(item);
+            Task pendingSaves = store.WaitForPendingSavesAsync();
+
+            releaseFirstWrite.Set();
+            await pendingSaves.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseFirstWrite.Set();
+        }
+
+        Assert.Equal(1, maxActiveWriters);
+        Assert.Equal([1, 2], persistedCounts);
+
+        using JsonDocument persisted = JsonDocument.Parse(File.ReadAllText(_path));
+        Assert.Equal(
+            2,
+            persisted.RootElement.GetProperty("app:one").GetProperty("Count").GetInt32());
     }
 
     [Fact]

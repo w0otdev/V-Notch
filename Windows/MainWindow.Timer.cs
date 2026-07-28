@@ -986,6 +986,10 @@ public partial class MainWindow
     private void AnimateCountdownCompletionToClockView()
     {
         EnsureExpandedStateForTimerSurface();
+        // This animation can take ownership of Width/Height while the normal
+        // expand animation is still running. Its old completion is then
+        // removed, so finalize the logical expanded state here as well.
+        _isExpanded = true;
         _isTimerView = true;
         _isSecondaryView = false;
         _isAnimating = true;

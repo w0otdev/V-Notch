@@ -75,6 +75,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     #region Expanded Widget (Calendar / Clock / Word Clock)
 
     private static readonly string[] _expandedWidgetOrder = { "calendar", "clock", "wordclock", "weather", "sysmon" };
+    private int _expandedWidgetSwitchVersion;
 
     private bool IsClockWidgetMode =>
         string.Equals(_host.Settings.ExpandedWidget, "clock", StringComparison.OrdinalIgnoreCase);
@@ -224,24 +225,39 @@ public sealed class ClockWidgetPresenter : IDisposable
             content.RenderTransform = translate;
         }
 
+        int version = ++_expandedWidgetSwitchVersion;
         double exitX = direction > 0 ? -16 : 16;
         double enterX = direction > 0 ? 16 : -16;
+        double currentOpacity = Math.Clamp(content.Opacity, 0, 1);
+        double currentX = translate.X;
+
+        // Preserve the presentation values underneath the existing clocks before
+        // replacing them. This keeps a second swipe continuous with the first.
+        content.Opacity = currentOpacity;
+        translate.X = currentX;
+        content.BeginAnimation(UIElement.OpacityProperty, null);
+        translate.BeginAnimation(TranslateTransform.XProperty, null);
 
         var durOut = new Duration(TimeSpan.FromMilliseconds(130));
         var durIn = new Duration(TimeSpan.FromMilliseconds(300));
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var fadeOut = new DoubleAnimation(1, 0, durOut) { EasingFunction = _easeQuadIn };
-        var slideOut = new DoubleAnimation(0, exitX, durOut) { EasingFunction = _easeQuadIn };
+        var fadeOut = new DoubleAnimation(currentOpacity, 0, durOut) { EasingFunction = _easeQuadIn };
+        var slideOut = new DoubleAnimation(currentX, exitX, durOut) { EasingFunction = _easeQuadIn };
         Timeline.SetDesiredFrameRate(fadeOut, fps);
         Timeline.SetDesiredFrameRate(slideOut, fps);
 
         fadeOut.Completed += (_, _) =>
         {
+            if (version != _expandedWidgetSwitchVersion || _disposed) return;
+
             ApplyExpandedWidgetMode();
 
-            translate.BeginAnimation(TranslateTransform.XProperty, null);
+            // Seed the invisible entry state before clearing the outgoing clocks.
+            content.Opacity = 0;
             translate.X = enterX;
+            content.BeginAnimation(UIElement.OpacityProperty, null);
+            translate.BeginAnimation(TranslateTransform.XProperty, null);
 
             var fadeIn = new DoubleAnimation(0, 1, durIn) { EasingFunction = _easeExpOut6 };
             var slideIn = new DoubleAnimation(enterX, 0, durIn) { EasingFunction = _easeExpOut7 };
@@ -250,14 +266,21 @@ public sealed class ClockWidgetPresenter : IDisposable
 
             fadeIn.Completed += (_, _) =>
             {
-                content.BeginAnimation(UIElement.OpacityProperty, null);
+                if (version != _expandedWidgetSwitchVersion || _disposed) return;
+
+                // Commit the targets underneath HoldEnd before removing clocks.
                 content.Opacity = 1;
-                translate.BeginAnimation(TranslateTransform.XProperty, null);
                 translate.X = 0;
+                content.BeginAnimation(UIElement.OpacityProperty, null);
+                translate.BeginAnimation(TranslateTransform.XProperty, null);
             };
 
             content.BeginAnimation(UIElement.OpacityProperty, fadeIn);
             translate.BeginAnimation(TranslateTransform.XProperty, slideIn);
+            // Store the eventual targets as bases while the entry clocks still
+            // render their explicit From values.
+            content.Opacity = 1;
+            translate.X = 0;
         };
 
         content.BeginAnimation(UIElement.OpacityProperty, fadeOut);
@@ -531,6 +554,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        ++_expandedWidgetSwitchVersion;
         if (_refs.CalendarWidget.IsMouseCaptured) _refs.CalendarWidget.ReleaseMouseCapture();
     }
 }

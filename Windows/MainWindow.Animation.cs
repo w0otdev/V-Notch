@@ -206,7 +206,7 @@ public partial class MainWindow
 
         if (_isChargingNotificationVisible)
         {
-            _chargingNotificationDismissTimer?.Stop();
+            StopChargingNotificationDismissTimer();
             ChargingNotification.BeginAnimation(OpacityProperty, null);
             ChargingNotification.Opacity = 0;
             ChargingNotification.Visibility = Visibility.Collapsed;
@@ -946,7 +946,7 @@ public partial class MainWindow
 
             if (_isChargingNotificationVisible)
             {
-                _chargingNotificationDismissTimer?.Stop();
+                StopChargingNotificationDismissTimer();
                 ChargingNotification.BeginAnimation(OpacityProperty, null);
                 ChargingNotification.Opacity = 0;
                 ChargingNotification.Visibility = Visibility.Collapsed;

@@ -31,6 +31,7 @@ public partial class MainWindow
     private const double _audioViewMinHeight = 150;
     private const double _audioViewChrome = 66;
     private double _audioViewHeight = _audioViewMaxHeight;
+    private int _audioNotchHeightGeneration;
 
     private AudioMixerService? _audioMixerServiceCached;
     private AudioMixerService AudioMixer =>
@@ -494,9 +495,13 @@ public partial class MainWindow
 
     private void AnimateAudioNotchHeight(double target, Duration dur, IEasingFunction ease)
     {
+        int generation = ++_audioNotchHeightGeneration;
         if (!_isAudioView || _isAnimating || AudioScrollViewer == null) return;
 
         double current = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : target;
+        double currentScrollHeight = AudioScrollViewer.ActualHeight > 0
+            ? AudioScrollViewer.ActualHeight
+            : Math.Max(0.0, current - _audioViewChrome);
         if (Math.Abs(current - target) < 0.5)
         {
             NotchBorder.BeginAnimation(HeightProperty, null);
@@ -513,14 +518,19 @@ public partial class MainWindow
 
         NotchBorder.BeginAnimation(HeightProperty, null);
         AudioScrollViewer.BeginAnimation(HeightProperty, null);
+        NotchBorder.Height = current;
+        AudioScrollViewer.Height = currentScrollHeight;
 
         var notchAnim = MakeAnim(current, target, dur, ease);
-        var scrollAnim = MakeAnim(current - _audioViewChrome, target - _audioViewChrome, dur, ease);
+        var scrollAnim = MakeAnim(currentScrollHeight, Math.Max(0.0, target - _audioViewChrome), dur, ease);
         Timeline.SetDesiredFrameRate(notchAnim, fps);
         Timeline.SetDesiredFrameRate(scrollAnim, fps);
 
         notchAnim.Completed += (_, _) =>
         {
+            if (generation != _audioNotchHeightGeneration || !_isAudioView)
+                return;
+
             NotchBorder.BeginAnimation(HeightProperty, null);
             NotchBorder.Height = target;
             AudioScrollViewer.BeginAnimation(HeightProperty, null);

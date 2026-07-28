@@ -21,6 +21,7 @@ public partial class MainWindow
     private ImageSource? _lastAnimatedThumbnail;
     private DateTime _lastAnimationStartTime = DateTime.MinValue;
     private int _thumbnailSwitchGeneration = 0;
+    private int _compactThumbnailAnimationGeneration = 0;
     private bool _thumbnailShownForCurrentTrack = false;
     private bool _isThumbnailSwitchActive = false;
 
@@ -457,6 +458,7 @@ public partial class MainWindow
 
     private void CancelThumbnailSwitchAnimations(ImageSource? targetThumb = null)
     {
+        ++_thumbnailSwitchGeneration;
         _isThumbnailSwitchActive = false;
 
         ThumbnailImage.BeginAnimation(OpacityProperty, null);
@@ -515,6 +517,7 @@ public partial class MainWindow
 
     private void CancelThumbnailSwitchForExpand()
     {
+        ++_thumbnailSwitchGeneration;
         _isThumbnailSwitchActive = false;
 
         ThumbnailImage.BeginAnimation(OpacityProperty, null);
@@ -804,6 +807,8 @@ public partial class MainWindow
 
     private void PlayThumbnailRevealAnimation()
     {
+        int generation = ++_compactThumbnailAnimationGeneration;
+
         if (IsCountdownCompletionVisualActive)
         {
             SuppressCompactMediaChromeForCountdownCompletion();
@@ -831,6 +836,8 @@ public partial class MainWindow
 
         scaleAnimX.Completed += (s, e) =>
         {
+            if (generation != _compactThumbnailAnimationGeneration) return;
+
             CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             CompactThumbnailScale.ScaleX = 1.0;
@@ -839,6 +846,8 @@ public partial class MainWindow
 
         opacityAnim.Completed += (s, e) =>
         {
+            if (generation != _compactThumbnailAnimationGeneration) return;
+
             CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
             CompactThumbnailBorder.Opacity = 1.0;
         };
@@ -846,6 +855,7 @@ public partial class MainWindow
 
     private void PlayCompactThumbnailExitAnimation(Action? onCompleted = null)
     {
+        int generation = ++_compactThumbnailAnimationGeneration;
         var originalOrigin = CompactThumbnailBorder.RenderTransformOrigin;
         CompactThumbnailBorder.RenderTransformOrigin = new Point(0.5, 0.5);
 
@@ -874,6 +884,8 @@ public partial class MainWindow
         var vizFadeOut = MakeAnim(1.0, 0.0, new Duration(TimeSpan.FromMilliseconds(200)), _easeQuadIn);
         vizFadeOut.Completed += (s, e) =>
         {
+            if (generation != _compactThumbnailAnimationGeneration) return;
+
             MusicViz.Visibility = Visibility.Collapsed;
             MusicViz.IsPlaying = false;
         };
@@ -908,6 +920,8 @@ public partial class MainWindow
 
         scaleAnimX.Completed += (s, e) =>
         {
+            if (generation != _compactThumbnailAnimationGeneration) return;
+
             CompactThumbnailBorder.Visibility = Visibility.Collapsed;
             CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
@@ -926,6 +940,8 @@ public partial class MainWindow
 
     private void ResetCompactThumbnailRestingState()
     {
+        ++_compactThumbnailAnimationGeneration;
+
         if (IsCountdownCompletionVisualActive)
         {
             SuppressCompactMediaChromeForCountdownCompletion();

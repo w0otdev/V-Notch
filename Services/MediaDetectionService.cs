@@ -1125,6 +1125,33 @@ public class MediaDetectionService : IMediaDetectionService
     {
         try
         {
+            bool IsCurrentFetch() =>
+                !token.IsCancellationRequested &&
+                generationAtStart == Volatile.Read(ref _thumbnailFetchGeneration) &&
+                fetchGeneration == Volatile.Read(ref _youTubeFetchGeneration) &&
+                IsStillSamePublishedTrack(
+                    trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch);
+
+            async Task<bool> ApplyIfCurrentAsync(Action apply)
+            {
+                await _updateLock.WaitAsync(token).ConfigureAwait(false);
+                try
+                {
+                    if (!IsCurrentFetch())
+                        return false;
+
+                    apply();
+                    return true;
+                }
+                finally
+                {
+                    _updateLock.Release();
+                }
+            }
+
+            if (!IsCurrentFetch())
+                return;
+
             string? videoId = shouldForceThumbFetch ? null : info.YouTubeVideoId;
             string? preferredThumbnailUrl = null;
             int retryCount = 0;
@@ -1154,6 +1181,9 @@ public class MediaDetectionService : IMediaDetectionService
             {
                 string ytUrl = $"https://www.youtube.com/watch?v={videoId}";
                 var urlResult = await _metadataLookup.TryGetYouTubeVideoInfoFromUrlAsync(ytUrl, token);
+                if (!IsCurrentFetch())
+                    return;
+
                 if (urlResult != null)
                 {
                     bool videoMatchesTrack = urlResult.TitleMatches(trackDuringFetch) ||
@@ -1165,38 +1195,51 @@ public class MediaDetectionService : IMediaDetectionService
                     {
                         RuntimeLog.Debug("META-YOUTUBE-API", () =>
                             $"video-mismatch: api-title='{urlResult.Title}' smtc-track='{trackDuringFetch}' videoId={videoId} -> discarding stale videoId");
-                        CacheMismatchVideoId(videoId!);
-                        EvictVideoIdCacheEntry(trackDuringFetch, videoId!);
+                        if (!await ApplyIfCurrentAsync(() =>
+                            {
+                                CacheMismatchVideoId(videoId!);
+                                EvictVideoIdCacheEntry(trackDuringFetch, videoId!);
+                            }))
+                        {
+                            return;
+                        }
+
                         videoId = null;
                     }
                     else
                     {
-                        CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId!);
-                        CacheVideoIdForTrack(trackDuringFetch, videoId!);
-
-                        info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                        info.IsYouTubeRunning = true;
-                        SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
-                        _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                        _sourceCache.Save();
-
-                        if (!string.IsNullOrEmpty(urlResult.Author) && urlResult.Author != "YouTube")
+                        if (!await ApplyIfCurrentAsync(() =>
                         {
-                            info.CurrentArtist = urlResult.Author;
-                            _stableArtist = urlResult.Author;
-                            _lastSourceConfirmedTime = DateTime.Now;
-                        }
+                            CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId!);
+                            CacheVideoIdForTrack(trackDuringFetch, videoId!);
 
-                        if (urlResult.Duration.TotalSeconds > 0)
-                        {
-                            _timelineSimulator.RecoveredDuration = urlResult.Duration;
-                            info.Duration = urlResult.Duration;
-                        }
+                            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+                            info.IsYouTubeRunning = true;
+                            SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
+                            _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
+                            _sourceCache.Save();
 
-                        if (urlResult.Source == YouTubeLookupSource.DataApi &&
-                            !string.IsNullOrWhiteSpace(urlResult.ThumbnailUrl))
+                            if (!string.IsNullOrEmpty(urlResult.Author) && urlResult.Author != "YouTube")
+                            {
+                                info.CurrentArtist = urlResult.Author;
+                                _stableArtist = urlResult.Author;
+                                _lastSourceConfirmedTime = DateTime.Now;
+                            }
+
+                            if (urlResult.Duration.TotalSeconds > 0)
+                            {
+                                _timelineSimulator.RecoveredDuration = urlResult.Duration;
+                                info.Duration = urlResult.Duration;
+                            }
+
+                            if (urlResult.Source == YouTubeLookupSource.DataApi &&
+                                !string.IsNullOrWhiteSpace(urlResult.ThumbnailUrl))
+                            {
+                                preferredThumbnailUrl = urlResult.ThumbnailUrl;
+                            }
+                        }))
                         {
-                            preferredThumbnailUrl = urlResult.ThumbnailUrl;
+                            return;
                         }
                     }
                 }
@@ -1213,39 +1256,46 @@ public class MediaDetectionService : IMediaDetectionService
                 if (string.IsNullOrEmpty(videoId))
                 {
                     var result = await TryGetYouTubeVideoIdWithInfoAsync(trackDuringFetch, artistDuringFetch);
+                    if (!IsCurrentFetch())
+                        return;
+
                     if (result != null)
                     {
                         videoId = result.Id;
 
                         bool highConfidence = result.TitleMatches(trackDuringFetch) || info.Platform == MediaPlatform.YouTube;
-                        if (highConfidence)
+                        if (!await ApplyIfCurrentAsync(() =>
                         {
-                            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                            info.IsYouTubeRunning = true;
+                            if (highConfidence)
+                            {
+                                info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+                                info.IsYouTubeRunning = true;
+                                SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
+                                _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
+                                _sourceCache.Save();
+                            }
 
-                            SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
+                            if (!string.IsNullOrEmpty(result.Author) && result.Author != "YouTube")
+                            {
+                                info.CurrentArtist = result.Author;
+                                _stableArtist = result.Author;
+                                _lastSourceConfirmedTime = DateTime.Now;
+                            }
 
-                            _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                            _sourceCache.Save();
-                        }
+                            if (result.Duration.TotalSeconds > 0)
+                            {
+                                _timelineSimulator.RecoveredDuration = result.Duration;
+                                info.Duration = result.Duration;
+                            }
 
-                        if (!string.IsNullOrEmpty(result.Author) && result.Author != "YouTube")
+                            if (result.Source == YouTubeLookupSource.DataApi &&
+                                !string.IsNullOrWhiteSpace(result.ThumbnailUrl))
+                            {
+                                preferredThumbnailUrl = result.ThumbnailUrl;
+                            }
+                        }))
                         {
-                            info.CurrentArtist = result.Author;
-                            _stableArtist = result.Author;
-                            _lastSourceConfirmedTime = DateTime.Now;
-                        }
-
-                        if (result.Duration.TotalSeconds > 0)
-                        {
-                            _timelineSimulator.RecoveredDuration = result.Duration;
-                            info.Duration = result.Duration;
-                        }
-
-                        if (result.Source == YouTubeLookupSource.DataApi &&
-                            !string.IsNullOrWhiteSpace(result.ThumbnailUrl))
-                        {
-                            preferredThumbnailUrl = result.ThumbnailUrl;
+                            return;
                         }
                     }
                 }
@@ -1254,35 +1304,44 @@ public class MediaDetectionService : IMediaDetectionService
                 {
                     titleSearchAttempted = true;
                     var searchResult = await _metadataLookup.TrySearchYouTubeByTitleAsync(trackDuringFetch, artistDuringFetch, token);
+                    if (!IsCurrentFetch())
+                        return;
+
                     if (searchResult != null)
                     {
                         videoId = searchResult.Id;
 
-                        info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                        info.IsYouTubeRunning = true;
-                        SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
-                        _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                        _sourceCache.Save();
-
-                        CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId!);
-                        CacheVideoIdForTrack(trackDuringFetch, videoId!);
-
-                        if (!string.IsNullOrEmpty(searchResult.Author) && searchResult.Author != "YouTube")
+                        if (!await ApplyIfCurrentAsync(() =>
                         {
-                            info.CurrentArtist = searchResult.Author;
-                            _stableArtist = searchResult.Author;
-                            _lastSourceConfirmedTime = DateTime.Now;
-                        }
+                            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+                            info.IsYouTubeRunning = true;
+                            SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
+                            _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
+                            _sourceCache.Save();
 
-                        if (searchResult.Duration.TotalSeconds > 0)
-                        {
-                            _timelineSimulator.RecoveredDuration = searchResult.Duration;
-                            info.Duration = searchResult.Duration;
-                        }
+                            CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId!);
+                            CacheVideoIdForTrack(trackDuringFetch, videoId!);
 
-                        if (!string.IsNullOrWhiteSpace(searchResult.ThumbnailUrl))
+                            if (!string.IsNullOrEmpty(searchResult.Author) && searchResult.Author != "YouTube")
+                            {
+                                info.CurrentArtist = searchResult.Author;
+                                _stableArtist = searchResult.Author;
+                                _lastSourceConfirmedTime = DateTime.Now;
+                            }
+
+                            if (searchResult.Duration.TotalSeconds > 0)
+                            {
+                                _timelineSimulator.RecoveredDuration = searchResult.Duration;
+                                info.Duration = searchResult.Duration;
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(searchResult.ThumbnailUrl))
+                            {
+                                preferredThumbnailUrl = searchResult.ThumbnailUrl;
+                            }
+                        }))
                         {
-                            preferredThumbnailUrl = searchResult.ThumbnailUrl;
+                            return;
                         }
 
                         RuntimeLog.Debug("MEDIA-YOUTUBE-FETCH", () =>
@@ -1292,6 +1351,9 @@ public class MediaDetectionService : IMediaDetectionService
 
                 if (!string.IsNullOrEmpty(videoId) && !token.IsCancellationRequested)
                 {
+                    if (!IsCurrentFetch())
+                        return;
+
                     info.YouTubeVideoId = videoId;
 
                     if (!string.IsNullOrEmpty(_stableArtist) &&
@@ -1303,8 +1365,7 @@ public class MediaDetectionService : IMediaDetectionService
                         {
                             await dispatcher.InvokeAsync(() =>
                             {
-                                if (!token.IsCancellationRequested &&
-                                    IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
+                                if (IsCurrentFetch())
                                 {
                                     _lastTrackSignature = info.GetSignature();
                                     MediaChanged?.Invoke(this, info);
@@ -1322,6 +1383,9 @@ public class MediaDetectionService : IMediaDetectionService
                         {
                             thumbnailUrl = preferredThumbnailUrl!;
                             frameBitmap = await DownloadImageAsync(thumbnailUrl);
+                            if (!IsCurrentFetch())
+                                return;
+
                             if (frameBitmap != null && frameBitmap.PixelWidth < 200)
                                 frameBitmap = null;
                         }
@@ -1330,6 +1394,8 @@ public class MediaDetectionService : IMediaDetectionService
                         {
                             thumbnailUrl = $"https://i.ytimg.com/vi/{videoId}/maxresdefault.jpg";
                             frameBitmap = await DownloadImageAsync(thumbnailUrl);
+                            if (!IsCurrentFetch())
+                                return;
 
                             if (frameBitmap != null && frameBitmap.PixelWidth < 400)
                                 frameBitmap = null;
@@ -1339,6 +1405,9 @@ public class MediaDetectionService : IMediaDetectionService
                         {
                             thumbnailUrl = $"https://i.ytimg.com/vi/{videoId}/sddefault.jpg";
                             frameBitmap = await DownloadImageAsync(thumbnailUrl);
+                            if (!IsCurrentFetch())
+                                return;
+
                             if (frameBitmap != null && frameBitmap.PixelWidth < 400)
                                 frameBitmap = null;
                         }
@@ -1347,59 +1416,53 @@ public class MediaDetectionService : IMediaDetectionService
                         {
                             thumbnailUrl = $"https://i.ytimg.com/vi/{videoId}/hqdefault.jpg";
                             frameBitmap = await DownloadImageAsync(thumbnailUrl);
+                            if (!IsCurrentFetch())
+                                return;
                         }
 
                         if (frameBitmap == null)
                         {
                             thumbnailUrl = $"https://i.ytimg.com/vi/{videoId}/mqdefault.jpg";
                             frameBitmap = await DownloadImageAsync(thumbnailUrl);
+                            if (!IsCurrentFetch())
+                                return;
                         }
 
-                        if (frameBitmap != null && !token.IsCancellationRequested)
+                        if (frameBitmap != null && IsCurrentFetch())
                         {
-                            if (Volatile.Read(ref _thumbnailFetchGeneration) != generationAtStart)
-                                break;
+                            bool isYtFetchTopicChannel = !string.IsNullOrEmpty(info.CurrentArtist) &&
+                                                         info.CurrentArtist.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase);
+                            RuntimeLog.Debug("MEDIA-THUMB-CROP", () =>
+                                $"path=youtube-fetch track='{info.CurrentTrack}' artist='{info.CurrentArtist}' " +
+                                $"thumb={frameBitmap.PixelWidth}x{frameBitmap.PixelHeight} isTopicChannel={isYtFetchTopicChannel}");
+                            frameBitmap = CropToSquare(frameBitmap, "YouTube", forceCenterCrop: isYtFetchTopicChannel) ?? frameBitmap;
+                            _timelineSimulator.RecoveredThumbnail = frameBitmap;
+                            _cachedThumbnail = frameBitmap;
+                            _cachedThumbnailSource = MediaPlatform.YouTube.ToDisplayString();
+                            info.Thumbnail = frameBitmap;
 
-                            if (IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
+                            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                            if (dispatcher != null)
                             {
-                                bool isYtFetchTopicChannel = !string.IsNullOrEmpty(info.CurrentArtist) &&
-                                                             info.CurrentArtist.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase);
-                                RuntimeLog.Debug("MEDIA-THUMB-CROP", () =>
-                                    $"path=youtube-fetch track='{info.CurrentTrack}' artist='{info.CurrentArtist}' " +
-                                    $"thumb={frameBitmap.PixelWidth}x{frameBitmap.PixelHeight} isTopicChannel={isYtFetchTopicChannel}");
-                                frameBitmap = CropToSquare(frameBitmap, "YouTube", forceCenterCrop: isYtFetchTopicChannel) ?? frameBitmap;
-                                _timelineSimulator.RecoveredThumbnail = frameBitmap;
-                                _cachedThumbnail = frameBitmap;
-                                _cachedThumbnailSource = MediaPlatform.YouTube.ToDisplayString();
-                                info.Thumbnail = frameBitmap;
-
-                                var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                                if (dispatcher != null)
+                                await dispatcher.InvokeAsync(() =>
                                 {
-                                    await dispatcher.InvokeAsync(() =>
+                                    if (IsCurrentFetch())
                                     {
-                                        if (!token.IsCancellationRequested &&
-                                            Volatile.Read(ref _thumbnailFetchGeneration) == generationAtStart &&
-                                            IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
-                                        {
-                                            var thumbnailUpdate = info.Clone();
-                                            thumbnailUpdate.IsThumbnailOnlyUpdate = true;
-                                            _lastTrackSignature = thumbnailUpdate.GetSignature();
-                                            MediaChanged?.Invoke(this, thumbnailUpdate);
-                                        }
-                                    });
-                                }
-                                break;
+                                        var thumbnailUpdate = info.Clone();
+                                        thumbnailUpdate.IsThumbnailOnlyUpdate = true;
+                                        _lastTrackSignature = thumbnailUpdate.GetSignature();
+                                        MediaChanged?.Invoke(this, thumbnailUpdate);
+                                    }
+                                });
                             }
+                            break;
                         }
                     }
                     else break;
                 }
 
                 retryCount++;
-                if (retryCount < 3 &&
-                    !token.IsCancellationRequested &&
-                    IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
+                if (retryCount < 3 && IsCurrentFetch())
                 {
                     if (videoId == null)
                     {
@@ -1410,8 +1473,8 @@ public class MediaDetectionService : IMediaDetectionService
                         for (int poll = 0; poll < maxPolls && !token.IsCancellationRequested; poll++)
                         {
                             await Task.Delay(pollIntervalMs, token);
-                            if (!IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
-                                break;
+                            if (!IsCurrentFetch())
+                                return;
 
                             _windowTitleScanner.InvalidateUrlCaches();
 
@@ -1426,6 +1489,9 @@ public class MediaDetectionService : IMediaDetectionService
 
                             string pollUrl = $"https://www.youtube.com/watch?v={polledId}";
                             var pollResult = await _metadataLookup.TryGetYouTubeVideoInfoFromUrlAsync(pollUrl, token);
+                            if (!IsCurrentFetch())
+                                return;
+
                             if (pollResult == null)
                                 continue;
 
@@ -1472,12 +1538,13 @@ public class MediaDetectionService : IMediaDetectionService
                             videoId = null;
                             preferredThumbnailUrl = null;
 
-                            if (!token.IsCancellationRequested &&
-                                !titleSearchAttempted &&
-                                IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
+                            if (!titleSearchAttempted && IsCurrentFetch())
                             {
                                 titleSearchAttempted = true;
                                 var searchResult = await _metadataLookup.TrySearchYouTubeByTitleAsync(trackDuringFetch, artistDuringFetch, token);
+                                if (!IsCurrentFetch())
+                                    return;
+
                                 if (searchResult != null)
                                 {
                                     videoId = searchResult.Id;
@@ -1512,6 +1579,9 @@ public class MediaDetectionService : IMediaDetectionService
                     else
                     {
                         await Task.Delay(retryCount * 350, token);
+                        if (!IsCurrentFetch())
+                            return;
+
                         videoId = null;
                         preferredThumbnailUrl = null;
 

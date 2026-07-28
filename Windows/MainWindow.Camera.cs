@@ -28,6 +28,7 @@ public partial class MainWindow
     private readonly WebcamCaptureController _camera = new();
 
     private bool _cameraPreviewMorphPending = false;
+    private bool _isCameraSectionAnimating = false;
     private const int CameraSectionExpandDurationMs = 420;
     private const int CameraSectionCollapseDurationMs = 420;
 
@@ -112,9 +113,11 @@ public partial class MainWindow
     private void AnimateCameraSectionToShelf(bool expand)
     {
         if (!_isSecondaryView || _isAnimating) return;
+        if (_isCameraSectionAnimating) return;
         if (expand == _isCameraSectionExpanded) return;
 
         int token = ++_cameraSectionAnimToken;
+        _isCameraSectionAnimating = true;
         var duration = new Duration(TimeSpan.FromMilliseconds(expand ? CameraSectionExpandDurationMs : CameraSectionCollapseDurationMs));
         var easing = (IEasingFunction)_easeExpOut6;
 
@@ -206,6 +209,7 @@ public partial class MainWindow
             {
                 if (token != _cameraSectionAnimToken) return;
                 _isCameraSectionExpanded = true;
+                _isCameraSectionAnimating = false;
                 CameraSection.BeginAnimation(WidthProperty, null);
                 CameraSection.BeginAnimation(HeightProperty, null);
                 CameraSection.Width = targetWidth;
@@ -267,6 +271,7 @@ public partial class MainWindow
         var notchHeightCollapseAnim = MakeAnim(collapseNotchHeight, _expandedHeight, duration, easing, null);
         notchHeightCollapseAnim.Completed += (s, e) =>
         {
+            if (token != _cameraSectionAnimToken) return;
             NotchBorder.BeginAnimation(HeightProperty, null);
             NotchBorder.Height = _expandedHeight;
             double windowHeightDip = _expandedHeight + 80;
@@ -313,7 +318,9 @@ public partial class MainWindow
 
     private void ResetCameraSectionLayoutInstant()
     {
+        bool wasCameraSectionAnimating = _isCameraSectionAnimating;
         _cameraSectionAnimToken++;
+        _isCameraSectionAnimating = false;
         _isCameraSectionExpanded = false;
 
         CameraSection.BeginAnimation(WidthProperty, null);
@@ -335,7 +342,7 @@ public partial class MainWindow
         CameraSectionScale.ScaleY = 1.0;
 
         double currentNotchH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : NotchBorder.Height;
-        if (currentNotchH > _expandedHeight + 1)
+        if (wasCameraSectionAnimating || currentNotchH > _expandedHeight + 1)
         {
             NotchBorder.BeginAnimation(HeightProperty, null);
             NotchBorder.Height = _expandedHeight;
@@ -371,7 +378,7 @@ public partial class MainWindow
     {
         e.Handled = true;
 
-        if (_isAnimating || !_isSecondaryView) return;
+        if (_isAnimating || !_isSecondaryView || _isCameraSectionAnimating) return;
         if (_camera.IsStarting || _camera.IsStopping) return;
 
         if (!_isCameraActive)
@@ -462,7 +469,7 @@ public partial class MainWindow
         }
     }
 
-    private void OnCameraFrameAvailable(byte[] buffer, int w, int h)
+    private void OnCameraFrameAvailable(byte[] buffer, int w, int h, int frameToken)
     {
         if (_cameraFrameDispatchPending)
         {
@@ -477,7 +484,7 @@ public partial class MainWindow
             {
                 try
                 {
-                    if (!_isCameraActive) return;
+                    if (!_isCameraActive || frameToken != _camera.FadeToken) return;
 
                     var wbmp = _cameraWriteableBitmap;
                     if (wbmp == null || wbmp.PixelWidth != w || wbmp.PixelHeight != h)
@@ -525,16 +532,26 @@ public partial class MainWindow
             _cameraWriteableBitmap = null;
             _cameraFrameDispatchPending = false;
 
+            double overlayFrom = Math.Clamp(CameraOverlay.Opacity, 0.0, 1.0);
+            double previewFrom = Math.Clamp(CameraPreviewImage.Opacity, 0.0, 1.0);
+            double previewScaleXFrom = CameraPreviewScale.ScaleX;
+            double previewScaleYFrom = CameraPreviewScale.ScaleY;
+            double previewBlurFrom = CameraPreviewBlur.Radius;
+
             CameraOverlay.BeginAnimation(OpacityProperty, null);
             CameraOverlay.Visibility = Visibility.Visible;
-            CameraOverlay.Opacity = 0.0;
+            CameraOverlay.Opacity = overlayFrom;
             CameraErrorOverlay.Visibility = Visibility.Collapsed;
 
             CameraPreviewImage.BeginAnimation(OpacityProperty, null);
             CameraPreviewScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             CameraPreviewScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             CameraPreviewBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            double previewFrom = CameraPreviewImage.Opacity > 0 ? CameraPreviewImage.Opacity : 0.8;
+            CameraPreviewImage.Opacity = previewFrom;
+            CameraPreviewScale.ScaleX = previewScaleXFrom;
+            CameraPreviewScale.ScaleY = previewScaleYFrom;
+            CameraPreviewBlur.Radius = previewBlurFrom;
+
             var previewFadeOut = new DoubleAnimationUsingKeyFrames
             {
                 Duration = new Duration(TimeSpan.FromMilliseconds(CameraSectionCollapseDurationMs))
@@ -548,8 +565,8 @@ public partial class MainWindow
             {
                 Duration = new Duration(TimeSpan.FromMilliseconds(CameraSectionCollapseDurationMs))
             };
-            overlayFadeIn.KeyFrames.Add(new EasingDoubleKeyFrame(0.0, KeyTime.FromPercent(0.0)));
-            overlayFadeIn.KeyFrames.Add(new EasingDoubleKeyFrame(0.0, KeyTime.FromPercent(0.66), _easeSineInOut));
+            overlayFadeIn.KeyFrames.Add(new EasingDoubleKeyFrame(overlayFrom, KeyTime.FromPercent(0.0)));
+            overlayFadeIn.KeyFrames.Add(new EasingDoubleKeyFrame(overlayFrom, KeyTime.FromPercent(0.66), _easeSineInOut));
             overlayFadeIn.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromPercent(1.0), _easeExpOut6));
             Timeline.SetDesiredFrameRate(overlayFadeIn, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -557,8 +574,8 @@ public partial class MainWindow
             {
                 Duration = new Duration(TimeSpan.FromMilliseconds(CameraSectionCollapseDurationMs))
             };
-            previewScaleOutX.KeyFrames.Add(new EasingDoubleKeyFrame(CameraPreviewScale.ScaleX, KeyTime.FromPercent(0.0)));
-            previewScaleOutX.KeyFrames.Add(new EasingDoubleKeyFrame(CameraPreviewScale.ScaleX, KeyTime.FromPercent(0.72), _easeSineInOut));
+            previewScaleOutX.KeyFrames.Add(new EasingDoubleKeyFrame(previewScaleXFrom, KeyTime.FromPercent(0.0)));
+            previewScaleOutX.KeyFrames.Add(new EasingDoubleKeyFrame(previewScaleXFrom, KeyTime.FromPercent(0.72), _easeSineInOut));
             previewScaleOutX.KeyFrames.Add(new EasingDoubleKeyFrame(1.04, KeyTime.FromPercent(1.0), _easeExpOut6));
             Timeline.SetDesiredFrameRate(previewScaleOutX, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -566,8 +583,8 @@ public partial class MainWindow
             {
                 Duration = new Duration(TimeSpan.FromMilliseconds(CameraSectionCollapseDurationMs))
             };
-            previewScaleOutY.KeyFrames.Add(new EasingDoubleKeyFrame(CameraPreviewScale.ScaleY, KeyTime.FromPercent(0.0)));
-            previewScaleOutY.KeyFrames.Add(new EasingDoubleKeyFrame(CameraPreviewScale.ScaleY, KeyTime.FromPercent(0.72), _easeSineInOut));
+            previewScaleOutY.KeyFrames.Add(new EasingDoubleKeyFrame(previewScaleYFrom, KeyTime.FromPercent(0.0)));
+            previewScaleOutY.KeyFrames.Add(new EasingDoubleKeyFrame(previewScaleYFrom, KeyTime.FromPercent(0.72), _easeSineInOut));
             previewScaleOutY.KeyFrames.Add(new EasingDoubleKeyFrame(1.04, KeyTime.FromPercent(1.0), _easeExpOut6));
             Timeline.SetDesiredFrameRate(previewScaleOutY, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -575,8 +592,8 @@ public partial class MainWindow
             {
                 Duration = new Duration(TimeSpan.FromMilliseconds(CameraSectionCollapseDurationMs))
             };
-            previewBlurOut.KeyFrames.Add(new EasingDoubleKeyFrame(CameraPreviewBlur.Radius, KeyTime.FromPercent(0.0)));
-            previewBlurOut.KeyFrames.Add(new EasingDoubleKeyFrame(CameraPreviewBlur.Radius, KeyTime.FromPercent(0.70), _easeSineInOut));
+            previewBlurOut.KeyFrames.Add(new EasingDoubleKeyFrame(previewBlurFrom, KeyTime.FromPercent(0.0)));
+            previewBlurOut.KeyFrames.Add(new EasingDoubleKeyFrame(previewBlurFrom, KeyTime.FromPercent(0.70), _easeSineInOut));
             previewBlurOut.KeyFrames.Add(new EasingDoubleKeyFrame(_settings.EnableBlurEffects ? 16.0 : 0.0, KeyTime.FromPercent(1.0), _easeExpOut6));
             Timeline.SetDesiredFrameRate(previewBlurOut, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -621,7 +638,7 @@ public partial class MainWindow
         }
         finally
         {
-            _camera.EndGracefulStop();
+            _camera.EndGracefulStop(fadeToken);
         }
     }
 

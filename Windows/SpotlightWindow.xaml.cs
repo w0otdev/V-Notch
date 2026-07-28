@@ -40,8 +40,11 @@ public partial class SpotlightWindow : Window
     private string? _lastDismissedQuery;
     private DateTime _lastDismissedAtUtc;
     private DispatcherTimer? _searchingGraceTimer;
+    private int _searchingGraceGeneration;
     private bool _searchingPanelArmed;
     private DispatcherTimer? _failureTimer;
+    private int _failureGeneration;
+    private int _launchGeneration;
     private bool _resultsDimmed;
     private bool _escBadgeVisible = true;
     private System.Windows.Controls.Border? _selectionGlide;
@@ -55,6 +58,7 @@ public partial class SpotlightWindow : Window
     private bool _entranceActive;
     private bool _pendingContentReveal;
     private SolidColorBrush? _shellBorderBrush;
+    internal ISpotlightMorphHost? MorphHostOverride { get; set; }
 
     internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher)
     {
@@ -119,6 +123,7 @@ public partial class SpotlightWindow : Window
         if (_isClosing) return;
 
         int generation = ++_animationGeneration;
+        InvalidateLaunchAttempt();
         ResetMorphVisuals();
         _viewModel.Reset();
         _pendingLaunchQuery = null;
@@ -261,6 +266,7 @@ public partial class SpotlightWindow : Window
         _lastDismissedQuery = SearchBox.Text;
         _lastDismissedAtUtc = DateTime.UtcNow;
         _isClosing = true;
+        InvalidateLaunchAttempt();
         _viewModel.CancelPendingSearch();
         SearchBox.IsEnabled = false;
         PlayExit(++_animationGeneration);
@@ -288,6 +294,7 @@ public partial class SpotlightWindow : Window
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        CancelSearchingGrace();
         PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -458,12 +465,15 @@ public partial class SpotlightWindow : Window
             return;
         }
 
+        int launchGeneration = ++_launchGeneration;
+        int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
         try
         {
             // ShellExecute can block for hundreds of ms on cold starts; keep
             // the dispatcher free so the exit morph starts instantly.
             bool launched = await Task.Run(() => _launcher.TryLaunch(selected));
+            if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
             {
                 _viewModel.RecordLaunch(selected);
@@ -476,7 +486,7 @@ public partial class SpotlightWindow : Window
         }
         finally
         {
-            _launchInFlight = false;
+            if (launchGeneration == _launchGeneration) _launchInFlight = false;
         }
     }
 
@@ -491,10 +501,14 @@ public partial class SpotlightWindow : Window
             return;
         }
 
+        int launchGeneration = ++_launchGeneration;
+        int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
         try
         {
-            if (await Task.Run(() => _launcher.TryLaunchElevated(selected)))
+            bool launched = await Task.Run(() => _launcher.TryLaunchElevated(selected));
+            if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
+            if (launched)
             {
                 _viewModel.RecordLaunch(selected);
                 HideSpotlight();
@@ -506,7 +520,7 @@ public partial class SpotlightWindow : Window
         }
         finally
         {
-            _launchInFlight = false;
+            if (launchGeneration == _launchGeneration) _launchInFlight = false;
         }
     }
 
@@ -515,16 +529,32 @@ public partial class SpotlightWindow : Window
         SpotlightSearchItem? selected = _viewModel.SelectedResult;
         if (selected == null || _launchInFlight || !SpotlightLauncher.CanReveal(selected)) return;
 
+        int launchGeneration = ++_launchGeneration;
+        int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
         try
         {
-            if (await Task.Run(() => _launcher.TryRevealInExplorer(selected))) HideSpotlight();
+            bool revealed = await Task.Run(() => _launcher.TryRevealInExplorer(selected));
+            if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
+            if (revealed) HideSpotlight();
             else ShowLaunchFailure(selected);
         }
         finally
         {
-            _launchInFlight = false;
+            if (launchGeneration == _launchGeneration) _launchInFlight = false;
         }
+    }
+
+    private bool CanCompleteLaunch(int launchGeneration, int sessionGeneration) =>
+        launchGeneration == _launchGeneration
+        && sessionGeneration == _animationGeneration
+        && IsVisible
+        && !_isClosing;
+
+    private void InvalidateLaunchAttempt()
+    {
+        ++_launchGeneration;
+        _launchInFlight = false;
     }
 
     private void CopySelected()
@@ -551,27 +581,31 @@ public partial class SpotlightWindow : Window
 
     private void ShowLaunchFailure(SpotlightSearchItem item)
     {
+        ClearLaunchFailure();
         // The target is stale (moved or uninstalled); keep Enter useful by
         // dropping the dead row and telling the user what happened.
         _viewModel.RemoveResult(item);
         FailureText.Text = Loc.Get("spotlight.launchFailed", item.Title);
         FailureBar.Visibility = Visibility.Visible;
         PlayShake();
-        _failureTimer ??= CreateFailureTimer();
-        _failureTimer.Stop();
-        _failureTimer.Start();
-    }
-
-    private DispatcherTimer CreateFailureTimer()
-    {
+        int generation = ++_failureGeneration;
         var timer = new DispatcherTimer { Interval = FailureDisplayTime };
-        timer.Tick += (_, _) => ClearLaunchFailure();
-        return timer;
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (generation != _failureGeneration || !ReferenceEquals(timer, _failureTimer)) return;
+            _failureTimer = null;
+            FailureBar.Visibility = Visibility.Collapsed;
+        };
+        _failureTimer = timer;
+        timer.Start();
     }
 
     private void ClearLaunchFailure()
     {
+        ++_failureGeneration;
         _failureTimer?.Stop();
+        _failureTimer = null;
         if (FailureBar.Visibility != Visibility.Visible) return;
         FailureBar.Visibility = Visibility.Collapsed;
     }
@@ -943,26 +977,46 @@ public partial class SpotlightWindow : Window
     {
         if (!searchingEligible)
         {
-            _searchingGraceTimer?.Stop();
-            _searchingPanelArmed = false;
+            CancelSearchingGrace();
             return;
         }
 
         if (_searchingPanelArmed || _searchingGraceTimer?.IsEnabled == true) return;
-        _searchingGraceTimer ??= CreateSearchingGraceTimer();
-        _searchingGraceTimer.Start();
-    }
-
-    private DispatcherTimer CreateSearchingGraceTimer()
-    {
+        int generation = ++_searchingGraceGeneration;
+        int sessionGeneration = _animationGeneration;
+        string query = SearchBox.Text;
         var timer = new DispatcherTimer { Interval = SearchingPanelGrace };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
+            if (generation != _searchingGraceGeneration
+                || !ReferenceEquals(timer, _searchingGraceTimer))
+            {
+                return;
+            }
+            _searchingGraceTimer = null;
+            if (sessionGeneration != _animationGeneration
+                || !IsVisible
+                || _isClosing
+                || SearchBox.Text != query
+                || !_viewModel.IsSearching
+                || _viewModel.Results.Count != 0)
+            {
+                return;
+            }
             _searchingPanelArmed = true;
             RefreshStatus();
         };
-        return timer;
+        _searchingGraceTimer = timer;
+        timer.Start();
+    }
+
+    private void CancelSearchingGrace()
+    {
+        ++_searchingGraceGeneration;
+        _searchingGraceTimer?.Stop();
+        _searchingGraceTimer = null;
+        _searchingPanelArmed = false;
     }
 
     private void SetEscBadgeVisible(bool visible)
@@ -1051,6 +1105,7 @@ public partial class SpotlightWindow : Window
             Left = finalLeft;
             Top = finalTop;
             Shell.Opacity = 1;
+            Shell.Visibility = Visibility.Visible;
             ShellScale.ScaleX = ShellScale.ScaleY = 1;
             ShellCornerRadius = ExpandedCornerRadius;
             ShellTopCornerRadius = ExpandedCornerRadius;
@@ -1106,16 +1161,19 @@ public partial class SpotlightWindow : Window
             RestoreShadow(animate: true);
         }
 
-        // Set final base values first so clearing completed animations cannot snap back.
-        Left = finalLeft;
-        Top = finalTop;
+        // Seed bases from the first rendered frame. WPF does not apply a new
+        // animation clock until its first tick, so target-valued bases can be
+        // exposed for one frame when Alt+Space is pressed repeatedly.
+        Left = startLeft;
+        Top = startTop;
         Shell.Opacity = 1;
+        Shell.Visibility = Visibility.Visible;
         ShellScale.ScaleX = 1;
         ShellScale.ScaleY = 1;
-        Shell.Width = finalShellWidth;
-        Shell.Height = finalShellHeight;
-        ShellCornerRadius = ExpandedCornerRadius;
-        ShellTopCornerRadius = ExpandedCornerRadius;
+        Shell.Width = startShellWidth;
+        Shell.Height = startShellHeight;
+        ShellCornerRadius = startBottomRadius;
+        ShellTopCornerRadius = startTopRadius;
         ShellContent.Opacity = 0;
         ContentTranslate.Y = 8;
         var contentBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 10 };
@@ -1199,20 +1257,21 @@ public partial class SpotlightWindow : Window
             SpotlightShadowOpacity,
             MorphDuration);
 
-        // Final base values keep the completed frame stable after its clocks
-        // are cleared. The From values below preserve the exact interrupted
-        // exit frame, so repeated toggles simply reverse direction.
-        Left = target.Left;
-        Top = target.Top;
-        Shell.Opacity = 1;
+        // Keep the exact interrupted presentation as the base until the first
+        // tick of the replacement clock.
+        Left = current.Left;
+        Top = current.Top;
+        Shell.Opacity = current.ShellOpacity;
+        Shell.Visibility = Visibility.Visible;
         ShellScale.ScaleX = ShellScale.ScaleY = 1;
-        Shell.Width = finalSize.Width;
-        Shell.Height = finalSize.Height;
-        ShellCornerRadius = ExpandedCornerRadius;
-        ShellTopCornerRadius = ExpandedCornerRadius;
-        ShellContent.Opacity = 1;
-        ContentTranslate.Y = 0;
-        ShellContent.Effect = null;
+        Shell.Width = current.Width;
+        Shell.Height = current.Height;
+        ShellCornerRadius = current.CornerRadius;
+        ShellTopCornerRadius = current.TopCornerRadius;
+        ShellContent.Opacity = current.ContentOpacity;
+        ContentTranslate.Y = current.ContentTranslateY;
+        var contentBlur = EnsureContentBlurEffect();
+        contentBlur.Radius = current.ContentBlurRadius;
 
         var morphEase = CreateMorphEase();
         var contentEase = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
@@ -1228,9 +1287,13 @@ public partial class SpotlightWindow : Window
             MorphDuration, morphEase, synchronizedMorph: true);
         var cornerTop = CreateAnimation(current.TopCornerRadius, ExpandedCornerRadius,
             MorphDuration, morphEase, synchronizedMorph: true);
+        var shellReveal = CreateAnimation(current.ShellOpacity, 1,
+            MorphDuration, morphEase, synchronizedMorph: true);
         var contentFade = CreateAnimation(current.ContentOpacity, 1,
             TimeSpan.FromMilliseconds(240), contentEase);
         var contentSlide = CreateAnimation(current.ContentTranslateY, 0,
+            TimeSpan.FromMilliseconds(280), contentEase);
+        var blurClear = CreateAnimation(current.ContentBlurRadius, 0,
             TimeSpan.FromMilliseconds(280), contentEase);
 
         expandWidth.Completed += (_, _) =>
@@ -1245,9 +1308,11 @@ public partial class SpotlightWindow : Window
         BeginAnimation(TopProperty, moveTop);
         BeginAnimation(ShellCornerRadiusProperty, corner);
         BeginAnimation(ShellTopCornerRadiusProperty, cornerTop);
+        Shell.BeginAnimation(OpacityProperty, shellReveal);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-        AnimateShellBorder(_shellBorderBrush?.Opacity ?? 1, 1, MorphDuration);
+        contentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurClear);
+        AnimateShellBorder(current.BorderOpacity, 1, MorphDuration);
         SetNotchMorphActive(true);
 
         string query = SearchBox.Text;
@@ -1286,7 +1351,9 @@ public partial class SpotlightWindow : Window
 
         if (!TryGetNotchRect(out var notch))
         {
-            var fade = CreateAnimation(Shell.Opacity, 0, TimeSpan.FromMilliseconds(120),
+            double fromOpacity = Math.Clamp(Shell.Opacity, 0, 1);
+            Shell.Opacity = fromOpacity;
+            var fade = CreateAnimation(fromOpacity, 0, TimeSpan.FromMilliseconds(120),
                 new QuadraticEase { EasingMode = EasingMode.EaseIn });
             fade.Completed += (_, _) =>
             {
@@ -1318,19 +1385,21 @@ public partial class SpotlightWindow : Window
         double targetLeft = notch.Left + notch.Width / 2.0 - ActualWidth / 2.0;
         double targetTop = notch.Top;
 
-        // Final base values keep the last frame stable until the window is hidden.
-        Left = targetLeft;
-        Top = targetTop;
+        // Preserve the live presentation as the replacement clock's base. The
+        // return handoff commits the notch-sized target before clearing clocks.
+        Left = current.Left;
+        Top = current.Top;
         ShellScale.ScaleX = 1;
         ShellScale.ScaleY = 1;
-        Shell.Width = targetWidth;
-        Shell.Height = targetHeight;
-        ShellCornerRadius = targetBottomRadius;
-        ShellTopCornerRadius = targetTopRadius;
-        ShellContent.Opacity = 0;
-        ContentTranslate.Y = 9;
-        var contentBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 0 };
-        ShellContent.Effect = contentBlur;
+        Shell.Opacity = current.ShellOpacity;
+        Shell.Width = current.Width;
+        Shell.Height = current.Height;
+        ShellCornerRadius = current.CornerRadius;
+        ShellTopCornerRadius = current.TopCornerRadius;
+        ShellContent.Opacity = current.ContentOpacity;
+        ContentTranslate.Y = current.ContentTranslateY;
+        var contentBlur = EnsureContentBlurEffect();
+        contentBlur.Radius = current.ContentBlurRadius;
 
         var shrinkWidth = CreateAnimation(current.Width, targetWidth,
             MorphDuration, morphEase, synchronizedMorph: true);
@@ -1340,11 +1409,14 @@ public partial class SpotlightWindow : Window
         var moveTop = CreateAnimation(current.Top, targetTop, MorphDuration, morphEase, synchronizedMorph: true);
         var corner = CreateAnimation(current.CornerRadius, targetBottomRadius, MorphDuration, morphEase, synchronizedMorph: true);
         var cornerTop = CreateAnimation(current.TopCornerRadius, targetTopRadius, MorphDuration, morphEase, synchronizedMorph: true);
+        var shellNormalize = CreateAnimation(current.ShellOpacity, 1,
+            MorphDuration, morphEase, synchronizedMorph: true);
         var contentFade = CreateAnimation(current.ContentOpacity, 0,
             TimeSpan.FromMilliseconds(170), contentEase);
         var contentSlide = CreateAnimation(current.ContentTranslateY, 9,
             TimeSpan.FromMilliseconds(210), contentEase);
-        var blurIn = CreateAnimation(0, 12, TimeSpan.FromMilliseconds(210), contentEase);
+        var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
+            TimeSpan.FromMilliseconds(210), contentEase);
 
         shrinkWidth.Completed += (_, _) =>
         {
@@ -1357,32 +1429,36 @@ public partial class SpotlightWindow : Window
         BeginAnimation(TopProperty, moveTop);
         BeginAnimation(ShellCornerRadiusProperty, corner);
         BeginAnimation(ShellTopCornerRadiusProperty, cornerTop);
+        Shell.BeginAnimation(OpacityProperty, shellNormalize);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
         contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
         // Shed the panel outline early so the shell arrives looking like the
         // borderless notch.
-        AnimateShellBorder(1, 0, TimeSpan.FromMilliseconds(200));
+        AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
     }
 
     private void BeginReturnHandoff(int generation)
     {
         if (generation != _animationGeneration || !IsVisible) return;
         var handoffDuration = TimeSpan.FromMilliseconds(180);
+        MorphSnapshot current = FreezeCurrentMorphState();
+        double fromOpacity = current.ShellOpacity;
 
         // Keep the morph shell on the exact notch frame while the real notch takes
         // ownership underneath it. Both layers cross-fade on the same clock so
         // the fake shell never visibly snaps to the real dynamic island.
-        ClearMorphAnimations();
+        // Preserve the handoff's first frame until the new clock ticks. Hide()
+        // retires the shell before this clock is ever cleared at completion.
+        Shell.Opacity = fromOpacity;
         // ClearMorphAnimations restored the border's base opacity; the shell
         // must stay borderless while it fades out over the real notch.
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 0;
-        if (Owner is MainWindow mainWindow)
-            mainWindow.BeginSpotlightReturnHandoff(handoffDuration);
+        GetMorphHost()?.BeginSpotlightReturnHandoff(handoffDuration);
 
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
-        var handoffFade = CreateAnimation(1, 0, handoffDuration,
+        var handoffFade = CreateAnimation(fromOpacity, 0, handoffDuration,
             new CubicEase { EasingMode = EasingMode.EaseInOut }, synchronizedMorph: true);
         handoffFade.Completed += (_, _) =>
         {
@@ -1398,11 +1474,13 @@ public partial class SpotlightWindow : Window
         Left = finalLeft;
         Top = finalTop;
         Shell.Opacity = 1;
+        Shell.Visibility = Visibility.Visible;
         ShellScale.ScaleX = ShellScale.ScaleY = 1;
         Shell.Width = double.NaN;
         Shell.Height = double.NaN;
         ShellCornerRadius = ExpandedCornerRadius;
         ShellTopCornerRadius = ExpandedCornerRadius;
+        if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 1;
         ShellContent.Opacity = 1;
         ContentTranslate.Y = 0;
         Shell.CacheMode = null;
@@ -1428,9 +1506,14 @@ public partial class SpotlightWindow : Window
 
     private void CompleteHide()
     {
+        // Retire every rendered layer before removing animation clocks. A
+        // completed WPF animation otherwise reveals its old base value for the
+        // compositor frame in which the HWND is hidden.
+        Shell.Visibility = Visibility.Hidden;
+        NotchMorphSnapshot.Visibility = Visibility.Hidden;
+        Hide();
         ClearMorphAnimations();
         SetNotchMorphActive(false);
-        Hide();
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
         SetResultsDimmed(false, animate: false);
@@ -1458,6 +1541,7 @@ public partial class SpotlightWindow : Window
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.Opacity = 0;
+        Shell.Visibility = Visibility.Hidden;
         ShellScale.ScaleX = ShellScale.ScaleY = 1;
         ShellShake.X = 0;
         Shell.Width = double.NaN;
@@ -1472,9 +1556,10 @@ public partial class SpotlightWindow : Window
     private bool PrepareNotchMorphSnapshot(double width, double height)
     {
         ResetNotchMorphSnapshot();
-        if (Owner is not MainWindow mainWindow) return false;
+        ISpotlightMorphHost? morphHost = GetMorphHost();
+        if (morphHost == null) return false;
 
-        ImageSource? source = mainWindow.CaptureSpotlightMorphVisual();
+        ImageSource? source = morphHost.CaptureSpotlightMorphVisual();
         if (source == null) return false;
 
         NotchMorphSnapshot.Source = source;
@@ -1484,11 +1569,13 @@ public partial class SpotlightWindow : Window
         // Relying on a From=1 animation over a zero base can expose a blank
         // frame when query/results cleanup delays the animation clock.
         NotchMorphSnapshot.Opacity = 1;
+        NotchMorphSnapshot.Visibility = Visibility.Visible;
         return true;
     }
 
     private void ResetNotchMorphSnapshot()
     {
+        NotchMorphSnapshot.Visibility = Visibility.Hidden;
         NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
         NotchMorphSnapshot.Opacity = 0;
         NotchMorphSnapshot.Source = null;
@@ -1499,10 +1586,20 @@ public partial class SpotlightWindow : Window
     private MorphSnapshot FreezeCurrentMorphState()
     {
         var shadow = Shell.Effect as DropShadowEffect;
+        double presentedWidth = Shell.Width;
+        if (!double.IsFinite(presentedWidth) || presentedWidth <= 0)
+            presentedWidth = Math.Max(1, Shell.ActualWidth);
+        double presentedHeight = Shell.Height;
+        if (!double.IsFinite(presentedHeight) || presentedHeight <= 0)
+            presentedHeight = Math.Max(1, Shell.ActualHeight);
+
         var snapshot = new MorphSnapshot(
-            Left, Top, Math.Max(1, Shell.ActualWidth), Math.Max(1, Shell.ActualHeight),
+            Left, Top, presentedWidth, presentedHeight,
+            Math.Clamp(Shell.Opacity, 0, 1),
+            Math.Clamp(_shellBorderBrush?.Opacity ?? 1, 0, 1),
             ShellCornerRadius, ShellTopCornerRadius,
             ShellContent.Opacity, ContentTranslate.Y,
+            (ShellContent.Effect as BlurEffect)?.Radius ?? 0,
             shadow?.BlurRadius ?? NotchShadowBlurRadius,
             shadow?.ShadowDepth ?? NotchShadowDepth,
             shadow?.Opacity ?? 0);
@@ -1514,14 +1611,27 @@ public partial class SpotlightWindow : Window
         Top = snapshot.Top;
         ShellScale.ScaleX = 1;
         ShellScale.ScaleY = 1;
+        Shell.Opacity = snapshot.ShellOpacity;
         Shell.Width = snapshot.Width;
         Shell.Height = snapshot.Height;
         ShellCornerRadius = snapshot.CornerRadius;
         ShellTopCornerRadius = snapshot.TopCornerRadius;
+        if (_shellBorderBrush != null) _shellBorderBrush.Opacity = snapshot.BorderOpacity;
         ShellContent.Opacity = snapshot.ContentOpacity;
         ContentTranslate.Y = snapshot.ContentTranslateY;
+        EnsureContentBlurEffect().Radius = snapshot.ContentBlurRadius;
         SetMorphShadow(snapshot.ShadowBlurRadius, snapshot.ShadowDepth, snapshot.ShadowOpacity);
         return snapshot;
+    }
+
+    private BlurEffect EnsureContentBlurEffect()
+    {
+        if (ShellContent.Effect is BlurEffect blur)
+            return blur;
+
+        blur = new BlurEffect { Radius = 0 };
+        ShellContent.Effect = blur;
+        return blur;
     }
 
     private void ClearMorphAnimations()
@@ -1539,7 +1649,9 @@ public partial class SpotlightWindow : Window
         _shellBorderBrush?.BeginAnimation(Brush.OpacityProperty, null);
         ShellContent.BeginAnimation(OpacityProperty, null);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        NotchMorphSnapshot.Visibility = Visibility.Hidden;
         NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
+        NotchMorphSnapshot.Opacity = 0;
         if (Shell.Effect is DropShadowEffect shellShadow)
         {
             shellShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
@@ -1553,9 +1665,9 @@ public partial class SpotlightWindow : Window
     private bool TryGetNotchRect(
         out (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius) rect)
     {
-        if (Owner is MainWindow mainWindow)
+        if (GetMorphHost() is { } morphHost)
         {
-            rect = mainWindow.GetSpotlightMorphRect();
+            rect = morphHost.GetSpotlightMorphRect();
             return rect.Width > 0 && rect.Height > 0;
         }
 
@@ -1565,9 +1677,11 @@ public partial class SpotlightWindow : Window
 
     private void SetNotchMorphActive(bool active)
     {
-        if (Owner is MainWindow mainWindow)
-            mainWindow.SetSpotlightMorphActive(active);
+        GetMorphHost()?.SetSpotlightMorphActive(active);
     }
+
+    private ISpotlightMorphHost? GetMorphHost() =>
+        MorphHostOverride ?? Owner as ISpotlightMorphHost;
 
     /// <summary>
     /// Swaps the shared border resource for a window-local brush once, so its
@@ -1585,6 +1699,7 @@ public partial class SpotlightWindow : Window
     {
         SolidColorBrush brush = EnsureShellBorderBrush();
         brush.BeginAnimation(Brush.OpacityProperty, null);
+        brush.Opacity = from;
         var fade = CreateAnimation(from, to, duration,
             new QuadraticEase { EasingMode = EasingMode.EaseOut });
         brush.BeginAnimation(Brush.OpacityProperty, fade);
@@ -1599,7 +1714,6 @@ public partial class SpotlightWindow : Window
         if (!animate) return;
 
         var shadow = (DropShadowEffect)Shell.Effect;
-        shadow.Opacity = SpotlightShadowOpacity;
         var fade = CreateAnimation(0, SpotlightShadowOpacity, TimeSpan.FromMilliseconds(180),
             new QuadraticEase { EasingMode = EasingMode.EaseOut });
         shadow.BeginAnimation(DropShadowEffect.OpacityProperty, fade);
@@ -1642,7 +1756,7 @@ public partial class SpotlightWindow : Window
         double startBlurRadius = shadow.BlurRadius;
         double startShadowDepth = shadow.ShadowDepth;
         double startOpacity = shadow.Opacity;
-        SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);
+        SetMorphShadow(startBlurRadius, startShadowDepth, startOpacity);
 
         var ease = CreateMorphEase();
         shadow.BeginAnimation(
@@ -1715,10 +1829,13 @@ public partial class SpotlightWindow : Window
         double Top,
         double Width,
         double Height,
+        double ShellOpacity,
+        double BorderOpacity,
         double CornerRadius,
         double TopCornerRadius,
         double ContentOpacity,
         double ContentTranslateY,
+        double ContentBlurRadius,
         double ShadowBlurRadius,
         double ShadowDepth,
         double ShadowOpacity);

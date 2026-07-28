@@ -120,17 +120,27 @@ public partial class MainWindow
         ClipboardCopiedText.BeginAnimation(OpacityProperty, textFadeIn);
         ClipboardCopiedTranslate.BeginAnimation(TranslateTransform.XProperty, textSlideIn);
 
-        _clipboardRevertTimer?.Stop();
-        _clipboardRevertTimer = new DispatcherTimer
+        StopClipboardRevertTimer();
+
+        int revertToken = _clipboardPeekToken;
+        var revertTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(1600)
         };
-        _clipboardRevertTimer.Tick += (s, e) =>
+        _clipboardRevertTimer = revertTimer;
+        revertTimer.Tick += (s, e) =>
         {
-            _clipboardRevertTimer.Stop();
+            revertTimer.Stop();
+            if (!ReferenceEquals(_clipboardRevertTimer, revertTimer) ||
+                revertToken != _clipboardPeekToken)
+            {
+                return;
+            }
+
+            _clipboardRevertTimer = null;
             RevertClipboardCopiedState();
         };
-        _clipboardRevertTimer.Start();
+        revertTimer.Start();
     }
     private void RevertClipboardCopiedState()
     {
@@ -192,7 +202,7 @@ public partial class MainWindow
     {
         if (!_isClipboardPeekActive) return;
 
-        _clipboardRevertTimer?.Stop();
+        StopClipboardRevertTimer();
         _isClipboardPeekActive = false;
         _clipboardPeekToken = 0;
 
@@ -207,6 +217,13 @@ public partial class MainWindow
         ClipboardCopiedText.Opacity = 0;
         ClipboardCopiedText.Visibility = Visibility.Collapsed;
 
+    }
+
+    private void StopClipboardRevertTimer()
+    {
+        var timer = _clipboardRevertTimer;
+        _clipboardRevertTimer = null;
+        timer?.Stop();
     }
 
     #endregion

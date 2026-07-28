@@ -6,12 +6,29 @@ namespace VNotch.Controllers;
 
 public sealed class BluetoothNotificationController
 {
+    private readonly object _stateGate = new();
     private bool _isVisible;
     private bool _currentConnected = true;
     private System.Timers.Timer? _dismissTimer;
+    private long _dismissGeneration;
 
-    public bool IsVisible => _isVisible;
-    public bool CurrentConnected => _currentConnected;
+    public bool IsVisible
+    {
+        get
+        {
+            lock (_stateGate)
+                return _isVisible;
+        }
+    }
+
+    public bool CurrentConnected
+    {
+        get
+        {
+            lock (_stateGate)
+                return _currentConnected;
+        }
+    }
 
     public event Action<BluetoothDeviceInfo, bool>? ShowRequested;
 
@@ -25,26 +42,39 @@ public sealed class BluetoothNotificationController
         if (!isNotchVisible || isAnimating || isExpanded || isMusicExpanded)
             return false;
 
-        _currentConnected = connected;
-        _isVisible = true;
+        lock (_stateGate)
+        {
+            _currentConnected = connected;
+            _isVisible = true;
+            StartDismissTimerLocked();
 
-        ShowRequested?.Invoke(device, connected);
-        StartDismissTimer();
+            // Keep event ordering serialized with the timer callback: a stale
+            // dismiss must never be queued after this newer show request.
+            ShowRequested?.Invoke(device, connected);
+        }
+
         return true;
     }
 
     public void MarkDismissed()
     {
-        _isVisible = false;
-        StopDismissTimer();
+        lock (_stateGate)
+        {
+            _isVisible = false;
+            StopDismissTimerLocked();
+        }
     }
 
     public void ForceDismiss()
     {
-        if (!_isVisible) return;
-        StopDismissTimer();
-        _isVisible = false;
-        DismissRequested?.Invoke();
+        lock (_stateGate)
+        {
+            if (!_isVisible) return;
+
+            StopDismissTimerLocked();
+            _isVisible = false;
+            DismissRequested?.Invoke();
+        }
     }
 
     public static Geometry GetIconGeometry(BluetoothDeviceType deviceType)
@@ -68,23 +98,47 @@ public sealed class BluetoothNotificationController
         };
     }
 
-    private void StartDismissTimer()
+    private void StartDismissTimerLocked()
     {
-        StopDismissTimer();
-        _dismissTimer = new System.Timers.Timer(AutoDismissMs);
-        _dismissTimer.AutoReset = false;
-        _dismissTimer.Elapsed += (s, e) =>
+        StopDismissTimerLocked();
+
+        long generation = ++_dismissGeneration;
+        var timer = new System.Timers.Timer(AutoDismissMs)
         {
-            _isVisible = false;
-            DismissRequested?.Invoke();
+            AutoReset = false
         };
-        _dismissTimer.Start();
+        _dismissTimer = timer;
+
+        timer.Elapsed += (s, e) =>
+        {
+            lock (_stateGate)
+            {
+                if (generation != _dismissGeneration ||
+                    !ReferenceEquals(_dismissTimer, timer) ||
+                    !_isVisible)
+                {
+                    return;
+                }
+
+                _dismissTimer = null;
+                ++_dismissGeneration;
+                _isVisible = false;
+                timer.Dispose();
+
+                // Invoke while serialized so a newer ShowRequested cannot be
+                // queued ahead of this dismissal and then closed by it.
+                DismissRequested?.Invoke();
+            }
+        };
+        timer.Start();
     }
 
-    private void StopDismissTimer()
+    private void StopDismissTimerLocked()
     {
-        _dismissTimer?.Stop();
-        _dismissTimer?.Dispose();
+        ++_dismissGeneration;
+        var timer = _dismissTimer;
         _dismissTimer = null;
+        timer?.Stop();
+        timer?.Dispose();
     }
 }

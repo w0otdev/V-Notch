@@ -32,14 +32,50 @@ public sealed class WebcamCaptureController : IDisposable
 
     private byte[] _frameBuffer = Array.Empty<byte>();
     private int _frameBufferInUse;
-    public bool IsActive => _isActive;
+    public bool IsActive
+    {
+        get
+        {
+            lock (_lifecycleLock)
+                return _isActive;
+        }
+    }
 
-    public bool IsStarting => _starting;
-    public bool IsStopping => _stopping;
+    public bool IsStarting
+    {
+        get
+        {
+            lock (_lifecycleLock)
+                return _starting;
+        }
+    }
 
-    public bool HasReader => _frameReader != null;
+    public bool IsStopping
+    {
+        get
+        {
+            lock (_lifecycleLock)
+                return _stopping;
+        }
+    }
 
-    public int FadeToken => _fadeToken;
+    public bool HasReader
+    {
+        get
+        {
+            lock (_lifecycleLock)
+                return _frameReader != null;
+        }
+    }
+
+    public int FadeToken
+    {
+        get
+        {
+            lock (_lifecycleLock)
+                return _fadeToken;
+        }
+    }
 
     public bool IsLifecycleActive
     {
@@ -57,26 +93,43 @@ public sealed class WebcamCaptureController : IDisposable
         }
     }
 
-    public event Action<byte[], int, int>? FrameAvailable;
+    public event Action<byte[], int, int, int>? FrameAvailable;
 
     public void ReleaseFrameBuffer()
     {
         Volatile.Write(ref _frameBufferInUse, 0);
     }
 
-    public int NextFadeToken() => ++_fadeToken;
+    public int NextFadeToken()
+    {
+        lock (_lifecycleLock)
+            return ++_fadeToken;
+    }
 
     public async Task<string?> StartAsync(string? deviceId, Func<bool> isContextValid)
     {
-        if (_isActive && _frameReader != null) return null;
-        if (_starting) return null;
+        int startToken;
+        lock (_lifecycleLock)
+        {
+            if (_isActive && _frameReader != null) return null;
+            if (_starting || _stopping) return null;
 
-        _starting = true;
-        _isActive = true;
-        _lastFrameTimestamp = 0;
-        int startToken = ++_fadeToken;
+            _starting = true;
+            _isActive = true;
+            _lastFrameTimestamp = 0;
+            startToken = ++_fadeToken;
+        }
 
-        bool StillValid() => startToken == _fadeToken && _isActive && isContextValid();
+        bool StillValid()
+        {
+            lock (_lifecycleLock)
+            {
+                if (startToken != _fadeToken || !_isActive)
+                    return false;
+            }
+
+            return isContextValid();
+        }
 
         try
         {
@@ -101,9 +154,19 @@ public sealed class WebcamCaptureController : IDisposable
                         return ((MediaCapture?)null, (MediaFrameReader?)null, "Cannot detect camera device");
 
                     capture = new MediaCapture();
+                    bool ownsStart;
                     lock (_lifecycleLock)
                     {
-                        _initializingMediaCapture = capture;
+                        ownsStart = startToken == _fadeToken && _isActive;
+                        if (ownsStart)
+                        {
+                            _initializingMediaCapture = capture;
+                        }
+                    }
+                    if (!ownsStart)
+                    {
+                        capture.Dispose();
+                        return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
                     }
 
                     var initSettings = new MediaCaptureInitializationSettings
@@ -176,31 +239,49 @@ public sealed class WebcamCaptureController : IDisposable
 
             if (mediaCapture == null || frameReader == null)
             {
+                lock (_lifecycleLock)
+                {
+                    if (startToken == _fadeToken)
+                    {
+                        _isActive = false;
+                    }
+                }
                 return errorMsg ?? "Cannot detect camera device";
             }
 
-            _mediaCapture = mediaCapture;
-            _frameReader = frameReader;
+            frameReader.FrameArrived += OnFrameArrived;
+            bool accepted;
             lock (_lifecycleLock)
             {
-                if (ReferenceEquals(_initializingMediaCapture, mediaCapture))
+                accepted = startToken == _fadeToken && _isActive;
+                if (accepted)
                 {
-                    _initializingMediaCapture = null;
+                    _mediaCapture = mediaCapture;
+                    _frameReader = frameReader;
                 }
             }
-            _frameReader.FrameArrived += OnFrameArrived;
+            if (!accepted)
+            {
+                frameReader.FrameArrived -= OnFrameArrived;
+                await DisposeResourcesAsync(frameReader, mediaCapture);
+                return null;
+            }
+
             await frameReader.StartAsync();
 
             if (!StillValid())
             {
                 frameReader.FrameArrived -= OnFrameArrived;
-                if (ReferenceEquals(_frameReader, frameReader))
+                lock (_lifecycleLock)
                 {
-                    _frameReader = null;
-                }
-                if (ReferenceEquals(_mediaCapture, mediaCapture))
-                {
-                    _mediaCapture = null;
+                    if (ReferenceEquals(_frameReader, frameReader))
+                    {
+                        _frameReader = null;
+                    }
+                    if (ReferenceEquals(_mediaCapture, mediaCapture))
+                    {
+                        _mediaCapture = null;
+                    }
                 }
                 await DisposeResourcesAsync(frameReader, mediaCapture);
             }
@@ -209,28 +290,37 @@ public sealed class WebcamCaptureController : IDisposable
         }
         finally
         {
-            _starting = false;
+            lock (_lifecycleLock)
+            {
+                // Stop followed by Start may already have handed lifecycle
+                // ownership to a newer operation.
+                if (startToken == _fadeToken)
+                {
+                    _starting = false;
+                }
+            }
         }
     }
 
     public (MediaFrameReader? reader, MediaCapture? capture, MediaCapture? initializing) DetachForSafeStop()
     {
-        _isActive = false;
-        _starting = false;
-        _stopping = false;
-        _fadeToken++;
-
+        MediaFrameReader? reader;
+        MediaCapture? capture;
         MediaCapture? initializingCapture;
         lock (_lifecycleLock)
         {
+            _isActive = false;
+            _starting = false;
+            _stopping = false;
+            _fadeToken++;
+
             initializingCapture = _initializingMediaCapture;
             _initializingMediaCapture = null;
+            reader = _frameReader;
+            capture = _mediaCapture;
+            _frameReader = null;
+            _mediaCapture = null;
         }
-
-        var reader = _frameReader;
-        var capture = _mediaCapture;
-        _frameReader = null;
-        _mediaCapture = null;
 
         if (reader != null)
         {
@@ -242,19 +332,23 @@ public sealed class WebcamCaptureController : IDisposable
 
     public bool TryBeginGracefulStop(out int fadeToken, out MediaFrameReader? reader, out MediaCapture? capture)
     {
-        fadeToken = _fadeToken;
         reader = null;
         capture = null;
 
-        if (_stopping) return false;
-        _stopping = true;
-        _isActive = false;
-        fadeToken = ++_fadeToken;
+        lock (_lifecycleLock)
+        {
+            fadeToken = _fadeToken;
+            if (_stopping) return false;
 
-        reader = _frameReader;
-        capture = _mediaCapture;
-        _frameReader = null;
-        _mediaCapture = null;
+            _stopping = true;
+            _isActive = false;
+            fadeToken = ++_fadeToken;
+
+            reader = _frameReader;
+            capture = _mediaCapture;
+            _frameReader = null;
+            _mediaCapture = null;
+        }
 
         if (reader != null)
         {
@@ -264,7 +358,16 @@ public sealed class WebcamCaptureController : IDisposable
         return true;
     }
 
-    public void EndGracefulStop() => _stopping = false;
+    public void EndGracefulStop(int fadeToken)
+    {
+        lock (_lifecycleLock)
+        {
+            if (fadeToken == _fadeToken)
+            {
+                _stopping = false;
+            }
+        }
+    }
 
     public static async Task DisposeResourcesAsync(MediaFrameReader? reader, MediaCapture? capture)
     {
@@ -280,6 +383,15 @@ public sealed class WebcamCaptureController : IDisposable
 
     private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
     {
+        int frameToken;
+        lock (_lifecycleLock)
+        {
+            if (!_isActive || !ReferenceEquals(sender, _frameReader))
+                return;
+
+            frameToken = _fadeToken;
+        }
+
         long now = Stopwatch.GetTimestamp();
         if (now - _lastFrameTimestamp < FrameIntervalTicks)
             return;
@@ -324,7 +436,17 @@ public sealed class WebcamCaptureController : IDisposable
             var handler = FrameAvailable;
             if (handler == null) return;
 
-            handler(_frameBuffer, width, height);
+            lock (_lifecycleLock)
+            {
+                if (!_isActive ||
+                    frameToken != _fadeToken ||
+                    !ReferenceEquals(sender, _frameReader))
+                {
+                    return;
+                }
+            }
+
+            handler(_frameBuffer, width, height, frameToken);
             handedOff = true;
         }
         finally

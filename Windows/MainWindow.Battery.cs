@@ -188,17 +188,27 @@ public partial class MainWindow
         ChargingIconScale.BeginAnimation(ScaleTransform.ScaleXProperty, iconScale);
         ChargingIconScale.BeginAnimation(ScaleTransform.ScaleYProperty, iconScale);
 
-        _chargingNotificationDismissTimer?.Stop();
-        _chargingNotificationDismissTimer = new DispatcherTimer
+        StopChargingNotificationDismissTimer();
+
+        int dismissToken = _chargingGlanceToken;
+        var dismissTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(3000)
         };
-        _chargingNotificationDismissTimer.Tick += (s, e) =>
+        _chargingNotificationDismissTimer = dismissTimer;
+        dismissTimer.Tick += (s, e) =>
         {
-            _chargingNotificationDismissTimer.Stop();
+            dismissTimer.Stop();
+            if (!ReferenceEquals(_chargingNotificationDismissTimer, dismissTimer) ||
+                dismissToken != _chargingGlanceToken)
+            {
+                return;
+            }
+
+            _chargingNotificationDismissTimer = null;
             DismissChargingNotification();
         };
-        _chargingNotificationDismissTimer.Start();
+        dismissTimer.Start();
     }
 
     private void DismissChargingNotification()
@@ -246,7 +256,7 @@ public partial class MainWindow
     {
         if (!_isChargingNotificationVisible) return;
 
-        _chargingNotificationDismissTimer?.Stop();
+        StopChargingNotificationDismissTimer();
         _isChargingNotificationVisible = false;
         _chargingGlanceToken = 0;
 
@@ -254,6 +264,13 @@ public partial class MainWindow
         ChargingNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         ChargingNotification.Opacity = 0;
         ChargingNotification.Visibility = Visibility.Collapsed;
+    }
+
+    private void StopChargingNotificationDismissTimer()
+    {
+        var timer = _chargingNotificationDismissTimer;
+        _chargingNotificationDismissTimer = null;
+        timer?.Stop();
     }
 
     private void PlayChargingBounce()

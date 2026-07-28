@@ -2121,11 +2121,15 @@ public partial class SettingsWindow : Window
 
         expandX.Completed += (s, e) =>
         {
+            if (_isClosing) return;
+
             ShellContent.CacheMode = null;
             MainShell.RenderTransformOrigin = new Point(0.5, 0.5);
 
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
+                if (_isClosing) return;
+
                 var shadow = new System.Windows.Media.Effects.DropShadowEffect
                 {
                     Color = System.Windows.Media.Colors.Black,
@@ -2448,6 +2452,12 @@ public partial class SettingsWindow : Window
         // the real on-screen position from Win32 instead.
         double currentTop = Top;
         double currentLeft = Left;
+        double currentShellOpacity = Math.Clamp(MainShell.Opacity, 0.0, 1.0);
+        double currentScaleX = Math.Max(0.02, ShellScale.ScaleX);
+        double currentScaleY = Math.Max(0.02, ShellScale.ScaleY);
+        double currentTranslateX = ShellTranslate.X;
+        double currentTranslateY = ShellTranslate.Y;
+        double currentRadius = Math.Max(0.0, ShellCornerRadius);
         var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero && Win32Interop.GetWindowRect(hwnd, out var winRect))
         {
@@ -2470,11 +2480,15 @@ public partial class SettingsWindow : Window
         Top = currentTop;
         Left = currentLeft;
 
-        MainShell.Opacity = 1.0;
-        ShellScale.ScaleX = 1.0;
-        ShellScale.ScaleY = 1.0;
-        ShellTranslate.X = 0;
-        ShellTranslate.Y = 0;
+        // Removing a WPF animation exposes its base value. Preserve the
+        // presentation values so reversing the entrance cannot snap to the
+        // fully-open settings window for one frame.
+        MainShell.Opacity = currentShellOpacity;
+        ShellScale.ScaleX = currentScaleX;
+        ShellScale.ScaleY = currentScaleY;
+        ShellTranslate.X = currentTranslateX;
+        ShellTranslate.Y = currentTranslateY;
+        ShellCornerRadius = currentRadius;
         MainShell.RenderTransformOrigin = new Point(0.5, 0.0);
 
         MainShell.Effect = null;
@@ -2541,20 +2555,20 @@ public partial class SettingsWindow : Window
         double targetScaleY = Math.Max(0.02, notchH / shellHeight);
         double targetRadius = Math.Max(notchRadius, 12);
 
-        var squishX = new DoubleAnimation(1.0, targetScaleX, totalDur)
+        var squishX = new DoubleAnimation(currentScaleX, targetScaleX, totalDur)
         {
             EasingFunction = easeInStrong
         };
         Timeline.SetDesiredFrameRate(squishX, fps);
 
-        var shrinkY = new DoubleAnimation(1.0, targetScaleY, totalDur)
+        var shrinkY = new DoubleAnimation(currentScaleY, targetScaleY, totalDur)
         {
             EasingFunction = easeInStrong
         };
         Timeline.SetDesiredFrameRate(shrinkY, fps);
 
-        _shellCornerRadius = 24;
-        var cornerAnim = new DoubleAnimation(24, targetRadius, totalDur)
+        _shellCornerRadius = currentRadius;
+        var cornerAnim = new DoubleAnimation(currentRadius, targetRadius, totalDur)
         {
             EasingFunction = easeIn
         };

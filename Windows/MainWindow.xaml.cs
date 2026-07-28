@@ -198,6 +198,8 @@ public partial class MainWindow : Window
     private bool _isUpdateAvailable = false;
     private UpdateInfo? _availableUpdate = null;
     private bool _isUpdateInstalling = false;
+    private int _updateCheckGeneration;
+    private int _updateVisibilityGeneration;
     private DispatcherTimer? _updatePulseTimer;
     private DateTime _updatePulseStartedAtUtc = DateTime.MinValue;
     private bool _isUpdateTooltipOpen = false;
@@ -847,8 +849,6 @@ public partial class MainWindow : Window
 
     internal void SetSpotlightMorphActive(bool active)
     {
-        NotchWrapper.BeginAnimation(OpacityProperty, null);
-        NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         if (active)
         {
             // Spotlight now owns the visible notch snapshot. Do not let hover
@@ -862,21 +862,35 @@ public partial class MainWindow : Window
             // re-assert the hidden state in case another animation touched it.
             if (!_spotlightMorphOwnsNotchVisibility)
             {
-                _spotlightRestoreNotchOpacity = NotchWrapper.Opacity;
-                _spotlightRestoreShadowOpacity = NotchShadowWrapper.Opacity;
+                // Preserve the animation targets, not a transient presentation
+                // value from an unrelated notch transition.
+                _spotlightRestoreNotchOpacity =
+                    (double)NotchWrapper.GetAnimationBaseValue(OpacityProperty);
+                _spotlightRestoreShadowOpacity =
+                    (double)NotchShadowWrapper.GetAnimationBaseValue(OpacityProperty);
                 _spotlightRestoreNotchHitTesting = NotchWrapper.IsHitTestVisible;
             }
             _spotlightMorphOwnsNotchVisibility = true;
+
+            // Change the base underneath any return-handoff animation before
+            // removing its clock. Clearing first would expose the restored
+            // notch for one compositor frame during a rapid reversal.
             NotchWrapper.Opacity = 0;
             NotchShadowWrapper.Opacity = 0;
+            NotchWrapper.BeginAnimation(OpacityProperty, null);
+            NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
             NotchWrapper.IsHitTestVisible = false;
             return;
         }
 
-        _spotlightMorphOwnsNotchVisibility = false;
+        // Likewise, make the restored values the bases before clearing a
+        // possibly interrupted fade.
         NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
         NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
+        NotchWrapper.BeginAnimation(OpacityProperty, null);
+        NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
+        _spotlightMorphOwnsNotchVisibility = false;
     }
 
     internal void BeginSpotlightReturnHandoff(TimeSpan duration)
@@ -887,7 +901,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        _spotlightMorphOwnsNotchVisibility = false;
+        // Ownership remains with Spotlight until its HWND is actually hidden.
+        // A reversal during this cross-fade can then re-hide the live notch
+        // without overwriting the original opacity values with an in-between
+        // animated value.
         NotchWrapper.BeginAnimation(OpacityProperty, null);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -900,9 +917,11 @@ public partial class MainWindow : Window
         NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
         NotchScale.ScaleX = NotchScale.ScaleY = 1;
         NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
-        if (CompactThumbnailBorder != null) CompactThumbnailBorder.Opacity = 1;
-        if (ThumbnailBorder != null) ThumbnailBorder.Opacity = 1;
-        _isAnimating = false;
+
+        // Spotlight does not own the active notch view. In particular, do not
+        // force media thumbnails visible or clear _isAnimating here: a timer,
+        // audio, camera, or expand/collapse transition may have continued while
+        // the notch was hidden and must finish with its own state intact.
 
         var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
         var notchFade = new DoubleAnimation(0, _spotlightRestoreNotchOpacity, duration)
