@@ -23,7 +23,11 @@ internal sealed class SpotlightSearchService
     }
 
     internal Task WarmupAsync() =>
-        Task.WhenAll(_providers.OfType<AppSearchProvider>().Select(provider => provider.WarmupAsync()));
+        Task.WhenAll(
+            _providers.OfType<AppSearchProvider>()
+                .Select(provider => provider.WarmupAsync())
+                .Concat(_providers.OfType<SystemFileSearchProvider>()
+                    .Select(provider => provider.WarmupAsync())));
 
     /// <summary>
     /// In-memory providers (apps, calculator); cheap enough to run per keystroke.
