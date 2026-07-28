@@ -1,0 +1,7 @@
+modules = ["dotnet-7.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
