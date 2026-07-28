@@ -1202,6 +1202,19 @@ public partial class SpotlightWindow : Window
             ? CreateAnimation(1, 0, TimeSpan.FromMilliseconds(260),
                 new CubicEase { EasingMode = EasingMode.EaseInOut })
             : null;
+        // The snapshot must follow the shell's geometry on the same morph
+        // clock. Leaving it frozen at the notch size makes it overflow the
+        // unclipped shell whenever a larger view (media, timer, camera)
+        // shrinks toward the search bar, and lag behind when it grows.
+        DoubleAnimation? snapshotWidth = null;
+        DoubleAnimation? snapshotHeight = null;
+        if (hasNotchSnapshot)
+        {
+            snapshotWidth = CreateAnimation(startShellWidth, finalShellWidth,
+                MorphDuration, morphEase, synchronizedMorph: true);
+            snapshotHeight = CreateAnimation(startShellHeight, finalShellHeight,
+                MorphDuration, morphEase, synchronizedMorph: true);
+        }
 
         expandWidth.Completed += (_, _) =>
         {
@@ -1220,6 +1233,10 @@ public partial class SpotlightWindow : Window
         contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurOut);
         if (notchFade != null)
             NotchMorphSnapshot.BeginAnimation(OpacityProperty, notchFade);
+        if (snapshotWidth != null)
+            NotchMorphSnapshot.BeginAnimation(WidthProperty, snapshotWidth);
+        if (snapshotHeight != null)
+            NotchMorphSnapshot.BeginAnimation(HeightProperty, snapshotHeight);
         // The notch has no light outline; the border only belongs to the
         // expanded panel, so it fades in as the shell departs.
         if (morphsFromNotch) AnimateShellBorder(0, 1, MorphDuration);
@@ -1577,6 +1594,8 @@ public partial class SpotlightWindow : Window
     {
         NotchMorphSnapshot.Visibility = Visibility.Hidden;
         NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
+        NotchMorphSnapshot.BeginAnimation(WidthProperty, null);
+        NotchMorphSnapshot.BeginAnimation(HeightProperty, null);
         NotchMorphSnapshot.Opacity = 0;
         NotchMorphSnapshot.Source = null;
         NotchMorphSnapshot.Width = double.NaN;
@@ -1651,6 +1670,8 @@ public partial class SpotlightWindow : Window
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         NotchMorphSnapshot.Visibility = Visibility.Hidden;
         NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
+        NotchMorphSnapshot.BeginAnimation(WidthProperty, null);
+        NotchMorphSnapshot.BeginAnimation(HeightProperty, null);
         NotchMorphSnapshot.Opacity = 0;
         if (Shell.Effect is DropShadowEffect shellShadow)
         {

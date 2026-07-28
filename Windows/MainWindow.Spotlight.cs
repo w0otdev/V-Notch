@@ -21,7 +21,18 @@ public partial class MainWindow : ISpotlightMorphHost
                 dpi.PixelsPerInchX,
                 dpi.PixelsPerInchY,
                 PixelFormats.Pbgra32);
-            bitmap.Render(NotchBorder);
+            // Render through a VisualBrush: RenderTargetBitmap.Render(visual)
+            // bakes in the visual's layout offset within its parent (here the
+            // left ear column of NotchWrapper), shifting and clipping the
+            // capture. The brush neutralizes that offset so the snapshot is
+            // pixel-aligned with the notch for every view.
+            var neutral = new DrawingVisual();
+            using (DrawingContext ctx = neutral.RenderOpen())
+            {
+                var brush = new VisualBrush(NotchBorder) { Stretch = Stretch.None };
+                ctx.DrawRectangle(brush, null, new Rect(0, 0, width, height));
+            }
+            bitmap.Render(neutral);
             bitmap.Freeze();
             return bitmap;
         }
