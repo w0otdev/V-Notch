@@ -139,7 +139,7 @@ internal sealed class SpotlightController : ISpotlightController
             }
 
             if (IsEscapeKey(key.vkCode)
-                && _window?.IsVisible == true
+                && _window?.IsSpotlightOpen == true
                 && message is WM_KEYDOWN or WM_SYSKEYDOWN)
             {
                 if (!_escapeDown)

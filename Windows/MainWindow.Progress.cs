@@ -133,7 +133,7 @@ public partial class MainWindow
             // Spotlight temporarily owns the notch surface. Clicks inside its
             // window are outside MainWindow by definition and must not collapse
             // the hidden source state underneath the morph.
-            if (_spotlightMorphOwnsNotchVisibility) return;
+            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
             if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
             {

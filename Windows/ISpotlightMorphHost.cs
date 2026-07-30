@@ -9,6 +9,8 @@ internal interface ISpotlightMorphHost
 
     ImageSource? CaptureSpotlightMorphVisual();
 
+    void SetSpotlightMorphSessionActive(bool active);
+
     void SetSpotlightMorphActive(bool active);
 
     void BeginSpotlightReturnHandoff(TimeSpan duration);

@@ -50,6 +50,9 @@ public partial class MainWindow : ISpotlightMorphHost
     ImageSource? ISpotlightMorphHost.CaptureSpotlightMorphVisual() =>
         CaptureSpotlightMorphVisual();
 
+    void ISpotlightMorphHost.SetSpotlightMorphSessionActive(bool active) =>
+        SetSpotlightMorphSessionActive(active);
+
     void ISpotlightMorphHost.SetSpotlightMorphActive(bool active) =>
         SetSpotlightMorphActive(active);
 

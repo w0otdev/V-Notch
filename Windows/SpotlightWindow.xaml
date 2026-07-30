@@ -10,6 +10,7 @@
         Background="Transparent"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
+        ShowActivated="False"
         Topmost="True"
         WindowStartupLocation="Manual"
         FontFamily="{StaticResource SFProDisplay}"
@@ -486,14 +487,25 @@
                 </Border>
             </Grid>
 
-            <!-- Snapshot of the source notch used only during the opening
-                 handoff, above the Spotlight content that fades in below. -->
-            <Image x:Name="NotchMorphSnapshot"
-                   HorizontalAlignment="Center"
-                   VerticalAlignment="Top"
-                   Stretch="Fill"
-                   IsHitTestVisible="False"
-                   Opacity="0"/>
+            <!-- Rounded viewport for the captured source view. The viewport
+                 follows the morphing shell, while the bitmap keeps its native
+                 size and is cropped from the top instead of being squeezed
+                 from a tall auxiliary view into the 66px search bar. -->
+            <Border x:Name="NotchMorphSnapshot"
+                    Margin="-1"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    CornerRadius="14"
+                    IsHitTestVisible="False"
+                    Visibility="Hidden"
+                    Opacity="0">
+                <Border.Background>
+                    <ImageBrush x:Name="NotchMorphSnapshotBrush"
+                                Stretch="None"
+                                AlignmentX="Center"
+                                AlignmentY="Top"/>
+                </Border.Background>
+            </Border>
         </Grid>
     </Border>
 </Window>

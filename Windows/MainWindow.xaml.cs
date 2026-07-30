@@ -66,7 +66,9 @@ public partial class MainWindow : Window
     private readonly OverlayWindowController _overlayWindow;
     private readonly ClipboardListenerController _clipboardListener;
     private readonly ISpotlightController _spotlightController;
+    private bool _spotlightMorphSessionActive;
     private bool _spotlightMorphOwnsNotchVisibility;
+    private bool _spotlightReturnHandoffActive;
     private double _spotlightRestoreNotchOpacity = 1;
     private double _spotlightRestoreShadowOpacity = 1;
     private bool _spotlightRestoreNotchHitTesting = true;
@@ -343,7 +345,7 @@ public partial class MainWindow : Window
         _hoverCollapseTimer.Tick += (s, e) =>
         {
             _hoverCollapseTimer.Stop();
-            if (_spotlightMorphOwnsNotchVisibility) return;
+            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_isExpanded && !NotchWrapper.IsMouseOver)
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
@@ -477,8 +479,14 @@ public partial class MainWindow : Window
 
     private void HandleAppDeactivated()
     {
-        if (!_isSecondaryView && !_isTimerView) return;
-        if (_isExpanded && !_isAnimating)
+        if (ShouldCollapseOnDeactivation(
+                _spotlightMorphSessionActive,
+                _spotlightMorphOwnsNotchVisibility,
+                _isSecondaryView,
+                _isTimerView,
+                _isExpanded,
+                isMusicExpanded: false,
+                isAnimating: _isAnimating))
         {
             RuntimeLog.Log("COLLAPSE-TRIGGER",
                 $"WM_ACTIVATEAPP(deactivate) -> CollapseNotch: isSecondary={_isSecondaryView} isTimer={_isTimerView}");
@@ -488,15 +496,34 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
-        if (!_isSecondaryView && !_isTimerView) return;
-
-        if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
+        if (ShouldCollapseOnDeactivation(
+                _spotlightMorphSessionActive,
+                _spotlightMorphOwnsNotchVisibility,
+                _isSecondaryView,
+                _isTimerView,
+                _isExpanded,
+                _isMusicExpanded,
+                _isAnimating))
         {
             RuntimeLog.Log("COLLAPSE-TRIGGER",
                 $"Deactivated event -> CollapseAll: isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded} isSecondary={_isSecondaryView} isTimer={_isTimerView}");
             CollapseAll();
         }
     }
+
+    internal static bool ShouldCollapseOnDeactivation(
+        bool spotlightMorphSessionActive,
+        bool spotlightMorphOwnsNotchVisibility,
+        bool isSecondaryView,
+        bool isTimerView,
+        bool isExpanded,
+        bool isMusicExpanded,
+        bool isAnimating) =>
+        !spotlightMorphSessionActive
+        && !spotlightMorphOwnsNotchVisibility
+        && (isSecondaryView || isTimerView)
+        && (isExpanded || isMusicExpanded)
+        && !isAnimating;
 
     private void CollapseAll()
     {
@@ -847,10 +874,29 @@ public partial class MainWindow : Window
             bottomRadius);
     }
 
+    internal void SetSpotlightMorphSessionActive(bool active)
+    {
+        // A completed return fade used to leave its slightly longer scale
+        // animation attached with FillBehavior=HoldEnd. A fresh Spotlight
+        // session captures the source immediately after acquiring this guard,
+        // so commit and detach that old handoff clock before the capture.
+        if (active) CompleteSpotlightReturnScaleHandoff();
+        _spotlightMorphSessionActive = active;
+        if (!active) return;
+
+        // This guard is acquired before Spotlight calls Show(). Showing or
+        // activating that HWND deactivates MainWindow synchronously, and the
+        // secondary/timer views would otherwise collapse before their source
+        // frame can be captured for the morph.
+        _hoverCollapseTimer.Stop();
+        _hoverThumbnailDelayTimer.Stop();
+    }
+
     internal void SetSpotlightMorphActive(bool active)
     {
         if (active)
         {
+            CompleteSpotlightReturnScaleHandoff();
             // Spotlight now owns the visible notch snapshot. Do not let hover
             // leave collapse the live source behind it while the handoff runs
             // or while Spotlight is being used.
@@ -883,6 +929,12 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!_spotlightMorphOwnsNotchVisibility)
+        {
+            CompleteSpotlightReturnScaleHandoff();
+            return;
+        }
+
         // Likewise, make the restored values the bases before clearing a
         // possibly interrupted fade.
         NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
@@ -891,6 +943,7 @@ public partial class MainWindow : Window
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
         _spotlightMorphOwnsNotchVisibility = false;
+        CompleteSpotlightReturnScaleHandoff();
     }
 
     internal void BeginSpotlightReturnHandoff(TimeSpan duration)
@@ -917,6 +970,7 @@ public partial class MainWindow : Window
         NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
         NotchScale.ScaleX = NotchScale.ScaleY = 1;
         NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
+        _spotlightReturnHandoffActive = true;
 
         // Spotlight does not own the active notch view. In particular, do not
         // force media thumbnails visible or clear _isAnimating here: a timer,
@@ -951,6 +1005,23 @@ public partial class MainWindow : Window
         NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
+    }
+
+    private void CompleteSpotlightReturnScaleHandoff()
+    {
+        if (!_spotlightReturnHandoffActive) return;
+
+        // Set the bases first so removing an interrupted or completed clock
+        // cannot expose an older hover/bounce scale for one compositor frame.
+        NotchScale.ScaleX = 1;
+        NotchScale.ScaleY = 1;
+        NotchShadowScale.ScaleX = 1;
+        NotchShadowScale.ScaleY = 1;
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        _spotlightReturnHandoffActive = false;
     }
 
     internal void PlayNotchReturnBounce()
@@ -1585,7 +1656,7 @@ public partial class MainWindow : Window
     private void NotchWrapper_MouseLeave(object sender, MouseEventArgs e)
     {
         _hoverThumbnailDelayTimer.Stop();
-        if (_spotlightMorphOwnsNotchVisibility) return;
+        if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
         if (_settings.DisableMouseLeaveAutoClose)
         {
@@ -1642,7 +1713,7 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             _hoverThumbnailDelayTimer.Stop();
-            if (_spotlightMorphOwnsNotchVisibility) return;
+            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_settings.DisableMouseLeaveAutoClose) return;
             if (_isExpanded && !_isAnimating && !_isSecondaryView)
             {
