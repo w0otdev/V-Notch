@@ -151,6 +151,11 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         return Math.Max(120, 260 - item.Title.Length);
     }
 
+    private static readonly HashSet<string> ExecutableExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".appref-ms", ".lnk"
+    };
+
     private static SpotlightSearchItem? ToSearchItem(string name, string parent, bool isFolder)
     {
         if (string.IsNullOrEmpty(name)) return null;
@@ -164,9 +169,15 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
             return null;
         }
 
+        string ext = Path.GetExtension(name);
+        bool isExec = !isFolder && ExecutableExtensions.Contains(ext);
+        SpotlightResultKind kind = isFolder
+            ? SpotlightResultKind.Folder
+            : (isExec ? SpotlightResultKind.Application : SpotlightResultKind.File);
+
         return new SpotlightSearchItem(
-            $"{(isFolder ? "folder" : "file")}:{fullPath}",
-            isFolder ? SpotlightResultKind.Folder : SpotlightResultKind.File,
+            $"{(isFolder ? "folder" : (isExec ? "app" : "file"))}:{fullPath}",
+            kind,
             name,
             fullPath,
             fullPath,

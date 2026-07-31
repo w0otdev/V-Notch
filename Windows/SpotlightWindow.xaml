@@ -217,6 +217,26 @@
         </Border.RenderTransform>
 
         <Grid>
+            <!-- Concave side ear curves for notch transition in standard notch mode -->
+            <Path x:Name="ShellLeftEar"
+                  Data="M 0,0 L 11,0 L 11,10 C 11,4.4 6.2,0 0,0 Z"
+                  Fill="{StaticResource ShellBrush}"
+                  Width="11" Height="10"
+                  Margin="-10,0,0,0"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False"
+                  Opacity="0"/>
+            <Path x:Name="ShellRightEar"
+                  Data="M 11,0 L 0,0 L 0,10 C 0,4.4 4.8,0 11,0 Z"
+                  Fill="{StaticResource ShellBrush}"
+                  Width="11" Height="10"
+                  Margin="0,0,-10,0"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False"
+                  Opacity="0"/>
+
             <!-- ClipToBounds keeps rows inside the shell while its explicit
                  morph height is smaller than the content's natural height. -->
             <Grid x:Name="ShellContent"

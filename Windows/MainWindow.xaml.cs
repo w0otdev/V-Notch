@@ -830,17 +830,32 @@ public partial class MainWindow : Window
         if (!double.IsFinite(height) || height <= 0) height = _collapsedHeight;
 
         CornerRadius corners = NotchBorder.CornerRadius;
-        double topRadius = Math.Max(0, Math.Min(corners.TopLeft, corners.TopRight));
+        bool islandMode = _settings.EnableDynamicIslandMode;
+        double topRadius = islandMode ? Math.Max(0, Math.Min(corners.TopLeft, corners.TopRight)) : 0;
         double bottomRadius = Math.Max(0, Math.Min(corners.BottomLeft, corners.BottomRight));
         var rect = _overlayWindow.GetNotchScreenRect(width, height, bottomRadius);
-        bool islandMode = _settings.EnableDynamicIslandMode;
+
+        double left = rect.Left;
+        double top = rect.Top + (islandMode ? DynamicIslandTopMargin : 0);
+
+        if (NotchBorder != null && NotchBorder.IsLoaded && PresentationSource.FromVisual(NotchBorder) != null)
+        {
+            try
+            {
+                var dpi = VisualTreeHelper.GetDpi(NotchBorder);
+                var tl = NotchBorder.PointToScreen(new Point(0, 0));
+                left = tl.X / dpi.DpiScaleX;
+                top = tl.Y / dpi.DpiScaleY;
+            }
+            catch { }
+        }
 
         RuntimeLog.Debug("SPOTLIGHT-MORPH", () =>
             $"Source rect: {width:F1}x{height:F1}, expanded={_isExpanded}, " +
             $"musicExpanded={_isMusicExpanded}, topRadius={topRadius:F1}, bottomRadius={bottomRadius:F1}");
 
-        return (rect.Left,
-            rect.Top + (islandMode ? DynamicIslandTopMargin : 0),
+        return (left,
+            top,
             rect.Width,
             rect.Height,
             topRadius,

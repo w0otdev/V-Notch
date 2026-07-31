@@ -822,11 +822,12 @@ public partial class SpotlightWindow : Window
         bool showStatus = showSearching
                           || (hasQuery && !hasResults && !_viewModel.IsSearching
                               && (_viewModel.IsWindowsSearchUnavailable || _viewModel.HasNoResults));
-        bool showContent = hasResults || showStatus;
+        bool isSearchingInFlight = hasQuery && _viewModel.IsSearching && _contentShown;
+        bool showContent = hasResults || showStatus || isSearchingInFlight;
 
         // Children first: the reveal/resize animations below measure the
         // region's natural height, which depends on these visibilities.
-        ResultsList.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
+        ResultsList.Visibility = (hasResults || isSearchingInFlight) ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
         if (showStatus)
         {
@@ -911,7 +912,8 @@ public partial class SpotlightWindow : Window
         {
             ContentRegion.ClipToBounds = true;
             var collapse = CreateAnimation(ContentRegion.ActualHeight, 0,
-                TimeSpan.FromMilliseconds(180), new CubicEase { EasingMode = EasingMode.EaseIn });
+                TimeSpan.FromMilliseconds(340),
+                new CubicBezierEase(0.36, -0.15, 0.64, 1.15) { EasingMode = EasingMode.EaseIn });
             collapse.Completed += (_, _) =>
             {
                 if (generation != _contentSizeGeneration) return;
@@ -948,8 +950,8 @@ public partial class SpotlightWindow : Window
     private void BeginContentHeightAnimation(double from, double to, int generation)
     {
         ContentRegion.ClipToBounds = true;
-        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(260),
-            new CubicEase { EasingMode = EasingMode.EaseOut });
+        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(380),
+            new CubicBezierEase(0.18, 1.25, 0.22, 1.0) { EasingMode = EasingMode.EaseIn });
         resize.Completed += (_, _) =>
         {
             if (generation != _contentSizeGeneration) return;
@@ -1045,9 +1047,9 @@ public partial class SpotlightWindow : Window
     {
         if (AnimationConfig.ReduceMotion) return;
 
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(200), ease);
-        var slide = CreateAnimation(-6, 0, TimeSpan.FromMilliseconds(240), ease);
+        var ease = new CubicBezierEase(0.18, 1.2, 0.22, 1.0) { EasingMode = EasingMode.EaseIn };
+        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(300), ease);
+        var slide = CreateAnimation(-10, 0, TimeSpan.FromMilliseconds(340), ease);
         ContentRegion.BeginAnimation(OpacityProperty, fade);
         ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
     }
@@ -1179,6 +1181,7 @@ public partial class SpotlightWindow : Window
         Shell.Height = startShellHeight;
         ShellCornerRadius = startBottomRadius;
         ShellTopCornerRadius = startTopRadius;
+        if (morphsFromNotch) Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = 0;
         ContentTranslate.Y = 8;
         var contentBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 10 };
@@ -1246,6 +1249,11 @@ public partial class SpotlightWindow : Window
         // expanded panel, so it fades in as the shell departs.
         if (morphsFromNotch) AnimateShellBorder(0, 1, MorphDuration);
         if (morphsFromNotch) SetNotchMorphActive(true);
+
+        if (morphsFromNotch && startTopRadius == 0)
+            AnimateMorphEars(1, 0, TimeSpan.FromMilliseconds(220), TimeSpan.Zero);
+        else
+            AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
     }
 
     private void ReverseExitToEntrance()
@@ -1301,7 +1309,10 @@ public partial class SpotlightWindow : Window
         Shell.Height = current.Height;
         ShellCornerRadius = current.CornerRadius;
         ShellTopCornerRadius = current.TopCornerRadius;
+        Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = current.ContentOpacity;
+        double currentEarOpacity = ShellLeftEar?.Opacity ?? 0;
+        AnimateMorphEars(currentEarOpacity, 0, TimeSpan.FromMilliseconds(200), TimeSpan.Zero);
         ContentTranslate.Y = current.ContentTranslateY;
         var contentBlur = EnsureContentBlurEffect();
         contentBlur.Radius = current.ContentBlurRadius;
@@ -1429,6 +1440,7 @@ public partial class SpotlightWindow : Window
         Shell.Height = current.Height;
         ShellCornerRadius = current.CornerRadius;
         ShellTopCornerRadius = current.TopCornerRadius;
+        Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = current.ContentOpacity;
         ContentTranslate.Y = current.ContentTranslateY;
         var contentBlur = EnsureContentBlurEffect();
@@ -1502,6 +1514,11 @@ public partial class SpotlightWindow : Window
         // Shed the panel outline early so the shell arrives looking like the
         // borderless notch.
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
+
+        if (targetTopRadius == 0)
+            AnimateMorphEars(0, 1, TimeSpan.FromMilliseconds(260), TimeSpan.FromMilliseconds(260));
+        else
+            AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
     }
 
     private void BeginReturnHandoff(int generation)
@@ -1546,7 +1563,9 @@ public partial class SpotlightWindow : Window
         Shell.Height = double.NaN;
         ShellCornerRadius = ExpandedCornerRadius;
         ShellTopCornerRadius = ExpandedCornerRadius;
+        Shell.BorderThickness = new Thickness(1);
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 1;
+        AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
         ShellContent.Opacity = 1;
         ContentTranslate.Y = 0;
         Shell.CacheMode = null;
@@ -1775,6 +1794,28 @@ public partial class SpotlightWindow : Window
         brush.BeginAnimation(Brush.OpacityProperty, fade);
     }
 
+    private void AnimateMorphEars(double fromOpacity, double toOpacity, TimeSpan duration, TimeSpan beginTime)
+    {
+        if (ShellLeftEar == null || ShellRightEar == null) return;
+
+        ShellLeftEar.BeginAnimation(OpacityProperty, null);
+        ShellRightEar.BeginAnimation(OpacityProperty, null);
+        ShellLeftEar.Opacity = fromOpacity;
+        ShellRightEar.Opacity = fromOpacity;
+
+        if (Math.Abs(fromOpacity - toOpacity) < 0.001 || duration <= TimeSpan.Zero) return;
+
+        var anim = new DoubleAnimation(fromOpacity, toOpacity, duration)
+        {
+            BeginTime = beginTime,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, Math.Min(60, AnimationConfig.TargetFps));
+
+        ShellLeftEar.BeginAnimation(OpacityProperty, anim);
+        ShellRightEar.BeginAnimation(OpacityProperty, anim);
+    }
+
     private void RestoreShadow(bool animate)
     {
         SetMorphShadow(
@@ -1853,8 +1894,8 @@ public partial class SpotlightWindow : Window
         return animation;
     }
 
-    private static ExponentialEase CreateMorphEase() =>
-        new() { EasingMode = EasingMode.EaseOut, Exponent = 7 };
+    private static IEasingFunction CreateMorphEase() =>
+        new CubicBezierEase(0.16, 1.0, 0.3, 1.0) { EasingMode = EasingMode.EaseIn };
 
     public static readonly DependencyProperty ShellCornerRadiusProperty =
         DependencyProperty.Register(
@@ -1888,8 +1929,8 @@ public partial class SpotlightWindow : Window
     {
         if (d is SpotlightWindow window)
         {
-            double top = window.ShellTopCornerRadius;
-            double bottom = window.ShellCornerRadius;
+            double top = Math.Max(0, window.ShellTopCornerRadius);
+            double bottom = Math.Max(0, window.ShellCornerRadius);
             window.Shell.CornerRadius = new CornerRadius(top, top, bottom, bottom);
         }
     }

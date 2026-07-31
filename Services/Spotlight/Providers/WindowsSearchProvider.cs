@@ -92,9 +92,22 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
 
             bool isFolder = !reader.IsDBNull(2) &&
                 string.Equals(reader.GetString(2), "Directory", StringComparison.OrdinalIgnoreCase);
+            string ext = Path.GetExtension(path);
+            bool isExec = !isFolder && (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".msc", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".cpl", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".com", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase) ||
+                                       ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase));
+            SpotlightResultKind kind = isFolder
+                ? SpotlightResultKind.Folder
+                : (isExec ? SpotlightResultKind.Application : SpotlightResultKind.File);
+
             results.Add(new SpotlightSearchItem(
-                $"{(isFolder ? "folder" : "file")}:{path}",
-                isFolder ? SpotlightResultKind.Folder : SpotlightResultKind.File,
+                $"{(isFolder ? "folder" : (isExec ? "app" : "file"))}:{path}",
+                kind,
                 Path.GetFileName(path) is { Length: > 0 } fileName ? fileName : name,
                 path,
                 path,

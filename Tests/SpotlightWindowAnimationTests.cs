@@ -249,6 +249,7 @@ public sealed class SpotlightWindowAnimationTests
 
     private static Application CreateApplicationResources()
     {
+        if (Application.Current != null) return Application.Current;
         var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         application.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
         application.Resources["SFProText"] = new FontFamily("Segoe UI");
