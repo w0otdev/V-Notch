@@ -294,6 +294,8 @@ public partial class SpotlightWindow : Window
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        PlayTypingAnimation();
+        UpdateGlowingCaret();
         CancelSearchingGrace();
         PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
             ? Visibility.Visible
@@ -308,6 +310,115 @@ public partial class SpotlightWindow : Window
             SetResultsDimmed(true);
         await _viewModel.SearchAsync(SearchBox.Text);
         ScheduleStatusRefresh();
+    }
+
+    private void SearchBox_GotFocus(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
+
+    private void SearchBox_LostFocus(object sender, RoutedEventArgs e) => GlowingCaret.Visibility = Visibility.Collapsed;
+
+    private void SearchBox_SelectionChanged(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
+
+    private void UpdateGlowingCaret()
+    {
+        if (!SearchBox.IsFocused || !IsVisible)
+        {
+            GlowingCaret.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            Rect rect = SearchBox.GetRectFromCharacterIndex(SearchBox.CaretIndex, true);
+            double left = (!rect.IsEmpty && double.IsFinite(rect.Left)) ? Math.Max(2, rect.Left) : 2;
+            GlowingCaret.Margin = new Thickness(left, 0, 0, 0);
+            GlowingCaret.Visibility = Visibility.Visible;
+            ResetGlowingCaretBlink();
+        }
+        catch
+        {
+            GlowingCaret.Margin = new Thickness(2, 0, 0, 0);
+            GlowingCaret.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ResetGlowingCaretBlink()
+    {
+        GlowingCaret.BeginAnimation(OpacityProperty, null);
+        GlowingCaret.Opacity = 1.0;
+
+        if (AnimationConfig.ReduceMotion) return;
+
+        var blinkAnim = new DoubleAnimation
+        {
+            From = 1.0,
+            To = 0.15,
+            Duration = TimeSpan.FromMilliseconds(520),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Timeline.SetDesiredFrameRate(blinkAnim, AnimationConfig.TargetFps);
+        GlowingCaret.BeginAnimation(OpacityProperty, blinkAnim);
+    }
+
+    private void PlayTypingAnimation()
+    {
+        if (AnimationConfig.ReduceMotion) return;
+
+        // 1. Search box scale pop & horizontal recoil
+        var scaleYAnim = new DoubleAnimationUsingKeyFrames();
+        scaleYAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.025, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(scaleYAnim, AnimationConfig.TargetFps);
+
+        var scaleXAnim = new DoubleAnimationUsingKeyFrames();
+        scaleXAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.018, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(scaleXAnim, AnimationConfig.TargetFps);
+
+        var recoilAnim = new DoubleAnimationUsingKeyFrames();
+        recoilAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        recoilAnim.KeyFrames.Add(new EasingDoubleKeyFrame(-1.5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(40)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        recoilAnim.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(recoilAnim, AnimationConfig.TargetFps);
+
+        SearchBoxScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
+        SearchBoxScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYAnim);
+        SearchBoxTranslate.BeginAnimation(TranslateTransform.XProperty, recoilAnim);
+
+        // 2. Caret height pop & glowing flash burst
+        var caretHeightScale = new DoubleAnimationUsingKeyFrames();
+        caretHeightScale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        caretHeightScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.25, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        caretHeightScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(caretHeightScale, AnimationConfig.TargetFps);
+        CaretScale.BeginAnimation(ScaleTransform.ScaleYProperty, caretHeightScale);
+
+        var caretGlowBurst = new DoubleAnimationUsingKeyFrames();
+        caretGlowBurst.KeyFrames.Add(new LinearDoubleKeyFrame(10, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        caretGlowBurst.KeyFrames.Add(new EasingDoubleKeyFrame(18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        caretGlowBurst.KeyFrames.Add(new EasingDoubleKeyFrame(10, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(caretGlowBurst, AnimationConfig.TargetFps);
+        CaretGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, caretGlowBurst);
+
+        // 3. Search icon pulse & subtle rotation wiggle
+        var iconScale = new DoubleAnimationUsingKeyFrames();
+        iconScale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        iconScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        iconScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(iconScale, AnimationConfig.TargetFps);
+
+        var iconRotate = new DoubleAnimationUsingKeyFrames();
+        iconRotate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        iconRotate.KeyFrames.Add(new EasingDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        iconRotate.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(iconRotate, AnimationConfig.TargetFps);
+
+        SearchIconScale.BeginAnimation(ScaleTransform.ScaleXProperty, iconScale);
+        SearchIconScale.BeginAnimation(ScaleTransform.ScaleYProperty, iconScale);
+        SearchIconRotate.BeginAnimation(RotateTransform.AngleProperty, iconRotate);
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
