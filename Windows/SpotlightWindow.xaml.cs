@@ -495,6 +495,8 @@ public partial class SpotlightWindow : Window
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        PlayTypingAnimation();
+        UpdateGlowingCaret();
         CancelSearchingGrace();
         PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
             ? Visibility.Visible
@@ -509,6 +511,115 @@ public partial class SpotlightWindow : Window
             SetResultsDimmed(true);
         await _viewModel.SearchAsync(SearchBox.Text);
         ScheduleStatusRefresh();
+    }
+
+    private void SearchBox_GotFocus(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
+
+    private void SearchBox_LostFocus(object sender, RoutedEventArgs e) => GlowingCaret.Visibility = Visibility.Collapsed;
+
+    private void SearchBox_SelectionChanged(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
+
+    private void UpdateGlowingCaret()
+    {
+        if (!SearchBox.IsFocused || !IsVisible)
+        {
+            GlowingCaret.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            Rect rect = SearchBox.GetRectFromCharacterIndex(SearchBox.CaretIndex, true);
+            double left = (!rect.IsEmpty && double.IsFinite(rect.Left)) ? Math.Max(2, rect.Left) : 2;
+            GlowingCaret.Margin = new Thickness(left, 0, 0, 0);
+            GlowingCaret.Visibility = Visibility.Visible;
+            ResetGlowingCaretBlink();
+        }
+        catch
+        {
+            GlowingCaret.Margin = new Thickness(2, 0, 0, 0);
+            GlowingCaret.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ResetGlowingCaretBlink()
+    {
+        GlowingCaret.BeginAnimation(OpacityProperty, null);
+        GlowingCaret.Opacity = 1.0;
+
+        if (AnimationConfig.ReduceMotion) return;
+
+        var blinkAnim = new DoubleAnimation
+        {
+            From = 1.0,
+            To = 0.15,
+            Duration = TimeSpan.FromMilliseconds(520),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Timeline.SetDesiredFrameRate(blinkAnim, AnimationConfig.TargetFps);
+        GlowingCaret.BeginAnimation(OpacityProperty, blinkAnim);
+    }
+
+    private void PlayTypingAnimation()
+    {
+        if (AnimationConfig.ReduceMotion) return;
+
+        // 1. Search box scale pop & horizontal recoil
+        var scaleYAnim = new DoubleAnimationUsingKeyFrames();
+        scaleYAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.025, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(scaleYAnim, AnimationConfig.TargetFps);
+
+        var scaleXAnim = new DoubleAnimationUsingKeyFrames();
+        scaleXAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.018, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(scaleXAnim, AnimationConfig.TargetFps);
+
+        var recoilAnim = new DoubleAnimationUsingKeyFrames();
+        recoilAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        recoilAnim.KeyFrames.Add(new EasingDoubleKeyFrame(-1.5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(40)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        recoilAnim.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(recoilAnim, AnimationConfig.TargetFps);
+
+        SearchBoxScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
+        SearchBoxScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYAnim);
+        SearchBoxTranslate.BeginAnimation(TranslateTransform.XProperty, recoilAnim);
+
+        // 2. Caret height pop & glowing flash burst
+        var caretHeightScale = new DoubleAnimationUsingKeyFrames();
+        caretHeightScale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        caretHeightScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.25, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        caretHeightScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(caretHeightScale, AnimationConfig.TargetFps);
+        CaretScale.BeginAnimation(ScaleTransform.ScaleYProperty, caretHeightScale);
+
+        var caretGlowBurst = new DoubleAnimationUsingKeyFrames();
+        caretGlowBurst.KeyFrames.Add(new LinearDoubleKeyFrame(10, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        caretGlowBurst.KeyFrames.Add(new EasingDoubleKeyFrame(18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        caretGlowBurst.KeyFrames.Add(new EasingDoubleKeyFrame(10, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(caretGlowBurst, AnimationConfig.TargetFps);
+        CaretGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, caretGlowBurst);
+
+        // 3. Search icon pulse & subtle rotation wiggle
+        var iconScale = new DoubleAnimationUsingKeyFrames();
+        iconScale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        iconScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        iconScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(iconScale, AnimationConfig.TargetFps);
+
+        var iconRotate = new DoubleAnimationUsingKeyFrames();
+        iconRotate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        iconRotate.KeyFrames.Add(new EasingDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+        iconRotate.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+        Timeline.SetDesiredFrameRate(iconRotate, AnimationConfig.TargetFps);
+
+        SearchIconScale.BeginAnimation(ScaleTransform.ScaleXProperty, iconScale);
+        SearchIconScale.BeginAnimation(ScaleTransform.ScaleYProperty, iconScale);
+        SearchIconRotate.BeginAnimation(RotateTransform.AngleProperty, iconRotate);
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1023,11 +1134,12 @@ public partial class SpotlightWindow : Window
         bool showStatus = showSearching
                           || (hasQuery && !hasResults && !_viewModel.IsSearching
                               && (_viewModel.IsWindowsSearchUnavailable || _viewModel.HasNoResults));
-        bool showContent = hasResults || showStatus;
+        bool isSearchingInFlight = hasQuery && _viewModel.IsSearching && _contentShown;
+        bool showContent = hasResults || showStatus || isSearchingInFlight;
 
         // Children first: the reveal/resize animations below measure the
         // region's natural height, which depends on these visibilities.
-        ResultsList.Visibility = hasResults ? Visibility.Visible : Visibility.Collapsed;
+        ResultsList.Visibility = (hasResults || isSearchingInFlight) ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
         if (showStatus)
         {
@@ -1112,7 +1224,8 @@ public partial class SpotlightWindow : Window
         {
             ContentRegion.ClipToBounds = true;
             var collapse = CreateAnimation(ContentRegion.ActualHeight, 0,
-                TimeSpan.FromMilliseconds(180), new CubicEase { EasingMode = EasingMode.EaseIn });
+                TimeSpan.FromMilliseconds(340),
+                new CubicBezierEase(0.36, -0.15, 0.64, 1.15) { EasingMode = EasingMode.EaseIn });
             collapse.Completed += (_, _) =>
             {
                 if (generation != _contentSizeGeneration) return;
@@ -1300,8 +1413,8 @@ public partial class SpotlightWindow : Window
     private void BeginContentHeightAnimation(double from, double to, int generation)
     {
         ContentRegion.ClipToBounds = true;
-        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(260),
-            new CubicEase { EasingMode = EasingMode.EaseOut });
+        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(380),
+            new CubicBezierEase(0.18, 1.25, 0.22, 1.0) { EasingMode = EasingMode.EaseIn });
         resize.Completed += (_, _) =>
         {
             if (generation != _contentSizeGeneration) return;
@@ -1399,9 +1512,9 @@ public partial class SpotlightWindow : Window
     {
         if (AnimationConfig.ReduceMotion) return;
 
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(200), ease);
-        var slide = CreateAnimation(-6, 0, TimeSpan.FromMilliseconds(240), ease);
+        var ease = new CubicBezierEase(0.18, 1.2, 0.22, 1.0) { EasingMode = EasingMode.EaseIn };
+        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(300), ease);
+        var slide = CreateAnimation(-10, 0, TimeSpan.FromMilliseconds(340), ease);
         ContentRegion.BeginAnimation(OpacityProperty, fade);
         ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
     }
@@ -1541,6 +1654,7 @@ public partial class SpotlightWindow : Window
         Shell.Height = startShellHeight;
         ShellCornerRadius = startBottomRadius;
         ShellTopCornerRadius = startTopRadius;
+        if (morphsFromNotch) Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = 0;
         ContentTranslate.Y = 8;
         var contentBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 10 };
@@ -1668,7 +1782,10 @@ public partial class SpotlightWindow : Window
         Shell.Height = current.Height;
         ShellCornerRadius = current.CornerRadius;
         ShellTopCornerRadius = current.TopCornerRadius;
+        Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = current.ContentOpacity;
+        double currentEarOpacity = ShellLeftEar?.Opacity ?? 0;
+        AnimateMorphEars(currentEarOpacity, 0, TimeSpan.FromMilliseconds(200), TimeSpan.Zero);
         ContentTranslate.Y = current.ContentTranslateY;
         var contentBlur = EnsureContentBlurEffect();
         contentBlur.Radius = current.ContentBlurRadius;
@@ -1796,6 +1913,7 @@ public partial class SpotlightWindow : Window
         Shell.Height = current.Height;
         ShellCornerRadius = current.CornerRadius;
         ShellTopCornerRadius = current.TopCornerRadius;
+        Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = current.ContentOpacity;
         ContentTranslate.Y = current.ContentTranslateY;
         var contentBlur = EnsureContentBlurEffect();
@@ -1869,6 +1987,11 @@ public partial class SpotlightWindow : Window
         // Shed the panel outline early so the shell arrives looking like the
         // borderless notch.
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
+
+        if (targetTopRadius == 0)
+            AnimateMorphEars(0, 1, TimeSpan.FromMilliseconds(260), TimeSpan.FromMilliseconds(260));
+        else
+            AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
     }
 
     private void BeginReturnHandoff(int generation)
@@ -1913,7 +2036,9 @@ public partial class SpotlightWindow : Window
         Shell.Height = double.NaN;
         ShellCornerRadius = ExpandedCornerRadius;
         ShellTopCornerRadius = ExpandedCornerRadius;
+        Shell.BorderThickness = new Thickness(1);
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 1;
+        AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
         ShellContent.Opacity = 1;
         ContentTranslate.Y = 0;
         Shell.CacheMode = null;
@@ -2165,6 +2290,28 @@ public partial class SpotlightWindow : Window
         brush.BeginAnimation(Brush.OpacityProperty, fade);
     }
 
+    private void AnimateMorphEars(double fromOpacity, double toOpacity, TimeSpan duration, TimeSpan beginTime)
+    {
+        if (ShellLeftEar == null || ShellRightEar == null) return;
+
+        ShellLeftEar.BeginAnimation(OpacityProperty, null);
+        ShellRightEar.BeginAnimation(OpacityProperty, null);
+        ShellLeftEar.Opacity = fromOpacity;
+        ShellRightEar.Opacity = fromOpacity;
+
+        if (Math.Abs(fromOpacity - toOpacity) < 0.001 || duration <= TimeSpan.Zero) return;
+
+        var anim = new DoubleAnimation(fromOpacity, toOpacity, duration)
+        {
+            BeginTime = beginTime,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, Math.Min(60, AnimationConfig.TargetFps));
+
+        ShellLeftEar.BeginAnimation(OpacityProperty, anim);
+        ShellRightEar.BeginAnimation(OpacityProperty, anim);
+    }
+
     private void RestoreShadow(bool animate)
     {
         SetMorphShadow(
@@ -2243,8 +2390,8 @@ public partial class SpotlightWindow : Window
         return animation;
     }
 
-    private static ExponentialEase CreateMorphEase() =>
-        new() { EasingMode = EasingMode.EaseOut, Exponent = 7 };
+    private static IEasingFunction CreateMorphEase() =>
+        new CubicBezierEase(0.16, 1.0, 0.3, 1.0) { EasingMode = EasingMode.EaseIn };
 
     public static readonly DependencyProperty ShellCornerRadiusProperty =
         DependencyProperty.Register(
@@ -2278,8 +2425,8 @@ public partial class SpotlightWindow : Window
     {
         if (d is SpotlightWindow window)
         {
-            double top = window.ShellTopCornerRadius;
-            double bottom = window.ShellCornerRadius;
+            double top = Math.Max(0, window.ShellTopCornerRadius);
+            double bottom = Math.Max(0, window.ShellCornerRadius);
             var corners = new CornerRadius(top, top, bottom, bottom);
             window.Shell.CornerRadius = corners;
             window.NotchMorphSnapshot.CornerRadius = corners;

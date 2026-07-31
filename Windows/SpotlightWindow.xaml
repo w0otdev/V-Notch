@@ -218,6 +218,26 @@
         </Border.RenderTransform>
 
         <Grid>
+            <!-- Concave side ear curves for notch transition in standard notch mode -->
+            <Path x:Name="ShellLeftEar"
+                  Data="M 0,0 L 11,0 L 11,10 C 11,4.4 6.2,0 0,0 Z"
+                  Fill="{StaticResource ShellBrush}"
+                  Width="11" Height="10"
+                  Margin="-10,0,0,0"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False"
+                  Opacity="0"/>
+            <Path x:Name="ShellRightEar"
+                  Data="M 11,0 L 0,0 L 0,10 C 0,4.4 4.8,0 11,0 Z"
+                  Fill="{StaticResource ShellBrush}"
+                  Width="11" Height="10"
+                  Margin="0,0,-10,0"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False"
+                  Opacity="0"/>
+
             <!-- ClipToBounds keeps rows inside the shell while its explicit
                  morph height is smaller than the content's natural height. -->
             <Grid x:Name="ShellContent"
@@ -239,7 +259,13 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Grid Margin="0,0,16,0">
+                <Grid x:Name="SearchBoxContainer" Margin="0,0,16,0" RenderTransformOrigin="0.0,0.5">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="SearchBoxScale" ScaleX="1" ScaleY="1"/>
+                            <TranslateTransform x:Name="SearchBoxTranslate" X="0" Y="0"/>
+                        </TransformGroup>
+                    </Grid.RenderTransform>
                     <!-- Inline autocomplete: the typed prefix is rendered transparent so
                          only the dim completion tail shows behind the real caret text. -->
                     <TextBlock x:Name="AutocompleteText"
@@ -253,23 +279,48 @@
                     <TextBox x:Name="SearchBox"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
                              TextChanged="SearchBox_TextChanged"
+                             SelectionChanged="SearchBox_SelectionChanged"
+                             GotFocus="SearchBox_GotFocus"
+                             LostFocus="SearchBox_LostFocus"
                              FontFamily="{StaticResource SFProDisplay}"
                              FontSize="20"
                              FontWeight="Bold"
                              Foreground="{StaticResource PrimaryTextBrush}"
-                             CaretBrush="{StaticResource AccentBrush}"
+                             CaretBrush="Transparent"
                              SelectionBrush="#4DFFFFFF"
                              Background="Transparent"
                              BorderThickness="0"
-                             Padding="0,2,0,0"
+                             Padding="2,2,0,0"
                              VerticalContentAlignment="Center"
                              AutomationProperties.Name="Search apps and files"/>
+                    <Border x:Name="GlowingCaret"
+                            Width="2"
+                            Height="22"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Background="#FFFFFF"
+                            CornerRadius="1"
+                            IsHitTestVisible="False"
+                            Visibility="Collapsed"
+                            RenderTransformOrigin="0.5,0.5">
+                        <Border.RenderTransform>
+                            <ScaleTransform x:Name="CaretScale" ScaleX="1" ScaleY="1"/>
+                        </Border.RenderTransform>
+                        <Border.Effect>
+                            <DropShadowEffect x:Name="CaretGlow"
+                                              Color="#FFFFFF"
+                                              BlurRadius="10"
+                                              ShadowDepth="0"
+                                              Opacity="0.95"/>
+                        </Border.Effect>
+                    </Border>
                     <TextBlock x:Name="PlaceholderText"
                                Text="Search apps and files"
                                FontFamily="{StaticResource SFProDisplay}"
                                FontSize="20"
                                FontWeight="Bold"
                                Foreground="#44FFFFFF"
+                               Margin="10,0,0,0"
                                IsHitTestVisible="False"
                                VerticalAlignment="Center"/>
                 </Grid>
@@ -285,13 +336,22 @@
                                Foreground="#72FFFFFF"/>
                 </Border>
 
-                <TextBlock Grid.Column="2"
+                <TextBlock x:Name="SearchIcon"
+                           Grid.Column="2"
                            Text="&#xE721;"
                            FontFamily="{StaticResource IconFont}"
                            FontSize="19"
                            FontWeight="Normal"
                            Foreground="#7DFFFFFF"
-                           VerticalAlignment="Center"/>
+                           VerticalAlignment="Center"
+                           RenderTransformOrigin="0.5,0.5">
+                    <TextBlock.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="SearchIconScale" ScaleX="1" ScaleY="1"/>
+                            <RotateTransform x:Name="SearchIconRotate" Angle="0"/>
+                        </TransformGroup>
+                    </TextBlock.RenderTransform>
+                </TextBlock>
             </Grid>
 
             <!-- Results appear only after the user starts searching. -->
