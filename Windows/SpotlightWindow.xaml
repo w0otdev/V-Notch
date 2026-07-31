@@ -29,7 +29,7 @@
         <!-- Fully opaque OLED black to match the notch; any translucency lets
              the window behind bleed through the search field. -->
         <SolidColorBrush x:Key="ShellBrush" Color="#FF000000"/>
-        <SolidColorBrush x:Key="ShellBorderBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="ShellBorderBrush" Color="Transparent"/>
         <SolidColorBrush x:Key="SelectedItemBrush" Color="#24FFFFFF"/>
         <SolidColorBrush x:Key="HoverItemBrush" Color="#10FFFFFF"/>
 
@@ -197,8 +197,8 @@
     <Border x:Name="Shell"
             CornerRadius="14"
             Background="{StaticResource ShellBrush}"
-            BorderBrush="{StaticResource ShellBorderBrush}"
-            BorderThickness="1"
+            BorderBrush="Transparent"
+            BorderThickness="0"
             VerticalAlignment="Top"
             ClipToBounds="False"
             Opacity="0"
@@ -287,7 +287,9 @@
                              FontWeight="Bold"
                              Foreground="{StaticResource PrimaryTextBrush}"
                              CaretBrush="Transparent"
-                             SelectionBrush="#4DFFFFFF"
+                             SelectionBrush="#FFFFFF"
+                             SelectionTextBrush="White"
+                             SelectionOpacity="0.35"
                              Background="Transparent"
                              BorderThickness="0"
                              Padding="2,2,0,0"

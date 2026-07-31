@@ -68,6 +68,7 @@ public partial class SpotlightWindow : Window
     private bool _unparkedWindowHitTesting = true;
     private bool _unparkedWindowFocusable = true;
     private IntPtr _previousForegroundWindow;
+    private CancellationTokenSource? _searchDebounceCts;
     internal ISpotlightMorphHost? MorphHostOverride { get; set; }
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
@@ -171,6 +172,7 @@ public partial class SpotlightWindow : Window
             if (_isParked) UnparkWindow();
             else if (!IsVisible) Show();
             UpdateLayout();
+            FocusSearchBox(generation);
             PrepareEntranceContentReservation();
 
             var target = GetSpotlightTarget();
@@ -506,11 +508,39 @@ public partial class SpotlightWindow : Window
         AutocompleteText.Visibility = Visibility.Collapsed;
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
+
+        _searchDebounceCts?.Cancel();
+
+        string currentText = SearchBox.Text;
+
+        if (string.IsNullOrEmpty(currentText))
+        {
+            _searchDebounceCts = null;
+            await _viewModel.SearchAsync(currentText);
+            ScheduleStatusRefresh();
+            return;
+        }
+
         // Until the new query publishes, the visible rows answer the old one.
-        if (_viewModel.Results.Count > 0 && !string.IsNullOrEmpty(SearchBox.Text))
+        if (_viewModel.Results.Count > 0)
             SetResultsDimmed(true);
-        await _viewModel.SearchAsync(SearchBox.Text);
-        ScheduleStatusRefresh();
+
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+        CancellationToken token = cts.Token;
+
+        try
+        {
+            await Task.Delay(120, token);
+            if (token.IsCancellationRequested) return;
+
+            await _viewModel.SearchAsync(currentText);
+            ScheduleStatusRefresh();
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // Cancelled due to rapid typing or window closure
+        }
     }
 
     private void SearchBox_GotFocus(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
@@ -521,7 +551,7 @@ public partial class SpotlightWindow : Window
 
     private void UpdateGlowingCaret()
     {
-        if (!SearchBox.IsFocused || !IsVisible)
+        if (!SearchBox.IsFocused || !IsVisible || SearchBox.SelectionLength > 0)
         {
             GlowingCaret.Visibility = Visibility.Collapsed;
             return;
@@ -2275,7 +2305,7 @@ public partial class SpotlightWindow : Window
     private SolidColorBrush EnsureShellBorderBrush()
     {
         if (_shellBorderBrush != null) return _shellBorderBrush;
-        _shellBorderBrush = new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
+        _shellBorderBrush = new SolidColorBrush(System.Windows.Media.Colors.Transparent);
         Shell.BorderBrush = _shellBorderBrush;
         return _shellBorderBrush;
     }
