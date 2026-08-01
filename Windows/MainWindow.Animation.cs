@@ -20,11 +20,72 @@ public partial class MainWindow
 
     private double ExpandedContentRestY => _settings.EnableDynamicIslandMode ? 8.5 : 4;
 
-    private void ApplyExpandedContentRestTransform()
+    private EventHandler? _mainViewHorizontalStabilizer;
+
+    private void StartMainViewHorizontalStabilizer(TranslateTransform contentTranslate)
+    {
+        StopMainViewHorizontalStabilizer();
+
+        void Stabilize()
+        {
+            if (ExpandedContent == null || NotchContainer == null || !ExpandedContent.IsLoaded)
+            {
+                return;
+            }
+
+            try
+            {
+                Point renderedOrigin = ExpandedContent
+                    .TransformToAncestor(NotchContainer)
+                    .Transform(new Point(0, 0));
+                double layoutOriginX = renderedOrigin.X - contentTranslate.X;
+                double targetOriginX = (NotchContainer.ActualWidth - ExpandedContent.ActualWidth) / 2.0;
+                DpiScale dpi = VisualTreeHelper.GetDpi(ExpandedContent);
+                double correction = targetOriginX - layoutOriginX;
+                correction = Math.Round(correction * dpi.DpiScaleX) / dpi.DpiScaleX;
+
+                if (Math.Abs(contentTranslate.X - correction) > 0.001)
+                {
+                    contentTranslate.X = correction;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The transition replaced the visual tree between layout ticks.
+            }
+        }
+
+        _mainViewHorizontalStabilizer = (_, _) => Stabilize();
+        ExpandedContent.LayoutUpdated += _mainViewHorizontalStabilizer;
+        Stabilize();
+    }
+
+    private void StopMainViewHorizontalStabilizer()
+    {
+        if (_mainViewHorizontalStabilizer == null || ExpandedContent == null)
+        {
+            return;
+        }
+
+        ExpandedContent.LayoutUpdated -= _mainViewHorizontalStabilizer;
+        _mainViewHorizontalStabilizer = null;
+    }
+
+    private void RestoreExpandedContentRestLayout()
     {
         if (ExpandedContent == null) return;
+
+        ExpandedContent.BeginAnimation(WidthProperty, null);
+        ExpandedContent.BeginAnimation(HeightProperty, null);
+        ExpandedContent.HorizontalAlignment = HorizontalAlignment.Center;
+        ExpandedContent.VerticalAlignment = VerticalAlignment.Top;
+        ExpandedContent.UseLayoutRounding = true;
+        ExpandedContent.Width = _expandedWidth - 16;
+        ExpandedContent.Height = _expandedHeight - 10;
+
         double restY = ExpandedContentRestY;
         ExpandedContent.RenderTransform = restY != 0 ? new TranslateTransform(0, restY) : null;
+        ExpandedContent.UpdateLayout();
     }
 
     private void PrepareExpandedContentLayoutForReveal()
@@ -146,16 +207,47 @@ public partial class MainWindow
         return new Size(width, height);
     }
 
-    private double GetCompactThumbnailRestOffsetY()
+    private bool TryComputeCompactThumbnailRestOffset(out (double X, double Y) offset)
     {
-        ConfigureAnimationThumbnailRestSlot();
-        return 0;
+        offset = default;
+        try
+        {
+            ConfigureAnimationThumbnailRestSlot();
+
+            if (CompactThumbnailBorder == null || InnerClipBorder == null) return false;
+            if (!CompactThumbnailBorder.IsLoaded || !InnerClipBorder.IsLoaded) return false;
+            if (CompactThumbnailBorder.ActualWidth <= 0 || CompactThumbnailBorder.ActualHeight <= 0) return false;
+            if (InnerClipBorder.ActualWidth <= 0 || InnerClipBorder.ActualHeight <= 0) return false;
+
+            Point compactPosition = CompactThumbnailBorder
+                .TransformToAncestor(InnerClipBorder)
+                .Transform(new Point(0, 0));
+            Thickness overlayMargin = AnimationThumbnailBorder.Margin;
+            double offsetX = compactPosition.X - overlayMargin.Left;
+            double offsetY = compactPosition.Y - overlayMargin.Top;
+
+            if (!double.IsFinite(offsetX) || !double.IsFinite(offsetY)) return false;
+            if (Math.Abs(offsetX) > 2000 || Math.Abs(offsetY) > 2000) return false;
+
+            offset = (offsetX, offsetY);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
-    private double GetCompactThumbnailRestOffsetX()
+    private (double X, double Y) MeasureCompactThumbnailRestOffset()
     {
-        ConfigureAnimationThumbnailRestSlot();
-        return 0;
+        ApplyDynamicIslandContentAlignment(_settings.EnableDynamicIslandMode);
+        MusicCompactContent.InvalidateMeasure();
+        MusicCompactContent.InvalidateArrange();
+        MusicCompactContent.UpdateLayout();
+
+        return TryComputeCompactThumbnailRestOffset(out var measuredOffset)
+            ? measuredOffset
+            : (0, 0);
     }
 
     private double GetCompactThumbnailCenteredTop()
@@ -199,7 +291,7 @@ public partial class MainWindow
 
     private int _animationThumbnailHandoffGeneration;
 
-    private void CrossfadeAnimationThumbnailToExpanded()
+    private void CrossfadeAnimationThumbnailToExpanded((double X, double Y)? liveTarget = null)
     {
         if (ThumbnailBorder == null ||
             AnimationThumbnailBorder.Visibility != Visibility.Visible ||
@@ -218,15 +310,36 @@ public partial class MainWindow
 
         int generation = ++_animationThumbnailHandoffGeneration;
         var handoff = MakeAnim(1, 0, _dur100, _easeQuadOut);
+
+        if (liveTarget.HasValue)
+        {
+            var (liveX, liveY) = liveTarget.Value;
+            double overlayX = AnimationThumbnailTranslate.X;
+            double overlayY = AnimationThumbnailTranslate.Y;
+
+            if (Math.Abs(overlayX - liveX) > 0.001)
+            {
+                AnimationThumbnailTranslate.BeginAnimation(
+                    TranslateTransform.XProperty,
+                    MakeAnim(overlayX, liveX, _dur100, _easeQuadOut));
+            }
+            if (Math.Abs(overlayY - liveY) > 0.001)
+            {
+                AnimationThumbnailTranslate.BeginAnimation(
+                    TranslateTransform.YProperty,
+                    MakeAnim(overlayY, liveY, _dur100, _easeQuadOut));
+            }
+        }
+
         handoff.Completed += (_, _) =>
         {
             if (generation != _animationThumbnailHandoffGeneration) return;
             ResetAnimationThumbnailOverlay();
         };
 
-        // Store the destination below the clock so removing it cannot flash the
-        // overlay opaque again during a rapid collapse/reopen.
-        AnimationThumbnailBorder.Opacity = 0;
+        // Attach the clock while the visible base value is still 1. Setting the
+        // base to 0 first exposes a one-frame overlay=0/live=1 swap before the
+        // clock's From value becomes active on the next render pass.
         AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
     }
 
@@ -307,6 +420,17 @@ public partial class MainWindow
         this.BeginAnimation(CurrentCompactThumbnailRadiusProperty, null);
         CurrentCompactThumbnailRadius = 6;
         ResetCompactThumbnailRestingState();
+
+        // Capture the compact thumbnail in the overlay's own coordinate space
+        // while the notch is still in its real collapsed layout. On the first
+        // expansion after startup, the compact grid can settle at a different
+        // device-pixel origin than its nominal margin; a hard-coded (0, 0)
+        // start then makes the overlay appear offset before snapping into place.
+        (double X, double Y) compactThumbnailRestOffset = (0, 0);
+        if (_isMusicCompactMode && CompactThumbnail.Source != null && !suppressCompactThumbnailMotion)
+        {
+            compactThumbnailRestOffset = MeasureCompactThumbnailRestOffset();
+        }
 
         EnsureTopmost();
 
@@ -399,7 +523,11 @@ public partial class MainWindow
         }
         ExpandedContent.Width = _expandedWidth - 16;
         ExpandedContent.Height = _expandedHeight - 10;
-        ExpandedContent.UpdateLayout();
+        // The cold-open layout has not yet run the media sizing callbacks that
+        // establish the final progress/text geometry. Measure that state before
+        // deriving the thumbnail endpoint so the first expansion uses the same
+        // coordinates as every later expansion.
+        PrepareExpandedContentLayoutForReveal();
 
         AnimateStatusBarReveal(true);
 
@@ -450,6 +578,8 @@ public partial class MainWindow
                 ExpandedContent.Height = _expandedHeight - 10;
 
                 UpdateLayout();
+                PrepareExpandedContentLayoutForReveal();
+                UpdateLayout();
 
                 if (TryComputeThumbnailExpandTarget(out var computedTarget))
                 {
@@ -482,18 +612,22 @@ public partial class MainWindow
                 AnimationThumbnailBorder.Width = 22;
                 AnimationThumbnailBorder.Height = 22;
                 AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
-                double compactRestX = GetCompactThumbnailRestOffsetX();
-                double compactRestY = GetCompactThumbnailRestOffsetY();
+                var (compactRestX, compactRestY) = compactThumbnailRestOffset;
                 AnimationThumbnailTranslate.X = compactRestX;
                 AnimationThumbnailTranslate.Y = compactRestY;
 
                 var (targetX, targetY) = cachedExpandTarget.Value;
 
-                var thumbDelay = TimeSpan.FromMilliseconds(40);
-                // Finish on the same 500 ms landing frame as the shell, leaving
-                // a stable 100 ms before the live-thumbnail handoff.
-                var thumbDur = new Duration(_dur500.TimeSpan - thumbDelay);
-                var thumbEase = _easeThumbSpring;
+                // Start owning the overlay on the first rendered frame. A delayed
+                // clock exposes the committed final base value before its From
+                // value becomes active, producing a final -> start -> final jump
+                // on the first expansion after process startup.
+                var thumbDur = _dur500;
+                // Thumbnail geometry must approach the live border monotonically.
+                // The elastic easing overshoots the 102.4 px endpoint to about
+                // 110.4 px, covers the title gap, then shrinks back at handoff.
+                // That reads as a wrong-position/zoom snap on the cold opening.
+                var thumbEase = _easeExpOut6;
                 int thumbFps = VNotch.Services.AnimationConfig.TargetFps;
                 Size expandedThumbSize = GetExpandedThumbnailAnimationSize();
                 double expandedThumbWidth = expandedThumbSize.Width;
@@ -506,8 +640,8 @@ public partial class MainWindow
                     Math.Abs((_cachedThumbWidthExpand.To ?? 0) - expandedThumbWidth) > 0.001 ||
                     Math.Abs((_cachedThumbHeightExpand?.To ?? 0) - expandedThumbHeight) > 0.001)
                 {
-                    _cachedThumbWidthExpand = MakeAnim(22, expandedThumbWidth, thumbDur, thumbEase, thumbDelay);
-                    _cachedThumbHeightExpand = MakeAnim(22, expandedThumbHeight, thumbDur, thumbEase, thumbDelay);
+                    _cachedThumbWidthExpand = MakeAnim(22, expandedThumbWidth, thumbDur, thumbEase, null);
+                    _cachedThumbHeightExpand = MakeAnim(22, expandedThumbHeight, thumbDur, thumbEase, null);
                     Timeline.SetDesiredFrameRate(_cachedThumbWidthExpand, thumbFps);
                     Timeline.SetDesiredFrameRate(_cachedThumbHeightExpand, thumbFps);
 
@@ -516,8 +650,7 @@ public partial class MainWindow
                         new Rect(0, 0, expandedThumbWidth, expandedThumbHeight),
                         thumbDur)
                     {
-                        EasingFunction = thumbEase,
-                        BeginTime = thumbDelay
+                        EasingFunction = thumbEase
                     };
                     Timeline.SetDesiredFrameRate(_cachedThumbRectExpand, thumbFps);
 
@@ -526,8 +659,8 @@ public partial class MainWindow
                     _cachedThumbRectExpand.Freeze();
                 }
 
-                var thumbTranslateXAnim = MakeAnim(compactRestX, targetX, thumbDur, thumbEase, thumbDelay);
-                var thumbTranslateYAnim = MakeAnim(compactRestY, targetY, thumbDur, thumbEase, thumbDelay);
+                var thumbTranslateXAnim = MakeAnim(compactRestX, targetX, thumbDur, thumbEase, null);
+                var thumbTranslateYAnim = MakeAnim(compactRestY, targetY, thumbDur, thumbEase, null);
                 var thumbBorderThicknessAnim = new ThicknessAnimation(
                     compactBorderThickness,
                     expandedBorderThickness,
@@ -535,8 +668,7 @@ public partial class MainWindow
                 {
                     // BorderThickness cannot accept the negative overshoot of
                     // the elastic geometry easing.
-                    EasingFunction = _easeExpOut6,
-                    BeginTime = thumbDelay
+                    EasingFunction = _easeExpOut6
                 };
                 Timeline.SetDesiredFrameRate(thumbTranslateXAnim, thumbFps);
                 Timeline.SetDesiredFrameRate(thumbTranslateYAnim, thumbFps);
@@ -555,7 +687,7 @@ public partial class MainWindow
                 AnimationThumbnailBorder.BeginAnimation(Border.BorderThicknessProperty, thumbBorderThicknessAnim);
                 AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, thumbTranslateXAnim);
                 AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.YProperty, thumbTranslateYAnim);
-                AnimateThumbnailAnimationRadius(6, 14, thumbDur, _easeExpOut6, thumbDelay);
+                AnimateThumbnailAnimationRadius(6, 14, thumbDur, _easeExpOut6);
 
                 AnimationThumbnailClip.BeginAnimation(RectangleGeometry.RectProperty, _cachedThumbRectExpand);
 
@@ -570,6 +702,7 @@ public partial class MainWindow
 
         heightAnim.Completed += (s, e) =>
         {
+            StopMainViewHorizontalStabilizer();
             _isAnimating = false;
             _isExpanded = true;
             _notchState.TryTransitionTo(NotchState.Expanded);
@@ -608,9 +741,15 @@ public partial class MainWindow
 
             if (_pendingFlipThumbnail != null)
             {
+                // A refined/cropped artwork update often arrives during the
+                // first expansion after startup. Starting its blur/scale morph
+                // on this exact handoff frame makes the live image move under
+                // the overlay. Fold the newest bitmap into the live layer and
+                // let the existing overlay dissolve reveal it at fixed geometry.
                 var thumb = _pendingFlipThumbnail;
                 _pendingFlipThumbnail = null;
-                AnimateThumbnailSwitchOnly(thumb, force: true);
+                ThumbnailImage.Source = thumb;
+                CompactThumbnail.Source = thumb;
             }
 
             // Do not detach the opacity, size, translation, or expanded blur
@@ -625,15 +764,17 @@ public partial class MainWindow
             MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
             MusicCompactContentBlur.Radius = 0;
 
+            (double X, double Y)? thumbnailHandoffTarget = null;
             if (_isMusicCompactMode)
             {
                 if (TryComputeThumbnailExpandTarget(out var updatedTarget))
                 {
                     _cachedThumbnailExpandTarget = updatedTarget;
+                    thumbnailHandoffTarget = updatedTarget;
                 }
             }
 
-            CrossfadeAnimationThumbnailToExpanded();
+            CrossfadeAnimationThumbnailToExpanded(thumbnailHandoffTarget);
             if (CompactThumbnailBorder != null && !_isClipboardPeekActive && !suppressCompactThumbnailMotion)
             {
                 CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
@@ -674,6 +815,11 @@ public partial class MainWindow
             }
         };
 
+        // Begin stabilization only after the hidden final-layout measurement.
+        // Starting it before the cold target probe can bake its temporary
+        // centering correction into the cached thumbnail endpoint.
+        StartMainViewHorizontalStabilizer(expandedTranslate);
+
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
         // Set the destinations as animation bases while the explicit From/To
@@ -701,6 +847,8 @@ public partial class MainWindow
     private void CollapseNotch()
     {
         if (_isAnimating || !_isExpanded || _isGreetingActive) return;
+
+        StopMainViewHorizontalStabilizer();
 
         _lastExpandedViewBeforeCollapse = _isAudioView
             ? LastExpandedView.Audio
@@ -1011,13 +1159,7 @@ public partial class MainWindow
                     _cachedThumbRectCollapse.Freeze();
                 }
 
-                ApplyDynamicIslandContentAlignment(_settings.EnableDynamicIslandMode);
-                MusicCompactContent.InvalidateMeasure();
-                MusicCompactContent.InvalidateArrange();
-                MusicCompactContent.UpdateLayout();
-
-                double compactRestX = GetCompactThumbnailRestOffsetX();
-                double compactRestY = GetCompactThumbnailRestOffsetY();
+                var (compactRestX, compactRestY) = MeasureCompactThumbnailRestOffset();
                 var thumbTranslateXAnim = MakeAnim(startX, compactRestX, thumbDur, thumbEase, thumbDelay);
                 var thumbTranslateYAnim = MakeAnim(startY, compactRestY, thumbDur, thumbEase, thumbDelay);
                 Timeline.SetDesiredFrameRate(thumbTranslateXAnim, thumbFps);

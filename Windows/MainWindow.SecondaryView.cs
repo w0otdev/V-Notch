@@ -357,7 +357,7 @@ public partial class MainWindow
             NotchBorder.IsHitTestVisible = true;
             ExpandedContent.Opacity = 1;
             ExpandedContent.BeginAnimation(OpacityProperty, null);
-            ApplyExpandedContentRestTransform();
+            RestoreExpandedContentRestLayout();
             ResumeSpotifyCanvasLifecycle();
 
             ShowMediaBackground();

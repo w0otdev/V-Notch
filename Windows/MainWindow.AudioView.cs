@@ -462,10 +462,10 @@ public partial class MainWindow
                 incoming.Opacity = 1;
                 incoming.BeginAnimation(OpacityProperty, null);
                 if (ReferenceEquals(incoming, ExpandedContent))
-                    ApplyExpandedContentRestTransform();
+                    RestoreExpandedContentRestLayout();
                 else
                     incoming.RenderTransform = null;
-                if (shrinking)
+                if (shrinking && !ReferenceEquals(incoming, ExpandedContent))
                 {
                     incoming.HorizontalAlignment = HorizontalAlignment.Stretch;
                     incoming.UseLayoutRounding = savedRounding;

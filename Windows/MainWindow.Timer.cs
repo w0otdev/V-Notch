@@ -540,15 +540,7 @@ public partial class MainWindow
             NotchBorder.IsHitTestVisible = true;
             ExpandedContent.Opacity = 1;
             ExpandedContent.BeginAnimation(OpacityProperty, null);
-            ApplyExpandedContentRestTransform();
-            ExpandedContent.HorizontalAlignment = HorizontalAlignment.Stretch;
-            ExpandedContent.UseLayoutRounding = true;
-            // The exit shrink animation pinned a fixed Width/Height; reset to auto so
-            // the panel stretches to fill the notch instead of staying narrow and
-            // centered (which offsets the media control cluster).
-            ExpandedContent.Width = double.NaN;
-            ExpandedContent.Height = double.NaN;
-            ExpandedContent.UpdateLayout();
+            RestoreExpandedContentRestLayout();
             ResumeSpotifyCanvasLifecycle();
 
             ShowMediaBackground();
