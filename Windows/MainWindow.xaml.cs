@@ -865,18 +865,6 @@ public partial class MainWindow : Window
         double left = rect.Left;
         double top = rect.Top + (islandMode ? DynamicIslandTopMargin : 0);
 
-        if (NotchBorder != null && NotchBorder.IsLoaded && PresentationSource.FromVisual(NotchBorder) != null)
-        {
-            try
-            {
-                var dpi = VisualTreeHelper.GetDpi(NotchBorder);
-                var tl = NotchBorder.PointToScreen(new Point(0, 0));
-                left = tl.X / dpi.DpiScaleX;
-                top = tl.Y / dpi.DpiScaleY;
-            }
-            catch { }
-        }
-
         RuntimeLog.Debug("SPOTLIGHT-MORPH", () =>
             $"Source rect: {width:F1}x{height:F1}, expanded={_isExpanded}, " +
             $"musicExpanded={_isMusicExpanded}, topRadius={topRadius:F1}, bottomRadius={bottomRadius:F1}");
@@ -941,6 +929,12 @@ public partial class MainWindow : Window
             NotchWrapper.BeginAnimation(OpacityProperty, null);
             NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
             NotchWrapper.IsHitTestVisible = false;
+
+            if (NotchContainerTranslate != null)
+            {
+                NotchContainerTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                NotchContainerTranslate.Y = 0;
+            }
             return;
         }
 
@@ -957,6 +951,13 @@ public partial class MainWindow : Window
         NotchWrapper.BeginAnimation(OpacityProperty, null);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
+
+        if (NotchContainerTranslate != null)
+        {
+            NotchContainerTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            NotchContainerTranslate.Y = 0;
+        }
+
         _spotlightMorphOwnsNotchVisibility = false;
         CompleteSpotlightReturnScaleHandoff();
     }
@@ -967,6 +968,12 @@ public partial class MainWindow : Window
         {
             SetSpotlightMorphActive(false);
             return;
+        }
+
+        if (NotchContainerTranslate != null)
+        {
+            NotchContainerTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            NotchContainerTranslate.Y = 0;
         }
 
         // Ownership remains with Spotlight until its HWND is actually hidden.
@@ -1001,25 +1008,11 @@ public partial class MainWindow : Window
         {
             EasingFunction = ease
         };
-        // A sub-pixel settle keeps the handoff alive without the old 1.12x
-        // bounce pulling the real notch outside the fake shell's geometry.
-        var settle = new DoubleAnimation(
-            0.992,
-            1,
-            new Duration(duration + TimeSpan.FromMilliseconds(50)))
-        {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
         Timeline.SetDesiredFrameRate(notchFade, AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(shadowFade, AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(settle, AnimationConfig.TargetFps);
 
         NotchWrapper.BeginAnimation(OpacityProperty, notchFade);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, shadowFade);
-        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
-        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
     }
 
     private void CompleteSpotlightReturnScaleHandoff()

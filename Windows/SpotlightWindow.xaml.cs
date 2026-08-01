@@ -69,7 +69,7 @@ public partial class SpotlightWindow : Window
     private bool _unparkedWindowFocusable = true;
     private IntPtr _previousForegroundWindow;
     private CancellationTokenSource? _searchDebounceCts;
-    private readonly MediaPlayer _spotlightClickPlayer = new();
+    private MediaPlayer? _spotlightClickPlayer;
     private Uri? _spotlightClickUri;
     private bool _spotlightClickLoaded;
     internal ISpotlightMorphHost? MorphHostOverride { get; set; }
@@ -199,18 +199,24 @@ public partial class SpotlightWindow : Window
 
     private void PlaySpotlightClickSfx()
     {
+        if (SuppressForegroundActivationForTests) return;
         try
         {
             if (_spotlightClickUri == null)
             {
-                string sfxPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "SPL_CLICK_SFX.mp3");
+                string findSfx(string folder)
+                {
+                    string m4a = System.IO.Path.Combine(folder, "Assets", "SPL_CLICK_SFX.m4a");
+                    if (System.IO.File.Exists(m4a)) return m4a;
+                    string mp3 = System.IO.Path.Combine(folder, "Assets", "SPL_CLICK_SFX.mp3");
+                    return System.IO.File.Exists(mp3) ? mp3 : m4a;
+                }
+
+                string sfxPath = findSfx(AppDomain.CurrentDomain.BaseDirectory);
                 if (!System.IO.File.Exists(sfxPath))
                 {
-                    string devPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Assets", "SPL_CLICK_SFX.mp3");
-                    if (System.IO.File.Exists(devPath))
-                    {
-                        sfxPath = System.IO.Path.GetFullPath(devPath);
-                    }
+                    string devFolder = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", ".."));
+                    sfxPath = findSfx(devFolder);
                 }
 
                 if (System.IO.File.Exists(sfxPath))
@@ -221,15 +227,28 @@ public partial class SpotlightWindow : Window
 
             if (_spotlightClickUri != null)
             {
+                if (_spotlightClickPlayer == null)
+                {
+                    _spotlightClickPlayer = new MediaPlayer();
+                    _spotlightClickPlayer.MediaEnded += (s, e) =>
+                    {
+                        try
+                        {
+                            _spotlightClickPlayer.Stop();
+                            _spotlightClickPlayer.Position = TimeSpan.Zero;
+                        }
+                        catch { }
+                    };
+                }
+
                 if (!_spotlightClickLoaded)
                 {
                     _spotlightClickPlayer.Open(_spotlightClickUri);
                     _spotlightClickLoaded = true;
                 }
-                else
-                {
-                    _spotlightClickPlayer.Position = TimeSpan.Zero;
-                }
+
+                _spotlightClickPlayer.Stop();
+                _spotlightClickPlayer.Position = TimeSpan.Zero;
                 _spotlightClickPlayer.Play();
             }
         }
@@ -2027,7 +2046,7 @@ public partial class SpotlightWindow : Window
             MorphDuration, morphEase, synchronizedMorph: true);
         var contentFade = CreateAnimation(current.ContentOpacity, 0,
             TimeSpan.FromMilliseconds(170), contentEase);
-        var contentSlide = CreateAnimation(current.ContentTranslateY, 9,
+        var contentSlide = CreateAnimation(current.ContentTranslateY, 0,
             TimeSpan.FromMilliseconds(210), contentEase);
 
         if (hadVisibleContent) contentFade.Completed += (_, _) =>

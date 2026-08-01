@@ -322,7 +322,7 @@
                                FontSize="20"
                                FontWeight="Bold"
                                Foreground="#44FFFFFF"
-                               Margin="10,0,0,0"
+                               Margin="7,0,0,0"
                                IsHitTestVisible="False"
                                VerticalAlignment="Center"/>
                 </Grid>
