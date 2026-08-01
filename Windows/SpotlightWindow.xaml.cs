@@ -69,9 +69,7 @@ public partial class SpotlightWindow : Window
     private bool _unparkedWindowFocusable = true;
     private IntPtr _previousForegroundWindow;
     private CancellationTokenSource? _searchDebounceCts;
-    private MediaPlayer? _spotlightClickPlayer;
     private Uri? _spotlightClickUri;
-    private bool _spotlightClickLoaded;
     internal ISpotlightMorphHost? MorphHostOverride { get; set; }
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
@@ -197,6 +195,12 @@ public partial class SpotlightWindow : Window
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("winmm.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    private static extern int mciSendString(string command, System.Text.StringBuilder? returnString, int returnLength, IntPtr hwndCallback);
+
+    private static bool _sfxMciOpened;
+    private static string? _sfxMciPath;
+
     private void PlaySpotlightClickSfx()
     {
         if (SuppressForegroundActivationForTests) return;
@@ -227,29 +231,28 @@ public partial class SpotlightWindow : Window
 
             if (_spotlightClickUri != null)
             {
-                if (_spotlightClickPlayer == null)
+                string localPath = _spotlightClickUri.LocalPath;
+                if (!_sfxMciOpened || _sfxMciPath != localPath)
                 {
-                    _spotlightClickPlayer = new MediaPlayer();
-                    _spotlightClickPlayer.MediaEnded += (s, e) =>
+                    mciSendString("close sfx_click", null, 0, IntPtr.Zero);
+                    int openRes = mciSendString($"open \"{localPath}\" alias sfx_click", null, 0, IntPtr.Zero);
+                    if (openRes == 0)
                     {
-                        try
-                        {
-                            _spotlightClickPlayer.Stop();
-                            _spotlightClickPlayer.Position = TimeSpan.Zero;
-                        }
-                        catch { }
-                    };
+                        _sfxMciOpened = true;
+                        _sfxMciPath = localPath;
+                    }
                 }
 
-                if (!_spotlightClickLoaded)
+                if (_sfxMciOpened)
                 {
-                    _spotlightClickPlayer.Open(_spotlightClickUri);
-                    _spotlightClickLoaded = true;
+                    mciSendString("play sfx_click from 0", null, 0, IntPtr.Zero);
                 }
-
-                _spotlightClickPlayer.Stop();
-                _spotlightClickPlayer.Position = TimeSpan.Zero;
-                _spotlightClickPlayer.Play();
+                else
+                {
+                    var player = new MediaPlayer();
+                    player.Open(_spotlightClickUri);
+                    player.Play();
+                }
             }
         }
         catch
@@ -1824,6 +1827,7 @@ public partial class SpotlightWindow : Window
 
     private void ReverseExitToEntrance()
     {
+        PlaySpotlightClickSfx();
         int generation = ++_animationGeneration;
         MorphSnapshot current = FreezeCurrentMorphState();
         var target = GetSpotlightTarget();
