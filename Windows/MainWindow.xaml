@@ -1320,6 +1320,8 @@
                           Opacity="0"
                           Visibility="Collapsed"
                           Margin="8,2,8,8"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Top"
                           Background="{StaticResource NotchGradient}"
                           ClipToBounds="False"
                           RenderOptions.ClearTypeHint="Enabled">

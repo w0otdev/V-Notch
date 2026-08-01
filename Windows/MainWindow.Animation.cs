@@ -37,6 +37,24 @@ public partial class MainWindow
         ExpandedContent.UpdateLayout();
     }
 
+    private static DoubleAnimationUsingKeyFrames MakeExpandGeometryAnimation(
+        double from,
+        double to,
+        IEasingFunction easing,
+        int fps)
+    {
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = _dur600,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        animation.KeyFrames.Add(new LinearDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromTimeSpan(_dur500.TimeSpan), easing));
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(to, KeyTime.FromTimeSpan(_dur600.TimeSpan)));
+        Timeline.SetDesiredFrameRate(animation, fps);
+        return animation;
+    }
+
     private double GetCurrentExpandedContentTranslationY()
     {
         if (ExpandedContent == null) return 0;
@@ -114,6 +132,20 @@ public partial class MainWindow
         AnimationThumbnailBorder.Margin = new Thickness(left, top, 0, 0);
     }
 
+    private Size GetExpandedThumbnailAnimationSize()
+    {
+        double width = ThumbnailBorder?.ActualWidth > 0 ? ThumbnailBorder.ActualWidth : 102;
+        double height = ThumbnailBorder?.ActualHeight > 0 ? ThumbnailBorder.ActualHeight : 102;
+        DpiScale dpi = VisualTreeHelper.GetDpi(ThumbnailBorder ?? AnimationThumbnailBorder);
+
+        // The live thumbnail is layout-rounded, while an animated Width/Height
+        // endpoint is rendered at its fractional device-pixel size. Snap the
+        // overlay endpoint to the exact physical size used by the live visual.
+        width = Math.Round(width * dpi.DpiScaleX) / dpi.DpiScaleX;
+        height = Math.Round(height * dpi.DpiScaleY) / dpi.DpiScaleY;
+        return new Size(width, height);
+    }
+
     private double GetCompactThumbnailRestOffsetY()
     {
         ConfigureAnimationThumbnailRestSlot();
@@ -136,8 +168,11 @@ public partial class MainWindow
 
     private void ResetAnimationThumbnailOverlay(bool clearSource = true)
     {
+        _animationThumbnailHandoffGeneration++;
+        AnimationThumbnailBorder.BeginAnimation(OpacityProperty, null);
         AnimationThumbnailBorder.BeginAnimation(WidthProperty, null);
         AnimationThumbnailBorder.BeginAnimation(HeightProperty, null);
+        AnimationThumbnailBorder.BeginAnimation(Border.BorderThicknessProperty, null);
         AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, null);
         AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         AnimationThumbnailClip.BeginAnimation(RectangleGeometry.RectProperty, null);
@@ -148,6 +183,7 @@ public partial class MainWindow
         AnimationThumbnailBorder.Opacity = 0;
         AnimationThumbnailBorder.Width = 22;
         AnimationThumbnailBorder.Height = 22;
+        AnimationThumbnailBorder.BorderThickness = new Thickness(0);
         AnimationThumbnailBorder.CornerRadius = new CornerRadius(6);
         AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
         AnimationThumbnailClip.RadiusX = 6;
@@ -159,6 +195,39 @@ public partial class MainWindow
         {
             AnimationThumbnailImage.Source = null;
         }
+    }
+
+    private int _animationThumbnailHandoffGeneration;
+
+    private void CrossfadeAnimationThumbnailToExpanded()
+    {
+        if (ThumbnailBorder == null ||
+            AnimationThumbnailBorder.Visibility != Visibility.Visible ||
+            AnimationThumbnailBorder.Opacity <= 0)
+        {
+            if (ThumbnailBorder != null) ThumbnailBorder.Opacity = 1;
+            ResetAnimationThumbnailOverlay();
+            return;
+        }
+
+        // Put the live thumbnail underneath the overlay first, then dissolve the
+        // overlay. A hard Visibility swap makes WPF resample the same bitmap in a
+        // different visual tree and reads as a tiny zoom at the final frame.
+        ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        ThumbnailBorder.Opacity = 1;
+
+        int generation = ++_animationThumbnailHandoffGeneration;
+        var handoff = MakeAnim(1, 0, _dur100, _easeQuadOut);
+        handoff.Completed += (_, _) =>
+        {
+            if (generation != _animationThumbnailHandoffGeneration) return;
+            ResetAnimationThumbnailOverlay();
+        };
+
+        // Store the destination below the clock so removing it cannot flash the
+        // overlay opaque again during a rapid collapse/reopen.
+        AnimationThumbnailBorder.Opacity = 0;
+        AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
     }
 
     private (double X, double Y)? _cachedThumbnailExpandTarget;
@@ -337,18 +406,25 @@ public partial class MainWindow
         NotchBorder.IsHitTestVisible = false;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var widthAnim = MakeAnim(_expandedWidth, _dur600, _easeExpOut6, animFps);
-        var heightAnim = MakeAnim(_expandedHeight, _dur600, _easeExpOut6, animFps);
+        // Land layout geometry at 500 ms, then hold the exact device-pixel frame
+        // through the 600 ms lifecycle completion. MainView is centered inside
+        // this animated parent; letting both finish on the same tick exposes a
+        // final 1 px parity change on fractional-DPI displays.
+        var widthAnim = MakeExpandGeometryAnimation(currentWidth, _expandedWidth, _easeExpOut6, animFps);
+        var heightAnim = MakeExpandGeometryAnimation(currentHeight, _expandedHeight, _easeExpOut6, animFps);
         var fadeOutAnim = MakeAnim(0, _dur200, _easeQuadOut);
 
+        double contentTargetY = ExpandedContentRestY;
         var expandedGroup = new TransformGroup();
-        var expandedTranslate = new TranslateTransform(0, 10);
+        // Keep the resting value below the animation clock. The held clock stays
+        // attached after opening so WPF keeps the exact same pixel-snap mode as
+        // the final animated frame; the next transition replaces this group.
+        var expandedTranslate = new TranslateTransform(0, contentTargetY);
         expandedGroup.Children.Add(expandedTranslate);
         ExpandedContent.RenderTransform = expandedGroup;
         ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
 
         var fadeInAnim = MakeAnim(0d, 1d, _dur400, _easePowerOut3);
-        double contentTargetY = ExpandedContentRestY;
         var springSlide = MakeAnim(10, contentTargetY, _dur400, _easeExpOut6);
 
         var glowAnim = MakeAnim(0.15, _dur200);
@@ -414,18 +490,31 @@ public partial class MainWindow
                 var (targetX, targetY) = cachedExpandTarget.Value;
 
                 var thumbDelay = TimeSpan.FromMilliseconds(40);
-                var thumbDur = _dur600;
+                // Finish on the same 500 ms landing frame as the shell, leaving
+                // a stable 100 ms before the live-thumbnail handoff.
+                var thumbDur = new Duration(_dur500.TimeSpan - thumbDelay);
                 var thumbEase = _easeThumbSpring;
                 int thumbFps = VNotch.Services.AnimationConfig.TargetFps;
+                Size expandedThumbSize = GetExpandedThumbnailAnimationSize();
+                double expandedThumbWidth = expandedThumbSize.Width;
+                double expandedThumbHeight = expandedThumbSize.Height;
+                Thickness compactBorderThickness = CompactThumbnailBorder?.BorderThickness ?? new Thickness(0);
+                Thickness expandedBorderThickness = ThumbnailBorder?.BorderThickness ?? new Thickness(0);
 
-                if (_cachedThumbWidthExpand == null || _cachedThumbWidthExpand.Duration != thumbDur)
+                if (_cachedThumbWidthExpand == null ||
+                    _cachedThumbWidthExpand.Duration != thumbDur ||
+                    Math.Abs((_cachedThumbWidthExpand.To ?? 0) - expandedThumbWidth) > 0.001 ||
+                    Math.Abs((_cachedThumbHeightExpand?.To ?? 0) - expandedThumbHeight) > 0.001)
                 {
-                    _cachedThumbWidthExpand = MakeAnim(22, 102, thumbDur, thumbEase, thumbDelay);
-                    _cachedThumbHeightExpand = MakeAnim(22, 102, thumbDur, thumbEase, thumbDelay);
+                    _cachedThumbWidthExpand = MakeAnim(22, expandedThumbWidth, thumbDur, thumbEase, thumbDelay);
+                    _cachedThumbHeightExpand = MakeAnim(22, expandedThumbHeight, thumbDur, thumbEase, thumbDelay);
                     Timeline.SetDesiredFrameRate(_cachedThumbWidthExpand, thumbFps);
                     Timeline.SetDesiredFrameRate(_cachedThumbHeightExpand, thumbFps);
 
-                    _cachedThumbRectExpand = new RectAnimation(new Rect(0, 0, 22, 22), new Rect(0, 0, 102, 102), thumbDur)
+                    _cachedThumbRectExpand = new RectAnimation(
+                        new Rect(0, 0, 22, 22),
+                        new Rect(0, 0, expandedThumbWidth, expandedThumbHeight),
+                        thumbDur)
                     {
                         EasingFunction = thumbEase,
                         BeginTime = thumbDelay
@@ -439,11 +528,31 @@ public partial class MainWindow
 
                 var thumbTranslateXAnim = MakeAnim(compactRestX, targetX, thumbDur, thumbEase, thumbDelay);
                 var thumbTranslateYAnim = MakeAnim(compactRestY, targetY, thumbDur, thumbEase, thumbDelay);
+                var thumbBorderThicknessAnim = new ThicknessAnimation(
+                    compactBorderThickness,
+                    expandedBorderThickness,
+                    thumbDur)
+                {
+                    // BorderThickness cannot accept the negative overshoot of
+                    // the elastic geometry easing.
+                    EasingFunction = _easeExpOut6,
+                    BeginTime = thumbDelay
+                };
                 Timeline.SetDesiredFrameRate(thumbTranslateXAnim, thumbFps);
                 Timeline.SetDesiredFrameRate(thumbTranslateYAnim, thumbFps);
+                Timeline.SetDesiredFrameRate(thumbBorderThicknessAnim, thumbFps);
 
+                // Commit the exact live-thumbnail geometry below the explicit
+                // clocks. HoldEnd and the later crossfade now share one endpoint.
+                AnimationThumbnailBorder.Width = expandedThumbWidth;
+                AnimationThumbnailBorder.Height = expandedThumbHeight;
+                AnimationThumbnailBorder.BorderThickness = expandedBorderThickness;
+                AnimationThumbnailTranslate.X = targetX;
+                AnimationThumbnailTranslate.Y = targetY;
+                AnimationThumbnailClip.Rect = new Rect(0, 0, expandedThumbWidth, expandedThumbHeight);
                 AnimationThumbnailBorder.BeginAnimation(WidthProperty, _cachedThumbWidthExpand);
                 AnimationThumbnailBorder.BeginAnimation(HeightProperty, _cachedThumbHeightExpand);
+                AnimationThumbnailBorder.BeginAnimation(Border.BorderThicknessProperty, thumbBorderThicknessAnim);
                 AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, thumbTranslateXAnim);
                 AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.YProperty, thumbTranslateYAnim);
                 AnimateThumbnailAnimationRadius(6, 14, thumbDur, _easeExpOut6, thumbDelay);
@@ -504,31 +613,17 @@ public partial class MainWindow
                 AnimateThumbnailSwitchOnly(thumb, force: true);
             }
 
-            ExpandedContent.Opacity = 1;
-            ExpandedContent.BeginAnimation(OpacityProperty, null);
-
-            // Finalize the expand animation: replace the animation-held
-            // TransformGroup with a stable rest transform so a later layout
-            // invalidation cannot snap the content to the animation's start
-            // value (Y=10) instead of the intended rest offset.
-            ApplyExpandedContentRestTransform();
-
-            // Lock the NotchBorder to its expanded size so clearing the
-            // held width/height animations cannot revert it to the
-            // pre-animation collapsed dimensions.
-            NotchBorder.BeginAnimation(WidthProperty, null);
-            NotchBorder.BeginAnimation(HeightProperty, null);
-            NotchBorder.Width = _expandedWidth;
-            NotchBorder.Height = _expandedHeight;
-
-            ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            ExpandedContentBlur.Radius = 0;
+            // Do not detach the opacity, size, translation, or expanded blur
+            // clocks here. Removing the whole-panel opacity clock makes WPF tear
+            // down its compositing layer at the handoff; at fractional DPI that
+            // re-snaps every child by a physical pixel.
+            // Their HoldEnd presentation is the frame the user just saw. The
+            // destination values are already stored underneath them and the next
+            // transition safely replaces/clears the clocks while content moves.
             CollapsedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
             CollapsedContentBlur.Radius = 0;
             MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
             MusicCompactContentBlur.Radius = 0;
-
-            ResetAnimationThumbnailOverlay();
 
             if (_isMusicCompactMode)
             {
@@ -538,7 +633,7 @@ public partial class MainWindow
                 }
             }
 
-            if (ThumbnailBorder != null) ThumbnailBorder.Opacity = 1;
+            CrossfadeAnimationThumbnailToExpanded();
             if (CompactThumbnailBorder != null && !_isClipboardPeekActive && !suppressCompactThumbnailMotion)
             {
                 CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
@@ -581,6 +676,10 @@ public partial class MainWindow
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
+        // Set the destinations as animation bases while the explicit From/To
+        // clocks own presentation. HoldEnd can then remain visually stable.
+        NotchBorder.Width = _expandedWidth;
+        NotchBorder.Height = _expandedHeight;
         CollapsedContent.BeginAnimation(OpacityProperty, fadeOutAnim);
         MusicCompactContent.BeginAnimation(OpacityProperty, fadeOutAnim);
 
@@ -588,6 +687,9 @@ public partial class MainWindow
         MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
         ExpandedContent.BeginAnimation(OpacityProperty, fadeInAnim);
+        // Preserve the fully-visible value underneath the HoldEnd clock. The
+        // collapse path replaces this clock before it starts moving the panel.
+        ExpandedContent.Opacity = 1;
         expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
 
         ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
@@ -863,6 +965,9 @@ public partial class MainWindow
             if (cachedExpandTarget.HasValue)
             {
                 var (startX, startY) = cachedExpandTarget.Value;
+                Size expandedThumbSize = GetExpandedThumbnailAnimationSize();
+                double expandedThumbWidth = expandedThumbSize.Width;
+                double expandedThumbHeight = expandedThumbSize.Height;
 
                 AnimationThumbnailImage.Source = ThumbnailImage.Source;
                 AnimationThumbnailBorder.Visibility = Visibility.Visible;
@@ -870,9 +975,9 @@ public partial class MainWindow
                 AnimationThumbnailBorder.CornerRadius = new CornerRadius(14);
                 AnimationThumbnailClip.RadiusX = 14;
                 AnimationThumbnailClip.RadiusY = 14;
-                AnimationThumbnailBorder.Width = 102;
-                AnimationThumbnailBorder.Height = 102;
-                AnimationThumbnailClip.Rect = new Rect(0, 0, 102, 102);
+                AnimationThumbnailBorder.Width = expandedThumbWidth;
+                AnimationThumbnailBorder.Height = expandedThumbHeight;
+                AnimationThumbnailClip.Rect = new Rect(0, 0, expandedThumbWidth, expandedThumbHeight);
                 AnimationThumbnailTranslate.X = startX;
                 AnimationThumbnailTranslate.Y = startY;
 
@@ -881,14 +986,20 @@ public partial class MainWindow
                 var thumbEase = _easeThumbSpring;
                 int thumbFps = VNotch.Services.AnimationConfig.TargetFps;
 
-                if (_cachedThumbWidthCollapse == null || _cachedThumbWidthCollapse.Duration != thumbDur)
+                if (_cachedThumbWidthCollapse == null ||
+                    _cachedThumbWidthCollapse.Duration != thumbDur ||
+                    Math.Abs((_cachedThumbWidthCollapse.From ?? 0) - expandedThumbWidth) > 0.001 ||
+                    Math.Abs((_cachedThumbHeightCollapse?.From ?? 0) - expandedThumbHeight) > 0.001)
                 {
-                    _cachedThumbWidthCollapse = MakeAnim(102, 22, thumbDur, thumbEase, thumbDelay);
-                    _cachedThumbHeightCollapse = MakeAnim(102, 22, thumbDur, thumbEase, thumbDelay);
+                    _cachedThumbWidthCollapse = MakeAnim(expandedThumbWidth, 22, thumbDur, thumbEase, thumbDelay);
+                    _cachedThumbHeightCollapse = MakeAnim(expandedThumbHeight, 22, thumbDur, thumbEase, thumbDelay);
                     Timeline.SetDesiredFrameRate(_cachedThumbWidthCollapse, thumbFps);
                     Timeline.SetDesiredFrameRate(_cachedThumbHeightCollapse, thumbFps);
 
-                    _cachedThumbRectCollapse = new RectAnimation(new Rect(0, 0, 102, 102), new Rect(0, 0, 22, 22), thumbDur)
+                    _cachedThumbRectCollapse = new RectAnimation(
+                        new Rect(0, 0, expandedThumbWidth, expandedThumbHeight),
+                        new Rect(0, 0, 22, 22),
+                        thumbDur)
                     {
                         EasingFunction = thumbEase,
                         BeginTime = thumbDelay

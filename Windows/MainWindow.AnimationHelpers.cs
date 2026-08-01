@@ -727,7 +727,9 @@ public partial class MainWindow
 
     private void AnimateThumbnailAnimationRadius(double fromRadius, double toRadius, Duration duration, IEasingFunction easing, TimeSpan? beginTime = null)
     {
-        CurrentThumbnailAnimationRadius = fromRadius;
+        // Keep the endpoint underneath the explicit clock so the overlay's held
+        // final frame and its live-thumbnail handoff use the same radius.
+        CurrentThumbnailAnimationRadius = toRadius;
         this.BeginAnimation(CurrentThumbnailAnimationRadiusProperty, null);
 
         var anim = MakeAnim(fromRadius, toRadius, duration, easing, beginTime);
