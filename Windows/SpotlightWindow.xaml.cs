@@ -69,6 +69,9 @@ public partial class SpotlightWindow : Window
     private bool _unparkedWindowFocusable = true;
     private IntPtr _previousForegroundWindow;
     private CancellationTokenSource? _searchDebounceCts;
+    private readonly MediaPlayer _spotlightClickPlayer = new();
+    private Uri? _spotlightClickUri;
+    private bool _spotlightClickLoaded;
     internal ISpotlightMorphHost? MorphHostOverride { get; set; }
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
@@ -138,6 +141,8 @@ public partial class SpotlightWindow : Window
     {
         if (_isClosing) return;
 
+        PlaySpotlightClickSfx();
+
         _previousForegroundWindow = GetForegroundWindow();
         int generation = ++_animationGeneration;
         InvalidateLaunchAttempt();
@@ -189,6 +194,48 @@ public partial class SpotlightWindow : Window
             CancelPendingFreshEntrance();
             ReleaseMorphSession();
             throw;
+        }
+    }
+
+    private void PlaySpotlightClickSfx()
+    {
+        try
+        {
+            if (_spotlightClickUri == null)
+            {
+                string sfxPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "SPL_CLICK_SFX.mp3");
+                if (!System.IO.File.Exists(sfxPath))
+                {
+                    string devPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Assets", "SPL_CLICK_SFX.mp3");
+                    if (System.IO.File.Exists(devPath))
+                    {
+                        sfxPath = System.IO.Path.GetFullPath(devPath);
+                    }
+                }
+
+                if (System.IO.File.Exists(sfxPath))
+                {
+                    _spotlightClickUri = new Uri(sfxPath, UriKind.Absolute);
+                }
+            }
+
+            if (_spotlightClickUri != null)
+            {
+                if (!_spotlightClickLoaded)
+                {
+                    _spotlightClickPlayer.Open(_spotlightClickUri);
+                    _spotlightClickLoaded = true;
+                }
+                else
+                {
+                    _spotlightClickPlayer.Position = TimeSpan.Zero;
+                }
+                _spotlightClickPlayer.Play();
+            }
+        }
+        catch
+        {
+            // Ignore audio playback errors
         }
     }
 

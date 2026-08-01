@@ -98,6 +98,9 @@
     </None>
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\QR.PNG" />
+    <None Include="Assets\SPL_CLICK_SFX.mp3">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <Resource Include="Shaders\LiquidGlassRefraction.ps" />
   </ItemGroup>
 
