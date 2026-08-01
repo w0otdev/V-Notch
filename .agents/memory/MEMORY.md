@@ -1,2 +1,0 @@
-- [Windows-only verification](windows-only-verification.md) — this repo can't build/run on Replit Linux; validate via architect review + tests meant for Windows, and say so honestly.
-- [Everything IPC protocol](everything-ipc.md) — v1 LISTW header is 28 bytes (numitems at offset 20); parser layout is locked by a unit test.
