@@ -6,6 +6,7 @@ namespace VNotch.Services;
 public interface IUpdateService
 {
     Task<UpdateInfo?> CheckForUpdatesAsync();
+    Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync();
     Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
     string CurrentVersion { get; }
 }

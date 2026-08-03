@@ -7,6 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Diagnostics;
 using VNotch.Services;
 
 namespace VNotch.Windows;
@@ -35,8 +37,24 @@ public partial class ChangelogWindow : Window
         Loaded += ChangelogWindow_Loaded;
     }
 
+    private void PlayEntranceAnimation()
+    {
+        var ease = new QuarticEase { EasingMode = EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(400);
+
+        var opacityAnim = new DoubleAnimation(0, 1, duration) { EasingFunction = ease };
+        var scaleAnim = new DoubleAnimation(0.95, 1, duration) { EasingFunction = ease };
+        var translateAnim = new DoubleAnimation(20, 0, duration) { EasingFunction = ease };
+
+        MainShell.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+        ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+        ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+        ShellTranslate.BeginAnimation(TranslateTransform.YProperty, translateAnim);
+    }
+
     private async void ChangelogWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        PlayEntranceAnimation();
         await LoadChangelog();
     }
 
@@ -48,23 +66,28 @@ public partial class ChangelogWindow : Window
             ErrorPanel.Visibility = Visibility.Collapsed;
             ChangelogContent.Visibility = Visibility.Collapsed;
 
-            // Try to get latest release info
-            var latestRelease = await _updateService.CheckForUpdatesAsync();
+            // Try to get all releases
+            var allReleases = await _updateService.GetAllReleasesAsync();
+            var currentVersion = _updateService.CurrentVersion;
 
-            if (latestRelease != null)
+            bool currentFound = false;
+            foreach (var release in allReleases)
             {
                 _changelogEntries.Add(new ChangelogEntry
                 {
-                    Version = latestRelease.Version,
-                    Date = latestRelease.PublishedAt,
-                    Content = latestRelease.ReleaseNotes,
-                    IsLatest = true
+                    Version = release.Version,
+                    Date = release.PublishedAt,
+                    Content = release.ReleaseNotes,
+                    IsLatest = release.Version == allReleases.FirstOrDefault()?.Version,
+                    IsCurrent = release.Version == currentVersion
                 });
+
+                if (release.Version == currentVersion)
+                    currentFound = true;
             }
 
-            // Add current version if different
-            var currentVersion = _updateService.CurrentVersion;
-            if (_changelogEntries.All(e => e.Version != currentVersion))
+            // Add current version if different and not found in releases
+            if (!currentFound)
             {
                 _changelogEntries.Add(new ChangelogEntry
                 {
@@ -181,7 +204,7 @@ public partial class ChangelogWindow : Window
         foreach (Button button in VersionListPanel.Children.OfType<Button>())
         {
             button.Background = button.Tag?.ToString() == version
-                ? new SolidColorBrush(Color.FromRgb(0, 102, 255))
+                ? new SolidColorBrush(Color.FromArgb(26, 255, 255, 255))
                 : Brushes.Transparent;
         }
 
@@ -257,6 +280,20 @@ public partial class ChangelogWindow : Window
 
         // Parse and display markdown content
         ParseMarkdownContent(entry.Content);
+
+        // Animate content transition
+        var ease = new QuarticEase { EasingMode = EasingMode.EaseOut };
+        var duration = TimeSpan.FromMilliseconds(300);
+
+        var opacityAnim = new DoubleAnimation(0, 1, duration) { EasingFunction = ease };
+        ChangelogContent.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+
+        if (ChangelogContent.RenderTransform is not TranslateTransform)
+        {
+            ChangelogContent.RenderTransform = new TranslateTransform();
+        }
+        var translateAnim = new DoubleAnimation(15, 0, duration) { EasingFunction = ease };
+        ChangelogContent.RenderTransform.BeginAnimation(TranslateTransform.YProperty, translateAnim);
     }
 
     private Border CreateBadge(string text, Color color)
@@ -338,24 +375,26 @@ public partial class ChangelogWindow : Window
 
     private TextBlock CreateHeading(string text, double fontSize, FontWeight weight)
     {
-        return new TextBlock
+        var tb = new TextBlock
         {
-            Text = text,
             FontSize = fontSize,
             FontWeight = weight,
             Foreground = Brushes.White,
             Margin = new Thickness(0, 12, 0, 8),
             TextWrapping = TextWrapping.Wrap
         };
+        ParseInlineMarkdown(tb, text);
+        return tb;
     }
 
-    private StackPanel CreateBulletPoint(string text)
+    private Grid CreateBulletPoint(string text)
     {
-        var stack = new StackPanel
+        var grid = new Grid
         {
-            Orientation = Orientation.Horizontal,
             Margin = new Thickness(0, 4, 0, 4)
         };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var bullet = new TextBlock
         {
@@ -365,32 +404,100 @@ public partial class ChangelogWindow : Window
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Top
         };
-        stack.Children.Add(bullet);
+        Grid.SetColumn(bullet, 0);
+        grid.Children.Add(bullet);
 
         var content = new TextBlock
         {
-            Text = text,
             FontSize = 13,
             Foreground = new SolidColorBrush(Color.FromRgb(224, 224, 224)),
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 20
         };
-        stack.Children.Add(content);
+        ParseInlineMarkdown(content, text);
+        Grid.SetColumn(content, 1);
+        grid.Children.Add(content);
 
-        return stack;
+        return grid;
     }
 
     private TextBlock CreateParagraph(string text)
     {
-        return new TextBlock
+        var tb = new TextBlock
         {
-            Text = text,
             FontSize = 13,
             Foreground = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 20,
             Margin = new Thickness(0, 4, 0, 4)
         };
+        ParseInlineMarkdown(tb, text);
+        return tb;
+    }
+
+    private void ParseInlineMarkdown(TextBlock textBlock, string text)
+    {
+        textBlock.Inlines.Clear();
+        var pattern = @"(\*\*.*?\*\*)|(?<!\w)(\*.*?\*)(?!\w)|(`.*?`)|(\[.*?\]\(.*?\))";
+        
+        var matches = Regex.Matches(text, pattern);
+        int lastIndex = 0;
+        
+        foreach (Match match in matches)
+        {
+            if (match.Index > lastIndex)
+            {
+                textBlock.Inlines.Add(new Run(text.Substring(lastIndex, match.Index - lastIndex)));
+            }
+            
+            string value = match.Value;
+            if (value.StartsWith("**") && value.EndsWith("**"))
+            {
+                textBlock.Inlines.Add(new Bold(new Run(value.Substring(2, value.Length - 4))));
+            }
+            else if (value.StartsWith("*") && value.EndsWith("*"))
+            {
+                textBlock.Inlines.Add(new Italic(new Run(value.Substring(1, value.Length - 2))));
+            }
+            else if (value.StartsWith("`") && value.EndsWith("`"))
+            {
+                var run = new Run(value.Substring(1, value.Length - 2))
+                {
+                    FontFamily = new FontFamily("Consolas"),
+                    Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)),
+                    Foreground = new SolidColorBrush(Color.FromRgb(230, 230, 230))
+                };
+                textBlock.Inlines.Add(run);
+            }
+            else if (value.StartsWith("["))
+            {
+                var linkMatch = Regex.Match(value, @"\[(.*?)\]\((.*?)\)");
+                if (linkMatch.Success)
+                {
+                    var hyperlink = new Hyperlink(new Run(linkMatch.Groups[1].Value));
+                    hyperlink.NavigateUri = new Uri(linkMatch.Groups[2].Value);
+                    hyperlink.Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255));
+                    hyperlink.TextDecorations = null;
+                    hyperlink.RequestNavigate += (s, e) => 
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = e.Uri.AbsoluteUri,
+                            UseShellExecute = true
+                        });
+                        e.Handled = true;
+                    };
+                    textBlock.Inlines.Add(hyperlink);
+                }
+            }
+            
+            lastIndex = match.Index + match.Length;
+        }
+        
+        if (lastIndex < text.Length)
+        {
+            textBlock.Inlines.Add(new Run(text.Substring(lastIndex)));
+        }
     }
 
     private void ShowError(string message)
@@ -423,7 +530,19 @@ public partial class ChangelogWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        Close();
+        var ease = new QuarticEase { EasingMode = EasingMode.EaseIn };
+        var duration = TimeSpan.FromMilliseconds(250);
+
+        var opacityAnim = new DoubleAnimation(1, 0, duration) { EasingFunction = ease };
+        var scaleAnim = new DoubleAnimation(1, 0.95, duration) { EasingFunction = ease };
+        var translateAnim = new DoubleAnimation(0, 20, duration) { EasingFunction = ease };
+
+        opacityAnim.Completed += (s, ev) => Close();
+
+        MainShell.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+        ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+        ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+        ShellTranslate.BeginAnimation(TranslateTransform.YProperty, translateAnim);
     }
 
     protected override void OnSourceInitialized(EventArgs e)

@@ -78,6 +78,43 @@ public class UpdateService : IUpdateService
         finally { _checkLock.Release(); }
     }
 
+    public async Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync()
+    {
+        try
+        {
+            var url = "https://api.github.com/repos/rainaku/V-Notch/releases";
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
+            using var response = await SendHttpsAsync(request, CancellationToken.None);
+            response.EnsureSuccessStatusCode();
+            
+            using var jsonDoc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var releases = new List<UpdateInfo>();
+            
+            foreach (var release in jsonDoc.RootElement.EnumerateArray())
+            {
+                var (installer, checksum) = SelectReleaseAssets(release);
+                var info = new UpdateInfo
+                {
+                    Version = release.GetProperty("tag_name").GetString()?.TrimStart('v') ?? string.Empty,
+                    DownloadUrl = installer?.Url ?? string.Empty,
+                    ChecksumUrl = checksum?.Url ?? string.Empty,
+                    InstallerName = installer?.Name ?? string.Empty,
+                    ReleaseNotes = release.GetProperty("body").GetString() ?? string.Empty,
+                    PublishedAt = release.GetProperty("published_at").GetDateTime()
+                };
+                info.IsNewerVersion = installer != null && checksum != null && CompareVersions(info.Version, CurrentVersion) > 0;
+                releases.Add(info);
+            }
+            return releases;
+        }
+        catch (Exception ex) 
+        { 
+            RuntimeLog.Error("UPDATER", ex, "Get all releases failed"); 
+            return Array.Empty<UpdateInfo>(); 
+        }
+    }
+
     public async Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         string? directory = null;

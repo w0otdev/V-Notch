@@ -623,11 +623,7 @@ public partial class MainWindow
                 // value becomes active, producing a final -> start -> final jump
                 // on the first expansion after process startup.
                 var thumbDur = _dur500;
-                // Thumbnail geometry must approach the live border monotonically.
-                // The elastic easing overshoots the 102.4 px endpoint to about
-                // 110.4 px, covers the title gap, then shrinks back at handoff.
-                // That reads as a wrong-position/zoom snap on the cold opening.
-                var thumbEase = _easeExpOut6;
+                var thumbEase = _easeThumbSpring;
                 int thumbFps = VNotch.Services.AnimationConfig.TargetFps;
                 Size expandedThumbSize = GetExpandedThumbnailAnimationSize();
                 double expandedThumbWidth = expandedThumbSize.Width;
