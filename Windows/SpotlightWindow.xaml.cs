@@ -63,8 +63,8 @@ public partial class SpotlightWindow : Window
     private EventHandler? _freshEntranceRenderingHandler;
     private HwndSource? _hwndSource;
     private bool _isParked;
-    private bool _addedParkedTransparentStyle;
     private double _unparkedWindowOpacity = 1;
+
     private bool _unparkedWindowHitTesting = true;
     private bool _unparkedWindowFocusable = true;
     private IntPtr _previousForegroundWindow;
@@ -302,6 +302,7 @@ public partial class SpotlightWindow : Window
             // it while the committed source frame is still stationary, then
             // attach the clocks so none of their duration is spent offscreen.
             FocusSearchBox(generation);
+            Opacity = 1;
             startEntrance();
         };
 
@@ -516,17 +517,6 @@ public partial class SpotlightWindow : Window
         _unparkedWindowFocusable = Focusable;
         _isParked = true;
 
-        IntPtr hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd != IntPtr.Zero)
-        {
-            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            if ((exStyle & WS_EX_TRANSPARENT) == 0)
-            {
-                SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
-                _addedParkedTransparentStyle = true;
-            }
-        }
-
         Keyboard.ClearFocus();
         Focusable = false;
         IsHitTestVisible = false;
@@ -536,6 +526,7 @@ public partial class SpotlightWindow : Window
         // A parked HWND stays alive for composition, so reproduce that focus
         // handoff explicitly without stealing focus from an app just launched
         // through a Spotlight result.
+        IntPtr hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero
             && GetForegroundWindow() == hwnd
             && _previousForegroundWindow != IntPtr.Zero
@@ -549,17 +540,9 @@ public partial class SpotlightWindow : Window
     {
         if (!_isParked) return;
 
-        IntPtr hwnd = new WindowInteropHelper(this).Handle;
         Opacity = _unparkedWindowOpacity;
         Focusable = _unparkedWindowFocusable;
         IsHitTestVisible = _unparkedWindowHitTesting;
-
-        if (_addedParkedTransparentStyle && hwnd != IntPtr.Zero)
-        {
-            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            SetWindowLong(hwnd, GWL_EXSTYLE, exStyle & ~WS_EX_TRANSPARENT);
-            _addedParkedTransparentStyle = false;
-        }
 
         _isParked = false;
     }
@@ -2170,12 +2153,12 @@ public partial class SpotlightWindow : Window
 
     private void CompleteHide()
     {
-        // Retire every rendered layer before removing animation clocks. A
-        // completed WPF animation otherwise reveals its old base value for the
-        // compositor frame in which the HWND is hidden.
+        // Set base values to 0 before removing animation clocks. A completed
+        // WPF animation otherwise reveals its old base value for the compositor
+        // frame. We avoid Visibility.Hidden to prevent DWM white-frame flashes.
         CancelPendingFreshEntrance();
-        Shell.Visibility = Visibility.Hidden;
-        NotchMorphSnapshot.Visibility = Visibility.Hidden;
+        Shell.Opacity = 0;
+        NotchMorphSnapshot.Opacity = 0;
         ClearMorphAnimations();
         ReleaseMorphSession();
         _pendingLaunchQuery = null;
@@ -2207,7 +2190,6 @@ public partial class SpotlightWindow : Window
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.Opacity = 0;
-        Shell.Visibility = Visibility.Hidden;
         ShellScale.ScaleX = ShellScale.ScaleY = 1;
         ShellShake.X = 0;
         Shell.Width = double.NaN;
@@ -2245,7 +2227,6 @@ public partial class SpotlightWindow : Window
 
     private void ResetNotchMorphSnapshot()
     {
-        NotchMorphSnapshot.Visibility = Visibility.Hidden;
         NotchMorphSnapshot.BeginAnimation(OpacityProperty, null);
         NotchMorphSnapshot.BeginAnimation(WidthProperty, null);
         NotchMorphSnapshot.BeginAnimation(HeightProperty, null);

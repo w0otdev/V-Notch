@@ -309,7 +309,7 @@ public partial class MainWindow
                 _progressSpringTargetRatio = 0;
                 _lastRenderedRatio = 0;
                 CurrentTimeText.Text = "0:00";
-                RemainingTimeText.Text = info.Duration.TotalSeconds > 0 ? FormatTime(info.Duration) : "--:--";
+                RemainingTimeText.Text = FormatDuration(info.Duration);
 
                 if (isFirstEverTrack)
                 {
@@ -322,7 +322,7 @@ public partial class MainWindow
                         _lastRenderedRatio = initialRatio;
                         ProgressBarScale.ScaleX = initialRatio;
                         CurrentTimeText.Text = FormatTime(info.Position);
-                        RemainingTimeText.Text = FormatTime(info.Duration);
+                        RemainingTimeText.Text = FormatDuration(info.Duration);
                         RuntimeLog.Debug("PROGRESS-BOOT", () =>
                             $"First track init at pos={info.Position.TotalSeconds:F1}s ratio={initialRatio:F4}");
                     }
@@ -400,19 +400,32 @@ public partial class MainWindow
                 _lastProgressTimelineUpdated = info.LastUpdated;
             }
 
-            if (info.IsIndeterminate)
+            bool isLiveStream = info.Duration.TotalSeconds <= 0 && info.IsPlaying;
+
+            if (isLiveStream || info.IsIndeterminate)
             {
+                bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
                 IndeterminateProgress.Visibility = Visibility.Visible;
                 ProgressBar.Visibility = Visibility.Collapsed;
-                StartIndeterminateAnimation();
+                ProgressBarBg.Visibility = Visibility.Visible;
+                if (!wasIndeterminate)
+                {
+                    StartIndeterminateAnimation();
+                }
             }
             else
             {
+                if (IndeterminateProgress.Visibility == Visibility.Visible)
+                {
+                    IndeterminateProgress.BeginAnimation(OpacityProperty, null);
+                }
                 IndeterminateProgress.Visibility = Visibility.Collapsed;
                 ProgressBar.Visibility = Visibility.Visible;
+                ProgressBarBg.Visibility = Visibility.Visible;
             }
 
-            ProgressBarContainer.Cursor = info.IsSeekEnabled ? Cursors.Hand : Cursors.Arrow;
+            bool canSeek = info.IsSeekEnabled && info.Duration.TotalSeconds > 0;
+            ProgressBarContainer.Cursor = canSeek ? Cursors.Hand : Cursors.Arrow;
 
             UpdateProgressTimerState();
 
@@ -500,11 +513,12 @@ public partial class MainWindow
         if (_isRewindAnimating) return;
 
         var frame = _progressEngine.GetUiFrame();
+        bool isLiveStream = frame.Duration.TotalSeconds <= 0 && frame.State == ProgressState.Playing;
 
-        if (frame.Duration.TotalSeconds <= 0 && !frame.ShowIndeterminate)
+        if (frame.Duration.TotalSeconds <= 0 && (!frame.ShowIndeterminate || isLiveStream))
         {
-            CurrentTimeText.Text = "--:--";
-            RemainingTimeText.Text = "--:--";
+            CurrentTimeText.Text = isLiveStream ? "" : "--:--";
+            RemainingTimeText.Text = isLiveStream ? "LIVE" : "--:--";
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
             _progressDisplayRatio = 0;
@@ -556,6 +570,7 @@ public partial class MainWindow
 
         if (frame.DurationJustChanged)
         {
+            ProgressBarBg.Visibility = frame.Duration.TotalSeconds > 0 ? Visibility.Visible : Visibility.Collapsed;
 
             _isSeekSpringActive = false;
             _springSettleFrames = 0;
@@ -607,7 +622,7 @@ public partial class MainWindow
                     {
                         _lastDisplayedSecond = sec;
                         CurrentTimeText.Text = FormatTime(pos);
-                        RemainingTimeText.Text = FormatTime(frame.Duration);
+                        RemainingTimeText.Text = FormatDuration(frame.Duration);
                     }
                 }
                 return;
@@ -799,17 +814,18 @@ public partial class MainWindow
         {
             _lastDisplayedSecond = currentSecond;
             CurrentTimeText.Text = FormatTime(frame.Position);
-            RemainingTimeText.Text = FormatTime(frame.Duration);
+            RemainingTimeText.Text = FormatDuration(frame.Duration);
         }
     }
 
     private string FormatTime(TimeSpan time) => MediaProgressHelpers.FormatTime(time);
+    private string FormatDuration(TimeSpan duration) => duration.TotalSeconds > 0 ? FormatTime(duration) : "LIVE";
 
     #region Progress Bar Click and Drag to Seek
 
     private void ProgressBar_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (_currentMediaInfo == null || !_currentMediaInfo.IsSeekEnabled) return;
+        if (_currentMediaInfo == null || !_currentMediaInfo.IsSeekEnabled || _currentMediaInfo.Duration.TotalSeconds <= 0) return;
 
         e.Handled = true;
 
@@ -1237,7 +1253,7 @@ public partial class MainWindow
             _lastRenderedRatio = targetRatio;
             _progressVelocity = 0;
             CurrentTimeText.Text = FormatTime(frame.Position);
-            RemainingTimeText.Text = FormatTime(frame.Duration);
+            RemainingTimeText.Text = FormatDuration(frame.Duration);
             return;
         }
 
@@ -1270,7 +1286,7 @@ public partial class MainWindow
 
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, catchUpAnim);
         CurrentTimeText.Text = FormatTime(frame.Position);
-        RemainingTimeText.Text = FormatTime(frame.Duration);
+        RemainingTimeText.Text = FormatDuration(frame.Duration);
     }
 
     private void StopCatchUpAnimation()
@@ -1323,7 +1339,7 @@ public partial class MainWindow
             _springSettleFrames = 0;
             StopSpringRenderLoop();
             CurrentTimeText.Text = "0:00";
-            RemainingTimeText.Text = newDuration.TotalSeconds > 0 ? FormatTime(newDuration) : "--:--";
+            RemainingTimeText.Text = FormatDuration(newDuration);
             StopRewindTextAnimation();
             _isRewindAnimating = false;
             _lastRenderTime = DateTime.Now;

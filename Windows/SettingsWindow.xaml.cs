@@ -107,7 +107,7 @@ public partial class SettingsWindow : Window
 
                 if (fe is Border border && border.Tag is string tag &&
                     (tag == "Searching" || tag == "Appearance" || tag == "Skins" || tag == "Behavior" || tag == "Devices" ||
-                     tag == "System" || tag == "Advanced" || tag == "Performance" ||
+                     tag == "System" || tag == "Spotlight" || tag == "Advanced" || tag == "Performance" ||
                      tag == "Donating" || tag == "Updates"))
                 {
                     return true;
@@ -187,9 +187,7 @@ public partial class SettingsWindow : Window
         ShelfUnlockCheck.IsChecked = _settings.IsShelfUploadLimitUnlocked;
         CopyShelfClipboardCheck.IsChecked = _settings.CopyShelfFilesToClipboard;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
-        SpotlightHotkeyWarning.Visibility = _settings.EnableSpotlight && !_isSpotlightHotkeyRegistered
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        UpdateSpotlightHotkeyWarning();
         ShowBatteryCheck.IsChecked = _settings.ShowBatteryIndicator;
 
         LanguageCombo.Items.Clear();
@@ -252,6 +250,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(NavBehavior, "tooltip.nav.behavior");
         TooltipHelper.SetLocalizedTooltip(NavDevices, "tooltip.nav.devices");
         TooltipHelper.SetLocalizedTooltip(NavSystem, "tooltip.nav.system");
+        TooltipHelper.SetLocalizedTooltip(NavSpotlight, "tooltip.nav.spotlight");
         TooltipHelper.SetLocalizedTooltip(NavAdvanced, "tooltip.nav.advanced");
         TooltipHelper.SetLocalizedTooltip(NavPerformance, "tooltip.nav.performance");
         TooltipHelper.SetLocalizedTooltip(NavUpdates, "tooltip.nav.updates");
@@ -321,6 +320,7 @@ public partial class SettingsWindow : Window
         PerformanceHeader.Text = Loc.Get("settings.performance");
         DisplayHeader.Text = Loc.Get("settings.display");
         SystemHeader.Text = Loc.Get("settings.system");
+        SpotlightHeader.Text = Loc.Get("settings.spotlight");
         EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight");
         EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint");
         SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict");
@@ -333,6 +333,7 @@ public partial class SettingsWindow : Window
         NavBehaviorText.Text = Loc.Get("settings.nav.behavior");
         NavDevicesText.Text = Loc.Get("settings.nav.devices");
         NavSystemText.Text = Loc.Get("settings.nav.system");
+        NavSpotlightText.Text = Loc.Get("settings.nav.spotlight");
         NavAdvancedText.Text = Loc.Get("settings.nav.advanced");
         NavPerformanceText.Text = Loc.Get("settings.nav.performance");
         NavDonatingText.Text = Loc.Get("settings.nav.donating");
@@ -490,9 +491,22 @@ public partial class SettingsWindow : Window
     internal void SetSpotlightHotkeyStatus(bool isRegistered)
     {
         _isSpotlightHotkeyRegistered = isRegistered;
-        SpotlightHotkeyWarning.Visibility = EnableSpotlightCheck.IsChecked == true && !isRegistered
+        UpdateSpotlightHotkeyWarning();
+    }
+
+    private void UpdateSpotlightHotkeyWarning()
+    {
+        SpotlightHotkeyWarning.Visibility = EnableSpotlightCheck.IsChecked == true && !_isSpotlightHotkeyRegistered
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void EnableSpotlightCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+
+        UpdateSpotlightHotkeyWarning();
+        PushLivePreview();
     }
 
     private void ApplySupplementalLocalization()
@@ -1713,6 +1727,7 @@ public partial class SettingsWindow : Window
             (PerformanceHeader, () => PerformanceHeader.Text = Loc.Get("settings.performance")),
             (DisplayHeader, () => DisplayHeader.Text = Loc.Get("settings.display")),
             (SystemHeader, () => SystemHeader.Text = Loc.Get("settings.system")),
+            (SpotlightHeader, () => SpotlightHeader.Text = Loc.Get("settings.spotlight")),
             (SearchingHeader, () => SearchingHeader.Text = Loc.Get("settings.searching")),
             (SearchingEmptyText, () => SearchingEmptyText.Text = Loc.Get("settings.search.noResults")),
 
@@ -1722,6 +1737,7 @@ public partial class SettingsWindow : Window
             (NavBehaviorText, () => NavBehaviorText.Text = Loc.Get("settings.nav.behavior")),
             (NavDevicesText, () => NavDevicesText.Text = Loc.Get("settings.nav.devices")),
             (NavSystemText, () => NavSystemText.Text = Loc.Get("settings.nav.system")),
+            (NavSpotlightText, () => NavSpotlightText.Text = Loc.Get("settings.nav.spotlight")),
             (NavAdvancedText, () => NavAdvancedText.Text = Loc.Get("settings.nav.advanced")),
             (NavPerformanceText, () => NavPerformanceText.Text = Loc.Get("settings.nav.performance")),
             (NavDonatingText, () => NavDonatingText.Text = Loc.Get("settings.nav.donating")),
@@ -1801,6 +1817,8 @@ public partial class SettingsWindow : Window
             (ShelfUnlockHint, () => ShelfUnlockHint.Text = Loc.Get("settings.shelfUnlock.hint")),
             (CopyShelfClipboardHint, () => CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint")),
             (ShowBatteryHint, () => ShowBatteryHint.Text = Loc.Get("settings.showBattery.hint")),
+            (EnableSpotlightHint, () => EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint")),
+            (SpotlightHotkeyWarning, () => SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict")),
             (LanguageLabel, () => LanguageLabel.Text = Loc.Get("settings.language")),
             (LanguageHint, () => LanguageHint.Text = Loc.Get("settings.language.hint")),
 
@@ -1865,6 +1883,8 @@ public partial class SettingsWindow : Window
         AnimateContentChange(CopyShelfClipboardCheck, () => CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;
         AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps, slideDist);
+        staggerMs += staggerStep;
+        AnimateContentChange(EnableSpotlightCheck, () => EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;
         AnimateContentChange(YouTubeApiCheck, () => YouTubeApiCheck.Content = Loc.Get("settings.youtubeApi"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;
@@ -2511,6 +2531,7 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCard,
             "Devices" => DisplayCard,
             "System" => SystemCard,
+            "Spotlight" => SpotlightCard,
             "Advanced" => AdvancedCard,
             "Performance" => PerformanceCard,
             "Donating" => DonatingCard,
@@ -2524,6 +2545,7 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCardTranslate,
             "Devices" => DisplayCardTranslate,
             "System" => SystemCardTranslate,
+            "Spotlight" => SpotlightCardTranslate,
             "Advanced" => AdvancedCardTranslate,
             "Performance" => PerformanceCardTranslate,
             "Donating" => DonatingCardTranslate,
@@ -2865,6 +2887,7 @@ public partial class SettingsWindow : Window
         _navPanels["Behavior"] = PanelBehavior;
         _navPanels["Devices"] = PanelDevices;
         _navPanels["System"] = PanelSystem;
+        _navPanels["Spotlight"] = PanelSpotlight;
         _navPanels["Advanced"] = PanelAdvanced;
         _navPanels["Performance"] = PanelPerformance;
         _navPanels["Donating"] = PanelDonating;
@@ -2876,6 +2899,7 @@ public partial class SettingsWindow : Window
         _navButtons["Behavior"] = NavBehavior;
         _navButtons["Devices"] = NavDevices;
         _navButtons["System"] = NavSystem;
+        _navButtons["Spotlight"] = NavSpotlight;
         _navButtons["Advanced"] = NavAdvanced;
         _navButtons["Performance"] = NavPerformance;
         _navButtons["Donating"] = NavDonating;
@@ -2898,7 +2922,7 @@ public partial class SettingsWindow : Window
     private static readonly string[] _navOrder =
     {
         "Searching", "Appearance", "Skins", "Behavior", "Devices",
-        "System", "Advanced", "Performance", "Donating", "Updates"
+        "System", "Spotlight", "Advanced", "Performance", "Donating", "Updates"
     };
 
     private int _navTransitionVersion;
@@ -2988,6 +3012,7 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCard,
             "Devices" => DisplayCard,
             "System" => SystemCard,
+            "Spotlight" => SpotlightCard,
             "Advanced" => AdvancedCard,
             "Performance" => PerformanceCard,
             "Donating" => DonatingCard,
@@ -3003,6 +3028,7 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCardTranslate,
             "Devices" => DisplayCardTranslate,
             "System" => SystemCardTranslate,
+            "Spotlight" => SpotlightCardTranslate,
             "Advanced" => AdvancedCardTranslate,
             "Performance" => PerformanceCardTranslate,
             "Donating" => DonatingCardTranslate,

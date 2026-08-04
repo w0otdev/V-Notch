@@ -3694,6 +3694,7 @@ public static class Loc
         AddNewUiStrings();
         AddLiquidGlassMaterialPresetStrings();
         AddSpotlightStrings();
+        AddSpotlightSettingsNavigationStrings();
     }
 
     private static void AddLiquidGlassMaterialPresetStrings()
@@ -3927,6 +3928,38 @@ public static class Loc
             ("spotlight.copyPath", "\u092a\u0925 \u0915\u0949\u092a\u0940 \u0915\u0930\u0947\u0902"),
             ("spotlight.runAsAdmin", "\u0935\u094d\u092f\u0935\u0938\u094d\u0925\u093e\u092a\u0915 \u0915\u0947 \u0930\u0942\u092a \u092e\u0947\u0902 \u091a\u0932\u093e\u090f\u0901"),
             ("spotlight.launchFailed", "{0} \u0928\u0939\u0940\u0902 \u0916\u094b\u0932\u093e \u091c\u093e \u0938\u0915\u093e \u2014 \u0936\u093e\u092f\u0926 \u092f\u0939 \u0939\u091f\u093e\u092f\u093e \u092f\u093e \u0938\u094d\u0925\u093e\u0928\u093e\u0902\u0924\u0930\u093f\u0924 \u0915\u093f\u092f\u093e \u0917\u092f\u093e \u0939\u094b"));
+    }
+
+    private static void AddSpotlightSettingsNavigationStrings()
+    {
+        AddStrings("en",
+            ("settings.spotlight", "SPOTLIGHT"),
+            ("settings.nav.spotlight", "Spotlight"),
+            ("tooltip.nav.spotlight", "Enable or disable the Spotlight search shortcut"));
+        AddStrings("vi",
+            ("settings.spotlight", "SPOTLIGHT"),
+            ("settings.nav.spotlight", "Spotlight"),
+            ("tooltip.nav.spotlight", "B\u1eadt ho\u1eb7c t\u1eaft ph\u00edm t\u1eaft t\u00ecm ki\u1ebfm Spotlight"));
+        AddStrings("es",
+            ("settings.spotlight", "SPOTLIGHT"),
+            ("settings.nav.spotlight", "Spotlight"),
+            ("tooltip.nav.spotlight", "Activa o desactiva el atajo de b\u00fasqueda de Spotlight"));
+        AddStrings("fr",
+            ("settings.spotlight", "SPOTLIGHT"),
+            ("settings.nav.spotlight", "Spotlight"),
+            ("tooltip.nav.spotlight", "Activez ou d\u00e9sactivez le raccourci de recherche Spotlight"));
+        AddStrings("de",
+            ("settings.spotlight", "SPOTLIGHT"),
+            ("settings.nav.spotlight", "Spotlight"),
+            ("tooltip.nav.spotlight", "Den Spotlight-Suchkurzbefehl aktivieren oder deaktivieren"));
+        AddStrings("ja",
+            ("settings.spotlight", "\u30b9\u30dd\u30c3\u30c8\u30e9\u30a4\u30c8"),
+            ("settings.nav.spotlight", "\u30b9\u30dd\u30c3\u30c8\u30e9\u30a4\u30c8"),
+            ("tooltip.nav.spotlight", "Spotlight \u691c\u7d22\u306e\u30b7\u30e7\u30fc\u30c8\u30ab\u30c3\u30c8\u3092\u6709\u52b9\u307e\u305f\u306f\u7121\u52b9\u306b\u3057\u307e\u3059\u3002"));
+        AddStrings("hi",
+            ("settings.spotlight", "\u0938\u094d\u092a\u0949\u091f\u0932\u093e\u0907\u091f"),
+            ("settings.nav.spotlight", "\u0938\u094d\u092a\u0949\u091f\u0932\u093e\u0907\u091f"),
+            ("tooltip.nav.spotlight", "\u0938\u094d\u092a\u0949\u091f\u0932\u093e\u0907\u091f \u0916\u094b\u091c \u0936\u0949\u0930\u094d\u091f\u0915\u091f \u0915\u094b \u091a\u093e\u0932\u0942 \u092f\u093e \u092c\u0902\u0926 \u0915\u0930\u0947\u0902"));
     }
 
     private static void AddStrings(string language, params (string Key, string Value)[] entries)

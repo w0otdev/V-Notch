@@ -805,6 +805,16 @@
                             </StackPanel>
                         </Border>
 
+                        <Border x:Name="NavSpotlight" Style="{StaticResource NavButton}"
+                                MouseLeftButtonDown="Nav_Click" Tag="Spotlight">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                           Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock x:Name="NavSpotlightText" Text="Spotlight" FontSize="13" FontWeight="Bold"
+                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
                         <Border x:Name="NavAdvanced" Style="{StaticResource NavButton}"
                                 MouseLeftButtonDown="Nav_Click" Tag="Advanced">
                             <StackPanel Orientation="Horizontal">
@@ -1434,25 +1444,6 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
-                                                <CheckBox x:Name="EnableSpotlightCheck" Content="Spotlight search"/>
-                                                <TextBlock x:Name="EnableSpotlightHint"
-                                                           Text="Press Alt + Space to search applications and indexed files."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
-                                                           TextWrapping="Wrap"/>
-                                                <TextBlock x:Name="SpotlightHotkeyWarning"
-                                                           Text="Alt + Space is currently used by another app."
-                                                           Foreground="#FFFFB454"
-                                                           FontSize="11.5"
-                                                           Margin="0,5,0,0"
-                                                           TextWrapping="Wrap"
-                                                           Visibility="Collapsed"
-                                                           AutomationProperties.LiveSetting="Polite"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
                                                 <TextBlock x:Name="LanguageLabel" Text="Language" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="LanguageHint" Text="Choose the display language for V-Notch."
                                                            Style="{StaticResource SettingHintText}"
@@ -1497,6 +1488,39 @@
                                                         </Style>
                                                     </TextBox.Resources>
                                                 </TextBox>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <StackPanel x:Name="PanelSpotlight" Visibility="Collapsed">
+                                <Border x:Name="SpotlightCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="SpotlightCardTranslate" Y="12"/>
+                                    </Border.RenderTransform>
+                                    <StackPanel>
+                                        <TextBlock x:Name="SpotlightHeader" Text="SPOTLIGHT" Style="{StaticResource SectionHeader}"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableSpotlightCheck"
+                                                          Content="Spotlight search"
+                                                          Checked="EnableSpotlightCheck_Changed"
+                                                          Unchecked="EnableSpotlightCheck_Changed"/>
+                                                <TextBlock x:Name="EnableSpotlightHint"
+                                                           Text="Press Alt + Space to search applications and indexed files."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"
+                                                           TextWrapping="Wrap"/>
+                                                <TextBlock x:Name="SpotlightHotkeyWarning"
+                                                           Text="Alt + Space is currently used by another app."
+                                                           Foreground="#FFFFB454"
+                                                           FontSize="11.5"
+                                                           Margin="0,5,0,0"
+                                                           TextWrapping="Wrap"
+                                                           Visibility="Collapsed"
+                                                           AutomationProperties.LiveSetting="Polite"/>
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>

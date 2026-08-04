@@ -13,6 +13,7 @@
         ShowActivated="False"
         Topmost="True"
         WindowStartupLocation="Manual"
+        Opacity="0"
         FontFamily="{StaticResource SFProDisplay}"
         FontWeight="Bold"
         PreviewKeyDown="Window_PreviewKeyDown"
@@ -294,7 +295,13 @@
                              BorderThickness="0"
                              Padding="2,2,0,0"
                              VerticalContentAlignment="Center"
-                             AutomationProperties.Name="Search apps and files"/>
+                             AutomationProperties.Name="Search apps and files">
+                        <TextBox.Template>
+                            <ControlTemplate TargetType="TextBox">
+                                <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" />
+                            </ControlTemplate>
+                        </TextBox.Template>
+                    </TextBox>
                     <Border x:Name="GlowingCaret"
                             Width="2"
                             Height="22"

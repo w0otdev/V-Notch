@@ -79,7 +79,7 @@ public sealed class SettingsSearchMatcherTests
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         string[] panelNames =
         {
-            "PanelAppearance", "PanelBehavior", "PanelSkins", "PanelDevices", "PanelSystem",
+            "PanelAppearance", "PanelBehavior", "PanelSkins", "PanelDevices", "PanelSystem", "PanelSpotlight",
             "PanelAdvanced", "PanelPerformance", "PanelDonating", "PanelUpdates"
         };
 
@@ -92,6 +92,32 @@ public sealed class SettingsSearchMatcherTests
                 (string?)border.Attribute("Style") == "{StaticResource SettingRowBorder}"
                 && border.Parent?.Name == presentation + "StackPanel");
         }
+    }
+
+    [Fact]
+    public void SpotlightToggleLivesInItsOwnSettingsSection()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        var document = XDocument.Load(Path.Combine(repositoryRoot, "Windows", "SettingsWindow.xaml"));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        XElement? spotlightNav = document.Descendants(presentation + "Border")
+            .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "NavSpotlight");
+        Assert.NotNull(spotlightNav);
+        Assert.Equal("Spotlight", (string?)spotlightNav!.Attribute("Tag"));
+
+        XElement? spotlightPanel = document.Descendants(presentation + "StackPanel")
+            .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "PanelSpotlight");
+        XElement? systemPanel = document.Descendants(presentation + "StackPanel")
+            .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "PanelSystem");
+        Assert.NotNull(spotlightPanel);
+        Assert.NotNull(systemPanel);
+
+        Assert.Contains(spotlightPanel!.Descendants(presentation + "CheckBox"),
+            element => (string?)element.Attribute(xaml + "Name") == "EnableSpotlightCheck");
+        Assert.DoesNotContain(systemPanel!.Descendants(presentation + "CheckBox"),
+            element => (string?)element.Attribute(xaml + "Name") == "EnableSpotlightCheck");
     }
 
     private static string FindRepositoryRoot()
