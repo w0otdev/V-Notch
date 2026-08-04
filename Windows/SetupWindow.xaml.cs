@@ -1520,7 +1520,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
 
         _headline = new TextBlock
         {
-            Text = "Installing V-Notch",
+            Text = Loc.Get("setup.install.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
@@ -1532,7 +1532,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
 
         _status = new TextBlock
         {
-            Text = "Copying files...",
+            Text = Loc.Get("setup.install.copying"),
             FontSize = 14,
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 21,

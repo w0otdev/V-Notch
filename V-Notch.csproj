@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -24,7 +24,7 @@
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>1.8.0</Version>
+    <Version>1.9.0</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <Authors>rainaku</Authors>
@@ -103,11 +103,6 @@
     </None>
     <Resource Include="Shaders\LiquidGlassRefraction.ps" />
   </ItemGroup>
-
-  <!-- Recompile the Liquid Glass HLSL shader to ps_3_0 bytecode if fxc.exe is
-       available and the source is newer than the compiled output. The .ps file is
-       also committed so builds without the Windows SDK still work. fxc lives under
-       a versioned SDK bin folder, so glob for any version rather than guessing. -->
   <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Inputs="Shaders\LiquidGlassRefraction.hlsl" Outputs="Shaders\LiquidGlassRefraction.ps">
     <ItemGroup>
       <_FxcCandidate Include="$(WindowsSdkDir)bin\**\x64\fxc.exe" />

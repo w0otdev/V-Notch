@@ -1969,7 +1969,7 @@ public partial class SpotlightWindow : Window
 
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.CacheMode = null;
-        ShellContent.CacheMode = null;
+        ShellContent.CacheMode = new BitmapCache { EnableClearType = false, SnapsToDevicePixels = true };
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
         AnimateMorphShadow(
@@ -2007,9 +2007,11 @@ public partial class SpotlightWindow : Window
         // Re-measuring the list on every width tick and re-rendering the blur
         // ramp over it costs more than a frame budget on weaker machines, so
         // the 560ms morph renders a handful of frames and reads as "skipped".
-        // Freeze the region at its current pixel box and let the shrinking
-        // shell clip it; once the content fade lands it leaves layout, making
-        // the rest of the exit as cheap as the entrance's empty shell.
+        // Freeze ShellContent's width so the search box and content don't squish
+        // and trigger expensive text layout recalculations on every tick.
+        ShellContent.Width = Math.Max(1, ShellContent.ActualWidth);
+        ShellContent.HorizontalAlignment = HorizontalAlignment.Left;
+
         bool hadVisibleContent = ContentRegion.Visibility == Visibility.Visible;
         if (hadVisibleContent)
         {
@@ -2057,16 +2059,12 @@ public partial class SpotlightWindow : Window
         Shell.BeginAnimation(OpacityProperty, shellNormalize);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-        // The blur ramp is a per-frame GPU pass over the whole content
-        // surface. Over the empty search bar it is cheap and softens the
-        // collapse, but over a live results panel it is the main reason the
-        // exit morph drops frames — the 170ms opacity fade covers it there.
-        if (!hadVisibleContent)
-        {
-            var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
-                TimeSpan.FromMilliseconds(210), contentEase);
-            contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
-        }
+        // The blur ramp softens the collapse. Because we froze the layout width
+        // and enabled BitmapCache, this per-frame GPU pass is now extremely cheap
+        // even over a live results panel, so we no longer drop frames here.
+        var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
+            TimeSpan.FromMilliseconds(210), contentEase);
+        contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
         // Shed the panel outline early so the shell arrives looking like the
         // borderless notch.
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));

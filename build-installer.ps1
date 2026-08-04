@@ -24,7 +24,7 @@ Write-Host "V-Notch Installer Build Script" -ForegroundColor Cyan
 if ($SelfContained) {
     Write-Host "Mode: Self-contained (.NET runtime bundled)" -ForegroundColor Cyan
 } else {
-    Write-Host "Mode: Framework-dependent (needs .NET 10 Runtime)" -ForegroundColor Cyan
+    Write-Host "Mode: Framework-dependent (needs .NET 8 Runtime)" -ForegroundColor Cyan
 }
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
