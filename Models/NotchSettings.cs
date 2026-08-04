@@ -119,7 +119,7 @@ public class NotchSettings
     public string ProcessPriority { get; set; } = "Normal";
     public int GpuPreference { get; set; } = 0;
 
-    public bool HasSeenLiquidGlassIntro { get; set; } = false;
+    public bool HasSeenSpotlightIntro { get; set; } = false;
 
     [JsonIgnore]
     public bool IsDirty { get; set; } = false;

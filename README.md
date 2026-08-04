@@ -100,6 +100,16 @@
       Fine-tune your experience — choose monitor, language, startup behavior, and more.
     </td>
   </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="Introduction/spotlight.gif" alt="Spotlight Search"><br>
+      <b>Spotlight Search</b><br>
+      Lightning-fast file and app search powered by Everything IPC and OLE DB. Press <code>Alt + Space</code> to find anything instantly.
+    </td>
+    <td align="center" width="50%">
+      <!-- Placeholder for future feature -->
+    </td>
+  </tr>
 </table>
 
 ---

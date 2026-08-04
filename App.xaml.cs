@@ -247,9 +247,9 @@ public partial class App : Application
                 needSave = true;
             }
 
-            if (!settings.HasSeenLiquidGlassIntro)
+            if (!settings.HasSeenSpotlightIntro)
             {
-                settings.HasSeenLiquidGlassIntro = true;
+                settings.HasSeenSpotlightIntro = true;
                 needSave = true;
 
                 if (needSave)

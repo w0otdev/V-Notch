@@ -481,8 +481,8 @@ public static class Loc
             ["privacy.cam.inUse"] = "Camera in use",
 
             ["intro.title"] = "INTRODUCING",
-            ["intro.headline"] = "Liquid Glass Theme",
-            ["intro.body"] = "A new skin that turns the notch into liquid glass — refracting the desktop behind it in real time, with soft chromatic edges, depth, and a frosted blur.",
+            ["intro.headline"] = "Spotlight Search",
+            ["intro.body"] = "Lightning-fast file and app search powered by Everything IPC and OLE DB. Press Alt + Space to find anything instantly.",
             ["intro.close"] = "Got it",
         };
     }
@@ -786,8 +786,8 @@ public static class Loc
             ["privacy.cam.inUse"] = "Đang dùng camera",
 
             ["intro.title"] = "GIỚI THIỆU",
-            ["intro.headline"] = "Theme Liquid Glass",
-            ["intro.body"] = "Giao diện mới biến notch thành kính lỏng — khúc xạ nền desktop phía sau theo thời gian thực, với viền tán sắc nhẹ, chiều sâu và lớp kính mờ.",
+            ["intro.headline"] = "Spotlight Search",
+            ["intro.body"] = "Tìm kiếm siêu tốc file và ứng dụng thông qua Everything IPC và OLE DB. Nhấn Alt + Space để tìm mọi thứ ngay lập tức.",
             ["intro.close"] = "Đã hiểu",
         };
 
@@ -1100,8 +1100,8 @@ public static class Loc
             ["privacy.mic.inUse"] = "Micrófono en uso",
             ["privacy.cam.inUse"] = "Cámara en uso",
             ["intro.title"] = "PRESENTANDO",
-            ["intro.headline"] = "Tema Liquid Glass",
-            ["intro.body"] = "Un nuevo tema que convierte el notch en cristal líquido: refracta el escritorio detrás en tiempo real, con bordes cromáticos suaves, profundidad y desenfoque esmerilado.",
+            ["intro.headline"] = "Búsqueda Spotlight",
+            ["intro.body"] = "Búsqueda ultrarrápida de archivos y aplicaciones impulsada por Everything IPC y OLE DB. Presiona Alt + Espacio para encontrar cualquier cosa al instante.",
             ["intro.close"] = "Entendido",
             ["dialog.confirm.title"] = "Confirmar acción",
             ["dialog.confirm"] = "Confirmar",
@@ -1486,8 +1486,8 @@ public static class Loc
             ["privacy.mic.inUse"] = "Microphone utilisé",
             ["privacy.cam.inUse"] = "Caméra utilisée",
             ["intro.title"] = "NOUVEAUTÉ",
-            ["intro.headline"] = "Thème Liquid Glass",
-            ["intro.body"] = "Un nouveau thème qui transforme le notch en verre liquide - réfractant le bureau en temps réel avec des contours chromatiques doux, de la profondeur et un flou dépoli.",
+            ["intro.headline"] = "Recherche Spotlight",
+            ["intro.body"] = "Recherche ultra-rapide de fichiers et d'applications via Everything IPC et OLE DB. Appuyez sur Alt + Espace pour tout trouver instantanément.",
             ["intro.close"] = "J'ai compris",
             ["dialog.confirm.title"] = "Confirmer l'action",
             ["dialog.confirm"] = "Confirmer",
@@ -1872,8 +1872,8 @@ public static class Loc
             ["privacy.mic.inUse"] = "Mikrofon aktiv",
             ["privacy.cam.inUse"] = "Kamera aktiv",
             ["intro.title"] = "NEU",
-            ["intro.headline"] = "Liquid Glass Thema",
-            ["intro.body"] = "Ein neues Design, das die Notch in flüssiges Glas verwandelt - bricht den Desktop dahinter in Echtzeit mit weichen Farbrändern, Tiefe und Frost-Effekt.",
+            ["intro.headline"] = "Spotlight-Suche",
+            ["intro.body"] = "Blitzschnelle Datei- und App-Suche basierend auf Everything IPC und OLE DB. Drücken Sie Alt + Leertaste, um alles sofort zu finden.",
             ["intro.close"] = "Verstanden",
             ["dialog.confirm.title"] = "Aktion bestätigen",
             ["dialog.confirm"] = "Bestätigen",
@@ -2242,7 +2242,7 @@ public static class Loc
             ["privacy.mic.inUse"] = "マイクを使用中",
             ["privacy.cam.inUse"] = "カメラを使用中",
             ["intro.title"] = "新機能紹介",
-            ["intro.headline"] = "Liquid Glassテーマ",
+            ["intro.headline"] = "Spotlight 検索",
             ["intro.body"] = "ノッチ本体をリキッドガラスに変える新しい外観テーマ。背後のデスクトップをリアルタイムで屈折させ、柔らかい色収差エッジ、奥行き、すりガラスのぼかしを表現します。",
             ["intro.close"] = "了解",
             ["dialog.confirm.title"] = "操作の確認",
@@ -2673,7 +2673,7 @@ public static class Loc
             ["privacy.cam.inUse"] = "कैमरा इस्तेमाल हो रहा है",
 
             ["intro.title"] = "पेश है",
-            ["intro.headline"] = "Liquid Glass थीम",
+            ["intro.headline"] = "स्पॉटलाइट खोज",
             ["intro.body"] = "एक नई स्किन, जो नॉच को लिक्विड ग्लास में बदल देती है — पीछे के डेस्कटॉप को रियल टाइम में रिफ़्रैक्ट करते हुए हल्के रंगीन किनारे, गहराई और फ्रॉस्टेड ब्लर देती है।",
             ["intro.close"] = "समझ गया"
         };

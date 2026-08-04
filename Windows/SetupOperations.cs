@@ -299,9 +299,20 @@ internal static class SetupOperations
             Directory.CreateDirectory(appFolder);
 
             var settingsPath = Path.Combine(appFolder, "settings.json");
-            if (File.Exists(settingsPath)) return;
+            Models.NotchSettings settings;
 
-            var settings = new Models.NotchSettings { Language = language };
+            if (File.Exists(settingsPath))
+            {
+                var existingJson = File.ReadAllText(settingsPath);
+                settings = System.Text.Json.JsonSerializer.Deserialize<Models.NotchSettings>(existingJson) ?? new Models.NotchSettings();
+            }
+            else
+            {
+                settings = new Models.NotchSettings();
+            }
+
+            settings.Language = language;
+            
             var json = System.Text.Json.JsonSerializer.Serialize(settings,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(settingsPath, json);

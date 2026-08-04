@@ -84,12 +84,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         try
         {
             RuntimeLog.Debug("SPOTIFY-CANVAS", "Starting Spotify Canvas lookup");
-            Task<string?> accessTokenTask = GetAccessTokenAsync(sessionCookie, timeoutCts.Token);
-            Task<string?> trackIdTask = ResolveTrackIdAsync(
-                trackName, artistName, duration, timeoutCts.Token);
-            await Task.WhenAll(accessTokenTask, trackIdTask).ConfigureAwait(false);
-
-            string? accessToken = await accessTokenTask.ConfigureAwait(false);
+            string? accessToken = await GetAccessTokenAsync(sessionCookie, timeoutCts.Token).ConfigureAwait(false);
             if (string.IsNullOrEmpty(accessToken))
             {
                 RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify access token was unavailable");
@@ -97,7 +92,8 @@ internal sealed class SpotifyCanvasService : IDisposable
             }
 
             RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify access token is ready");
-            string? trackId = await trackIdTask.ConfigureAwait(false);
+            
+            string? trackId = await ResolveTrackIdAsync(trackName, artistName, accessToken, timeoutCts.Token).ConfigureAwait(false);
             if (string.IsNullOrEmpty(trackId))
                 return null;
 
@@ -160,33 +156,43 @@ internal sealed class SpotifyCanvasService : IDisposable
     private async Task<string?> ResolveTrackIdAsync(
         string trackName,
         string artistName,
-        TimeSpan duration,
+        string accessToken,
         CancellationToken token)
     {
-        string? userToken = await GetMusixmatchTokenAsync(token).ConfigureAwait(false);
-        if (string.IsNullOrEmpty(userToken))
-            return null;
+        try
+        {
+            string query = Uri.EscapeDataString($"track:{trackName} artist:{artistName}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.spotify.com/v1/search?q={query}&type=track&limit=1");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.AcceptLanguage.ParseAdd("en");
+            
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return null;
 
-        int durationSeconds = Math.Max(1, (int)Math.Round(duration.TotalSeconds));
-        string path = "ws/1.1/macro.subtitles.get?format=json" +
-                      "&namespace=lyrics_richsynched&subtitle_format=mxm" +
-                      "&app_id=web-desktop-app-v1.0" +
-                      $"&usertoken={Uri.EscapeDataString(userToken)}" +
-                      $"&q_artist={Uri.EscapeDataString(artistName)}" +
-                      $"&q_artists={Uri.EscapeDataString(artistName)}" +
-                      $"&q_track={Uri.EscapeDataString(trackName)}" +
-                      $"&q_duration={durationSeconds}&f_subtitle_length={durationSeconds}";
+            string? json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            if (json == null) return null;
 
-        using var request = CreateMusixmatchRequest(new Uri(MusixmatchBaseUri, path));
-        string? json = await SendForStringAsync(request, token).ConfigureAwait(false);
-        string? trackId = json == null
-            ? null
-            : ParseTrackId(json, trackName, artistName, duration);
-        RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
-            string.IsNullOrEmpty(trackId)
-                ? "Musixmatch metadata did not contain a matching Spotify track ID"
-                : $"Resolved Spotify track ID from Musixmatch: {trackId}");
-        return trackId;
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty("tracks", out var tracks) &&
+                tracks.TryGetProperty("items", out var items) &&
+                items.ValueKind == JsonValueKind.Array &&
+                items.GetArrayLength() > 0)
+            {
+                var item = items[0];
+                if (item.TryGetProperty("id", out var idProp))
+                {
+                    string? id = idProp.GetString();
+                    RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Resolved Spotify track ID from Spotify API: {id}");
+                    return id;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Spotify search failed: {ex.Message}");
+        }
+        return null;
     }
 
     private async Task<string?> GetMusixmatchTokenAsync(CancellationToken token)
