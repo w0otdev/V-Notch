@@ -153,6 +153,7 @@ public class LiquidGlassConfig
     public double EdgeBend { get; set; } = 1.65;
     public double ChromaticAberration { get; set; } = 0.56;
     public double EdgeHighlight { get; set; } = 0.1;
+    public double TouchLight { get; set; } = 0.9;
     public double Specular { get; set; } = 0.0;
     public double Fresnel { get; set; } = 0.0;
     public double Distortion { get; set; } = 0.32;

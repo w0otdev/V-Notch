@@ -58,6 +58,19 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
         UpdateShaderValue(BrightAddProperty);
         UpdateShaderValue(TopCornerRProperty);
         UpdateShaderValue(EdgeBendProperty);
+        UpdateShaderValue(PointerXProperty);
+        UpdateShaderValue(PointerYProperty);
+        UpdateShaderValue(PointerActiveProperty);
+        UpdateShaderValue(PressAmountProperty);
+        UpdateShaderValue(LightXProperty);
+        UpdateShaderValue(LightYProperty);
+        UpdateShaderValue(InteractionRadiusProperty);
+        UpdateShaderValue(HighlightStrengthProperty);
+        UpdateShaderValue(FlexStrengthProperty);
+        UpdateShaderValue(PointerVelXProperty);
+        UpdateShaderValue(PointerVelYProperty);
+        UpdateShaderValue(ReleasePulseProperty);
+        UpdateShaderValue(HoverLiftProperty);
     }
 
     public Brush Input
@@ -89,6 +102,20 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public static readonly DependencyProperty BrightAddProperty = Reg("BrightAdd", 13);
     public static readonly DependencyProperty TopCornerRProperty = Reg("TopCornerR", 14);
     public static readonly DependencyProperty EdgeBendProperty = Reg("EdgeBend", 15, 1.0);
+    public static readonly DependencyProperty PointerXProperty = Reg("PointerX", 16, 0.5);
+    public static readonly DependencyProperty PointerYProperty = Reg("PointerY", 17, 0.5);
+    public static readonly DependencyProperty PointerActiveProperty = Reg("PointerActive", 18, 0.0);
+    public static readonly DependencyProperty PressAmountProperty = Reg("PressAmount", 19, 0.0);
+    public static readonly DependencyProperty LightXProperty = Reg("LightX", 20, 0.15);
+    public static readonly DependencyProperty LightYProperty = Reg("LightY", 21, -0.15);
+    public static readonly DependencyProperty InteractionRadiusProperty = Reg("InteractionRadius", 22, 0.70);
+    public static readonly DependencyProperty HighlightStrengthProperty = Reg("HighlightStrength", 23, 0.90);
+    public static readonly DependencyProperty FlexStrengthProperty = Reg("FlexStrength", 24, 1.10);
+
+    public static readonly DependencyProperty PointerVelXProperty = Reg("PointerVelX", 25, 0.0);
+    public static readonly DependencyProperty PointerVelYProperty = Reg("PointerVelY", 26, 0.0);
+    public static readonly DependencyProperty ReleasePulseProperty = Reg("ReleasePulse", 27, 0.0);
+    public static readonly DependencyProperty HoverLiftProperty = Reg("HoverLift", 28, 0.0);
 
     public double SrcW { get => (double)GetValue(SrcWProperty); set => SetValue(SrcWProperty, value); }
     public double SrcH { get => (double)GetValue(SrcHProperty); set => SetValue(SrcHProperty, value); }
@@ -106,4 +133,17 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public double BrightAdd { get => (double)GetValue(BrightAddProperty); set => SetValue(BrightAddProperty, value); }
     public double TopCornerR { get => (double)GetValue(TopCornerRProperty); set => SetValue(TopCornerRProperty, value); }
     public double EdgeBend { get => (double)GetValue(EdgeBendProperty); set => SetValue(EdgeBendProperty, value); }
+    public double PointerX { get => (double)GetValue(PointerXProperty); set => SetValue(PointerXProperty, value); }
+    public double PointerY { get => (double)GetValue(PointerYProperty); set => SetValue(PointerYProperty, value); }
+    public double PointerActive { get => (double)GetValue(PointerActiveProperty); set => SetValue(PointerActiveProperty, value); }
+    public double PressAmount { get => (double)GetValue(PressAmountProperty); set => SetValue(PressAmountProperty, value); }
+    public double LightX { get => (double)GetValue(LightXProperty); set => SetValue(LightXProperty, value); }
+    public double LightY { get => (double)GetValue(LightYProperty); set => SetValue(LightYProperty, value); }
+    public double InteractionRadius { get => (double)GetValue(InteractionRadiusProperty); set => SetValue(InteractionRadiusProperty, value); }
+    public double HighlightStrength { get => (double)GetValue(HighlightStrengthProperty); set => SetValue(HighlightStrengthProperty, value); }
+    public double FlexStrength { get => (double)GetValue(FlexStrengthProperty); set => SetValue(FlexStrengthProperty, value); }
+    public double PointerVelX { get => (double)GetValue(PointerVelXProperty); set => SetValue(PointerVelXProperty, value); }
+    public double PointerVelY { get => (double)GetValue(PointerVelYProperty); set => SetValue(PointerVelYProperty, value); }
+    public double ReleasePulse { get => (double)GetValue(ReleasePulseProperty); set => SetValue(ReleasePulseProperty, value); }
+    public double HoverLift { get => (double)GetValue(HoverLiftProperty); set => SetValue(HoverLiftProperty, value); }
 }

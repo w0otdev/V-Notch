@@ -63,6 +63,7 @@
   <ItemGroup>
     <Compile Remove="artifacts\**\*.cs" />
     <Compile Remove="Tests\**\*.cs" />
+    <Compile Remove="Tools\**\*.cs" />
     <Compile Remove="Uninstall\**\*.cs" />
   </ItemGroup>
 

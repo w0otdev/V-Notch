@@ -1212,6 +1212,7 @@ public partial class SettingsWindow : Window
         c.EdgeBend = GlassEdgeBendSlider.Value / 100.0;
         c.ChromaticAberration = GlassChromSlider.Value / 100.0;
         c.EdgeHighlight = GlassEdgeHighlightSlider.Value / 100.0;
+        c.TouchLight = GlassTouchLightSlider.Value / 100.0;
         c.Specular = GlassSpecularSlider.Value / 100.0;
         c.Fresnel = GlassFresnelSlider.Value / 100.0;
         c.Distortion = GlassDistortionSlider.Value / 100.0;
@@ -1237,6 +1238,7 @@ public partial class SettingsWindow : Window
             GlassEdgeBendSlider.Value = Math.Round(c.EdgeBend * 100);
             GlassChromSlider.Value = Math.Round(c.ChromaticAberration * 100);
             GlassEdgeHighlightSlider.Value = Math.Round(c.EdgeHighlight * 100);
+            GlassTouchLightSlider.Value = Math.Round(c.TouchLight * 100);
             GlassSpecularSlider.Value = Math.Round(c.Specular * 100);
             GlassFresnelSlider.Value = Math.Round(c.Fresnel * 100);
             GlassDistortionSlider.Value = Math.Round(c.Distortion * 100);
@@ -1325,6 +1327,7 @@ public partial class SettingsWindow : Window
         c.EdgeBend = ui.EdgeBend;
         c.ChromaticAberration = ui.ChromaticAberration;
         c.EdgeHighlight = ui.EdgeHighlight;
+        c.TouchLight = ui.TouchLight;
         c.Specular = ui.Specular;
         c.Fresnel = ui.Fresnel;
         c.Distortion = ui.Distortion;
@@ -1508,6 +1511,7 @@ public partial class SettingsWindow : Window
         GlassEdgeBendSlider.Label = Loc.Get("settings.glass.edgeBend");
         GlassChromSlider.Label = Loc.Get("settings.glass.chrom");
         GlassEdgeHighlightSlider.Label = Loc.Get("settings.glass.edgeHighlight");
+        GlassTouchLightSlider.Label = Loc.Get("settings.glass.touchLight") ?? "Touch Light";
         GlassSpecularSlider.Label = Loc.Get("settings.glass.specular");
         GlassFresnelSlider.Label = Loc.Get("settings.glass.fresnel");
         GlassDistortionSlider.Label = Loc.Get("settings.glass.distortion");

@@ -12,6 +12,7 @@ public partial class MainWindow
     private const string LiquidGlassStyleId = "liquidglass";
 
     private LiquidGlassRefractionEffect? _glassRefractionEffect;
+    private LiquidGlassInteractionController? _glassInteractionController;
     private bool _gpuRefractionConfigured;
 
     private bool UseGpuRefraction =>
@@ -137,6 +138,11 @@ public partial class MainWindow
 
         ApplyOpticalRimLevels(cfg.EdgeHighlight, cfg.Specular, cfg.Fresnel, cfg.ChromaticAberration);
 
+        if (_glassRefractionEffect != null)
+        {
+            _glassRefractionEffect.HighlightStrength = cfg.TouchLight;
+        }
+
         SyncGlassCornerRadius(NotchBorder.CornerRadius);
 
         if (NotchShadowWrapper?.Effect is System.Windows.Media.Effects.DropShadowEffect dse)
@@ -191,6 +197,9 @@ public partial class MainWindow
         {
             _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
             GlassBackdropImage.Effect = _glassRefractionEffect;
+
+            _glassInteractionController ??= new LiquidGlassInteractionController(NotchContainer, NotchBorder, _glassRefractionEffect);
+
             if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure))
             {
                 DetachGpuRefraction();
@@ -222,6 +231,10 @@ public partial class MainWindow
     private void DetachGpuRefraction()
     {
         _gpuRefractionConfigured = false;
+        
+        _glassInteractionController?.Dispose();
+        _glassInteractionController = null;
+
         if (GlassBackdropImage != null)
         {
             GlassBackdropImage.Effect = null;

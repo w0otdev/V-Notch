@@ -1243,6 +1243,11 @@
                                                         ValueChanged="GlassConfigSlider_Changed"/>
                                             </Border>
                                             <Border Style="{StaticResource SettingRowBorder}">
+                                                <controls:ElasticSlider x:Name="GlassTouchLightSlider" Label="Touch Light" Unit="%"
+                                                        Minimum="0" Maximum="300" Value="90" TickFrequency="5" IsSnapToTickEnabled="True"
+                                                        ValueChanged="GlassConfigSlider_Changed"/>
+                                            </Border>
+                                            <Border Style="{StaticResource SettingRowBorder}">
                                                 <controls:ElasticSlider x:Name="GlassSpecularSlider" Label="Specular" Unit="%"
                                                         Minimum="0" Maximum="100" Value="0" TickFrequency="2" IsSnapToTickEnabled="True"
                                                         ValueChanged="GlassConfigSlider_Changed"/>
