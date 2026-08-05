@@ -51,3 +51,8 @@ remove_comments.ps1
 /Tests/artifacts
 /coco128-tmp
 /tools
+
+out.xml
+/attached_assets
+.replit
+replit.md
