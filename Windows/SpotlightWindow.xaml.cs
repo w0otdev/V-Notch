@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -544,7 +544,7 @@ public partial class SpotlightWindow : Window
 
         try
         {
-            await Task.Delay(120, token);
+            if (IsSpotlightOpen) await Task.Delay(120, token);
             if (token.IsCancellationRequested) return;
 
             await _viewModel.SearchAsync(currentText);
@@ -1965,9 +1965,12 @@ public partial class SpotlightWindow : Window
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
         // The blur ramp softens the collapse. Because we froze the layout width
-        var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
-            TimeSpan.FromMilliseconds(210), contentEase);
-        contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
+        if (!hadVisibleContent)
+        {
+            var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
+                TimeSpan.FromMilliseconds(210), contentEase);
+            contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
+        }
         // Shed the panel outline early so the shell arrives looking like the
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
 
@@ -2078,6 +2081,7 @@ public partial class SpotlightWindow : Window
         ShellContent.Effect = null;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         Shell.VerticalAlignment = VerticalAlignment.Top;
+        Shell.Visibility = Visibility.Hidden;
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.Opacity = 0;
         ShellScale.ScaleX = ShellScale.ScaleY = 1;

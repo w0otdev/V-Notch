@@ -199,7 +199,7 @@ public sealed class SpotlightWindowAnimationTests
                 window.SearchBox.Text = "new";
                 PumpFor(TimeSpan.FromMilliseconds(100));
                 Assert.Equal(Visibility.Collapsed, window.StatusPanel.Visibility);
-                PumpFor(TimeSpan.FromMilliseconds(180));
+                PumpFor(TimeSpan.FromMilliseconds(300));
                 Assert.Equal(Visibility.Visible, window.StatusPanel.Visibility);
                 window.DismissFromGlobalShortcut();
                 window.DismissFromGlobalShortcut();

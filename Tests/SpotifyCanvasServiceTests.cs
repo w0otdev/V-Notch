@@ -29,15 +29,9 @@ public sealed class SpotifyCanvasServiceTests
                 return JsonResponse("{\"serverTime\":1700000000}");
             if (host == "open.spotify.com" && path.EndsWith("/token", StringComparison.Ordinal))
                 return JsonResponse("{\"accessToken\":\"spotify-token\",\"accessTokenExpirationTimestampMs\":4102444800000}");
-            if (host == "apic-desktop.musixmatch.com" && path.EndsWith("/token.get", StringComparison.Ordinal))
+            if (host == "api.spotify.com" && path.StartsWith("/v1/search", StringComparison.Ordinal))
             {
-                return JsonResponse("{\"message\":{\"body\":{\"user_token\":\"musixmatch-token\"}}}");
-            }
-            if (host == "apic-desktop.musixmatch.com" && path.EndsWith("/macro.subtitles.get", StringComparison.Ordinal))
-            {
-                return JsonResponse("{\"message\":{\"body\":{\"macro_calls\":{\"matcher.track.get\":{\"message\":{\"body\":{\"track\":{" +
-                    "\"track_spotify_id\":\"" + TrackId + "\",\"track_name\":\"Kill Bill\"," +
-                    "\"artist_name\":\"SZA\",\"track_length\":153}}}}}}}}");
+                return JsonResponse("{\"tracks\":{\"items\":[{\"id\":\"" + TrackId + "\",\"name\":\"Kill Bill\",\"artists\":[{\"name\":\"SZA\"}]}]}}");
             }
             if (host == "spclient.wg.spotify.com")
                 return ProtobufResponse(BuildCanvasResponse(CanvasUrl));
@@ -50,7 +44,7 @@ public sealed class SpotifyCanvasServiceTests
             "Kill Bill", "SZA", TimeSpan.FromSeconds(153), "session-cookie");
 
         Assert.Equal(CanvasUrl, result?.AbsoluteUri);
-        Assert.Equal(6, requests.Count);
+        Assert.Equal(5, requests.Count);
         Assert.Contains(requests, request =>
             request.Uri.Host == "open.spotify.com" && request.Cookie == "sp_dc=session-cookie");
         Assert.Contains(requests, request =>
@@ -58,9 +52,8 @@ public sealed class SpotifyCanvasServiceTests
             request.Authorization == "Bearer spotify-token" &&
             request.ContentType == "application/x-www-form-urlencoded");
         Assert.Contains(requests, request =>
-            request.Uri.Host == "apic-desktop.musixmatch.com" &&
-            request.Uri.AbsolutePath.EndsWith("/macro.subtitles.get", StringComparison.Ordinal));
-        Assert.DoesNotContain(requests, request => request.Uri.Host == "api.spotify.com");
+            request.Uri.Host == "api.spotify.com" &&
+            request.Uri.AbsolutePath.StartsWith("/v1/search", StringComparison.Ordinal));
     }
 
     [Fact]

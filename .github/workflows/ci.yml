@@ -23,7 +23,7 @@ jobs:
       # actions/setup-dotnet@v4.3.1
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '8.0.x'
 
       - name: Restore
         run: dotnet restore V-Notch.sln
@@ -37,9 +37,9 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          $runtime = Get-ChildItem 'C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App' -Directory | Where-Object Name -like '8.0.*' | Sort-Object Name -Descending | Select-Object -First 1
-          Copy-Item "$($runtime.FullName)\*.dll" 'Tests\bin\Release\net8.0-windows10.0.19041.0\win-x64' -Force
-          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore /p:CollectCoverage=true /p:CoverletOutput=artifacts/coverage/ /p:CoverletOutputFormat=cobertura --verbosity normal
+          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory Tests/artifacts/coverage/ --verbosity normal
+          $coverageFile = Get-ChildItem -Path Tests/artifacts/coverage -Filter coverage.cobertura.xml -Recurse | Select-Object -First 1
+          if ($coverageFile) { Copy-Item $coverageFile.FullName -Destination Tests/artifacts/coverage/coverage.cobertura.xml -Force }
           [xml]$coverage = Get-Content Tests/artifacts/coverage/coverage.cobertura.xml
           if ([double]$coverage.coverage.'line-rate' -le 0) { throw 'Coverage report is empty.' }
           $baseline = 'Tests/coverage-baseline.txt'

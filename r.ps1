@@ -11,8 +11,8 @@ $ErrorActionPreference = "Continue"
 
 # --- Configuration ---------------------------------------------------------
 $processName = "V-Notch"
-$objPath     = "obj\Debug\net10.0-windows10.0.19041.0\win-x64"
-$binPath     = "bin\Debug\net10.0-windows10.0.19041.0\win-x64"
+$objPath     = "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
+$binPath     = "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
 $exePath     = Join-Path $binPath "V-Notch.exe"
 
 # --- 1. Stop old instances and WAIT for them to actually exit ---------------
