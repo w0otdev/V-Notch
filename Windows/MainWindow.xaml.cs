@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -104,8 +104,6 @@ public partial class MainWindow : Window
         {
             _notchState.IsAnimating = value;
             // Drive the liquid-glass refresh rate off notch motion: full rate while
-            // animating (so the refraction maps track the moving edge), throttled
-            // when static (minimises steady-state CPU).
             UpdateGlassMotionState();
         }
     }
@@ -358,7 +356,7 @@ public partial class MainWindow : Window
                 if (_hwnd != IntPtr.Zero && IsCursorInsideWindow())
                 {
                     RuntimeLog.Log("COLLAPSE-BLOCKED",
-                        $"HoverCollapseTimer: WPF says IsMouseOver=False but cursor is inside window rect — suppressing");
+                        $"HoverCollapseTimer: WPF says IsMouseOver=False but cursor is inside window rect â€” suppressing");
                     return;
                 }
 
@@ -585,7 +583,6 @@ public partial class MainWindow : Window
     }
 
     // The ViewModel is the single production subscriber to media state.  This window
-    // only turns that state into animations and other visual effects.
     private void ViewModel_MediaInfoUpdated(object? sender, MediaInfo info) => OnMediaChanged(sender, info);
 
     protected override void OnClosed(EventArgs e)
@@ -822,9 +819,6 @@ public partial class MainWindow : Window
         _overlayWindow.PositionAtTop(notchSurfaceWidth, _expandedHeight);
 
         // Initialize the global hover/top-edge bounds at startup as well as after
-        // monitor or DPI changes. Previously this happened only through
-        // NotchManager.UpdateSettings(), so edge reveal remained inactive until
-        // the Settings window emitted its first SettingsChanged event.
         _notchManager.UpdatePosition();
 
         if (_hwnd != IntPtr.Zero)
@@ -880,17 +874,11 @@ public partial class MainWindow : Window
     internal void SetSpotlightMorphSessionActive(bool active)
     {
         // A completed return fade used to leave its slightly longer scale
-        // animation attached with FillBehavior=HoldEnd. A fresh Spotlight
-        // session captures the source immediately after acquiring this guard,
-        // so commit and detach that old handoff clock before the capture.
         if (active) CompleteSpotlightReturnScaleHandoff();
         _spotlightMorphSessionActive = active;
         if (!active) return;
 
         // This guard is acquired before Spotlight calls Show(). Showing or
-        // activating that HWND deactivates MainWindow synchronously, and the
-        // secondary/timer views would otherwise collapse before their source
-        // frame can be captured for the morph.
         _hoverCollapseTimer.Stop();
         _hoverThumbnailDelayTimer.Stop();
     }
@@ -901,18 +889,13 @@ public partial class MainWindow : Window
         {
             CompleteSpotlightReturnScaleHandoff();
             // Spotlight now owns the visible notch snapshot. Do not let hover
-            // leave collapse the live source behind it while the handoff runs
-            // or while Spotlight is being used.
             _hoverCollapseTimer.Stop();
             _hoverThumbnailDelayTimer.Stop();
 
             // Repeated ownership requests are common when a running exit morph
-            // is reversed. Preserve the original restore values, but always
-            // re-assert the hidden state in case another animation touched it.
             if (!_spotlightMorphOwnsNotchVisibility)
             {
                 // Preserve the animation targets, not a transient presentation
-                // value from an unrelated notch transition.
                 _spotlightRestoreNotchOpacity =
                     (double)NotchWrapper.GetAnimationBaseValue(OpacityProperty);
                 _spotlightRestoreShadowOpacity =
@@ -922,8 +905,6 @@ public partial class MainWindow : Window
             _spotlightMorphOwnsNotchVisibility = true;
 
             // Change the base underneath any return-handoff animation before
-            // removing its clock. Clearing first would expose the restored
-            // notch for one compositor frame during a rapid reversal.
             NotchWrapper.Opacity = 0;
             NotchShadowWrapper.Opacity = 0;
             NotchWrapper.BeginAnimation(OpacityProperty, null);
@@ -945,7 +926,6 @@ public partial class MainWindow : Window
         }
 
         // Likewise, make the restored values the bases before clearing a
-        // possibly interrupted fade.
         NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
         NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
         NotchWrapper.BeginAnimation(OpacityProperty, null);
@@ -977,9 +957,6 @@ public partial class MainWindow : Window
         }
 
         // Ownership remains with Spotlight until its HWND is actually hidden.
-        // A reversal during this cross-fade can then re-hide the live notch
-        // without overwriting the original opacity values with an in-between
-        // animated value.
         NotchWrapper.BeginAnimation(OpacityProperty, null);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
         NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -995,9 +972,6 @@ public partial class MainWindow : Window
         _spotlightReturnHandoffActive = true;
 
         // Spotlight does not own the active notch view. In particular, do not
-        // force media thumbnails visible or clear _isAnimating here: a timer,
-        // audio, camera, or expand/collapse transition may have continued while
-        // the notch was hidden and must finish with its own state intact.
 
         var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
         var notchFade = new DoubleAnimation(0, _spotlightRestoreNotchOpacity, duration)
@@ -1020,7 +994,6 @@ public partial class MainWindow : Window
         if (!_spotlightReturnHandoffActive) return;
 
         // Set the bases first so removing an interrupted or completed clock
-        // cannot expose an older hover/bounce scale for one compositor frame.
         NotchScale.ScaleX = 1;
         NotchScale.ScaleY = 1;
         NotchShadowScale.ScaleX = 1;
@@ -1155,7 +1128,6 @@ public partial class MainWindow : Window
         ResetDesktopEdgePromotionIfDisabled();
 
         // Reconfigure immediately so changing this option does not require an app
-        // restart. ConfigureOverlay also performs the corresponding z-order move.
         if (_hwnd != IntPtr.Zero)
             ConfigureOverlayWindow();
 
@@ -1687,7 +1659,7 @@ public partial class MainWindow : Window
             if (IsCursorInsideWindow())
             {
                 RuntimeLog.Log("COLLAPSE-BLOCKED",
-                    $"MouseLeave: WPF fired leave but cursor still inside window rect — ignoring");
+                    $"MouseLeave: WPF fired leave but cursor still inside window rect â€” ignoring");
                 return;
             }
 
@@ -2040,7 +2012,7 @@ public partial class MainWindow : Window
     /// Clips the glass backdrop host to its OWN rounded bounds. The glass layer is
     /// a separate element from <see cref="NotchContent"/>, and during a view swap
     /// the content grid can briefly report a transient size on a different layout
-    /// pass — clipping the glass to that stale shape flashes black. Tracking the
+    /// pass â€” clipping the glass to that stale shape flashes black. Tracking the
     /// host's own ActualWidth/Height keeps the clip locked to what's actually drawn.
     /// </summary>
     private void UpdateGlassClip()
@@ -2066,11 +2038,6 @@ public partial class MainWindow : Window
         if (w <= 0 || h <= 0) return null;
 
         // Clamp the arc radii to the element's bounds. Unlike a Border's built-in
-        // rounding, a hand-built StreamGeometry will produce a degenerate (or
-        // inverted) shape when the radius exceeds half the width/height — which
-        // clips the glass backdrop to nothing and flickers black while the notch
-        // animates at small sizes (e.g. a 50px glass corner radius on a collapsed
-        // pill).
         double maxR = Math.Min(w, h) / 2.0;
         double rBottom = Math.Max(0, Math.Min(NotchBorder.CornerRadius.BottomRight, maxR));
         double rTop = Math.Max(0, Math.Min(NotchBorder.CornerRadius.TopLeft, maxR));

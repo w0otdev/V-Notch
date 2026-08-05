@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -141,8 +141,6 @@ public partial class SettingsWindow : Window
         MediaArtBackgroundCheck.IsChecked = _settings.ShowMediaArtBackground;
 
         // Liquid Glass availability depends on this checkbox. Initialize the mode
-        // first so selecting the saved skin cannot briefly enter the invalid
-        // "glass + notch mode" state and tear down/recreate its renderer.
         DynamicIslandModeCheck.IsChecked = _settings.EnableDynamicIslandMode;
         UpdateDynamicIslandDependentControls(_settings.EnableDynamicIslandMode);
         LoadLiquidGlassUi();
@@ -1029,7 +1027,6 @@ public partial class SettingsWindow : Window
     #region Liquid Glass skin
 
     // Snapshot of the user's manually-tuned glass values, preserved so the
-    // "Custom Settings" preset can always restore exactly what they had.
     private Models.LiquidGlassConfig? _customGlassSnapshot;
     private bool _suppressGlassPresetChange;
 
@@ -1297,8 +1294,6 @@ public partial class SettingsWindow : Window
                 GpuRefractionCheck.IsChecked = c.UseGpuRefraction;
 
             // The user's tuned values live in their own persistent slot. If it's
-            // missing (first run / upgrade), seed it from whatever is currently
-            // active so the very first values are never lost.
             _settings.LiquidGlassCustom ??= c.Clone();
             _customGlassSnapshot = _settings.LiquidGlassCustom.Clone();
 
@@ -1350,7 +1345,6 @@ public partial class SettingsWindow : Window
         c.UseGpuRefraction = GpuRefractionCheck?.IsChecked ?? false;
 
         // Persist which preset is active and the user's custom slot. A built-in
-        // preset being active must NOT overwrite the custom slot.
         _settings.LiquidGlassPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "custom";
         if (_customGlassSnapshot != null)
             _settings.LiquidGlassCustom = _customGlassSnapshot.Clone();
@@ -1400,8 +1394,6 @@ public partial class SettingsWindow : Window
     }
 
     // Populates the skin selector. Plain string items so the selection box renders
-    // the name directly (a custom ItemTemplate isn't applied to the selection box
-    // by this combo's template). The "alpha" badge lives next to the section title.
     private void PopulateSkinItems()
     {
         SkinCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.skin.default"), Tag = "default" });
@@ -1452,7 +1444,6 @@ public partial class SettingsWindow : Window
                 : Visibility.Collapsed;
 
         // Do not combine a mode transition with destruction of the active glass
-        // surface. Select Default first, then Dynamic Island can be turned off.
         if (DynamicIslandModeCheck != null)
             DynamicIslandModeCheck.IsEnabled = !glassSelected;
     }
@@ -1461,8 +1452,7 @@ public partial class SettingsWindow : Window
     {
         if (_isLoadingSettings) return;
 
-        // A manual slider tweak means the values no longer match a named preset —
-        // capture them as the custom snapshot and reflect that in the dropdown.
+        // A manual slider tweak means the values no longer match a named preset â€”
         _customGlassSnapshot = ReadGlassConfigFromSliders();
         SelectGlassPreset("custom");
 
@@ -2125,7 +2115,6 @@ public partial class SettingsWindow : Window
         Timeline.SetDesiredFrameRate(moveLeft, fps);
 
         // Release the HoldEnd fill once the fly-in finishes so Top/Left track
-        // the window's real position afterwards (e.g. when the user drags it).
         moveTop.Completed += (s, e) =>
         {
             if (_isClosing) return;
@@ -2468,8 +2457,6 @@ public partial class SettingsWindow : Window
         var totalDur = TimeSpan.FromMilliseconds(650);
 
         // Window.Top/Left can still be held at the entrance animation's end value
-        // (HoldEnd fill) even after the user drags the window elsewhere, so read
-        // the real on-screen position from Win32 instead.
         double currentTop = Top;
         double currentLeft = Left;
         double currentShellOpacity = Math.Clamp(MainShell.Opacity, 0.0, 1.0);
@@ -2501,8 +2488,6 @@ public partial class SettingsWindow : Window
         Left = currentLeft;
 
         // Removing a WPF animation exposes its base value. Preserve the
-        // presentation values so reversing the entrance cannot snap to the
-        // fully-open settings window for one frame.
         MainShell.Opacity = currentShellOpacity;
         ShellScale.ScaleX = currentScaleX;
         ShellScale.ScaleY = currentScaleY;
@@ -2514,7 +2499,6 @@ public partial class SettingsWindow : Window
         MainShell.Effect = null;
 
         // --- Performance Optimizations ---
-        // 1. Enable Bitmap Cache to render the entire shell on GPU during scaling
         MainShell.CacheMode = new BitmapCache { EnableClearType = false, RenderAtScale = 1.0 };
         // 2. Disable pixel snapping and layout rounding during animation to prevent animation jitter
         MainShell.SnapsToDevicePixels = false;
@@ -2614,8 +2598,6 @@ public partial class SettingsWindow : Window
         squishX.Completed += (s, e) =>
         {
             // Blank and hide the layered window before destroying it so
-            // capture-based dock animators (MyDockFinder) have nothing
-            // visible to replay as their own closing animation.
             Opacity = 0;
             Hide();
             Close();
@@ -3517,8 +3499,6 @@ public partial class SettingsWindow : Window
         if (IsAnyComboBoxDropDownOpen())
         {
             // A ComboBox popup is logically connected to this window, so this
-            // preview handler sees the wheel before the popup's ScrollViewer.
-            // Route that input to the dropdown instead of swallowing it.
             var dropdownScrollViewer = FindVisualAncestor<ScrollViewer>(e.OriginalSource as DependencyObject);
             if (dropdownScrollViewer != null && !ReferenceEquals(dropdownScrollViewer, SettingsScrollViewer))
             {
@@ -3717,9 +3697,6 @@ public partial class SettingsWindow : Window
         if (GlassBackdropHost == null) return;
 
         // Liquid Glass is a notch skin only. Keeping a second full-window
-        // capture/render pipeline behind Settings adds significant GPU work and
-        // cannot stay spatially correct during WPF's native window drag loop.
-        // Settings therefore always uses its stable opaque material.
         MainShell.Background = (Brush)FindResource("WindowGlow");
         GlassBackdropHost.Background = null;
         GlassBackdropHost.Visibility = Visibility.Collapsed;
@@ -3855,8 +3832,6 @@ public partial class SettingsWindow : Window
         try
         {
             // Project both corners so the open/close ShellScale animation is baked
-            // into the sampled footprint; mixing a scaled anchor with the unscaled
-            // ActualWidth footprint makes the reflection drift while animating.
             var tl = MainShell.PointToScreen(new Point(0, 0));
             var br = MainShell.PointToScreen(new Point(shellW, shellH));
 
@@ -3868,7 +3843,6 @@ public partial class SettingsWindow : Window
             if (scaledH > 1) physH = scaledH;
 
             // Carry the fractional screen position so the present can compensate
-            // with a sub-pixel transform instead of wobbling ±0.5 px.
             double subX = tl.X - Math.Round(tl.X);
             double subY = tl.Y - Math.Round(tl.Y);
 
@@ -4015,7 +3989,6 @@ public partial class SettingsWindow : Window
         base.OnSourceInitialized(e);
 
         // WS_EX_TOOLWINDOW keeps third-party dock/animation tools (e.g. MyDockFinder)
-        // from applying their own open/close window animations over ours.
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {

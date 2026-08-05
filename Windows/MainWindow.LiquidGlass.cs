@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Media;
 using VNotch.Controllers;
@@ -32,10 +32,6 @@ public partial class MainWindow
             ExpandedContent.Background = System.Windows.Media.Brushes.Transparent;
 
             // Opaque dark base behind the live glass image. The refraction image is
-            // fully opaque and fills the host, so this is never visible normally —
-            // but if a frame is dropped during a heavy view-switch composite, the
-            // gap shows dark glass instead of the window's pure black (the 1-frame
-            // black flash users saw when changing views on the glass skin).
             GlassBackdropHost.Background = _glassBaseFill;
 
             bool sysTrans = IsSystemTransparencyEnabled();
@@ -67,17 +63,14 @@ public partial class MainWindow
                 () => _hwnd,
                 GetGlassCaptureRegion,
                 // This is a hard render cadence: unchanged desktop frames are still
-                // processed and presented at the selected Liquid Glass FPS.
                 activeFps: Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30,
                     LiquidGlassController.MaxTargetFps),
                 logTag: "ISLAND");
 
             // Magnifier capture excludes the notch internally while the user-facing
-            // overlay remains visible in screenshots and recordings.
             _liquidGlass.HideFromScreenCapture = false;
 
             // Match the controller to the notch's current motion state so it starts
-            // at the right cadence (e.g. enabled mid-animation).
             _liquidGlass.SetAnimating(_isAnimating);
 
             ConfigureGpuRefraction();
@@ -190,8 +183,6 @@ public partial class MainWindow
         }
 
         // Settings live preview calls ApplyLiquidGlassSkin repeatedly. Reattaching
-        // an already-active D3DImage resets geometry tracking and can make DWM
-        // composite an empty/black back buffer for one frame.
         if (_gpuRefractionConfigured &&
             ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
             return;
@@ -296,7 +287,6 @@ public partial class MainWindow
     }
 
     // Dark base shown behind the live glass image if a frame is unavailable
-    // during a heavy composite (for example, while switching views).
     private static readonly SolidColorBrush _glassBaseFill = Frozen(0xFF, 0x0B, 0x0E, 0x12);
 
     private void SetOpticalRimVisibility(Visibility visibility)
@@ -322,7 +312,6 @@ public partial class MainWindow
         _activeFresnelLevel = fres;
 
         // A square-root response preserves a delicate rim at low slider values
-        // without making the high end look like a painted white stroke.
         GlassRimBorder.Opacity = Math.Sqrt(edge) * 0.82;
         GlassDepthRimBorder.Opacity = Math.Clamp(edge * 0.34 + fres * 0.24, 0, 0.46);
         double fresnelEnergy = Math.Sqrt(fres);
@@ -394,9 +383,6 @@ public partial class MainWindow
             : Math.Clamp((now - _lastDynamicFresnelTicks) / 1000.0, 0.0, 0.25);
         _lastDynamicFresnelTicks = now;
         // Fresnel should read as a stable material reflection, not a highlight
-        // chasing every sampled desktop frame. Use a slow response and a narrow
-        // travel range; colour/contrast retain some environmental reaction without
-        // making the rim visibly wander or pulse.
         double response = 1.0 - Math.Exp(-elapsedSeconds * 1.1);
 
         double targetX = Math.Clamp(0.42 + optics.LightX * 0.08, 0.34, 0.50);
@@ -417,8 +403,6 @@ public partial class MainWindow
         brush.RadiusY = 0.90 - _dynamicFresnelContrast * 0.06;
 
         // Keep the inner reflection axis fixed. Normalizing the tiny per-frame
-        // light vector made this linear gradient rotate noticeably even when the
-        // sampled backdrop changed by only a few pixels.
 
         Color bright = InterpolateColor(_dynamicFresnelTint, Colors.White, 0.68);
         Color mid = InterpolateColor(_dynamicFresnelTint, Colors.White, 0.42);
@@ -489,7 +473,6 @@ public partial class MainWindow
     private static readonly SolidColorBrush _defaultPanelBg = Frozen(0xFF, 0x1A, 0x1A, 0x1A);
     private static readonly SolidColorBrush _defaultDashStroke = Frozen(0xFF, 0x33, 0x33, 0x33);
     // The idle camera box should read the same as the file tray (both #1A1A1A);
-    // the camera-icon overlay therefore adds no extra dark wash.
     private static readonly SolidColorBrush _cameraOverlayDefault = Frozen(0x00, 0, 0, 0);
     private static readonly SolidColorBrush _defaultAnimThumbnailBorder = Frozen(0xFF, 0x33, 0x33, 0x33);
 
@@ -531,7 +514,6 @@ public partial class MainWindow
                 CameraSection.BorderBrush = _glassPanelBorder;
                 CameraSection.BorderThickness = new Thickness(1);
                 // The camera icon overlay adds an extra dark wash on top of the glass
-                // background, making the box darker than the file tray — clear it.
                 if (CameraOverlay != null)
                     CameraOverlay.Background = System.Windows.Media.Brushes.Transparent;
             }
@@ -570,8 +552,6 @@ public partial class MainWindow
     }
 
     // Frosted translucent track for the media progress bar while the Liquid Glass
-    // skin is active, so the unfilled portion reads as a light glass groove (with
-    // the refracted backdrop showing through) instead of a solid dark bar.
     private static readonly SolidColorBrush _glassProgressTrack = Frozen(0x59, 255, 255, 255);
     private Brush? _progressTrackDefaultBg;
     private bool _progressTrackDefaultCaptured;
@@ -628,9 +608,6 @@ public partial class MainWindow
     private void InvalidateGlassDpiScale() { }
 
     // Hover applies a transient scale to the collapsed notch without flipping the
-    // _isAnimating flag. The glass must still run at full rate (and re-query the
-    // moving region every frame) for that scale, otherwise the throttled idle path
-    // updates the backdrop position in coarse steps and it visibly jumps.
     private bool _glassHoverMotion;
     private int _glassHoverGen;
     private bool _glassGestureSnapBackMotion;
@@ -650,8 +627,6 @@ public partial class MainWindow
         UpdateGlassMotionState();
 
         // Replacing a WPF animation does not always raise Completed on the old
-        // clock. A short safety timer guarantees that a superseded hover can never
-        // leave glass presentation paused indefinitely.
         TimeSpan motionDuration = completionAnim.Duration.HasTimeSpan
             ? completionAnim.Duration.TimeSpan
             : TimeSpan.FromMilliseconds(600);
@@ -701,13 +676,7 @@ public partial class MainWindow
 
     private void UpdateGlassMotionState()
     {
-        // Hover applies a ScaleTransform (NotchScale) that renders the notch — and
-        // the desktop footprint the glass must sample — larger and shifted left,
-        // WITHOUT changing the notch's layout size. It must therefore track the live
-        // projected region every compositor frame, exactly like the other motions.
-        // Excluding it left the backdrop anchored to the pre-hover rectangle (the
-        // reflection drifted sideways) until the ~1s idle refresh re-queried it and
-        // snapped — the sideways drift + delayed jump users saw while hovering.
+        // Hover applies a ScaleTransform (NotchScale) that renders the notch â€” and
         bool motion = _isAnimating || _isGestureActive ||
                       _glassGestureSnapBackMotion || _glassHoverMotion;
 
@@ -799,9 +768,6 @@ public partial class MainWindow
     }
 
     // Glass material for the countdown "time's up" view: the full surface plus the
-    // restart and dismiss buttons. Uses the SAME shared glass material as the rest of
-    // the skin (_glassPanelTint for surfaces, _glassPanelBg + _glassPanelBorder for
-    // panels/buttons) so it stays consistent with the configured Liquid Glass look.
     private bool _countdownGlassDefaultsCaptured;
     private Brush? _countdownSurfaceDefaultBg;
     private Brush? _countdownRestartDefaultBg;
@@ -831,8 +797,6 @@ public partial class MainWindow
             CountdownCompleteSurface.Background = _glassPanelTint;
 
             // The default alert orange (#FFFF9B3D) turns into a muddy, dim brown
-            // over the live refracted backdrop. Use white so the "00:00" stays
-            // legible, matching the other numbers on the Liquid Glass skin.
             if (CountdownCompleteText != null)
                 CountdownCompleteText.Foreground = System.Windows.Media.Brushes.White;
 
@@ -911,14 +875,6 @@ public partial class MainWindow
         try
         {
             // Anchor the capture rectangle to the notch's ACTUAL on-screen position
-            // AND derive its size from the same projection. PointToScreen walks every
-            // ancestor transform, so the hover "pop" ScaleTransform on NotchWrapper
-            // (and the track-change bounce / settings absorb scales) is baked into
-            // both corners. Deriving the width/height from the two projected corners
-            // — instead of the unscaled ActualWidth*dpi — keeps the sampled desktop
-            // footprint equal to the glass's real, scaled footprint. Mixing a scaled
-            // anchor with an unscaled size is what made the reflection drift sideways
-            // and swim while the notch scaled during hover.
             var tl = NotchBorder.PointToScreen(new Point(0, 0));
             var br = NotchBorder.PointToScreen(new Point(notchW, notchH));
 
@@ -931,10 +887,6 @@ public partial class MainWindow
             if (scaledH > 1) physH = scaledH;
 
             // The capture must snap to an integer desktop pixel, but the notch is
-            // laid out at a sub-pixel position. Carry the fractional remainder so
-            // the present can compensate it with a sub-pixel transform; otherwise
-            // the captured content wobbles ±0.5px horizontally as the notch width
-            // animates through odd/even pixel values.
             subX = tl.X - Math.Round(tl.X);
             subY = tl.Y - Math.Round(tl.Y);
         }
@@ -997,8 +949,6 @@ public partial class MainWindow
         if (_liquidGlass == null || !IsLiquidGlassEnabled) return;
 
         // We now have DXGI capture, so we can run the capture loop without stuttering.
-        // No need to hold the texture during hover motion.
-        // if (_glassHoverMotion) return;
 
         double curHeight = GlassBackdropHost?.ActualHeight ?? 0;
         if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
@@ -1025,7 +975,6 @@ public partial class MainWindow
         double factor = VNotch.Services.AnimationConfig.ReduceMotion ? 0.0 : Math.Clamp((height - collapsedH) / 160.0, 0.0, 1.0);
 
         // Preserve optical density as the notch grows. The previous 65%/40% boosts
-        // multiplied together and stretched the backdrop vertically in expanded views.
         double activeZRadius = cfg.ZRadius * (1.0 + factor * 0.12);
         double activeRefraction = cfg.Refraction * (1.0 + factor * 0.06);
 
@@ -1069,8 +1018,6 @@ public partial class MainWindow
         if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
 
         // True Apple HIG Materials rely on the internal shader's Brightness/Saturation variables 
-        // to manage contrast, rather than slapping a solid flat black overlay over the glass.
-        // We bypass the dynamic background dimming entirely.
         if (GlassDarkOverlay.Opacity > 0)
         {
             GlassDarkOverlay.BeginAnimation(OpacityProperty, null);

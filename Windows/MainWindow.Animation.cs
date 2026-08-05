@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -200,8 +200,6 @@ public partial class MainWindow
         DpiScale dpi = VisualTreeHelper.GetDpi(ThumbnailBorder ?? AnimationThumbnailBorder);
 
         // The live thumbnail is layout-rounded, while an animated Width/Height
-        // endpoint is rendered at its fractional device-pixel size. Snap the
-        // overlay endpoint to the exact physical size used by the live visual.
         width = Math.Round(width * dpi.DpiScaleX) / dpi.DpiScaleX;
         height = Math.Round(height * dpi.DpiScaleY) / dpi.DpiScaleY;
         return new Size(width, height);
@@ -303,8 +301,6 @@ public partial class MainWindow
         }
 
         // Put the live thumbnail underneath the overlay first, then dissolve the
-        // overlay. A hard Visibility swap makes WPF resample the same bitmap in a
-        // different visual tree and reads as a tiny zoom at the final frame.
         ThumbnailBorder.BeginAnimation(OpacityProperty, null);
         ThumbnailBorder.Opacity = 1;
 
@@ -338,8 +334,6 @@ public partial class MainWindow
         };
 
         // Attach the clock while the visible base value is still 1. Setting the
-        // base to 0 first exposes a one-frame overlay=0/live=1 swap before the
-        // clock's From value becomes active on the next render pass.
         AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
     }
 
@@ -422,10 +416,6 @@ public partial class MainWindow
         ResetCompactThumbnailRestingState();
 
         // Capture the compact thumbnail in the overlay's own coordinate space
-        // while the notch is still in its real collapsed layout. On the first
-        // expansion after startup, the compact grid can settle at a different
-        // device-pixel origin than its nominal margin; a hard-coded (0, 0)
-        // start then makes the overlay appear offset before snapping into place.
         (double X, double Y) compactThumbnailRestOffset = (0, 0);
         if (_isMusicCompactMode && CompactThumbnail.Source != null && !suppressCompactThumbnailMotion)
         {
@@ -524,9 +514,6 @@ public partial class MainWindow
         ExpandedContent.Width = _expandedWidth - 16;
         ExpandedContent.Height = _expandedHeight - 10;
         // The cold-open layout has not yet run the media sizing callbacks that
-        // establish the final progress/text geometry. Measure that state before
-        // deriving the thumbnail endpoint so the first expansion uses the same
-        // coordinates as every later expansion.
         PrepareExpandedContentLayoutForReveal();
 
         AnimateStatusBarReveal(true);
@@ -535,9 +522,6 @@ public partial class MainWindow
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
 
         // Land layout geometry at 500 ms, then hold the exact device-pixel frame
-        // through the 600 ms lifecycle completion. MainView is centered inside
-        // this animated parent; letting both finish on the same tick exposes a
-        // final 1 px parity change on fractional-DPI displays.
         var widthAnim = MakeExpandGeometryAnimation(currentWidth, _expandedWidth, _easeExpOut6, animFps);
         var heightAnim = MakeExpandGeometryAnimation(currentHeight, _expandedHeight, _easeExpOut6, animFps);
         var fadeOutAnim = MakeAnim(0, _dur200, _easeQuadOut);
@@ -545,8 +529,6 @@ public partial class MainWindow
         double contentTargetY = ExpandedContentRestY;
         var expandedGroup = new TransformGroup();
         // Keep the resting value below the animation clock. The held clock stays
-        // attached after opening so WPF keeps the exact same pixel-snap mode as
-        // the final animated frame; the next transition replaces this group.
         var expandedTranslate = new TranslateTransform(0, contentTargetY);
         expandedGroup.Children.Add(expandedTranslate);
         ExpandedContent.RenderTransform = expandedGroup;
@@ -619,9 +601,6 @@ public partial class MainWindow
                 var (targetX, targetY) = cachedExpandTarget.Value;
 
                 // Start owning the overlay on the first rendered frame. A delayed
-                // clock exposes the committed final base value before its From
-                // value becomes active, producing a final -> start -> final jump
-                // on the first expansion after process startup.
                 var thumbDur = _dur500;
                 var thumbEase = _easeThumbSpring;
                 int thumbFps = VNotch.Services.AnimationConfig.TargetFps;
@@ -663,7 +642,6 @@ public partial class MainWindow
                     thumbDur)
                 {
                     // BorderThickness cannot accept the negative overshoot of
-                    // the elastic geometry easing.
                     EasingFunction = _easeExpOut6
                 };
                 Timeline.SetDesiredFrameRate(thumbTranslateXAnim, thumbFps);
@@ -671,7 +649,6 @@ public partial class MainWindow
                 Timeline.SetDesiredFrameRate(thumbBorderThicknessAnim, thumbFps);
 
                 // Commit the exact live-thumbnail geometry below the explicit
-                // clocks. HoldEnd and the later crossfade now share one endpoint.
                 AnimationThumbnailBorder.Width = expandedThumbWidth;
                 AnimationThumbnailBorder.Height = expandedThumbHeight;
                 AnimationThumbnailBorder.BorderThickness = expandedBorderThickness;
@@ -738,10 +715,6 @@ public partial class MainWindow
             if (_pendingFlipThumbnail != null)
             {
                 // A refined/cropped artwork update often arrives during the
-                // first expansion after startup. Starting its blur/scale morph
-                // on this exact handoff frame makes the live image move under
-                // the overlay. Fold the newest bitmap into the live layer and
-                // let the existing overlay dissolve reveal it at fixed geometry.
                 var thumb = _pendingFlipThumbnail;
                 _pendingFlipThumbnail = null;
                 ThumbnailImage.Source = thumb;
@@ -749,12 +722,6 @@ public partial class MainWindow
             }
 
             // Do not detach the opacity, size, translation, or expanded blur
-            // clocks here. Removing the whole-panel opacity clock makes WPF tear
-            // down its compositing layer at the handoff; at fractional DPI that
-            // re-snaps every child by a physical pixel.
-            // Their HoldEnd presentation is the frame the user just saw. The
-            // destination values are already stored underneath them and the next
-            // transition safely replaces/clears the clocks while content moves.
             CollapsedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
             CollapsedContentBlur.Radius = 0;
             MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
@@ -812,14 +779,11 @@ public partial class MainWindow
         };
 
         // Begin stabilization only after the hidden final-layout measurement.
-        // Starting it before the cold target probe can bake its temporary
-        // centering correction into the cached thumbnail endpoint.
         StartMainViewHorizontalStabilizer(expandedTranslate);
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
         // Set the destinations as animation bases while the explicit From/To
-        // clocks own presentation. HoldEnd can then remain visually stable.
         NotchBorder.Width = _expandedWidth;
         NotchBorder.Height = _expandedHeight;
         CollapsedContent.BeginAnimation(OpacityProperty, fadeOutAnim);
@@ -830,7 +794,6 @@ public partial class MainWindow
 
         ExpandedContent.BeginAnimation(OpacityProperty, fadeInAnim);
         // Preserve the fully-visible value underneath the HoldEnd clock. The
-        // collapse path replaces this clock before it starts moving the panel.
         ExpandedContent.Opacity = 1;
         expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -55,8 +55,6 @@ public sealed class LiquidGlassController
     private const int MaxHeight = 600;
     private const int GpuSamplingMarginLimit = 64;
     // Largest capture region this instance will process/present. Defaults to the
-    // notch envelope; windows with a different footprint (e.g. the settings
-    // window) pass their own so the fixed D3D surface actually covers them.
     private readonly int _maxRegionW;
     private readonly int _maxRegionH;
 
@@ -190,10 +188,6 @@ public sealed class LiquidGlassController
     private int _gpuFailureSignaled;
 
     // Unchanged-frame suppression. Re-presenting an identical backdrop is a pure
-    // waste that costs a full window re-render + UpdateLayeredWindow readback per
-    // frame; skip it unless the source pixels, the shader geometry, or the
-    // sub-pixel present offset changed. A periodic forced present self-heals any
-    // stale frame (e.g. after a front-buffer loss).
     private const int UnchangedRepresentIntervalMs = 500;
     private ulong _lastCaptureHash;
     private long _lastPresentTicks;
@@ -260,8 +254,6 @@ public sealed class LiquidGlassController
                 throw new InvalidOperationException("A window handle is required for the D3DImage presenter.");
 
             // Use one fixed presentation surface for the full supported region
-            // envelope. Captured frames are scaled into it, so animated geometry
-            // never forces D3DImage to replace its back buffer mid-transition.
             _d3dPresenter = new D3DImageFramePresenter(
                 _dispatcher,
                 hwnd,
@@ -279,8 +271,6 @@ public sealed class LiquidGlassController
         _host.RenderTransform = null;
         RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.HighQuality);
         // Do not expose the D3DImage until its first captured frame has been
-        // uploaded. An empty D3DImage/back buffer is rendered as black by WPF.
-        // OnD3DFramePresented performs the source handoff after initialization.
     }
 
     private void DisposeGpuPresenter()
@@ -363,7 +353,6 @@ public sealed class LiquidGlassController
         }
 
         // Geometry is applied before the initialized source becomes visible so
-        // the first composed GPU frame cannot use stale shader dimensions.
         var presenter = _d3dPresenter;
         if (_gpuMode && presenter != null &&
             !ReferenceEquals(_host.Source, presenter.ImageSource))
@@ -468,7 +457,6 @@ public sealed class LiquidGlassController
         if (wasPaused && !paused)
         {
             // The held frame used the pre-hover capture rectangle. Force the next
-            // presented frame to fetch the final on-screen position immediately.
             Volatile.Write(ref _lastRegionFetchMs, double.NegativeInfinity);
         }
     }
@@ -695,14 +683,11 @@ public sealed class LiquidGlassController
                 if (nextFrameAtMs < nowMs - 250.0)
                 {
                     // A long external stall should not trigger a large catch-up
-                    // burst. Resume the locked cadence from the current clock.
                     nextFrameAtMs = nowMs;
                 }
                 else if (nextFrameAtMs > nowMs)
                 {
                     // Preserve the absolute deadline. A slightly late wake-up is
-                    // compensated by a shorter wait on the following frame, which
-                    // keeps the long-term cadence at the exact configured FPS.
                     SleepWithCapturePolling(nextFrameAtMs - nowMs);
                 }
             }
@@ -723,8 +708,6 @@ public sealed class LiquidGlassController
     private CaptureRegion? _cachedRegion;
     private double _lastRegionFetchMs = double.NegativeInfinity;
     // The collapsed notch does not move between layout changes. Avoid a blocking
-    // UI-thread round trip four times per second just to fetch the same rectangle;
-    // moving/hover animations still push their live region every compositor frame.
     private const double IdleRegionRefreshMs = 1000.0;
 
     private readonly object _liveRegionSync = new();
@@ -819,7 +802,6 @@ public sealed class LiquidGlassController
             if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
             {
                 // Keep the most recent correctly refracted frame on screen, but make
-                // the user-facing notch visible before Windows takes the screenshot.
                 _exactBitBltCapture = false;
                 SetWindowDisplayAffinitySafe(WDA_NONE);
                 return;
@@ -847,9 +829,6 @@ public sealed class LiquidGlassController
         }
 
         // Hotkeys and foreground capture tools are checked above on every frame.
-        // The expensive all-window scan is only a fallback for overlays that do
-        // not take focus, so polling it twice per second is responsive without
-        // stealing several milliseconds from a 144 Hz glass frame.
         if (now - _lastOverlayCheckTicks < 500) return _overlayActiveCached;
         _lastOverlayCheckTicks = now;
         _overlayActiveCached = DetectCaptureOverlay();
@@ -1005,8 +984,6 @@ public sealed class LiquidGlassController
         bool useMag = _magReady && _mag != null;
         _magPath = useMag;
         // Native resolution is required for spatially correct glass. Downscaling the
-        // source and then presenting it with a synthetic DPI introduced a residual
-        // zoom/stretch even after the GPU path was disabled.
         double scale = 1.0;
 
         int outW = Math.Max(8, (int)Math.Round(displayW * scale));
@@ -1020,9 +997,6 @@ public sealed class LiquidGlassController
         int baseBufW = outW + overscan * 2;
         int baseBufH = outH + overscan;
         // A WPF ShaderEffect samples the Image after layout, not its unscaled bitmap
-        // allocation. Uploading a padded/quantized texture and then Stretch=Fill made
-        // the shader crop an already-scaled image a second time (the vertical bands).
-        // GPU input must therefore match the visible notch exactly.
         int bufW = baseBufW;
         int bufH = baseBufH;
         int notchOffX = overscan;
@@ -1089,11 +1063,6 @@ public sealed class LiquidGlassController
                 if (!_exactBitBltCapture)
                 {
                     // BitBlt sees the already-composited desktop and cannot exclude this
-                    // HWND. Sampling the notch rectangle here feeds the rendered artwork
-                    // back into the next glass frame, producing the stretched/duplicated
-                    // "ghost artwork" seen while dragging. Keep the emergency source
-                    // wholly below the visible notch; the preferred Magnifier path still
-                    // samples the exact rectangle when window exclusion is available.
                     srcY = ComputeFallbackSourceY(region.Y, displayH);
                 }
 
@@ -1110,8 +1079,6 @@ public sealed class LiquidGlassController
                 outW, outH);
 
             // During a short hover transition WPF can transform the last complete
-            // glass frame as cheaply as the default theme. Capture continues above,
-            // and the next frame is presented immediately after the motion ends.
             if (_presentationPaused)
                 return false;
 
@@ -1121,9 +1088,6 @@ public sealed class LiquidGlassController
                 double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, minHalf);
 
                 // Preserve real desktop pixels around the visible notch. Refraction
-                // at the side caps samples outward; without this margin it hits the
-                // edge of the D3D texture and produces the black/green crescent seen
-                // during hover scaling.
                 double offX = Math.Clamp(
                     margin - captureShiftX, 0, Math.Max(0, srcW - outW));
                 double offY = Math.Clamp(
@@ -1215,8 +1179,6 @@ public sealed class LiquidGlassController
     {
         double s = Smoother01(normalizedDistance);
         // Apple-like edge lens: the optical slope peaks in the outer portion of
-        // the bevel and falls away quickly toward a nearly undisturbed centre.
-        // 256/27 normalises s*(1-s)^3 to a unit peak at s=1/4.
         double oneMinusS = 1.0 - s;
         double profile = (256.0 / 27.0) * s * oneMinusS * oneMinusS * oneMinusS;
         return broad ? Math.Sqrt(profile) : profile;
@@ -1231,16 +1193,12 @@ public sealed class LiquidGlassController
             (bevelMode >= 1 ? 1.08 : 1.0);
 
         // Extreme mode intentionally allows the ray to travel beyond the optical
-        // rim. The user-facing Edge Bend control is expected to produce an obvious,
-        // exaggerated fold instead of being compressed by a cosmetic safety cap.
         return rimWidth * travelRatio;
     }
 
     internal static double EdgeBendGain(double edgeBend)
     {
         // Super-linear and intentionally uncapped: values above the former 300%
-        // ceiling continue increasing instead of flattening out. Non-finite input
-        // still degrades to zero so a damaged settings file cannot poison maps.
         double bend = double.IsFinite(edgeBend) ? Math.Max(edgeBend, 0.0) : 0.0;
         return 0.58 * Math.Pow(bend, 1.5);
     }
@@ -1250,8 +1208,6 @@ public sealed class LiquidGlassController
     {
         double bend = double.IsFinite(edgeBend) ? Math.Max(edgeBend, 0.0) : 0.0;
         // A capsule's side caps need a longer optical run than its flat top and
-        // bottom. Raising the horizontal normal creates a tapered tongue: longest
-        // on the centreline of each cap, then rapidly narrowing into the corners.
         double sideAxis = Math.Pow(Math.Clamp(Math.Abs(inwardNormalX), 0.0, 1.0), 2.6);
         return rimWidth * (1.0 + 0.5 * bend * sideAxis);
     }
@@ -1965,9 +1921,6 @@ public sealed class LiquidGlassController
                     int idx = y * outW + x;
 
                     // If the requested source rectangle extended beyond the virtual
-                    // desktop, the actual capture had to move inward. Subtract that
-                    // movement here so a visible notch pixel still samples the same
-                    // absolute desktop coordinate instead of drifting right/down.
                     double baseX = x + margin - captureShiftX;
                     double baseY = y + margin - captureShiftY;
 
@@ -1997,13 +1950,10 @@ public sealed class LiquidGlassController
                     if (!broad)
                     {
                         // A restrained shoulder makes the fold readable across more
-                        // than a razor-thin edge band while preserving the flat centre.
                         double shoulder = Math.Clamp((p.EdgeBend - 0.8) / 2.2, 0.0, 1.0) * 0.28;
                         profile += (Math.Sqrt(Math.Max(profile, 0.0)) - profile) * shoulder;
                     }
                     // Trace through the rounded surface toward the outside of the
-                    // pill. Sampling inward magnified content from the centre into
-                    // the edge and made the glass show the wrong underlying row.
                     double dispX = -nx * amplitude * profile;
                     double dispY = -ny * verticalBalance * amplitude * profile;
 

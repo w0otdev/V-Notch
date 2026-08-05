@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -85,8 +85,6 @@ public partial class SpotlightWindow : Window
         SearchBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("spotlight.placeholder"));
 
         // Activation from the global hotkey can land after ShowSpotlight has
-        // already tried to focus; whenever the window becomes active the
-        // search box must own the keyboard.
         Activated += (_, _) =>
         {
             if (!_isParked
@@ -101,19 +99,13 @@ public partial class SpotlightWindow : Window
         IsVisibleChanged += (_, args) =>
         {
             // Last-resort ownership invariant: no hidden Spotlight HWND may
-            // leave the source notch transparent after interrupted animations.
             if (args.NewValue is false) ReleaseMorphSession();
         };
 
         // The entrance morph publishes results while the shell is still at
-        // notch width; containers stretch as the shell expands, so the glide
-        // must re-measure or it keeps the narrow mid-morph width.
         ResultsList.SizeChanged += (_, _) => ScheduleGlideUpdate();
 
         // Never measure the ListBox from inside ObservableCollection's
-        // CollectionChanged callback. WPF may not have forwarded that same
-        // event through ListCollectionView/ItemContainerGenerator yet, and a
-        // nested UpdateLayout then sees different source/generator counts.
         _viewModel.Results.CollectionChanged += (_, _) => ScheduleStatusRefresh();
         _viewModel.ResultsPublished += (_, _) => OnResultsPublished();
         _viewModel.PropertyChanged += (_, args) =>
@@ -127,7 +119,6 @@ public partial class SpotlightWindow : Window
                 {
                     SetResultsDimmed(false);
                     // The search finished empty; a queued Enter must never fire
-                    // against some later result set.
                     if (_viewModel.Results.Count == 0) _pendingLaunchQuery = null;
                 }
                 RefreshStatus();
@@ -146,10 +137,6 @@ public partial class SpotlightWindow : Window
         InvalidateLaunchAttempt();
         ResetMorphVisuals();
         // A restored query can publish instant results synchronously from the
-        // SearchBox.Text setter below. Arm the entrance before any reset or
-        // text callback can reveal those results. A restored result panel may
-        // reserve its final height, but remains non-rendered and fixed while
-        // the geometry morph runs. CompleteEntrance releases the queued reveal.
         _entranceActive = !AnimationConfig.ReduceMotion;
         _viewModel.Reset();
         _pendingLaunchQuery = null;
@@ -157,7 +144,6 @@ public partial class SpotlightWindow : Window
         SetResultsDimmed(false, animate: false);
 
         // An accidental dismissal (stray click, focus steal) should not cost
-        // the user their query; restore it selected so typing replaces it.
         bool restoreQuery = !string.IsNullOrEmpty(_lastDismissedQuery)
             && DateTime.UtcNow - _lastDismissedAtUtc < QueryRestoreWindow;
         SearchBox.Text = restoreQuery ? _lastDismissedQuery : string.Empty;
@@ -165,9 +151,6 @@ public partial class SpotlightWindow : Window
         else _ = _viewModel.SearchAsync(string.Empty);
 
         // Acquire the source view before Show(). WPF can deactivate MainWindow
-        // synchronously while showing or activating this HWND; secondary and
-        // timer views normally auto-collapse on that event. Keep the view
-        // intact until the return handoff has completed.
         SetMorphSessionActive(true);
         try
         {
@@ -268,12 +251,6 @@ public partial class SpotlightWindow : Window
         CancelPendingFreshEntrance();
 
         // Hide() disconnects an AllowsTransparency layered HWND from WPF's
-        // composition target. On the next Show(), UpdateLayout can finish while
-        // that target is still reconnecting; starting the clocks immediately
-        // hides the live notch even though Spotlight cannot present yet. The
-        // clocks then advance offscreen and the entrance appears to jump in at
-        // ~300 ms. Keep the source visible through one completed render pulse,
-        // then start on the following pulse when the reused HWND is renderable.
         int pulsesRemaining = 2;
         EventHandler handler = null!;
         handler = (_, _) =>
@@ -295,12 +272,8 @@ public partial class SpotlightWindow : Window
                 _freshEntranceRenderingHandler = null;
 
             // The first prepared snapshot frame has now been submitted. Flush
-            // DWM before hiding the real source so the two layered HWNDs hand
-            // visibility across without a transparent desktop frame between.
             DwmFlush();
             // Foreground activation can enter native input-queue work. Finish
-            // it while the committed source frame is still stationary, then
-            // attach the clocks so none of their duration is spent offscreen.
             FocusSearchBox(generation);
             Opacity = 1;
             startEntrance();
@@ -309,7 +282,6 @@ public partial class SpotlightWindow : Window
         _freshEntranceRenderingHandler = handler;
         CompositionTarget.Rendering += handler;
         // Ensure the newly shown transparent surface has work queued even when
-        // the source notch itself is otherwise idle.
         InvalidateVisual();
     }
 
@@ -332,7 +304,6 @@ public partial class SpotlightWindow : Window
         if (SearchBox.IsKeyboardFocused) return;
 
         // Windows can refuse the foreground switch while another process holds
-        // the input lock; retry after the pending input queue settles.
         Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
         {
             if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing) return;
@@ -359,9 +330,6 @@ public partial class SpotlightWindow : Window
         }
 
         // When Spotlight is toggled from the low-level keyboard hook (Alt+Space
-        // fallback), this process has no foreground-activation grant and plain
-        // SetForegroundWindow/Activate is silently refused. Attaching to the
-        // current foreground thread's input queue lifts that restriction.
         uint thisThread = GetCurrentThreadId();
         uint foregroundThread = 0;
         if (foreground != IntPtr.Zero)
@@ -409,7 +377,6 @@ public partial class SpotlightWindow : Window
         if (_isClosing)
         {
             // A repeated dismissal must finish an in-flight deactivation
-            // immediately. Invalidate its remaining animation callbacks.
             ++_animationGeneration;
             CompleteHide();
             _lastDismissedQuery = null;
@@ -418,7 +385,6 @@ public partial class SpotlightWindow : Window
 
         HideSpotlight();
         // Toggling Spotlight away is an explicit abandon, unlike a focus loss;
-        // the next open starts fresh.
         _lastDismissedQuery = null;
     }
 
@@ -450,7 +416,6 @@ public partial class SpotlightWindow : Window
         if (CancelPendingFreshEntrance())
         {
             // The live source was never hidden, so there is no morph frame to
-            // reverse. Retire the transparent, freshly shown HWND directly.
             CompleteHide();
             return;
         }
@@ -523,9 +488,6 @@ public partial class SpotlightWindow : Window
         Opacity = 0;
 
         // Hide() used to return activation to the previous foreground app.
-        // A parked HWND stays alive for composition, so reproduce that focus
-        // handoff explicitly without stealing focus from an app just launched
-        // through a Spotlight result.
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero
             && GetForegroundWindow() == hwnd
@@ -556,7 +518,6 @@ public partial class SpotlightWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         // The visible suggestion belongs to the previous query; hide it until
-        // the new results publish.
         AutocompleteText.Visibility = Visibility.Collapsed;
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
@@ -707,8 +668,6 @@ public partial class SpotlightWindow : Window
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Navigation keys must be intercepted on the tunnel: the search box's
-        // editing-command bindings consume Up/Down/PageUp/PageDown during the
-        // bubbling KeyDown, so a KeyDown handler never sees them.
         if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
         {
             MoveSelection(1);
@@ -815,9 +774,6 @@ public partial class SpotlightWindow : Window
     private void Window_Deactivated(object? sender, EventArgs e)
     {
         // ApplicationIdle can be starved by the notch's continuous media/render
-        // work. Input priority guarantees an outside click dismisses Spotlight.
-        // Capture the current session: a queued deactivation from the previous
-        // hide must not close a Spotlight session opened immediately afterward.
         int generation = _animationGeneration;
         Dispatcher.BeginInvoke(() =>
         {
@@ -846,7 +802,6 @@ public partial class SpotlightWindow : Window
         if (selected == null)
         {
             // Honor a fast type-and-Enter: launch the top result when the
-            // in-flight search publishes it.
             if (_viewModel.IsSearching && !string.IsNullOrWhiteSpace(SearchBox.Text))
                 _pendingLaunchQuery = SearchBox.Text;
             return;
@@ -865,7 +820,6 @@ public partial class SpotlightWindow : Window
         try
         {
             // ShellExecute can block for hundreds of ms on cold starts; keep
-            // the dispatcher free so the exit morph starts instantly.
             bool launched = await Task.Run(() => _launcher.TryLaunch(selected));
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
@@ -977,7 +931,6 @@ public partial class SpotlightWindow : Window
     {
         ClearLaunchFailure();
         // The target is stale (moved or uninstalled); keep Enter useful by
-        // dropping the dead row and telling the user what happened.
         _viewModel.RemoveResult(item);
         FailureText.Text = Loc.Get("spotlight.launchFailed", item.Title);
         FailureBar.Visibility = Visibility.Visible;
@@ -1026,7 +979,6 @@ public partial class SpotlightWindow : Window
         if (_viewModel.SelectedResult != null)
         {
             // Container generation finishes after layout; defer the scroll so a
-            // preserved selection can never sit off-screen.
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
             {
                 if (_viewModel.SelectedResult != null && ResultsList.IsVisible)
@@ -1053,12 +1005,9 @@ public partial class SpotlightWindow : Window
     private void ScheduleGlideUpdate()
     {
         // A closing shell resizes every frame; recomputing glide geometry per
-        // frame is invisible work that competes with the exit morph.
         if (_glideUpdateQueued || _isClosing) return;
         _glideUpdateQueued = true;
         // Loaded priority runs after the layout pass, when containers have
-        // real positions; batching also collapses select-then-reselect churn
-        // from a publish into a single glide.
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _glideUpdateQueued = false;
@@ -1097,7 +1046,6 @@ public partial class SpotlightWindow : Window
         if (_glideVisible && !AnimationConfig.ReduceMotion)
         {
             // A To-only animation departs from the current animated value, so
-            // rapid arrow presses retarget mid-flight without a jump.
             var glide = new DoubleAnimation(position.Y, TimeSpan.FromMilliseconds(260))
             {
                 EasingFunction = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 }
@@ -1196,7 +1144,6 @@ public partial class SpotlightWindow : Window
         }
 
         // The transparent prefix mirrors what the TextBox displays so the dim
-        // tail lines up with the caret regardless of typed casing.
         AutocompleteTypedRun.Text = query;
         AutocompleteSuffixRun.Text = title.Substring(query.Length);
         AutocompleteText.Visibility = Visibility.Visible;
@@ -1209,7 +1156,6 @@ public partial class SpotlightWindow : Window
         bool hasResults = resultCount > 0;
 
         // "Searching\u2026" only earns its panel after a grace period; fast queries
-        // go straight from nothing to results without a flash of status.
         bool searchingEligible = hasQuery && !hasResults && _viewModel.IsSearching;
         UpdateSearchingGrace(searchingEligible);
         bool showSearching = searchingEligible && _searchingPanelArmed;
@@ -1220,7 +1166,6 @@ public partial class SpotlightWindow : Window
         bool showContent = hasResults || showStatus || isSearchingInFlight;
 
         // Children first: the reveal/resize animations below measure the
-        // region's natural height, which depends on these visibilities.
         ResultsList.Visibility = (hasResults || isSearchingInFlight) ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
         if (showStatus)
@@ -1254,8 +1199,6 @@ public partial class SpotlightWindow : Window
         _statusRefreshQueued = true;
 
         // Loaded runs after the current collection notification and its queued
-        // data-binding/layout work. Coalescing also prevents ApplyDiff's series
-        // of Insert/Move/Remove events from forcing nested layout passes.
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _statusRefreshQueued = false;
@@ -1270,7 +1213,6 @@ public partial class SpotlightWindow : Window
     private void SetContentShown(bool shown)
     {
         // While the notch morph locks the shell's height, revealing content
-        // would overflow the shell; hold the reveal until the morph lands.
         if (_entranceActive)
         {
             _pendingContentReveal = shown;
@@ -1326,10 +1268,6 @@ public partial class SpotlightWindow : Window
             return;
 
         // A restored instant query can already have results before the fresh
-        // entrance starts. Measure them once at the final Spotlight width,
-        // then keep a fixed Hidden region in layout. The shell can morph
-        // directly to its final results height without rendering or repeatedly
-        // measuring the ListBox on every geometry tick.
         ContentRegion.BeginAnimation(WidthProperty, null);
         ContentRegion.BeginAnimation(HeightProperty, null);
         ContentRegion.BeginAnimation(OpacityProperty, null);
@@ -1382,10 +1320,6 @@ public partial class SpotlightWindow : Window
         int generation = ++_contentSizeGeneration;
 
         // Make the frozen region renderable while it is still transparent,
-        // then measure the latest results under a fixed landed shell. A query
-        // can change during the 560ms entrance; if its natural height differs
-        // from the original reservation, animate that delta instead of snapping
-        // when the morph clock is removed.
         Shell.Height = landedShellHeight;
         ContentRegion.BeginAnimation(WidthProperty, null);
         ContentRegion.BeginAnimation(HeightProperty, null);
@@ -1405,7 +1339,6 @@ public partial class SpotlightWindow : Window
             naturalHeight = reservedHeight;
 
         // Restore the reservation before releasing the shell back to auto
-        // height, so there is no intermediate compositor frame at the new size.
         ContentRegion.Height = reservedHeight;
         ContentRegion.UpdateLayout();
         Shell.Height = double.NaN;
@@ -1435,8 +1368,6 @@ public partial class SpotlightWindow : Window
             from = Math.Max(1, ContentRegion.ActualHeight);
 
         // The query may have been cleared while the reserved entrance was in
-        // flight. Keep the landed shell stable, then retire the blank reserve
-        // with a short height animation rather than snapping back to 66px.
         ContentRegion.Visibility = Visibility.Hidden;
         ContentRegion.ClipToBounds = true;
         if (!IsSpotlightOpen || AnimationConfig.ReduceMotion)
@@ -1476,7 +1407,6 @@ public partial class SpotlightWindow : Window
         if (_contentResizeQueued || AnimationConfig.ReduceMotion) return;
         _contentResizeQueued = true;
         // ActualHeight is still the pre-change height: the layout pass for the
-        // new results has not run yet inside this dispatcher frame.
         double oldHeight = ContentRegion.ActualHeight;
         int generation = _contentSizeGeneration;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
@@ -1667,8 +1597,6 @@ public partial class SpotlightWindow : Window
             ContentTranslate.Y = 0;
             RestoreShadow(animate: false);
             // Commit the final no-motion frame before handing source visibility
-            // to Spotlight, for the same reused-layered-HWND reason as the
-            // animated path below.
             return () => SetNotchMorphActive(true);
         }
 
@@ -1719,14 +1647,10 @@ public partial class SpotlightWindow : Window
         }
 
         // Seed bases from the first rendered frame. WPF does not apply a new
-        // animation clock until its first tick, so target-valued bases can be
-        // exposed for one frame when Alt+Space is pressed repeatedly.
         Left = startLeft;
         Top = startTop;
         Shell.Opacity = 1;
         // If capture failed, leave the real source unobscured until the render
-        // barrier releases the entrance. A valid snapshot is safe to present
-        // over the source because it is pixel-identical at this first frame.
         Shell.Visibility = !morphsFromNotch || hasNotchSnapshot
             ? Visibility.Visible
             : Visibility.Hidden;
@@ -1753,8 +1677,6 @@ public partial class SpotlightWindow : Window
 
         var contentFade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(300), contentEase);
         // The captured notch covers the short content delay. If capture is not
-        // available, reveal Spotlight immediately instead of showing an empty
-        // shell for 170 ms.
         contentFade.BeginTime = TimeSpan.FromMilliseconds(
             morphsFromNotch && hasNotchSnapshot ? 60 : morphsFromNotch ? 0 : 60);
         var contentSlide = CreateAnimation(8, 0, TimeSpan.FromMilliseconds(340), contentEase);
@@ -1802,7 +1724,6 @@ public partial class SpotlightWindow : Window
             if (notchFade != null)
                 NotchMorphSnapshot.BeginAnimation(OpacityProperty, notchFade);
             // The notch has no light outline; the border only belongs to the
-            // expanded panel, so it fades in as the shell departs.
             if (morphsFromNotch) AnimateShellBorder(0, 1, MorphDuration);
             if (morphsFromNotch) SetNotchMorphActive(true);
         };
@@ -1816,8 +1737,6 @@ public partial class SpotlightWindow : Window
         var target = GetSpotlightTarget();
 
         // PlayExit froze the results region into a fixed clipped box (and
-        // collapses it once its fade lands). Restore auto layout before
-        // measuring, or the reopen target misses the results panel height.
         if (!_entranceContentReserved)
         {
             ++_contentSizeGeneration;
@@ -1830,8 +1749,6 @@ public partial class SpotlightWindow : Window
         }
 
         // Measure the expanded auto-height without exposing an intermediate
-        // layout frame. The current explicit morph size is restored below as
-        // the animation's starting value.
         Shell.Width = double.NaN;
         Shell.Height = double.NaN;
         Size finalSize = MeasureEntranceShell();
@@ -1855,7 +1772,6 @@ public partial class SpotlightWindow : Window
             MorphDuration);
 
         // Keep the exact interrupted presentation as the base until the first
-        // tick of the replacement clock.
         Left = current.Left;
         Top = current.Top;
         Shell.Opacity = current.ShellOpacity;
@@ -1923,9 +1839,6 @@ public partial class SpotlightWindow : Window
     private Size MeasureEntranceShell()
     {
         // ActualSize can still describe the final notch-sized frame when a
-        // hidden layered window is shown again in the same dispatcher turn.
-        // Measure from the fixed Spotlight canvas instead of reusing that
-        // stale arranged size.
         double width = ActualWidth;
         if (!double.IsFinite(width) || width <= 0) width = Width;
         if (!double.IsFinite(width) || width <= 0) width = 720;
@@ -1986,7 +1899,6 @@ public partial class SpotlightWindow : Window
         double targetTop = notch.Top;
 
         // Preserve the live presentation as the replacement clock's base. The
-        // return handoff commits the notch-sized target before clearing clocks.
         Left = current.Left;
         Top = current.Top;
         ShellScale.ScaleX = 1;
@@ -2003,12 +1915,6 @@ public partial class SpotlightWindow : Window
         contentBlur.Radius = current.ContentBlurRadius;
 
         // The entrance morphs a content-free shell (results reveal only after
-        // it lands), but an exit can start with the full results panel live.
-        // Re-measuring the list on every width tick and re-rendering the blur
-        // ramp over it costs more than a frame budget on weaker machines, so
-        // the 560ms morph renders a handful of frames and reads as "skipped".
-        // Freeze ShellContent's width so the search box and content don't squish
-        // and trigger expensive text layout recalculations on every tick.
         ShellContent.Width = Math.Max(1, ShellContent.ActualWidth);
         ShellContent.HorizontalAlignment = HorizontalAlignment.Left;
 
@@ -2042,7 +1948,6 @@ public partial class SpotlightWindow : Window
         {
             if (generation != _animationGeneration || !_isClosing) return;
             // The content is invisible from here on; dropping the frozen
-            // region out of layout removes its render cost entirely.
             ContentRegion.Visibility = Visibility.Collapsed;
         };
         shrinkWidth.Completed += (_, _) =>
@@ -2060,13 +1965,10 @@ public partial class SpotlightWindow : Window
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
         // The blur ramp softens the collapse. Because we froze the layout width
-        // and enabled BitmapCache, this per-frame GPU pass is now extremely cheap
-        // even over a live results panel, so we no longer drop frames here.
         var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
             TimeSpan.FromMilliseconds(210), contentEase);
         contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
         // Shed the panel outline early so the shell arrives looking like the
-        // borderless notch.
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
 
         if (targetTopRadius == 0)
@@ -2083,13 +1985,8 @@ public partial class SpotlightWindow : Window
         double fromOpacity = current.ShellOpacity;
 
         // Keep the morph shell on the exact notch frame while the real notch takes
-        // ownership underneath it. Both layers cross-fade on the same clock so
-        // the fake shell never visibly snaps to the real dynamic island.
-        // Preserve the handoff's first frame until the new clock ticks. Hide()
-        // retires the shell before this clock is ever cleared at completion.
         Shell.Opacity = fromOpacity;
         // ClearMorphAnimations restored the border's base opacity; the shell
-        // must stay borderless while it fades out over the real notch.
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 0;
         GetMorphHost()?.BeginSpotlightReturnHandoff(handoffDuration);
 
@@ -2128,14 +2025,11 @@ public partial class SpotlightWindow : Window
         Shell.Effect = null;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         // Top-aligned auto-height: the shell hugs its content inside the
-        // fixed-size transparent window, so growth never resizes the HWND.
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.RenderTransformOrigin = new Point(0.5, 0.5);
         RestoreShadow(animate: false);
 
         // Results that arrived mid-morph waited for the shell to land. A
-        // reserved restored query reveals in place; an unreserved async result
-        // uses the normal height reveal.
         _entranceActive = false;
         if (_pendingContentReveal)
         {
@@ -2152,8 +2046,6 @@ public partial class SpotlightWindow : Window
     private void CompleteHide()
     {
         // Set base values to 0 before removing animation clocks. A completed
-        // WPF animation otherwise reveals its old base value for the compositor
-        // frame. We avoid Visibility.Hidden to prevent DWM white-frame flashes.
         CancelPendingFreshEntrance();
         Shell.Opacity = 0;
         NotchMorphSnapshot.Opacity = 0;
@@ -2210,14 +2102,9 @@ public partial class SpotlightWindow : Window
 
         NotchMorphSnapshotBrush.ImageSource = source;
         // The rounded Border is the animated viewport. Keep the bitmap at its
-        // captured DIP size (ImageBrush.Stretch=None) so a 600x310 clock,
-        // timer, camera, or secondary view is cropped rather than distorted
-        // while the shell heads toward the 720x66 Spotlight target.
         NotchMorphSnapshot.Width = double.NaN;
         NotchMorphSnapshot.Height = double.NaN;
         // The source must already be visible before the first composition.
-        // Relying on a From=1 animation over a zero base can expose a blank
-        // frame when query/results cleanup delays the animation clock.
         NotchMorphSnapshot.Opacity = 1;
         NotchMorphSnapshot.Visibility = Visibility.Visible;
         return true;
@@ -2256,7 +2143,6 @@ public partial class SpotlightWindow : Window
             shadow?.Opacity ?? 0);
         ClearMorphAnimations();
         // Clearing a fade reveals its base value. Retire the opening snapshot
-        // explicitly before an interrupted entrance is redirected into exit.
         ResetNotchMorphSnapshot();
         Left = snapshot.Left;
         Top = snapshot.Top;
@@ -2480,7 +2366,6 @@ public partial class SpotlightWindow : Window
             new PropertyMetadata(ExpandedCornerRadius, OnShellCornerRadiusChanged));
 
     // The classic notch has square top corners while the dynamic island is a
-    // full pill; splitting top and bottom radii lets the morph land on either.
     public static readonly DependencyProperty ShellTopCornerRadiusProperty =
         DependencyProperty.Register(
             nameof(ShellTopCornerRadius),
