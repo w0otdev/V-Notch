@@ -312,7 +312,7 @@ internal static class SetupOperations
             }
 
             settings.Language = language;
-            
+
             var json = System.Text.Json.JsonSerializer.Serialize(settings,
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(settingsPath, json);

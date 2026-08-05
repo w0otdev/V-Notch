@@ -87,10 +87,10 @@ public class UpdateService : IUpdateService
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
             using var response = await SendHttpsAsync(request, CancellationToken.None);
             response.EnsureSuccessStatusCode();
-            
+
             using var jsonDoc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var releases = new List<UpdateInfo>();
-            
+
             foreach (var release in jsonDoc.RootElement.EnumerateArray())
             {
                 var (installer, checksum) = SelectReleaseAssets(release);
@@ -108,10 +108,10 @@ public class UpdateService : IUpdateService
             }
             return releases;
         }
-        catch (Exception ex) 
-        { 
-            RuntimeLog.Error("UPDATER", ex, "Get all releases failed"); 
-            return Array.Empty<UpdateInfo>(); 
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("UPDATER", ex, "Get all releases failed");
+            return Array.Empty<UpdateInfo>();
         }
     }
 

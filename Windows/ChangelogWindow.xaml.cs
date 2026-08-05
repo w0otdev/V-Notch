@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -8,7 +9,6 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Diagnostics;
 using VNotch.Services;
 
 namespace VNotch.Windows;
@@ -439,17 +439,17 @@ public partial class ChangelogWindow : Window
     {
         textBlock.Inlines.Clear();
         var pattern = @"(\*\*.*?\*\*)|(?<!\w)(\*.*?\*)(?!\w)|(`.*?`)|(\[.*?\]\(.*?\))";
-        
+
         var matches = Regex.Matches(text, pattern);
         int lastIndex = 0;
-        
+
         foreach (Match match in matches)
         {
             if (match.Index > lastIndex)
             {
                 textBlock.Inlines.Add(new Run(text.Substring(lastIndex, match.Index - lastIndex)));
             }
-            
+
             string value = match.Value;
             if (value.StartsWith("**") && value.EndsWith("**"))
             {
@@ -478,7 +478,7 @@ public partial class ChangelogWindow : Window
                     hyperlink.NavigateUri = new Uri(linkMatch.Groups[2].Value);
                     hyperlink.Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255));
                     hyperlink.TextDecorations = null;
-                    hyperlink.RequestNavigate += (s, e) => 
+                    hyperlink.RequestNavigate += (s, e) =>
                     {
                         Process.Start(new ProcessStartInfo
                         {
@@ -490,10 +490,10 @@ public partial class ChangelogWindow : Window
                     textBlock.Inlines.Add(hyperlink);
                 }
             }
-            
+
             lastIndex = match.Index + match.Length;
         }
-        
+
         if (lastIndex < text.Length)
         {
             textBlock.Inlines.Add(new Run(text.Substring(lastIndex)));

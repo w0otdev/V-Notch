@@ -92,7 +92,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             }
 
             RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify access token is ready");
-            
+
             string? trackId = await ResolveTrackIdAsync(trackName, artistName, accessToken, timeoutCts.Token).ConfigureAwait(false);
             if (string.IsNullOrEmpty(trackId))
                 return null;
@@ -165,7 +165,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.spotify.com/v1/search?q={query}&type=track&limit=1");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             request.Headers.AcceptLanguage.ParseAdd("en");
-            
+
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return null;

@@ -28,7 +28,7 @@ public sealed class SpotlightSelectionReproTests
             var apps = Enumerable.Range(0, 8).Select(i => new SpotlightSearchItem(
                     $"app:{i}", SpotlightResultKind.Application, $"App {i}", "Application",
                     $"shell:AppsFolder\\App{i}!App")
-                { Score = 900 - i }).ToArray();
+            { Score = 900 - i }).ToArray();
             var service = new SpotlightSearchService(new ISpotlightProvider[]
             {
                 new InstantProvider(apps)
