@@ -172,7 +172,7 @@ public class MediaDetectionService : IMediaDetectionService
             _sessionManager.CurrentSessionChanged += OnSessionChanged;
             _sessionManager.SessionsChanged += OnSessionsChanged;
 
-            await SubscribeToCurrentSession();
+            SubscribeToCurrentSession();
         }
         catch (Exception ex)
         {
@@ -211,7 +211,7 @@ public class MediaDetectionService : IMediaDetectionService
         _bgCts?.Cancel();
     }
 
-    private async Task SubscribeToCurrentSession()
+    private void SubscribeToCurrentSession()
     {
         UnsubscribeFromSession();
 
@@ -310,7 +310,7 @@ public class MediaDetectionService : IMediaDetectionService
 
                 if (types.HasFlag(ChangeType.SessionChanged))
                 {
-                    await SubscribeToCurrentSession();
+                    SubscribeToCurrentSession();
                 }
 
                 await UpdateMediaInfoAsync(forceRefresh);
