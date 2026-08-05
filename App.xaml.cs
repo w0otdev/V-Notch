@@ -20,9 +20,17 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
+
         var setupSource = TryGetArgumentValue(e.Args, "--setup-source");
         var exeName = System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "");
         var launchSetup = e.Args.Contains("--setup") || !string.IsNullOrWhiteSpace(setupSource) || exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
+
+        var earlySettings = new SettingsService();
+        var loadedSettings = earlySettings.Load();
+        Loc.SetLanguage(loadedSettings.Language);
+        AnimationConfig.Configure(loadedSettings.AnimationFps);
+
         if (launchSetup)
         {
             var setupWindow = new SetupWindow(setupSource);
@@ -31,10 +39,6 @@ public partial class App : Application
             return;
         }
 
-        var earlySettings = new SettingsService();
-        var loadedSettings = earlySettings.Load();
-        Loc.SetLanguage(loadedSettings.Language);
-        AnimationConfig.Configure(loadedSettings.AnimationFps);
         ApplyProcessPriority(loadedSettings.ProcessPriority);
 
         if (e.Args.Contains("--uninstall"))
