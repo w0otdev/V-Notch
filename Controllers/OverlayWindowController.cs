@@ -74,14 +74,18 @@ public sealed class OverlayWindowController : IDisposable
 
     public void PositionAtTop(double surfaceWidth, double expandedHeight)
     {
-        var screen = System.Windows.Forms.Screen.PrimaryScreen;
-        if (screen == null) return;
-
         double dpiScale = GetDpiScale();
         double widthDip = surfaceWidth + HorizontalPadding;
         double heightDip = expandedHeight + 80;
+
+        // Use logical bounds from SystemParameters which are consistently scaled,
+        // rather than System.Windows.Forms.Screen which can return logical pixels 
+        // early in the process and physical pixels later depending on awareness caching.
+        int screenLeft = 0; // Primary screen always starts at 0
+        int screenWidth = (int)Math.Round(SystemParameters.PrimaryScreenWidth * dpiScale);
+
         var bounds = CalculateCenteredBounds(
-            screen.Bounds.Left, screen.Bounds.Width, widthDip, heightDip, dpiScale);
+            screenLeft, screenWidth, widthDip, heightDip, dpiScale);
 
         _state.FixedX = bounds.X;
         _state.FixedY = 0;
