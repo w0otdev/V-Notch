@@ -37,7 +37,7 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          $runtime = Get-ChildItem 'C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App' -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $runtime = Get-ChildItem 'C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App' -Directory | Where-Object Name -like '8.0.*' | Sort-Object Name -Descending | Select-Object -First 1
           Copy-Item "$($runtime.FullName)\*.dll" 'Tests\bin\Release\net8.0-windows10.0.19041.0\win-x64' -Force
           dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore /p:CollectCoverage=true /p:CoverletOutput=artifacts/coverage/ /p:CoverletOutputFormat=cobertura --verbosity normal
           [xml]$coverage = Get-Content Tests/artifacts/coverage/coverage.cobertura.xml
