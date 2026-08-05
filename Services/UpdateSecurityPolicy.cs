@@ -20,9 +20,15 @@ public sealed class UpdateSecurityPolicy
 
     public bool IsTrustedSignature(string installerPath, out string reason)
     {
+        if (AllowedPublisherNames.Count == 0 && AllowedCertificateThumbprints.Count == 0)
+        {
+            reason = "No Authenticode allowlist configured. Skipping signature validation.";
+            return true;
+        }
+
         if (AllowedPublisherNames.Count == 0 || AllowedCertificateThumbprints.Count == 0)
         {
-            reason = "No Authenticode publisher/thumbprint allowlist is configured.";
+            reason = "Authenticode allowlist is incomplete (needs both publisher and thumbprint).";
             return false;
         }
 

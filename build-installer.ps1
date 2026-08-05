@@ -14,10 +14,13 @@ param(
 $projectVersion = ([xml](Get-Content -Raw .\V-Notch.csproj)).Project.PropertyGroup.Version |
     Where-Object { $_ } |
     Select-Object -First 1
-if ($projectVersion -notmatch '^\d+\.\d+\.\d+$') {
-    throw "V-Notch.csproj Version must use major.minor.patch format."
+if ($projectVersion -match '^\d+\.\d+\.\d+$') {
+    $installerVersion = "$projectVersion.0"
+} elseif ($projectVersion -match '^\d+\.\d+\.\d+\.\d+$') {
+    $installerVersion = $projectVersion
+} else {
+    throw "V-Notch.csproj Version must use major.minor.patch or major.minor.patch.revision format."
 }
-$installerVersion = "$projectVersion.0"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "V-Notch Installer Build Script" -ForegroundColor Cyan
@@ -107,7 +110,21 @@ if ($CertificatePath) {
     Write-Host "      Installer Authenticode signature applied" -ForegroundColor Green
 } else { Write-Host "      WARNING: installer is unsigned. Configure a signing certificate for release builds." -ForegroundColor Yellow }
 
-$checksum = (Get-FileHash -Algorithm SHA256 "installers\V-Notch-Setup.exe").Hash.ToLowerInvariant()
+$checksum = $null
+$retryCount = 0
+while ($null -eq $checksum -and $retryCount -lt 10) {
+    try {
+        $checksum = (Get-FileHash -Algorithm SHA256 "installers\V-Notch-Setup.exe" -ErrorAction Stop).Hash.ToLowerInvariant()
+    } catch {
+        $retryCount++
+        Start-Sleep -Milliseconds 500
+    }
+}
+if ($null -eq $checksum) {
+    Write-Host "      Failed to calculate SHA-256 due to file lock!" -ForegroundColor Red
+    exit 1
+}
+
 Set-Content -Path "installers\V-Notch-Setup.exe.sha256" -Value "$checksum  V-Notch-Setup.exe" -NoNewline
 Write-Host "      SHA-256 checksum created" -ForegroundColor Green
 
