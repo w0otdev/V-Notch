@@ -1,10 +1,3 @@
-// High-quality Liquid Glass refraction for WPF Pixel Shader 3.0.
-// Compile: fxc /T ps_3_0 /E main /Fo LiquidGlassRefraction.ps LiquidGlassRefraction.hlsl
-//
-// The lens uses a compact C2 profile instead of a semicircle height field. Its
-// displacement and first derivative are both zero at the glass boundary and at the
-// flat interior, which keeps text continuous while still producing a strong optical
-// fold through the rim. s0 is the captured desktop including the sampling pad.
 
 sampler2D input : register(s0);
 
