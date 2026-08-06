@@ -264,8 +264,8 @@ public sealed class LiquidGlassController
         }
 
         _host.Stretch = Stretch.Fill;
-        _host.HorizontalAlignment = HorizontalAlignment.Left;
-        _host.VerticalAlignment = VerticalAlignment.Top;
+        _host.HorizontalAlignment = HorizontalAlignment.Stretch;
+        _host.VerticalAlignment = VerticalAlignment.Stretch;
         _host.Width = double.NaN;
         _host.Height = double.NaN;
         _host.RenderTransform = null;
@@ -1041,22 +1041,38 @@ public sealed class LiquidGlassController
 
             if (useMag)
             {
-                if (!EnsureStagingResources(physSrcW, physSrcH, screenDc)) return false;
-
-                if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _stagingBits))
+                if (physSrcW == srcW && physSrcH == srcH)
                 {
-                    if (++_magFailStreak >= 30)
+                    if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _dibBits))
                     {
-                        _magReady = false;
-                        RuntimeLog.Log("LIQUIDGLASS", "Magnifier failing repeatedly; falling back to BitBlt.");
+                        if (++_magFailStreak >= 30)
+                        {
+                            _magReady = false;
+                            RuntimeLog.Log("LIQUIDGLASS", "Magnifier failing repeatedly; falling back to BitBlt.");
+                        }
+                        return false;
                     }
-                    return false;
+                    _magFailStreak = 0;
                 }
-                _magFailStreak = 0;
+                else
+                {
+                    if (!EnsureStagingResources(physSrcW, physSrcH, screenDc)) return false;
 
-                if (!StretchBlt(_memDc, 0, 0, srcW, srcH, _stagingDc, 0, 0, physSrcW, physSrcH, SRCCOPY))
-                    return false;
-                GdiFlush();
+                    if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _stagingBits))
+                    {
+                        if (++_magFailStreak >= 30)
+                        {
+                            _magReady = false;
+                            RuntimeLog.Log("LIQUIDGLASS", "Magnifier failing repeatedly; falling back to BitBlt.");
+                        }
+                        return false;
+                    }
+                    _magFailStreak = 0;
+
+                    if (!StretchBlt(_memDc, 0, 0, srcW, srcH, _stagingDc, 0, 0, physSrcW, physSrcH, SRCCOPY))
+                        return false;
+                    GdiFlush();
+                }
             }
             else
             {
@@ -1089,9 +1105,9 @@ public sealed class LiquidGlassController
 
                 // Preserve real desktop pixels around the visible notch. Refraction
                 double offX = Math.Clamp(
-                    margin - captureShiftX, 0, Math.Max(0, srcW - outW));
+                    margin - captureShiftX + _presentSubX, 0, Math.Max(0, srcW - outW));
                 double offY = Math.Clamp(
-                    margin - mapCaptureShiftY, 0, Math.Max(0, srcH - outH));
+                    margin - mapCaptureShiftY + _presentSubY, 0, Math.Max(0, srcH - outH));
 
                 var geom = new GpuGeometry(
                     srcW, srcH, outW, outH, offX, offY,

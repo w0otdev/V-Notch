@@ -3812,10 +3812,10 @@ public partial class SettingsWindow : Window
     private LiquidGlassController.CaptureRegion? GetGlassCaptureRegion()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero || MainShell == null) return null;
+        if (hwnd == IntPtr.Zero || MainShell == null || GlassBackdropHost == null) return null;
 
-        double shellW = MainShell.ActualWidth;
-        double shellH = MainShell.ActualHeight;
+        double shellW = GlassBackdropHost.ActualWidth;
+        double shellH = GlassBackdropHost.ActualHeight;
         if (shellW <= 0 || shellH <= 0) return null;
 
         double dpiScale = GetGlassDpiScale();
@@ -3836,13 +3836,13 @@ public partial class SettingsWindow : Window
         try
         {
             // Project both corners so the open/close ShellScale animation is baked
-            var tl = MainShell.PointToScreen(new Point(0, 0));
-            var br = MainShell.PointToScreen(new Point(shellW, shellH));
+            var tl = GlassBackdropHost.PointToScreen(new Point(0, 0));
+            var br = GlassBackdropHost.PointToScreen(new Point(shellW, shellH));
 
-            int physLeft = (int)Math.Round(tl.X);
-            int physTop = (int)Math.Round(tl.Y);
-            int scaledW = (int)Math.Round(br.X - tl.X);
-            int scaledH = (int)Math.Round(br.Y - tl.Y);
+            int physLeft = (int)Math.Round(tl.X, MidpointRounding.AwayFromZero);
+            int physTop = (int)Math.Round(tl.Y, MidpointRounding.AwayFromZero);
+            int scaledW = (int)Math.Round(br.X, MidpointRounding.AwayFromZero) - physLeft;
+            int scaledH = (int)Math.Round(br.Y, MidpointRounding.AwayFromZero) - physTop;
             if (scaledW > 1) physW = scaledW;
             if (scaledH > 1) physH = scaledH;
 

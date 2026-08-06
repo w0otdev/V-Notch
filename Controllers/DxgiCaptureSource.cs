@@ -8,14 +8,6 @@ using Vortice.DXGI;
 
 namespace VNotch.Controllers;
 
-/// <summary>
-/// Desktop Duplication capture source. Duplicates the output that actually
-/// contains the requested rectangle (virtual-desktop coordinates), translates
-/// those coordinates into output space, serves the last complete frame when the
-/// desktop is static (WAIT_TIMEOUT is not a failure), and re-creates the
-/// duplication after ACCESS_LOST, resolution changes or secure-desktop
-/// transitions instead of dying permanently.
-/// </summary>
 public sealed class DxgiCaptureSource : IDisposable
 {
     private readonly object _sync = new();

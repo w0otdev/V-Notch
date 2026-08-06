@@ -83,7 +83,7 @@ if ($Clean) {
 # slow restore step; if obj is missing (first run / after -Clean) we restore normally.
 Write-Host ">>> Building$(if ($Clean) { ' (full rebuild)' } else { ' (incremental)' })..." -ForegroundColor Cyan
 
-$buildArgs = @("build", "V-Notch.csproj", "-nologo")
+$buildArgs = @("build", "V-Notch.csproj", "-nologo", "-tl")
 $restoreReady = Test-Path "obj\project.assets.json"
 if (-not $Clean -and $restoreReady) {
     $buildArgs += "--no-restore"

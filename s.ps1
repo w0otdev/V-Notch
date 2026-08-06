@@ -1,1 +1,1 @@
-dotnet run --project Tools\ShaderCompiler\ShaderCompiler.csproj
+dotnet run -tl --project Tools\ShaderCompiler\ShaderCompiler.csproj

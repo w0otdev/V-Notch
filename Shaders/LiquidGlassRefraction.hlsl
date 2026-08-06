@@ -174,8 +174,8 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float npy = uv.y * srcH;
     
     float2 localPosition = float2(
-        npx - (notchW - 1.0) * 0.5,
-        npy - (notchH - 1.0) * 0.5);
+        npx - notchW * 0.5,
+        npy - notchH * 0.5);
 
     float2 basePixel = float2(npx + offX, npy + offY);
     float2 halfSize = max(notchSize * 0.5, float2(0.5, 0.5));
@@ -189,11 +189,10 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float inside = field.x;
     float2 inwardNormal = field.yz;
 
-    if (inside <= 0.0)
+    float alpha = saturate(inside - 0.5);
+    if (alpha <= 0.0)
     {
-        return float4(
-            sampleSource(basePixel, sourceSize),
-            1.0);
+        return float4(0.0, 0.0, 0.0, 0.0);
     }
 
     float broad = step(0.5, bevelMode);
@@ -757,6 +756,6 @@ float4 main(float2 uv : TEXCOORD) : COLOR
         );
 
     return float4(
-        saturate(col),
-        1.0);
+        saturate(col) * alpha,
+        alpha);
 }

@@ -2003,6 +2003,7 @@ public partial class MainWindow : Window
         if (geometry == null) return;
 
         NotchContent.Clip = geometry;
+        HoverGlow.Clip = geometry;
 
         // Keep the glass backdrop clipped to its own size (see UpdateGlassClip).
         UpdateGlassClip();
@@ -2017,15 +2018,10 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateGlassClip()
     {
-        if (GlassBackdropHost == null || GlassBackdropHost.Visibility != Visibility.Visible) return;
-
-        double w = GlassBackdropHost.ActualWidth;
-        double h = GlassBackdropHost.ActualHeight;
-        if (w <= 0 || h <= 0) return;
-
-        var geometry = BuildNotchClipGeometry(w, h);
-        if (geometry != null)
-            GlassBackdropHost.Clip = geometry;
+        // GlassBackdropHost clip removed: anti-aliased transparency is now
+        // handled natively by the shader (LiquidGlassRefraction.hlsl),
+        // preventing the WPF composition engine from creating a huge software
+        // intermediate render target which destroyed performance on large views.
     }
 
     private void GlassBackdropHost_SizeChanged(object sender, SizeChangedEventArgs e)

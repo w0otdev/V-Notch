@@ -547,6 +547,7 @@
             BorderBrush="#18FFFFFF"
             BorderThickness="1"
             SnapsToDevicePixels="True"
+            UseLayoutRounding="True"
             Opacity="0"
             Focusable="True"
             PreviewMouseLeftButtonDown="WindowSurface_PreviewMouseLeftButtonDown"

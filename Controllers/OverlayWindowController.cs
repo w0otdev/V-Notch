@@ -78,11 +78,23 @@ public sealed class OverlayWindowController : IDisposable
         double widthDip = surfaceWidth + HorizontalPadding;
         double heightDip = expandedHeight + 80;
 
-        // Use logical bounds from SystemParameters which are consistently scaled,
-        // rather than System.Windows.Forms.Screen which can return logical pixels 
-        // early in the process and physical pixels later depending on awareness caching.
-        int screenLeft = 0; // Primary screen always starts at 0
+        int screenLeft = 0;
         int screenWidth = (int)Math.Round(SystemParameters.PrimaryScreenWidth * dpiScale);
+
+        if (_state.Hwnd != IntPtr.Zero)
+        {
+            IntPtr hMonitor = MonitorFromWindow(_state.Hwnd, MONITOR_DEFAULTTONEAREST);
+            if (hMonitor != IntPtr.Zero)
+            {
+                MONITORINFO mi = new MONITORINFO();
+                mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+                if (GetMonitorInfo(hMonitor, ref mi))
+                {
+                    screenLeft = mi.rcMonitor.Left;
+                    screenWidth = mi.rcMonitor.Right - mi.rcMonitor.Left;
+                }
+            }
+        }
 
         var bounds = CalculateCenteredBounds(
             screenLeft, screenWidth, widthDip, heightDip, dpiScale);
@@ -110,9 +122,23 @@ public sealed class OverlayWindowController : IDisposable
                 _state.WindowWidth, _state.WindowHeight, SWP_NOACTIVATE);
     }
 
-    private IntPtr PreferredZOrder => _stayBehindWindows()
-        ? GetDesktopLayerInsertAfter(_state.Hwnd)
-        : HWND_TOPMOST;
+    private IntPtr _cachedDesktopAnchor = IntPtr.Zero;
+    private DateTime _lastAnchorRefresh = DateTime.MinValue;
+
+    private IntPtr PreferredZOrder
+    {
+        get
+        {
+            if (!_stayBehindWindows()) return HWND_TOPMOST;
+            var now = DateTime.UtcNow;
+            if ((now - _lastAnchorRefresh).TotalSeconds > 1 || _cachedDesktopAnchor == IntPtr.Zero)
+            {
+                _cachedDesktopAnchor = GetDesktopLayerInsertAfter(_state.Hwnd);
+                _lastAnchorRefresh = now;
+            }
+            return _cachedDesktopAnchor;
+        }
+    }
 
     public IntPtr GetForegroundWindowHandle() => GetForegroundWindow();
 
@@ -139,9 +165,25 @@ public sealed class OverlayWindowController : IDisposable
 
     private double GetDpiScale()
     {
-        if (_state.Hwnd == IntPtr.Zero) return 1.0;
-        uint dpi = GetDpiForWindow(_state.Hwnd);
-        return dpi > 0 ? dpi / 96.0 : 1.0;
+        if (_state.Hwnd != IntPtr.Zero)
+        {
+            IntPtr hMonitor = MonitorFromWindow(_state.Hwnd, MONITOR_DEFAULTTONEAREST);
+            if (hMonitor != IntPtr.Zero)
+            {
+                if (GetDpiForMonitor(hMonitor, 0 , out uint dpiX, out uint dpiY) == 0)
+                {
+                    if (dpiX > 0) return dpiX / 96.0;
+                }
+            }
+        }
+
+        if (_window != null)
+        {
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(_window);
+            return dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
+        }
+
+        return 1.0;
     }
 
     public Func<Point, bool>? IsPointInteractive { get; set; }
@@ -187,8 +229,19 @@ public sealed class OverlayWindowController : IDisposable
                 break;
             case WM_WINDOWPOSCHANGING when lParam != IntPtr.Zero && _state.FixedY >= 0:
                 var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-                pos.y = _state.FixedY;
-                pos.x = _state.FixedX;
+                
+                if ((pos.flags & SWP_NOMOVE) == 0)
+                {
+                    pos.y = _state.FixedY;
+                    pos.x = _state.FixedX;
+                }
+                
+                if ((pos.flags & SWP_NOSIZE) == 0 && _state.WindowWidth > 0 && _state.WindowHeight > 0)
+                {
+                    pos.cx = _state.WindowWidth;
+                    pos.cy = _state.WindowHeight;
+                }
+                
                 pos.hwndInsertAfter = PreferredZOrder;
                 Marshal.StructureToPtr(pos, lParam, false);
                 break;

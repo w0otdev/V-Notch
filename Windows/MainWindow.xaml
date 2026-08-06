@@ -372,8 +372,8 @@
                         Background="Transparent"
                         CornerRadius="0,0,20,20">
 
-                <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" ClipToBounds="True" Background="Transparent">
-                    <Grid SnapsToDevicePixels="True" UseLayoutRounding="True">
+                <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" ClipToBounds="True" Background="Transparent" UseLayoutRounding="True">
+                    <Grid SnapsToDevicePixels="True">
 
                         <Border x:Name="NotchBackground"
                                 Background="{StaticResource NotchGradient}"

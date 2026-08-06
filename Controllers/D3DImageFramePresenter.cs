@@ -86,7 +86,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             windowHandle,
             CreateFlags.Multithreaded |
             CreateFlags.FpuPreserve |
-            CreateFlags.SoftwareVertexProcessing,
+            CreateFlags.HardwareVertexProcessing,
             present);
 
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;

@@ -888,14 +888,14 @@ public partial class MainWindow
         try
         {
             // Anchor the capture rectangle to the notch's ACTUAL on-screen position
-            var tl = NotchBorder.PointToScreen(new Point(0, 0));
-            var br = NotchBorder.PointToScreen(new Point(notchW, notchH));
+            var tl = GlassBackdropHost.PointToScreen(new Point(0, 0));
+            var br = GlassBackdropHost.PointToScreen(new Point(GlassBackdropHost.ActualWidth, GlassBackdropHost.ActualHeight));
 
-            physLeft = (int)Math.Round(tl.X);
-            physTop = (int)Math.Round(tl.Y);
+            physLeft = (int)Math.Round(tl.X, MidpointRounding.AwayFromZero);
+            physTop = (int)Math.Round(tl.Y, MidpointRounding.AwayFromZero);
 
-            int scaledW = (int)Math.Round(br.X - tl.X);
-            int scaledH = (int)Math.Round(br.Y - tl.Y);
+            int scaledW = (int)Math.Round(br.X, MidpointRounding.AwayFromZero) - physLeft;
+            int scaledH = (int)Math.Round(br.Y, MidpointRounding.AwayFromZero) - physTop;
             if (scaledW > 1) physW = scaledW;
             if (scaledH > 1) physH = scaledH;
 
