@@ -1138,6 +1138,8 @@ public partial class MainWindow : Window
 
         ApplyIdleAutoHideSettings();
 
+        ToggleDebugMode(_settings.EnableDebugMode);
+
         _youtubeSubtitleService.SetMode(_settings.SubtitlePriority);
 
         if (_settings.DisableMouseLeaveAutoClose)

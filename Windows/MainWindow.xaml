@@ -597,6 +597,18 @@
                         </Border>
 
                         <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled">
+                            
+                            <Border x:Name="DebugSection" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Margin="0,5,15,0" Panel.ZIndex="100"
+                                    Visibility="Collapsed" Opacity="0"
+                                    IsHitTestVisible="False">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="DebugFpsText" Text="0 FPS" Foreground="#CCFFFFFF" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource MainSystemFont}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="DebugRefreshRateText" Text="0 Hz" Foreground="#CCFFFFFF" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource MainSystemFont}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="DebugCpuText" Text="0% CPU" Foreground="#CCFFFFFF" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource MainSystemFont}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="DebugRamText" Text="0MB RAM" Foreground="#CCFFFFFF" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource MainSystemFont}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
 
                     <Border x:Name="NavIconsBackground"
                             HorizontalAlignment="Left" VerticalAlignment="Top"

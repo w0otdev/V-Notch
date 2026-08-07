@@ -367,7 +367,10 @@ public class ElasticSlider : Slider
         if (_valueText == null) return;
         string unit = Unit;
         int val = (int)Value;
-        _valueText.Text = string.IsNullOrEmpty(unit) ? val.ToString() : $"{val}{unit}";
+        if (val == 0 && unit == " fps")
+            _valueText.Text = "Auto";
+        else
+            _valueText.Text = string.IsNullOrEmpty(unit) ? val.ToString() : $"{val}{unit}";
     }
 
     #endregion

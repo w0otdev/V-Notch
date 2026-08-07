@@ -68,6 +68,8 @@ public class NotchSettings
     public bool HideOnExclusiveFullscreen { get; set; } = false;
     public bool HideOnWindowedFullscreen { get; set; } = false;
 
+    public bool EnableDebugMode { get; set; } = false;
+
     public bool EnableIdleAutoHide { get; set; } = false;
     public int IdleAutoHideDelay { get; set; } = 5000;
 
@@ -165,7 +167,7 @@ public class LiquidGlassConfig
     public double ShadowOpacity { get; set; } = 0.85;
     public int ShadowSpread { get; set; } = 24;
     public int BevelMode { get; set; } = 0;
-    public int TargetFps { get; set; } = 60;
+    public int TargetFps { get; set; } = 0;
     public int Variant { get; set; } = 0; // 0 = Regular (Adaptive), 1 = Clear (highly transparent, non-adaptive)
 
     // Legacy compatibility only. The magnifier filter now excludes the notch from

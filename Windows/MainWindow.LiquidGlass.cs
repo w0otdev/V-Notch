@@ -59,13 +59,15 @@ public partial class MainWindow
             CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
             CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
 
+            int targetFps = _settings.LiquidGlass?.TargetFps ?? 0;
+            if (targetFps <= 0 || targetFps == 60) targetFps = VNotch.Services.AnimationConfig.TargetFps;
+
             _liquidGlass ??= new LiquidGlassController(
                 GlassBackdropImage,
                 () => _hwnd,
                 GetGlassCaptureRegion,
                 // This is a hard render cadence: unchanged desktop frames are still
-                activeFps: Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30,
-                    LiquidGlassController.MaxTargetFps),
+                activeFps: Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps),
                 logTag: "ISLAND");
 
             // Magnifier capture excludes the notch internally while the user-facing
@@ -125,8 +127,11 @@ public partial class MainWindow
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
-            _liquidGlass.UpdateFps(Math.Clamp(cfg.TargetFps, 30,
-                LiquidGlassController.MaxTargetFps));
+            
+            int targetFps = cfg.TargetFps;
+            if (targetFps <= 0 || targetFps == 60) targetFps = VNotch.Services.AnimationConfig.TargetFps;
+            
+            _liquidGlass.UpdateFps(Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps));
             GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
             GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
         }

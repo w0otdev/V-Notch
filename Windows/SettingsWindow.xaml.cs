@@ -185,6 +185,7 @@ public partial class SettingsWindow : Window
         ShelfUnlockCheck.IsChecked = _settings.IsShelfUploadLimitUnlocked;
         CopyShelfClipboardCheck.IsChecked = _settings.CopyShelfFilesToClipboard;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
+        EnableDebugModeCheck.IsChecked = _settings.EnableDebugMode;
         UpdateSpotlightHotkeyWarning();
         ShowBatteryCheck.IsChecked = _settings.ShowBatteryIndicator;
 
@@ -504,6 +505,19 @@ public partial class SettingsWindow : Window
         if (_isLoadingSettings) return;
 
         UpdateSpotlightHotkeyWarning();
+        PushLivePreview();
+    }
+
+    private void EnableDebugModeCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.EnableDebugMode = EnableDebugModeCheck.IsChecked == true;
+        
+        if (Application.Current.MainWindow is MainWindow main)
+        {
+            main.ToggleDebugMode(_settings.EnableDebugMode);
+        }
+        
         PushLivePreview();
     }
 
@@ -1249,7 +1263,7 @@ public partial class SettingsWindow : Window
             GlassShadowOpacitySlider.Value = Math.Round(c.ShadowOpacity * 100);
             GlassShadowSpreadSlider.Value = c.ShadowSpread;
             GlassBevelModeSlider.Value = c.BevelMode;
-            GlassFpsSlider.Value = c.TargetFps;
+            GlassFpsSlider.Value = (c.TargetFps <= 0 || c.TargetFps == 60) ? 0 : c.TargetFps;
         }
         finally
         {
@@ -1377,7 +1391,7 @@ public partial class SettingsWindow : Window
 
         if (preset != null)
         {
-            var currentFps = _settings.LiquidGlass?.TargetFps ?? 60;
+            var currentFps = _settings.LiquidGlass?.TargetFps ?? 0;
             var currentGpu = _settings.LiquidGlass?.UseGpuRefraction ?? true;
             _settings.LiquidGlass = preset.Clone();
             _settings.LiquidGlass.TargetFps = currentFps;
@@ -2279,6 +2293,7 @@ public partial class SettingsWindow : Window
         ShelfUnlockCheck.IsChecked = defaults.IsShelfUploadLimitUnlocked;
         CopyShelfClipboardCheck.IsChecked = defaults.CopyShelfFilesToClipboard;
         EnableSpotlightCheck.IsChecked = defaults.EnableSpotlight;
+        EnableDebugModeCheck.IsChecked = defaults.EnableDebugMode;
         ShowBatteryCheck.IsChecked = defaults.ShowBatteryIndicator;
         _settings.BatteryDeviceId = defaults.BatteryDeviceId;
         HideOnExclusiveFullscreenCheck.IsChecked = defaults.HideOnExclusiveFullscreen;
@@ -2699,6 +2714,7 @@ public partial class SettingsWindow : Window
         _settings.StayBehindWindows = StayBehindWindowsCheck.IsChecked ?? false;
         _settings.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
         _settings.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;
+        _settings.EnableDebugMode = EnableDebugModeCheck.IsChecked ?? false;
         _settings.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
         _settings.HideOnWindowedFullscreen = HideOnWindowedFullscreenCheck.IsChecked ?? true;
         _settings.EnableIdleAutoHide = IdleAutoHideCheck.IsChecked ?? false;

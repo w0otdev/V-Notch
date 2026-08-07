@@ -1300,7 +1300,7 @@
                                             </Border>
                                             <Border Style="{StaticResource SettingRowBorder}" BorderThickness="0">
                                                 <controls:ElasticSlider x:Name="GlassFpsSlider" Label="Target FPS" Unit=" fps"
-                                                        Minimum="30" Maximum="240" Value="60" TickFrequency="1"
+                                                        Minimum="0" Maximum="240" Value="60" TickFrequency="1"
                                                         ValueChanged="GlassConfigSlider_Changed"/>
                                             </Border>
                                         </StackPanel>
@@ -1540,6 +1540,19 @@
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="AdvancedHeader" Text="ADVANCED" Style="{StaticResource SectionHeader}"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableDebugModeCheck"
+                                                          Content="Enable Debug Mode"
+                                                          Checked="EnableDebugModeCheck_Changed"
+                                                          Unchecked="EnableDebugModeCheck_Changed"/>
+                                                <TextBlock x:Name="EnableDebugModeHint"
+                                                           Text="Display FPS, CPU, and RAM usage on the notch next to the battery."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"/>
+                                            </StackPanel>
+                                        </Border>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
