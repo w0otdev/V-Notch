@@ -43,11 +43,13 @@ public sealed class ClockWidgetViewRefs
 {
     public required UIElement ClockWidget { get; init; }
     public UIElement? WordClockWidget { get; init; }
+    public UIElement? DigitalClockWidget { get; init; }
     public UIElement? WeatherWidgetContent { get; init; }
     public UIElement? SystemMonitorWidgetContent { get; init; }
     public required UIElement CalendarStripContainer { get; init; }
     public UIElement? MonthText { get; init; }
     public UIElement? GreetingSection { get; init; }
+    public TextBlock? EventText { get; init; }
     public required UIElement CalendarWidget { get; init; }
     public UIElement? CalendarInnerContent { get; init; }
 
@@ -74,7 +76,7 @@ public sealed class ClockWidgetPresenter : IDisposable
 
     #region Expanded Widget (Calendar / Clock / Word Clock)
 
-    private static readonly string[] _expandedWidgetOrder = { "calendar", "clock", "wordclock", "weather", "sysmon" };
+    private static readonly string[] _expandedWidgetOrder = { "calendar", "clock", "wordclock", "digitalclock", "weather", "sysmon" };
     private int _expandedWidgetSwitchVersion;
 
     private bool IsClockWidgetMode =>
@@ -83,13 +85,16 @@ public sealed class ClockWidgetPresenter : IDisposable
     private bool IsWordClockWidgetMode =>
         string.Equals(_host.Settings.ExpandedWidget, "wordclock", StringComparison.OrdinalIgnoreCase);
 
+    private bool IsDigitalClockWidgetMode =>
+        string.Equals(_host.Settings.ExpandedWidget, "digitalclock", StringComparison.OrdinalIgnoreCase);
+
     private bool IsWeatherWidgetMode =>
         string.Equals(_host.Settings.ExpandedWidget, "weather", StringComparison.OrdinalIgnoreCase);
 
     private bool IsSystemMonitorWidgetMode =>
         string.Equals(_host.Settings.ExpandedWidget, "sysmon", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsAnyClockWidgetMode => IsClockWidgetMode || IsWordClockWidgetMode;
+    private bool IsAnyClockWidgetMode => IsClockWidgetMode || IsWordClockWidgetMode || IsDigitalClockWidgetMode;
 
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
 
@@ -99,13 +104,16 @@ public sealed class ClockWidgetPresenter : IDisposable
 
         bool useAnalogClock = IsClockWidgetMode;
         bool useWordClock = IsWordClockWidgetMode;
+        bool useDigitalClock = IsDigitalClockWidgetMode;
         bool useWeather = IsWeatherWidgetMode;
         bool useSystemMonitor = IsSystemMonitorWidgetMode;
-        bool useCalendar = !useAnalogClock && !useWordClock && !useWeather && !useSystemMonitor;
+        bool useCalendar = !useAnalogClock && !useWordClock && !useDigitalClock && !useWeather && !useSystemMonitor;
 
         _refs.ClockWidget.Visibility = useAnalogClock ? Visibility.Visible : Visibility.Collapsed;
         if (_refs.WordClockWidget != null)
             _refs.WordClockWidget.Visibility = useWordClock ? Visibility.Visible : Visibility.Collapsed;
+        if (_refs.DigitalClockWidget != null)
+            _refs.DigitalClockWidget.Visibility = useDigitalClock ? Visibility.Visible : Visibility.Collapsed;
         if (_refs.WeatherWidgetContent != null)
             _refs.WeatherWidgetContent.Visibility = useWeather ? Visibility.Visible : Visibility.Collapsed;
         if (_refs.SystemMonitorWidgetContent != null)
@@ -115,6 +123,22 @@ public sealed class ClockWidgetPresenter : IDisposable
         if (_refs.MonthText != null)
             _refs.MonthText.Visibility = (useWeather || useSystemMonitor) ? Visibility.Collapsed : Visibility.Visible;
 
+        if (_refs.EventText != null && _refs.GreetingSection is FrameworkElement greetingSection)
+        {
+            if (useDigitalClock)
+            {
+                _refs.EventText.HorizontalAlignment = HorizontalAlignment.Center;
+                _refs.EventText.Margin = new Thickness(0, 0, 4, 0);
+                greetingSection.Margin = new Thickness(0, -6, 4, 0);
+            }
+            else
+            {
+                _refs.EventText.HorizontalAlignment = HorizontalAlignment.Left;
+                _refs.EventText.Margin = new Thickness(6, 0, 0, 0);
+                greetingSection.Margin = new Thickness(4, -6, 0, 0);
+            }
+        }
+
         UpdateGreetingVisibilityForWidget();
     }
 
@@ -122,7 +146,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     {
         if (_refs.GreetingSection == null) return;
 
-        bool show = !IsNonCalendarWidgetMode && !_host.IsLyricsActive;
+        bool show = (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode) && !_host.IsLyricsActive;
         _refs.GreetingSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 

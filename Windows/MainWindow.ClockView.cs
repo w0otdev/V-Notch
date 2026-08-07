@@ -28,11 +28,13 @@ public partial class MainWindow : IClockWidgetHost
         {
             ClockWidget = ClockWidget,
             WordClockWidget = WordClockWidget,
+            DigitalClockWidget = DigitalClockWidget,
             WeatherWidgetContent = WeatherWidgetContent,
             SystemMonitorWidgetContent = SystemMonitorWidgetContent,
             CalendarStripContainer = CalendarStripContainer,
             MonthText = MonthText,
             GreetingSection = GreetingSection,
+            EventText = EventText,
             CalendarWidget = CalendarWidget,
             CalendarInnerContent = CalendarInnerContent,
             ClockViewWeekHeader = ClockViewWeekHeader,

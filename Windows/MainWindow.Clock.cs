@@ -14,13 +14,16 @@ public partial class MainWindow
     private bool IsWordClockWidgetMode =>
         string.Equals(_settings.ExpandedWidget, "wordclock", StringComparison.OrdinalIgnoreCase);
 
+    private bool IsDigitalClockWidgetMode =>
+        string.Equals(_settings.ExpandedWidget, "digitalclock", StringComparison.OrdinalIgnoreCase);
+
     private bool IsWeatherWidgetMode =>
         string.Equals(_settings.ExpandedWidget, "weather", StringComparison.OrdinalIgnoreCase);
 
     private bool IsSystemMonitorWidgetMode =>
         string.Equals(_settings.ExpandedWidget, "sysmon", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsAnyClockWidgetMode => IsClockWidgetMode || IsWordClockWidgetMode;
+    private bool IsAnyClockWidgetMode => IsClockWidgetMode || IsWordClockWidgetMode || IsDigitalClockWidgetMode;
 
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
 

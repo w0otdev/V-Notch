@@ -2305,26 +2305,33 @@
                                                     <TranslateTransform x:Name="CalendarStripTranslate" X="0"/>
                                                 </Grid.RenderTransform>
 
-                                                <Border x:Name="CalendarMainHighlight"
-                                                        Width="24" Height="24"
-                                                        Background="White"
-                                                        CornerRadius="12"
-                                                        RenderTransformOrigin="0.5,0.5"
-                                                        HorizontalAlignment="Left"
-                                                        VerticalAlignment="Top"
-                                                        Margin="0,15,0,0">
-                                                    <Border.RenderTransform>
-                                                        <TransformGroup>
-                                                            <ScaleTransform x:Name="CalendarHighlightScale" ScaleX="1" ScaleY="1"/>
-                                                            <TranslateTransform x:Name="CalendarHighlightTranslate" X="0"/>
-                                                        </TransformGroup>
-                                                    </Border.RenderTransform>
-                                                </Border>
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
 
-                                                <StackPanel Orientation="Vertical">
-                                                    <StackPanel x:Name="WeekDaysPanel" Orientation="Horizontal" Margin="0,0,0,4"/>
-                                                    <StackPanel x:Name="WeekNumbers" Orientation="Horizontal"/>
-                                                </StackPanel>
+                                                    <StackPanel x:Name="WeekDaysPanel" Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4"/>
+
+                                                    <Border x:Name="CalendarMainHighlight"
+                                                            Grid.Row="1"
+                                                            Width="24" Height="24"
+                                                            Background="White"
+                                                            CornerRadius="12"
+                                                            RenderTransformOrigin="0.5,0.5"
+                                                            HorizontalAlignment="Left"
+                                                            VerticalAlignment="Center"
+                                                            Margin="2,0,0,0">
+                                                        <Border.RenderTransform>
+                                                            <TransformGroup>
+                                                                <ScaleTransform x:Name="CalendarHighlightScale" ScaleX="1" ScaleY="1"/>
+                                                                <TranslateTransform x:Name="CalendarHighlightTranslate" X="0"/>
+                                                            </TransformGroup>
+                                                        </Border.RenderTransform>
+                                                    </Border>
+
+                                                    <StackPanel x:Name="WeekNumbers" Grid.Row="1" Orientation="Horizontal"/>
+                                                </Grid>
                                             </Grid>
                                         </Canvas>
                                     </Grid>
@@ -2359,6 +2366,30 @@
                                                         Visibility="Collapsed"
                                                         TextOptions.TextRenderingMode="Grayscale"
                                                         TextOptions.TextHintingMode="Animated"/>
+                                    </Viewbox>
+
+                                    <Viewbox Grid.Column="1"
+                                             MaxWidth="92"
+                                             MaxHeight="92"
+                                             Stretch="Uniform"
+                                             StretchDirection="DownOnly"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,4,0">
+                                        <ctrl:DigitalClock x:Name="DigitalClockWidget"
+                                                           IsStacked="False"
+                                                           FontFamily="{StaticResource MainSystemFont}"
+                                                           FontSize="48"
+                                                           FontWeight="Heavy"
+                                                           LineHeight="40"
+                                                           LineStackingStrategy="BlockLineHeight"
+                                                           Foreground="White"
+                                                           TextWrapping="NoWrap"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Visibility="Collapsed"
+                                                           TextOptions.TextRenderingMode="Grayscale"
+                                                           TextOptions.TextHintingMode="Animated"/>
                                     </Viewbox>
 
                                     <Grid x:Name="WeatherWidgetContent"
