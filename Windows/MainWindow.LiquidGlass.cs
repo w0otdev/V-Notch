@@ -257,8 +257,13 @@ public partial class MainWindow
 
         fx.SrcW = lg.SurfaceWidth;
         fx.SrcH = lg.SurfaceHeight;
-        fx.NotchW = g.NotchW;
-        fx.NotchH = g.NotchH;
+        
+        double dpiScale = GetGlassDpiScale();
+        double exactW = (NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth) * dpiScale;
+        double exactH = (NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight) * dpiScale;
+        
+        fx.NotchW = exactW;
+        fx.NotchH = exactH;
         fx.OffX = g.OffX;
         fx.OffY = g.OffY;
         fx.TopCornerR = g.TopCornerR;

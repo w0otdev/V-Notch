@@ -98,49 +98,80 @@ float3 roundedRectField(
     float topRadius,
     float bottomRadius)
 {
-    float radius = p.y < 0.0 ? topRadius : bottomRadius;
-
-    radius = clamp(
-        radius,
-        0.0,
-        min(halfSize.x, halfSize.y));
-
-    float2 q = abs(p) - (halfSize - radius);
-    float2 outside = max(q, 0.0);
-
-    float outsideLength = length(outside);
-
-    float sdf =
-        outsideLength +
-        min(max(q.x, q.y), 0.0) -
-        radius;
-
-    float2 pSign = float2(
-        p.x < 0.0 ? -1.0 : 1.0,
-        p.y < 0.0 ? -1.0 : 1.0);
-
-    float2 outwardNormal;
-
-    if (outsideLength > 0.0001)
+    float px = abs(p.x);
+    float py = p.y;
+    
+    // Clamp radii so they don't exceed half the width, and their sum doesn't exceed height
+    topRadius = clamp(topRadius, 0.0, halfSize.x);
+    bottomRadius = clamp(bottomRadius, 0.0, halfSize.x);
+    
+    float centerYTop = -halfSize.y + topRadius;
+    float centerYBottom = halfSize.y - bottomRadius;
+    
+    float sdf = 0.0;
+    float2 d = float2(0.0, 0.0);
+    
+    if (py < centerYTop)
     {
-        outwardNormal = outside / outsideLength;
-        outwardNormal *= pSign;
+        float2 q = float2(px - (halfSize.x - topRadius), py - centerYTop);
+        if (q.x > 0.0)
+        {
+            sdf = length(q) - topRadius;
+            d = q;
+        }
+        else
+        {
+            sdf = -halfSize.y - py;
+            d = float2(0.0, -1.0);
+        }
     }
-    else if (q.x > q.y)
+    else if (py > centerYBottom)
     {
-        outwardNormal = float2(pSign.x, 0.0);
+        float2 q = float2(px - (halfSize.x - bottomRadius), py - centerYBottom);
+        if (q.x > 0.0)
+        {
+            sdf = length(q) - bottomRadius;
+            d = q;
+        }
+        else
+        {
+            sdf = py - halfSize.y;
+            d = float2(0.0, 1.0);
+        }
     }
     else
     {
-        outwardNormal = float2(0.0, pSign.y);
+        sdf = px - halfSize.x;
+        d = float2(1.0, 0.0);
     }
-
-    float2 inwardNormal = -outwardNormal;
-
-    return float3(
-        -sdf,
-        inwardNormal.x,
-        inwardNormal.y);
+    
+    // Exact inner distance
+    if (sdf < 0.0)
+    {
+        float dSide = px - halfSize.x;
+        float dTop = -halfSize.y - py;
+        float dBottom = py - halfSize.y;
+        
+        float maxD = max(dSide, max(dTop, dBottom));
+        
+        if (maxD > sdf)
+        {
+            sdf = maxD;
+            if (sdf == dSide) d = float2(1.0, 0.0);
+            else if (sdf == dTop) d = float2(0.0, -1.0);
+            else if (sdf == dBottom) d = float2(0.0, 1.0);
+        }
+    }
+    
+    float2 pSign = float2(p.x < 0.0 ? -1.0 : 1.0, 1.0);
+    float2 outwardNormal = float2(0.0, 0.0);
+    
+    if (length(d) > 0.0001)
+    {
+        outwardNormal = normalize(d) * pSign;
+    }
+    
+    return float3(-sdf, -outwardNormal.x, -outwardNormal.y);
 }
 
 
@@ -189,7 +220,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float inside = field.x;
     float2 inwardNormal = field.yz;
 
-    float alpha = saturate(inside - 0.5);
+    float alpha = saturate(inside + 0.5);
     if (alpha <= 0.0)
     {
         return float4(0.0, 0.0, 0.0, 0.0);
