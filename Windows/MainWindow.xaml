@@ -380,11 +380,16 @@
                                 IsHitTestVisible="False"
                                 CornerRadius="0,0,20,20"/>
 
+                        <!-- Final rounded clip for the complete material stack. It is
+                             intentionally outside every blurred child so post-effects
+                             cannot spread Touch Light into the rectangular corners. -->
+                        <Grid x:Name="GlassMaterialClipHost"
+                              IsHitTestVisible="False"
+                              SizeChanged="GlassMaterialClipHost_SizeChanged">
                         <Border x:Name="GlassBackdropHost"
                                 IsHitTestVisible="False"
                                 ClipToBounds="True"
                                 Visibility="Collapsed"
-                                SizeChanged="GlassBackdropHost_SizeChanged"
                                 CornerRadius="0,0,20,20">
 
                             <Image x:Name="GlassBackdropImage"
@@ -538,6 +543,7 @@
                                 </RadialGradientBrush>
                             </Border.BorderBrush>
                         </Border>
+                        </Grid>
 
                         <Border x:Name="VolumeIndicatorContainer"
                                 VerticalAlignment="Center"

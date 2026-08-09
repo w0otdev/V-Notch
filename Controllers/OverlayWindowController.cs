@@ -103,9 +103,15 @@ public sealed class OverlayWindowController : IDisposable
         _state.FixedY = 0;
         _state.WindowWidth = bounds.Width;
         _state.WindowHeight = bounds.Height;
+        _state.HasFixedBounds = true;
         _window.Width = widthDip;
         _window.Height = heightDip;
-        SetWindowPos(_state.Hwnd, PreferredZOrder, bounds.X, 0, bounds.Width, bounds.Height, SWP_NOACTIVATE);
+
+        // Keep geometry independent from the desktop-layer anchor. Explorer rebuilds
+        // its WorkerW/Progman windows during sign-in, so an expired anchor must never
+        // be able to reject this placement and leave WPF's startup position visible.
+        ApplyFixedBounds();
+        ApplyPreferredZOrder();
     }
 
     public void ResizeHeight(double heightDip)
@@ -117,28 +123,71 @@ public sealed class OverlayWindowController : IDisposable
 
     public void ReassertBounds()
     {
-        if (_state.Hwnd != IntPtr.Zero)
-            SetWindowPos(_state.Hwnd, PreferredZOrder, _state.FixedX, _state.FixedY,
-                _state.WindowWidth, _state.WindowHeight, SWP_NOACTIVATE);
+        if (!_state.HasFixedBounds || _state.WindowWidth <= 0 || _state.WindowHeight <= 0)
+            return;
+
+        ApplyFixedBounds();
+        ApplyPreferredZOrder();
     }
 
-    private IntPtr _cachedDesktopAnchor = IntPtr.Zero;
-    private DateTime _lastAnchorRefresh = DateTime.MinValue;
-
-    private IntPtr PreferredZOrder
+    private bool ApplyFixedBounds()
     {
-        get
+        if (_state.Hwnd == IntPtr.Zero)
+            return false;
+
+        bool positioned = SetWindowPos(
+            _state.Hwnd,
+            IntPtr.Zero,
+            _state.FixedX,
+            _state.FixedY,
+            _state.WindowWidth,
+            _state.WindowHeight,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+
+        if (!positioned)
         {
-            if (!_stayBehindWindows()) return HWND_TOPMOST;
-            var now = DateTime.UtcNow;
-            if ((now - _lastAnchorRefresh).TotalSeconds > 1 || _cachedDesktopAnchor == IntPtr.Zero)
-            {
-                _cachedDesktopAnchor = GetDesktopLayerInsertAfter(_state.Hwnd);
-                _lastAnchorRefresh = now;
-            }
-            return _cachedDesktopAnchor;
+            RuntimeLog.Warn("OVERLAY-POSITION",
+                $"Failed to apply fixed bounds ({_state.FixedX},{_state.FixedY},{_state.WindowWidth}x{_state.WindowHeight}); Win32 error {Marshal.GetLastWin32Error()}");
+        }
+
+        return positioned;
+    }
+
+    private void ApplyPreferredZOrder()
+    {
+        if (_state.Hwnd == IntPtr.Zero)
+            return;
+
+        bool positioned = _stayBehindWindows()
+            ? TryApplyDesktopLayerZOrder(
+                () => GetDesktopLayerInsertAfter(_state.Hwnd),
+                anchor => SetWindowPos(_state.Hwnd, anchor, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW))
+            : SetWindowPos(_state.Hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+        if (!positioned)
+        {
+            RuntimeLog.Warn("OVERLAY-ZORDER",
+                $"Failed to apply the preferred z-order; Win32 error {Marshal.GetLastWin32Error()}");
         }
     }
+
+    // Explorer may replace its desktop host between resolving the insertion point
+    // and SetWindowPos. Resolve once more before giving up on a desktop-layer move.
+    internal static bool TryApplyDesktopLayerZOrder(
+        Func<IntPtr> getDesktopAnchor,
+        Func<IntPtr, bool> applyZOrder)
+    {
+        if (applyZOrder(getDesktopAnchor()))
+            return true;
+
+        return applyZOrder(getDesktopAnchor());
+    }
+
+    private IntPtr PreferredZOrder => _stayBehindWindows()
+        ? GetDesktopLayerInsertAfter(_state.Hwnd)
+        : HWND_TOPMOST;
 
     public IntPtr GetForegroundWindowHandle() => GetForegroundWindow();
 
@@ -170,7 +219,7 @@ public sealed class OverlayWindowController : IDisposable
             IntPtr hMonitor = MonitorFromWindow(_state.Hwnd, MONITOR_DEFAULTTONEAREST);
             if (hMonitor != IntPtr.Zero)
             {
-                if (GetDpiForMonitor(hMonitor, 0 , out uint dpiX, out uint dpiY) == 0)
+                if (GetDpiForMonitor(hMonitor, 0, out uint dpiX, out uint dpiY) == 0)
                 {
                     if (dpiX > 0) return dpiX / 96.0;
                 }
@@ -227,22 +276,23 @@ public sealed class OverlayWindowController : IDisposable
                     }
                 }
                 break;
-            case WM_WINDOWPOSCHANGING when lParam != IntPtr.Zero && _state.FixedY >= 0:
+            case WM_WINDOWPOSCHANGING when lParam != IntPtr.Zero && _state.HasFixedBounds:
                 var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-                
+
                 if ((pos.flags & SWP_NOMOVE) == 0)
                 {
                     pos.y = _state.FixedY;
                     pos.x = _state.FixedX;
                 }
-                
+
                 if ((pos.flags & SWP_NOSIZE) == 0 && _state.WindowWidth > 0 && _state.WindowHeight > 0)
                 {
                     pos.cx = _state.WindowWidth;
                     pos.cy = _state.WindowHeight;
                 }
-                
-                pos.hwndInsertAfter = PreferredZOrder;
+
+                if ((pos.flags & SWP_NOZORDER) == 0)
+                    pos.hwndInsertAfter = PreferredZOrder;
                 Marshal.StructureToPtr(pos, lParam, false);
                 break;
             case WM_ACTIVATE when _isVisible():

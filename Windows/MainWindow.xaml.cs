@@ -2007,26 +2007,52 @@ public partial class MainWindow : Window
         NotchContent.Clip = geometry;
         HoverGlow.Clip = geometry;
 
-        // Keep the glass backdrop clipped to its own size (see UpdateGlassClip).
+        // Keep the complete glass material stack clipped to its current silhouette.
         UpdateGlassClip();
     }
 
+    private double _lastGlassClipWidth = double.NaN;
+    private double _lastGlassClipHeight = double.NaN;
+    private double _lastGlassClipTopRadius = double.NaN;
+    private double _lastGlassClipBottomRadius = double.NaN;
+
     /// <summary>
-    /// Clips the glass backdrop host to its OWN rounded bounds. The glass layer is
-    /// a separate element from <see cref="NotchContent"/>, and during a view swap
-    /// the content grid can briefly report a transient size on a different layout
-    /// pass â€” clipping the glass to that stale shape flashes black. Tracking the
-    /// host's own ActualWidth/Height keeps the clip locked to what's actually drawn.
+    /// Clips the complete glass material stack after all child effects have run.
+    /// Keeping the clip on an effect-free ancestor prevents the backdrop and
+    /// Fresnel blurs from spreading Touch Light beyond the rounded silhouette.
     /// </summary>
     private void UpdateGlassClip()
     {
-        // GlassBackdropHost clip removed: anti-aliased transparency is now
-        // handled natively by the shader (LiquidGlassRefraction.hlsl),
-        // preventing the WPF composition engine from creating a huge software
-        // intermediate render target which destroyed performance on large views.
+        if (GlassMaterialClipHost == null) return;
+
+        double w = GlassMaterialClipHost.ActualWidth;
+        double h = GlassMaterialClipHost.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        double maxR = Math.Min(w, h) / 2.0;
+        double rTop = Math.Clamp(NotchBorder.CornerRadius.TopLeft, 0, maxR);
+        double rBottom = Math.Clamp(NotchBorder.CornerRadius.BottomRight, 0, maxR);
+
+        if (Math.Abs(w - _lastGlassClipWidth) < 0.01 &&
+            Math.Abs(h - _lastGlassClipHeight) < 0.01 &&
+            Math.Abs(rTop - _lastGlassClipTopRadius) < 0.01 &&
+            Math.Abs(rBottom - _lastGlassClipBottomRadius) < 0.01)
+        {
+            return;
+        }
+
+        var geometry = BuildRoundedNotchClipGeometry(w, h, rTop, rBottom);
+        if (geometry != null)
+        {
+            GlassMaterialClipHost.Clip = geometry;
+            _lastGlassClipWidth = w;
+            _lastGlassClipHeight = h;
+            _lastGlassClipTopRadius = rTop;
+            _lastGlassClipBottomRadius = rBottom;
+        }
     }
 
-    private void GlassBackdropHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void GlassMaterialClipHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateGlassClip();
     }
@@ -2039,6 +2065,21 @@ public partial class MainWindow : Window
         double maxR = Math.Min(w, h) / 2.0;
         double rBottom = Math.Max(0, Math.Min(NotchBorder.CornerRadius.BottomRight, maxR));
         double rTop = Math.Max(0, Math.Min(NotchBorder.CornerRadius.TopLeft, maxR));
+
+        return BuildRoundedNotchClipGeometry(w, h, rTop, rBottom);
+    }
+
+    internal static StreamGeometry? BuildRoundedNotchClipGeometry(
+        double w,
+        double h,
+        double rTop,
+        double rBottom)
+    {
+        if (w <= 0 || h <= 0) return null;
+
+        double maxR = Math.Min(w, h) / 2.0;
+        rTop = Math.Clamp(rTop, 0, maxR);
+        rBottom = Math.Clamp(rBottom, 0, maxR);
 
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())

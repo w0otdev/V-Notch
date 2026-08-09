@@ -26,6 +26,7 @@ public sealed class NotchShellState
     public int FixedY { get; set; }
     public int WindowWidth { get; set; }
     public int WindowHeight { get; set; }
+    public bool HasFixedBounds { get; set; }
 
     public bool IsEffectivelyNotchVisible =>
         IsNotchVisible && !IsHiddenByFullscreen && !IsHiddenByIdle;

@@ -101,9 +101,10 @@ float3 roundedRectField(
     float px = abs(p.x);
     float py = p.y;
     
-    // Clamp radii so they don't exceed half the width, and their sum doesn't exceed height
-    topRadius = clamp(topRadius, 0.0, halfSize.x);
-    bottomRadius = clamp(bottomRadius, 0.0, halfSize.x);
+    // Keep each arc inside both axes; this also guarantees their sum fits the height.
+    float maxRadius = min(halfSize.x, halfSize.y);
+    topRadius = clamp(topRadius, 0.0, maxRadius);
+    bottomRadius = clamp(bottomRadius, 0.0, maxRadius);
     
     float centerYTop = -halfSize.y + topRadius;
     float centerYBottom = halfSize.y - bottomRadius;
