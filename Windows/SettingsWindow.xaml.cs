@@ -512,12 +512,12 @@ public partial class SettingsWindow : Window
     {
         if (_isLoadingSettings) return;
         _settings.EnableDebugMode = EnableDebugModeCheck.IsChecked == true;
-        
+
         if (Application.Current.MainWindow is MainWindow main)
         {
             main.ToggleDebugMode(_settings.EnableDebugMode);
         }
-        
+
         PushLivePreview();
     }
 

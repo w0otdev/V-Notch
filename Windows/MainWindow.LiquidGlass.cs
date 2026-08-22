@@ -127,10 +127,10 @@ public partial class MainWindow
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
-            
+
             int targetFps = cfg.TargetFps;
             if (targetFps <= 0 || targetFps == 60) targetFps = VNotch.Services.AnimationConfig.TargetFps;
-            
+
             _liquidGlass.UpdateFps(Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps));
             GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
             GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
@@ -236,7 +236,7 @@ public partial class MainWindow
     private void DetachGpuRefraction()
     {
         _gpuRefractionConfigured = false;
-        
+
         _glassInteractionController?.Dispose();
         _glassInteractionController = null;
 
@@ -262,11 +262,11 @@ public partial class MainWindow
 
         fx.SrcW = lg.SurfaceWidth;
         fx.SrcH = lg.SurfaceHeight;
-        
+
         double dpiScale = GetGlassDpiScale();
         double exactW = (NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth) * dpiScale;
         double exactH = (NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight) * dpiScale;
-        
+
         fx.NotchW = exactW;
         fx.NotchH = exactH;
         fx.OffX = g.OffX;
@@ -533,7 +533,7 @@ public partial class MainWindow
             AnimationThumbnailBorder.Background = System.Windows.Media.Brushes.Transparent;
             AnimationThumbnailBorder.BorderBrush = System.Windows.Media.Brushes.Transparent;
             AnimationThumbnailBorder.BorderThickness = new Thickness(0);
-            AnimationThumbnailBorder.Effect = null;
+            AnimationThumbnailBorder.Effect = glass ? GetOrCreateGlassAnimThumbnailShadow() : null;
         }
 
         if (AnimationThumbnailRim != null)
@@ -746,30 +746,53 @@ public partial class MainWindow
     }
 
     private System.Windows.Media.Effects.DropShadowEffect? _glassContentShadow;
+    private System.Windows.Media.Effects.DropShadowEffect? _glassAnimThumbnailShadow;
+
+    private System.Windows.Media.Effects.DropShadowEffect GetOrCreateGlassContentShadow()
+    {
+        if (_glassContentShadow == null)
+        {
+            _glassContentShadow = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 8,
+                ShadowDepth = 1.2,
+                Direction = 270,
+                Opacity = 0.5,
+                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
+            };
+            _glassContentShadow.Freeze();
+        }
+        return _glassContentShadow;
+    }
+
+    private System.Windows.Media.Effects.DropShadowEffect GetOrCreateGlassAnimThumbnailShadow()
+    {
+        if (_glassAnimThumbnailShadow == null)
+        {
+            _glassAnimThumbnailShadow = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 4,
+                ShadowDepth = 0.8,
+                Direction = 270,
+                Opacity = 0.35,
+                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
+            };
+        }
+        return _glassAnimThumbnailShadow;
+    }
 
     private void ApplyGlassContentShadow(bool enable)
     {
-        if (NotchContent == null) return;
-
-        if (enable)
+        if (NotchContent != null)
         {
-            if (_glassContentShadow == null)
-            {
-                _glassContentShadow = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    Color = Colors.Black,
-                    BlurRadius = 4,
-                    ShadowDepth = 0,
-                    Opacity = 0.85,
-                    RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
-                };
-                _glassContentShadow.Freeze();
-            }
-            NotchContent.Effect = _glassContentShadow;
+            NotchContent.Effect = enable ? GetOrCreateGlassContentShadow() : null;
         }
-        else
+
+        if (AnimationThumbnailBorder != null)
         {
-            NotchContent.Effect = null;
+            AnimationThumbnailBorder.Effect = enable ? GetOrCreateGlassAnimThumbnailShadow() : null;
         }
     }
 

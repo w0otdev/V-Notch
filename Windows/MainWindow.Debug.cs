@@ -11,7 +11,7 @@ public partial class MainWindow
     private bool _isDebugModeEnabled = false;
     private int _frameCount = 0;
     private long _lastFpsUpdate = 0;
-    
+
     [StructLayout(LayoutKind.Sequential)]
     private struct DEVMODE
     {
@@ -53,39 +53,39 @@ public partial class MainWindow
 
     [DllImport("user32.dll")]
     private static extern bool EnumDisplaySettings(string? deviceName, int modeNum, ref DEVMODE devMode);
-    
+
     internal void ToggleDebugMode(bool enable)
     {
         if (_isDebugModeEnabled == enable) return;
-        
+
         _isDebugModeEnabled = enable;
-        
+
         if (DebugSection != null)
         {
             if (enable)
             {
                 DebugSection.Visibility = Visibility.Visible;
                 DebugSection.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
-                
+
                 CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
                 CompositionTarget.Rendering += CompositionTarget_Rendering_DebugFps;
                 _lastFpsUpdate = Stopwatch.GetTimestamp();
                 _frameCount = 0;
-                
+
                 UpdateRefreshRate();
             }
             else
             {
                 var anim = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(200));
-                anim.Completed += (s, e) => 
+                anim.Completed += (s, e) =>
                 {
                     if (!_isDebugModeEnabled) DebugSection.Visibility = Visibility.Collapsed;
                 };
                 DebugSection.BeginAnimation(OpacityProperty, anim);
-                
+
                 CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
             }
-            
+
             _collapsedWidth = GetCollapsedWidth();
             ApplySettings(true);
         }
@@ -118,7 +118,7 @@ public partial class MainWindow
         _frameCount++;
         long now = Stopwatch.GetTimestamp();
         double elapsedSeconds = (double)(now - _lastFpsUpdate) / Stopwatch.Frequency;
-        
+
         if (elapsedSeconds >= 1.0)
         {
             double fps = _frameCount / elapsedSeconds;
@@ -126,9 +126,9 @@ public partial class MainWindow
             {
                 DebugFpsText.Text = $"{Math.Round(fps)} FPS";
             }
-            
+
             UpdateRefreshRate();
-            
+
             _frameCount = 0;
             _lastFpsUpdate = now;
         }

@@ -587,7 +587,7 @@
                                 Background="Transparent"
                                 BorderBrush="Transparent"
                                 BorderThickness="0"
-                                ClipToBounds="True"
+                                ClipToBounds="False"
                                 Visibility="Collapsed"
                                 IsHitTestVisible="False"
                                 Margin="8,4,0,0"
@@ -1194,7 +1194,7 @@
                                 Grid.Column="0"
                                 Width="22" Height="22"
                                 CornerRadius="6"
-                                Background="#1A1A1A"
+                                Background="Transparent"
                                 BorderBrush="Transparent"
                                 BorderThickness="0"
                                 ClipToBounds="True"
@@ -1682,14 +1682,14 @@
 
                                     <Border x:Name="ThumbnailBorder"
                                             Grid.Column="0"
-                                             Width="102" Height="102"
-                                               VerticalAlignment="Center"
-                                              CornerRadius="14"
-                                              Background="#222222"
-                                              Margin="0,0,8,0"
-                                             Cursor="Hand"
-                                             MouseLeftButtonDown="ThumbnailBorder_MouseLeftButtonDown"
-                                             RenderTransformOrigin="0.5,0.5">
+                                            Width="102" Height="102"
+                                            VerticalAlignment="Center"
+                                            CornerRadius="14"
+                                            Background="Transparent"
+                                            Margin="0,0,8,0"
+                                            Cursor="Hand"
+                                            MouseLeftButtonDown="ThumbnailBorder_MouseLeftButtonDown"
+                                            RenderTransformOrigin="0.5,0.5">
                                         <Border.RenderTransform>
                                             <ScaleTransform x:Name="ThumbnailScale" ScaleX="1" ScaleY="1"/>
                                         </Border.RenderTransform>

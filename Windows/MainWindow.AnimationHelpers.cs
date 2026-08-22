@@ -657,12 +657,12 @@ public partial class MainWindow
         double width = _settings.EnableDynamicIslandMode
             ? _settings.DynamicIslandWidth
             : _settings.Width;
-            
+
         if (_isDebugModeEnabled)
         {
             width += 220; // Extra width for debug text
         }
-        
+
         return width;
     }
 

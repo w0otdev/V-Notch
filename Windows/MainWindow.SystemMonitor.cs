@@ -60,11 +60,11 @@ public partial class MainWindow
 
         SysMonNetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
         SysMonNetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
-        
+
         if (_isDebugModeEnabled)
         {
             if (DebugCpuText != null) DebugCpuText.Text = $"{Math.Round(stats.CpuPercent)}% CPU";
-            if (DebugRamText != null) DebugRamText.Text = stats.RamTotalBytes > 0 
+            if (DebugRamText != null) DebugRamText.Text = stats.RamTotalBytes > 0
                 ? $"{FormatGb(stats.RamUsedBytes)}GB RAM"
                 : "— RAM";
         }

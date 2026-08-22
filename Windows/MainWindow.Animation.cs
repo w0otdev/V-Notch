@@ -256,6 +256,8 @@ public partial class MainWindow
         return Math.Max(0, (collapsedHeight - compactThumbSize) / 2.0);
     }
 
+    private int _animationThumbnailHandoffGeneration;
+
     private void ResetAnimationThumbnailOverlay(bool clearSource = true)
     {
         _animationThumbnailHandoffGeneration++;
@@ -286,112 +288,53 @@ public partial class MainWindow
         AnimationThumbnailTranslate.X = 0;
         AnimationThumbnailTranslate.Y = 0;
 
+        if (AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
+        {
+            animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
+            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
+            animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
+            animShadow.BlurRadius = 4;
+            animShadow.Opacity = 0.35;
+            animShadow.ShadowDepth = 0.8;
+        }
+
         if (clearSource)
         {
             AnimationThumbnailImage.Source = null;
         }
     }
 
-    private int _animationThumbnailHandoffGeneration;
-
-    private void CrossfadeAnimationThumbnailToExpanded((double X, double Y)? liveTarget = null)
+    private void HandoffAnimationThumbnailToExpanded()
     {
-        if (ThumbnailBorder == null ||
-            AnimationThumbnailBorder.Visibility != Visibility.Visible ||
-            AnimationThumbnailBorder.Opacity <= 0)
+        if (ThumbnailBorder != null)
         {
-            if (ThumbnailBorder != null) ThumbnailBorder.Opacity = 1;
-            ResetAnimationThumbnailOverlay();
-            return;
+            if (CompactThumbnail.Source != null && ThumbnailImage != null)
+            {
+                ThumbnailImage.Source = CompactThumbnail.Source;
+                ThumbnailImage.Visibility = Visibility.Visible;
+            }
+            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            ThumbnailBorder.Opacity = 1;
         }
 
-        // Put the live thumbnail underneath the overlay first, then dissolve the
-        ThumbnailBorder.BeginAnimation(OpacityProperty, null);
-        ThumbnailBorder.Opacity = 1;
-
-        int generation = ++_animationThumbnailHandoffGeneration;
-        var handoff = MakeAnim(1, 0, _dur100, _easeQuadOut);
-
-        if (liveTarget.HasValue)
-        {
-            var (liveX, liveY) = liveTarget.Value;
-            double overlayX = AnimationThumbnailTranslate.X;
-            double overlayY = AnimationThumbnailTranslate.Y;
-
-            if (Math.Abs(overlayX - liveX) > 0.001)
-            {
-                AnimationThumbnailTranslate.BeginAnimation(
-                    TranslateTransform.XProperty,
-                    MakeAnim(overlayX, liveX, _dur100, _easeQuadOut));
-            }
-            if (Math.Abs(overlayY - liveY) > 0.001)
-            {
-                AnimationThumbnailTranslate.BeginAnimation(
-                    TranslateTransform.YProperty,
-                    MakeAnim(overlayY, liveY, _dur100, _easeQuadOut));
-            }
-        }
-
-        handoff.Completed += (_, _) =>
-        {
-            if (generation != _animationThumbnailHandoffGeneration) return;
-            ResetAnimationThumbnailOverlay();
-        };
-
-        // Attach the clock while the visible base value is still 1. Setting the
-        AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
+        ResetAnimationThumbnailOverlay(clearSource: false);
     }
 
-    private void CrossfadeAnimationThumbnailToCompact((double X, double Y)? liveTarget = null)
+    private void HandoffAnimationThumbnailToCompact()
     {
-        if (CompactThumbnailBorder == null ||
-            AnimationThumbnailBorder.Visibility != Visibility.Visible ||
-            AnimationThumbnailBorder.Opacity <= 0)
+        if (CompactThumbnailBorder != null)
         {
-            if (CompactThumbnailBorder != null)
+            if (ThumbnailImage.Source != null && CompactThumbnail != null)
             {
-                CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
-                CompactThumbnailBorder.Visibility = Visibility.Visible;
-                CompactThumbnailBorder.Opacity = 1;
+                CompactThumbnail.Source = ThumbnailImage.Source;
+                CompactThumbnail.Visibility = Visibility.Visible;
             }
-            ResetAnimationThumbnailOverlay();
-            return;
+            CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            CompactThumbnailBorder.Visibility = Visibility.Visible;
+            CompactThumbnailBorder.Opacity = 1;
         }
 
-        CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
-        CompactThumbnailBorder.Visibility = Visibility.Visible;
-        CompactThumbnailBorder.Opacity = 1;
-
-        int generation = ++_animationThumbnailHandoffGeneration;
-        var handoff = MakeAnim(1, 0, _dur100, _easeQuadOut);
-
-        if (liveTarget.HasValue)
-        {
-            var (liveX, liveY) = liveTarget.Value;
-            double overlayX = AnimationThumbnailTranslate.X;
-            double overlayY = AnimationThumbnailTranslate.Y;
-
-            if (Math.Abs(overlayX - liveX) > 0.001)
-            {
-                AnimationThumbnailTranslate.BeginAnimation(
-                    TranslateTransform.XProperty,
-                    MakeAnim(overlayX, liveX, _dur100, _easeQuadOut));
-            }
-            if (Math.Abs(overlayY - liveY) > 0.001)
-            {
-                AnimationThumbnailTranslate.BeginAnimation(
-                    TranslateTransform.YProperty,
-                    MakeAnim(overlayY, liveY, _dur100, _easeQuadOut));
-            }
-        }
-
-        handoff.Completed += (_, _) =>
-        {
-            if (generation != _animationThumbnailHandoffGeneration) return;
-            ResetAnimationThumbnailOverlay();
-        };
-
-        AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
+        ResetAnimationThumbnailOverlay(clearSource: false);
     }
 
     private (double X, double Y)? _cachedThumbnailExpandTarget;
@@ -642,6 +585,12 @@ public partial class MainWindow
             }
             else
             {
+                if (ThumbnailBorder != null)
+                {
+                    ThumbnailImage.Source = CompactThumbnail.Source;
+                    ThumbnailImage.Visibility = Visibility.Visible;
+                    ThumbnailImage.Opacity = 1;
+                }
                 AnimationThumbnailImage.Source = CompactThumbnail.Source;
                 AnimationThumbnailBorder.Visibility = Visibility.Visible;
                 AnimationThumbnailBorder.Opacity = 1;
@@ -711,6 +660,13 @@ public partial class MainWindow
 
                 AnimationThumbnailClip.BeginAnimation(RectangleGeometry.RectProperty, _cachedThumbRectExpand);
 
+                if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
+                {
+                    animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, MakeAnim(4, 12, thumbDur, _easeExpOut6));
+                    animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.35, 0.55, thumbDur, _easeExpOut6));
+                    animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, MakeAnim(0.8, 2.0, thumbDur, _easeExpOut6));
+                }
+
                 if (CompactThumbnailBorder != null)
                 {
                     CompactThumbnailBorder.Opacity = 0;
@@ -774,17 +730,15 @@ public partial class MainWindow
             MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
             MusicCompactContentBlur.Radius = 0;
 
-            (double X, double Y)? thumbnailHandoffTarget = null;
             if (_isMusicCompactMode)
             {
                 if (TryComputeThumbnailExpandTarget(out var updatedTarget))
                 {
                     _cachedThumbnailExpandTarget = updatedTarget;
-                    thumbnailHandoffTarget = updatedTarget;
                 }
             }
 
-            CrossfadeAnimationThumbnailToExpanded(thumbnailHandoffTarget);
+            HandoffAnimationThumbnailToExpanded();
             if (CompactThumbnailBorder != null && !_isClipboardPeekActive && !suppressCompactThumbnailMotion)
             {
                 CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
@@ -1104,6 +1058,9 @@ public partial class MainWindow
         {
             if (CompactThumbnailBorder != null)
             {
+                CompactThumbnail.Source = ThumbnailImage.Source;
+                CompactThumbnail.Visibility = Visibility.Visible;
+                CompactThumbnail.Opacity = 1;
                 CompactThumbnailBorder.Opacity = 0;
                 CompactThumbnailBorder.Visibility = Visibility.Hidden;
             }
@@ -1183,6 +1140,13 @@ public partial class MainWindow
                 AnimateThumbnailAnimationRadius(14, 6, thumbDur, _easeExpOut6, thumbDelay);
 
                 AnimationThumbnailClip.BeginAnimation(RectangleGeometry.RectProperty, _cachedThumbRectCollapse);
+
+                if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
+                {
+                    animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, MakeAnim(12, 4, thumbDur, thumbEase, thumbDelay));
+                    animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.55, 0.35, thumbDur, thumbEase, thumbDelay));
+                    animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, MakeAnim(2.0, 0.8, thumbDur, thumbEase, thumbDelay));
+                }
             }
         }
 
@@ -1256,10 +1220,7 @@ public partial class MainWindow
 
                 if (!_isClipboardPeekActive && !_isVolumeIndicatorActive && !suppressCompactThumbnailMotion)
                 {
-                    (double X, double Y)? compactTarget = TryComputeCompactThumbnailRestOffset(out var computedOffset)
-                        ? computedOffset
-                        : null;
-                    CrossfadeAnimationThumbnailToCompact(compactTarget);
+                    HandoffAnimationThumbnailToCompact();
                 }
                 else
                 {
