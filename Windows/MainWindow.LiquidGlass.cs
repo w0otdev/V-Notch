@@ -518,15 +518,28 @@ public partial class MainWindow
         if (CompactThumbnailBorder != null)
         {
             CompactThumbnailBorder.Background = glass ? _glassPanelBg : _defaultPanelBg;
-            CompactThumbnailBorder.BorderBrush = glass ? _glassPanelBorder : System.Windows.Media.Brushes.Transparent;
-            CompactThumbnailBorder.BorderThickness = glass ? new Thickness(0.5) : new Thickness(0);
+            CompactThumbnailBorder.BorderBrush = System.Windows.Media.Brushes.Transparent;
+            CompactThumbnailBorder.BorderThickness = new Thickness(0);
+        }
+
+        if (CompactThumbnailRim != null)
+        {
+            CompactThumbnailRim.BorderBrush = glass ? _glassPanelBorder : System.Windows.Media.Brushes.Transparent;
+            CompactThumbnailRim.BorderThickness = glass ? new Thickness(0.5) : new Thickness(0);
         }
 
         if (AnimationThumbnailBorder != null)
         {
-            AnimationThumbnailBorder.Background = glass ? _glassPanelBg : _defaultPanelBg;
-            AnimationThumbnailBorder.BorderBrush = glass ? _glassPanelBorder : _defaultAnimThumbnailBorder;
-            AnimationThumbnailBorder.BorderThickness = new Thickness(0.5);
+            AnimationThumbnailBorder.Background = System.Windows.Media.Brushes.Transparent;
+            AnimationThumbnailBorder.BorderBrush = System.Windows.Media.Brushes.Transparent;
+            AnimationThumbnailBorder.BorderThickness = new Thickness(0);
+            AnimationThumbnailBorder.Effect = null;
+        }
+
+        if (AnimationThumbnailRim != null)
+        {
+            AnimationThumbnailRim.BorderBrush = glass ? _glassPanelBorder : System.Windows.Media.Brushes.Transparent;
+            AnimationThumbnailRim.BorderThickness = glass ? new Thickness(0.5) : new Thickness(0);
         }
 
         if (glass)

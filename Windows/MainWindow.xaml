@@ -584,9 +584,9 @@
                                 VerticalAlignment="Top"
                                 Width="22" Height="22"
                                 CornerRadius="12"
-                                Background="#1A1A1A"
-                                BorderBrush="#333333"
-                                BorderThickness="0.5"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0"
                                 ClipToBounds="True"
                                 Visibility="Collapsed"
                                 IsHitTestVisible="False"
@@ -595,11 +595,20 @@
                             <Border.RenderTransform>
                                 <TranslateTransform x:Name="AnimationThumbnailTranslate" X="0" Y="0"/>
                             </Border.RenderTransform>
-                            <Image x:Name="AnimationThumbnailImage" Stretch="UniformToFill">
-                                <Image.Clip>
+                            <Grid ClipToBounds="True">
+                                <Grid.Clip>
                                     <RectangleGeometry x:Name="AnimationThumbnailClip" RadiusX="12" RadiusY="12" Rect="0,0,22,22"/>
-                                </Image.Clip>
-                            </Image>
+                                </Grid.Clip>
+                                <Image x:Name="AnimationThumbnailImage"
+                                       Stretch="UniformToFill"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                                <Border x:Name="AnimationThumbnailRim"
+                                        BorderThickness="0"
+                                        BorderBrush="Transparent"
+                                        CornerRadius="12"
+                                        IsHitTestVisible="False"/>
+                            </Grid>
                         </Border>
 
                         <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled">
@@ -1237,6 +1246,11 @@
                                         <BlurEffect x:Name="CompactThumbnailNextBlur" Radius="0" RenderingBias="Performance"/>
                                     </Image.Effect>
                                 </Image>
+                                <Border x:Name="CompactThumbnailRim"
+                                        BorderThickness="0"
+                                        BorderBrush="Transparent"
+                                        CornerRadius="6"
+                                        IsHitTestVisible="False"/>
                             </Grid>
                         </Border>
 

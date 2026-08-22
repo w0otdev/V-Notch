@@ -275,6 +275,11 @@ public partial class MainWindow
         AnimationThumbnailBorder.Height = 22;
         AnimationThumbnailBorder.BorderThickness = new Thickness(0);
         AnimationThumbnailBorder.CornerRadius = new CornerRadius(6);
+        if (AnimationThumbnailRim != null)
+        {
+            AnimationThumbnailRim.CornerRadius = new CornerRadius(6);
+            AnimationThumbnailRim.BorderThickness = IsLiquidGlassEnabled ? new Thickness(0.5) : new Thickness(0);
+        }
         AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
         AnimationThumbnailClip.RadiusX = 6;
         AnimationThumbnailClip.RadiusY = 6;
@@ -334,6 +339,58 @@ public partial class MainWindow
         };
 
         // Attach the clock while the visible base value is still 1. Setting the
+        AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
+    }
+
+    private void CrossfadeAnimationThumbnailToCompact((double X, double Y)? liveTarget = null)
+    {
+        if (CompactThumbnailBorder == null ||
+            AnimationThumbnailBorder.Visibility != Visibility.Visible ||
+            AnimationThumbnailBorder.Opacity <= 0)
+        {
+            if (CompactThumbnailBorder != null)
+            {
+                CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+                CompactThumbnailBorder.Visibility = Visibility.Visible;
+                CompactThumbnailBorder.Opacity = 1;
+            }
+            ResetAnimationThumbnailOverlay();
+            return;
+        }
+
+        CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        CompactThumbnailBorder.Visibility = Visibility.Visible;
+        CompactThumbnailBorder.Opacity = 1;
+
+        int generation = ++_animationThumbnailHandoffGeneration;
+        var handoff = MakeAnim(1, 0, _dur100, _easeQuadOut);
+
+        if (liveTarget.HasValue)
+        {
+            var (liveX, liveY) = liveTarget.Value;
+            double overlayX = AnimationThumbnailTranslate.X;
+            double overlayY = AnimationThumbnailTranslate.Y;
+
+            if (Math.Abs(overlayX - liveX) > 0.001)
+            {
+                AnimationThumbnailTranslate.BeginAnimation(
+                    TranslateTransform.XProperty,
+                    MakeAnim(overlayX, liveX, _dur100, _easeQuadOut));
+            }
+            if (Math.Abs(overlayY - liveY) > 0.001)
+            {
+                AnimationThumbnailTranslate.BeginAnimation(
+                    TranslateTransform.YProperty,
+                    MakeAnim(overlayY, liveY, _dur100, _easeQuadOut));
+            }
+        }
+
+        handoff.Completed += (_, _) =>
+        {
+            if (generation != _animationThumbnailHandoffGeneration) return;
+            ResetAnimationThumbnailOverlay();
+        };
+
         AnimationThumbnailBorder.BeginAnimation(OpacityProperty, handoff);
     }
 
@@ -636,28 +693,18 @@ public partial class MainWindow
 
                 var thumbTranslateXAnim = MakeAnim(compactRestX, targetX, thumbDur, thumbEase, null);
                 var thumbTranslateYAnim = MakeAnim(compactRestY, targetY, thumbDur, thumbEase, null);
-                var thumbBorderThicknessAnim = new ThicknessAnimation(
-                    compactBorderThickness,
-                    expandedBorderThickness,
-                    thumbDur)
-                {
-                    // BorderThickness cannot accept the negative overshoot of
-                    EasingFunction = _easeExpOut6
-                };
                 Timeline.SetDesiredFrameRate(thumbTranslateXAnim, thumbFps);
                 Timeline.SetDesiredFrameRate(thumbTranslateYAnim, thumbFps);
-                Timeline.SetDesiredFrameRate(thumbBorderThicknessAnim, thumbFps);
 
                 // Commit the exact live-thumbnail geometry below the explicit
                 AnimationThumbnailBorder.Width = expandedThumbWidth;
                 AnimationThumbnailBorder.Height = expandedThumbHeight;
-                AnimationThumbnailBorder.BorderThickness = expandedBorderThickness;
+                AnimationThumbnailBorder.BorderThickness = new Thickness(0);
                 AnimationThumbnailTranslate.X = targetX;
                 AnimationThumbnailTranslate.Y = targetY;
                 AnimationThumbnailClip.Rect = new Rect(0, 0, expandedThumbWidth, expandedThumbHeight);
                 AnimationThumbnailBorder.BeginAnimation(WidthProperty, _cachedThumbWidthExpand);
                 AnimationThumbnailBorder.BeginAnimation(HeightProperty, _cachedThumbHeightExpand);
-                AnimationThumbnailBorder.BeginAnimation(Border.BorderThicknessProperty, thumbBorderThicknessAnim);
                 AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, thumbTranslateXAnim);
                 AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.YProperty, thumbTranslateYAnim);
                 AnimateThumbnailAnimationRadius(6, 14, thumbDur, _easeExpOut6);
@@ -1076,14 +1123,19 @@ public partial class MainWindow
                 double expandedThumbWidth = expandedThumbSize.Width;
                 double expandedThumbHeight = expandedThumbSize.Height;
 
+                Thickness compactBorderThickness = CompactThumbnailBorder?.BorderThickness ?? (IsLiquidGlassEnabled ? new Thickness(0.5) : new Thickness(0));
+                Thickness expandedBorderThickness = ThumbnailBorder?.BorderThickness ?? new Thickness(0);
+
                 AnimationThumbnailImage.Source = ThumbnailImage.Source;
                 AnimationThumbnailBorder.Visibility = Visibility.Visible;
                 AnimationThumbnailBorder.Opacity = 1;
                 AnimationThumbnailBorder.CornerRadius = new CornerRadius(14);
+                if (AnimationThumbnailRim != null) AnimationThumbnailRim.CornerRadius = new CornerRadius(14);
                 AnimationThumbnailClip.RadiusX = 14;
                 AnimationThumbnailClip.RadiusY = 14;
                 AnimationThumbnailBorder.Width = expandedThumbWidth;
                 AnimationThumbnailBorder.Height = expandedThumbHeight;
+                AnimationThumbnailBorder.BorderThickness = new Thickness(0);
                 AnimationThumbnailClip.Rect = new Rect(0, 0, expandedThumbWidth, expandedThumbHeight);
                 AnimationThumbnailTranslate.X = startX;
                 AnimationThumbnailTranslate.Y = startY;
@@ -1197,12 +1249,26 @@ public partial class MainWindow
                 contentToShow.BeginAnimation(OpacityProperty, null);
                 contentToShow.RenderTransform = null;
 
-                ResetAnimationThumbnailOverlay();
-
                 ResetCompactThumbnailRestingState();
                 CompactHoverInfo.BeginAnimation(OpacityProperty, null);
                 CompactHoverInfo.Opacity = 0;
                 CompactHoverInfo.Visibility = Visibility.Collapsed;
+
+                if (!_isClipboardPeekActive && !_isVolumeIndicatorActive && !suppressCompactThumbnailMotion)
+                {
+                    (double X, double Y)? compactTarget = TryComputeCompactThumbnailRestOffset(out var computedOffset)
+                        ? computedOffset
+                        : null;
+                    CrossfadeAnimationThumbnailToCompact(compactTarget);
+                }
+                else
+                {
+                    ResetAnimationThumbnailOverlay();
+                }
+            }
+            else
+            {
+                ResetAnimationThumbnailOverlay();
             }
 
             if (CompactThumbnailBorder != null && !_isClipboardPeekActive && !_isVolumeIndicatorActive && !suppressCompactThumbnailMotion)

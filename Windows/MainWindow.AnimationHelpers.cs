@@ -695,6 +695,11 @@ public partial class MainWindow
             window.AnimationThumbnailBorder.CornerRadius = cornerRadius;
         }
 
+        if (window.AnimationThumbnailRim != null)
+        {
+            window.AnimationThumbnailRim.CornerRadius = cornerRadius;
+        }
+
         if (window.AnimationThumbnailClip != null)
         {
             window.AnimationThumbnailClip.RadiusX = radius;
@@ -707,7 +712,12 @@ public partial class MainWindow
         if (d is not MainWindow window) return;
 
         double radius = (double)e.NewValue;
-        window.CompactThumbnailBorder.CornerRadius = new CornerRadius(radius);
+        var cornerRadius = new CornerRadius(radius);
+        window.CompactThumbnailBorder.CornerRadius = cornerRadius;
+        if (window.CompactThumbnailRim != null)
+        {
+            window.CompactThumbnailRim.CornerRadius = cornerRadius;
+        }
         if (window.CompactThumbnailClip != null)
         {
             window.CompactThumbnailClip.RadiusX = radius;
