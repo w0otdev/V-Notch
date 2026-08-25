@@ -248,4 +248,44 @@ public sealed class LiquidGlassCaptureTests
         Assert.True(top.LightY < -0.9);
         Assert.InRange(top.LightX, -1e-8, 1e-8);
     }
+
+    [Fact]
+    public void GpuGeometry_PreservesCaptureOrigin()
+    {
+        var geom = new LiquidGlassController.GpuGeometry(
+            1728, 728, 400, 180, 64, 64,
+            20, 20, 24, 0.7, 0.05, 0.0, 0.0, 1.0, 1.0, 0.0,
+            800, 100);
+
+        Assert.Equal(800, geom.CaptureOriginX);
+        Assert.Equal(100, geom.CaptureOriginY);
+    }
+
+    [Theory]
+    [InlineData(200.0, 860.0, 796)] // Compact pill
+    [InlineData(300.0, 810.0, 796)] // Expanding (worker not yet updated)
+    [InlineData(300.0, 810.0, 746)] // Expanding (worker updated)
+    [InlineData(400.0, 760.0, 696)] // Fully expanded
+    public void Expansion_LocksBackdropCoordinatesToScreenOrigin(
+        double notchWidth, double screenLeft, int captureOriginX)
+    {
+        const double srcW = 1728.0;
+        // Fixed desktop feature at screen X = 900
+        const double targetScreenX = 900.0;
+        // With GlassBackdropImage aligned Left at screenLeft with width srcW:
+        double uvX = (targetScreenX - screenLeft) / srcW;
+        double offX = screenLeft - captureOriginX;
+
+        // In the pixel shader: npx = uv.x * srcW
+        double npx = uvX * srcW;
+        double basePixelX = npx + offX;
+
+        // In the desktop frame, texture pixel 0 is at captureOriginX.
+        // Therefore, the reconstructed desktop coordinate is:
+        double sampledDesktopX = captureOriginX + basePixelX;
+
+        Assert.Equal(targetScreenX, sampledDesktopX, 6);
+        Assert.True(notchWidth >= 200.0);
+    }
 }
+

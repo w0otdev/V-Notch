@@ -393,6 +393,8 @@
                                 CornerRadius="0,0,20,20">
 
                             <Image x:Name="GlassBackdropImage"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Top"
                                    Stretch="Fill"
                                    Margin="0"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>

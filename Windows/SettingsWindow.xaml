@@ -574,6 +574,8 @@
                     Visibility="Collapsed"
                     CornerRadius="24">
                 <Image x:Name="GlassBackdropImage"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Top"
                        Stretch="Fill"
                        Margin="0"
                        RenderOptions.BitmapScalingMode="HighQuality"/>

@@ -3801,8 +3801,14 @@ public partial class SettingsWindow : Window
                 cfg.TargetFps,
                 AnimationConfig.MinFps,
                 LiquidGlassController.MaxTargetFps));
-            GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
-            GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
+            bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
+            if (useGpu)
+            {
+                GlassBackdropImage.HorizontalAlignment = HorizontalAlignment.Left;
+                GlassBackdropImage.VerticalAlignment = VerticalAlignment.Top;
+                GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
+                GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
+            }
         }
 
         // GPU mode blurs on the host element instead of the CPU box blur.
@@ -3838,8 +3844,11 @@ public partial class SettingsWindow : Window
         if (Math.Abs(dpiScale - _lastAppliedDpiScale) > 0.01)
         {
             _lastAppliedDpiScale = dpiScale;
-            if (_liquidGlass != null && GlassBackdropHost.Visibility == Visibility.Visible)
+            bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
+            if (_liquidGlass != null && GlassBackdropHost.Visibility == Visibility.Visible && useGpu)
             {
+                GlassBackdropImage.HorizontalAlignment = HorizontalAlignment.Left;
+                GlassBackdropImage.VerticalAlignment = VerticalAlignment.Top;
                 GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
                 GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
             }

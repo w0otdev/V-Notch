@@ -173,10 +173,14 @@ public sealed class LiquidGlassController
         }
     }
 
+    public volatile int LastUploadedCaptureOriginX = int.MinValue;
+    public volatile int LastUploadedCaptureOriginY = int.MinValue;
+
     public readonly record struct GpuGeometry(
         double SrcW, double SrcH, double NotchW, double NotchH, double OffX, double OffY,
         double TopCornerR, double BottomCornerR, double ZR, double Refraction, double Chroma,
-        double Distort, double BevelMode, double EdgeBend, double SatFactor, double BrightAdd);
+        double Distort, double BevelMode, double EdgeBend, double SatFactor, double BrightAdd,
+        int CaptureOriginX = 0, int CaptureOriginY = 0);
     private Action<GpuGeometry>? _onGpuGeometry;
     private Action<Exception>? _onGpuFailure;
     private GpuGeometry _lastPresentedGpuGeometry;
@@ -264,10 +268,11 @@ public sealed class LiquidGlassController
         }
 
         _host.Stretch = Stretch.Fill;
-        _host.HorizontalAlignment = HorizontalAlignment.Stretch;
-        _host.VerticalAlignment = VerticalAlignment.Stretch;
-        _host.Width = double.NaN;
-        _host.Height = double.NaN;
+        _host.HorizontalAlignment = HorizontalAlignment.Left;
+        _host.VerticalAlignment = VerticalAlignment.Top;
+        double dpi = _bitmapDpi > 0 ? _bitmapDpi / 96.0 : 1.0;
+        _host.Width = SurfaceWidth / dpi;
+        _host.Height = SurfaceHeight / dpi;
         _host.RenderTransform = null;
         RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.HighQuality);
         // Do not expose the D3DImage until its first captured frame has been
@@ -1117,7 +1122,8 @@ public sealed class LiquidGlassController
                     Math.Clamp(p.Distortion, 0.0, 2.0),
                     p.BevelMode >= 1 ? 1.0 : 0.0,
                     double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0,
-                    1.0 + p.Saturation, p.Brightness);
+                    1.0 + p.Saturation, p.Brightness,
+                    srcX, srcY);
 
                 ulong sourceHash = ComputeSourceHash(srcW, srcH);
                 long nowTicks = Environment.TickCount64;
@@ -1354,6 +1360,8 @@ public sealed class LiquidGlassController
             OnD3DPresenterFailed(new InvalidOperationException("GPU frame upload failed."));
             return false;
         }
+        LastUploadedCaptureOriginX = geom.CaptureOriginX;
+        LastUploadedCaptureOriginY = geom.CaptureOriginY;
         return true;
     }
 

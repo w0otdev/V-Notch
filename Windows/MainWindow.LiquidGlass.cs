@@ -132,8 +132,13 @@ public partial class MainWindow
             if (targetFps <= 0 || targetFps == 60) targetFps = VNotch.Services.AnimationConfig.TargetFps;
 
             _liquidGlass.UpdateFps(Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps));
-            GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
-            GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
+            if (UseGpuRefraction)
+            {
+                GlassBackdropImage.HorizontalAlignment = HorizontalAlignment.Left;
+                GlassBackdropImage.VerticalAlignment = VerticalAlignment.Top;
+                GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
+                GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
+            }
         }
 
         // GPU mode blurs on the host element instead of the CPU box blur.
@@ -252,35 +257,69 @@ public partial class MainWindow
         _glassHostBlur = null;
     }
 
+    private LiquidGlassController.GpuGeometry? _lastGpuGeometry;
+
     /// <summary>Pushes the per-frame shader geometry from the controller into the
     /// effect. Invoked on the UI thread by the controller's present.</summary>
     private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
     {
+        _lastGpuGeometry = g;
+        UpdateShaderGeometryPerFrame();
+    }
+
+    private void UpdateShaderGeometryPerFrame()
+    {
         var fx = _glassRefractionEffect;
         var lg = _liquidGlass;
-        if (fx == null || lg == null) return;
-
-        fx.SrcW = lg.SurfaceWidth;
-        fx.SrcH = lg.SurfaceHeight;
+        if (fx == null || lg == null || GlassBackdropHost == null) return;
 
         double dpiScale = GetGlassDpiScale();
         double exactW = (NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth) * dpiScale;
         double exactH = (NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight) * dpiScale;
 
+        double offX, offY;
+        try
+        {
+            var tl = GlassBackdropHost.PointToScreen(new Point(0, 0));
+            int captureOriginX = lg.LastUploadedCaptureOriginX;
+            int captureOriginY = lg.LastUploadedCaptureOriginY;
+            if (captureOriginX != int.MinValue && captureOriginY != int.MinValue)
+            {
+                offX = tl.X - captureOriginX;
+                offY = tl.Y - captureOriginY;
+            }
+            else
+            {
+                offX = _lastGpuGeometry?.OffX ?? 0;
+                offY = _lastGpuGeometry?.OffY ?? 0;
+            }
+        }
+        catch
+        {
+            offX = _lastGpuGeometry?.OffX ?? 0;
+            offY = _lastGpuGeometry?.OffY ?? 0;
+        }
+
+        fx.SrcW = lg.SurfaceWidth;
+        fx.SrcH = lg.SurfaceHeight;
         fx.NotchW = exactW;
         fx.NotchH = exactH;
-        fx.OffX = g.OffX;
-        fx.OffY = g.OffY;
-        fx.TopCornerR = g.TopCornerR;
-        fx.BottomCornerR = g.BottomCornerR;
-        fx.ZR = g.ZR;
-        fx.Refraction = g.Refraction;
-        fx.EdgeBend = g.EdgeBend;
-        fx.Chroma = g.Chroma;
-        fx.Distort = g.Distort;
-        fx.BevelMode = g.BevelMode;
-        fx.SatFactor = g.SatFactor;
-        fx.BrightAdd = g.BrightAdd;
+        fx.OffX = offX;
+        fx.OffY = offY;
+        fx.TopCornerR = NotchBorder.CornerRadius.TopLeft * dpiScale;
+        fx.BottomCornerR = NotchBorder.CornerRadius.BottomLeft * dpiScale;
+
+        if (_lastGpuGeometry is { } g)
+        {
+            fx.ZR = g.ZR;
+            fx.Refraction = g.Refraction;
+            fx.EdgeBend = g.EdgeBend;
+            fx.Chroma = g.Chroma;
+            fx.Distort = g.Distort;
+            fx.BevelMode = g.BevelMode;
+            fx.SatFactor = g.SatFactor;
+            fx.BrightAdd = g.BrightAdd;
+        }
     }
 
     /// <summary>Applies the legacy GPU-mode host blur. CPU Liquid Glass blurs the
@@ -743,6 +782,7 @@ public partial class MainWindow
     {
         if (_liquidGlass == null) { SetGlassRegionPush(false); return; }
         _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
+        UpdateShaderGeometryPerFrame();
     }
 
     private System.Windows.Media.Effects.DropShadowEffect? _glassContentShadow;
@@ -918,8 +958,10 @@ public partial class MainWindow
         if (Math.Abs(dpiScale - _lastAppliedDpiScale) > 0.01)
         {
             _lastAppliedDpiScale = dpiScale;
-            if (_liquidGlass != null && IsLiquidGlassEnabled)
+            if (_liquidGlass != null && IsLiquidGlassEnabled && UseGpuRefraction)
             {
+                GlassBackdropImage.HorizontalAlignment = HorizontalAlignment.Left;
+                GlassBackdropImage.VerticalAlignment = VerticalAlignment.Top;
                 GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
                 GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
             }
@@ -1018,6 +1060,7 @@ public partial class MainWindow
 
         UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
         UpdateDynamicGlassTint(_liquidGlass.AverageBackgroundBrightness);
+        UpdateShaderGeometryPerFrame();
     }
 
     private void UpdateDynamicGlassParams()
