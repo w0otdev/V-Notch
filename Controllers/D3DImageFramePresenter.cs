@@ -92,12 +92,15 @@ internal sealed class D3DImageFramePresenter : IDisposable
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;
     }
 
+    private object? _uploadTag;
+    private object? _presentedTag;
+
     public ImageSource ImageSource => _image;
 
-    public event Action? FramePresented;
+    public event Action<object?>? FramePresented;
     public event Action<Exception>? Failed;
 
-    public bool UploadFrame(IntPtr source, int width, int height, int sourceStride)
+    public bool UploadFrame(IntPtr source, int width, int height, int sourceStride, object? tag = null)
     {
         if (_disposed || _failed || source == IntPtr.Zero || width <= 0 || height <= 0)
             return false;
@@ -130,6 +133,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
                 _frameWidth = width;
                 _frameHeight = height;
+                _uploadTag = tag;
 
                 // Intermediate frames may be overwritten while the UI is busy.
                 // The presenter consumes the newest complete capture, preventing a
@@ -289,6 +293,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
                     _lastDirtyWidth = frameWidth;
                     _lastDirtyHeight = frameHeight;
                     _pendingFrame = false;
+                    _presentedTag = _uploadTag;
                     presented = true;
                 }
                 finally
@@ -302,7 +307,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 retiredSurface.Dispose();
 
             if (presented)
-                FramePresented?.Invoke();
+                FramePresented?.Invoke(_presentedTag);
         }
         catch (Exception ex)
         {

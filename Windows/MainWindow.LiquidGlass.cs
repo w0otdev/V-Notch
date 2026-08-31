@@ -169,6 +169,17 @@ public partial class MainWindow
 
         _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
         {
+            PowerFactor = cfg.PowerFactor,
+            RefractionA = cfg.RefractionA,
+            RefractionB = cfg.RefractionB,
+            RefractionC = cfg.RefractionC,
+            RefractionD = cfg.RefractionD,
+            FPower = cfg.FPower,
+            Noise = cfg.Noise,
+            GlowWeight = cfg.GlowWeight,
+            GlowBias = cfg.GlowBias,
+            GlowEdge0 = cfg.GlowEdge0,
+            GlowEdge1 = cfg.GlowEdge1,
             Refraction = cfg.Refraction,
             EdgeBend = cfg.EdgeBend,
             ChromaticAberration = cfg.ChromaticAberration,
@@ -267,6 +278,32 @@ public partial class MainWindow
         UpdateShaderGeometryPerFrame();
     }
 
+    private (double Width, double Height) GetCurrentInstantaneousNotchSize()
+    {
+        double w = double.NaN;
+        double h = double.NaN;
+
+        if (NotchBorder != null)
+        {
+            object valW = NotchBorder.GetValue(FrameworkElement.WidthProperty);
+            if (valW is double dW && !double.IsNaN(dW) && dW > 0)
+                w = dW;
+            else if (NotchBorder.ActualWidth > 0)
+                w = NotchBorder.ActualWidth;
+
+            object valH = NotchBorder.GetValue(FrameworkElement.HeightProperty);
+            if (valH is double dH && !double.IsNaN(dH) && dH > 0)
+                h = dH;
+            else if (NotchBorder.ActualHeight > 0)
+                h = NotchBorder.ActualHeight;
+        }
+
+        if (double.IsNaN(w) || w <= 0) w = _collapsedWidth;
+        if (double.IsNaN(h) || h <= 0) h = _collapsedHeight;
+
+        return (w, h);
+    }
+
     private void UpdateShaderGeometryPerFrame()
     {
         var fx = _glassRefractionEffect;
@@ -274,27 +311,27 @@ public partial class MainWindow
         if (fx == null || lg == null || GlassBackdropHost == null) return;
 
         double dpiScale = GetGlassDpiScale();
-        double exactW = (NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth) * dpiScale;
-        double exactH = (NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight) * dpiScale;
+        var (notchW, notchH) = GetCurrentInstantaneousNotchSize();
+        double exactW = notchW * dpiScale;
+        double exactH = notchH * dpiScale;
 
+        double screenLeft = _fixedX + (_windowWidth - exactW) / 2.0;
+        double screenTop = _fixedY + (NotchContainerTranslate?.Y ?? 0) * dpiScale;
+
+        int captureOriginX = lg.LastPresentedCaptureOriginX;
+        int captureOriginY = lg.LastPresentedCaptureOriginY;
         double offX, offY;
-        try
+        if (captureOriginX != int.MinValue && captureOriginY != int.MinValue)
         {
-            var tl = GlassBackdropHost.PointToScreen(new Point(0, 0));
-            int captureOriginX = lg.LastUploadedCaptureOriginX;
-            int captureOriginY = lg.LastUploadedCaptureOriginY;
-            if (captureOriginX != int.MinValue && captureOriginY != int.MinValue)
-            {
-                offX = tl.X - captureOriginX;
-                offY = tl.Y - captureOriginY;
-            }
-            else
-            {
-                offX = _lastGpuGeometry?.OffX ?? 0;
-                offY = _lastGpuGeometry?.OffY ?? 0;
-            }
+            offX = screenLeft - captureOriginX;
+            offY = screenTop - captureOriginY;
         }
-        catch
+        else if (_lastGpuGeometry is { } lastGeom && lastGeom.CaptureOriginX != 0)
+        {
+            offX = screenLeft - lastGeom.CaptureOriginX;
+            offY = screenTop - lastGeom.CaptureOriginY;
+        }
+        else
         {
             offX = _lastGpuGeometry?.OffX ?? 0;
             offY = _lastGpuGeometry?.OffY ?? 0;
@@ -309,13 +346,40 @@ public partial class MainWindow
         fx.TopCornerR = NotchBorder.CornerRadius.TopLeft * dpiScale;
         fx.BottomCornerR = NotchBorder.CornerRadius.BottomLeft * dpiScale;
 
+        var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
+        fx.PowerFactor = cfg.PowerFactor;
+        fx.A = cfg.RefractionA;
+        fx.B = cfg.RefractionB;
+        fx.C = cfg.RefractionC;
+        fx.D = cfg.RefractionD;
+        fx.FPower = cfg.FPower;
+        fx.Noise = cfg.Noise;
+        fx.GlowWeight = cfg.GlowWeight;
+        fx.GlowBias = cfg.GlowBias;
+        fx.GlowEdge0 = cfg.GlowEdge0;
+        fx.GlowEdge1 = cfg.GlowEdge1;
+        fx.Chroma = cfg.ChromaticAberration;
+        fx.SatFactor = 1.0 + cfg.Saturation;
+        fx.BrightAdd = cfg.Brightness;
+        fx.EdgeBend = cfg.EdgeBend;
+        fx.BevelMode = cfg.BevelMode;
+        fx.HighlightStrength = cfg.TouchLight;
+
         if (_lastGpuGeometry is { } g)
         {
-            fx.ZR = g.ZR;
-            fx.Refraction = g.Refraction;
-            fx.EdgeBend = g.EdgeBend;
+            fx.PowerFactor = g.PowerFactor;
+            fx.A = g.A;
+            fx.B = g.B;
+            fx.C = g.C;
+            fx.D = g.D;
+            fx.FPower = g.FPower;
+            fx.Noise = g.Noise;
+            fx.GlowWeight = g.GlowWeight;
+            fx.GlowBias = g.GlowBias;
+            fx.GlowEdge0 = g.GlowEdge0;
+            fx.GlowEdge1 = g.GlowEdge1;
             fx.Chroma = g.Chroma;
-            fx.Distort = g.Distort;
+            fx.EdgeBend = g.EdgeBend;
             fx.BevelMode = g.BevelMode;
             fx.SatFactor = g.SatFactor;
             fx.BrightAdd = g.BrightAdd;
@@ -365,6 +429,19 @@ public partial class MainWindow
 
     private void ApplyOpticalRimLevels(double edgeHighlight, double specular, double fresnel, double chroma)
     {
+        if (UseGpuRefraction)
+        {
+            GlassDepthRimBorder.Opacity = 0;
+            GlassCoolRimBorder.Opacity = 0;
+            GlassWarmRimBorder.Opacity = 0;
+            GlassFresnelBloomBorder.Opacity = 0;
+            GlassFresnelBorder.Opacity = 0;
+            GlassInnerFresnelBorder.Opacity = 0;
+            GlassSpecularBorder.Opacity = 0;
+            GlassRimBorder.Opacity = Math.Clamp(edgeHighlight * 0.50, 0.0, 0.65);
+            return;
+        }
+
         EnsureDynamicFresnelBrush();
 
         double edge = Math.Clamp(edgeHighlight, 0, 1);
@@ -950,10 +1027,6 @@ public partial class MainWindow
     {
         if (_hwnd == IntPtr.Zero || !IsEffectivelyNotchVisible) return null;
 
-        double notchW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth;
-        double notchH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight;
-        if (notchW <= 0 || notchH <= 0) return null;
-
         double dpiScale = GetGlassDpiScale();
         if (Math.Abs(dpiScale - _lastAppliedDpiScale) > 0.01)
         {
@@ -967,36 +1040,22 @@ public partial class MainWindow
             }
         }
 
-        int physW = (int)Math.Round(notchW * dpiScale);
-        int physH = (int)Math.Round(notchH * dpiScale);
+        var (notchW, notchH) = GetCurrentInstantaneousNotchSize();
+        if (notchW <= 0 || notchH <= 0) return null;
 
-        int physLeft;
-        int physTop;
-        double subX = 0, subY = 0;
-        try
-        {
-            // Anchor the capture rectangle to the notch's ACTUAL on-screen position
-            var tl = GlassBackdropHost.PointToScreen(new Point(0, 0));
-            var br = GlassBackdropHost.PointToScreen(new Point(GlassBackdropHost.ActualWidth, GlassBackdropHost.ActualHeight));
+        double exactW = notchW * dpiScale;
+        double exactH = notchH * dpiScale;
+        int physW = Math.Max(1, (int)Math.Round(exactW));
+        int physH = Math.Max(1, (int)Math.Round(exactH));
 
-            physLeft = (int)Math.Round(tl.X, MidpointRounding.AwayFromZero);
-            physTop = (int)Math.Round(tl.Y, MidpointRounding.AwayFromZero);
+        double screenLeft = _fixedX + (_windowWidth - exactW) / 2.0;
+        double screenTop = _fixedY + (NotchContainerTranslate?.Y ?? 0) * dpiScale;
 
-            int scaledW = (int)Math.Round(br.X, MidpointRounding.AwayFromZero) - physLeft;
-            int scaledH = (int)Math.Round(br.Y, MidpointRounding.AwayFromZero) - physTop;
-            if (scaledW > 1) physW = scaledW;
-            if (scaledH > 1) physH = scaledH;
+        int physLeft = (int)Math.Round(screenLeft, MidpointRounding.AwayFromZero);
+        int physTop = (int)Math.Round(screenTop, MidpointRounding.AwayFromZero);
 
-            // The capture must snap to an integer desktop pixel, but the notch is
-            subX = tl.X - Math.Round(tl.X);
-            subY = tl.Y - Math.Round(tl.Y);
-        }
-        catch
-        {
-            // Fallback: notch not connected to a presentation source yet.
-            physLeft = _fixedX + (int)Math.Round((_windowWidth - physW) / 2.0);
-            physTop = _fixedY + (int)Math.Round((NotchContainerTranslate?.Y ?? 0) * dpiScale);
-        }
+        double subX = screenLeft - physLeft;
+        double subY = screenTop - physTop;
 
         if (physTop < 0) { physH += physTop; physTop = 0; }
         if (physLeft < 0) { physW += physLeft; physLeft = 0; }
@@ -1049,8 +1108,6 @@ public partial class MainWindow
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled) return;
 
-        // We now have DXGI capture, so we can run the capture loop without stuttering.
-
         double curHeight = GlassBackdropHost?.ActualHeight ?? 0;
         if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
         {
@@ -1102,6 +1159,17 @@ public partial class MainWindow
 
         _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
         {
+            PowerFactor = cfg.PowerFactor,
+            RefractionA = cfg.RefractionA,
+            RefractionB = cfg.RefractionB,
+            RefractionC = cfg.RefractionC,
+            RefractionD = cfg.RefractionD,
+            FPower = cfg.FPower,
+            Noise = cfg.Noise,
+            GlowWeight = cfg.GlowWeight,
+            GlowBias = cfg.GlowBias,
+            GlowEdge0 = cfg.GlowEdge0,
+            GlowEdge1 = cfg.GlowEdge1,
             Refraction = activeRefraction,
             EdgeBend = cfg.EdgeBend,
             ChromaticAberration = cfg.ChromaticAberration,

@@ -25,6 +25,17 @@ public sealed class LiquidGlassController
 
     public struct GlassParams
     {
+        public double PowerFactor;
+        public double RefractionA;
+        public double RefractionB;
+        public double RefractionC;
+        public double RefractionD;
+        public double FPower;
+        public double Noise;
+        public double GlowWeight;
+        public double GlowBias;
+        public double GlowEdge0;
+        public double GlowEdge1;
         public double Refraction;
         public double EdgeBend;
         public double ChromaticAberration;
@@ -38,13 +49,24 @@ public sealed class LiquidGlassController
 
         public static GlassParams Default => new()
         {
-            Refraction = 0.69,
+            PowerFactor = 3.0,
+            RefractionA = 0.7,
+            RefractionB = 2.3,
+            RefractionC = 5.2,
+            RefractionD = 6.9,
+            FPower = 1.0,
+            Noise = 0.06,
+            GlowWeight = 0.25,
+            GlowBias = 0.0,
+            GlowEdge0 = 0.15,
+            GlowEdge1 = 0.0,
+            Refraction = 1.0,
             EdgeBend = 1.65,
-            ChromaticAberration = 0.05,
-            Distortion = 0.0,
-            ZRadius = 0.40,
-            Saturation = 0.0,
-            Brightness = 0.0,
+            ChromaticAberration = 0.56,
+            Distortion = 0.32,
+            ZRadius = 0.23,
+            Saturation = 0.15,
+            Brightness = -0.05,
             BevelMode = 0,
             TopCornerRadius = 0.0,
             BottomCornerRadius = 20.0
@@ -53,7 +75,7 @@ public sealed class LiquidGlassController
 
     private const int MaxWidth = 1600;
     private const int MaxHeight = 600;
-    private const int GpuSamplingMarginLimit = 64;
+    private const int GpuSamplingMarginLimit = 160;
     // Largest capture region this instance will process/present. Defaults to the
     private readonly int _maxRegionW;
     private readonly int _maxRegionH;
@@ -173,21 +195,20 @@ public sealed class LiquidGlassController
         }
     }
 
-    public volatile int LastUploadedCaptureOriginX = int.MinValue;
-    public volatile int LastUploadedCaptureOriginY = int.MinValue;
+    public int LastPresentedCaptureOriginX => _hasPresentedGpuGeometry ? _lastPresentedGpuGeometry.CaptureOriginX : int.MinValue;
+    public int LastPresentedCaptureOriginY => _hasPresentedGpuGeometry ? _lastPresentedGpuGeometry.CaptureOriginY : int.MinValue;
 
     public readonly record struct GpuGeometry(
         double SrcW, double SrcH, double NotchW, double NotchH, double OffX, double OffY,
-        double TopCornerR, double BottomCornerR, double ZR, double Refraction, double Chroma,
-        double Distort, double BevelMode, double EdgeBend, double SatFactor, double BrightAdd,
+        double TopCornerR, double BottomCornerR, double PowerFactor, double A, double B,
+        double C, double D, double FPower, double Noise, double GlowWeight, double GlowBias,
+        double GlowEdge0, double GlowEdge1, double Chroma, double EdgeBend, double SatFactor,
+        double BrightAdd, double BevelMode,
         int CaptureOriginX = 0, int CaptureOriginY = 0);
     private Action<GpuGeometry>? _onGpuGeometry;
     private Action<Exception>? _onGpuFailure;
     private GpuGeometry _lastPresentedGpuGeometry;
     private bool _hasPresentedGpuGeometry;
-    private readonly object _gpuGeometrySync = new();
-    private GpuGeometry _pendingGpuGeometry;
-    private bool _hasPendingGpuGeometry;
     private D3DImageFramePresenter? _d3dPresenter;
     private int _gpuFailureSignaled;
 
@@ -313,48 +334,22 @@ public sealed class LiquidGlassController
 
     private void ResetGpuGeometryTracking()
     {
-        lock (_gpuGeometrySync)
-        {
-            _hasPendingGpuGeometry = false;
-            _pendingGpuGeometry = default;
-        }
         _lastPresentedGpuGeometry = default;
         _hasPresentedGpuGeometry = false;
         _hasUploadedGpuFrame = false;
         _hasPresentedCpuFrame = false;
     }
 
-    private void QueueGpuGeometry(GpuGeometry geom)
-    {
-        lock (_gpuGeometrySync)
-        {
-            _pendingGpuGeometry = geom;
-            _hasPendingGpuGeometry = true;
-        }
-    }
-
-    private void OnD3DFramePresented()
+    private void OnD3DFramePresented(object? tag)
     {
         Interlocked.Increment(ref _dbgPresentCount);
 
-        GpuGeometry geom = default;
-        bool hasGeometry;
-        lock (_gpuGeometrySync)
-        {
-            hasGeometry = _hasPendingGpuGeometry;
-            if (hasGeometry)
-            {
-                geom = _pendingGpuGeometry;
-                _hasPendingGpuGeometry = false;
-            }
-        }
-
-        if (hasGeometry &&
+        if (tag is GpuGeometry geom &&
             (!_hasPresentedGpuGeometry || !_lastPresentedGpuGeometry.Equals(geom)))
         {
-            _onGpuGeometry?.Invoke(geom);
             _lastPresentedGpuGeometry = geom;
             _hasPresentedGpuGeometry = true;
+            _onGpuGeometry?.Invoke(geom);
         }
 
         // Geometry is applied before the initialized source becomes visible so
@@ -471,6 +466,14 @@ public sealed class LiquidGlassController
         lock (_sync)
         {
             bool geometryChanged =
+                Math.Abs(p.PowerFactor - _params.PowerFactor) > 1e-4 ||
+                Math.Abs(p.RefractionA - _params.RefractionA) > 1e-4 ||
+                Math.Abs(p.RefractionB - _params.RefractionB) > 1e-4 ||
+                Math.Abs(p.RefractionC - _params.RefractionC) > 1e-4 ||
+                Math.Abs(p.RefractionD - _params.RefractionD) > 1e-4 ||
+                Math.Abs(p.FPower - _params.FPower) > 1e-4 ||
+                Math.Abs(p.Noise - _params.Noise) > 1e-4 ||
+                Math.Abs(p.GlowWeight - _params.GlowWeight) > 1e-4 ||
                 Math.Abs(p.Refraction - _params.Refraction) > 1e-4 ||
                 Math.Abs(p.EdgeBend - _params.EdgeBend) > 1e-4 ||
                 Math.Abs(p.ChromaticAberration - _params.ChromaticAberration) > 1e-4 ||
@@ -739,16 +742,13 @@ public sealed class LiquidGlassController
 
     private CaptureRegion? GetRegionCached(bool animating, double nowMs)
     {
-        if (animating)
+        lock (_liveRegionSync)
         {
-            lock (_liveRegionSync)
+            if (_hasLiveRegion && _liveRegion is { } live)
             {
-                if (_hasLiveRegion)
-                {
-                    _cachedRegion = _liveRegion;
-                    _lastRegionFetchMs = nowMs;
-                    return _cachedRegion;
-                }
+                _cachedRegion = live;
+                _lastRegionFetchMs = nowMs;
+                return _cachedRegion;
             }
         }
 
@@ -1013,7 +1013,7 @@ public sealed class LiquidGlassController
             rimWidth, p.Refraction, p.ChromaticAberration, p.Distortion,
             p.BevelMode, p.EdgeBend);
         int margin = gpuMode
-            ? Math.Min(requiredMargin, GpuSamplingMarginLimit)
+            ? Math.Clamp(requiredMargin + 96, 64, GpuSamplingMarginLimit)
             : requiredMargin;
         int srcW = bufW + margin * 2;
         int srcH = bufH + margin * 2;
@@ -1116,13 +1116,13 @@ public sealed class LiquidGlassController
 
                 var geom = new GpuGeometry(
                     srcW, srcH, outW, outH, offX, offY,
-                    topR, bottomR, rimWidth,
-                    Math.Clamp(p.Refraction, 0.0, 3.0),
+                    topR, bottomR,
+                    p.PowerFactor, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD,
+                    p.FPower, p.Noise, p.GlowWeight, p.GlowBias, p.GlowEdge0, p.GlowEdge1,
                     Math.Clamp(p.ChromaticAberration, 0.0, 2.0),
-                    Math.Clamp(p.Distortion, 0.0, 2.0),
-                    p.BevelMode >= 1 ? 1.0 : 0.0,
                     double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0,
                     1.0 + p.Saturation, p.Brightness,
+                    p.BevelMode >= 1 ? 1.0 : 0.0,
                     srcX, srcY);
 
                 ulong sourceHash = ComputeSourceHash(srcW, srcH);
@@ -1354,14 +1354,11 @@ public sealed class LiquidGlassController
             return false;
         }
 
-        QueueGpuGeometry(geom);
-        if (!presenter.UploadFrame(_dibBits, srcW, srcH, srcW * 4))
+        if (!presenter.UploadFrame(_dibBits, srcW, srcH, srcW * 4, geom))
         {
             OnD3DPresenterFailed(new InvalidOperationException("GPU frame upload failed."));
             return false;
         }
-        LastUploadedCaptureOriginX = geom.CaptureOriginX;
-        LastUploadedCaptureOriginY = geom.CaptureOriginY;
         return true;
     }
 

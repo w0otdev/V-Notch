@@ -396,6 +396,8 @@ public partial class MainWindow
 
         prepIncoming?.Invoke();
 
+        AnimateClockViewNotchResize(notchFromW, notchFromH, notchToW, notchToH, durIn, inDelay);
+
         // Do not bitmap-cache transition roots: AudioContent and the other views
         // update while hidden, and WPF can briefly reuse the previous surface.
         incoming.Visibility = Visibility.Visible;
@@ -486,8 +488,6 @@ public partial class MainWindow
             inScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
             inScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
         }
-
-        AnimateClockViewNotchResize(notchFromW, notchFromH, notchToW, notchToH, durIn, inDelay);
     }
 
     private void SettleAudioNotchToFit()
@@ -521,6 +521,8 @@ public partial class MainWindow
         NotchBorder.Height = current;
         AudioScrollViewer.Height = currentScrollHeight;
 
+        _isAnimating = true;
+
         var notchAnim = MakeAnim(current, target, dur, ease);
         var scrollAnim = MakeAnim(currentScrollHeight, Math.Max(0.0, target - _audioViewChrome), dur, ease);
         Timeline.SetDesiredFrameRate(notchAnim, fps);
@@ -528,6 +530,7 @@ public partial class MainWindow
 
         notchAnim.Completed += (_, _) =>
         {
+            _isAnimating = false;
             if (generation != _audioNotchHeightGeneration || !_isAudioView)
                 return;
 

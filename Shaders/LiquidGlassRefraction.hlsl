@@ -1,46 +1,54 @@
 sampler2D input : register(s0);
 
-float srcW          : register(c0);
-float srcH          : register(c1);
-float notchW        : register(c2);
-float notchH        : register(c3);
-float offX          : register(c4);
-float offY          : register(c5);
-float bottomCornerR : register(c6);
-float zR            : register(c7);
-float uRefr         : register(c8);
-float uChroma       : register(c9);
-float uDistort      : register(c10);
-float bevelMode     : register(c11);
-float satFactor     : register(c12);
-float brightAdd     : register(c13);
-float topCornerR    : register(c14);
-float edgeBend      : register(c15);
-float pointerX         : register(c16); // 0..1 trong notch
-float pointerY         : register(c17); // 0..1 trong notch
-float pointerActive    : register(c18); // hover/touch: 0..1
-float pressAmount      : register(c19); // pressed: 0..1
+// Geometry & Dimensions
+float srcW               : register(c0);
+float srcH               : register(c1);
+float notchW             : register(c2);
+float notchH             : register(c3);
+float offX               : register(c4);
+float offY               : register(c5);
+float bottomCornerR      : register(c6);
+float topCornerR         : register(c7);
 
-// Có thể nằm ngoài khoảng 0..1 để mô phỏng nguồn sáng bên ngoài vật liệu.
-float lightX           : register(c20);
-float lightY           : register(c21);
+// OverShifted LiquidGlass Core Parameters
+float powerFactor        : register(c8);  // u_powerFactor (squircle power, e.g. 3.0)
+float u_a                : register(c9);  // exponential offset a (0.7)
+float u_b                : register(c10); // exponential amplitude b (2.3)
+float u_c                : register(c11); // base scale c (5.2)
+float u_d                : register(c12); // exponential rate d (6.9)
+float u_fPower           : register(c13); // refraction power (1.0..3.0)
+float u_noise            : register(c14); // film noise grain (0.05..0.15)
+float u_glowWeight       : register(c15); // directional specular glow weight (0.25)
+float u_glowBias         : register(c16); // glow bias (0.0)
+float u_glowEdge0        : register(c17); // glow edge start (0.15)
+float u_glowEdge1        : register(c18); // glow edge end (0.0)
 
-float interactionRadius: register(c22); // theo chiều cao notch, khoảng 0.5..1.2
-float highlightStrength: register(c23); // khoảng 0.6..1.4
-float flexStrength     : register(c24); // displacement tính bằng pixel
-float pointerVelX      : register(c25);
-float pointerVelY      : register(c26);
-float releasePulse     : register(c27);
-float hoverLift        : register(c28);
+// Material & Optical Appearance
+float u_chroma           : register(c19); // chromatic aberration amount
+float satFactor          : register(c20); // saturation multiplier (1.0 = normal)
+float brightAdd          : register(c21); // brightness offset (0.0 = normal)
+
+// Pointer & Lighting Interaction
+float pointerX           : register(c22); // pointer X in notch (0..1)
+float pointerY           : register(c23); // pointer Y in notch (0..1)
+float pointerActive      : register(c24); // hover/touch active: 0..1
+float pressAmount        : register(c25); // pressed state: 0..1
+float highlightStrength  : register(c26); // interactive highlight multiplier
+float flexStrength       : register(c27); // touch displacement flex in pixels
+float lightX             : register(c28); // light source X
+float lightY             : register(c29); // light source Y
+float edgeBend           : register(c30); // edge refraction intensity multiplier
+float bevelMode          : register(c31); // 0 = standard continuous lens, 1 = broad bevel
+
+static const float M_E = 2.718281828459045;
+static const float M_PI = 3.141592653589793;
 
 float2 safeNormalize(float2 v)
 {
-    float lengthSquared = dot(v, v);
-
-    if (lengthSquared < 0.000001)
+    float lenSq = dot(v, v);
+    if (lenSq < 0.000001)
         return float2(0.0, -1.0);
-
-    return v * rsqrt(lengthSquared);
+    return v * rsqrt(lenSq);
 }
 
 float pow4(float x)
@@ -49,75 +57,77 @@ float pow4(float x)
     return x2 * x2;
 }
 
-
 float smoother01(float x)
 {
     x = saturate(x);
     return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
 }
 
-
 float luminance(float3 col)
 {
     return dot(col, float3(0.299, 0.587, 0.114));
 }
 
-
-// Edge-concentrated lens profile.
-//
-// t = 0 at the physical edge.
-// t = 1 at the inner end of the optical rim.
-//
-// The profile rises smoothly after the silhouette and settles to zero
-// before reaching the flat centre.
-float lensProfile(float t, float broad)
+// Pseudo-random noise for physical glass grain
+float rand(float2 co)
 {
-    t = saturate(t);
-
-    float rise = smoother01(t * 4.25);
-    float inv = 1.0 - t;
-
-    float narrowFall = inv * inv * inv;
-    float broadFall = inv * inv;
-
-    float profile = rise * lerp(narrowFall, broadFall, broad);
-
-    return saturate(profile * 1.22);
+    return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
 }
 
+// OverShifted Superellipse (Squircle) Signed Distance Field
+float sdSuperellipse(float2 p, float n, float r)
+{
+    float2 p_abs = abs(p);
+    float numerator = pow(max(p_abs.x, 0.00001), n) + pow(max(p_abs.y, 0.00001), n) - pow(r, n);
+    float den_x = pow(max(p_abs.x, 0.00001), 2.0 * n - 2.0);
+    float den_y = pow(max(p_abs.y, 0.00001), 2.0 * n - 2.0);
+    float denominator = n * sqrt(den_x + den_y) + 0.00001;
+    return numerator / denominator;
+}
 
-// Returns:
-//
-// x  = signed distance toward the inside
-// yz = unit inward normal
-//
-// This replaces five rounded-rectangle SDF evaluations with one.
-float3 roundedRectField(
-    float2 p,
+// OverShifted Exponential Refraction Lens Equation: f(x) = 1.0 - b * (c * e)^(-d * x - a)
+float f_refract(float x, float a, float b, float c, float d)
+{
+    float exponent = -d * x - a;
+    float baseVal = max(c * M_E, 0.0001);
+    return 1.0 - b * pow(baseVal, exponent);
+}
+
+// Directional Glass Glow
+float directionalGlow(float2 p)
+{
+    return sin(atan2(p.y, p.x) - 0.5);
+}
+
+// Unified Notch Field: Returns (insideDistPixels, inwardNormal.x, inwardNormal.y)
+float3 notchDistanceField(
+    float2 localPos,
     float2 halfSize,
     float topRadius,
-    float bottomRadius)
+    float bottomRadius,
+    float nPower)
 {
-    float px = abs(p.x);
-    float py = p.y;
-    
-    // Keep each arc inside both axes; this also guarantees their sum fits the height.
+    float px = abs(localPos.x);
+    float py = localPos.y;
+
     float maxRadius = min(halfSize.x, halfSize.y);
     topRadius = clamp(topRadius, 0.0, maxRadius);
     bottomRadius = clamp(bottomRadius, 0.0, maxRadius);
-    
+
     float centerYTop = -halfSize.y + topRadius;
     float centerYBottom = halfSize.y - bottomRadius;
-    
+
     float sdf = 0.0;
     float2 d = float2(0.0, 0.0);
-    
+
     if (py < centerYTop)
     {
         float2 q = float2(px - (halfSize.x - topRadius), py - centerYTop);
         if (q.x > 0.0)
         {
-            sdf = length(q) - topRadius;
+            // Top rounded quadrant: evaluate squircle curvature
+            float2 qNorm = q / max(topRadius, 0.001);
+            sdf = (sdSuperellipse(qNorm, nPower, 1.0)) * topRadius;
             d = q;
         }
         else
@@ -131,7 +141,9 @@ float3 roundedRectField(
         float2 q = float2(px - (halfSize.x - bottomRadius), py - centerYBottom);
         if (q.x > 0.0)
         {
-            sdf = length(q) - bottomRadius;
+            // Bottom rounded quadrant: evaluate squircle curvature
+            float2 qNorm = q / max(bottomRadius, 0.001);
+            sdf = (sdSuperellipse(qNorm, nPower, 1.0)) * bottomRadius;
             d = q;
         }
         else
@@ -145,16 +157,14 @@ float3 roundedRectField(
         sdf = px - halfSize.x;
         d = float2(1.0, 0.0);
     }
-    
-    // Exact inner distance
+
     if (sdf < 0.0)
     {
         float dSide = px - halfSize.x;
         float dTop = -halfSize.y - py;
         float dBottom = py - halfSize.y;
-        
         float maxD = max(dSide, max(dTop, dBottom));
-        
+
         if (maxD > sdf)
         {
             sdf = maxD;
@@ -163,18 +173,16 @@ float3 roundedRectField(
             else if (sdf == dBottom) d = float2(0.0, 1.0);
         }
     }
-    
-    float2 pSign = float2(p.x < 0.0 ? -1.0 : 1.0, 1.0);
+
+    float2 pSign = float2(localPos.x < 0.0 ? -1.0 : 1.0, 1.0);
     float2 outwardNormal = float2(0.0, 0.0);
-    
-    if (length(d) > 0.0001)
+    if (dot(d, d) > 0.00001)
     {
         outwardNormal = normalize(d) * pSign;
     }
-    
+
     return float3(-sdf, -outwardNormal.x, -outwardNormal.y);
 }
-
 
 float3 sampleSource(float2 sourcePixel, float2 sourceSize)
 {
@@ -182,612 +190,153 @@ float3 sampleSource(float2 sourcePixel, float2 sourceSize)
     return tex2D(input, sampleUv).rgb;
 }
 
-
 float4 main(float2 uv : TEXCOORD) : COLOR
 {
-    float2 sourceSize = max(
-        float2(srcW, srcH),
-        float2(1.0, 1.0));
+    float2 sourceSize = max(float2(srcW, srcH), float2(1.0, 1.0));
+    float2 notchSize = max(float2(notchW, notchH), float2(1.0, 1.0));
 
-    float2 notchSize = max(
-        float2(notchW, notchH),
-        float2(1.0, 1.0));
-
-    float geometryValid =
-        step(1.0, srcW) *
-        step(1.0, srcH) *
-        step(1.0, notchW) *
-        step(1.0, notchH);
-
+    float geometryValid = step(1.0, srcW) * step(1.0, srcH) * step(1.0, notchW) * step(1.0, notchH);
     if (geometryValid < 0.5)
         return tex2D(input, saturate(uv));
 
     float npx = uv.x * srcW;
     float npy = uv.y * srcH;
-    
-    float2 localPosition = float2(
-        npx - notchW * 0.5,
-        npy - notchH * 0.5);
 
+    float2 localPos = float2(npx - notchW * 0.5, npy - notchH * 0.5);
     float2 basePixel = float2(npx + offX, npy + offY);
     float2 halfSize = max(notchSize * 0.5, float2(0.5, 0.5));
 
-    float3 field = roundedRectField(
-        localPosition,
-        halfSize,
-        topCornerR,
-        bottomCornerR);
+    // Clamp and sanitize OverShifted parameters
+    float nSquircle = max(powerFactor, 1.05);
+    float paramA = max(u_a, 0.0);
+    float paramB = max(u_b, 0.0);
+    float paramC = max(u_c, 0.1);
+    float paramD = max(u_d, 0.1);
+    float fPow   = max(u_fPower, 0.1);
+    float bend   = max(edgeBend, 0.1);
 
-    float inside = field.x;
+    // Compute SDF and normal
+    float3 field = notchDistanceField(localPos, halfSize, topCornerR, bottomCornerR, nSquircle);
+    float insidePixels = field.x;
     float2 inwardNormal = field.yz;
 
-    float alpha = saturate(inside + 0.5);
+    // Smooth anti-aliased silhouette alpha
+    float alpha = saturate(insidePixels + 0.5);
     if (alpha <= 0.0)
     {
         return float4(0.0, 0.0, 0.0, 0.0);
     }
 
-    float broad = step(0.5, bevelMode);
-    float bend = clamp(edgeBend, 0.0, 3.0);
+    // Normalized coordinate relative to notch bounds
+    float2 pNorm = localPos / halfSize;
+
+    // Optical Rim & Normalized depth
+    float notchRadius = min(halfSize.x, halfSize.y);
+    float distNorm = saturate(insidePixels / max(notchRadius, 1.0));
 
     // -----------------------------------------------------------------
-    // Pointer interaction
+    // Pointer interaction & dynamic ripple
     // -----------------------------------------------------------------
-
     float active = saturate(pointerActive);
     float pressed = saturate(pressAmount) * active;
-
     float2 pointer01 = saturate(float2(pointerX, pointerY));
+    float2 pointerLocal = pointer01 * notchSize - halfSize;
+    float2 pointerDelta = localPos - pointerLocal;
 
-    float2 pointerLocal =
-        pointer01 * notchSize -
-        halfSize;
+    float radiusPixels = max(notchH * 0.70, 1.0);
+    float2 interactionScale = float2(max(notchW * 0.35, radiusPixels * 2.0), max(notchH * 0.75, radiusPixels * 1.5));
+    float interactionDist = length(pointerDelta / interactionScale);
+    float interactionMask = smoothstep(1.0, 0.0, interactionDist) * active;
 
-    float2 pointerDelta =
-        localPosition -
-        pointerLocal;
+    float2 radialFromPointer = safeNormalize(pointerDelta);
 
-    float radiusPixels =
-        max(
-            notchH * max(interactionRadius, 0.05),
-            1.0);
+    // Dynamic wave / ripple flex
+    float ripplePhase = pressed * M_PI * 1.5;
+    float dimpleSlope = sin(saturate(interactionDist) * M_PI * 2.0 - ripplePhase) * interactionMask;
+    float flexPixels = max(flexStrength, 0.0) * dimpleSlope * lerp(0.5, 3.5, pressed);
 
-    // Lan toả khoảng 30% bề mặt Notch để không bị quá sáng trên view lớn
-    float2 interactionScale =
-        float2(
-            max(notchW * 0.30, radiusPixels * 2.5), 
-            max(notchH * 0.60, radiusPixels * 1.5));
-
-    float interactionDistance =
-        length(pointerDelta / interactionScale);
-
-    // Dùng smoothstep để gradient sáng mượt hơn thay vì ngắt đột ngột
-    float interactionMask = smoothstep(1.0, 0.0, interactionDistance);
-
-    interactionMask *= active;
-
-    float interactionEnergy =
-        interactionMask *
-        lerp(0.5, 1.0, pressed);
-
-    float2 radialFromPointer =
-        safeNormalize(pointerDelta);
-
-    // Flex thay đổi optical normal một lượng rất nhỏ.
-    // Không làm méo silhouette thật của element.
-    float normalFlex =
-        interactionMask *
-        pressed *
-        max(flexStrength, 0.0) *
-        0.055;
-
-    inwardNormal = safeNormalize(
-        inwardNormal -
-        radialFromPointer * normalFlex);
+    // Dynamic flex on inward normal
+    inwardNormal = safeNormalize(inwardNormal - radialFromPointer * (interactionMask * pressed * 0.06));
 
     // -----------------------------------------------------------------
-    // Optical rim
+    // OverShifted Exponential Refraction Lens Formula
     // -----------------------------------------------------------------
+    float fVal = f_refract(distNorm, paramA, paramB, paramC, paramD);
+    float refractFactor = pow(max(fVal, 0.0001), fPow);
 
-    float sideAxis = abs(inwardNormal.x);
-    sideAxis *= sideAxis;
-    sideAxis *= sideAxis;
+    // Displacement vector mapping background coordinates
+    float2 samplePNorm = pNorm * refractFactor;
+    float2 displacement = (samplePNorm - pNorm) * halfSize * bend;
 
-    float rimWidth =
-        max(zR, 1.0) *
-        (1.0 + 0.22 * bend * sideAxis);
+    // Add pointer ripple displacement
+    displacement += radialFromPointer * flexPixels;
 
-    // Flex làm vùng lens rộng nhẹ tại điểm nhấn.
-    float flexRimExpansion =
-        interactionMask *
-        pressed *
-        max(flexStrength, 0.0) *
-        0.12;
-
-    float effectiveRimWidth =
-        rimWidth +
-        flexRimExpansion;
-
-    float rimT =
-        saturate(
-            inside /
-            max(effectiveRimWidth, 0.001));
-
-    float profile =
-        lensProfile(rimT, broad);
-
-    float rim =
-        1.0 -
-        smoother01(
-            inside /
-            max(effectiveRimWidth, 1.0));
-
-    float refraction = max(uRefr, 0.0);
-
-    float refractionResponse =
-        refraction /
-        (1.0 + refraction);
-
-    float bendGain =
-        min(
-            bend * (0.72 + 0.28 * bend),
-            1.80);
-
-    float amplitude =
-        effectiveRimWidth *
-        0.42 *
-        refractionResponse *
-        bendGain *
-        lerp(1.0, 1.08, broad);
-
-    float aspect =
-        saturate(
-            notchH /
-            max(notchW, 1.0) *
-            2.5);
-
-    float verticalBalance =
-        lerp(0.80, 1.0, aspect);
-
-    float2 axisBalance =
-        float2(1.0, verticalBalance);
-
-    float2 displacement =
-        -inwardNormal *
-        axisBalance *
-        amplitude *
-        profile;
+    float2 sourcePixel = basePixel + displacement;
 
     // -----------------------------------------------------------------
-    // Liquid distortion
+    // Chromatic Dispersion
     // -----------------------------------------------------------------
+    float3 col = float3(0.0, 0.0, 0.0);
+    float chromaAmount = max(u_chroma, 0.0) * (1.0 - distNorm) * 2.0;
 
-    if (uDistort > 0.0001)
+    if (chromaAmount > 0.001)
     {
-        float2 normalizedPosition =
-            localPosition /
-            max(halfSize, float2(1.0, 1.0));
-
-        float nx2 =
-            normalizedPosition.x *
-            normalizedPosition.x;
-
-        float ny2 =
-            normalizedPosition.y *
-            normalizedPosition.y;
-
-        float flow =
-            normalizedPosition.x *
-            normalizedPosition.y *
-            (1.0 - nx2) *
-            (1.0 - ny2);
-
-        float2 tangent =
-            float2(
-                -inwardNormal.y,
-                inwardNormal.x);
-
-        displacement +=
-            tangent *
-            max(uDistort, 0.0) *
-            1.25 *
-            flow *
-            profile;
+        float2 chromaOffset = safeNormalize(displacement) * chromaAmount * 1.5;
+        float3 sampleR = sampleSource(sourcePixel + chromaOffset, sourceSize);
+        float3 sampleG = sampleSource(sourcePixel, sourceSize);
+        float3 sampleB = sampleSource(sourcePixel - chromaOffset, sourceSize);
+        col = float3(sampleR.r, sampleG.g, sampleB.b);
+    }
+    else
+    {
+        col = sampleSource(sourcePixel, sourceSize);
     }
 
     // -----------------------------------------------------------------
-    // Local flex / dimple (water drop ripple)
+    // Film Noise / Grain
     // -----------------------------------------------------------------
-
-    // Khi pressed thay đổi, ripplePhase thay đổi giúp gợn sóng lan ra ngoài
-    float ripplePhase = pressed * 3.14159 * 1.5;
-    
-    // Tạo sóng bằng hàm sin với phase thay đổi, kết hợp fade out theo khoảng cách (interactionMask)
-    float dimpleSlope = sin(saturate(interactionDistance) * 3.14159 * 2.0 - ripplePhase) * interactionMask;
-
-    float flexPixels =
-        max(flexStrength, 0.0) *
-        dimpleSlope *
-        lerp(0.5, 4.0, pressed); // Tăng cường độ rõ rệt khi nhấn mạnh
-
-    // Đẩy lưới ảnh ra xa khỏi điểm chạm giống như gợn sóng nước
-    displacement +=
-        radialFromPointer *
-        flexPixels *
-        (
-            0.40 +
-            profile * 0.60
-        );
-
-    float2 sourcePixel =
-        basePixel +
-        displacement;
-
-    float3 center =
-        sampleSource(
-            sourcePixel,
-            sourceSize);
-
-    float3 col = center;
-    float localDetail = 0.0;
+    float grain = (rand(npx * 0.05 + npy * 100.0) - 0.5) * max(u_noise, 0.0);
+    col += float3(grain, grain, grain);
 
     // -----------------------------------------------------------------
-    // Scattering + chromatic dispersion
-    // Tổng tối đa ba texture samples.
+    // OverShifted Directional Glass Glow (Multiplicative Optical Rim)
     // -----------------------------------------------------------------
+    float glowAngle = directionalGlow(pNorm);
+    float glowMask = smoothstep(u_glowEdge0, u_glowEdge1, distNorm);
+    float glowMul = glowAngle * u_glowWeight * glowMask + 1.0 + u_glowBias;
+    col *= max(glowMul, 0.0);
 
-    if (rim > 0.001)
+    // -----------------------------------------------------------------
+    // Apple Liquid Glass Micro-Bevel Hairline (Subtle 1px Polish Reflection)
+    // -----------------------------------------------------------------
+    float2 outwardNormal = -inwardNormal;
+    // Ambient overhead soft top-lighting
+    float topLight = saturate(-outwardNormal.y * 0.65 + 0.35);
+    // 1-pixel crisp outer glass chamfer reflection
+    float bevelHairline = smoothstep(1.6, 0.2, insidePixels) * topLight * 0.18;
+    col += float3(bevelHairline, bevelHairline, bevelHairline);
+
+    // -----------------------------------------------------------------
+    // Interactive Touch Ripple Glow (Organic Refraction Energy)
+    // -----------------------------------------------------------------
+    if (active > 0.01)
     {
-        float scatterPixels =
-            lerp(0.30, 0.62, broad) *
-            rim;
-
-        float chromaPixels =
-            min(
-                max(uChroma, 0.0) *
-                (
-                    0.18 +
-                    effectiveRimWidth * 0.018
-                ),
-                1.10) *
-            profile;
-
-        float tapPixels =
-            scatterPixels +
-            chromaPixels;
-
-        float2 tapOffset =
-            inwardNormal *
-            axisBalance *
-            tapPixels;
-
-        float3 positiveSample =
-            sampleSource(
-                sourcePixel + tapOffset,
-                sourceSize);
-
-        float3 negativeSample =
-            sampleSource(
-                sourcePixel - tapOffset,
-                sourceSize);
-
-        float3 softSample =
-            center * 0.50 +
-            positiveSample * 0.25 +
-            negativeSample * 0.25;
-
-        float scatterMix =
-            lerp(0.45, 0.62, broad) *
-            rim;
-
-        col = lerp(
-            center,
-            softSample,
-            scatterMix);
-
-        float chromaMix =
-            saturate(
-                max(uChroma, 0.0) *
-                0.28) *
-            profile;
-
-        col.r = lerp(
-            col.r,
-            positiveSample.r,
-            chromaMix);
-
-        col.b = lerp(
-            col.b,
-            negativeSample.b,
-            chromaMix);
-
-        localDetail = abs(
-            luminance(positiveSample) -
-            luminance(negativeSample));
+        float touchGlow = interactionMask * lerp(0.1, 0.4, pressed) * (1.0 - distNorm * 0.6);
+        col += touchGlow * float3(0.04, 0.06, 0.09);
     }
 
     // -----------------------------------------------------------------
-    // Saturation + brightness
+    // Material Tinting & Legibility Contrast
     // -----------------------------------------------------------------
+    float3 darkTint = float3(0.03, 0.04, 0.06);
+    col = lerp(col, darkTint, 0.25 * (1.0 - smoother01(1.0 - distNorm) * 0.35));
 
-    float originalLum = luminance(col);
-
-    col =
-        float3(
-            originalLum,
-            originalLum,
-            originalLum) +
-        (
-            col -
-            float3(
-                originalLum,
-                originalLum,
-                originalLum)
-        ) *
-        max(satFactor, 0.0);
-
+    // -----------------------------------------------------------------
+    // Saturation & Brightness adjustments
+    // -----------------------------------------------------------------
+    float origLum = luminance(col);
+    col = float3(origLum, origLum, origLum) + (col - float3(origLum, origLum, origLum)) * max(satFactor, 0.0);
     col += brightAdd;
-    col = saturate(col);
 
-    // -----------------------------------------------------------------
-    // Adaptive material based on background
-    // -----------------------------------------------------------------
-
-    float centerLum = luminance(center);
-    float lum = luminance(col);
-
-    // Derivative của nội dung nền.
-    // Không cần thêm texture sample.
-    float2 contentGradient =
-        float2(
-            ddx(centerLum),
-            ddy(centerLum));
-
-    float contentGradientLength =
-        length(contentGradient);
-
-    float contentEdge =
-        saturate(
-            contentGradientLength *
-            4.5);
-
-    float2 contentDirection =
-        safeNormalize(contentGradient);
-
-    float separationNeed =
-        saturate(
-            localDetail * 2.40 +
-            contentEdge * 0.70 +
-            rim * 0.08);
-
-    float adaptiveNeutral =
-        1.0 -
-        smoother01(
-            (lum - 0.28) /
-            0.44);
-
-    float veilStrength =
-        (
-            0.014 +
-            separationNeed * 0.038
-        ) *
-        lerp(0.95, 1.12, broad);
-
-    col = lerp(
-        col,
-        float3(
-            adaptiveNeutral,
-            adaptiveNeutral,
-            adaptiveNeutral),
-        veilStrength);
-
-    // -----------------------------------------------------------------
-    // Moving highlight
-    // -----------------------------------------------------------------
-
-    // lightX/lightY có thể nằm ngoài 0..1.
-    float2 animatedLightLocal =
-        float2(lightX, lightY) *
-        notchSize -
-        halfSize;
-
-    // Khi hover, nguồn sáng tiến dần về pointer.
-    float2 lightLocal =
-        lerp(
-            animatedLightLocal,
-            pointerLocal,
-            active * 0.82);
-
-    float2 outwardNormal =
-        -inwardNormal;
-
-    // Vector từ nguồn sáng đến pixel.
-    float2 lightRay =
-        safeNormalize(
-            localPosition -
-            lightLocal);
-
-    float lightFacing =
-        saturate(
-            dot(
-                outwardNormal,
-                lightRay));
-
-    float oppositeFacing =
-        saturate(
-            -dot(
-                outwardNormal,
-                lightRay));
-
-    float specular =
-        pow4(lightFacing) *
-        rim *
-        max(highlightStrength, 0.0);
-
-    float2 lightDistanceScale =
-        max(
-            notchSize * float2(0.72, 0.95),
-            float2(1.0, 1.0));
-
-    float lightDistance =
-        length(
-            (
-                localPosition -
-                lightLocal
-            ) /
-            lightDistanceScale);
-
-    float localLightFalloff =
-        1.0 -
-        smoother01(lightDistance);
-
-    specular *=
-        lerp(
-            0.48,
-            1.0,
-            localLightFalloff);
-
-    // -----------------------------------------------------------------
-    // Touch glow & Water-drop Ripple
-    // -----------------------------------------------------------------
-
-    float touchGlow =
-        interactionEnergy *
-        (
-            0.65 +
-            0.55 * profile
-        ) *
-        max(highlightStrength, 1.0) * 1.5; // Khuếch đại mạnh để sáng rõ ràng hơn
-
-    // Glow lấy một phần màu của background để không bị trắng giả.
-    float3 ambientTouch =
-        saturate(
-            center * 0.70 + // Tăng cường độ phản quang từ ảnh nền
-            float3(0.55, 0.55, 0.55));
-
-    col +=
-        touchGlow *
-        (
-            float3(0.08, 0.08, 0.10) + // Thêm base color sáng hơn (hơi xanh nhạt/trắng)
-            ambientTouch * 0.12
-        );
-
-    // Tính toán specular (vệt sáng)
-    float touchSpecular =
-        interactionMask *
-        lerp(0.06, 0.60, pressed) * 
-        max(highlightStrength, 0.0);
-
-    float rimSpecular =
-        pow4(lightFacing) *
-        rim *
-        interactionMask *
-        lerp(0.15, 0.80, pressed) * 
-        max(highlightStrength, 0.0);
-
-    col +=
-        (touchSpecular + rimSpecular) *
-        ambientTouch;
-
-    // -----------------------------------------------------------------
-    // Shadow reacts to background content
-    // -----------------------------------------------------------------
-
-    float contentAlignment =
-        dot(
-            outwardNormal,
-            contentDirection);
-
-    // Background sáng dần theo hướng normal:
-    // tăng dark rim để giữ separation.
-    float contentDarkRim =
-        saturate(contentAlignment) *
-        contentEdge *
-        rim;
-
-    // Background tối dần theo hướng normal:
-    // tăng light rim.
-    float contentLightRim =
-        saturate(-contentAlignment) *
-        contentEdge *
-        rim;
-
-    col -=
-        contentDarkRim *
-        (
-            0.026 +
-            lum * 0.026
-        );
-
-    col +=
-        contentLightRim *
-        (
-            0.016 +
-            (1.0 - lum) * 0.018
-        );
-
-    float opticalShadow =
-        oppositeFacing *
-        oppositeFacing *
-        oppositeFacing *
-        rim;
-
-    // Điểm chạm làm shadow mềm và mở ra như vật liệu đang flex.
-    float shadowSuppression =
-        1.0 -
-        touchGlow * 0.58;
-
-    float shadowStrength =
-        (
-            0.014 +
-            lum * 0.014 +
-            separationNeed * 0.032
-        ) *
-        shadowSuppression;
-
-    col -=
-        opticalShadow *
-        shadowStrength;
-
-    // -----------------------------------------------------------------
-    // Adaptive silhouette
-    // -----------------------------------------------------------------
-
-    float hairline =
-        1.0 -
-        smoother01(
-            inside / 1.15);
-
-    float darkBackdropNeed =
-        1.0 - lum;
-
-    float brightBackdropNeed =
-        lum;
-
-    col +=
-        hairline *
-        darkBackdropNeed *
-        0.042;
-
-    col -=
-        hairline *
-        brightBackdropNeed *
-        0.022;
-
-    // Main moving specular.
-    float3 ambientSpill =
-        saturate(
-            center * 1.08 +
-            0.02);
-
-    col +=
-        specular *
-        (
-            float3(0.032, 0.032, 0.032) +
-            ambientSpill * 0.032
-        );
-
-    return float4(
-        saturate(col) * alpha,
-        alpha);
+    return float4(saturate(col) * alpha, alpha);
 }

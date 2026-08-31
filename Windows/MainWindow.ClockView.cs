@@ -105,7 +105,7 @@ public partial class MainWindow : IClockWidgetHost
     NotchSettings IClockWidgetHost.Settings => _settings;
     void IClockWidgetHost.SaveSettings() => _settingsService.Save(_settings);
 
-    bool IClockWidgetHost.IsAnimating => _isAnimating;
+    bool IClockWidgetHost.IsAnimating { get => _isAnimating; set => _isAnimating = value; }
     bool IClockWidgetHost.IsSecondaryView => _isSecondaryView;
     bool IClockWidgetHost.IsExpanded => _isExpanded;
     bool IClockWidgetHost.IsTimerView => _isTimerView;

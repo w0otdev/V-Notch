@@ -192,12 +192,12 @@ public partial class MainWindow
         if (expandedBlur != null && blurOutAnim != null)
             expandedBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
-        PlayTimerViewEntrance(durIn, inDelay);
-
         AnimateClockViewNotchResize(
             NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth,
             NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight,
             _clockViewWidth, _clockViewHeight, durIn, inDelay);
+
+        PlayTimerViewEntrance(durIn, inDelay);
 
         UpdateTimerDisplay();
     }
@@ -439,6 +439,11 @@ public partial class MainWindow
             RestoreTimerContentOpacity();
         };
 
+        AnimateClockViewNotchResize(
+            NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth,
+            NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight,
+            _clockViewWidth, _clockViewHeight, durIn, inDelay);
+
         RestoreTimerContentOpacity();
         TimerContent.UpdateLayout();
 
@@ -446,11 +451,6 @@ public partial class MainWindow
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
         timerScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
         timerScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
-
-        AnimateClockViewNotchResize(
-            NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth,
-            NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight,
-            _clockViewWidth, _clockViewHeight, durIn, inDelay);
 
         UpdateTimerDisplay();
     }
@@ -495,6 +495,10 @@ public partial class MainWindow
 
         TimerContent.BeginAnimation(OpacityProperty, timerFadeOut);
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, timerSlideDown);
+
+        double currentH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
+        double currentWidthExit = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
+        AnimateClockViewNotchResize(currentWidthExit, currentH, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize);
 
         ExpandedContent.Visibility = Visibility.Visible;
         ExpandedContent.BeginAnimation(OpacityProperty, null);
@@ -562,10 +566,6 @@ public partial class MainWindow
 
         ExpandedContent.BeginAnimation(OpacityProperty, primaryFadeIn);
         primaryTranslate.BeginAnimation(TranslateTransform.YProperty, primarySlideDown);
-
-        double currentH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
-        double currentWidthExit = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
-        AnimateClockViewNotchResize(currentWidthExit, currentH, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize);
     }
 
     private void UpdateTimerNavIconsState()
@@ -632,6 +632,10 @@ public partial class MainWindow
         timerScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         timerBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
+        double currentH2 = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
+        double currentWidthExit2 = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
+        AnimateClockViewNotchResize(currentWidthExit2, currentH2, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize);
+
         SecondaryContent.Visibility = Visibility.Visible;
         SecondaryContent.BeginAnimation(OpacityProperty, null);
         SecondaryContent.Opacity = 0;
@@ -675,10 +679,6 @@ public partial class MainWindow
         secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
         secondaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
         secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
-
-        double currentH2 = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
-        double currentWidthExit2 = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
-        AnimateClockViewNotchResize(currentWidthExit2, currentH2, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize);
 
         UpdateShelfCapacityIndicator();
     }

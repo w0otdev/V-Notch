@@ -254,7 +254,7 @@ public sealed class LiquidGlassCaptureTests
     {
         var geom = new LiquidGlassController.GpuGeometry(
             1728, 728, 400, 180, 64, 64,
-            20, 20, 24, 0.7, 0.05, 0.0, 0.0, 1.0, 1.0, 0.0,
+            20, 20, 3.0, 0.7, 2.3, 5.2, 6.9, 1.0, 0.06, 0.25, 0.0, 0.15, 0.0, 0.35, 1.0, 1.0, 0.0, 0.0,
             800, 100);
 
         Assert.Equal(800, geom.CaptureOriginX);

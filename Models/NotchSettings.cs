@@ -146,10 +146,7 @@ public class NotchSettings
 
 public class LiquidGlassConfig
 {
-    // Defaults are the project's tuned "house" Liquid Glass look (exported from a
-    // hand-tuned configuration) so the out-of-box appearance matches the intended
-    // design. ZRadius is kept normalised (0..~0.6) and scaled to the notch
-    // thickness internally.
+    // Defaults are tuned from OverShifted/LiquidGlass Apple squircle shader architecture.
     public double BlurAmount { get; set; } = 0.3;
     public double Refraction { get; set; } = 1.0;
     public double EdgeBend { get; set; } = 1.65;
@@ -169,6 +166,19 @@ public class LiquidGlassConfig
     public int BevelMode { get; set; } = 0;
     public int TargetFps { get; set; } = 0;
     public int Variant { get; set; } = 0; // 0 = Regular (Adaptive), 1 = Clear (highly transparent, non-adaptive)
+
+    // OverShifted LiquidGlass Core Parameters
+    public double PowerFactor { get; set; } = 3.0;
+    public double RefractionA { get; set; } = 0.7;
+    public double RefractionB { get; set; } = 2.3;
+    public double RefractionC { get; set; } = 5.2;
+    public double RefractionD { get; set; } = 6.9;
+    public double FPower { get; set; } = 1.0;
+    public double Noise { get; set; } = 0.06;
+    public double GlowWeight { get; set; } = 0.25;
+    public double GlowBias { get; set; } = 0.0;
+    public double GlowEdge0 { get; set; } = 0.15;
+    public double GlowEdge1 { get; set; } = 0.0;
 
     // Legacy compatibility only. The magnifier filter now excludes the notch from
     // its private backdrop source without hiding the visible overlay in screenshots.

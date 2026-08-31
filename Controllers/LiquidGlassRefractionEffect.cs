@@ -7,8 +7,9 @@ using VNotch.Services;
 namespace VNotch.Controllers;
 
 /// <summary>
-/// GPU pixel-shader (ps_3_0) Liquid Glass refraction. Samples the raw captured desktop
-/// and applies the high-quality continuous lens profile used by the CPU fallback.
+/// GPU pixel-shader (ps_3_0) Liquid Glass refraction based on OverShifted/LiquidGlass.
+/// Samples the desktop backdrop and applies squircle SDF, exponential refraction,
+/// chromatic dispersion, film grain noise, and directional specular glow.
 /// </summary>
 public sealed class LiquidGlassRefractionEffect : ShaderEffect
 {
@@ -49,28 +50,31 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
         UpdateShaderValue(OffXProperty);
         UpdateShaderValue(OffYProperty);
         UpdateShaderValue(BottomCornerRProperty);
-        UpdateShaderValue(ZRProperty);
-        UpdateShaderValue(RefractionProperty);
+        UpdateShaderValue(TopCornerRProperty);
+        UpdateShaderValue(PowerFactorProperty);
+        UpdateShaderValue(AProperty);
+        UpdateShaderValue(BProperty);
+        UpdateShaderValue(CProperty);
+        UpdateShaderValue(DProperty);
+        UpdateShaderValue(FPowerProperty);
+        UpdateShaderValue(NoiseProperty);
+        UpdateShaderValue(GlowWeightProperty);
+        UpdateShaderValue(GlowBiasProperty);
+        UpdateShaderValue(GlowEdge0Property);
+        UpdateShaderValue(GlowEdge1Property);
         UpdateShaderValue(ChromaProperty);
-        UpdateShaderValue(DistortProperty);
-        UpdateShaderValue(BevelModeProperty);
         UpdateShaderValue(SatFactorProperty);
         UpdateShaderValue(BrightAddProperty);
-        UpdateShaderValue(TopCornerRProperty);
-        UpdateShaderValue(EdgeBendProperty);
         UpdateShaderValue(PointerXProperty);
         UpdateShaderValue(PointerYProperty);
         UpdateShaderValue(PointerActiveProperty);
         UpdateShaderValue(PressAmountProperty);
-        UpdateShaderValue(LightXProperty);
-        UpdateShaderValue(LightYProperty);
-        UpdateShaderValue(InteractionRadiusProperty);
         UpdateShaderValue(HighlightStrengthProperty);
         UpdateShaderValue(FlexStrengthProperty);
-        UpdateShaderValue(PointerVelXProperty);
-        UpdateShaderValue(PointerVelYProperty);
-        UpdateShaderValue(ReleasePulseProperty);
-        UpdateShaderValue(HoverLiftProperty);
+        UpdateShaderValue(LightXProperty);
+        UpdateShaderValue(LightYProperty);
+        UpdateShaderValue(EdgeBendProperty);
+        UpdateShaderValue(BevelModeProperty);
     }
 
     public Brush Input
@@ -92,30 +96,36 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public static readonly DependencyProperty NotchHProperty = Reg("NotchH", 3);
     public static readonly DependencyProperty OffXProperty = Reg("OffX", 4);
     public static readonly DependencyProperty OffYProperty = Reg("OffY", 5);
-    public static readonly DependencyProperty BottomCornerRProperty = Reg("BottomCornerR", 6);
-    public static readonly DependencyProperty ZRProperty = Reg("ZR", 7);
-    public static readonly DependencyProperty RefractionProperty = Reg("Refraction", 8);
-    public static readonly DependencyProperty ChromaProperty = Reg("Chroma", 9);
-    public static readonly DependencyProperty DistortProperty = Reg("Distort", 10);
-    public static readonly DependencyProperty BevelModeProperty = Reg("BevelMode", 11);
-    public static readonly DependencyProperty SatFactorProperty = Reg("SatFactor", 12, 1.0);
-    public static readonly DependencyProperty BrightAddProperty = Reg("BrightAdd", 13);
-    public static readonly DependencyProperty TopCornerRProperty = Reg("TopCornerR", 14);
-    public static readonly DependencyProperty EdgeBendProperty = Reg("EdgeBend", 15, 1.0);
-    public static readonly DependencyProperty PointerXProperty = Reg("PointerX", 16, 0.5);
-    public static readonly DependencyProperty PointerYProperty = Reg("PointerY", 17, 0.5);
-    public static readonly DependencyProperty PointerActiveProperty = Reg("PointerActive", 18, 0.0);
-    public static readonly DependencyProperty PressAmountProperty = Reg("PressAmount", 19, 0.0);
-    public static readonly DependencyProperty LightXProperty = Reg("LightX", 20, 0.15);
-    public static readonly DependencyProperty LightYProperty = Reg("LightY", 21, -0.15);
-    public static readonly DependencyProperty InteractionRadiusProperty = Reg("InteractionRadius", 22, 0.70);
-    public static readonly DependencyProperty HighlightStrengthProperty = Reg("HighlightStrength", 23, 0.90);
-    public static readonly DependencyProperty FlexStrengthProperty = Reg("FlexStrength", 24, 1.10);
+    public static readonly DependencyProperty BottomCornerRProperty = Reg("BottomCornerR", 6, 20.0);
+    public static readonly DependencyProperty TopCornerRProperty = Reg("TopCornerR", 7, 0.0);
 
-    public static readonly DependencyProperty PointerVelXProperty = Reg("PointerVelX", 25, 0.0);
-    public static readonly DependencyProperty PointerVelYProperty = Reg("PointerVelY", 26, 0.0);
-    public static readonly DependencyProperty ReleasePulseProperty = Reg("ReleasePulse", 27, 0.0);
-    public static readonly DependencyProperty HoverLiftProperty = Reg("HoverLift", 28, 0.0);
+    // OverShifted LiquidGlass Core
+    public static readonly DependencyProperty PowerFactorProperty = Reg("PowerFactor", 8, 3.0);
+    public static readonly DependencyProperty AProperty = Reg("A", 9, 0.7);
+    public static readonly DependencyProperty BProperty = Reg("B", 10, 2.3);
+    public static readonly DependencyProperty CProperty = Reg("C", 11, 5.2);
+    public static readonly DependencyProperty DProperty = Reg("D", 12, 6.9);
+    public static readonly DependencyProperty FPowerProperty = Reg("FPower", 13, 1.0);
+    public static readonly DependencyProperty NoiseProperty = Reg("Noise", 14, 0.06);
+    public static readonly DependencyProperty GlowWeightProperty = Reg("GlowWeight", 15, 0.25);
+    public static readonly DependencyProperty GlowBiasProperty = Reg("GlowBias", 16, 0.0);
+    public static readonly DependencyProperty GlowEdge0Property = Reg("GlowEdge0", 17, 0.15);
+    public static readonly DependencyProperty GlowEdge1Property = Reg("GlowEdge1", 18, 0.0);
+
+    public static readonly DependencyProperty ChromaProperty = Reg("Chroma", 19, 0.35);
+    public static readonly DependencyProperty SatFactorProperty = Reg("SatFactor", 20, 1.0);
+    public static readonly DependencyProperty BrightAddProperty = Reg("BrightAdd", 21, 0.0);
+
+    public static readonly DependencyProperty PointerXProperty = Reg("PointerX", 22, 0.5);
+    public static readonly DependencyProperty PointerYProperty = Reg("PointerY", 23, 0.5);
+    public static readonly DependencyProperty PointerActiveProperty = Reg("PointerActive", 24, 0.0);
+    public static readonly DependencyProperty PressAmountProperty = Reg("PressAmount", 25, 0.0);
+    public static readonly DependencyProperty HighlightStrengthProperty = Reg("HighlightStrength", 26, 0.90);
+    public static readonly DependencyProperty FlexStrengthProperty = Reg("FlexStrength", 27, 1.10);
+    public static readonly DependencyProperty LightXProperty = Reg("LightX", 28, 0.15);
+    public static readonly DependencyProperty LightYProperty = Reg("LightY", 29, -0.15);
+    public static readonly DependencyProperty EdgeBendProperty = Reg("EdgeBend", 30, 1.0);
+    public static readonly DependencyProperty BevelModeProperty = Reg("BevelMode", 31, 0.0);
 
     public double SrcW { get => (double)GetValue(SrcWProperty); set => SetValue(SrcWProperty, value); }
     public double SrcH { get => (double)GetValue(SrcHProperty); set => SetValue(SrcHProperty, value); }
@@ -124,26 +134,32 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public double OffX { get => (double)GetValue(OffXProperty); set => SetValue(OffXProperty, value); }
     public double OffY { get => (double)GetValue(OffYProperty); set => SetValue(OffYProperty, value); }
     public double BottomCornerR { get => (double)GetValue(BottomCornerRProperty); set => SetValue(BottomCornerRProperty, value); }
-    public double ZR { get => (double)GetValue(ZRProperty); set => SetValue(ZRProperty, value); }
-    public double Refraction { get => (double)GetValue(RefractionProperty); set => SetValue(RefractionProperty, value); }
+    public double TopCornerR { get => (double)GetValue(TopCornerRProperty); set => SetValue(TopCornerRProperty, value); }
+
+    public double PowerFactor { get => (double)GetValue(PowerFactorProperty); set => SetValue(PowerFactorProperty, value); }
+    public double A { get => (double)GetValue(AProperty); set => SetValue(AProperty, value); }
+    public double B { get => (double)GetValue(BProperty); set => SetValue(BProperty, value); }
+    public double C { get => (double)GetValue(CProperty); set => SetValue(CProperty, value); }
+    public double D { get => (double)GetValue(DProperty); set => SetValue(DProperty, value); }
+    public double FPower { get => (double)GetValue(FPowerProperty); set => SetValue(FPowerProperty, value); }
+    public double Noise { get => (double)GetValue(NoiseProperty); set => SetValue(NoiseProperty, value); }
+    public double GlowWeight { get => (double)GetValue(GlowWeightProperty); set => SetValue(GlowWeightProperty, value); }
+    public double GlowBias { get => (double)GetValue(GlowBiasProperty); set => SetValue(GlowBiasProperty, value); }
+    public double GlowEdge0 { get => (double)GetValue(GlowEdge0Property); set => SetValue(GlowEdge0Property, value); }
+    public double GlowEdge1 { get => (double)GetValue(GlowEdge1Property); set => SetValue(GlowEdge1Property, value); }
+
     public double Chroma { get => (double)GetValue(ChromaProperty); set => SetValue(ChromaProperty, value); }
-    public double Distort { get => (double)GetValue(DistortProperty); set => SetValue(DistortProperty, value); }
-    public double BevelMode { get => (double)GetValue(BevelModeProperty); set => SetValue(BevelModeProperty, value); }
     public double SatFactor { get => (double)GetValue(SatFactorProperty); set => SetValue(SatFactorProperty, value); }
     public double BrightAdd { get => (double)GetValue(BrightAddProperty); set => SetValue(BrightAddProperty, value); }
-    public double TopCornerR { get => (double)GetValue(TopCornerRProperty); set => SetValue(TopCornerRProperty, value); }
-    public double EdgeBend { get => (double)GetValue(EdgeBendProperty); set => SetValue(EdgeBendProperty, value); }
+
     public double PointerX { get => (double)GetValue(PointerXProperty); set => SetValue(PointerXProperty, value); }
     public double PointerY { get => (double)GetValue(PointerYProperty); set => SetValue(PointerYProperty, value); }
     public double PointerActive { get => (double)GetValue(PointerActiveProperty); set => SetValue(PointerActiveProperty, value); }
     public double PressAmount { get => (double)GetValue(PressAmountProperty); set => SetValue(PressAmountProperty, value); }
-    public double LightX { get => (double)GetValue(LightXProperty); set => SetValue(LightXProperty, value); }
-    public double LightY { get => (double)GetValue(LightYProperty); set => SetValue(LightYProperty, value); }
-    public double InteractionRadius { get => (double)GetValue(InteractionRadiusProperty); set => SetValue(InteractionRadiusProperty, value); }
     public double HighlightStrength { get => (double)GetValue(HighlightStrengthProperty); set => SetValue(HighlightStrengthProperty, value); }
     public double FlexStrength { get => (double)GetValue(FlexStrengthProperty); set => SetValue(FlexStrengthProperty, value); }
-    public double PointerVelX { get => (double)GetValue(PointerVelXProperty); set => SetValue(PointerVelXProperty, value); }
-    public double PointerVelY { get => (double)GetValue(PointerVelYProperty); set => SetValue(PointerVelYProperty, value); }
-    public double ReleasePulse { get => (double)GetValue(ReleasePulseProperty); set => SetValue(ReleasePulseProperty, value); }
-    public double HoverLift { get => (double)GetValue(HoverLiftProperty); set => SetValue(HoverLiftProperty, value); }
+    public double LightX { get => (double)GetValue(LightXProperty); set => SetValue(LightXProperty, value); }
+    public double LightY { get => (double)GetValue(LightYProperty); set => SetValue(LightYProperty, value); }
+    public double EdgeBend { get => (double)GetValue(EdgeBendProperty); set => SetValue(EdgeBendProperty, value); }
+    public double BevelMode { get => (double)GetValue(BevelModeProperty); set => SetValue(BevelModeProperty, value); }
 }
