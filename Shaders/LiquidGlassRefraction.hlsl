@@ -1,5 +1,5 @@
 sampler2D input : register(s0);
-
+// Credits to OverShifted for the Liquid Glass Effect (https://github.com/OverShifted/LiquidGlass)
 // Geometry & Dimensions
 float srcW               : register(c0);
 float srcH               : register(c1);
@@ -62,15 +62,13 @@ float rand(float2 co)
     return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
 }
 
-// OverShifted Superellipse (Squircle) Signed Distance Field
-float sdSuperellipse(float2 p, float n, float r)
+// Fast directional Glass Glow Rim: exact analytical expansion of sin(atan2(y, x) - 0.5)
+// Eliminates heavy atan2 and sin transcendental operations.
+float directionalGlow(float2 p)
 {
-    float2 p_abs = abs(p);
-    float numerator = pow(max(p_abs.x, 0.00001), n) + pow(max(p_abs.y, 0.00001), n) - pow(r, n);
-    float den_x = pow(max(p_abs.x, 0.00001), 2.0 * n - 2.0);
-    float den_y = pow(max(p_abs.y, 0.00001), 2.0 * n - 2.0);
-    float denominator = n * sqrt(den_x + den_y) + 0.00001;
-    return numerator / denominator;
+    float lenSq = dot(p, p);
+    if (lenSq < 0.000001) return 0.0;
+    return (p.y * 0.87758256 - p.x * 0.47942554) * rsqrt(lenSq);
 }
 
 // OverShifted Exponential Refraction Lens Equation: f(x) = 1.0 - b * (c * e)^(-d * x - a)
@@ -78,13 +76,7 @@ float f_refract(float x, float a, float b, float c, float d)
 {
     float exponent = -d * x - a;
     float baseVal = max(c * M_E, 0.0001);
-    return 1.0 - b * pow(baseVal, exponent);
-}
-
-// OverShifted Directional Glass Glow Rim: sin(atan2(y, x) - 0.5)
-float directionalGlow(float2 p)
-{
-    return sin(atan2(p.y, p.x) - 0.5);
+    return 1.0 - b * exp2(exponent * log2(baseVal));
 }
 
 // Smooth Continuous Island Distance Field: Returns (insideDistPixels, inwardNormal.x, inwardNormal.y)
@@ -112,11 +104,28 @@ float3 notchDistanceField(
     if (qx > 0.0 && qy > 0.0)
     {
         // Corner quadrant: evaluate continuous superellipse metric Ln
-        float qx_n = pow(max(qx, 0.0001), nPower);
-        float qy_n = pow(max(qy, 0.0001), nPower);
-        float lenN = pow(qx_n + qy_n, 1.0 / nPower);
-        sdf = lenN - r;
-        d = float2(pow(max(qx, 0.0001), nPower - 1.0), pow(max(qy, 0.0001), nPower - 1.0) * (py < 0.0 ? -1.0 : 1.0));
+        if (abs(nPower - 2.0) < 0.01)
+        {
+            float lenN = sqrt(qx * qx + qy * qy);
+            sdf = lenN - r;
+            d = float2(qx, qy * (py < 0.0 ? -1.0 : 1.0));
+        }
+        else if (abs(nPower - 3.0) < 0.01)
+        {
+            float qx_3 = qx * qx * qx;
+            float qy_3 = qy * qy * qy;
+            float lenN = pow(max(qx_3 + qy_3, 0.0001), 0.33333333);
+            sdf = lenN - r;
+            d = float2(qx * qx, qy * qy * (py < 0.0 ? -1.0 : 1.0));
+        }
+        else
+        {
+            float qx_n = pow(max(qx, 0.0001), nPower);
+            float qy_n = pow(max(qy, 0.0001), nPower);
+            float lenN = pow(qx_n + qy_n, 1.0 / nPower);
+            sdf = lenN - r;
+            d = float2(pow(max(qx, 0.0001), nPower - 1.0), pow(max(qy, 0.0001), nPower - 1.0) * (py < 0.0 ? -1.0 : 1.0));
+        }
     }
     else if (qx > 0.0)
     {
@@ -141,18 +150,19 @@ float3 notchDistanceField(
 
     float2 pSign = float2(localPos.x < 0.0 ? -1.0 : 1.0, 1.0);
     float2 outwardNormal = float2(0.0, 0.0);
-    if (dot(d, d) > 0.00001)
+    float dLenSq = dot(d, d);
+    if (dLenSq > 0.00001)
     {
-        outwardNormal = normalize(d) * pSign;
+        outwardNormal = d * rsqrt(dLenSq) * pSign;
     }
 
     return float3(-sdf, -outwardNormal.x, -outwardNormal.y);
 }
 
 // Ultra-fast Bilinear Texture Sampling
-float3 sampleSource(float2 sourcePixel, float2 sourceSize)
+float3 sampleSource(float2 sourcePixel, float2 rcpSourceSize)
 {
-    float2 uv = saturate(sourcePixel / sourceSize);
+    float2 uv = saturate(sourcePixel * rcpSourceSize);
     return tex2D(input, uv).rgb;
 }
 
@@ -169,8 +179,18 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float npy = uv.y * srcH;
 
     float2 localPos = float2(npx - notchW * 0.5, npy - notchH * 0.5);
-    float2 basePixel = float2(npx + offX, npy + offY);
     float2 halfSize = max(notchSize * 0.5, float2(0.5, 0.5));
+
+    // Fast Bounding Box Pre-Cull:
+    // Any pixel outside the notch boundary + 1.5px antialias padding has alpha = 0.
+    // Early exit immediately bypasses all SDF, pow(), refraction, glow, and sampling logic!
+    if (abs(localPos.x) > halfSize.x + 1.5 || abs(localPos.y) > halfSize.y + 1.5)
+    {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
+
+    float2 basePixel = float2(npx + offX, npy + offY);
+    float2 rcpSourceSize = 1.0 / sourceSize;
 
     // OverShifted parameters
     float nSquircle = max(powerFactor, 1.05);
@@ -203,39 +223,48 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // -----------------------------------------------------------------
     // Pointer interaction & dynamic ripple
     // -----------------------------------------------------------------
+    float flexPixels = 0.0;
     float active = saturate(pointerActive);
-    float pressed = saturate(pressAmount) * active;
-    float2 pointer01 = saturate(float2(pointerX, pointerY));
-    float2 pointerLocal = pointer01 * notchSize - halfSize;
-    float2 pointerDelta = localPos - pointerLocal;
+    if (active > 0.001)
+    {
+        float pressed = saturate(pressAmount) * active;
+        float2 pointer01 = saturate(float2(pointerX, pointerY));
+        float2 pointerLocal = pointer01 * notchSize - halfSize;
+        float2 pointerDelta = localPos - pointerLocal;
 
-    float radiusPixels = max(notchH * 0.70, 1.0);
-    float2 interactionScale = float2(max(notchW * 0.35, radiusPixels * 2.0), max(notchH * 0.75, radiusPixels * 1.5));
-    float interactionDist = length(pointerDelta / interactionScale);
-    float interactionMask = smoothstep(1.0, 0.0, interactionDist) * active;
+        float radiusPixels = max(notchH * 0.70, 1.0);
+        float2 interactionScale = float2(max(notchW * 0.35, radiusPixels * 2.0), max(notchH * 0.75, radiusPixels * 1.5));
+        float interactionDist = length(pointerDelta / interactionScale);
+        float interactionMask = smoothstep(1.0, 0.0, interactionDist) * active;
 
-    float2 radialFromPointer = safeNormalize(pointerDelta);
+        float2 radialFromPointer = safeNormalize(pointerDelta);
 
-    // Dynamic wave / ripple flex
-    float ripplePhase = pressed * M_PI * 1.5;
-    float dimpleSlope = sin(saturate(interactionDist) * M_PI * 2.0 - ripplePhase) * interactionMask;
-    float flexPixels = max(flexStrength, 0.0) * dimpleSlope * lerp(0.5, 3.5, pressed);
+        // Dynamic wave / ripple flex
+        float ripplePhase = pressed * 4.71238898; // 1.5 * PI
+        float dimpleSlope = sin(saturate(interactionDist) * 6.2831853 - ripplePhase) * interactionMask;
+        flexPixels = max(flexStrength, 0.0) * dimpleSlope * lerp(0.5, 3.5, pressed);
 
-    // Dynamic flex on inward normal
-    inwardNormal = safeNormalize(inwardNormal - radialFromPointer * (interactionMask * pressed * 0.06));
+        // Dynamic flex on inward normal
+        inwardNormal = safeNormalize(inwardNormal - radialFromPointer * (interactionMask * pressed * 0.06));
+    }
 
     // -----------------------------------------------------------------
     // OverShifted Exponential Refraction Lens Formula
     // -----------------------------------------------------------------
     float fVal = f_refract(distNorm, paramA, paramB, paramC, paramD);
-    float refractFactor = pow(max(fVal, 0.0001), fPow);
+    float refractFactor = (abs(fPow - 1.0) < 0.001) ? fVal : pow(max(fVal, 0.0001), fPow);
 
     // OverShifted displacement vector mapping background coordinates
     float2 samplePNorm = pNorm * refractFactor;
     float2 displacement = (samplePNorm - pNorm) * halfSize * bend;
 
     // Add pointer ripple displacement
-    displacement += radialFromPointer * flexPixels;
+    if (active > 0.001)
+    {
+        float2 pointer01 = saturate(float2(pointerX, pointerY));
+        float2 pointerLocal = pointer01 * notchSize - halfSize;
+        displacement += safeNormalize(localPos - pointerLocal) * flexPixels;
+    }
 
     float2 sourcePixel = basePixel + displacement;
 
@@ -248,21 +277,15 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     if (chromaAmount > 0.001)
     {
         float2 chromaOffset = safeNormalize(displacement) * chromaAmount * 1.5;
-        float3 sampleR = sampleSource(sourcePixel + chromaOffset, sourceSize);
-        float3 sampleG = sampleSource(sourcePixel, sourceSize);
-        float3 sampleB = sampleSource(sourcePixel - chromaOffset, sourceSize);
+        float3 sampleR = sampleSource(sourcePixel + chromaOffset, rcpSourceSize);
+        float3 sampleG = sampleSource(sourcePixel, rcpSourceSize);
+        float3 sampleB = sampleSource(sourcePixel - chromaOffset, rcpSourceSize);
         col = float3(sampleR.r, sampleG.g, sampleB.b);
     }
     else
     {
-        col = sampleSource(sourcePixel, sourceSize);
+        col = sampleSource(sourcePixel, rcpSourceSize);
     }
-
-    // -----------------------------------------------------------------
-    // OverShifted Film Noise / Grain: rand(fragCoord * 1e-3)
-    // -----------------------------------------------------------------
-    float grain = (rand(float2(npx, npy) * 1e-3) - 0.5) * max(u_noise, 0.0);
-    col += float3(grain, grain, grain);
 
     // -----------------------------------------------------------------
     // OverShifted Directional Glass Glow (Multiplicative Optical Rim)

@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Media;
 using VNotch.Controllers;
+using VNotch.Services;
 
 namespace VNotch;
 
@@ -55,6 +56,7 @@ public partial class MainWindow
             GlassTintOverlay.Visibility = Visibility.Visible;
             SetOpticalRimVisibility(Visibility.Visible);
             if (GlassDarkOverlay != null) GlassDarkOverlay.Visibility = Visibility.Visible;
+            if (GlassGrainOverlay != null) GlassGrainOverlay.Background = GlassGrainBrush.Instance;
 
             CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
             CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
@@ -103,6 +105,11 @@ public partial class MainWindow
             GlassBackdropHost.Visibility = Visibility.Collapsed;
             GlassBackdropHost.Background = null;
             GlassTintOverlay.Visibility = Visibility.Collapsed;
+            if (GlassGrainOverlay != null)
+            {
+                GlassGrainOverlay.Visibility = Visibility.Collapsed;
+                GlassGrainOverlay.Opacity = 0;
+            }
             SetOpticalRimVisibility(Visibility.Collapsed);
             if (GlassDarkOverlay != null)
             {
@@ -145,6 +152,14 @@ public partial class MainWindow
         ApplyGpuBlur(cfg.BlurAmount);
 
         GlassBackdropHost.Opacity = Math.Clamp(cfg.Opacity, 0, 1);
+
+        if (GlassGrainOverlay != null)
+        {
+            double grainOpacity = Math.Clamp(cfg.Noise * 1.5, 0.0, 1.0);
+            GlassGrainOverlay.Opacity = grainOpacity;
+            GlassGrainOverlay.Visibility = grainOpacity > 0.005 ? Visibility.Visible : Visibility.Collapsed;
+            GlassGrainOverlay.Background = GlassGrainBrush.Instance;
+        }
 
         ApplyOpticalRimLevels(cfg.EdgeHighlight, cfg.Specular, cfg.Fresnel, cfg.ChromaticAberration);
 
@@ -304,6 +319,9 @@ public partial class MainWindow
         return (w, h);
     }
 
+    private LiquidGlassController.GpuGeometry? _lastAppliedGpuOptics;
+    private double _lastAppliedTouchLight = -1;
+
     private void UpdateShaderGeometryPerFrame()
     {
         var fx = _glassRefractionEffect;
@@ -337,36 +355,40 @@ public partial class MainWindow
             offY = _lastGpuGeometry?.OffY ?? 0;
         }
 
-        if (Math.Abs(fx.SrcW - lg.SurfaceWidth) > 0.5) fx.SrcW = lg.SurfaceWidth;
-        if (Math.Abs(fx.SrcH - lg.SurfaceHeight) > 0.5) fx.SrcH = lg.SurfaceHeight;
-        if (Math.Abs(fx.NotchW - exactW) > 0.5) fx.NotchW = exactW;
-        if (Math.Abs(fx.NotchH - exactH) > 0.5) fx.NotchH = exactH;
-        if (Math.Abs(fx.OffX - offX) > 0.5) fx.OffX = offX;
-        if (Math.Abs(fx.OffY - offY) > 0.5) fx.OffY = offY;
+        if (Math.Abs(fx.SrcW - lg.SurfaceWidth) > 0.1) fx.SrcW = lg.SurfaceWidth;
+        if (Math.Abs(fx.SrcH - lg.SurfaceHeight) > 0.1) fx.SrcH = lg.SurfaceHeight;
+        if (Math.Abs(fx.NotchW - exactW) > 0.1) fx.NotchW = exactW;
+        if (Math.Abs(fx.NotchH - exactH) > 0.1) fx.NotchH = exactH;
+        if (Math.Abs(fx.OffX - offX) > 0.1) fx.OffX = offX;
+        if (Math.Abs(fx.OffY - offY) > 0.1) fx.OffY = offY;
         double topR = NotchBorder.CornerRadius.TopLeft * dpiScale;
         double bottomR = NotchBorder.CornerRadius.BottomLeft * dpiScale;
-        if (Math.Abs(fx.TopCornerR - topR) > 0.5) fx.TopCornerR = topR;
-        if (Math.Abs(fx.BottomCornerR - bottomR) > 0.5) fx.BottomCornerR = bottomR;
+        if (Math.Abs(fx.TopCornerR - topR) > 0.1) fx.TopCornerR = topR;
+        if (Math.Abs(fx.BottomCornerR - bottomR) > 0.1) fx.BottomCornerR = bottomR;
 
         var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
         if (_lastGpuGeometry is { } g)
         {
-            if (Math.Abs(fx.PowerFactor - g.PowerFactor) > 1e-4) fx.PowerFactor = g.PowerFactor;
-            if (Math.Abs(fx.A - g.A) > 1e-4) fx.A = g.A;
-            if (Math.Abs(fx.B - g.B) > 1e-4) fx.B = g.B;
-            if (Math.Abs(fx.C - g.C) > 1e-4) fx.C = g.C;
-            if (Math.Abs(fx.D - g.D) > 1e-4) fx.D = g.D;
-            if (Math.Abs(fx.FPower - g.FPower) > 1e-4) fx.FPower = g.FPower;
-            if (Math.Abs(fx.Noise - g.Noise) > 1e-4) fx.Noise = g.Noise;
-            if (Math.Abs(fx.GlowWeight - g.GlowWeight) > 1e-4) fx.GlowWeight = g.GlowWeight;
-            if (Math.Abs(fx.GlowBias - g.GlowBias) > 1e-4) fx.GlowBias = g.GlowBias;
-            if (Math.Abs(fx.GlowEdge0 - g.GlowEdge0) > 1e-4) fx.GlowEdge0 = g.GlowEdge0;
-            if (Math.Abs(fx.GlowEdge1 - g.GlowEdge1) > 1e-4) fx.GlowEdge1 = g.GlowEdge1;
-            if (Math.Abs(fx.Chroma - g.Chroma) > 1e-4) fx.Chroma = g.Chroma;
-            if (Math.Abs(fx.EdgeBend - g.EdgeBend) > 1e-4) fx.EdgeBend = g.EdgeBend;
-            if (Math.Abs(fx.BevelMode - g.BevelMode) > 1e-4) fx.BevelMode = g.BevelMode;
-            if (Math.Abs(fx.SatFactor - g.SatFactor) > 1e-4) fx.SatFactor = g.SatFactor;
-            if (Math.Abs(fx.BrightAdd - g.BrightAdd) > 1e-4) fx.BrightAdd = g.BrightAdd;
+            if (_lastAppliedGpuOptics == null || !_lastAppliedGpuOptics.Value.Equals(g))
+            {
+                _lastAppliedGpuOptics = g;
+                fx.PowerFactor = g.PowerFactor;
+                fx.A = g.A;
+                fx.B = g.B;
+                fx.C = g.C;
+                fx.D = g.D;
+                fx.FPower = g.FPower;
+                fx.Noise = g.Noise;
+                fx.GlowWeight = g.GlowWeight;
+                fx.GlowBias = g.GlowBias;
+                fx.GlowEdge0 = g.GlowEdge0;
+                fx.GlowEdge1 = g.GlowEdge1;
+                fx.Chroma = g.Chroma;
+                fx.EdgeBend = g.EdgeBend;
+                fx.BevelMode = g.BevelMode;
+                fx.SatFactor = g.SatFactor;
+                fx.BrightAdd = g.BrightAdd;
+            }
         }
         else
         {
@@ -387,7 +409,11 @@ public partial class MainWindow
             if (Math.Abs(fx.EdgeBend - cfg.EdgeBend) > 1e-4) fx.EdgeBend = cfg.EdgeBend;
             if (Math.Abs(fx.BevelMode - cfg.BevelMode) > 1e-4) fx.BevelMode = cfg.BevelMode;
         }
-        if (Math.Abs(fx.HighlightStrength - cfg.TouchLight) > 1e-4) fx.HighlightStrength = cfg.TouchLight;
+        if (Math.Abs(_lastAppliedTouchLight - cfg.TouchLight) > 1e-4)
+        {
+            _lastAppliedTouchLight = cfg.TouchLight;
+            fx.HighlightStrength = cfg.TouchLight;
+        }
     }
 
     /// <summary>Applies the legacy GPU-mode host blur. CPU Liquid Glass blurs the
@@ -744,6 +770,7 @@ public partial class MainWindow
         if (GlassBackdropHost == null) return;
         GlassBackdropHost.CornerRadius = cr;
         GlassTintOverlay.CornerRadius = cr;
+        if (GlassGrainOverlay != null) GlassGrainOverlay.CornerRadius = cr;
         GlassDepthRimBorder.CornerRadius = cr;
         GlassCoolRimBorder.CornerRadius = cr;
         GlassWarmRimBorder.CornerRadius = cr;

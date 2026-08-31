@@ -581,6 +581,13 @@
                        RenderOptions.BitmapScalingMode="HighQuality"/>
             </Border>
 
+            <Border x:Name="GlassGrainOverlay"
+                    Grid.RowSpan="3"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed"
+                    Opacity="0"
+                    CornerRadius="24"/>
+
             <Border x:Name="GlassTintOverlay"
                     Grid.RowSpan="3"
                     IsHitTestVisible="False"
@@ -1266,6 +1273,11 @@
                                                         ValueChanged="GlassConfigSlider_Changed"/>
                                             </Border>
                                             <Border Style="{StaticResource SettingRowBorder}">
+                                                <controls:ElasticSlider x:Name="GlassGrainSlider" Label="Grain" Unit="%"
+                                                        Minimum="0" Maximum="100" Value="10" TickFrequency="2" IsSnapToTickEnabled="True"
+                                                        ValueChanged="GlassConfigSlider_Changed"/>
+                                            </Border>
+                                            <Border Style="{StaticResource SettingRowBorder}">
                                                 <controls:ElasticSlider x:Name="GlassZRadiusSlider" Label="Z-Radius" Unit="%"
                                                         Minimum="5" Maximum="60" Value="20" TickFrequency="1" IsSnapToTickEnabled="True"
                                                         ValueChanged="GlassConfigSlider_Changed"/>
@@ -1550,7 +1562,7 @@
                                                           Checked="EnableDebugModeCheck_Changed"
                                                           Unchecked="EnableDebugModeCheck_Changed"/>
                                                 <TextBlock x:Name="EnableDebugModeHint"
-                                                           Text="Display FPS, CPU, and RAM usage on the notch next to the battery."
+                                                           Text="Display FPS, CPU, and RAM usage on a floating draggable performance HUD window."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,3,0,0"/>
                                             </StackPanel>

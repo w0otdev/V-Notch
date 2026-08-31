@@ -1068,11 +1068,11 @@ public partial class SettingsWindow : Window
         RefractionC = 5.2,
         RefractionD = 6.9,
         FPower = 1.0,
-        Noise = 0.10,
-        GlowWeight = 0.30,
-        GlowBias = 0.0,
-        GlowEdge0 = 0.06,
-        GlowEdge1 = 0.0
+        Noise = 0.085,
+        GlowWeight = 0.60,
+        GlowBias = -0.02,
+        GlowEdge0 = 0.40,
+        GlowEdge1 = -0.40
     };
 
     private static Models.LiquidGlassConfig DarkGlassPreset() => new()
@@ -1099,11 +1099,11 @@ public partial class SettingsWindow : Window
         RefractionC = 5.2,
         RefractionD = 6.9,
         FPower = 1.0,
-        Noise = 0.08,
-        GlowWeight = 0.25,
-        GlowBias = -0.05,
-        GlowEdge0 = 0.06,
-        GlowEdge1 = 0.0
+        Noise = 0.060,
+        GlowWeight = 0.50,
+        GlowBias = -0.06,
+        GlowEdge0 = 0.35,
+        GlowEdge1 = -0.35
     };
 
     private static Models.LiquidGlassConfig RegularGlassPreset() => new()
@@ -1130,11 +1130,11 @@ public partial class SettingsWindow : Window
         RefractionC = 5.2,
         RefractionD = 6.9,
         FPower = 1.0,
-        Noise = 0.10,
-        GlowWeight = 0.30,
-        GlowBias = 0.0,
-        GlowEdge0 = 0.06,
-        GlowEdge1 = 0.0
+        Noise = 0.066,
+        GlowWeight = 0.692,
+        GlowBias = -0.040,
+        GlowEdge0 = 0.441,
+        GlowEdge1 = -0.474
     };
 
     private static Models.LiquidGlassConfig ClearGlassPreset() => new()
@@ -1147,6 +1147,7 @@ public partial class SettingsWindow : Window
         Specular = 0.35,
         Fresnel = 0.45,
         Distortion = 0.01,
+        Noise = 0.0,
         ZRadius = 0.15,
         Opacity = 1.0,
         Saturation = 0.05,
@@ -1167,6 +1168,7 @@ public partial class SettingsWindow : Window
         Specular = 0.35,
         Fresnel = 0.25,
         Distortion = 0.015,
+        Noise = 0.04,
         ZRadius = 0.10,
         Opacity = 1.0,
         Saturation = -0.05,
@@ -1187,6 +1189,7 @@ public partial class SettingsWindow : Window
         Specular = 0.32,
         Fresnel = 0.30,
         Distortion = 0.02,
+        Noise = 0.06,
         ZRadius = 0.15,
         Opacity = 1.0,
         Saturation = -0.10,
@@ -1207,6 +1210,7 @@ public partial class SettingsWindow : Window
         Specular = 0.28,
         Fresnel = 0.40,
         Distortion = 0.05,
+        Noise = 0.10,
         ZRadius = 0.48,
         Opacity = 1.0,
         Saturation = -0.20,
@@ -1227,6 +1231,7 @@ public partial class SettingsWindow : Window
         Specular = 0.25,
         Fresnel = 0.45,
         Distortion = 0.06,
+        Noise = 0.12,
         ZRadius = 0.60,
         Opacity = 1.0,
         Saturation = -0.25,
@@ -1263,6 +1268,7 @@ public partial class SettingsWindow : Window
         c.Specular = GlassSpecularSlider.Value / 100.0;
         c.Fresnel = GlassFresnelSlider.Value / 100.0;
         c.Distortion = GlassDistortionSlider.Value / 100.0;
+        c.Noise = GlassGrainSlider.Value / 100.0;
         c.ZRadius = GlassZRadiusSlider.Value / 100.0;
         c.Opacity = GlassOpacitySlider.Value / 100.0;
         c.Saturation = GlassSaturationSlider.Value / 100.0;
@@ -1289,6 +1295,7 @@ public partial class SettingsWindow : Window
             GlassSpecularSlider.Value = Math.Round(c.Specular * 100);
             GlassFresnelSlider.Value = Math.Round(c.Fresnel * 100);
             GlassDistortionSlider.Value = Math.Round(c.Distortion * 100);
+            GlassGrainSlider.Value = Math.Round(c.Noise * 100);
             GlassZRadiusSlider.Value = Math.Round(c.ZRadius * 100);
             GlassOpacitySlider.Value = Math.Round(c.Opacity * 100);
             GlassSaturationSlider.Value = Math.Round(c.Saturation * 100);
@@ -1378,6 +1385,7 @@ public partial class SettingsWindow : Window
         c.Specular = ui.Specular;
         c.Fresnel = ui.Fresnel;
         c.Distortion = ui.Distortion;
+        c.Noise = ui.Noise;
         c.ZRadius = ui.ZRadius;
         c.Opacity = ui.Opacity;
         c.Saturation = ui.Saturation;
@@ -1562,6 +1570,7 @@ public partial class SettingsWindow : Window
         GlassSpecularSlider.Label = Loc.Get("settings.glass.specular");
         GlassFresnelSlider.Label = Loc.Get("settings.glass.fresnel");
         GlassDistortionSlider.Label = Loc.Get("settings.glass.distortion");
+        GlassGrainSlider.Label = Loc.Get("settings.glass.grain");
         GlassZRadiusSlider.Label = Loc.Get("settings.glass.zRadius");
         GlassOpacitySlider.Label = Loc.Get("settings.glass.opacity");
         GlassSaturationSlider.Label = Loc.Get("settings.glass.saturation");
@@ -3755,6 +3764,7 @@ public partial class SettingsWindow : Window
         GlassBackdropHost.Visibility = Visibility.Collapsed;
         GlassTintOverlay.Visibility = Visibility.Collapsed;
         GlassDarkOverlay.Visibility = Visibility.Collapsed;
+        if (GlassGrainOverlay != null) GlassGrainOverlay.Visibility = Visibility.Collapsed;
 
         CompositionTarget.Rendering -= OnGlassRegionRendering;
         _liquidGlass?.ClearLiveRegion();
@@ -3848,8 +3858,27 @@ public partial class SettingsWindow : Window
 
         GlassBackdropHost.Opacity = Math.Clamp(cfg.Opacity, 0, 1);
 
+        if (GlassGrainOverlay != null)
+        {
+            double grainOpacity = Math.Clamp(cfg.Noise * 1.5, 0.0, 1.0);
+            GlassGrainOverlay.Opacity = grainOpacity;
+            GlassGrainOverlay.Visibility = grainOpacity > 0.005 ? Visibility.Visible : Visibility.Collapsed;
+            GlassGrainOverlay.Background = GlassGrainBrush.Instance;
+        }
+
         _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
         {
+            PowerFactor = cfg.PowerFactor,
+            RefractionA = cfg.RefractionA,
+            RefractionB = cfg.RefractionB,
+            RefractionC = cfg.RefractionC,
+            RefractionD = cfg.RefractionD,
+            FPower = cfg.FPower,
+            Noise = cfg.Noise,
+            GlowWeight = cfg.GlowWeight,
+            GlowBias = cfg.GlowBias,
+            GlowEdge0 = cfg.GlowEdge0,
+            GlowEdge1 = cfg.GlowEdge1,
             Refraction = cfg.Refraction,
             EdgeBend = cfg.EdgeBend,
             ChromaticAberration = cfg.ChromaticAberration,
@@ -4004,6 +4033,8 @@ public partial class SettingsWindow : Window
         _glassHostBlur = null;
     }
 
+    private LiquidGlassController.GpuGeometry? _lastAppliedSettingsOptics;
+
     /// <summary>Pushes the per-frame shader geometry from the controller into the
     /// effect. The shader samples the presenter's fixed D3D surface, so SrcW/SrcH
     /// must be the surface dimensions, not the per-frame capture size.</summary>
@@ -4013,30 +4044,35 @@ public partial class SettingsWindow : Window
         var lg = _liquidGlass;
         if (fx == null || lg == null) return;
 
-        fx.SrcW = lg.SurfaceWidth;
-        fx.SrcH = lg.SurfaceHeight;
-        fx.NotchW = g.NotchW;
-        fx.NotchH = g.NotchH;
-        fx.OffX = g.OffX;
-        fx.OffY = g.OffY;
-        fx.TopCornerR = g.TopCornerR;
-        fx.BottomCornerR = g.BottomCornerR;
-        fx.PowerFactor = g.PowerFactor;
-        fx.A = g.A;
-        fx.B = g.B;
-        fx.C = g.C;
-        fx.D = g.D;
-        fx.FPower = g.FPower;
-        fx.Noise = g.Noise;
-        fx.GlowWeight = g.GlowWeight;
-        fx.GlowBias = g.GlowBias;
-        fx.GlowEdge0 = g.GlowEdge0;
-        fx.GlowEdge1 = g.GlowEdge1;
-        fx.Chroma = g.Chroma;
-        fx.EdgeBend = g.EdgeBend;
-        fx.BevelMode = g.BevelMode;
-        fx.SatFactor = g.SatFactor;
-        fx.BrightAdd = g.BrightAdd;
+        if (Math.Abs(fx.SrcW - lg.SurfaceWidth) > 0.1) fx.SrcW = lg.SurfaceWidth;
+        if (Math.Abs(fx.SrcH - lg.SurfaceHeight) > 0.1) fx.SrcH = lg.SurfaceHeight;
+        if (Math.Abs(fx.NotchW - g.NotchW) > 0.1) fx.NotchW = g.NotchW;
+        if (Math.Abs(fx.NotchH - g.NotchH) > 0.1) fx.NotchH = g.NotchH;
+        if (Math.Abs(fx.OffX - g.OffX) > 0.1) fx.OffX = g.OffX;
+        if (Math.Abs(fx.OffY - g.OffY) > 0.1) fx.OffY = g.OffY;
+        if (Math.Abs(fx.TopCornerR - g.TopCornerR) > 0.1) fx.TopCornerR = g.TopCornerR;
+        if (Math.Abs(fx.BottomCornerR - g.BottomCornerR) > 0.1) fx.BottomCornerR = g.BottomCornerR;
+
+        if (_lastAppliedSettingsOptics == null || !_lastAppliedSettingsOptics.Value.Equals(g))
+        {
+            _lastAppliedSettingsOptics = g;
+            fx.PowerFactor = g.PowerFactor;
+            fx.A = g.A;
+            fx.B = g.B;
+            fx.C = g.C;
+            fx.D = g.D;
+            fx.FPower = g.FPower;
+            fx.Noise = g.Noise;
+            fx.GlowWeight = g.GlowWeight;
+            fx.GlowBias = g.GlowBias;
+            fx.GlowEdge0 = g.GlowEdge0;
+            fx.GlowEdge1 = g.GlowEdge1;
+            fx.Chroma = g.Chroma;
+            fx.EdgeBend = g.EdgeBend;
+            fx.BevelMode = g.BevelMode;
+            fx.SatFactor = g.SatFactor;
+            fx.BrightAdd = g.BrightAdd;
+        }
     }
 
     private void OnGpuRefractionFailure(Exception ex)

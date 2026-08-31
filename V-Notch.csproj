@@ -113,6 +113,7 @@
       <FxcPath Condition="'@(_FxcCandidate)' != ''">%(_FxcCandidate.FullPath)</FxcPath>
     </PropertyGroup>
     <Exec Condition="'$(FxcPath)' != '' And Exists('$(FxcPath)')" Command="&quot;$(FxcPath)&quot; /nologo /T ps_3_0 /E main /Fo &quot;Shaders\LiquidGlassRefraction.ps&quot; &quot;Shaders\LiquidGlassRefraction.hlsl&quot;" ContinueOnError="true" />
+    <Exec Condition="('$(FxcPath)' == '' Or !Exists('$(FxcPath)'))" Command="dotnet run --project &quot;tools\ShaderCompiler\ShaderCompiler.csproj&quot;" ContinueOnError="true" />
   </Target>
 
   <Target Name="SetPackageManifestVersion" BeforeTargets="Build" Inputs="$(MSBuildProjectFullPath);Package.appxmanifest" Outputs="$(IntermediateOutputPath)Package.appxmanifest;$(OutDir)Package.appxmanifest">

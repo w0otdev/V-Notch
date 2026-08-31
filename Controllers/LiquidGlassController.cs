@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -817,12 +817,12 @@ public sealed class LiquidGlassController
             if (remainingTicks <= 0) return;
 
             double remainingMs = remainingTicks * 1000.0 / Stopwatch.Frequency;
-            if (remainingMs > 4.0)
+            if (remainingMs >= 2.0)
                 Thread.Sleep(1);
-            else if (remainingMs > 0.5)
-                Thread.Yield();
+            else if (remainingMs >= 0.25)
+                Thread.Sleep(0);
             else
-                Thread.SpinWait(32);
+                Thread.SpinWait(16);
 
             if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
             {
@@ -907,8 +907,6 @@ public sealed class LiquidGlassController
         bool found = false;
         try
         {
-            var pidNames = new Dictionary<uint, string>();
-
             EnumWindows((hwnd, _) =>
             {
                 if (!IsWindowVisible(hwnd)) return true;
@@ -932,11 +930,7 @@ public sealed class LiquidGlassController
                 GetWindowThreadProcessId(hwnd, out uint pid);
                 if (pid == 0) return true;
 
-                if (!pidNames.TryGetValue(pid, out string? name))
-                {
-                    name = SafeProcessName(pid);
-                    pidNames[pid] = name;
-                }
+                string name = SafeProcessName(pid);
                 if (name.Length == 0) return true;
 
                 for (int i = 0; i < _captureProcessNames.Length; i++)
@@ -956,17 +950,30 @@ public sealed class LiquidGlassController
         return found;
     }
 
+    private static readonly ConcurrentDictionary<uint, (string Name, long ExpireTicks)> _pidNameCache = new();
+
     private static string SafeProcessName(uint pid)
     {
+        long now = Environment.TickCount64;
+        if (_pidNameCache.TryGetValue(pid, out var cached) && now < cached.ExpireTicks)
+            return cached.Name;
+
+        string name = string.Empty;
         try
         {
             using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-            return proc.ProcessName;
+            name = proc.ProcessName;
         }
         catch
         {
-            return string.Empty;
+            name = string.Empty;
         }
+
+        if (_pidNameCache.Count > 256)
+            _pidNameCache.Clear();
+
+        _pidNameCache[pid] = (name, now + 15000);
+        return name;
     }
 
     private CaptureRegion? TryGetRegionOnUi()
@@ -2039,6 +2046,13 @@ public sealed class LiquidGlassController
     private static double Hash(double px, double py)
     {
         double s = Math.Sin(px * 127.1 + py * 311.7) * 43758.5453;
+        return s - Math.Floor(s);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static double Rand(double px, double py)
+    {
+        double s = Math.Sin(px * 12.9898 + py * 78.233) * 43758.5453;
         return s - Math.Floor(s);
     }
 

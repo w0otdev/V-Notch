@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Media.Animation;
 using VNotch.Models;
@@ -64,10 +64,7 @@ public partial class MainWindow
 
         if (_isDebugModeEnabled)
         {
-            if (DebugCpuText != null) DebugCpuText.Text = $"{Math.Round(stats.CpuPercent)}% CPU";
-            if (DebugRamText != null) DebugRamText.Text = stats.RamTotalBytes > 0
-                ? $"{FormatGb(stats.RamUsedBytes)}GB RAM"
-                : "— RAM";
+            _debugWindow?.UpdateStats(stats.CpuPercent, stats.RamUsedBytes, stats.RamTotalBytes);
         }
     }
 

@@ -69,6 +69,8 @@ public class NotchSettings
     public bool HideOnWindowedFullscreen { get; set; } = false;
 
     public bool EnableDebugMode { get; set; } = false;
+    public double? DebugWindowX { get; set; }
+    public double? DebugWindowY { get; set; }
 
     public bool EnableIdleAutoHide { get; set; } = false;
     public int IdleAutoHideDelay { get; set; } = 5000;
@@ -174,11 +176,11 @@ public class LiquidGlassConfig
     public double RefractionC { get; set; } = 5.2;
     public double RefractionD { get; set; } = 6.9;
     public double FPower { get; set; } = 1.0;
-    public double Noise { get; set; } = 0.10;
-    public double GlowWeight { get; set; } = 0.30;
-    public double GlowBias { get; set; } = 0.0;
-    public double GlowEdge0 { get; set; } = 0.06;
-    public double GlowEdge1 { get; set; } = 0.0;
+    public double Noise { get; set; } = 0.066;
+    public double GlowWeight { get; set; } = 0.692;
+    public double GlowBias { get; set; } = -0.040;
+    public double GlowEdge0 { get; set; } = 0.441;
+    public double GlowEdge1 { get; set; } = -0.474;
 
     // Legacy compatibility only. The magnifier filter now excludes the notch from
     // its private backdrop source without hiding the visible overlay in screenshots.

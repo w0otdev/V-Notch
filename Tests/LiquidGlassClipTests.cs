@@ -32,6 +32,7 @@ public sealed class LiquidGlassClipTests
         string[] materialLayerNames =
         {
             "GlassBackdropHost",
+            "GlassGrainOverlay",
             "GlassTintOverlay",
             "GlassDepthRimBorder",
             "GlassCoolRimBorder",

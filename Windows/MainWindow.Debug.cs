@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -11,6 +11,7 @@ public partial class MainWindow
     private bool _isDebugModeEnabled = false;
     private int _frameCount = 0;
     private long _lastFpsUpdate = 0;
+    private DebugWindow? _debugWindow;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct DEVMODE
@@ -56,74 +57,84 @@ public partial class MainWindow
 
     internal void ToggleDebugMode(bool enable)
     {
-        if (_isDebugModeEnabled == enable) return;
+        if (_isDebugModeEnabled == enable && (_debugWindow != null && _debugWindow.IsVisible == enable)) return;
 
         _isDebugModeEnabled = enable;
 
-        if (DebugSection != null)
+
+
+        if (enable)
         {
-            if (enable)
+            if (_debugWindow == null)
             {
-                DebugSection.Visibility = Visibility.Visible;
-                DebugSection.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
+                _debugWindow = new DebugWindow(
+                    initialX: _settings.DebugWindowX,
+                    initialY: _settings.DebugWindowY,
+                    onClose: () =>
+                    {
+                        _settings.EnableDebugMode = false;
+                        _settingsService.Save(_settings);
+                        ToggleDebugMode(false);
+                    },
+                    onPositionChanged: (x, y) =>
+                    {
+                        _settings.DebugWindowX = x;
+                        _settings.DebugWindowY = y;
+                        _settingsService.Save(_settings);
+                    });
+            }
+            _debugWindow.Show();
+            _debugWindow.Activate();
 
-                CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
-                CompositionTarget.Rendering += CompositionTarget_Rendering_DebugFps;
-                _lastFpsUpdate = Stopwatch.GetTimestamp();
-                _frameCount = 0;
+            CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
+            CompositionTarget.Rendering += CompositionTarget_Rendering_DebugFps;
+            _lastFpsUpdate = Stopwatch.GetTimestamp();
+            _frameCount = 0;
 
-                UpdateRefreshRate();
+            UpdateRefreshRate();
 
-                if (!_systemMonitorModule.IsRunning)
-                {
-                    _systemMonitorModule.Start();
-                }
-                else
-                {
-                    _systemMonitorModule.Tick();
-                }
+            if (!_systemMonitorModule.IsRunning)
+            {
+                _systemMonitorModule.Start();
             }
             else
             {
-                var anim = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(200));
-                anim.Completed += (s, e) =>
-                {
-                    if (!_isDebugModeEnabled) DebugSection.Visibility = Visibility.Collapsed;
-                };
-                DebugSection.BeginAnimation(OpacityProperty, anim);
-
-                CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
-
-                if (!IsSystemMonitorWidgetMode && _systemMonitorModule.IsRunning)
-                {
-                    _systemMonitorModule.Stop();
-                }
+                _systemMonitorModule.Tick();
             }
-
-            _collapsedWidth = GetCollapsedWidth();
-            ApplySettings(true);
         }
+        else
+        {
+            _debugWindow?.Hide();
+            CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
+
+            if (!IsSystemMonitorWidgetMode && _systemMonitorModule.IsRunning)
+            {
+                _systemMonitorModule.Stop();
+            }
+        }
+
+        _collapsedWidth = GetCollapsedWidth();
+        ApplySettings(true);
     }
 
     private void UpdateRefreshRate()
     {
-        if (DebugRefreshRateText == null) return;
         try
         {
             DEVMODE devMode = new DEVMODE();
             devMode.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
             if (EnumDisplaySettings(null, -1, ref devMode))
             {
-                DebugRefreshRateText.Text = $"{devMode.dmDisplayFrequency} Hz";
+                _debugWindow?.UpdateRefreshRate(devMode.dmDisplayFrequency);
             }
             else
             {
-                DebugRefreshRateText.Text = "— Hz";
+                _debugWindow?.UpdateRefreshRate(0);
             }
         }
         catch
         {
-            DebugRefreshRateText.Text = "— Hz";
+            _debugWindow?.UpdateRefreshRate(0);
         }
     }
 
@@ -136,10 +147,7 @@ public partial class MainWindow
         if (elapsedSeconds >= 1.0)
         {
             double fps = _frameCount / elapsedSeconds;
-            if (DebugFpsText != null)
-            {
-                DebugFpsText.Text = $"{Math.Round(fps)} FPS";
-            }
+            _debugWindow?.UpdateFps(fps);
 
             UpdateRefreshRate();
 
