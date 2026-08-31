@@ -171,6 +171,12 @@ public partial class MainWindow : Window
     private const double CompactThumbnailHoverExitMargin = 22.0;
     private DateTime _lastMediaActionTime = DateTime.MinValue;
 
+    private bool _isDraggingNotchDebug = false;
+    private bool _hasActuallyDragged = false;
+    private Point _debugDragStartMouse;
+    private int _debugDragStartFixedX;
+    private int _debugDragStartFixedY;
+
     private readonly VNotch.Controllers.CompactPillArbiter _compactPillArbiter = new();
 
     private static readonly TimeSpan ProgressRenderInterval = TimeSpan.FromMilliseconds(16);
@@ -343,7 +349,7 @@ public partial class MainWindow : Window
         _hoverCollapseTimer.Tick += (s, e) =>
         {
             _hoverCollapseTimer.Stop();
-            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+            if (_isDebugViewLocked || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_isExpanded && !NotchWrapper.IsMouseOver)
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
@@ -477,7 +483,7 @@ public partial class MainWindow : Window
 
     private void HandleAppDeactivated()
     {
-        if (ShouldCollapseOnDeactivation(
+        if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
                 _isSecondaryView,
@@ -494,7 +500,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
-        if (ShouldCollapseOnDeactivation(
+        if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
                 _isSecondaryView,
@@ -525,6 +531,7 @@ public partial class MainWindow : Window
 
     private void CollapseAll()
     {
+        if (_isDebugViewLocked) return;
         if (_isMusicExpanded) CollapseMusicWidget();
         if (_isExpanded) CollapseNotch();
     }
@@ -710,6 +717,7 @@ public partial class MainWindow : Window
 
     private void FullscreenController_HideStateChanged(bool shouldHide)
     {
+        if (_isDebugViewLocked) return;
         _isHiddenByFullscreen = shouldHide;
 
         if (_isHiddenByFullscreen)
@@ -1555,6 +1563,23 @@ public partial class MainWindow : Window
 
     private void NotchBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (_isDebugDraggable)
+        {
+            var hit = e.OriginalSource as DependencyObject;
+            if (!IsInteractiveControl(hit))
+            {
+                _isDraggingNotchDebug = true;
+                _hasActuallyDragged = false;
+                Win32Interop.GetCursorPos(out var pt);
+                _debugDragStartMouse = new Point(pt.X, pt.Y);
+                _debugDragStartFixedX = _fixedX;
+                _debugDragStartFixedY = _fixedY;
+                NotchWrapper.CaptureMouse();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (_isAnimating)
         {
             e.Handled = true;
@@ -1609,8 +1634,30 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private static bool IsInteractiveControl(DependencyObject? element)
+    {
+        while (element != null)
+        {
+            if (element is System.Windows.Controls.Primitives.ButtonBase ||
+                element is System.Windows.Controls.Primitives.RangeBase ||
+                element is System.Windows.Controls.Primitives.TextBoxBase ||
+                element is System.Windows.Controls.TextBox ||
+                element is System.Windows.Controls.PasswordBox ||
+                element is System.Windows.Controls.ComboBox ||
+                element is System.Windows.Controls.ListBox ||
+                element is System.Windows.Controls.MenuItem)
+            {
+                return true;
+            }
+            if (element is Window) break;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return false;
+    }
+
     private void ToggleNotchFromClick(int clickCount)
     {
+        if (_isDebugViewLocked) return;
         if (_isExpanded)
         {
             if (_isSecondaryView)

@@ -172,7 +172,7 @@ public partial class MainWindow
 
     private void CollapseMusicWidget()
     {
-        if (_isMusicAnimating) return;
+        if (_isDebugViewLocked || _isMusicAnimating) return;
         _isMusicAnimating = true;
         _notchState.TryTransitionTo(NotchState.MusicCollapsing);
         UpdateProgressSectionLayout();

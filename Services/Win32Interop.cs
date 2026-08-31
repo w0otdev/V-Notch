@@ -501,6 +501,67 @@ internal static class Win32Interop
         uint idEventThread,
         uint dwmsEventTime);
 
+    #region Performance & System Metrics Win32
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct FILETIME_METRICS
+    {
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
+
+        public ulong ToUInt64() => ((ulong)dwHighDateTime << 32) | dwLowDateTime;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetSystemTimes(out FILETIME_METRICS lpIdleTime, out FILETIME_METRICS lpKernelTime, out FILETIME_METRICS lpUserTime);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetProcessTimes(IntPtr hProcess, out FILETIME_METRICS lpCreationTime, out FILETIME_METRICS lpExitTime, out FILETIME_METRICS lpKernelTime, out FILETIME_METRICS lpUserTime);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentProcess();
+
+    [StructLayout(LayoutKind.Sequential, Size = 72)]
+    public struct PROCESS_MEMORY_COUNTERS_EX
+    {
+        public uint cb;
+        public uint PageFaultCount;
+        public UIntPtr PeakWorkingSetSize;
+        public UIntPtr WorkingSetSize;
+        public UIntPtr QuotaPeakPagedPoolUsage;
+        public UIntPtr QuotaPagedPoolUsage;
+        public UIntPtr QuotaPeakNonPagedPoolUsage;
+        public UIntPtr QuotaNonPagedPoolUsage;
+        public UIntPtr PagefileUsage;
+        public UIntPtr PeakPagefileUsage;
+        public UIntPtr PrivateUsage;
+    }
+
+    [DllImport("psapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetProcessMemoryInfo(IntPtr hProcess, out PROCESS_MEMORY_COUNTERS_EX counters, uint cb);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct MEMORYSTATUSEX_METRICS
+    {
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX_METRICS lpBuffer);
+
     #endregion
 
+    #endregion
 }

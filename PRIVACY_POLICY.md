@@ -1,6 +1,6 @@
 # Privacy Policy — V-Notch
 
-**Effective Date:** August 31, 2026  
+**Effective Date:** August 31, 2026 (revised)  
 **Application Version:** 1.9.0  
 **Developer:** rainaku  
 **Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -28,7 +28,7 @@ This policy uses the following terms:
 |---|---|---|---|
 | **Now-playing media** | Track title, artist, album, artwork, playback position, play state (Windows SMTC) | No (except artwork/lyrics/captions lookup — see §4) | No (transient in memory) |
 | **Album artwork lookup** | Track title + artist sent as a search query | Yes — YouTube/Google, SoundCloud, Piped/Invidious | No (cached in memory and local source cache) |
-| **Synced lyrics** | Track title + artist + duration sent as a query | Yes — lrclib.net | No (transient in memory) |
+| **Synced lyrics** | Track title + artist + duration sent as a query | Yes — lrclib.net, and api.lrcmux.dev as a fallback aggregator | No (transient in memory) |
 | **YouTube subtitles / captions** | Video ID + caption track requests (YoutubeExplode) | Yes — YouTube | No (transient in memory) |
 | **Spotify Canvas (opt-in)** | Spotify web session (`sp_dc`), track title + artist | Yes — Spotify, Musixmatch (fallback) | Session encrypted locally with Windows DPAPI |
 | **Weather (opt-in)** | Approximate IP-based location (`ipwho.is`) or manual city name | Yes — `ipwho.is`, Open-Meteo | No (transient in memory) |
@@ -61,8 +61,8 @@ This data is read continuously while media is playing, used to render the notch 
 
 To identify *where* media is playing (e.g. distinguishing a YouTube tab from a SoundCloud tab) and to fetch the correct artwork and lyrics, V-Notch performs two kinds of local inspection:
 
-- **Window title scanning** — It enumerates the titles of visible top-level windows and looks for known media keywords (such as "spotify", "youtube", "soundcloud", "apple music"). Only titles matching those keywords are retained, briefly, in memory.
-- **Browser URL reading** — For supported browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi), it uses the Windows UI Automation accessibility API to read the address bar and, if needed, open tabs, in order to find a media URL (a `youtube.com/watch`, `youtu.be`, or `soundcloud.com` link). Only URLs that look like media links are used.
+- **Window title scanning** — It enumerates the titles of visible top-level windows and keeps only those containing one of a fixed set of platform keywords: `spotify`, `youtube`, `soundcloud`, `facebook`, `tiktok`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`. The broader social-platform keywords (Facebook, TikTok, Instagram, Twitter/X) exist to support detecting video/audio playback inside those sites' tabs (e.g. TikTok/Reels playback, as described in the app's feature list) — they are matched against the window title text only, not page content. Non-matching window titles are discarded immediately and never retained.
+- **Browser URL reading** — For supported browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, and Zen Browser), it uses the Windows UI Automation accessibility API to read the address bar and, if needed, open tabs, in order to find a media URL (a `youtube.com/watch`, `youtu.be`, or `soundcloud.com` link). Only URLs that look like media links are used.
 
 This inspection happens entirely on your device. The titles and URLs are used transiently to drive media detection and artwork lookup, are cached only briefly in memory and local source cache, and are never stored to disk or transmitted as-is. (A derived value — the track title/artist — may be sent for artwork lookup as described in Section 4.)
 
@@ -158,12 +158,14 @@ When SMTC does not provide embedded artwork (common for browser-based playback),
 
 **Data sent:** Track title and artist (as a search query) and standard browser-like HTTP headers. **No user-identifiable information is included.** Retrieved images are held in memory for display and are not written to disk.
 
-### 4.3 Synced Lyrics — LRCLIB
+### 4.3 Synced Lyrics — LRCLIB and lrc mux
 
-- **Endpoint:** `https://lrclib.net/api/get?...`
-- **Why:** To fetch time-synced lyrics for the current track when the lyrics feature is active.
-- **Data sent:** Track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch. No personal data is sent.
-- **Data received:** Synced lyric lines, used transiently in memory for display.
+V-Notch tries two independent lyrics providers, in order, and stops as soon as one returns a result:
+
+- **LRCLIB** — `https://lrclib.net/api/get?...` (exact match) and its search endpoint (fuzzy match). **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch.
+- **lrc mux** — `https://api.lrcmux.dev/get?...`, used as a fallback aggregator when LRCLIB has no match. **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch. lrc mux is a third-party lyrics aggregation service with its own upstream sources; V-Notch does not control which upstream provider it queries internally.
+
+**Data received (both):** Synced lyric lines, used transiently in memory for display and never written to disk. No personal data is sent to either provider.
 
 ### 4.4 YouTube Subtitles & Captions — YoutubeExplode
 
@@ -219,7 +221,7 @@ Stores an LRU mapping (up to 500 entries) between media identity titles and reso
 
 ### 5.4 Diagnostic Log (`vnotch-debug.log`)
 
-Located in the application's program folder, this log records technical application events and errors to help diagnose problems. It is automatically rotated when it reaches about 5 MB. **This log is never transmitted anywhere** — it stays on your machine, and you may delete it at any time.
+Located in the application's program folder, this log records technical application events and errors to help diagnose problems. Because of what it logs, it can incidentally contain the titles/artists of tracks you played, lyrics-provider queries, and matched window titles (e.g. a browser tab title) — this is the same information already described in Sections 3 and 4, just also written locally for debugging. It is automatically rotated when it reaches about 5 MB. **This log is never transmitted anywhere** — it stays on your machine, is not uploaded with crash or update requests, and you may delete it at any time.
 
 ### 5.5 Optional ONNX Model
 
@@ -283,6 +285,8 @@ V-Notch processes data locally on your device. The only data that crosses a netw
 ## 11. Changes to This Policy
 
 This Privacy Policy may be updated as features change. Material changes will be reflected in this document, in the application changelog, and through an updated effective date and version number above. Continued use of the application after an update constitutes acceptance of the revised policy.
+
+**Revision notes (this update):** clarified that synced lyrics may also be fetched from `api.lrcmux.dev` as a fallback to LRCLIB; corrected the supported-browser list for URL detection to include Zen Browser; documented the full window-title keyword set used for media source detection (including Facebook, TikTok, Instagram, and Twitter/X, used only to detect playback inside those sites' tabs); and clarified that the local diagnostic log can incidentally contain track/window title data already covered elsewhere in this policy.
 
 ---
 

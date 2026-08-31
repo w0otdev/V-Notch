@@ -39,9 +39,15 @@ public partial class MainWindow
         UpdateSystemMonitorUI(e);
     }
 
+    private double _lastNetDownBytesPerSec = 0;
+    private double _lastNetUpBytesPerSec = 0;
+
     private void UpdateSystemMonitorUI(SystemMonitorInfo stats)
     {
         if (stats == null) return;
+
+        _lastNetDownBytesPerSec = stats.NetDownBytesPerSec;
+        _lastNetUpBytesPerSec = stats.NetUpBytesPerSec;
 
         if (SysMonCpuValueText != null)
         {
@@ -60,11 +66,6 @@ public partial class MainWindow
 
             if (SysMonNetDownText != null) SysMonNetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
             if (SysMonNetUpText != null) SysMonNetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
-        }
-
-        if (_isDebugModeEnabled)
-        {
-            _debugWindow?.UpdateStats(stats.CpuPercent, stats.RamUsedBytes, stats.RamTotalBytes);
         }
     }
 

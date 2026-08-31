@@ -59,11 +59,49 @@ public partial class MainWindow
 
     private void NotchWrapper_MouseMove(object sender, MouseEventArgs e)
     {
+        if (_isDraggingNotchDebug && e.LeftButton == MouseButtonState.Pressed)
+        {
+            Win32Interop.GetCursorPos(out var pt);
+            int dx = pt.X - (int)_debugDragStartMouse.X;
+            int dy = pt.Y - (int)_debugDragStartMouse.Y;
+
+            if (!_hasActuallyDragged && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
+            {
+                _hasActuallyDragged = true;
+            }
+
+            if (_hasActuallyDragged)
+            {
+                _fixedX = _debugDragStartFixedX + dx;
+                _fixedY = _debugDragStartFixedY + dy;
+                _overlayWindow.MoveFixedPosition(_fixedX, _fixedY);
+                _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         NotchBorder_GestureMouseMove(sender, e);
     }
 
     private void NotchWrapper_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_isDraggingNotchDebug)
+        {
+            _isDraggingNotchDebug = false;
+            NotchWrapper.ReleaseMouseCapture();
+
+            if (!_hasActuallyDragged)
+            {
+                // User just clicked without dragging -> toggle/open notch normally
+                ToggleNotchFromClick(e.ClickCount);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         NotchBorder_GestureMouseUp(sender, e);
     }
 

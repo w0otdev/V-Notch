@@ -806,7 +806,7 @@ public partial class MainWindow
 
     private void CollapseNotch()
     {
-        if (_isAnimating || !_isExpanded || _isGreetingActive) return;
+        if (_isDebugViewLocked || _isAnimating || !_isExpanded || _isGreetingActive) return;
 
         StopMainViewHorizontalStabilizer();
 

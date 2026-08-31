@@ -121,6 +121,18 @@ public sealed class OverlayWindowController : IDisposable
         ReassertBounds();
     }
 
+    public void MoveFixedPosition(int newX, int newY)
+    {
+        _state.FixedX = newX;
+        _state.FixedY = newY;
+        ApplyFixedBounds();
+    }
+
+    public void ResetToCenteredTop(double widthDip, double heightDip)
+    {
+        PositionAtTop(Math.Max(600, widthDip - HorizontalPadding), Math.Max(200, heightDip - 80));
+    }
+
     public void ReassertBounds()
     {
         if (!_state.HasFixedBounds || _state.WindowWidth <= 0 || _state.WindowHeight <= 0)
