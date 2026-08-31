@@ -23,6 +23,7 @@ changed or newly imported asset.
 
 | Library | License | Source |
 | --- | --- | --- |
+| AngleSharp 1.5.0 | MIT | <https://github.com/AngleSharp/AngleSharp> |
 | BlurredBackground.WPF 1.1.0 | BSD-3-Clause | <https://github.com/V4SS3UR/BlurredBackground.WPF> |
 | CommunityToolkit.Mvvm 8.4.0 | MIT | <https://github.com/CommunityToolkit/dotnet> |
 | FluentWpfChromes 1.0.1 | MIT | <https://github.com/vbobroff-app/FluentWpfChromes> |
@@ -30,7 +31,12 @@ changed or newly imported asset.
 | MathNet.Numerics 5.0.0 | MIT | <https://numerics.mathdotnet.com/> |
 | Microsoft.Extensions.DependencyInjection 8.0.1 | MIT | <https://dot.net/> |
 | Microsoft.ML.OnnxRuntime 1.17.1 | MIT | <https://github.com/microsoft/onnxruntime> |
+| Microsoft.Web.WebView2 1.0.4078.44 | Microsoft Software License | <https://github.com/MicrosoftEdge/WebView2Feedback> |
 | NAudio 2.2.1 | MIT | <https://github.com/naudio/NAudio> |
+| System.Data.OleDb 8.0.1 | MIT | <https://github.com/dotnet/runtime> |
+| Vortice.Direct3D11 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
+| Vortice.Direct3D9 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
+| Vortice.DXGI 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
 | WpfAnimatedGif 2.0.2 | Apache-2.0 | <https://github.com/XamlAnimatedGif/WpfAnimatedGif> |
 | YoutubeExplode 6.6.0 | MIT | <https://github.com/Tyrrrz/YoutubeExplode> |
 
