@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Media.Animation;
 using VNotch.Models;
@@ -42,24 +42,25 @@ public partial class MainWindow
     private void UpdateSystemMonitorUI(SystemMonitorInfo stats)
     {
         if (stats == null) return;
-        if (SysMonCpuValueText == null) return;
 
-        SysMonCpuValueText.Text = $"{Math.Round(stats.CpuPercent)}%";
-        SetUsageBar(SysMonCpuBar, stats.CpuPercent);
-
-        if (stats.RamTotalBytes > 0)
+        if (SysMonCpuValueText != null)
         {
-            SysMonRamValueText.Text =
-                $"{FormatGb(stats.RamUsedBytes)} / {FormatGb(stats.RamTotalBytes)} GB";
-        }
-        else
-        {
-            SysMonRamValueText.Text = "—";
-        }
-        SetUsageBar(SysMonRamBar, stats.RamPercent);
+            SysMonCpuValueText.Text = $"{Math.Round(stats.CpuPercent)}%";
+            SetUsageBar(SysMonCpuBar, stats.CpuPercent);
 
-        SysMonNetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
-        SysMonNetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
+            if (stats.RamTotalBytes > 0)
+            {
+                if (SysMonRamValueText != null) SysMonRamValueText.Text = $"{FormatGb(stats.RamUsedBytes)} / {FormatGb(stats.RamTotalBytes)} GB";
+            }
+            else if (SysMonRamValueText != null)
+            {
+                SysMonRamValueText.Text = "—";
+            }
+            SetUsageBar(SysMonRamBar, stats.RamPercent);
+
+            if (SysMonNetDownText != null) SysMonNetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
+            if (SysMonNetUpText != null) SysMonNetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
+        }
 
         if (_isDebugModeEnabled)
         {

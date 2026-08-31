@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
@@ -20,14 +21,46 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
 
     private static PixelShader LoadShader()
     {
+        var ps = new PixelShader();
         try
         {
-            var ps = new PixelShader
+            // 1. Try loading directly from file on disk next to executable or project root
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string[] candidatePaths =
             {
-                UriSource = new Uri(
-                    "pack://application:,,,/V-Notch;component/Shaders/LiquidGlassRefraction.ps",
-                    UriKind.Absolute)
+                Path.Combine(baseDir, "Shaders", "LiquidGlassRefraction.ps"),
+                Path.Combine(baseDir, "LiquidGlassRefraction.ps"),
+                Path.Combine(baseDir, "..", "..", "..", "Shaders", "LiquidGlassRefraction.ps")
             };
+
+            foreach (var path in candidatePaths)
+            {
+                if (File.Exists(path))
+                {
+                    using var stream = File.OpenRead(path);
+                    ps.SetStreamSource(stream);
+                    IsAvailable = true;
+                    RuntimeLog.Log("LIQUIDGLASS", $"GPU shader loaded from file: {path}");
+                    return ps;
+                }
+            }
+
+            // 2. Try loading from application resource stream
+            var resourceUri = new Uri("pack://application:,,,/V-Notch;component/Shaders/LiquidGlassRefraction.ps", UriKind.Absolute);
+            var streamInfo = Application.GetResourceStream(resourceUri);
+            if (streamInfo != null)
+            {
+                using (streamInfo.Stream)
+                {
+                    ps.SetStreamSource(streamInfo.Stream);
+                    IsAvailable = true;
+                    RuntimeLog.Log("LIQUIDGLASS", "GPU shader loaded from Application Resource Stream.");
+                    return ps;
+                }
+            }
+
+            // 3. Fallback to UriSource
+            ps.UriSource = resourceUri;
             IsAvailable = true;
             return ps;
         }
@@ -35,7 +68,7 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
         {
             RuntimeLog.Log("LIQUIDGLASS", $"GPU shader load failed: {ex.Message}");
             IsAvailable = false;
-            return new PixelShader();
+            return ps;
         }
     }
 
@@ -106,10 +139,10 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public static readonly DependencyProperty CProperty = Reg("C", 11, 5.2);
     public static readonly DependencyProperty DProperty = Reg("D", 12, 6.9);
     public static readonly DependencyProperty FPowerProperty = Reg("FPower", 13, 1.0);
-    public static readonly DependencyProperty NoiseProperty = Reg("Noise", 14, 0.06);
-    public static readonly DependencyProperty GlowWeightProperty = Reg("GlowWeight", 15, 0.25);
+    public static readonly DependencyProperty NoiseProperty = Reg("Noise", 14, 0.10);
+    public static readonly DependencyProperty GlowWeightProperty = Reg("GlowWeight", 15, 0.30);
     public static readonly DependencyProperty GlowBiasProperty = Reg("GlowBias", 16, 0.0);
-    public static readonly DependencyProperty GlowEdge0Property = Reg("GlowEdge0", 17, 0.15);
+    public static readonly DependencyProperty GlowEdge0Property = Reg("GlowEdge0", 17, 0.06);
     public static readonly DependencyProperty GlowEdge1Property = Reg("GlowEdge1", 18, 0.0);
 
     public static readonly DependencyProperty ChromaProperty = Reg("Chroma", 19, 0.35);

@@ -1046,62 +1046,95 @@ public partial class SettingsWindow : Window
 
     private static Models.LiquidGlassConfig FrostedGlassPreset() => new()
     {
-        BlurAmount = 0.25,
+        BlurAmount = 0.20,
         Refraction = 0.6,
-        EdgeBend = 1.50,
+        EdgeBend = 1.0,
         ChromaticAberration = 0.06,
-        EdgeHighlight = 0.35,
-        Specular = 0.20,
-        Fresnel = 0.25,
+        EdgeHighlight = 0.30,
+        Specular = 0.0,
+        Fresnel = 0.0,
         Distortion = 0.03,
         ZRadius = 0.35,
         Opacity = 1.0,
-        Saturation = -0.30,
-        Brightness = -0.30,
+        Saturation = 0.0,
+        Brightness = 0.0,
         ShadowOpacity = 0.50,
         ShadowSpread = 18,
         BevelMode = 0,
-        Variant = 0
+        Variant = 0,
+        PowerFactor = 3.0,
+        RefractionA = 0.7,
+        RefractionB = 2.3,
+        RefractionC = 5.2,
+        RefractionD = 6.9,
+        FPower = 1.0,
+        Noise = 0.10,
+        GlowWeight = 0.30,
+        GlowBias = 0.0,
+        GlowEdge0 = 0.06,
+        GlowEdge1 = 0.0
     };
 
     private static Models.LiquidGlassConfig DarkGlassPreset() => new()
     {
         BlurAmount = 0.25,
         Refraction = 1.0,
-        EdgeBend = 1.70,
+        EdgeBend = 1.2,
         ChromaticAberration = 0.10,
         EdgeHighlight = 0.12,
-        Specular = 0.35,
-        Fresnel = 0.45,
+        Specular = 0.0,
+        Fresnel = 0.0,
         Distortion = 0.06,
         ZRadius = 0.45,
         Opacity = 1.0,
-        Saturation = -0.50,
-        Brightness = -0.30,
+        Saturation = -0.20,
+        Brightness = -0.15,
         ShadowOpacity = 0.80,
         ShadowSpread = 30,
         BevelMode = 1,
-        Variant = 0
+        Variant = 0,
+        PowerFactor = 3.0,
+        RefractionA = 0.7,
+        RefractionB = 2.3,
+        RefractionC = 5.2,
+        RefractionD = 6.9,
+        FPower = 1.0,
+        Noise = 0.08,
+        GlowWeight = 0.25,
+        GlowBias = -0.05,
+        GlowEdge0 = 0.06,
+        GlowEdge1 = 0.0
     };
 
     private static Models.LiquidGlassConfig RegularGlassPreset() => new()
     {
-        BlurAmount = 0.25,
+        BlurAmount = 0.20,
         Refraction = 0.7,
-        EdgeBend = 1.60,
+        EdgeBend = 1.0,
         ChromaticAberration = 0.08,
         EdgeHighlight = 0.25,
-        Specular = 0.30,
-        Fresnel = 0.35,
+        Specular = 0.0,
+        Fresnel = 0.0,
         Distortion = 0.04,
         ZRadius = 0.38,
         Opacity = 1.0,
-        Saturation = -0.15,
-        Brightness = -0.10,
+        Saturation = 0.0,
+        Brightness = 0.0,
         ShadowOpacity = 0.65,
         ShadowSpread = 20,
         BevelMode = 0,
-        Variant = 0
+        Variant = 0,
+        PowerFactor = 3.0,
+        RefractionA = 0.7,
+        RefractionB = 2.3,
+        RefractionC = 5.2,
+        RefractionD = 6.9,
+        FPower = 1.0,
+        Noise = 0.10,
+        GlowWeight = 0.30,
+        GlowBias = 0.0,
+        GlowEdge0 = 0.06,
+        GlowEdge1 = 0.0
     };
 
     private static Models.LiquidGlassConfig ClearGlassPreset() => new()
@@ -3797,10 +3830,9 @@ public partial class SettingsWindow : Window
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
-            _liquidGlass.UpdateFps(Math.Clamp(
-                cfg.TargetFps,
-                AnimationConfig.MinFps,
-                LiquidGlassController.MaxTargetFps));
+            int targetFps = cfg.TargetFps;
+            if (targetFps <= 0 || targetFps == 60) targetFps = AnimationConfig.TargetFps;
+            _liquidGlass.UpdateFps(targetFps);
             bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
             if (useGpu)
             {

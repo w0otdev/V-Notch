@@ -167,17 +167,17 @@ public class LiquidGlassConfig
     public int TargetFps { get; set; } = 0;
     public int Variant { get; set; } = 0; // 0 = Regular (Adaptive), 1 = Clear (highly transparent, non-adaptive)
 
-    // OverShifted LiquidGlass Core Parameters
+    // OverShifted LiquidGlass Core Parameters (matching showcase preset)
     public double PowerFactor { get; set; } = 3.0;
     public double RefractionA { get; set; } = 0.7;
     public double RefractionB { get; set; } = 2.3;
     public double RefractionC { get; set; } = 5.2;
     public double RefractionD { get; set; } = 6.9;
     public double FPower { get; set; } = 1.0;
-    public double Noise { get; set; } = 0.06;
-    public double GlowWeight { get; set; } = 0.25;
+    public double Noise { get; set; } = 0.10;
+    public double GlowWeight { get; set; } = 0.30;
     public double GlowBias { get; set; } = 0.0;
-    public double GlowEdge0 { get; set; } = 0.15;
+    public double GlowEdge0 { get; set; } = 0.06;
     public double GlowEdge1 { get; set; } = 0.0;
 
     // Legacy compatibility only. The magnifier filter now excludes the notch from

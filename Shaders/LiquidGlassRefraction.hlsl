@@ -18,9 +18,9 @@ float u_c                : register(c11); // base scale c (5.2)
 float u_d                : register(c12); // exponential rate d (6.9)
 float u_fPower           : register(c13); // refraction power (1.0..3.0)
 float u_noise            : register(c14); // film noise grain (0.05..0.15)
-float u_glowWeight       : register(c15); // directional specular glow weight (0.25)
+float u_glowWeight       : register(c15); // directional specular glow weight (0.30)
 float u_glowBias         : register(c16); // glow bias (0.0)
-float u_glowEdge0        : register(c17); // glow edge start (0.15)
+float u_glowEdge0        : register(c17); // glow edge start (0.06)
 float u_glowEdge1        : register(c18); // glow edge end (0.0)
 
 // Material & Optical Appearance
@@ -51,24 +51,12 @@ float2 safeNormalize(float2 v)
     return v * rsqrt(lenSq);
 }
 
-float pow4(float x)
-{
-    float x2 = x * x;
-    return x2 * x2;
-}
-
-float smoother01(float x)
-{
-    x = saturate(x);
-    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
-}
-
 float luminance(float3 col)
 {
     return dot(col, float3(0.299, 0.587, 0.114));
 }
 
-// Pseudo-random noise for physical glass grain
+// Pseudo-random noise for physical glass grain (OverShifted rand formula)
 float rand(float2 co)
 {
     return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
@@ -93,13 +81,13 @@ float f_refract(float x, float a, float b, float c, float d)
     return 1.0 - b * pow(baseVal, exponent);
 }
 
-// Directional Glass Glow
+// OverShifted Directional Glass Glow Rim: sin(atan2(y, x) - 0.5)
 float directionalGlow(float2 p)
 {
     return sin(atan2(p.y, p.x) - 0.5);
 }
 
-// Unified Notch Field: Returns (insideDistPixels, inwardNormal.x, inwardNormal.y)
+// Smooth Continuous Island Distance Field: Returns (insideDistPixels, inwardNormal.x, inwardNormal.y)
 float3 notchDistanceField(
     float2 localPos,
     float2 halfSize,
@@ -114,64 +102,41 @@ float3 notchDistanceField(
     topRadius = clamp(topRadius, 0.0, maxRadius);
     bottomRadius = clamp(bottomRadius, 0.0, maxRadius);
 
-    float centerYTop = -halfSize.y + topRadius;
-    float centerYBottom = halfSize.y - bottomRadius;
+    float r = py < 0.0 ? topRadius : bottomRadius;
+    float qx = px - (halfSize.x - r);
+    float qy = (py < 0.0 ? -py : py) - (halfSize.y - r);
 
     float sdf = 0.0;
     float2 d = float2(0.0, 0.0);
 
-    if (py < centerYTop)
+    if (qx > 0.0 && qy > 0.0)
     {
-        float2 q = float2(px - (halfSize.x - topRadius), py - centerYTop);
-        if (q.x > 0.0)
-        {
-            // Top rounded quadrant: evaluate squircle curvature
-            float2 qNorm = q / max(topRadius, 0.001);
-            sdf = (sdSuperellipse(qNorm, nPower, 1.0)) * topRadius;
-            d = q;
-        }
-        else
-        {
-            sdf = -halfSize.y - py;
-            d = float2(0.0, -1.0);
-        }
+        // Corner quadrant: evaluate continuous superellipse metric Ln
+        float qx_n = pow(max(qx, 0.0001), nPower);
+        float qy_n = pow(max(qy, 0.0001), nPower);
+        float lenN = pow(qx_n + qy_n, 1.0 / nPower);
+        sdf = lenN - r;
+        d = float2(pow(max(qx, 0.0001), nPower - 1.0), pow(max(qy, 0.0001), nPower - 1.0) * (py < 0.0 ? -1.0 : 1.0));
     }
-    else if (py > centerYBottom)
+    else if (qx > 0.0)
     {
-        float2 q = float2(px - (halfSize.x - bottomRadius), py - centerYBottom);
-        if (q.x > 0.0)
-        {
-            // Bottom rounded quadrant: evaluate squircle curvature
-            float2 qNorm = q / max(bottomRadius, 0.001);
-            sdf = (sdSuperellipse(qNorm, nPower, 1.0)) * bottomRadius;
-            d = q;
-        }
-        else
-        {
-            sdf = py - halfSize.y;
-            d = float2(0.0, 1.0);
-        }
+        // Vertical side segment (between top & bottom corners)
+        sdf = qx - r;
+        d = float2(1.0, 0.0);
+    }
+    else if (qy > 0.0)
+    {
+        // Top / Bottom horizontal flat segment
+        sdf = qy - r;
+        d = float2(0.0, py < 0.0 ? -1.0 : 1.0);
     }
     else
     {
-        sdf = px - halfSize.x;
-        d = float2(1.0, 0.0);
-    }
-
-    if (sdf < 0.0)
-    {
-        float dSide = px - halfSize.x;
-        float dTop = -halfSize.y - py;
-        float dBottom = py - halfSize.y;
-        float maxD = max(dSide, max(dTop, dBottom));
-
-        if (maxD > sdf)
-        {
-            sdf = maxD;
-            if (sdf == dSide) d = float2(1.0, 0.0);
-            else if (sdf == dTop) d = float2(0.0, -1.0);
-            else if (sdf == dBottom) d = float2(0.0, 1.0);
-        }
+        // Inside central rect core
+        float dX = qx - r;
+        float dY = qy - r;
+        sdf = max(dX, dY);
+        d = (dX > dY) ? float2(1.0, 0.0) : float2(0.0, py < 0.0 ? -1.0 : 1.0);
     }
 
     float2 pSign = float2(localPos.x < 0.0 ? -1.0 : 1.0, 1.0);
@@ -184,10 +149,11 @@ float3 notchDistanceField(
     return float3(-sdf, -outwardNormal.x, -outwardNormal.y);
 }
 
+// Ultra-fast Bilinear Texture Sampling
 float3 sampleSource(float2 sourcePixel, float2 sourceSize)
 {
-    float2 sampleUv = saturate(sourcePixel / sourceSize);
-    return tex2D(input, sampleUv).rgb;
+    float2 uv = saturate(sourcePixel / sourceSize);
+    return tex2D(input, uv).rgb;
 }
 
 float4 main(float2 uv : TEXCOORD) : COLOR
@@ -206,7 +172,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float2 basePixel = float2(npx + offX, npy + offY);
     float2 halfSize = max(notchSize * 0.5, float2(0.5, 0.5));
 
-    // Clamp and sanitize OverShifted parameters
+    // OverShifted parameters
     float nSquircle = max(powerFactor, 1.05);
     float paramA = max(u_a, 0.0);
     float paramB = max(u_b, 0.0);
@@ -227,10 +193,10 @@ float4 main(float2 uv : TEXCOORD) : COLOR
         return float4(0.0, 0.0, 0.0, 0.0);
     }
 
-    // Normalized coordinate relative to notch bounds
+    // Normalized coordinate relative to notch bounds [-1, 1]
     float2 pNorm = localPos / halfSize;
 
-    // Optical Rim & Normalized depth
+    // Optical Rim & Normalized depth [0, 1] from edge to center
     float notchRadius = min(halfSize.x, halfSize.y);
     float distNorm = saturate(insidePixels / max(notchRadius, 1.0));
 
@@ -264,7 +230,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float fVal = f_refract(distNorm, paramA, paramB, paramC, paramD);
     float refractFactor = pow(max(fVal, 0.0001), fPow);
 
-    // Displacement vector mapping background coordinates
+    // OverShifted displacement vector mapping background coordinates
     float2 samplePNorm = pNorm * refractFactor;
     float2 displacement = (samplePNorm - pNorm) * halfSize * bend;
 
@@ -274,7 +240,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float2 sourcePixel = basePixel + displacement;
 
     // -----------------------------------------------------------------
-    // Chromatic Dispersion
+    // Chromatic Dispersion (Aberration) - Fast 3-Tap RGB
     // -----------------------------------------------------------------
     float3 col = float3(0.0, 0.0, 0.0);
     float chromaAmount = max(u_chroma, 0.0) * (1.0 - distNorm) * 2.0;
@@ -293,9 +259,9 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     }
 
     // -----------------------------------------------------------------
-    // Film Noise / Grain
+    // OverShifted Film Noise / Grain: rand(fragCoord * 1e-3)
     // -----------------------------------------------------------------
-    float grain = (rand(npx * 0.05 + npy * 100.0) - 0.5) * max(u_noise, 0.0);
+    float grain = (rand(float2(npx, npy) * 1e-3) - 0.5) * max(u_noise, 0.0);
     col += float3(grain, grain, grain);
 
     // -----------------------------------------------------------------
@@ -305,31 +271,6 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float glowMask = smoothstep(u_glowEdge0, u_glowEdge1, distNorm);
     float glowMul = glowAngle * u_glowWeight * glowMask + 1.0 + u_glowBias;
     col *= max(glowMul, 0.0);
-
-    // -----------------------------------------------------------------
-    // Apple Liquid Glass Micro-Bevel Hairline (Subtle 1px Polish Reflection)
-    // -----------------------------------------------------------------
-    float2 outwardNormal = -inwardNormal;
-    // Ambient overhead soft top-lighting
-    float topLight = saturate(-outwardNormal.y * 0.65 + 0.35);
-    // 1-pixel crisp outer glass chamfer reflection
-    float bevelHairline = smoothstep(1.6, 0.2, insidePixels) * topLight * 0.18;
-    col += float3(bevelHairline, bevelHairline, bevelHairline);
-
-    // -----------------------------------------------------------------
-    // Interactive Touch Ripple Glow (Organic Refraction Energy)
-    // -----------------------------------------------------------------
-    if (active > 0.01)
-    {
-        float touchGlow = interactionMask * lerp(0.1, 0.4, pressed) * (1.0 - distNorm * 0.6);
-        col += touchGlow * float3(0.04, 0.06, 0.09);
-    }
-
-    // -----------------------------------------------------------------
-    // Material Tinting & Legibility Contrast
-    // -----------------------------------------------------------------
-    float3 darkTint = float3(0.03, 0.04, 0.06);
-    col = lerp(col, darkTint, 0.25 * (1.0 - smoother01(1.0 - distNorm) * 0.35));
 
     // -----------------------------------------------------------------
     // Saturation & Brightness adjustments

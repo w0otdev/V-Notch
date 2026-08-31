@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using VNotch.Services;
 using Vortice.Direct3D9;
 using Vortice.Mathematics;
 
@@ -99,6 +100,70 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
     public event Action<object?>? FramePresented;
     public event Action<Exception>? Failed;
+
+    private IntPtr _lastOpenedSharedHandle = IntPtr.Zero;
+    private IDirect3DTexture9? _sharedD3D9Texture;
+    private IDirect3DSurface9? _sharedD3D9Surface;
+
+    public bool UploadSharedGpuFrame(IntPtr sharedHandle, int width, int height, int capacityW, int capacityH, object? tag = null)
+    {
+        if (_disposed || _failed || sharedHandle == IntPtr.Zero || width <= 0 || height <= 0)
+            return false;
+
+        try
+        {
+            lock (_surfaceSync)
+            {
+                if (_disposed || _device == null)
+                    return false;
+
+                if (_lastOpenedSharedHandle != sharedHandle || _sharedD3D9Surface == null)
+                {
+                    _sharedD3D9Surface?.Dispose();
+                    _sharedD3D9Texture?.Dispose();
+                    _sharedD3D9Surface = null;
+                    _sharedD3D9Texture = null;
+
+                    IntPtr pHandle = sharedHandle;
+                    _sharedD3D9Texture = _device.CreateTexture(
+                        (uint)capacityW,
+                        (uint)capacityH,
+                        1,
+                        Usage.RenderTarget,
+                        Format.A8R8G8B8,
+                        Pool.Default,
+                        ref pHandle);
+
+                    if (_sharedD3D9Texture == null)
+                    {
+                        RuntimeLog.Log("LIQUIDGLASS", "D3D9 CreateTexture from shared handle returned null");
+                        return false;
+                    }
+
+                    _sharedD3D9Surface = _sharedD3D9Texture.GetSurfaceLevel(0);
+                    _lastOpenedSharedHandle = sharedHandle;
+                }
+
+                _frameWidth = width;
+                _frameHeight = height;
+                _uploadTag = tag;
+                _pendingFrame = true;
+
+                if (!_presentQueued)
+                {
+                    _presentQueued = true;
+                    SchedulePresent();
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ReportFailure(ex);
+            return false;
+        }
+    }
 
     public bool UploadFrame(IntPtr source, int width, int height, int sourceStride, object? tag = null)
     {
@@ -254,9 +319,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             {
                 _presentQueued = false;
 
-                if (!_pendingFrame || !_image.IsFrontBufferAvailable ||
-                    _device == null || _uploadSurface == null ||
-                    _renderSurface == null)
+                if (!_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
                     return;
 
                 int frameWidth = _frameWidth;
@@ -264,46 +327,79 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 if (frameWidth <= 0 || frameHeight <= 0)
                     return;
 
-                _image.Lock();
-                try
+                if (_sharedD3D9Surface != null)
                 {
-                    var frameRect = new Vortice.Direct3D9.Rect(
-                        0, 0, frameWidth, frameHeight);
-                    _device.UpdateSurface(
-                        _uploadSurface,
-                        frameRect,
-                        _renderSurface,
-                        new Int2(0, 0));
-
-                    if (!ReferenceEquals(_attachedSurface, _renderSurface))
+                    _image.Lock();
+                    try
                     {
-                        retiredSurface = _attachedSurface;
-                        _image.SetBackBuffer(
-                            D3DResourceType.IDirect3DSurface9,
-                            _renderSurface.NativePointer,
-                            enableSoftwareFallback: true);
-                        _attachedSurface = _renderSurface;
+                        if (!ReferenceEquals(_attachedSurface, _sharedD3D9Surface))
+                        {
+                            retiredSurface = _attachedSurface;
+                            _image.SetBackBuffer(
+                                D3DResourceType.IDirect3DSurface9,
+                                _sharedD3D9Surface.NativePointer,
+                                enableSoftwareFallback: true);
+                            _attachedSurface = _sharedD3D9Surface;
+                        }
+
+                        int dirtyW = Math.Min(
+                            Math.Max(frameWidth, _lastDirtyWidth), _surfaceWidth);
+                        int dirtyH = Math.Min(
+                            Math.Max(frameHeight, _lastDirtyHeight), _surfaceHeight);
+                        _image.AddDirtyRect(new Int32Rect(0, 0, dirtyW, dirtyH));
+                        _lastDirtyWidth = frameWidth;
+                        _lastDirtyHeight = frameHeight;
+                        _pendingFrame = false;
+                        _presentedTag = _uploadTag;
+                        presented = true;
                     }
-
-                    int dirtyW = Math.Min(
-                        Math.Max(frameWidth, _lastDirtyWidth), _surfaceWidth);
-                    int dirtyH = Math.Min(
-                        Math.Max(frameHeight, _lastDirtyHeight), _surfaceHeight);
-                    _image.AddDirtyRect(new Int32Rect(0, 0, dirtyW, dirtyH));
-                    _lastDirtyWidth = frameWidth;
-                    _lastDirtyHeight = frameHeight;
-                    _pendingFrame = false;
-                    _presentedTag = _uploadTag;
-                    presented = true;
+                    finally
+                    {
+                        _image.Unlock();
+                    }
                 }
-                finally
+                else if (_uploadSurface != null && _renderSurface != null)
                 {
-                    _image.Unlock();
-                }
+                    _image.Lock();
+                    try
+                    {
+                        var frameRect = new Vortice.Direct3D9.Rect(
+                            0, 0, frameWidth, frameHeight);
+                        _device.UpdateSurface(
+                            _uploadSurface,
+                            frameRect,
+                            _renderSurface,
+                            new Int2(0, 0));
 
+                        if (!ReferenceEquals(_attachedSurface, _renderSurface))
+                        {
+                            retiredSurface = _attachedSurface;
+                            _image.SetBackBuffer(
+                                D3DResourceType.IDirect3DSurface9,
+                                _renderSurface.NativePointer,
+                                enableSoftwareFallback: true);
+                            _attachedSurface = _renderSurface;
+                        }
+
+                        int dirtyW = Math.Min(
+                            Math.Max(frameWidth, _lastDirtyWidth), _surfaceWidth);
+                        int dirtyH = Math.Min(
+                            Math.Max(frameHeight, _lastDirtyHeight), _surfaceHeight);
+                        _image.AddDirtyRect(new Int32Rect(0, 0, dirtyW, dirtyH));
+                        _lastDirtyWidth = frameWidth;
+                        _lastDirtyHeight = frameHeight;
+                        _pendingFrame = false;
+                        _presentedTag = _uploadTag;
+                        presented = true;
+                    }
+                    finally
+                    {
+                        _image.Unlock();
+                    }
+                }
             }
 
-            if (retiredSurface != null && !ReferenceEquals(retiredSurface, _renderSurface))
+            if (retiredSurface != null && !ReferenceEquals(retiredSurface, _renderSurface) && !ReferenceEquals(retiredSurface, _sharedD3D9Surface))
                 retiredSurface.Dispose();
 
             if (presented)
@@ -447,11 +543,16 @@ internal sealed class D3DImageFramePresenter : IDisposable
             if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
                 _renderSurface.Dispose();
             _attachedSurface?.Dispose();
+            _sharedD3D9Surface?.Dispose();
+            _sharedD3D9Texture?.Dispose();
             _device?.Dispose();
             _direct3D?.Dispose();
             _uploadSurface = null;
             _renderSurface = null;
             _attachedSurface = null;
+            _sharedD3D9Surface = null;
+            _sharedD3D9Texture = null;
+            _lastOpenedSharedHandle = IntPtr.Zero;
             _frameWidth = 0;
             _frameHeight = 0;
             _device = null;

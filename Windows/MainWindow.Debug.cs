@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -73,6 +73,15 @@ public partial class MainWindow
                 _frameCount = 0;
 
                 UpdateRefreshRate();
+
+                if (!_systemMonitorModule.IsRunning)
+                {
+                    _systemMonitorModule.Start();
+                }
+                else
+                {
+                    _systemMonitorModule.Tick();
+                }
             }
             else
             {
@@ -84,6 +93,11 @@ public partial class MainWindow
                 DebugSection.BeginAnimation(OpacityProperty, anim);
 
                 CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
+
+                if (!IsSystemMonitorWidgetMode && _systemMonitorModule.IsRunning)
+                {
+                    _systemMonitorModule.Stop();
+                }
             }
 
             _collapsedWidth = GetCollapsedWidth();

@@ -13,8 +13,8 @@ internal static class AnimationConfig
     public const int MaxFps = 240;
     private const int FallbackFps = 60;
 
-    private static int _targetFps = FallbackFps;
-    private static int _configuredFps = FallbackFps;
+    private static int _targetFps = DetectRefreshHz(null) ?? FallbackFps;
+    private static int _configuredFps = MaxFps;
     private static string? _deviceName;
     private static bool _hooked;
     private static bool _reduceMotion;
@@ -53,7 +53,7 @@ internal static class AnimationConfig
 
     private static void Recompute()
     {
-        _targetFps = ComputeTargetFps(_configuredFps, DetectRefreshHz(_deviceName));
+        _targetFps = ComputeTargetFps(_configuredFps, DetectRefreshHz(_deviceName) ?? DetectRefreshHz(null));
     }
 
     internal static int ComputeTargetFps(int configuredFps, int? detectedRefreshHz)

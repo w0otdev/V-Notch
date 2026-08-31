@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -145,7 +145,7 @@ public sealed class LiquidGlassController
     private int _mapNotchW = -1, _mapNotchH = -1, _mapNotchOffX = -1, _mapNotchOffY = -1;
     private int _mapCaptureShiftX = int.MinValue, _mapCaptureShiftY = int.MinValue;
 
-    private DxgiCaptureSource? _mag;
+    private MagnifierCaptureSource? _mag;
     private bool _magReady;
     private int _magFailStreak = 0;
 
@@ -384,12 +384,12 @@ public sealed class LiquidGlassController
             {
                 try
                 {
-                    _mag = new DxgiCaptureSource();
-                    _magReady = true;
+                    _mag = new MagnifierCaptureSource();
+                    _magReady = _mag.Initialize(_getHwnd());
                 }
-                catch (Exception ex)
+                catch (Exception magEx)
                 {
-                    RuntimeLog.Log("LIQUIDGLASS", $"DXGI init failed: {ex.Message}");
+                    RuntimeLog.Log("LIQUIDGLASS", $"Magnifier init failed: {magEx.Message}");
                     _magReady = false;
                 }
             }
@@ -426,7 +426,8 @@ public sealed class LiquidGlassController
         _maxRegionW = Math.Clamp(maxRegionWidth, 64, 4096);
         _maxRegionH = Math.Clamp(maxRegionHeight, 64, 4096);
 
-        int active = Math.Clamp(activeFps, 5, MaxTargetFps);
+        int target = (activeFps <= 0 || activeFps == 60) ? AnimationConfig.TargetFps : activeFps;
+        int active = Math.Clamp(target, AnimationConfig.MinFps, MaxTargetFps);
         _activeIntervalMs = 1000.0 / active;
     }
 
@@ -434,7 +435,8 @@ public sealed class LiquidGlassController
 
     public void UpdateFps(int activeFps)
     {
-        int active = Math.Clamp(activeFps, 5, MaxTargetFps);
+        int target = (activeFps <= 0 || activeFps == 60) ? AnimationConfig.TargetFps : activeFps;
+        int active = Math.Clamp(target, AnimationConfig.MinFps, MaxTargetFps);
         Volatile.Write(ref _activeIntervalMs, 1000.0 / active);
     }
 
@@ -512,6 +514,21 @@ public sealed class LiquidGlassController
         _hasPresentedCpuFrame = false;
         RequestRenderTimerPeriod();
 
+        if (_mag == null)
+        {
+            try
+            {
+                _mag = new MagnifierCaptureSource();
+                _magReady = _mag.Initialize(_getHwnd());
+                RuntimeLog.Log("LIQUIDGLASS", $"Magnifier Hardware Capture initialized: ready={_magReady}");
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Log("LIQUIDGLASS", $"Magnifier init failed: {ex.Message}");
+                _magReady = false;
+            }
+        }
+
         uint dpiNow = GetDpiForWindow(_getHwnd());
         _bitmapDpi = dpiNow > 0 ? dpiNow : 96;
         _captureVisibilityUntilTicks = 0;
@@ -543,6 +560,7 @@ public sealed class LiquidGlassController
         try { _mag?.Dispose(); } catch { /* ignore */ }
         _mag = null;
         _magReady = false;
+        _magFailStreak = 0;
 
         try
         {
@@ -1038,6 +1056,8 @@ public sealed class LiquidGlassController
             mapsChanged = EnsureMaps(p, bufW, bufH, srcW, srcH, margin, outW, outH,
                 notchOffX, notchOffY, captureShiftX, mapCaptureShiftY);
 
+
+
         IntPtr screenDc = GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero) return false;
         try
@@ -1377,20 +1397,16 @@ public sealed class LiquidGlassController
         byte* src = (byte*)_dibBits;
         int rowBytes = srcW * 4;
         int qwordsPerRow = rowBytes >> 3;
-        bool hasTail = (rowBytes & 7) != 0;
+        int qwordStep = Math.Max(1, qwordsPerRow / 16);
+        int rowStep = Math.Max(1, srcH / 32);
 
-        for (int y = 0; y < srcH; y++)
+        for (int y = 0; y < srcH; y += rowStep)
         {
             byte* rowStart = src + (long)y * rowBytes;
             ulong* row = (ulong*)rowStart;
-            for (int i = 0; i < qwordsPerRow; i++)
+            for (int i = 0; i < qwordsPerRow; i += qwordStep)
             {
                 hash ^= row[i];
-                hash *= fnvPrime;
-            }
-            if (hasTail)
-            {
-                hash ^= *(uint*)(rowStart + (qwordsPerRow << 3));
                 hash *= fnvPrime;
             }
         }
@@ -1917,14 +1933,8 @@ public sealed class LiquidGlassController
 
         double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, minHalf);
         double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, minHalf);
-        double zR = ComputeRimWidth(p.ZRadius, _outScale, minHalf);
-
-        const double normalStep = 0.75;
-        double uRefr = Math.Clamp(p.Refraction, 0.0, 3.0);
         double uChroma = Math.Clamp(p.ChromaticAberration, 0.0, 2.0);
         double distort = Math.Clamp(p.Distortion, 0.0, 2.0);
-        bool broad = p.BevelMode >= 1;
-        double amplitude = RefractionAmplitude(zR, uRefr, p.BevelMode, p.EdgeBend);
         double aspect = Math.Clamp(notchH / Math.Max((double)notchW, 1.0) * 2.5, 0.0, 1.0);
         double verticalBalance = 0.68 + 0.32 * aspect;
 
@@ -1956,40 +1966,35 @@ public sealed class LiquidGlassController
                         continue;
                     }
 
-                    double dR = -RoundedRectSdf(lx + normalStep, ly, halfX, halfY, topR, bottomR);
-                    double dL = -RoundedRectSdf(lx - normalStep, ly, halfX, halfY, topR, bottomR);
-                    double dD = -RoundedRectSdf(lx, ly + normalStep, halfX, halfY, topR, bottomR);
-                    double dU = -RoundedRectSdf(lx, ly - normalStep, halfX, halfY, topR, bottomR);
-                    double nx = (dR - dL) / (2.0 * normalStep);
-                    double ny = (dD - dU) / (2.0 * normalStep);
-                    double nLen = Math.Sqrt(nx * nx + ny * ny);
-                    if (nLen > 1e-6) { nx /= nLen; ny /= nLen; }
-                    else { nx = 0.0; ny = 0.0; }
+                    // OverShifted normalized coordinates in [-1, 1]
+                    double pxNorm = lx / Math.Max(halfX, 1.0);
+                    double pyNorm = ly / Math.Max(halfY, 1.0);
+                    double distNorm = Math.Clamp(inside / Math.Max(minHalf, 1.0), 0.0, 1.0);
 
-                    double directionalZR = DirectionalLensWidth(zR, nx, p.EdgeBend);
-                    double profile = LensProfile(inside / Math.Max(directionalZR, 0.001), broad);
-                    if (!broad)
-                    {
-                        // A restrained shoulder makes the fold readable across more
-                        double shoulder = Math.Clamp((p.EdgeBend - 0.8) / 2.2, 0.0, 1.0) * 0.28;
-                        profile += (Math.Sqrt(Math.Max(profile, 0.0)) - profile) * shoulder;
-                    }
-                    // Trace through the rounded surface toward the outside of the
-                    double dispX = -nx * amplitude * profile;
-                    double dispY = -ny * verticalBalance * amplitude * profile;
+                    // OverShifted exponential lens refraction: f(x) = 1.0 - b * (c * e)^(-d * x - a)
+                    double fVal = ExponentialRefract(distNorm, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD);
+                    double fPow = Math.Max(p.FPower, 0.1);
+                    double refractFactor = Math.Pow(Math.Max(fVal, 0.0001), fPow);
+
+                    double bend = Math.Max(p.EdgeBend, 0.1);
+                    double dispX = (pxNorm * refractFactor - pxNorm) * halfX * bend;
+                    double dispY = (pyNorm * refractFactor - pyNorm) * halfY * bend;
 
                     if (distort > 0.0)
                     {
                         double noiseX = ValueNoise(lx * 0.045, ly * 0.045) * 2.0 - 1.0;
                         double noiseY = ValueNoise(lx * 0.045 + 19.7, ly * 0.045 + 43.1) * 2.0 - 1.0;
-                        dispX += noiseX * distort * 2.25 * profile;
-                        dispY += noiseY * verticalBalance * distort * 2.25 * profile;
+                        dispX += noiseX * distort * 2.25 * (1.0 - distNorm);
+                        dispY += noiseY * verticalBalance * distort * 2.25 * (1.0 - distNorm);
                     }
 
                     _edgeMask[idx] = 0;
-                    double caS = Math.Min(uChroma * (1.25 + zR * 0.085) * Math.Pow(profile, 0.72), 8.0);
-                    double caX = nx * caS;
-                    double caY = ny * verticalBalance * caS;
+                    double caS = Math.Min(uChroma * (1.0 - distNorm) * 3.0, 8.0);
+                    double dispLen = Math.Sqrt(dispX * dispX + dispY * dispY);
+                    double caDirX = dispLen > 1e-6 ? dispX / dispLen : 0.0;
+                    double caDirY = dispLen > 1e-6 ? dispY / dispLen : 0.0;
+                    double caX = caDirX * caS;
+                    double caY = caDirY * verticalBalance * caS;
 
                     baseX += dispX;
                     baseY += dispY;
@@ -2014,11 +2019,12 @@ public sealed class LiquidGlassController
         double topRadius, double bottomRadius)
     {
         double r = py < 0.0 ? topRadius : bottomRadius;
-        double qx = Math.Abs(px) - bx + r;
-        double qy = Math.Abs(py) - by + r;
-        double mx = qx > 0 ? qx : 0;
-        double my = qy > 0 ? qy : 0;
-        return Math.Sqrt(mx * mx + my * my) + Math.Min(Math.Max(qx, qy), 0.0) - r;
+        double qx = Math.Abs(px) - (bx - r);
+        double qy = (py < 0.0 ? -py : py) - (by - r);
+        if (qx > 0.0 && qy > 0.0) return Math.Sqrt(qx * qx + qy * qy) - r;
+        if (qx > 0.0) return qx - r;
+        if (qy > 0.0) return qy - r;
+        return Math.Max(qx - r, qy - r);
     }
 
     private static double Smoother01(double x)
@@ -2066,5 +2072,11 @@ public sealed class LiquidGlassController
 
         idxArr[i] = (iy * srcW + ix) << 2;
         auxArr[i] = flags | (wx << 2) | (wy << 12);
+    }
+    internal static double ExponentialRefract(double x, double a, double b, double c, double d)
+    {
+        double exponent = -d * x - a;
+        double baseVal = Math.Max(c * 2.718281828459045, 0.0001);
+        return 1.0 - b * Math.Pow(baseVal, exponent);
     }
 }

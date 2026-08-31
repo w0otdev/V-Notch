@@ -99,10 +99,10 @@
     </None>
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\QR.PNG" />
-    <None Include="Assets\SPL_CLICK_SFX.m4a">
+    <Resource Include="Shaders\LiquidGlassRefraction.ps" />
+    <None Include="Shaders\LiquidGlassRefraction.ps">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <Resource Include="Shaders\LiquidGlassRefraction.ps" />
   </ItemGroup>
   <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Inputs="Shaders\LiquidGlassRefraction.hlsl" Outputs="Shaders\LiquidGlassRefraction.ps">
     <ItemGroup>
