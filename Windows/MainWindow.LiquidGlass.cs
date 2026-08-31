@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Media;
 using VNotch.Controllers;
@@ -337,53 +337,57 @@ public partial class MainWindow
             offY = _lastGpuGeometry?.OffY ?? 0;
         }
 
-        fx.SrcW = lg.SurfaceWidth;
-        fx.SrcH = lg.SurfaceHeight;
-        fx.NotchW = exactW;
-        fx.NotchH = exactH;
-        fx.OffX = offX;
-        fx.OffY = offY;
-        fx.TopCornerR = NotchBorder.CornerRadius.TopLeft * dpiScale;
-        fx.BottomCornerR = NotchBorder.CornerRadius.BottomLeft * dpiScale;
+        if (Math.Abs(fx.SrcW - lg.SurfaceWidth) > 0.5) fx.SrcW = lg.SurfaceWidth;
+        if (Math.Abs(fx.SrcH - lg.SurfaceHeight) > 0.5) fx.SrcH = lg.SurfaceHeight;
+        if (Math.Abs(fx.NotchW - exactW) > 0.5) fx.NotchW = exactW;
+        if (Math.Abs(fx.NotchH - exactH) > 0.5) fx.NotchH = exactH;
+        if (Math.Abs(fx.OffX - offX) > 0.5) fx.OffX = offX;
+        if (Math.Abs(fx.OffY - offY) > 0.5) fx.OffY = offY;
+        double topR = NotchBorder.CornerRadius.TopLeft * dpiScale;
+        double bottomR = NotchBorder.CornerRadius.BottomLeft * dpiScale;
+        if (Math.Abs(fx.TopCornerR - topR) > 0.5) fx.TopCornerR = topR;
+        if (Math.Abs(fx.BottomCornerR - bottomR) > 0.5) fx.BottomCornerR = bottomR;
 
         var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
-        fx.PowerFactor = cfg.PowerFactor;
-        fx.A = cfg.RefractionA;
-        fx.B = cfg.RefractionB;
-        fx.C = cfg.RefractionC;
-        fx.D = cfg.RefractionD;
-        fx.FPower = cfg.FPower;
-        fx.Noise = cfg.Noise;
-        fx.GlowWeight = cfg.GlowWeight;
-        fx.GlowBias = cfg.GlowBias;
-        fx.GlowEdge0 = cfg.GlowEdge0;
-        fx.GlowEdge1 = cfg.GlowEdge1;
-        fx.Chroma = cfg.ChromaticAberration;
-        fx.SatFactor = 1.0 + cfg.Saturation;
-        fx.BrightAdd = cfg.Brightness;
-        fx.EdgeBend = cfg.EdgeBend;
-        fx.BevelMode = cfg.BevelMode;
-        fx.HighlightStrength = cfg.TouchLight;
-
         if (_lastGpuGeometry is { } g)
         {
-            fx.PowerFactor = g.PowerFactor;
-            fx.A = g.A;
-            fx.B = g.B;
-            fx.C = g.C;
-            fx.D = g.D;
-            fx.FPower = g.FPower;
-            fx.Noise = g.Noise;
-            fx.GlowWeight = g.GlowWeight;
-            fx.GlowBias = g.GlowBias;
-            fx.GlowEdge0 = g.GlowEdge0;
-            fx.GlowEdge1 = g.GlowEdge1;
-            fx.Chroma = g.Chroma;
-            fx.EdgeBend = g.EdgeBend;
-            fx.BevelMode = g.BevelMode;
-            fx.SatFactor = g.SatFactor;
-            fx.BrightAdd = g.BrightAdd;
+            if (Math.Abs(fx.PowerFactor - g.PowerFactor) > 1e-4) fx.PowerFactor = g.PowerFactor;
+            if (Math.Abs(fx.A - g.A) > 1e-4) fx.A = g.A;
+            if (Math.Abs(fx.B - g.B) > 1e-4) fx.B = g.B;
+            if (Math.Abs(fx.C - g.C) > 1e-4) fx.C = g.C;
+            if (Math.Abs(fx.D - g.D) > 1e-4) fx.D = g.D;
+            if (Math.Abs(fx.FPower - g.FPower) > 1e-4) fx.FPower = g.FPower;
+            if (Math.Abs(fx.Noise - g.Noise) > 1e-4) fx.Noise = g.Noise;
+            if (Math.Abs(fx.GlowWeight - g.GlowWeight) > 1e-4) fx.GlowWeight = g.GlowWeight;
+            if (Math.Abs(fx.GlowBias - g.GlowBias) > 1e-4) fx.GlowBias = g.GlowBias;
+            if (Math.Abs(fx.GlowEdge0 - g.GlowEdge0) > 1e-4) fx.GlowEdge0 = g.GlowEdge0;
+            if (Math.Abs(fx.GlowEdge1 - g.GlowEdge1) > 1e-4) fx.GlowEdge1 = g.GlowEdge1;
+            if (Math.Abs(fx.Chroma - g.Chroma) > 1e-4) fx.Chroma = g.Chroma;
+            if (Math.Abs(fx.EdgeBend - g.EdgeBend) > 1e-4) fx.EdgeBend = g.EdgeBend;
+            if (Math.Abs(fx.BevelMode - g.BevelMode) > 1e-4) fx.BevelMode = g.BevelMode;
+            if (Math.Abs(fx.SatFactor - g.SatFactor) > 1e-4) fx.SatFactor = g.SatFactor;
+            if (Math.Abs(fx.BrightAdd - g.BrightAdd) > 1e-4) fx.BrightAdd = g.BrightAdd;
         }
+        else
+        {
+            if (Math.Abs(fx.PowerFactor - cfg.PowerFactor) > 1e-4) fx.PowerFactor = cfg.PowerFactor;
+            if (Math.Abs(fx.A - cfg.RefractionA) > 1e-4) fx.A = cfg.RefractionA;
+            if (Math.Abs(fx.B - cfg.RefractionB) > 1e-4) fx.B = cfg.RefractionB;
+            if (Math.Abs(fx.C - cfg.RefractionC) > 1e-4) fx.C = cfg.RefractionC;
+            if (Math.Abs(fx.D - cfg.RefractionD) > 1e-4) fx.D = cfg.RefractionD;
+            if (Math.Abs(fx.FPower - cfg.FPower) > 1e-4) fx.FPower = cfg.FPower;
+            if (Math.Abs(fx.Noise - cfg.Noise) > 1e-4) fx.Noise = cfg.Noise;
+            if (Math.Abs(fx.GlowWeight - cfg.GlowWeight) > 1e-4) fx.GlowWeight = cfg.GlowWeight;
+            if (Math.Abs(fx.GlowBias - cfg.GlowBias) > 1e-4) fx.GlowBias = cfg.GlowBias;
+            if (Math.Abs(fx.GlowEdge0 - cfg.GlowEdge0) > 1e-4) fx.GlowEdge0 = cfg.GlowEdge0;
+            if (Math.Abs(fx.GlowEdge1 - cfg.GlowEdge1) > 1e-4) fx.GlowEdge1 = cfg.GlowEdge1;
+            if (Math.Abs(fx.Chroma - cfg.ChromaticAberration) > 1e-4) fx.Chroma = cfg.ChromaticAberration;
+            if (Math.Abs(fx.SatFactor - (1.0 + cfg.Saturation)) > 1e-4) fx.SatFactor = 1.0 + cfg.Saturation;
+            if (Math.Abs(fx.BrightAdd - cfg.Brightness) > 1e-4) fx.BrightAdd = cfg.Brightness;
+            if (Math.Abs(fx.EdgeBend - cfg.EdgeBend) > 1e-4) fx.EdgeBend = cfg.EdgeBend;
+            if (Math.Abs(fx.BevelMode - cfg.BevelMode) > 1e-4) fx.BevelMode = cfg.BevelMode;
+        }
+        if (Math.Abs(fx.HighlightStrength - cfg.TouchLight) > 1e-4) fx.HighlightStrength = cfg.TouchLight;
     }
 
     /// <summary>Applies the legacy GPU-mode host blur. CPU Liquid Glass blurs the

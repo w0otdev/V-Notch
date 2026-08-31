@@ -810,21 +810,22 @@ public sealed class LiquidGlassController
 
     private void SleepWithCapturePolling(double milliseconds)
     {
-        long wakeAt = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.25, milliseconds));
+        long wakeAt = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.1, milliseconds));
         while (_isActive)
         {
             long remainingTicks = wakeAt - Stopwatch.GetTimestamp();
             if (remainingTicks <= 0) return;
 
             double remainingMs = remainingTicks * 1000.0 / Stopwatch.Frequency;
-            if (remainingMs > 2.5)
-                Thread.Sleep((int)Math.Min(Math.Max(1.0, Math.Floor(remainingMs - 1.5)), 8.0));
+            if (remainingMs > 4.0)
+                Thread.Sleep(1);
+            else if (remainingMs > 0.5)
+                Thread.Yield();
             else
-                Thread.SpinWait(64);
+                Thread.SpinWait(32);
 
             if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
             {
-                // Keep the most recent correctly refracted frame on screen, but make
                 _exactBitBltCapture = false;
                 SetWindowDisplayAffinitySafe(WDA_NONE);
                 return;
@@ -1058,11 +1059,11 @@ public sealed class LiquidGlassController
 
 
 
-        IntPtr screenDc = GetDC(IntPtr.Zero);
-        if (screenDc == IntPtr.Zero) return false;
+        bool needsGdi = !(_memDc != IntPtr.Zero && _dibBits != IntPtr.Zero && _dibW == srcW && _dibH == srcH);
+        IntPtr screenDc = needsGdi ? GetDC(IntPtr.Zero) : IntPtr.Zero;
         try
         {
-            if (!EnsureGdiResources(srcW, srcH, screenDc)) return false;
+            if (needsGdi && !EnsureGdiResources(srcW, srcH, screenDc)) return false;
 
             if (useMag)
             {
@@ -1081,6 +1082,7 @@ public sealed class LiquidGlassController
                 }
                 else
                 {
+                    if (screenDc == IntPtr.Zero) screenDc = GetDC(IntPtr.Zero);
                     if (!EnsureStagingResources(physSrcW, physSrcH, screenDc)) return false;
 
                     if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _stagingBits))
@@ -1101,9 +1103,9 @@ public sealed class LiquidGlassController
             }
             else
             {
+                if (screenDc == IntPtr.Zero) screenDc = GetDC(IntPtr.Zero);
                 if (!_exactBitBltCapture)
                 {
-                    // BitBlt sees the already-composited desktop and cannot exclude this
                     srcY = ComputeFallbackSourceY(region.Y, displayH);
                 }
 
@@ -1113,13 +1115,14 @@ public sealed class LiquidGlassController
                 GdiFlush();
             }
 
-            UpdateBackdropOptics(
-                srcW, srcH,
-                margin + notchOffX - captureShiftX,
-                margin + notchOffY - mapCaptureShiftY,
-                outW, outH);
-
-            // During a short hover transition WPF can transform the last complete
+            if ((_dbgFrameCount & 3) == 0)
+            {
+                UpdateBackdropOptics(
+                    srcW, srcH,
+                    margin + notchOffX - captureShiftX,
+                    margin + notchOffY - mapCaptureShiftY,
+                    outW, outH);
+            }
             if (_presentationPaused)
                 return false;
 

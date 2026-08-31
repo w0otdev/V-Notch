@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -495,6 +495,14 @@ internal sealed class D3DImageFramePresenter : IDisposable
     {
         byte* src = (byte*)source;
         byte* dst = (byte*)destination;
+
+        if (sourceStride == destinationStride && destinationStride == rowBytes)
+        {
+            long total = (long)rowBytes * height;
+            Buffer.MemoryCopy(src, dst, total, total);
+            return;
+        }
+
         for (int y = 0; y < height; y++)
         {
             Buffer.MemoryCopy(

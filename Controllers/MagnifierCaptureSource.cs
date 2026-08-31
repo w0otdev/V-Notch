@@ -140,14 +140,16 @@ public sealed class MagnifierCaptureSource : IDisposable
     }
 
     /// <summary>
-    /// Captures the screen rectangle (physical pixels) into <paramref name="destBits"/>
-    /// as top-down BGRA with stride = w*4. Safe to call from any thread.
+    /// Pipelined non-blocking capture: copies the freshest available frame instantly
+    /// and triggers asynchronous DWM capture for the next frame without stalling the render thread.
     /// </summary>
     public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits)
     {
         if (!IsReady || !_running || destBits == IntPtr.Zero || w <= 0 || h <= 0) return false;
 
-        _frameReceivedEvent.Reset();
+        bool isFirstFrame = !_hasCompletedFrame;
+        if (isFirstFrame)
+            _frameReceivedEvent.Reset();
 
         lock (_requestSync)
         {
@@ -155,8 +157,10 @@ public sealed class MagnifierCaptureSource : IDisposable
             _request.Set();
         }
 
-        // Wait briefly for the fresh frame from ScalingCallback (typically 0.3ms - 2ms)
-        _frameReceivedEvent.Wait(_hasCompletedFrame ? 16 : 60);
+        if (isFirstFrame)
+        {
+            _frameReceivedEvent.Wait(60);
+        }
 
         lock (_frameLock)
         {
@@ -239,7 +243,7 @@ public sealed class MagnifierCaptureSource : IDisposable
                             Right = req.X + req.Width,
                             Bottom = req.Y + req.Height
                         };
-                        // Always set window source so DWM produces a fresh composite frame on each frame
+                        // Set window source to trigger DWM composite frame
                         MagSetWindowSource(_magWnd, rect);
                         InvalidateRect(_magWnd, IntPtr.Zero, false);
                         UpdateWindow(_magWnd);
@@ -277,21 +281,6 @@ public sealed class MagnifierCaptureSource : IDisposable
 
         long requiredBytes = ((long)requestedHeight - 1) * receivedStride + rowBytes;
         return requiredBytes <= bufferLength;
-    }
-
-    private unsafe bool CopyToDest(IntPtr dest, int destW, int destH)
-    {
-        byte[] src = _completedBuffer;
-        if (src.Length == 0 || _completedWidth != destW || _completedHeight != destH)
-            return false;
-
-        int stride = checked(destW * 4);
-        int bytes = checked(stride * destH);
-        if (src.Length < bytes) return false;
-
-        fixed (byte* srcBase = src)
-            Buffer.MemoryCopy(srcBase, (void*)dest, bytes, bytes);
-        return true;
     }
 
     private bool DrainMessages()
@@ -372,6 +361,24 @@ public sealed class MagnifierCaptureSource : IDisposable
         {
             return false;
         }
+    }
+
+    private unsafe bool CopyToDest(IntPtr dest, int w, int h)
+    {
+        byte[] src;
+        lock (_frameLock)
+        {
+            if (!_hasCompletedFrame || _completedWidth != w || _completedHeight != h) return false;
+            src = _completedBuffer;
+        }
+
+        long bytes = (long)w * h * 4;
+        if (src.Length < bytes) return false;
+
+        fixed (byte* srcBase = src)
+            Buffer.MemoryCopy(srcBase, (void*)dest, bytes, bytes);
+
+        return true;
     }
 
     private void Cleanup()
