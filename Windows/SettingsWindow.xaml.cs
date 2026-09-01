@@ -310,6 +310,9 @@ public partial class SettingsWindow : Window
         ApplySupplementalLocalization();
         SettingsTitleText.Text = Loc.Get("settings.title");
         SettingsSubtitleText.Text = Loc.Get("settings.subtitle");
+        string appVersion = GetAppVersion();
+        if (SettingsVersionBadgeText != null) SettingsVersionBadgeText.Text = $"v{appVersion}";
+        if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {appVersion}";
         SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder");
 
         AppearanceHeader.Text = Loc.Get("settings.appearance");
@@ -1770,6 +1773,8 @@ public partial class SettingsWindow : Window
         {
             (SettingsTitleText, () => SettingsTitleText.Text = Loc.Get("settings.title")),
             (SettingsSubtitleText, () => SettingsSubtitleText.Text = Loc.Get("settings.subtitle")),
+            (SettingsVersionBadgeText, () => { if (SettingsVersionBadgeText != null) SettingsVersionBadgeText.Text = $"v{GetAppVersion()}"; }),
+            (SidebarBuildVersionText, () => { if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {GetAppVersion()}"; }),
             (SearchPlaceholder, () => SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder")),
 
             (AppearanceHeader, () => AppearanceHeader.Text = Loc.Get("settings.appearance")),
