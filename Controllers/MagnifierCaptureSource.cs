@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using VNotch.Services;
@@ -118,7 +118,10 @@ public sealed class MagnifierCaptureSource : IDisposable
     private readonly object _frameLock = new();
     private byte[] _completedBuffer = Array.Empty<byte>();
     private int _completedWidth, _completedHeight;
+    private int _completedX, _completedY;
     private bool _hasCompletedFrame;
+    private ulong _frameCounter;
+    private ulong _lastServedFrame;
 
     public bool IsReady { get; private set; }
 
@@ -140,26 +143,42 @@ public sealed class MagnifierCaptureSource : IDisposable
     }
 
     /// <summary>
-    /// Pipelined non-blocking capture: copies the freshest available frame instantly
-    /// and triggers asynchronous DWM capture for the next frame without stalling the render thread.
+    /// Low-latency synchronized capture: requests DWM composite update and copies the
+    /// freshest available frame with microsecond synchronization to eliminate 1-2 frame lag.
     /// </summary>
-    public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits)
+    public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits, out int actualX, out int actualY)
     {
+        actualX = x;
+        actualY = y;
         if (!IsReady || !_running || destBits == IntPtr.Zero || w <= 0 || h <= 0) return false;
 
         bool isFirstFrame = !_hasCompletedFrame;
-        if (isFirstFrame)
-            _frameReceivedEvent.Reset();
-
+        bool rectChanged;
         lock (_requestSync)
         {
+            rectChanged = _pendingRequest.X != x || _pendingRequest.Y != y ||
+                          _pendingRequest.Width != w || _pendingRequest.Height != h;
             _pendingRequest = new CaptureRequest(x, y, w, h);
             _request.Set();
         }
 
-        if (isFirstFrame)
+        if (isFirstFrame || rectChanged)
         {
-            _frameReceivedEvent.Wait(60);
+            _frameReceivedEvent.Reset();
+            _frameReceivedEvent.Wait(isFirstFrame ? 60 : 15);
+        }
+        else
+        {
+            // If the latest frame was already served, wait up to 3ms for DWM's next VSync callback
+            ulong curFrame;
+            lock (_frameLock)
+            {
+                curFrame = _frameCounter;
+            }
+            if (curFrame <= _lastServedFrame)
+            {
+                _frameReceivedEvent.Wait(3);
+            }
         }
 
         lock (_frameLock)
@@ -167,9 +186,15 @@ public sealed class MagnifierCaptureSource : IDisposable
             if (!_hasCompletedFrame || _completedWidth != w || _completedHeight != h)
                 return false;
 
+            _lastServedFrame = _frameCounter;
+            actualX = _completedX;
+            actualY = _completedY;
             return CopyToDest(destBits, w, h);
         }
     }
+
+    public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits) =>
+        CaptureInto(x, y, w, h, destBits, out _, out _);
 
     private void PumpThread()
     {
@@ -221,10 +246,13 @@ public sealed class MagnifierCaptureSource : IDisposable
             IsReady = true;
             _initDone.Set();
 
+            Win32Interop.RECT lastRect = default;
+            bool hasConfiguredRect = false;
+
             // High-frequency pump loop: update source rect and query DWM for the freshest frame
             while (_running)
             {
-                if (_request.WaitOne(4))
+                if (_request.WaitOne(1))
                 {
                     if (!_running) break;
                     CaptureRequest req;
@@ -243,8 +271,17 @@ public sealed class MagnifierCaptureSource : IDisposable
                             Right = req.X + req.Width,
                             Bottom = req.Y + req.Height
                         };
-                        // Set window source to trigger DWM composite frame
-                        MagSetWindowSource(_magWnd, rect);
+
+                        // Avoid resetting DWM magnifier state if the rect is unchanged
+                        if (!hasConfiguredRect ||
+                            rect.Left != lastRect.Left || rect.Top != lastRect.Top ||
+                            rect.Right != lastRect.Right || rect.Bottom != lastRect.Bottom)
+                        {
+                            MagSetWindowSource(_magWnd, rect);
+                            lastRect = rect;
+                            hasConfiguredRect = true;
+                        }
+
                         InvalidateRect(_magWnd, IntPtr.Zero, false);
                         UpdateWindow(_magWnd);
                     }
@@ -351,7 +388,10 @@ public sealed class MagnifierCaptureSource : IDisposable
 
                 _completedWidth = w;
                 _completedHeight = rows;
+                _completedX = unclipped.Left;
+                _completedY = unclipped.Top;
                 _hasCompletedFrame = true;
+                _frameCounter++;
             }
 
             _frameReceivedEvent.Set();

@@ -1074,9 +1074,11 @@ public sealed class LiquidGlassController
 
             if (useMag)
             {
+                int actualSrcX = srcX;
+                int actualSrcY = srcY;
                 if (physSrcW == srcW && physSrcH == srcH)
                 {
-                    if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _dibBits))
+                    if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _dibBits, out actualSrcX, out actualSrcY))
                     {
                         if (++_magFailStreak >= 30)
                         {
@@ -1092,7 +1094,7 @@ public sealed class LiquidGlassController
                     if (screenDc == IntPtr.Zero) screenDc = GetDC(IntPtr.Zero);
                     if (!EnsureStagingResources(physSrcW, physSrcH, screenDc)) return false;
 
-                    if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _stagingBits))
+                    if (!_mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _stagingBits, out actualSrcX, out actualSrcY))
                     {
                         if (++_magFailStreak >= 30)
                         {
@@ -1107,6 +1109,8 @@ public sealed class LiquidGlassController
                         return false;
                     GdiFlush();
                 }
+                srcX = actualSrcX;
+                srcY = actualSrcY;
             }
             else
             {
@@ -1398,17 +1402,20 @@ public sealed class LiquidGlassController
     /// still forces a WPF re-render plus a layered-window readback for the whole
     /// window, which is what saturates the render thread when the notch and the
     /// settings window run glass simultaneously.</summary>
-    private unsafe ulong ComputeSourceHash(int srcW, int srcH)
+    private ulong ComputeSourceHash(int srcW, int srcH) =>
+        ComputeSourceHash(_dibBits, srcW, srcH);
+
+    internal static unsafe ulong ComputeSourceHash(IntPtr dibBits, int srcW, int srcH)
     {
-        if (_dibBits == IntPtr.Zero || srcW <= 0 || srcH <= 0) return 0;
+        if (dibBits == IntPtr.Zero || srcW <= 0 || srcH <= 0) return 0;
 
         const ulong fnvPrime = 1099511628211UL;
         ulong hash = 14695981039346656037UL;
-        byte* src = (byte*)_dibBits;
+        byte* src = (byte*)dibBits;
         int rowBytes = srcW * 4;
         int qwordsPerRow = rowBytes >> 3;
-        int qwordStep = Math.Max(1, qwordsPerRow / 16);
-        int rowStep = Math.Max(1, srcH / 32);
+        int qwordStep = Math.Max(1, qwordsPerRow / 96);
+        int rowStep = Math.Max(1, srcH / 96);
 
         for (int y = 0; y < srcH; y += rowStep)
         {

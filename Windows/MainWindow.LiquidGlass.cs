@@ -300,17 +300,22 @@ public partial class MainWindow
 
         if (NotchBorder != null)
         {
+            double scaleX = NotchScale?.ScaleX ?? 1.0;
+            double scaleY = NotchScale?.ScaleY ?? 1.0;
+            if (!double.IsFinite(scaleX) || scaleX <= 0) scaleX = 1.0;
+            if (!double.IsFinite(scaleY) || scaleY <= 0) scaleY = 1.0;
+
             object valW = NotchBorder.GetValue(FrameworkElement.WidthProperty);
             if (valW is double dW && !double.IsNaN(dW) && dW > 0)
-                w = dW;
+                w = dW * scaleX;
             else if (NotchBorder.ActualWidth > 0)
-                w = NotchBorder.ActualWidth;
+                w = NotchBorder.ActualWidth * scaleX;
 
             object valH = NotchBorder.GetValue(FrameworkElement.HeightProperty);
             if (valH is double dH && !double.IsNaN(dH) && dH > 0)
-                h = dH;
+                h = dH * scaleY;
             else if (NotchBorder.ActualHeight > 0)
-                h = NotchBorder.ActualHeight;
+                h = NotchBorder.ActualHeight * scaleY;
         }
 
         if (double.IsNaN(w) || w <= 0) w = _collapsedWidth;
@@ -322,6 +327,27 @@ public partial class MainWindow
     private LiquidGlassController.GpuGeometry? _lastAppliedGpuOptics;
     private double _lastAppliedTouchLight = -1;
 
+    private (double ScreenLeft, double ScreenTop) GetNotchScreenPosition(double exactW, double dpiScale)
+    {
+        try
+        {
+            if (NotchBorder != null && NotchBorder.IsVisible && PresentationSource.FromVisual(NotchBorder) != null)
+            {
+                var pt = NotchBorder.PointToScreen(new Point(0, 0));
+                if (double.IsFinite(pt.X) && double.IsFinite(pt.Y))
+                    return (pt.X, pt.Y);
+            }
+        }
+        catch
+        {
+            // Visual tree might be detached during transition; fallback to geometric calculation
+        }
+
+        double fallbackLeft = _fixedX + (_windowWidth - exactW) / 2.0;
+        double fallbackTop = _fixedY + (NotchContainerTranslate?.Y ?? 0) * dpiScale;
+        return (fallbackLeft, fallbackTop);
+    }
+
     private void UpdateShaderGeometryPerFrame()
     {
         var fx = _glassRefractionEffect;
@@ -329,12 +355,19 @@ public partial class MainWindow
         if (fx == null || lg == null || GlassBackdropHost == null) return;
 
         double dpiScale = GetGlassDpiScale();
+        if (!double.IsFinite(dpiScale) || dpiScale <= 0) dpiScale = 1.0;
         var (notchW, notchH) = GetCurrentInstantaneousNotchSize();
         double exactW = notchW * dpiScale;
         double exactH = notchH * dpiScale;
 
-        double screenLeft = _fixedX + (_windowWidth - exactW) / 2.0;
-        double screenTop = _fixedY + (NotchContainerTranslate?.Y ?? 0) * dpiScale;
+        double sourceW = lg.SurfaceWidth;
+        double sourceH = lg.SurfaceHeight;
+        if (Math.Abs(GlassBackdropImage.Width - sourceW / dpiScale) > 0.01)
+            GlassBackdropImage.Width = sourceW / dpiScale;
+        if (Math.Abs(GlassBackdropImage.Height - sourceH / dpiScale) > 0.01)
+            GlassBackdropImage.Height = sourceH / dpiScale;
+
+        var (screenLeft, screenTop) = GetNotchScreenPosition(exactW, dpiScale);
 
         int captureOriginX = lg.LastPresentedCaptureOriginX;
         int captureOriginY = lg.LastPresentedCaptureOriginY;
@@ -344,7 +377,7 @@ public partial class MainWindow
             offX = screenLeft - captureOriginX;
             offY = screenTop - captureOriginY;
         }
-        else if (_lastGpuGeometry is { } lastGeom && lastGeom.CaptureOriginX != 0)
+        else if (_lastGpuGeometry is { } lastGeom)
         {
             offX = screenLeft - lastGeom.CaptureOriginX;
             offY = screenTop - lastGeom.CaptureOriginY;
@@ -355,16 +388,16 @@ public partial class MainWindow
             offY = _lastGpuGeometry?.OffY ?? 0;
         }
 
-        if (Math.Abs(fx.SrcW - lg.SurfaceWidth) > 0.1) fx.SrcW = lg.SurfaceWidth;
-        if (Math.Abs(fx.SrcH - lg.SurfaceHeight) > 0.1) fx.SrcH = lg.SurfaceHeight;
-        if (Math.Abs(fx.NotchW - exactW) > 0.1) fx.NotchW = exactW;
-        if (Math.Abs(fx.NotchH - exactH) > 0.1) fx.NotchH = exactH;
-        if (Math.Abs(fx.OffX - offX) > 0.1) fx.OffX = offX;
-        if (Math.Abs(fx.OffY - offY) > 0.1) fx.OffY = offY;
+        if (Math.Abs(fx.SrcW - sourceW) > 0.01) fx.SrcW = sourceW;
+        if (Math.Abs(fx.SrcH - sourceH) > 0.01) fx.SrcH = sourceH;
+        if (Math.Abs(fx.NotchW - exactW) > 0.01) fx.NotchW = exactW;
+        if (Math.Abs(fx.NotchH - exactH) > 0.01) fx.NotchH = exactH;
+        if (Math.Abs(fx.OffX - offX) > 1e-4) fx.OffX = offX;
+        if (Math.Abs(fx.OffY - offY) > 1e-4) fx.OffY = offY;
         double topR = NotchBorder.CornerRadius.TopLeft * dpiScale;
         double bottomR = NotchBorder.CornerRadius.BottomLeft * dpiScale;
-        if (Math.Abs(fx.TopCornerR - topR) > 0.1) fx.TopCornerR = topR;
-        if (Math.Abs(fx.BottomCornerR - bottomR) > 0.1) fx.BottomCornerR = bottomR;
+        if (Math.Abs(fx.TopCornerR - topR) > 0.01) fx.TopCornerR = topR;
+        if (Math.Abs(fx.BottomCornerR - bottomR) > 0.01) fx.BottomCornerR = bottomR;
 
         var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
         if (_lastGpuGeometry is { } g)
@@ -1079,8 +1112,7 @@ public partial class MainWindow
         int physW = Math.Max(1, (int)Math.Round(exactW));
         int physH = Math.Max(1, (int)Math.Round(exactH));
 
-        double screenLeft = _fixedX + (_windowWidth - exactW) / 2.0;
-        double screenTop = _fixedY + (NotchContainerTranslate?.Y ?? 0) * dpiScale;
+        var (screenLeft, screenTop) = GetNotchScreenPosition(exactW, dpiScale);
 
         int physLeft = (int)Math.Round(screenLeft, MidpointRounding.AwayFromZero);
         int physTop = (int)Math.Round(screenTop, MidpointRounding.AwayFromZero);
