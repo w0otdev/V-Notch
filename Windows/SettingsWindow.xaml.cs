@@ -1004,14 +1004,16 @@ public partial class SettingsWindow : Window
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.calendar"), Tag = "calendar" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.clock"), Tag = "clock" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.wordclock"), Tag = "wordclock" });
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.digitalclock"), Tag = "digitalclock" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.weather"), Tag = "weather" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.sysmon"), Tag = "sysmon" });
         WidgetCombo.SelectedIndex = _settings.ExpandedWidget switch
         {
             "clock" => 1,
             "wordclock" => 2,
-            "weather" => 3,
-            "sysmon" => 4,
+            "digitalclock" => 3,
+            "weather" => 4,
+            "sysmon" => 5,
             _ => 0
         };
     }
@@ -2359,8 +2361,9 @@ public partial class SettingsWindow : Window
         {
             "clock" => 1,
             "wordclock" => 2,
-            "weather" => 3,
-            "sysmon" => 4,
+            "digitalclock" => 3,
+            "weather" => 4,
+            "sysmon" => 5,
             _ => 0
         };
     }
