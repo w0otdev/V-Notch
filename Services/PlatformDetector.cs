@@ -10,6 +10,11 @@ public static class PlatformDetector
     private static readonly (string Pattern, MediaPlatform Platform)[] AppIdRules =
     {
         ("Spotify", MediaPlatform.Spotify),
+        ("Discord", MediaPlatform.Discord),
+        ("Vesktop", MediaPlatform.Discord),
+        ("Twitch", MediaPlatform.Twitch),
+        ("TIDAL", MediaPlatform.Tidal),
+        ("Deezer", MediaPlatform.Deezer),
     };
 
     private static readonly (string Pattern, MediaPlatform Platform)[] BrowserAppIdPatterns =
@@ -26,6 +31,16 @@ public static class PlatformDetector
         ("Arc", MediaPlatform.Browser),
         ("Sidekick", MediaPlatform.Browser),
         ("Zen", MediaPlatform.Browser),
+        ("Thorium", MediaPlatform.Browser),
+        ("Waterfox", MediaPlatform.Browser),
+        ("Floorp", MediaPlatform.Browser),
+        ("Librewolf", MediaPlatform.Browser),
+        ("Chromium", MediaPlatform.Browser),
+        ("Whale", MediaPlatform.Browser),
+        ("Yandex", MediaPlatform.Browser),
+        ("Wavebox", MediaPlatform.Browser),
+        ("Helium", MediaPlatform.Browser),
+        ("Supermium", MediaPlatform.Browser),
         ("Browser", MediaPlatform.Browser),
     };
 
@@ -34,8 +49,16 @@ public static class PlatformDetector
         " - YouTube", " – YouTube", " - SoundCloud", " | Facebook",
         " - TikTok", " / X", " | TikTok", " • Instagram",
         " - Apple Music", " – Apple Music",
+        " - Twitch", " – Twitch", " | Twitch", " • Twitch",
+        " - Discord", " – Discord", " | Discord", " • Discord",
+        " - TIDAL", " – TIDAL", " - Deezer", " – Deezer",
+        " | Bandcamp", " - Netflix", " – Netflix",
+        " _哔哩哔哩_bilibili", " - 哔哩哔哩", " - bilibili",
+        " on Vimeo", " - Crunchyroll", " – Crunchyroll",
         " - Google Chrome", " - Microsoft\u200B Edge", " - Microsoft Edge",
-        " - Mozilla Firefox", " - Opera", " - Brave", " - Cốc Cốc",
+        " - Mozilla Firefox", " - Opera", " - Brave", " - Vivaldi",
+        " - Cốc Cốc", " - Arc", " - Sidekick", " - Zen Browser", " - Zen",
+        " - Thorium", " - Waterfox", " - Floorp", " - Yandex",
         " - Browser", " – Current browser"
     };
 
@@ -71,15 +94,32 @@ public static class PlatformDetector
 
         foreach (var title in windowTitles)
         {
-            var lower = title.ToLower();
+            var lower = title.ToLowerInvariant();
 
             if (lower.Contains("youtube") && !lower.StartsWith("youtube -") && lower != "youtube")
                 return MediaPlatform.YouTube;
 
-            if (lower.Contains("soundcloud") && fallback == MediaPlatform.Unknown)
+            if (lower.Contains("twitch") && !lower.StartsWith("twitch -") && lower != "twitch")
+                return MediaPlatform.Twitch;
+
+            if ((lower.Contains("discord") || lower.Contains("vesktop")) && !lower.StartsWith("discord -") && lower != "discord" && lower != "vesktop" && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Discord;
+            else if (lower.Contains("soundcloud") && fallback == MediaPlatform.Unknown)
                 fallback = MediaPlatform.SoundCloud;
             else if ((lower.Contains("apple music") || lower.Contains("music.apple.com")) && fallback == MediaPlatform.Unknown)
                 fallback = MediaPlatform.AppleMusic;
+            else if (lower.Contains("tidal") && (lower.Contains("listen.tidal.com") || lower.Contains(" - tidal") || lower.Contains(" – tidal")) && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Tidal;
+            else if (lower.Contains("deezer") && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Deezer;
+            else if (lower.Contains("bandcamp") && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Bandcamp;
+            else if (lower.Contains("netflix") && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Netflix;
+            else if ((lower.Contains("bilibili") || lower.Contains("哔哩哔哩")) && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Bilibili;
+            else if (lower.Contains("vimeo") && fallback == MediaPlatform.Unknown)
+                fallback = MediaPlatform.Vimeo;
             else if (lower.Contains("facebook") && (lower.Contains("watch") || lower.Contains("video")) && fallback == MediaPlatform.Unknown)
                 fallback = MediaPlatform.Facebook;
             else if (lower.Contains("tiktok") && lower.Contains(" | ") && fallback == MediaPlatform.Unknown)
@@ -229,7 +269,15 @@ public enum MediaPlatform
     Facebook,
     TikTok,
     Instagram,
-    Twitter
+    Twitter,
+    Twitch,
+    Discord,
+    Netflix,
+    Tidal,
+    Deezer,
+    Bandcamp,
+    Bilibili,
+    Vimeo
 }
 public static class MediaPlatformExtensions
 {
@@ -244,6 +292,14 @@ public static class MediaPlatformExtensions
         MediaPlatform.TikTok => "TikTok",
         MediaPlatform.Instagram => "Instagram",
         MediaPlatform.Twitter => "Twitter",
+        MediaPlatform.Twitch => "Twitch",
+        MediaPlatform.Discord => "Discord",
+        MediaPlatform.Netflix => "Netflix",
+        MediaPlatform.Tidal => "TIDAL",
+        MediaPlatform.Deezer => "Deezer",
+        MediaPlatform.Bandcamp => "Bandcamp",
+        MediaPlatform.Bilibili => "Bilibili",
+        MediaPlatform.Vimeo => "Vimeo",
         _ => ""
     };
     public static MediaPlatform ParsePlatform(string? value)
@@ -261,6 +317,15 @@ public static class MediaPlatformExtensions
             "tiktok" => MediaPlatform.TikTok,
             "instagram" => MediaPlatform.Instagram,
             "twitter" => MediaPlatform.Twitter,
+            "twitch" => MediaPlatform.Twitch,
+            "discord" => MediaPlatform.Discord,
+            "vesktop" => MediaPlatform.Discord,
+            "netflix" => MediaPlatform.Netflix,
+            "tidal" => MediaPlatform.Tidal,
+            "deezer" => MediaPlatform.Deezer,
+            "bandcamp" => MediaPlatform.Bandcamp,
+            "bilibili" => MediaPlatform.Bilibili,
+            "vimeo" => MediaPlatform.Vimeo,
             _ => MediaPlatform.Unknown
         };
     }

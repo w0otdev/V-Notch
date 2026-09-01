@@ -87,9 +87,11 @@
     <Resource Include="Fonts\SF-Pro-Display-Regular.otf" />
     <Resource Include="Fonts\segmdl2.ttf" />
     <Resource Include="Services\icons\browser.svg" />
+    <Resource Include="Services\icons\discord.svg" />
     <Resource Include="Services\icons\soundcloud.svg" />
     <Resource Include="Services\icons\spotify.svg" />
     <Resource Include="Services\icons\tiktok.svg" />
+    <Resource Include="Services\icons\twitch.svg" />
     <Resource Include="Services\icons\twitter.svg" />
     <Resource Include="Services\icons\youtube.svg" />
     <Resource Include="logo.ico" />

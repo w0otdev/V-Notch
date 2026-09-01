@@ -33,12 +33,15 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
 
     private static readonly string[] _platformKeywords =
     {
-        "spotify", "youtube", "soundcloud", "facebook", "tiktok", "instagram", "twitter", " / x", "apple music", "apple", "music"
+        "spotify", "youtube", "soundcloud", "facebook", "tiktok", "instagram", "twitter", " / x", "apple music", "apple", "music",
+        "twitch", "discord", "vesktop", "netflix", "tidal", "deezer", "bandcamp", "bilibili", "哔哩哔哩", "vimeo", "crunchyroll", "prime video", "disney"
     };
 
     private static readonly string[] _browserProcessNames =
     {
-        "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "zen"
+        "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "zen",
+        "arc", "coccoc", "sidekick", "thorium", "waterfox", "floorp", "librewolf",
+        "chromium", "whale", "yandex", "wavebox", "helium", "supermium", "browser"
     };
 
     private readonly object _cacheLock = new();
@@ -341,7 +344,18 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                s.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("youtube.com/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase);
+               s.Contains("twitch.tv/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("discord.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("open.spotify.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("music.apple.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("tidal.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("deezer.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("bandcamp.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("netflix.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("bilibili.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("vimeo.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("crunchyroll.com/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeUrl(string s)
@@ -359,7 +373,19 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         return url.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("music.youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase);
+               url.Contains("twitch.tv/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("discord.com/channels/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("discord.com/app", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("open.spotify.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("music.apple.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("listen.tidal.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("deezer.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("bandcamp.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("netflix.com/watch", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("bilibili.com/video", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("vimeo.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains("crunchyroll.com/watch", StringComparison.OrdinalIgnoreCase);
     }
 
     private const string SpotifyWebPlayerHost = "open.spotify.com";

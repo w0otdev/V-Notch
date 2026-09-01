@@ -14,6 +14,14 @@ public class MediaInfo
     public bool IsInstagramRunning { get; set; }
     public bool IsTwitterRunning { get; set; }
     public bool IsAppleMusicRunning { get; set; }
+    public bool IsTwitchRunning { get; set; }
+    public bool IsDiscordRunning { get; set; }
+    public bool IsNetflixRunning { get; set; }
+    public bool IsTidalRunning { get; set; }
+    public bool IsDeezerRunning { get; set; }
+    public bool IsBandcampRunning { get; set; }
+    public bool IsBilibiliRunning { get; set; }
+    public bool IsVimeoRunning { get; set; }
 
     public bool IsAnyMediaPlaying { get; set; }
     public bool IsPlaying { get; set; }
@@ -43,7 +51,8 @@ public class MediaInfo
     public MediaPlatform Platform => MediaPlatformExtensions.ParsePlatform(MediaSource);
 
     public bool IsVideoSource => Platform is MediaPlatform.YouTube or MediaPlatform.Browser
-        or MediaPlatform.Facebook or MediaPlatform.TikTok or MediaPlatform.Instagram or MediaPlatform.Twitter;
+        or MediaPlatform.Facebook or MediaPlatform.TikTok or MediaPlatform.Instagram or MediaPlatform.Twitter
+        or MediaPlatform.Twitch or MediaPlatform.Discord or MediaPlatform.Netflix or MediaPlatform.Bilibili or MediaPlatform.Vimeo;
 
     public MediaInfo Clone() => (MediaInfo)MemberwiseClone();
 

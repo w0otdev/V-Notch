@@ -30,7 +30,10 @@ internal static class MediaHeuristics
 
     public static bool IsIgnoredSourceApp(string sourceAppId)
     {
-        return sourceAppId.Contains("Discord", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(sourceAppId))
+            return false;
+
+        return false;
     }
 
     public static bool IsLikelySoundCloudPlaceholderArtworkUrl(string? url)

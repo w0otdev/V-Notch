@@ -37,11 +37,44 @@ public class MediaSourceClassifierTests
         Assert.True(info.IsYouTubeRunning);
     }
 
+    [Fact]
+    public void ApplyFromAppId_Discord_SetsSourceAndFlag()
+    {
+        var info = new MediaInfo();
+        MediaSourceClassifier.ApplyFromAppId(info, "Discord.exe");
+
+        Assert.Equal("Discord", info.MediaSource);
+        Assert.True(info.IsDiscordRunning);
+    }
+
+    [Fact]
+    public void ApplyFromAppId_Twitch_SetsSourceAndFlag()
+    {
+        var info = new MediaInfo();
+        MediaSourceClassifier.ApplyFromAppId(info, "Twitch.exe");
+
+        Assert.Equal("Twitch", info.MediaSource);
+        Assert.True(info.IsTwitchRunning);
+    }
+
+    [Fact]
+    public void ApplyFromAppId_Tidal_SetsSourceAndFlag()
+    {
+        var info = new MediaInfo();
+        MediaSourceClassifier.ApplyFromAppId(info, "TIDAL.exe");
+
+        Assert.Equal("TIDAL", info.MediaSource);
+        Assert.True(info.IsTidalRunning);
+    }
+
     [Theory]
     [InlineData("Chrome")]
     [InlineData("msedge")]
     [InlineData("Brave.Browser")]
     [InlineData("Zen")]
+    [InlineData("Arc")]
+    [InlineData("Thorium")]
+    [InlineData("Floorp")]
     public void ApplyFromAppId_BrowserApp_ResolvesToBrowser(string appId)
     {
         var info = new MediaInfo();
@@ -96,6 +129,26 @@ public class MediaSourceClassifierTests
     }
 
     [Fact]
+    public void RefineFromMetadata_BrowserWithTwitchHint_ResolvesTwitch()
+    {
+        var info = new MediaInfo { MediaSource = "Browser" };
+        MediaSourceClassifier.RefineFromMetadata(info, "Live Stream - Twitch", "", "");
+
+        Assert.Equal("Twitch", info.MediaSource);
+        Assert.True(info.IsTwitchRunning);
+    }
+
+    [Fact]
+    public void RefineFromMetadata_BrowserWithDiscordHint_ResolvesDiscord()
+    {
+        var info = new MediaInfo { MediaSource = "Browser" };
+        MediaSourceClassifier.RefineFromMetadata(info, "Voice Call", "Discord", "");
+
+        Assert.Equal("Discord", info.MediaSource);
+        Assert.True(info.IsDiscordRunning);
+    }
+
+    [Fact]
     public void RefineFromMetadata_EmptySourceWithAppleHint_ResolvesAppleMusic()
     {
         var info = new MediaInfo { MediaSource = "" };
@@ -138,6 +191,9 @@ public class MediaSourceClassifierTests
     [InlineData("Windows Media Player")]
     [InlineData("chrome")]
     [InlineData("firefox")]
+    [InlineData("discord")]
+    [InlineData("twitch")]
+    [InlineData("netflix")]
     public void TryHandleJunkTitle_JunkValues_ReturnsTrue(string title)
     {
         var info = new MediaInfo();
@@ -148,7 +204,7 @@ public class MediaSourceClassifierTests
     public void TryHandleJunkTitle_YouTubeTitleWithRealArtist_NotJunk()
     {
         var info = new MediaInfo();
-        Assert.False(MediaSourceClassifier.TryHandleJunkTitle(info, "youtube", "Rick Astley"));
+        Assert.False(MediaSourceClassifier.TryHandleJunkTitle(info, "Real Song Title", "Some Artist"));
     }
 
     [Fact]
@@ -191,6 +247,26 @@ public class MediaSourceClassifierTests
 
         Assert.Equal("YouTube", info.MediaSource);
         Assert.True(info.IsYouTubeRunning);
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_TwitchTitle_ResolvesTwitch()
+    {
+        var info = new MediaInfo { MediaSource = "Browser" };
+        MediaSourceClassifier.DetectFromWindowTitles(info, new[] { "StreamerName - GameTitle - Twitch - Google Chrome" }, "", "", hasTrack: false);
+
+        Assert.Equal("Twitch", info.MediaSource);
+        Assert.True(info.IsTwitchRunning);
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_DiscordTitle_ResolvesDiscord()
+    {
+        var info = new MediaInfo { MediaSource = "Browser" };
+        MediaSourceClassifier.DetectFromWindowTitles(info, new[] { "#voice-channel | Gaming Server - Discord" }, "", "", hasTrack: false);
+
+        Assert.Equal("Discord", info.MediaSource);
+        Assert.True(info.IsDiscordRunning);
     }
 
     [Fact]

@@ -48,6 +48,55 @@ public class PlatformDetectorTests
         Assert.Equal(MediaPlatform.AppleMusic, PlatformDetector.DetectFromWindowTitles(titles));
     }
 
+    [Fact]
+    public void DetectFromWindowTitles_Twitch_ReturnsTwitch()
+    {
+        var titles = new[] { "StreamerName - Playing Some Game - Twitch - Google Chrome" };
+        Assert.Equal(MediaPlatform.Twitch, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_Discord_ReturnsDiscord()
+    {
+        var titles = new[] { "#general | Cool Server - Discord" };
+        Assert.Equal(MediaPlatform.Discord, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_Vesktop_ReturnsDiscord()
+    {
+        var titles = new[] { "#voice-chat - Vesktop" };
+        Assert.Equal(MediaPlatform.Discord, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_Tidal_ReturnsTidal()
+    {
+        var titles = new[] { "Artist - Track - TIDAL" };
+        Assert.Equal(MediaPlatform.Tidal, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_Deezer_ReturnsDeezer()
+    {
+        var titles = new[] { "Artist - Track - Deezer" };
+        Assert.Equal(MediaPlatform.Deezer, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_Bandcamp_ReturnsBandcamp()
+    {
+        var titles = new[] { "Album Title | Bandcamp" };
+        Assert.Equal(MediaPlatform.Bandcamp, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
+    [Fact]
+    public void DetectFromWindowTitles_Netflix_ReturnsNetflix()
+    {
+        var titles = new[] { "Stranger Things - Netflix" };
+        Assert.Equal(MediaPlatform.Netflix, PlatformDetector.DetectFromWindowTitles(titles));
+    }
+
     #endregion
 
     #region IsBrowserApp
@@ -58,7 +107,14 @@ public class PlatformDetectorTests
     [InlineData("firefox.exe", true)]
     [InlineData("Brave.exe", true)]
     [InlineData("zen.exe", true)]
+    [InlineData("arc.exe", true)]
+    [InlineData("thorium.exe", true)]
+    [InlineData("waterfox.exe", true)]
+    [InlineData("floorp.exe", true)]
+    [InlineData("librewolf.exe", true)]
+    [InlineData("coccoc.exe", true)]
     [InlineData("Spotify.exe", false)]
+    [InlineData("Discord.exe", false)]
     [InlineData("", false)]
     public void IsBrowserApp_IdentifiesCorrectly(string appId, bool expected)
     {
@@ -80,6 +136,20 @@ public class PlatformDetectorTests
     {
         var result = PlatformDetector.ExtractTitleFromWindow("Rick Astley - Never Gonna Give You Up - YouTube", "YouTube");
         Assert.Equal("Rick Astley - Never Gonna Give You Up", result);
+    }
+
+    [Fact]
+    public void ExtractTitleFromWindow_Twitch_StripsTwitchSuffix()
+    {
+        var result = PlatformDetector.ExtractTitleFromWindow("shroud - VALORANT - Twitch", "Twitch");
+        Assert.Equal("shroud - VALORANT", result);
+    }
+
+    [Fact]
+    public void ExtractTitleFromWindow_Discord_StripsDiscordSuffix()
+    {
+        var result = PlatformDetector.ExtractTitleFromWindow("#general | My Server - Discord", "Discord");
+        Assert.Equal("#general | My Server", result);
     }
 
     [Fact]
@@ -186,6 +256,12 @@ public class PlatformDetectorTests
     [InlineData(MediaPlatform.Spotify, "Spotify")]
     [InlineData(MediaPlatform.YouTube, "YouTube")]
     [InlineData(MediaPlatform.SoundCloud, "SoundCloud")]
+    [InlineData(MediaPlatform.Twitch, "Twitch")]
+    [InlineData(MediaPlatform.Discord, "Discord")]
+    [InlineData(MediaPlatform.Tidal, "TIDAL")]
+    [InlineData(MediaPlatform.Deezer, "Deezer")]
+    [InlineData(MediaPlatform.Bandcamp, "Bandcamp")]
+    [InlineData(MediaPlatform.Netflix, "Netflix")]
     [InlineData(MediaPlatform.Unknown, "")]
     public void ToDisplayString_ReturnsExpected(MediaPlatform platform, string expected)
     {
@@ -195,6 +271,13 @@ public class PlatformDetectorTests
     [Theory]
     [InlineData("spotify", MediaPlatform.Spotify)]
     [InlineData("YouTube", MediaPlatform.YouTube)]
+    [InlineData("twitch", MediaPlatform.Twitch)]
+    [InlineData("discord", MediaPlatform.Discord)]
+    [InlineData("vesktop", MediaPlatform.Discord)]
+    [InlineData("tidal", MediaPlatform.Tidal)]
+    [InlineData("deezer", MediaPlatform.Deezer)]
+    [InlineData("bandcamp", MediaPlatform.Bandcamp)]
+    [InlineData("netflix", MediaPlatform.Netflix)]
     [InlineData("unknown", MediaPlatform.Unknown)]
     [InlineData("", MediaPlatform.Unknown)]
     [InlineData(null, MediaPlatform.Unknown)]

@@ -199,9 +199,25 @@ internal static class MediaWindowActivator
 
         if (info.Platform == MediaPlatform.YouTube && (titleLower.Contains("youtube") || helpLower.Contains("youtube")))
             score += 50;
+        else if (info.Platform == MediaPlatform.Twitch && (titleLower.Contains("twitch") || helpLower.Contains("twitch")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Discord && (titleLower.Contains("discord") || helpLower.Contains("discord") || titleLower.Contains("vesktop")))
+            score += 50;
         else if (info.Platform == MediaPlatform.SoundCloud && (titleLower.Contains("soundcloud") || helpLower.Contains("soundcloud")))
             score += 50;
         else if (info.Platform == MediaPlatform.Spotify && (titleLower.Contains("spotify") || helpLower.Contains("spotify")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Tidal && (titleLower.Contains("tidal") || helpLower.Contains("tidal")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Deezer && (titleLower.Contains("deezer") || helpLower.Contains("deezer")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Bandcamp && (titleLower.Contains("bandcamp") || helpLower.Contains("bandcamp")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Netflix && (titleLower.Contains("netflix") || helpLower.Contains("netflix")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Bilibili && (titleLower.Contains("bilibili") || titleLower.Contains("哔哩哔哩")))
+            score += 50;
+        else if (info.Platform == MediaPlatform.Vimeo && (titleLower.Contains("vimeo") || helpLower.Contains("vimeo")))
             score += 50;
         else if (info.Platform == MediaPlatform.Facebook && (titleLower.Contains("facebook") || helpLower.Contains("facebook")))
             score += 50;
@@ -238,6 +254,34 @@ internal static class MediaWindowActivator
             Add("Spotify");
         }
 
+        if (sourceAppId.Contains("discord", StringComparison.OrdinalIgnoreCase) ||
+            sourceAppId.Contains("vesktop", StringComparison.OrdinalIgnoreCase) ||
+            info.Platform == MediaPlatform.Discord)
+        {
+            Add("Discord");
+            Add("DiscordCanary");
+            Add("DiscordPTB");
+            Add("Vesktop");
+        }
+
+        if (sourceAppId.Contains("twitch", StringComparison.OrdinalIgnoreCase) ||
+            info.Platform == MediaPlatform.Twitch)
+        {
+            Add("Twitch");
+        }
+
+        if (sourceAppId.Contains("tidal", StringComparison.OrdinalIgnoreCase) ||
+            info.Platform == MediaPlatform.Tidal)
+        {
+            Add("TIDAL");
+        }
+
+        if (sourceAppId.Contains("deezer", StringComparison.OrdinalIgnoreCase) ||
+            info.Platform == MediaPlatform.Deezer)
+        {
+            Add("Deezer");
+        }
+
         if (sourceAppId.Contains("applemusic", StringComparison.OrdinalIgnoreCase) ||
             sourceAppId.Contains("apple music", StringComparison.OrdinalIgnoreCase) ||
             info.Platform == MediaPlatform.AppleMusic)
@@ -255,16 +299,22 @@ internal static class MediaWindowActivator
         if (sourceAppId.Contains("arc", StringComparison.OrdinalIgnoreCase)) Add("arc");
         if (sourceAppId.Contains("sidekick", StringComparison.OrdinalIgnoreCase)) Add("sidekick");
         if (sourceAppId.Contains("zen", StringComparison.OrdinalIgnoreCase)) Add("zen");
+        if (sourceAppId.Contains("thorium", StringComparison.OrdinalIgnoreCase)) Add("thorium");
+        if (sourceAppId.Contains("waterfox", StringComparison.OrdinalIgnoreCase)) Add("waterfox");
+        if (sourceAppId.Contains("floorp", StringComparison.OrdinalIgnoreCase)) Add("floorp");
+        if (sourceAppId.Contains("librewolf", StringComparison.OrdinalIgnoreCase)) Add("librewolf");
+        if (sourceAppId.Contains("whale", StringComparison.OrdinalIgnoreCase)) Add("whale");
+        if (sourceAppId.Contains("yandex", StringComparison.OrdinalIgnoreCase)) Add("yandex");
 
         if (string.IsNullOrWhiteSpace(sourceAppId) &&
             (info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud))
         {
-            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("zen");
+            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("vivaldi"); Add("zen"); Add("arc"); Add("thorium");
         }
 
         if (info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud)
         {
-            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("vivaldi"); Add("zen");
+            Add("msedge"); Add("chrome"); Add("firefox"); Add("brave"); Add("opera"); Add("vivaldi"); Add("zen"); Add("arc"); Add("thorium");
         }
 
         return candidates;
@@ -328,7 +378,18 @@ internal static class MediaWindowActivator
                processName.Equals("browser", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("arc", StringComparison.OrdinalIgnoreCase) ||
                processName.Equals("sidekick", StringComparison.OrdinalIgnoreCase) ||
-               processName.Equals("zen", StringComparison.OrdinalIgnoreCase);
+               processName.Equals("zen", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("coccoc", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("thorium", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("waterfox", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("floorp", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("librewolf", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("chromium", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("whale", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("yandex", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("wavebox", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("helium", StringComparison.OrdinalIgnoreCase) ||
+               processName.Equals("supermium", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetWindowTitle(IntPtr hwnd)
@@ -354,7 +415,15 @@ internal static class MediaWindowActivator
         if (!string.IsNullOrWhiteSpace(artist) && artist is not "youtube" and not "browser" && window.Contains(artist, StringComparison.OrdinalIgnoreCase)) score += 70;
 
         if (info.Platform == MediaPlatform.YouTube && title.Contains("YouTube", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Twitch && title.Contains("Twitch", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Discord && (title.Contains("Discord", StringComparison.OrdinalIgnoreCase) || title.Contains("Vesktop", StringComparison.OrdinalIgnoreCase))) score += 90;
         if (info.Platform == MediaPlatform.SoundCloud && title.Contains("SoundCloud", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Tidal && title.Contains("TIDAL", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Deezer && title.Contains("Deezer", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Bandcamp && title.Contains("Bandcamp", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Netflix && title.Contains("Netflix", StringComparison.OrdinalIgnoreCase)) score += 90;
+        if (info.Platform == MediaPlatform.Bilibili && (title.Contains("bilibili", StringComparison.OrdinalIgnoreCase) || title.Contains("哔哩哔哩"))) score += 90;
+        if (info.Platform == MediaPlatform.Vimeo && title.Contains("Vimeo", StringComparison.OrdinalIgnoreCase)) score += 90;
         if (info.Platform == MediaPlatform.Facebook && title.Contains("Facebook", StringComparison.OrdinalIgnoreCase)) score += 90;
         if (info.Platform == MediaPlatform.TikTok && title.Contains("TikTok", StringComparison.OrdinalIgnoreCase)) score += 90;
         if (info.Platform == MediaPlatform.Instagram && title.Contains("Instagram", StringComparison.OrdinalIgnoreCase)) score += 90;
@@ -369,7 +438,7 @@ internal static class MediaWindowActivator
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
         string normalized = Regex.Replace(value, @"\s+", " ").Trim().ToLowerInvariant();
-        normalized = Regex.Replace(normalized, @"\s+-\s+(youtube|google chrome|microsoft edge|mozilla firefox|brave|opera|vivaldi|zen).*$", "", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\s+-\s+(youtube|twitch|discord|google chrome|microsoft edge|mozilla firefox|brave|opera|vivaldi|zen|arc|cốc cốc|thorium|waterfox|floorp).*$", "", RegexOptions.IgnoreCase);
         return normalized;
     }
 }

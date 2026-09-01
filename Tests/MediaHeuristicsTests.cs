@@ -46,14 +46,16 @@ public class MediaHeuristicsTests
     #region IsIgnoredSourceApp
 
     [Theory]
-    [InlineData("Discord.exe", true)]
-    [InlineData("discord", true)]
-    [InlineData("Vesktop.Discord", true)]
+    [InlineData("Discord.exe", false)]
+    [InlineData("discord", false)]
+    [InlineData("Vesktop.Discord", false)]
     [InlineData("Spotify.exe", false)]
     [InlineData("Chrome", false)]
-    public void IsIgnoredSourceApp_FlagsDiscordOnly(string appId, bool expected)
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsIgnoredSourceApp_ReturnsFalseForMediaSources(string? appId, bool expected)
     {
-        Assert.Equal(expected, MediaHeuristics.IsIgnoredSourceApp(appId));
+        Assert.Equal(expected, MediaHeuristics.IsIgnoredSourceApp(appId!));
     }
 
     #endregion
