@@ -1,7 +1,7 @@
 # Chính Sách Bảo Mật — V-Notch
 
-**Ngày hiệu lực:** 31 tháng 8, 2026  
-**Phiên bản ứng dụng:** 1.9.0  
+**Ngày hiệu lực:** 31 tháng 8, 2026 (sửa đổi)  
+**Phiên bản ứng dụng:** 1.9.1  
 **Nhà phát triển:** rainaku  
 **Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
 
@@ -28,7 +28,7 @@ Chính sách này dùng các thuật ngữ sau:
 |---|---|---|---|
 | **Phương tiện đang phát** | Tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái (Windows SMTC) | Không (trừ tra cứu ảnh bìa/lời/phụ đề — xem §4) | Không (tạm thời trong bộ nhớ) |
 | **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có — YouTube/Google, SoundCloud, Piped/Invidious | Không (cache trong bộ nhớ và tệp cache nguồn cục bộ) |
-| **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có — lrclib.net | Không (tạm thời trong bộ nhớ) |
+| **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có — lrclib.net, và api.lrcmux.dev làm nguồn tổng hợp dự phòng | Không (tạm thời trong bộ nhớ) |
 | **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề (YoutubeExplode) | Có — YouTube | Không (tạm thời trong bộ nhớ) |
 | **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có — Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
 | **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có — `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
@@ -61,10 +61,10 @@ Dữ liệu này được đọc liên tục khi đang phát, dùng để hiển
 
 Để xác định *nơi* media đang phát (ví dụ phân biệt tab YouTube với tab SoundCloud) và lấy đúng ảnh bìa cùng lời bài hát, V-Notch thực hiện hai kiểu kiểm tra cục bộ:
 
-- **Quét tiêu đề cửa sổ** — Liệt kê tiêu đề của các cửa sổ cấp cao đang hiển thị và tìm các từ khóa media đã biết (như "spotify", "youtube", "soundcloud", "apple music"). Chỉ những tiêu đề khớp từ khóa mới được giữ lại tạm thời trong bộ nhớ.
-- **Đọc URL trình duyệt** — Với các trình duyệt được hỗ trợ (Chrome, Edge, Firefox, Brave, Opera, Vivaldi), ứng dụng dùng API trợ năng UI Automation của Windows để đọc thanh địa chỉ và các tab đang mở nhằm tìm một URL media (liên kết `youtube.com/watch`, `youtu.be`, hoặc `soundcloud.com`). Chỉ những URL là liên kết media mới được xử lý.
+- **Quét tiêu đề cửa sổ** — Liệt kê tiêu đề của các cửa sổ cấp cao đang hiển thị và chỉ giữ lại những tiêu đề chứa một trong các từ khóa nền tảng cố định: `spotify`, `youtube`, `soundcloud`, `facebook`, `tiktok`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`. Các từ khóa nền tảng mạng xã hội mở rộng (Facebook, TikTok, Instagram, Twitter/X) dùng để hỗ trợ phát hiện việc phát video/âm thanh bên trong các tab đó (ví dụ phát TikTok/Reels, như được mô tả trong danh sách tính năng) — chúng chỉ được so khớp với văn bản tiêu đề cửa sổ, hoàn toàn không đọc nội dung trang. Các tiêu đề cửa sổ không khớp sẽ bị loại bỏ ngay lập tức và không bao giờ được giữ lại.
+- **Đọc URL trình duyệt** — Với các trình duyệt được hỗ trợ (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, và Zen Browser), ứng dụng dùng API trợ năng UI Automation của Windows để đọc thanh địa chỉ và các tab đang mở nhằm tìm một URL media (liên kết `youtube.com/watch`, `youtu.be`, hoặc `soundcloud.com`). Chỉ những URL là liên kết media mới được xử lý.
 
-Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, không bao giờ được truyền đi nguyên trạng. (Một giá trị suy ra — tên bài/nghệ sĩ — có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.)
+Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, không bao giờ được lưu xuống đĩa hoặc truyền đi nguyên trạng. (Một giá trị suy ra — tên bài/nghệ sĩ — có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.)
 
 ### 3.3 Tìm kiếm Spotlight & Trình khởi chạy nhanh (`Alt + Space`)
 
@@ -158,12 +158,14 @@ Khi SMTC không cung cấp ảnh bìa nhúng (thường gặp khi nghe nhạc tr
 
 **Dữ liệu gửi đi:** Tên bài và nghệ sĩ (như một truy vấn tìm kiếm thông thường) cùng các header HTTP trình duyệt tiêu chuẩn. **Không bao gồm bất kỳ thông tin nhận dạng người dùng nào.** Ảnh tải về được lưu trong bộ nhớ để hiển thị và không được ghi xuống đĩa.
 
-### 4.3 Lời bài hát đồng bộ — LRCLIB
+### 4.3 Lời bài hát đồng bộ — LRCLIB và lrc mux
 
-- **Điểm đến:** `https://lrclib.net/api/get?...`
-- **Tại sao:** Để lấy lời bài hát đồng bộ theo thời gian thực cho bài hát đang phát khi tính năng lời bài hát được sử dụng.
-- **Dữ liệu gửi đi:** Tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. Không có dữ liệu cá nhân nào được gửi.
-- **Dữ liệu nhận về:** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị.
+V-Notch thử nghiệm hai nhà cung cấp lời bài hát độc lập theo thứ tự và dừng lại ngay khi một trong hai trả về kết quả:
+
+- **LRCLIB** — `https://lrclib.net/api/get?...` (khớp chính xác) và endpoint tìm kiếm (khớp mờ). **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch.
+- **lrc mux** — `https://api.lrcmux.dev/get?...`, dùng làm nguồn tổng hợp dự phòng khi LRCLIB không có kết quả khớp. **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. lrc mux là dịch vụ tổng hợp lời bài hát của bên thứ ba với các nguồn thượng nguồn riêng; V-Notch không kiểm soát nhà cung cấp thượng nguồn mà dịch vụ này truy vấn nội bộ.
+
+**Dữ liệu nhận về (cả hai):** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Không có dữ liệu cá nhân nào được gửi tới cả hai nhà cung cấp.
 
 ### 4.4 Phụ đề & Captions YouTube — YoutubeExplode
 
@@ -219,7 +221,7 @@ Lưu ánh xạ theo cơ chế LRU (tối đa 500 mục) giữa tên bài hát đ
 
 ### 5.4 Nhật ký chẩn đoán (`vnotch-debug.log`)
 
-Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi lại các sự kiện kỹ thuật và lỗi phát sinh để hỗ trợ chẩn đoán sự cố. Nhật ký tự động xoay vòng khi đạt kích thước khoảng 5 MB. **Nhật ký này không bao giờ được gửi đi đâu** — nó hoàn toàn nằm trên máy của bạn và bạn có thể xóa bất kỳ lúc nào.
+Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi lại các sự kiện kỹ thuật và lỗi phát sinh để hỗ trợ chẩn đoán sự cố. Do tính chất ghi log, tệp này có thể vô tình chứa tên/nghệ sĩ của các bài hát bạn đã nghe, truy vấn tìm lời bài hát, và tiêu đề cửa sổ đã khớp (ví dụ tiêu đề tab trình duyệt) — đây chính là các thông tin đã được mô tả tại Mục 3 và 4, được ghi cục bộ phục vụ gỡ lỗi. Nhật ký tự động xoay vòng khi đạt kích thước khoảng 5 MB. **Nhật ký này không bao giờ được gửi đi đâu** — nó hoàn toàn nằm trên máy của bạn, không tải lên cùng báo cáo lỗi hay yêu cầu cập nhật, và bạn có thể xóa bất kỳ lúc nào.
 
 ### 5.5 Mô hình ONNX tùy chọn
 
@@ -283,6 +285,8 @@ V-Notch xử lý dữ liệu cục bộ trên thiết bị của bạn. Dữ li�
 ## 11. Thay đổi chính sách
 
 Chính sách bảo mật này có thể được cập nhật định kỳ khi ứng dụng có thêm tính năng mới. Các thay đổi quan trọng sẽ được phản ánh chi tiết trong tài liệu này, trong changelog của ứng dụng, đồng thời cập nhật ngày hiệu lực và số phiên bản ở đầu tài liệu. Việc bạn tiếp tục sử dụng ứng dụng sau khi cập nhật đồng nghĩa với việc bạn đồng ý với chính sách đã được điều chỉnh.
+
+**Ghi chú sửa đổi (bản cập nhật này):** làm rõ rằng lời bài hát đồng bộ cũng có thể được lấy từ `api.lrcmux.dev` làm phương án dự phòng cho LRCLIB; bổ sung Zen Browser vào danh sách trình duyệt được hỗ trợ phát hiện URL; ghi nhận đầy đủ bộ từ khóa tiêu đề cửa sổ dùng để phát hiện nguồn media (bao gồm Facebook, TikTok, Instagram, và Twitter/X, chỉ dùng để nhận diện phát media trong các tab đó); và làm rõ rằng tệp nhật ký chẩn đoán cục bộ có thể vô tình ghi nhận tên bài hát/tiêu đề cửa sổ đã được đề cập trong chính sách này.
 
 ---
 

@@ -40,7 +40,7 @@ public class UpdateService : IUpdateService
     }
 
     public string CurrentVersion => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version is { } v
-        ? (v.Revision > 0 ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}" : $"{v.Major}.{v.Minor}.{v.Build}") : "1.7.0";
+        ? (v.Revision > 0 ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}" : $"{v.Major}.{v.Minor}.{v.Build}") : "1.9.1";
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync()
     {
