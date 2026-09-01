@@ -56,6 +56,18 @@ float luminance(float3 col)
     return dot(col, float3(0.299, 0.587, 0.114));
 }
 
+float pow4(float x)
+{
+    float x2 = x * x;
+    return x2 * x2;
+}
+
+float smoother01(float x)
+{
+    x = saturate(x);
+    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+}
+
 // Pseudo-random noise for physical glass grain (OverShifted rand formula)
 float rand(float2 co)
 {
@@ -224,18 +236,24 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // Pointer interaction & dynamic ripple
     // -----------------------------------------------------------------
     float flexPixels = 0.0;
+    float interactionMask = 0.0;
+    float interactionEnergy = 0.0;
+    float2 pointerLocal = float2(0.0, 0.0);
     float active = saturate(pointerActive);
+    float pressed = 0.0;
+
     if (active > 0.001)
     {
-        float pressed = saturate(pressAmount) * active;
+        pressed = saturate(pressAmount) * active;
         float2 pointer01 = saturate(float2(pointerX, pointerY));
-        float2 pointerLocal = pointer01 * notchSize - halfSize;
+        pointerLocal = pointer01 * notchSize - halfSize;
         float2 pointerDelta = localPos - pointerLocal;
 
         float radiusPixels = max(notchH * 0.70, 1.0);
         float2 interactionScale = float2(max(notchW * 0.35, radiusPixels * 2.0), max(notchH * 0.75, radiusPixels * 1.5));
         float interactionDist = length(pointerDelta / interactionScale);
-        float interactionMask = smoothstep(1.0, 0.0, interactionDist) * active;
+        interactionMask = smoothstep(1.0, 0.0, interactionDist) * active;
+        interactionEnergy = interactionMask * lerp(0.5, 1.0, pressed);
 
         float2 radialFromPointer = safeNormalize(pointerDelta);
 
@@ -259,10 +277,8 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float2 displacement = (samplePNorm - pNorm) * halfSize * bend;
 
     // Add pointer ripple displacement
-    if (active > 0.001)
+    if (pressed > 0.001)
     {
-        float2 pointer01 = saturate(float2(pointerX, pointerY));
-        float2 pointerLocal = pointer01 * notchSize - halfSize;
         displacement += safeNormalize(localPos - pointerLocal) * flexPixels;
     }
 
@@ -288,12 +304,55 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     }
 
     // -----------------------------------------------------------------
-    // OverShifted Directional Glass Glow (Multiplicative Optical Rim)
+    // Apple Liquid Glass Micro-Bevel Chamfer Hairline (outer 1.8px)
     // -----------------------------------------------------------------
-    float glowAngle = directionalGlow(pNorm);
-    float glowMask = smoothstep(u_glowEdge0, u_glowEdge1, distNorm);
-    float glowMul = glowAngle * u_glowWeight * glowMask + 1.0 + u_glowBias;
-    col *= max(glowMul, 0.0);
+    float2 outwardNormal = -inwardNormal;
+    float topLight = saturate(-outwardNormal.y * 0.65 + 0.35);
+    float bevelHairline = smoothstep(1.8, 0.2, insidePixels) * topLight * 0.14;
+    col += float3(bevelHairline, bevelHairline, bevelHairline);
+
+    // -----------------------------------------------------------------
+    // Touch Light & Dynamic Moving Highlight
+    // -----------------------------------------------------------------
+    float touchLightStrength = max(highlightStrength, 0.0);
+    if (touchLightStrength > 0.001)
+    {
+        // Animated/spring-tracked light source local coordinate
+        float2 lightLocal = float2(lightX, lightY) * notchSize - halfSize;
+
+        // Vector from light source to current pixel
+        float2 lightRay = safeNormalize(localPos - lightLocal);
+        float lightFacing = saturate(dot(outwardNormal, lightRay));
+
+        float2 lightDistanceScale = max(notchSize * float2(0.72, 0.95), float2(1.0, 1.0));
+        float lightDistance = length((localPos - lightLocal) / lightDistanceScale);
+        float localLightFalloff = 1.0 - smoother01(lightDistance);
+
+        // Optical rim factor: confined strictly to the outer perimeter rim (18px)
+        // This ensures the central notch body remains crystal clear with ZERO lighting seams
+        float rimWidth = max(bottomCornerR * 0.85, 18.0);
+        float rim = 1.0 - smoother01(insidePixels / rimWidth);
+
+        // Specular highlight along the glass outer squircle rim (ambient when idle, focused when pressed)
+        float specular = pow4(lightFacing) * rim * touchLightStrength * lerp(0.35, 1.0, localLightFalloff) * lerp(0.15, 1.0, pressed);
+
+        // Ambient touch light glow radiating from touch / cursor position during click / hold
+        if (pressed > 0.001)
+        {
+            float touchGlow = interactionEnergy * (0.70 + 0.30 * rim) * touchLightStrength * 1.35;
+            float3 ambientTouch = saturate(col * 0.70 + float3(0.55, 0.55, 0.55));
+            col += touchGlow * (float3(0.08, 0.08, 0.10) + ambientTouch * 0.12);
+
+            // Click / press reactive touch specular highlight
+            float touchSpecular = interactionMask * pressed * 0.60 * touchLightStrength;
+            float rimSpecular = pow4(lightFacing) * rim * interactionMask * pressed * 0.80 * touchLightStrength;
+            col += (touchSpecular + rimSpecular) * ambientTouch;
+        }
+
+        // Specular surface sheen spill along outer rim
+        float3 ambientSpill = saturate(col * 1.08 + 0.02);
+        col += specular * (float3(0.024, 0.024, 0.024) + ambientSpill * 0.024);
+    }
 
     // -----------------------------------------------------------------
     // Saturation & Brightness adjustments

@@ -169,13 +169,13 @@ public sealed class LiquidGlassInteractionController : IDisposable
             Lerp(
                 idleLightX,
                 _pointerX,
-                _active);
+                _press);
 
         double targetLightY =
             Lerp(
                 idleLightY,
                 _pointerY,
-                _active);
+                _press);
 
         Spring(
             ref _lightX,
