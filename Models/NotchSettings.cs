@@ -125,6 +125,15 @@ public class NotchSettings
 
     public bool HasSeenSpotlightIntro { get; set; } = false;
 
+    public bool EnableLocalOnlyMode { get; set; } = false;
+    public bool AutoCheckUpdates { get; set; } = true;
+    public bool EnableOnlineArtworkLookup { get; set; } = true;
+    public bool EnableOnlineLyrics { get; set; } = true;
+    public bool EnableBrowserUrlInspection { get; set; } = true;
+    public bool EnablePrivacyIndicators { get; set; } = true;
+    public bool EnableDiagnosticLogging { get; set; } = true;
+    public bool EnableSpotlightHistory { get; set; } = true;
+
     [JsonIgnore]
     public bool IsDirty { get; set; } = false;
 

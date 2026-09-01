@@ -264,33 +264,49 @@ V-Notch does **not**:
 
 ---
 
-## 8. Security
+## 8. Privacy & Local-Only Controls
+
+V-Notch provides a dedicated **Privacy** section in Settings with granular toggles to customize your privacy posture and enforce strict offline execution:
+
+- **Strict Local-Only Mode:** A master kill-switch that completely shuts down and blocks all outbound network requests across every module (automatic update checks, online album art scrapers, lyrics/subtitle lookups, Spotify Canvas video fetches, and online weather queries). V-Notch will operate 100% offline.
+- **Automatic update checks:** Toggle periodic background checks against GitHub Releases.
+- **Online album artwork lookup:** Toggle querying YouTube, SoundCloud, or Piped for album art when the active player provides no embedded cover.
+- **Online synced lyrics lookup:** Toggle fetching synced lyrics from LRCLIB and lrc mux for now-playing songs.
+- **Privacy indicators:** Toggle the colored hardware sensor usage dot (Mic, Camera, Screen Capture) in the compact notch.
+- **Browser media URL detection:** Toggle Windows UI Automation inspection of browser address bars for media source detection.
+- **Diagnostic disk logging:** Toggle writing debug messages to `vnotch-debug.log` on local disk.
+- **Spotlight search launch history:** Toggle tracking application launch frecency in `spotlight-usage.json`.
+- **Data clearing tools:** Single-click buttons to instantly wipe the local Spotlight launch history (`spotlight-usage.json`) and clear the diagnostic log file (`vnotch-debug.log`).
+
+---
+
+## 9. Security
 
 V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). All sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key) are encrypted with Windows DPAPI. All update packages are signed and verified with Authenticode and SHA256 hashes over secure HTTPS. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 ---
 
-## 9. Children's Privacy
+## 10. Children's Privacy
 
 V-Notch does not collect personal data from anyone, including children, and does not direct any content toward children specifically. It is suitable for all ages.
 
 ---
 
-## 10. International Use
+## 11. International Use
 
 V-Notch processes data locally on your device. The only data that crosses a network is the limited request data described in Section 4, sent to the third-party services listed there, which may operate in various countries. No personal data is transferred or stored by the developer.
 
 ---
 
-## 11. Changes to This Policy
+## 12. Changes to This Policy
 
 This Privacy Policy may be updated as features change. Material changes will be reflected in this document, in the application changelog, and through an updated effective date and version number above. Continued use of the application after an update constitutes acceptance of the revised policy.
 
-**Revision notes (this update):** clarified that synced lyrics may also be fetched from `api.lrcmux.dev` as a fallback to LRCLIB; corrected the supported-browser list for URL detection to include Zen Browser; documented the full window-title keyword set used for media source detection (including Facebook, TikTok, Instagram, and Twitter/X, used only to detect playback inside those sites' tabs); and clarified that the local diagnostic log can incidentally contain track/window title data already covered elsewhere in this policy.
+**Revision notes (this update):** added comprehensive documentation for the dedicated Privacy & Local-Only controls (Strict Local-Only Mode, toggles for update checks, online artwork, lyrics, browser URL inspection, privacy dots, disk logging, Spotlight history, and data clearing tools).
 
 ---
 
-## 12. Contact
+## 13. Contact
 
 Questions, concerns, or data-related requests can be raised by opening an issue at:  
 [https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)

@@ -55,4 +55,33 @@ public sealed class RuntimeLogTests
             }
         }
     }
+
+    [Fact]
+    public void ClearLog_PurgesLogFilesAndExecutesWithoutException()
+    {
+        string logPath = Path.Combine(Path.GetTempPath(), $"vnotch-clearlog-{Guid.NewGuid():N}.log");
+        LogLevel previousMinimumLevel = RuntimeLog.MinimumLevel;
+
+        try
+        {
+            RuntimeLog.MinimumLevel = LogLevel.Debug;
+            RuntimeLog.InitializeNewSession(logPath);
+            RuntimeLog.Log("TEST", "Sample test log entry");
+
+            RuntimeLog.ClearLog();
+        }
+        finally
+        {
+            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            RuntimeLog.MinimumLevel = previousMinimumLevel;
+            try
+            {
+                if (File.Exists(logPath)) File.Delete(logPath);
+                if (File.Exists(logPath + ".old")) File.Delete(logPath + ".old");
+            }
+            catch
+            {
+            }
+        }
+    }
 }

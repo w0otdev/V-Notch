@@ -9,7 +9,7 @@ namespace VNotch.Services;
 public static class SettingsMigrator
 {
 
-    public const int CurrentVersion = 12;
+    public const int CurrentVersion = 13;
 
     private static readonly IReadOnlyDictionary<int, Func<JsonObject, JsonObject>> _migrations =
         new Dictionary<int, Func<JsonObject, JsonObject>>
@@ -126,6 +126,26 @@ public static class SettingsMigrator
                 {
                     root[nameof(NotchSettings.EnableSpotlight)] = true;
                 }
+                return root;
+            },
+            [12] = root =>
+            {
+                if (!root.ContainsKey(nameof(NotchSettings.EnableLocalOnlyMode)))
+                    root[nameof(NotchSettings.EnableLocalOnlyMode)] = false;
+                if (!root.ContainsKey(nameof(NotchSettings.AutoCheckUpdates)))
+                    root[nameof(NotchSettings.AutoCheckUpdates)] = true;
+                if (!root.ContainsKey(nameof(NotchSettings.EnableOnlineArtworkLookup)))
+                    root[nameof(NotchSettings.EnableOnlineArtworkLookup)] = true;
+                if (!root.ContainsKey(nameof(NotchSettings.EnableOnlineLyrics)))
+                    root[nameof(NotchSettings.EnableOnlineLyrics)] = true;
+                if (!root.ContainsKey(nameof(NotchSettings.EnableBrowserUrlInspection)))
+                    root[nameof(NotchSettings.EnableBrowserUrlInspection)] = true;
+                if (!root.ContainsKey(nameof(NotchSettings.EnablePrivacyIndicators)))
+                    root[nameof(NotchSettings.EnablePrivacyIndicators)] = true;
+                if (!root.ContainsKey(nameof(NotchSettings.EnableDiagnosticLogging)))
+                    root[nameof(NotchSettings.EnableDiagnosticLogging)] = true;
+                if (!root.ContainsKey(nameof(NotchSettings.EnableSpotlightHistory)))
+                    root[nameof(NotchSettings.EnableSpotlightHistory)] = true;
                 return root;
             },
         };

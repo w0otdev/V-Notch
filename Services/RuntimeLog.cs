@@ -169,6 +169,28 @@ public static class RuntimeLog
         }
     }
 
+    public static void ClearLog()
+    {
+        Shutdown(DefaultShutdownTimeout);
+        lock (_lifecycleLock)
+        {
+            try
+            {
+                if (File.Exists(_logPath)) File.Delete(_logPath);
+                string oldPath = _logPath + ".old";
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+            }
+            catch
+            {
+            }
+
+            if (IsEnabled(LogLevel.Info))
+            {
+                InitializeNewSession();
+            }
+        }
+    }
+
     private static string LevelLabel(LogLevel level) => level switch
     {
         LogLevel.Trace => "TRACE",

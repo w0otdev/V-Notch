@@ -73,7 +73,7 @@ public partial class MainWindow
 
     private void UpdatePrivacyIndicators(PrivacyIndicatorState state)
     {
-        if (!_settings.ShowSystemNotifications)
+        if (!_settings.EnablePrivacyIndicators)
         {
             HidePrivacyIndicators();
             _lastPrivacyState = state;

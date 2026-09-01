@@ -26,7 +26,7 @@ public partial class MainWindow
     {
         int generation = System.Threading.Interlocked.Increment(ref _updateCheckGeneration);
 
-        if (_isUpdateInstalling)
+        if (_isUpdateInstalling || !_settings.AutoCheckUpdates || _settings.EnableLocalOnlyMode)
             return;
 
         try

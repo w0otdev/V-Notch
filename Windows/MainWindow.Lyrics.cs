@@ -51,7 +51,7 @@ public partial class MainWindow
 
     private async Task FetchLyricsForTrack(MediaInfo info)
     {
-        if (!_settings.EnableSpotifyLyrics)
+        if (!_settings.EnableSpotifyLyrics || !_settings.EnableOnlineLyrics || _settings.EnableLocalOnlyMode)
         {
             ResetSpotifyCanvas();
             HideLyricsWidget();
@@ -102,9 +102,9 @@ public partial class MainWindow
             Dispatcher.BeginInvoke(new Action(() => HideSpotifyCanvasBackground(clearSource: true)));
 
         RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
-            $"Fetch gate: enabled={_settings.EnableSpotifyCanvas}, platform={info.Platform}, " +
+            $"Fetch gate: enabled={_settings.EnableSpotifyCanvas}, localOnly={_settings.EnableLocalOnlyMode}, platform={info.Platform}, " +
             $"sessionStored={!string.IsNullOrWhiteSpace(_settings.SpotifySpDc)}");
-        if (!_settings.EnableSpotifyCanvas || info.Platform != MediaPlatform.Spotify)
+        if (!_settings.EnableSpotifyCanvas || _settings.EnableLocalOnlyMode || info.Platform != MediaPlatform.Spotify)
             return;
 
         TryStartSpotifyCanvasFetch(info, trackKey);
@@ -565,7 +565,7 @@ public partial class MainWindow
 
     private async Task FetchSubtitlesForTrack(MediaInfo info, bool force = false)
     {
-        if (!_settings.EnableYouTubeSubtitles)
+        if (!_settings.EnableYouTubeSubtitles || _settings.EnableLocalOnlyMode)
         {
             HideLyricsWidget();
             return;

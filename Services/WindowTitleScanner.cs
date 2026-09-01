@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
@@ -116,8 +117,33 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
     private bool _cachedSpotifyWebPlayerOpen;
     private DateTime _lastSpotifyWebPlayerTime = DateTime.MinValue;
 
+    public static bool IsBrowserUrlInspectionAllowed()
+    {
+        try
+        {
+            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
+            if (!File.Exists(settingsPath)) return true;
+
+            string json = File.ReadAllText(settingsPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty(nameof(Models.NotchSettings.EnableBrowserUrlInspection), out var urlInspection) && !urlInspection.GetBoolean())
+                return false;
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
     public string? TryGetBrowserUrl()
     {
+        if (!IsBrowserUrlInspectionAllowed())
+            return null;
+
         lock (_cacheLock)
         {
             if ((DateTime.Now - _lastBrowserUrlTime).TotalMilliseconds < 1000)
@@ -131,6 +157,9 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
 
     public string? TryGetMediaUrlFromAnyBrowser()
     {
+        if (!IsBrowserUrlInspectionAllowed())
+            return null;
+
         lock (_cacheLock)
         {
             int ttlMs = !string.IsNullOrEmpty(_cachedAnyBrowserMediaUrl) ? 1500 : 400;

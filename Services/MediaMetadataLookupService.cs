@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using VNotch.Models;
 
 namespace VNotch.Services;
 
@@ -21,6 +22,9 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     public async Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
     {
+        if (!IsOnlineArtworkAllowed())
+            return null;
+
         try
         {
             if (string.IsNullOrWhiteSpace(title))
@@ -55,7 +59,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     public async Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(title))
+        if (!IsOnlineArtworkAllowed() || string.IsNullOrWhiteSpace(title))
             return null;
 
         try
@@ -859,8 +863,36 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return null;
     }
 
+    public static bool IsOnlineArtworkAllowed()
+    {
+        try
+        {
+            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
+            if (!File.Exists(settingsPath)) return true;
+
+            string json = File.ReadAllText(settingsPath);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty(nameof(NotchSettings.EnableLocalOnlyMode), out var localOnly) && localOnly.GetBoolean())
+                return false;
+
+            if (root.TryGetProperty(nameof(NotchSettings.EnableOnlineArtworkLookup), out var onlineArt) && !onlineArt.GetBoolean())
+                return false;
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
     public async Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default)
     {
+        if (!IsOnlineArtworkAllowed())
+            return null;
+
         try
         {
             var directTrackUrl = ExtractSoundCloudTrackUrl(title);

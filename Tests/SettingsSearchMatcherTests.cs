@@ -79,7 +79,7 @@ public sealed class SettingsSearchMatcherTests
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         string[] panelNames =
         {
-            "PanelAppearance", "PanelBehavior", "PanelSkins", "PanelDevices", "PanelSystem", "PanelSpotlight",
+            "PanelAppearance", "PanelBehavior", "PanelSkins", "PanelDevices", "PanelSystem", "PanelPrivacy", "PanelSpotlight",
             "PanelAdvanced", "PanelPerformance", "PanelDonating", "PanelUpdates"
         };
 
@@ -92,6 +92,24 @@ public sealed class SettingsSearchMatcherTests
                 (string?)border.Attribute("Style") == "{StaticResource SettingRowBorder}"
                 && border.Parent?.Name == presentation + "StackPanel");
         }
+    }
+
+    [Fact]
+    public void PrivacySectionLivesInItsOwnSettingsSection()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        var document = XDocument.Load(Path.Combine(repositoryRoot, "Windows", "SettingsWindow.xaml"));
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+        XElement? privacyNav = document.Descendants(presentation + "Border")
+            .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "NavPrivacy");
+        Assert.NotNull(privacyNav);
+        Assert.Equal("Privacy", (string?)privacyNav!.Attribute("Tag"));
+
+        XElement? privacyPanel = document.Descendants(presentation + "StackPanel")
+            .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "PanelPrivacy");
+        Assert.NotNull(privacyPanel);
     }
 
     [Fact]

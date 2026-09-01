@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:VNotch.Controls"
         Title="V-Notch Settings"
-        Width="860"
-        Height="620"
+        Width="880"
+        Height="650"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         WindowStyle="None"
@@ -104,8 +104,8 @@
         <Style x:Key="NavButton" TargetType="Border">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="14,10"/>
-            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Margin" Value="0,1.5"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
@@ -752,11 +752,11 @@
 
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="180"/>
+                    <ColumnDefinition Width="190"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" BorderBrush="#10FFFFFF" BorderThickness="0,0,1,0" Padding="12,16,8,16"
+                <Border Grid.Column="0" BorderBrush="#10FFFFFF" BorderThickness="0,0,1,0" Padding="10,12,6,12"
                         x:Name="NavPanel" Opacity="0">
                     <Border.RenderTransform>
                         <TranslateTransform x:Name="NavPanelTranslate" Y="12"/>
@@ -766,130 +766,148 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0">
 
-                        <Border x:Name="NavSearching" Style="{StaticResource NavButton}"
-                                Visibility="Collapsed"
-                                Background="{StaticResource NavItemActiveBg}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Searching">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="NavSearchingText" Text="Searching" FontSize="13" FontWeight="Bold"
-                                           Foreground="White" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                        <Border x:Name="NavAppearance" Style="{StaticResource NavButton}"
-                                Background="{StaticResource NavItemActiveBg}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Appearance">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Path Fill="#AAAAAA" Data="M208,512a24.84,24.84,0,0,1-23.34-16l-39.84-103.6a16.06,16.06,0,0,0-9.19-9.19L32,343.34a25,25,0,0,1,0-46.68l103.6-39.84a16.06,16.06,0,0,0,9.19-9.19L184.66,144a25,25,0,0,1,46.68,0l39.84,103.6a16.06,16.06,0,0,0,9.19,9.19l103,39.63A25.49,25.49,0,0,1,400,320.52a24.82,24.82,0,0,1-16,22.82l-103.6,39.84a16.06,16.06,0,0,0-9.19,9.19L231.34,496A24.84,24.84,0,0,1,208,512Zm66.85-254.84h0Z M88,176a14.67,14.67,0,0,1-13.69-9.4L57.45,122.76a7.28,7.28,0,0,0-4.21-4.21L9.4,101.69a14.67,14.67,0,0,1,0-27.38L53.24,57.45a7.31,7.31,0,0,0,4.21-4.21L74.16,9.79A15,15,0,0,1,86.23.11,14.67,14.67,0,0,1,101.69,9.4l16.86,43.84a7.31,7.31,0,0,0,4.21,4.21L166.6,74.31a14.67,14.67,0,0,1,0,27.38l-43.84,16.86a7.28,7.28,0,0,0-4.21,4.21L101.69,166.6A14.67,14.67,0,0,1,88,176Z M400,256a16,16,0,0,1-14.93-10.26l-22.84-59.37a8,8,0,0,0-4.6-4.6l-59.37-22.84a16,16,0,0,1,0-29.86l59.37-22.84a8,8,0,0,0,4.6-4.6L384.9,42.68a16.45,16.45,0,0,1,13.17-10.57,16,16,0,0,1,16.86,10.15l22.84,59.37a8,8,0,0,0,4.6,4.6l59.37,22.84a16,16,0,0,1,0,29.86l-59.37,22.84a8,8,0,0,0-4.6,4.6l-22.84,59.37A16,16,0,0,1,400,256Z"/>
-                                </Viewbox>
-                                <TextBlock x:Name="NavAppearanceText" Text="Appearance" FontSize="13" FontWeight="Bold"
-                                           Foreground="White" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                        <ScrollViewer Grid.Row="0"
+                                      VerticalScrollBarVisibility="Hidden"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Focusable="False"
+                                      PanningMode="VerticalOnly">
+                            <StackPanel Margin="0,0,4,0">
+                                <Border x:Name="NavSearching" Style="{StaticResource NavButton}"
+                                        Visibility="Collapsed"
+                                        Background="{StaticResource NavItemActiveBg}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Searching">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="NavSearchingText" Text="Searching" FontSize="13" FontWeight="Bold"
+                                                   Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="NavAppearance" Style="{StaticResource NavButton}"
+                                        Background="{StaticResource NavItemActiveBg}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Appearance">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="White" Data="M208,512a24.84,24.84,0,0,1-23.34-16l-39.84-103.6a16.06,16.06,0,0,0-9.19-9.19L32,343.34a25,25,0,0,1,0-46.68l103.6-39.84a16.06,16.06,0,0,0,9.19-9.19L184.66,144a25,25,0,0,1,46.68,0l39.84,103.6a16.06,16.06,0,0,0,9.19,9.19l103,39.63A25.49,25.49,0,0,1,400,320.52a24.82,24.82,0,0,1-16,22.82l-103.6,39.84a16.06,16.06,0,0,0-9.19,9.19L231.34,496A24.84,24.84,0,0,1,208,512Zm66.85-254.84h0Z M88,176a14.67,14.67,0,0,1-13.69-9.4L57.45,122.76a7.28,7.28,0,0,0-4.21-4.21L9.4,101.69a14.67,14.67,0,0,1,0-27.38L53.24,57.45a7.31,7.31,0,0,0,4.21-4.21L74.16,9.79A15,15,0,0,1,86.23.11,14.67,14.67,0,0,1,101.69,9.4l16.86,43.84a7.31,7.31,0,0,0,4.21,4.21L166.6,74.31a14.67,14.67,0,0,1,0,27.38l-43.84,16.86a7.28,7.28,0,0,0-4.21,4.21L101.69,166.6A14.67,14.67,0,0,1,88,176Z M400,256a16,16,0,0,1-14.93-10.26l-22.84-59.37a8,8,0,0,0-4.6-4.6l-59.37-22.84a16,16,0,0,1,0-29.86l59.37-22.84a8,8,0,0,0,4.6-4.6L384.9,42.68a16.45,16.45,0,0,1,13.17-10.57,16,16,0,0,1,16.86,10.15l22.84,59.37a8,8,0,0,0,4.6,4.6l59.37,22.84a16,16,0,0,1,0,29.86l-59.37,22.84a8,8,0,0,0-4.6,4.6l-22.84,59.37A16,16,0,0,1,400,256Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavAppearanceText" Text="Appearance" FontSize="13" FontWeight="Bold"
+                                                   Foreground="White" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavSkins" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Skins">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Path Fill="#AAAAAA" Data="M416,480c-35.29,0-64-29.11-64-64.88,0-33.29,28.67-65.4,44.08-82.64,1.87-2.1,3.49-3.91,4.68-5.31a19.94,19.94,0,0,1,30.55,0c1.13,1.31,2.63,3,4.36,4.93,15.5,17.3,44.33,49.51,44.33,83.05C480,450.89,451.29,480,416,480Z M398.23,276.64,166.89,47.22a52.1,52.1,0,0,0-73.6,0l-4.51,4.51A53.2,53.2,0,0,0,72.89,89.06,51.66,51.66,0,0,0,88.14,126l41.51,41.5L45,252a44.52,44.52,0,0,0-13,32,42.81,42.81,0,0,0,13.5,30.84l131.24,126a44,44,0,0,0,61.08-.18L361.93,320.38a15.6,15.6,0,0,1,8.23-4.29,69.21,69.21,0,0,1,11.93-.86h.3a22.53,22.53,0,0,0,15.84-38.59ZM152.29,144.85l-41.53-41.52a20,20,0,0,1,0-28.34l5.16-5.15a20.07,20.07,0,0,1,28.39,0L186,111.21Z"/>
-                                </Viewbox>
-                                <TextBlock x:Name="NavSkinsText" Text="Skins" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavSkins" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Skins">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="#AAAAAA" Data="M416,480c-35.29,0-64-29.11-64-64.88,0-33.29,28.67-65.4,44.08-82.64,1.87-2.1,3.49-3.91,4.68-5.31a19.94,19.94,0,0,1,30.55,0c1.13,1.31,2.63,3,4.36,4.93,15.5,17.3,44.33,49.51,44.33,83.05C480,450.89,451.29,480,416,480Z M398.23,276.64,166.89,47.22a52.1,52.1,0,0,0-73.6,0l-4.51,4.51A53.2,53.2,0,0,0,72.89,89.06,51.66,51.66,0,0,0,88.14,126l41.51,41.5L45,252a44.52,44.52,0,0,0-13,32,42.81,42.81,0,0,0,13.5,30.84l131.24,126a44,44,0,0,0,61.08-.18L361.93,320.38a15.6,15.6,0,0,1,8.23-4.29,69.21,69.21,0,0,1,11.93-.86h.3a22.53,22.53,0,0,0,15.84-38.59ZM152.29,144.85l-41.53-41.52a20,20,0,0,1,0-28.34l5.16-5.15a20.07,20.07,0,0,1,28.39,0L186,111.21Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavSkinsText" Text="Skins" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavBehavior" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Behavior">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Path Fill="#AAAAAA" Data="M204,240H68a36,36,0,0,1-36-36V68A36,36,0,0,1,68,32H204a36,36,0,0,1,36,36V204A36,36,0,0,1,204,240Z M444,240H308a36,36,0,0,1-36-36V68a36,36,0,0,1,36-36H444a36,36,0,0,1,36,36V204A36,36,0,0,1,444,240Z M204,480H68a36,36,0,0,1-36-36V308a36,36,0,0,1,36-36H204a36,36,0,0,1,36,36V444A36,36,0,0,1,204,480Z M444,480H308a36,36,0,0,1-36-36V308a36,36,0,0,1,36-36H444a36,36,0,0,1,36,36V444A36,36,0,0,1,444,480Z"/>
-                                </Viewbox>
-                                <TextBlock x:Name="NavBehaviorText" Text="Behavior" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavBehavior" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Behavior">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="#AAAAAA" Data="M204,240H68a36,36,0,0,1-36-36V68A36,36,0,0,1,68,32H204a36,36,0,0,1,36,36V204A36,36,0,0,1,204,240Z M444,240H308a36,36,0,0,1-36-36V68a36,36,0,0,1,36-36H444a36,36,0,0,1,36,36V204A36,36,0,0,1,444,240Z M204,480H68a36,36,0,0,1-36-36V308a36,36,0,0,1,36-36H204a36,36,0,0,1,36,36V444A36,36,0,0,1,204,480Z M444,480H308a36,36,0,0,1-36-36V308a36,36,0,0,1,36-36H444a36,36,0,0,1,36,36V444A36,36,0,0,1,444,480Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavBehaviorText" Text="Behavior" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavDevices" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Devices">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Path Fill="#AAAAAA" Data="M496,400H467.66A47.92,47.92,0,0,0,480,367.86V128.14A48.2,48.2,0,0,0,431.86,80H80.14A48.2,48.2,0,0,0,32,128.14V367.86A47.92,47.92,0,0,0,44.34,400H16a16,16,0,0,0,0,32H496a16,16,0,0,0,0-32Z"/>
-                                </Viewbox>
-                                <TextBlock x:Name="NavDevicesText" Text="Devices" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavDevices" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Devices">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="#AAAAAA" Data="M496,400H467.66A47.92,47.92,0,0,0,480,367.86V128.14A48.2,48.2,0,0,0,431.86,80H80.14A48.2,48.2,0,0,0,32,128.14V367.86A47.92,47.92,0,0,0,44.34,400H16a16,16,0,0,0,0,32H496a16,16,0,0,0,0-32Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavDevicesText" Text="Devices" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavSystem" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="System">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Path Fill="#AAAAAA" Data="M469.54,120.52h0a16,16,0,0,0-25.54-4L382.56,178a16.12,16.12,0,0,1-22.63,0L333.37,151.4a16,16,0,0,1,0-22.63l61.18-61.19a16,16,0,0,0-4.78-25.92h0C343.56,21,285.88,31.78,249.51,67.88c-30.9,30.68-40.11,78.62-25.25,131.53a15.89,15.89,0,0,1-4.49,16L53.29,367.46a64.17,64.17,0,1,0,90.6,90.64L297.57,291.25a15.9,15.9,0,0,1,15.77-4.57,179.3,179.3,0,0,0,46.22,6.37c33.4,0,62.71-10.81,83.85-31.64C482.56,222.84,488.53,157.42,469.54,120.52ZM99.48,447.15a32,32,0,1,1,28.34-28.35A32,32,0,0,1,99.48,447.15Z"/>
-                                </Viewbox>
-                                <TextBlock x:Name="NavSystemText" Text="System" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavSystem" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="System">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="#AAAAAA" Data="M469.54,120.52h0a16,16,0,0,0-25.54-4L382.56,178a16.12,16.12,0,0,1-22.63,0L333.37,151.4a16,16,0,0,1,0-22.63l61.18-61.19a16,16,0,0,0-4.78-25.92h0C343.56,21,285.88,31.78,249.51,67.88c-30.9,30.68-40.11,78.62-25.25,131.53a15.89,15.89,0,0,1-4.49,16L53.29,367.46a64.17,64.17,0,1,0,90.6,90.64L297.57,291.25a15.9,15.9,0,0,1,15.77-4.57,179.3,179.3,0,0,0,46.22,6.37c33.4,0,62.71-10.81,83.85-31.64C482.56,222.84,488.53,157.42,469.54,120.52ZM99.48,447.15a32,32,0,1,1,28.34-28.35A32,32,0,0,1,99.48,447.15Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavSystemText" Text="System" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavSpotlight" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Spotlight">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="NavSpotlightText" Text="Spotlight" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavPrivacy" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Privacy">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="#AAAAAA"
+                                                  Data="F1 M8,16 L4.35009,13.3929 C2.24773,11.8912 1,9.46667 1,6.88306 V3 L8,0 L15,3 V6.88306 C15,9.46667 13.7523,11.8912 11.6499,13.3929 L8,16 Z M12.2071,5.70711 L10.7929,4.29289 L7,8.08579 L5.20711,6.29289 L3.79289,7.70711 L7,10.9142 L12.2071,5.70711 Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavPrivacyText" Text="Privacy" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavAdvanced" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Advanced">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Path Fill="#AAAAAA" Data="M452.32,365,327.4,167.12A48.07,48.07,0,0,1,320,141.48V64h15.56c8.61,0,16-6.62,16.43-15.23A16,16,0,0,0,336,32H176.45c-8.61,0-16,6.62-16.43,15.23A16,16,0,0,0,176,64h16v77.48a47.92,47.92,0,0,1-7.41,25.63L59.68,365a74,74,0,0,0-2.5,75.84C70.44,465.19,96.36,480,124.13,480H387.87c27.77,0,53.69-14.81,66.95-39.21A74,74,0,0,0,452.32,365ZM211.66,184.2A79.94,79.94,0,0,0,224,141.48V68a4,4,0,0,1,4-4h56a4,4,0,0,1,4,4v73.48a79.94,79.94,0,0,0,12.35,42.72l57.8,91.53A8,8,0,0,1,351.37,288H160.63a8,8,0,0,1-6.77-12.27Z"/>
-                                </Viewbox>
-                                <TextBlock x:Name="NavAdvancedText" Text="Advanced" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavSpotlight" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Spotlight">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="NavSpotlightText" Text="Spotlight" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavPerformance" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Performance">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE950;" FontFamily="{StaticResource IconFont}" FontSize="14"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="NavPerformanceText" Text="Performance" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavAdvanced" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Advanced">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Path Fill="#AAAAAA" Data="M452.32,365,327.4,167.12A48.07,48.07,0,0,1,320,141.48V64h15.56c8.61,0,16-6.62,16.43-15.23A16,16,0,0,0,336,32H176.45c-8.61,0-16,6.62-16.43,15.23A16,16,0,0,0,176,64h16v77.48a47.92,47.92,0,0,1-7.41,25.63L59.68,365a74,74,0,0,0-2.5,75.84C70.44,465.19,96.36,480,124.13,480H387.87c27.77,0,53.69-14.81,66.95-39.21A74,74,0,0,0,452.32,365ZM211.66,184.2A79.94,79.94,0,0,0,224,141.48V68a4,4,0,0,1,4-4h56a4,4,0,0,1,4,4v73.48a79.94,79.94,0,0,0,12.35,42.72l57.8,91.53A8,8,0,0,1,351.37,288H160.63a8,8,0,0,1-6.77-12.27Z"/>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavAdvancedText" Text="Advanced" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavUpdates" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Updates">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE895;" FontFamily="{StaticResource IconFont}" FontSize="14"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="NavUpdatesText" Text="Updates" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
+                                <Border x:Name="NavPerformance" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Performance">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE950;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="NavPerformanceText" Text="Performance" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
 
-                        <Border x:Name="NavDonating" Style="{StaticResource NavButton}"
-                                MouseLeftButtonDown="Nav_Click" Tag="Donating">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Canvas Width="512" Height="512">
-                                        <Path Fill="#AAAAAA" Data="M432,64H96A16,16,0,0,0,80,80V272a96.11,96.11,0,0,0,96,96H288a96.11,96.11,0,0,0,96-96V192h18a62.07,62.07,0,0,0,62-62V96A32,32,0,0,0,432,64Zm0,66a30,30,0,0,1-30,30H384V96h48Z"/>
-                                        <Path Fill="#AAAAAA" Data="M400,400H64a16,16,0,0,0,0,32H400a16,16,0,0,0,0-32Z"/>
-                                    </Canvas>
-                                </Viewbox>
-                                <TextBlock x:Name="NavDonatingText" Text="Donating" FontSize="13" FontWeight="Bold"
-                                           Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                <Border x:Name="NavUpdates" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Updates">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE895;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock x:Name="NavUpdatesText" Text="Updates" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border x:Name="NavDonating" Style="{StaticResource NavButton}"
+                                        MouseLeftButtonDown="Nav_Click" Tag="Donating">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                            <Canvas Width="512" Height="512">
+                                                <Path Fill="#AAAAAA" Data="M432,64H96A16,16,0,0,0,80,80V272a96.11,96.11,0,0,0,96,96H288a96.11,96.11,0,0,0,96-96V192h18a62.07,62.07,0,0,0,62-62V96A32,32,0,0,0,432,64Zm0,66a30,30,0,0,1-30,30H384V96h48Z"/>
+                                                <Path Fill="#AAAAAA" Data="M400,400H64a16,16,0,0,0,0,32H400a16,16,0,0,0,0-32Z"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                        <TextBlock x:Name="NavDonatingText" Text="Donating" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
-                        </Border>
-                        </StackPanel>
+                        </ScrollViewer>
 
                         <TextBlock x:Name="SidebarBuildVersionText"
                                    Grid.Row="1"
@@ -898,7 +916,7 @@
                                    FontWeight="Bold"
                                    Foreground="#3D8C959E"
                                    HorizontalAlignment="Left"
-                                   Margin="12,0,0,2"/>
+                                   Margin="10,6,0,0"/>
                     </Grid>
                 </Border>
 
@@ -1232,6 +1250,9 @@
                                         </Border>
 
                                         <StackPanel x:Name="LiquidGlassConfigPanel" Visibility="Collapsed">
+                                            <StackPanel.RenderTransform>
+                                                <TranslateTransform x:Name="LiquidGlassConfigPanelTranslate" Y="0"/>
+                                            </StackPanel.RenderTransform>
                                             <Border Style="{StaticResource SettingRowBorder}">
                                                 <StackPanel>
                                                     <TextBlock x:Name="GlassPresetLabel" Text="Preset" Style="{StaticResource SettingTitleText}"/>
@@ -1544,6 +1565,178 @@
                                 </Border>
                             </StackPanel>
 
+                            <StackPanel x:Name="PanelPrivacy" Visibility="Collapsed">
+                                <Border x:Name="PrivacyCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="PrivacyCardTranslate" Y="12"/>
+                                    </Border.RenderTransform>
+                                    <StackPanel>
+                                        <TextBlock x:Name="PrivacyHeader" Text="PRIVACY &amp; LOCAL-ONLY" Style="{StaticResource SectionHeader}"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,10"
+                                                Background="#0AFFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1"
+                                                CornerRadius="12" Padding="14,12">
+                                            <StackPanel>
+                                                <CheckBox x:Name="LocalOnlyModeCheck"
+                                                          Content="Strict Local-Only Mode"
+                                                          Checked="LocalOnlyModeCheck_Changed"
+                                                          Unchecked="LocalOnlyModeCheck_Changed"
+                                                          VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="LocalOnlyModeHint"
+                                                           Text="Block all outbound network requests across all modules. V-Notch will operate 100% offline (no update checks, online album art scrapers, lyrics, subtitles, Canvas, or weather queries)."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,6,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <StackPanel x:Name="PrivacyNetworkSection">
+                                            <Grid Margin="0,4,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="PrivacyNetworkHeader" Text="NETWORK &amp; ONLINE SERVICES"
+                                                           FontSize="10" FontWeight="Bold" Foreground="#7C7C7C" VerticalAlignment="Center"/>
+                                                <Border x:Name="LocalOnlyActiveBadge" Grid.Column="2"
+                                                        Background="#1A50C878" BorderBrush="#3350C878" BorderThickness="1"
+                                                        CornerRadius="6" Padding="8,2.5" VerticalAlignment="Center"
+                                                        Visibility="Collapsed" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                                                    <Border.RenderTransform>
+                                                        <ScaleTransform x:Name="LocalOnlyActiveBadgeScale" ScaleX="1" ScaleY="1"/>
+                                                    </Border.RenderTransform>
+                                                    <TextBlock x:Name="LocalOnlyBadgeText" Text="OFFLINE" FontSize="10" FontWeight="Bold"
+                                                               Foreground="#50C878"/>
+                                                </Border>
+                                            </Grid>
+
+                                            <Border Style="{StaticResource SettingRowBorder}">
+                                                <StackPanel>
+                                                    <CheckBox x:Name="AutoCheckUpdatesCheck"
+                                                              Content="Automatic update checks"
+                                                              Checked="AutoCheckUpdatesCheck_Changed"
+                                                              Unchecked="AutoCheckUpdatesCheck_Changed"/>
+                                                    <TextBlock x:Name="AutoCheckUpdatesHint"
+                                                               Text="Check GitHub Releases periodically in the background for new V-Notch versions."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,3,0,0"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Style="{StaticResource SettingRowBorder}">
+                                                <StackPanel>
+                                                    <CheckBox x:Name="EnableOnlineArtworkCheck"
+                                                              Content="Online album artwork lookup"
+                                                              Checked="EnableOnlineArtworkCheck_Changed"
+                                                              Unchecked="EnableOnlineArtworkCheck_Changed"/>
+                                                    <TextBlock x:Name="EnableOnlineArtworkHint"
+                                                               Text="Search online (YouTube, SoundCloud, Piped) for album art when the active player provides no embedded cover."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,3,0,0"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Border Style="{StaticResource SettingRowBorder}">
+                                                <StackPanel>
+                                                    <CheckBox x:Name="EnableOnlineLyricsCheck"
+                                                              Content="Online synced lyrics lookup"
+                                                              Checked="EnableOnlineLyricsCheck_Changed"
+                                                              Unchecked="EnableOnlineLyricsCheck_Changed"/>
+                                                    <TextBlock x:Name="EnableOnlineLyricsHint"
+                                                               Text="Fetch synced lyrics from public providers (LRCLIB, lrc mux) for now-playing songs."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,3,0,0"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <TextBlock x:Name="PrivacySensorsHeader" Text="SENSORS &amp; SYSTEM INSPECTION"
+                                                   FontSize="10" FontWeight="Bold" Foreground="#7C7C7C" Margin="0,10,0,6"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnablePrivacyIndicatorsCheck"
+                                                          Content="Privacy indicators (Mic / Camera / Screen Recording)"
+                                                          Checked="EnablePrivacyIndicatorsCheck_Changed"
+                                                          Unchecked="EnablePrivacyIndicatorsCheck_Changed"/>
+                                                <TextBlock x:Name="EnablePrivacyIndicatorsHint"
+                                                           Text="Display a colored privacy dot in the compact notch when any application is actively using your microphone, camera, or screen capture."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableBrowserUrlInspectionCheck"
+                                                          Content="Browser media URL detection"
+                                                          Checked="EnableBrowserUrlInspectionCheck_Changed"
+                                                          Unchecked="EnableBrowserUrlInspectionCheck_Changed"/>
+                                                <TextBlock x:Name="EnableBrowserUrlInspectionHint"
+                                                           Text="Use Windows UI Automation to read media tab URLs in supported web browsers for precise source detection."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <TextBlock x:Name="PrivacyStorageHeader" Text="LOCAL DATA &amp; HISTORY"
+                                                   FontSize="10" FontWeight="Bold" Foreground="#7C7C7C" Margin="0,10,0,6"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableDiagnosticLoggingCheck"
+                                                          Content="Diagnostic disk logging"
+                                                          Checked="EnableDiagnosticLoggingCheck_Changed"
+                                                          Unchecked="EnableDiagnosticLoggingCheck_Changed"/>
+                                                <TextBlock x:Name="EnableDiagnosticLoggingHint"
+                                                           Text="Record application events and diagnostic messages to vnotch-debug.log for troubleshooting."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableSpotlightHistoryCheck"
+                                                          Content="Spotlight search launch history"
+                                                          Checked="EnableSpotlightHistoryCheck_Changed"
+                                                          Unchecked="EnableSpotlightHistoryCheck_Changed"/>
+                                                <TextBlock x:Name="EnableSpotlightHistoryHint"
+                                                           Text="Save your recent Spotlight application launch frequency locally in spotlight-usage.json to prioritize favorites."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,6,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Button x:Name="ClearSpotlightHistoryButton" Grid.Column="0"
+                                                        Content="Clear Spotlight History"
+                                                        Height="38" Margin="0,0,5,0"
+                                                        Click="ClearSpotlightHistory_Click"/>
+                                                <Button x:Name="ClearLogButton" Grid.Column="1"
+                                                        Content="Clear Diagnostic Log"
+                                                        Height="38" Margin="5,0,0,0"
+                                                        Click="ClearLog_Click"/>
+                                            </Grid>
+                                        </Border>
+
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
                             <StackPanel x:Name="PanelSpotlight" Visibility="Collapsed">
                                 <Border x:Name="SpotlightCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
                                     <Border.RenderTransform>
@@ -1767,6 +1960,9 @@
                                         </Border>
 
                                         <Border x:Name="YouTubeApiKeyRow" Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4" Visibility="Collapsed">
+                                            <Border.RenderTransform>
+                                                <TranslateTransform x:Name="YouTubeApiKeyRowTranslate" Y="0"/>
+                                            </Border.RenderTransform>
                                             <StackPanel>
                                                 <TextBlock x:Name="YouTubeApiKeyLabel" Text="API Key" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="YouTubeApiKeyHint" Text="Paste your YouTube Data API v3 key from Google Cloud Console."

@@ -264,33 +264,49 @@ V-Notch **không bao giờ**:
 
 ---
 
-## 8. Bảo mật
+## 8. Quyền kiểm soát riêng tư & Chế độ ngoại tuyến
+
+V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và ép buộc chế độ ngoại tuyến hoàn toàn:
+
+- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Công tắc tổng ngắt toàn bộ mọi kết nối mạng ra bên ngoài trên tất cả các mô-đun (tự động kiểm tra bản cập nhật, tìm kiếm ảnh bìa trực tuyến, tra cứu lời bài hát/phụ đề, tải video Canvas của Spotify, và truy vấn thời tiết). V-Notch sẽ hoạt động 100% ngoại tuyến.
+- **Tự động kiểm tra bản cập nhật mới:** Bật/tắt kiểm tra định kỳ bản phát hành mới trên GitHub Releases ở chế độ nền.
+- **Tìm kiếm ảnh bìa album trực tuyến:** Bật/tắt tra cứu ảnh bìa từ YouTube, SoundCloud, Piped khi trình phát không có ảnh bìa nhúng.
+- **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ LRCLIB và lrc mux cho bài hát đang phát.
+- **Chấm thông báo quyền riêng tư:** Bật/tắt chấm màu cảnh báo sử dụng cảm biến phần cứng (Mic, Camera, Quay màn hình) trên notch nhỏ gọn.
+- **Đọc URL trình duyệt để nhận diện phương tiện:** Bật/tắt Windows UI Automation quét thanh địa chỉ trình duyệt để nhận diện nguồn phát chính xác.
+- **Ghi nhật ký chẩn đoán ra ổ đĩa:** Bật/tắt ghi thông điệp gỡ lỗi vào tệp `vnotch-debug.log` trên ổ đĩa cục bộ.
+- **Lịch sử khởi chạy tìm kiếm Spotlight:** Bật/tắt lưu tần suất mở ứng dụng trong `spotlight-usage.json`.
+- **Công cụ xóa dữ liệu:** Các nút một chạm để xóa sạch ngay lập tức lịch sử tìm kiếm Spotlight (`spotlight-usage.json`) và dọn dẹp tệp nhật ký chẩn đoán (`vnotch-debug.log`).
+
+---
+
+## 9. Bảo mật
 
 V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Tất cả thông tin nhạy cảm lưu trữ (cookie `sp_dc` của Spotify, khóa YouTube API) đều được mã hóa an toàn bằng Windows DPAPI. Mọi bản cập nhật tải về đều được ký số Authenticode và kiểm tra mã băm SHA256 qua kết nối HTTPS bảo mật. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 ---
 
-## 9. Quyền riêng tư trẻ em
+## 10. Quyền riêng tư trẻ em
 
 V-Notch không thu thập dữ liệu cá nhân từ bất kỳ ai, bao gồm trẻ em, và không hướng bất kỳ nội dung nào riêng biệt tới trẻ em. Ứng dụng hoàn toàn an toàn và phù hợp cho mọi lứa tuổi.
 
 ---
 
-## 10. Sử dụng quốc tế
+## 11. Sử dụng quốc tế
 
 V-Notch xử lý dữ liệu cục bộ trên thiết bị của bạn. Dữ liệu duy nhất đi qua mạng là dữ liệu yêu cầu chức năng giới hạn được mô tả trong Mục 4, gửi tới các dịch vụ bên thứ ba công khai, vốn có thể vận hành máy chủ ở nhiều quốc gia khác nhau. Nhà phát triển không thu thập, không chuyển giao và không lưu trữ bất kỳ dữ liệu cá nhân nào của bạn.
 
 ---
 
-## 11. Thay đổi chính sách
+## 12. Thay đổi chính sách
 
 Chính sách bảo mật này có thể được cập nhật định kỳ khi ứng dụng có thêm tính năng mới. Các thay đổi quan trọng sẽ được phản ánh chi tiết trong tài liệu này, trong changelog của ứng dụng, đồng thời cập nhật ngày hiệu lực và số phiên bản ở đầu tài liệu. Việc bạn tiếp tục sử dụng ứng dụng sau khi cập nhật đồng nghĩa với việc bạn đồng ý với chính sách đã được điều chỉnh.
 
-**Ghi chú sửa đổi (bản cập nhật này):** làm rõ rằng lời bài hát đồng bộ cũng có thể được lấy từ `api.lrcmux.dev` làm phương án dự phòng cho LRCLIB; bổ sung Zen Browser vào danh sách trình duyệt được hỗ trợ phát hiện URL; ghi nhận đầy đủ bộ từ khóa tiêu đề cửa sổ dùng để phát hiện nguồn media (bao gồm Facebook, TikTok, Instagram, và Twitter/X, chỉ dùng để nhận diện phát media trong các tab đó); và làm rõ rằng tệp nhật ký chẩn đoán cục bộ có thể vô tình ghi nhận tên bài hát/tiêu đề cửa sổ đã được đề cập trong chính sách này.
+**Ghi chú sửa đổi (bản cập nhật này):** bổ sung tài liệu chi tiết cho các nút điều khiển Quyền riêng tư & Chế độ ngoại tuyến (Chế độ hoàn toàn ngoại tuyến, các tùy chọn kiểm tra cập nhật, ảnh bìa, lời bài hát, đọc URL trình duyệt, chấm cảm biến, ghi nhật ký ổ đĩa, lịch sử Spotlight và các công cụ xóa dữ liệu).
 
 ---
 
-## 12. Liên hệ
+## 13. Liên hệ
 
 Mọi câu hỏi, thắc mắc hoặc yêu cầu liên quan đến chính sách và dữ liệu có thể được gửi trực tiếp bằng cách tạo issue tại:  
 [https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)

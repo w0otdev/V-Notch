@@ -90,6 +90,25 @@ internal sealed class SpotlightUsageStore
         }
     }
 
+    public void ClearHistory()
+    {
+        lock (_gate)
+        {
+            _entries = new Dictionary<string, UsageEntry>(StringComparer.Ordinal);
+            _changeVersion++;
+            try
+            {
+                if (File.Exists(_path))
+                {
+                    File.Delete(_path);
+                }
+            }
+            catch
+            {
+            }
+        }
+    }
+
     // Captures the current worker so tests can deterministically wait until all
     // changes that were pending at this point have reached stable storage.
     internal Task WaitForPendingSavesAsync()

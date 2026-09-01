@@ -107,8 +107,8 @@ public partial class SettingsWindow : Window
 
                 if (fe is Border border && border.Tag is string tag &&
                     (tag == "Searching" || tag == "Appearance" || tag == "Skins" || tag == "Behavior" || tag == "Devices" ||
-                     tag == "System" || tag == "Spotlight" || tag == "Advanced" || tag == "Performance" ||
-                     tag == "Donating" || tag == "Updates"))
+                     tag == "System" || tag == "Privacy" || tag == "Spotlight" || tag == "Advanced" || tag == "Performance" ||
+                     tag == "Donating" || tag == "Updates" || Array.IndexOf(_navOrder, tag) >= 0))
                 {
                     return true;
                 }
@@ -218,6 +218,16 @@ public partial class SettingsWindow : Window
         ProcessPriorityCombo.SelectedItem = ProcessPriorityCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.ProcessPriority) ?? ProcessPriorityCombo.Items[0];
         GpuPreferenceCombo.SelectedItem = GpuPreferenceCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.GpuPreference.ToString()) ?? GpuPreferenceCombo.Items[0];
 
+        LocalOnlyModeCheck.IsChecked = _settings.EnableLocalOnlyMode;
+        AutoCheckUpdatesCheck.IsChecked = _settings.AutoCheckUpdates;
+        EnableOnlineArtworkCheck.IsChecked = _settings.EnableOnlineArtworkLookup;
+        EnableOnlineLyricsCheck.IsChecked = _settings.EnableOnlineLyrics;
+        EnablePrivacyIndicatorsCheck.IsChecked = _settings.EnablePrivacyIndicators;
+        EnableBrowserUrlInspectionCheck.IsChecked = _settings.EnableBrowserUrlInspection;
+        EnableDiagnosticLoggingCheck.IsChecked = _settings.EnableDiagnosticLogging;
+        EnableSpotlightHistoryCheck.IsChecked = _settings.EnableSpotlightHistory;
+        UpdateLocalOnlyDependentControls(_settings.EnableLocalOnlyMode);
+
         ApplyLiquidGlassSkin();
         _isLoadingSettings = false;
         ApplyLocalization();
@@ -249,6 +259,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(NavBehavior, "tooltip.nav.behavior");
         TooltipHelper.SetLocalizedTooltip(NavDevices, "tooltip.nav.devices");
         TooltipHelper.SetLocalizedTooltip(NavSystem, "tooltip.nav.system");
+        TooltipHelper.SetLocalizedTooltip(NavPrivacy, "tooltip.nav.privacy");
         TooltipHelper.SetLocalizedTooltip(NavSpotlight, "tooltip.nav.spotlight");
         TooltipHelper.SetLocalizedTooltip(NavAdvanced, "tooltip.nav.advanced");
         TooltipHelper.SetLocalizedTooltip(NavPerformance, "tooltip.nav.performance");
@@ -294,6 +305,16 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(EnableWeatherCheck, "tooltip.enableWeather");
         TooltipHelper.SetLocalizedTooltip(GpuRefractionCheck, "tooltip.gpuRefraction");
         TooltipHelper.SetLocalizedTooltip(EnableSpotifyCanvasCheck, "tooltip.spotifyCanvas");
+        TooltipHelper.SetLocalizedTooltip(LocalOnlyModeCheck, "tooltip.privacy.localOnly");
+        TooltipHelper.SetLocalizedTooltip(AutoCheckUpdatesCheck, "tooltip.privacy.autoUpdates");
+        TooltipHelper.SetLocalizedTooltip(EnableOnlineArtworkCheck, "tooltip.privacy.onlineArtwork");
+        TooltipHelper.SetLocalizedTooltip(EnableOnlineLyricsCheck, "tooltip.privacy.onlineLyrics");
+        TooltipHelper.SetLocalizedTooltip(EnablePrivacyIndicatorsCheck, "tooltip.privacy.indicators");
+        TooltipHelper.SetLocalizedTooltip(EnableBrowserUrlInspectionCheck, "tooltip.privacy.browserUrl");
+        TooltipHelper.SetLocalizedTooltip(EnableDiagnosticLoggingCheck, "tooltip.privacy.logging");
+        TooltipHelper.SetLocalizedTooltip(EnableSpotlightHistoryCheck, "tooltip.privacy.spotlightHistory");
+        TooltipHelper.SetLocalizedTooltip(ClearSpotlightHistoryButton, "tooltip.privacy.clearSpotlight");
+        TooltipHelper.SetLocalizedTooltip(ClearLogButton, "tooltip.privacy.clearLog");
 
         // Combo box tooltips
         TooltipHelper.SetLocalizedTooltip(WidgetCombo, "tooltip.widgetCombo");
@@ -335,11 +356,36 @@ public partial class SettingsWindow : Window
         NavBehaviorText.Text = Loc.Get("settings.nav.behavior");
         NavDevicesText.Text = Loc.Get("settings.nav.devices");
         NavSystemText.Text = Loc.Get("settings.nav.system");
+        NavPrivacyText.Text = Loc.Get("settings.nav.privacy");
         NavSpotlightText.Text = Loc.Get("settings.nav.spotlight");
         NavAdvancedText.Text = Loc.Get("settings.nav.advanced");
         NavPerformanceText.Text = Loc.Get("settings.nav.performance");
         NavDonatingText.Text = Loc.Get("settings.nav.donating");
         NavUpdatesText.Text = Loc.Get("settings.nav.updates");
+
+        PrivacyHeader.Text = Loc.Get("settings.header.privacy");
+        LocalOnlyModeCheck.Content = Loc.Get("settings.privacy.localOnly");
+        LocalOnlyBadgeText.Text = Loc.Get("settings.privacy.localOnly.badge");
+        LocalOnlyModeHint.Text = Loc.Get("settings.privacy.localOnly.hint");
+        PrivacyNetworkHeader.Text = Loc.Get("settings.privacy.section.network");
+        AutoCheckUpdatesCheck.Content = Loc.Get("settings.privacy.autoUpdates");
+        AutoCheckUpdatesHint.Text = Loc.Get("settings.privacy.autoUpdates.hint");
+        EnableOnlineArtworkCheck.Content = Loc.Get("settings.privacy.onlineArtwork");
+        EnableOnlineArtworkHint.Text = Loc.Get("settings.privacy.onlineArtwork.hint");
+        EnableOnlineLyricsCheck.Content = Loc.Get("settings.privacy.onlineLyrics");
+        EnableOnlineLyricsHint.Text = Loc.Get("settings.privacy.onlineLyrics.hint");
+        PrivacySensorsHeader.Text = Loc.Get("settings.privacy.section.sensors");
+        EnablePrivacyIndicatorsCheck.Content = Loc.Get("settings.privacy.indicators");
+        EnablePrivacyIndicatorsHint.Text = Loc.Get("settings.privacy.indicators.hint");
+        EnableBrowserUrlInspectionCheck.Content = Loc.Get("settings.privacy.browserUrl");
+        EnableBrowserUrlInspectionHint.Text = Loc.Get("settings.privacy.browserUrl.hint");
+        PrivacyStorageHeader.Text = Loc.Get("settings.privacy.section.storage");
+        EnableDiagnosticLoggingCheck.Content = Loc.Get("settings.privacy.logging");
+        EnableDiagnosticLoggingHint.Text = Loc.Get("settings.privacy.logging.hint");
+        EnableSpotlightHistoryCheck.Content = Loc.Get("settings.privacy.spotlightHistory");
+        EnableSpotlightHistoryHint.Text = Loc.Get("settings.privacy.spotlightHistory.hint");
+        ClearSpotlightHistoryButton.Content = Loc.Get("settings.privacy.clearSpotlight");
+        ClearLogButton.Content = Loc.Get("settings.privacy.clearLog");
 
         ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget");
         ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint");
@@ -524,6 +570,361 @@ public partial class SettingsWindow : Window
         PushLivePreview();
     }
 
+    private void UpdateLocalOnlyDependentControls(bool isLocalOnly, bool animate = false)
+    {
+        if (PrivacyNetworkSection != null)
+        {
+            PrivacyNetworkSection.Visibility = Visibility.Visible;
+            PrivacyNetworkSection.IsEnabled = !isLocalOnly;
+            PrivacyNetworkSection.IsHitTestVisible = !isLocalOnly;
+
+            double targetOpacity = isLocalOnly ? 0.35 : 1.0;
+            if (animate && !AnimationConfig.ReduceMotion)
+            {
+                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+                var opacityAnim = new DoubleAnimation(PrivacyNetworkSection.Opacity, targetOpacity, TimeSpan.FromMilliseconds(260))
+                {
+                    EasingFunction = ease
+                };
+                Timeline.SetDesiredFrameRate(opacityAnim, AnimationConfig.TargetFps);
+                PrivacyNetworkSection.BeginAnimation(OpacityProperty, opacityAnim);
+            }
+            else
+            {
+                PrivacyNetworkSection.BeginAnimation(OpacityProperty, null);
+                PrivacyNetworkSection.Opacity = targetOpacity;
+            }
+        }
+
+        if (LocalOnlyActiveBadge != null)
+        {
+            if (isLocalOnly)
+            {
+                LocalOnlyActiveBadge.Visibility = Visibility.Visible;
+                if (animate && !AnimationConfig.ReduceMotion)
+                {
+                    var ease = new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut };
+                    var fadeIn = new DoubleAnimation(LocalOnlyActiveBadge.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
+                    {
+                        EasingFunction = ease
+                    };
+                    Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
+                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, fadeIn);
+
+                    if (LocalOnlyActiveBadge.RenderTransform is ScaleTransform scale)
+                    {
+                        var scaleAnim = new DoubleAnimation(0.85, 1.0, TimeSpan.FromMilliseconds(240))
+                        {
+                            EasingFunction = ease
+                        };
+                        Timeline.SetDesiredFrameRate(scaleAnim, AnimationConfig.TargetFps);
+                        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+                        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+                    }
+                }
+                else
+                {
+                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, null);
+                    LocalOnlyActiveBadge.Opacity = 1.0;
+                    if (LocalOnlyActiveBadge.RenderTransform is ScaleTransform scale)
+                    {
+                        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                        scale.ScaleX = 1.0;
+                        scale.ScaleY = 1.0;
+                    }
+                }
+            }
+            else
+            {
+                if (animate && !AnimationConfig.ReduceMotion && LocalOnlyActiveBadge.Visibility == Visibility.Visible)
+                {
+                    var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+                    var fadeOut = new DoubleAnimation(LocalOnlyActiveBadge.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
+                    {
+                        EasingFunction = ease
+                    };
+                    fadeOut.Completed += (_, _) =>
+                    {
+                        if (!(LocalOnlyModeCheck?.IsChecked ?? false))
+                        {
+                            LocalOnlyActiveBadge.Visibility = Visibility.Collapsed;
+                        }
+                    };
+                    Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
+                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, fadeOut);
+                }
+                else
+                {
+                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, null);
+                    LocalOnlyActiveBadge.Opacity = 0.0;
+                    LocalOnlyActiveBadge.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+
+        if (AutoCheckUpdatesCheck != null)
+        {
+            AutoCheckUpdatesCheck.IsEnabled = !isLocalOnly;
+        }
+
+        if (EnableOnlineArtworkCheck != null)
+        {
+            EnableOnlineArtworkCheck.IsEnabled = !isLocalOnly;
+        }
+
+        if (EnableOnlineLyricsCheck != null)
+        {
+            EnableOnlineLyricsCheck.IsEnabled = !isLocalOnly;
+        }
+    }
+
+    private void LocalOnlyModeCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        bool isLocalOnly = LocalOnlyModeCheck.IsChecked ?? false;
+        _settings.EnableLocalOnlyMode = isLocalOnly;
+        UpdateLocalOnlyDependentControls(isLocalOnly, animate: true);
+        PushLivePreview();
+    }
+
+    /// <summary>
+    /// Smoothly animates the opacity and interactive state of a UI element or panel
+    /// when its parent setting is toggled on or off across all settings panels.
+    /// </summary>
+    private void AnimateDependentElement(UIElement? element, bool enabled, double disabledOpacity = 0.4, bool animate = false)
+    {
+        if (element == null) return;
+
+        element.IsEnabled = enabled;
+        element.IsHitTestVisible = enabled;
+
+        double targetOpacity = enabled ? 1.0 : disabledOpacity;
+
+        if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var anim = new DoubleAnimation(element.Opacity, targetOpacity, TimeSpan.FromMilliseconds(240))
+            {
+                EasingFunction = ease
+            };
+            Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+            element.BeginAnimation(OpacityProperty, anim);
+        }
+        else
+        {
+            element.BeginAnimation(OpacityProperty, null);
+            element.Opacity = targetOpacity;
+        }
+    }
+
+    /// <summary>
+    /// Smoothly animates the expanding/collapsing and fade of a child row or panel
+    /// when its parent toggle is enabled/disabled across all settings panels.
+    /// </summary>
+    private void AnimateCollapsibleRow(FrameworkElement? element, bool visible, bool animate = false)
+    {
+        if (element == null) return;
+
+        if (visible)
+        {
+            element.Visibility = Visibility.Visible;
+            element.IsEnabled = true;
+            element.IsHitTestVisible = true;
+
+            if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
+            {
+                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+                var fadeIn = new DoubleAnimation(element.Opacity < 0.1 ? 0.0 : element.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
+                {
+                    EasingFunction = ease
+                };
+                Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
+                element.BeginAnimation(OpacityProperty, fadeIn);
+
+                if (element.RenderTransform is TranslateTransform tt)
+                {
+                    var slideIn = new DoubleAnimation(-6, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease };
+                    Timeline.SetDesiredFrameRate(slideIn, AnimationConfig.TargetFps);
+                    tt.BeginAnimation(TranslateTransform.YProperty, slideIn);
+                }
+            }
+            else
+            {
+                element.BeginAnimation(OpacityProperty, null);
+                element.Opacity = 1.0;
+                if (element.RenderTransform is TranslateTransform tt)
+                {
+                    tt.BeginAnimation(TranslateTransform.YProperty, null);
+                    tt.Y = 0;
+                }
+            }
+        }
+        else
+        {
+            element.IsEnabled = false;
+            element.IsHitTestVisible = false;
+
+            if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion && element.Visibility == Visibility.Visible)
+            {
+                var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+                var fadeOut = new DoubleAnimation(element.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
+                {
+                    EasingFunction = ease
+                };
+                fadeOut.Completed += (_, _) =>
+                {
+                    element.Visibility = Visibility.Collapsed;
+                };
+                Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
+                element.BeginAnimation(OpacityProperty, fadeOut);
+            }
+            else
+            {
+                element.BeginAnimation(OpacityProperty, null);
+                element.Opacity = 0.0;
+                element.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private void AutoCheckUpdatesCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.AutoCheckUpdates = AutoCheckUpdatesCheck.IsChecked ?? true;
+        PushLivePreview();
+    }
+
+    private void EnableOnlineArtworkCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.EnableOnlineArtworkLookup = EnableOnlineArtworkCheck.IsChecked ?? true;
+        PushLivePreview();
+    }
+
+    private void EnableOnlineLyricsCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.EnableOnlineLyrics = EnableOnlineLyricsCheck.IsChecked ?? true;
+        PushLivePreview();
+    }
+
+    private void EnablePrivacyIndicatorsCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.EnablePrivacyIndicators = EnablePrivacyIndicatorsCheck.IsChecked ?? true;
+        PushLivePreview();
+    }
+
+    private void EnableBrowserUrlInspectionCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
+        PushLivePreview();
+    }
+
+    private void EnableDiagnosticLoggingCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        bool enabled = EnableDiagnosticLoggingCheck.IsChecked ?? true;
+        _settings.EnableDiagnosticLogging = enabled;
+        RuntimeLog.MinimumLevel = enabled ? LogLevel.Debug : LogLevel.None;
+        PushLivePreview();
+    }
+
+    private void EnableSpotlightHistoryCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.EnableSpotlightHistory = EnableSpotlightHistoryCheck.IsChecked ?? true;
+        PushLivePreview();
+    }
+
+    private void ClearSpotlightHistory_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string usagePath = System.IO.Path.Combine(appDataPath, "V-Notch", "spotlight-usage.json");
+            if (File.Exists(usagePath))
+            {
+                File.Delete(usagePath);
+            }
+
+            AnimateButtonSuccessFeedback(ClearSpotlightHistoryButton, Loc.Get("settings.privacy.cleared"), "settings.privacy.clearSpotlight");
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("PRIVACY-CLEAR", ex.Message);
+        }
+    }
+
+    private void ClearLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            RuntimeLog.ClearLog();
+            AnimateButtonSuccessFeedback(ClearLogButton, Loc.Get("settings.privacy.cleared"), "settings.privacy.clearLog");
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("PRIVACY-CLEAR", ex.Message);
+        }
+    }
+
+    private void AnimateButtonSuccessFeedback(Button button, string successText, string defaultTextKey)
+    {
+        if (button.Tag is DispatcherTimer existingTimer)
+        {
+            existingTimer.Stop();
+            button.Tag = null;
+        }
+
+        var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        var fadeOut = new DoubleAnimation(button.Opacity, 0.0, TimeSpan.FromMilliseconds(120)) { EasingFunction = ease };
+
+        fadeOut.Completed += (_, _) =>
+        {
+            button.Content = successText;
+            button.Foreground = new SolidColorBrush(Color.FromRgb(0x50, 0xC8, 0x78));
+
+            var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160)) { EasingFunction = ease };
+
+            fadeIn.Completed += (_, _) =>
+            {
+                var timer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(1300)
+                };
+
+                timer.Tick += (_, _) =>
+                {
+                    timer.Stop();
+                    button.Tag = null;
+
+                    var revertFadeOut = new DoubleAnimation(button.Opacity, 0.0, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease };
+
+                    revertFadeOut.Completed += (_, _) =>
+                    {
+                        button.Content = Loc.Get(defaultTextKey);
+                        button.ClearValue(ForegroundProperty);
+
+                        var revertFadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(180)) { EasingFunction = ease };
+                        button.BeginAnimation(OpacityProperty, revertFadeIn);
+                    };
+
+                    button.BeginAnimation(OpacityProperty, revertFadeOut);
+                };
+
+                button.Tag = timer;
+                timer.Start();
+            };
+
+            button.BeginAnimation(OpacityProperty, fadeIn);
+        };
+
+        button.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
     private void ApplySupplementalLocalization()
     {
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
@@ -622,15 +1023,15 @@ public partial class SettingsWindow : Window
     {
         if (_isLoadingSettings) return;
         bool enabled = EnableSpotifyLyricsCheck.IsChecked ?? true;
-        UpdateLyricsDependentControls(enabled);
-        UpdateSpotifyCanvasDependentControls();
+        UpdateLyricsDependentControls(enabled, animate: true);
+        UpdateSpotifyCanvasDependentControls(animate: true);
         PushLivePreview();
     }
 
     private void EnableSpotifyCanvasCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
-        UpdateSpotifyCanvasDependentControls();
+        UpdateSpotifyCanvasDependentControls(animate: true);
         PushLivePreview();
     }
 
@@ -661,23 +1062,18 @@ public partial class SettingsWindow : Window
         PushLivePreview();
     }
 
-    private void UpdateSpotifyCanvasDependentControls()
+    private void UpdateSpotifyCanvasDependentControls(bool animate = false)
     {
         if (SpotifyCanvasAccountPanel == null || EnableSpotifyCanvasCheck == null)
             return;
 
         bool lyricsEnabled = EnableSpotifyLyricsCheck?.IsChecked ?? true;
         bool canvasEnabled = EnableSpotifyCanvasCheck.IsChecked ?? true;
-        EnableSpotifyCanvasCheck.IsEnabled = lyricsEnabled;
-        EnableSpotifyCanvasCheck.Opacity = lyricsEnabled ? 1.0 : 0.45;
-        EnableSpotifyCanvasHint.Opacity = lyricsEnabled ? 1.0 : 0.45;
-        SpotifyCanvasAccountPanel.IsEnabled = lyricsEnabled && canvasEnabled;
-        SpotifyCanvasAccountPanel.Opacity = lyricsEnabled && canvasEnabled ? 1.0 : 0.45;
-        if (SpotifyCanvasBrightnessSlider != null)
-        {
-            SpotifyCanvasBrightnessSlider.IsEnabled = lyricsEnabled && canvasEnabled;
-            SpotifyCanvasBrightnessSlider.Opacity = lyricsEnabled && canvasEnabled ? 1.0 : 0.45;
-        }
+
+        AnimateDependentElement(EnableSpotifyCanvasCheck, lyricsEnabled, 0.45, animate);
+        AnimateDependentElement(EnableSpotifyCanvasHint, lyricsEnabled, 0.45, animate);
+        AnimateDependentElement(SpotifyCanvasAccountPanel, lyricsEnabled && canvasEnabled, 0.45, animate);
+        AnimateDependentElement(SpotifyCanvasBrightnessSlider, lyricsEnabled && canvasEnabled, 0.45, animate);
     }
 
     private void UpdateSpotifyCanvasConnectionStatus()
@@ -698,7 +1094,7 @@ public partial class SettingsWindow : Window
     private void EnableYouTubeSubtitlesCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
-        UpdateYouTubeSubtitlesDependentControls(EnableYouTubeSubtitlesCheck.IsChecked ?? true);
+        UpdateYouTubeSubtitlesDependentControls(EnableYouTubeSubtitlesCheck.IsChecked ?? true, animate: true);
         PushLivePreview();
     }
 
@@ -900,68 +1296,42 @@ public partial class SettingsWindow : Window
 
     private void DynamicIslandModeCheck_Changed(object sender, RoutedEventArgs e)
     {
-        UpdateDynamicIslandDependentControls(DynamicIslandModeCheck.IsChecked ?? false);
+        UpdateDynamicIslandDependentControls(DynamicIslandModeCheck.IsChecked ?? false, animate: true);
         if (_isLoadingSettings) return;
         PushLivePreview();
     }
 
-    private void UpdateDynamicIslandDependentControls(bool islandEnabled)
+    private void UpdateDynamicIslandDependentControls(bool islandEnabled, bool animate = false)
     {
-        if (DynamicIslandWidthSlider != null && DynamicIslandHeightSlider != null)
-        {
-            double targetOpacity = islandEnabled ? 1.0 : 0.4;
-            DynamicIslandWidthSlider.IsEnabled = islandEnabled;
-            DynamicIslandWidthSlider.Opacity = targetOpacity;
-            DynamicIslandHeightSlider.IsEnabled = islandEnabled;
-            DynamicIslandHeightSlider.Opacity = targetOpacity;
-        }
-
-        UpdateLiquidGlassAvailability(islandEnabled);
+        AnimateDependentElement(DynamicIslandWidthSlider, islandEnabled, 0.4, animate);
+        AnimateDependentElement(DynamicIslandHeightSlider, islandEnabled, 0.4, animate);
+        UpdateLiquidGlassAvailability(islandEnabled, animate);
     }
 
-    private void UpdateLyricsDependentControls(bool lyricsEnabled)
+    private void UpdateLyricsDependentControls(bool lyricsEnabled, bool animate = false)
     {
-        if (DarkOverlayLabel == null) return;
-
-        double targetOpacity = lyricsEnabled ? 1.0 : 0.45;
-        DarkOverlayLabel.Opacity = targetOpacity;
-        if (DarkOverlayHint != null) DarkOverlayHint.Opacity = targetOpacity;
-        if (BlurDarkOverlaySlider != null)
-        {
-            BlurDarkOverlaySlider.Opacity = targetOpacity;
-            BlurDarkOverlaySlider.IsEnabled = lyricsEnabled;
-        }
+        AnimateDependentElement(DarkOverlayLabel, lyricsEnabled, 0.45, animate);
+        AnimateDependentElement(DarkOverlayHint, lyricsEnabled, 0.45, animate);
+        AnimateDependentElement(BlurDarkOverlaySlider, lyricsEnabled, 0.45, animate);
     }
 
-    private void UpdateYouTubeSubtitlesDependentControls(bool subtitlesEnabled)
+    private void UpdateYouTubeSubtitlesDependentControls(bool subtitlesEnabled, bool animate = false)
     {
-        if (SubtitlePriorityRow == null) return;
-
-        SubtitlePriorityRow.Opacity = subtitlesEnabled ? 1.0 : 0.45;
-        SubtitlePriorityRow.IsEnabled = subtitlesEnabled;
+        AnimateDependentElement(SubtitlePriorityRow, subtitlesEnabled, 0.45, animate);
     }
 
     private void PerformanceSetting_Changed(object sender, RoutedEventArgs e)
     {
         bool blurEnabled = EnableBlurEffectsCheck.IsChecked ?? true;
-        UpdatePerformanceDependentControls(blurEnabled);
+        UpdatePerformanceDependentControls(blurEnabled, animate: true);
         if (_isLoadingSettings) return;
         PushLivePreview();
     }
 
-    private void UpdatePerformanceDependentControls(bool blurEnabled)
+    private void UpdatePerformanceDependentControls(bool blurEnabled, bool animate = false)
     {
-        if (SubjectBlurRow == null) return;
-
-        SubjectBlurRow.Opacity = blurEnabled ? 1.0 : 0.45;
-        SubjectBlurRow.IsEnabled = blurEnabled;
-
-        double blurSliderOpacity = blurEnabled ? 1.0 : 0.45;
-        if (BlurBrightnessSlider != null)
-        {
-            BlurBrightnessSlider.Opacity = blurSliderOpacity;
-            BlurBrightnessSlider.IsEnabled = blurEnabled;
-        }
+        AnimateDependentElement(SubjectBlurRow, blurEnabled, 0.45, animate);
+        AnimateDependentElement(BlurBrightnessSlider, blurEnabled, 0.45, animate);
     }
 
     private void HoverDelaySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -974,15 +1344,13 @@ public partial class SettingsWindow : Window
     private void HoverExpandCheck_Changed(object sender, RoutedEventArgs e)
     {
         bool enabled = HoverExpandCheck.IsChecked ?? false;
-        HoverDelaySlider.IsEnabled = enabled;
-        HoverDelaySlider.Opacity = enabled ? 1.0 : 0.4;
+        AnimateDependentElement(HoverDelaySlider, enabled, 0.4, animate: true);
     }
 
     private void IdleAutoHideCheck_Changed(object sender, RoutedEventArgs e)
     {
         bool enabled = IdleAutoHideCheck.IsChecked ?? false;
-        IdleAutoHideDelaySlider.IsEnabled = enabled;
-        IdleAutoHideDelaySlider.Opacity = enabled ? 1.0 : 0.4;
+        AnimateDependentElement(IdleAutoHideDelaySlider, enabled, 0.4, animate: true);
     }
 
     private void LanguageCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -1450,7 +1818,7 @@ public partial class SettingsWindow : Window
 
     private void SkinCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        UpdateLiquidGlassAvailability(DynamicIslandModeCheck?.IsChecked ?? _settings.EnableDynamicIslandMode);
+        UpdateLiquidGlassAvailability(DynamicIslandModeCheck?.IsChecked ?? _settings.EnableDynamicIslandMode, animate: true);
 
         if (_isLoadingSettings) return;
         PushLivePreview();
@@ -1468,7 +1836,7 @@ public partial class SettingsWindow : Window
         });
     }
 
-    private void UpdateLiquidGlassAvailability(bool islandEnabled)
+    private void UpdateLiquidGlassAvailability(bool islandEnabled, bool animate = false)
     {
         if (SkinCombo == null) return;
 
@@ -1501,10 +1869,7 @@ public partial class SettingsWindow : Window
             glassSelected = false;
         }
 
-        if (LiquidGlassConfigPanel != null)
-            LiquidGlassConfigPanel.Visibility = islandEnabled && glassSelected
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+        AnimateCollapsibleRow(LiquidGlassConfigPanel, islandEnabled && glassSelected, animate);
 
         // Do not combine a mode transition with destruction of the active glass
         if (DynamicIslandModeCheck != null)
@@ -1591,24 +1956,22 @@ public partial class SettingsWindow : Window
     {
         if (_isLoadingSettings) return;
         bool enabled = EnableWeatherCheck.IsChecked ?? false;
-        UpdateWeatherDependentControls(enabled);
+        UpdateWeatherDependentControls(enabled, animate: true);
         PushLivePreview();
     }
 
-    private void UpdateWeatherDependentControls(bool enabled)
+    private void UpdateWeatherDependentControls(bool enabled, bool animate = false)
     {
-        double targetOpacity = enabled ? 1.0 : 0.45;
-        ManualCityLabel.Opacity = targetOpacity;
-        ManualCityHint.Opacity = targetOpacity;
-        ManualCityTextBox.Opacity = targetOpacity;
-        ManualCityTextBox.IsEnabled = enabled;
+        AnimateDependentElement(ManualCityLabel, enabled, 0.45, animate);
+        AnimateDependentElement(ManualCityHint, enabled, 0.45, animate);
+        AnimateDependentElement(ManualCityTextBox, enabled, 0.45, animate);
     }
 
     private void YouTubeApiCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
         bool enabled = YouTubeApiCheck.IsChecked ?? false;
-        YouTubeApiKeyRow.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        AnimateCollapsibleRow(YouTubeApiKeyRow, enabled, animate: true);
     }
 
     private void YouTubeApiKeyPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
@@ -1794,11 +2157,36 @@ public partial class SettingsWindow : Window
             (NavBehaviorText, () => NavBehaviorText.Text = Loc.Get("settings.nav.behavior")),
             (NavDevicesText, () => NavDevicesText.Text = Loc.Get("settings.nav.devices")),
             (NavSystemText, () => NavSystemText.Text = Loc.Get("settings.nav.system")),
+            (NavPrivacyText, () => NavPrivacyText.Text = Loc.Get("settings.nav.privacy")),
             (NavSpotlightText, () => NavSpotlightText.Text = Loc.Get("settings.nav.spotlight")),
             (NavAdvancedText, () => NavAdvancedText.Text = Loc.Get("settings.nav.advanced")),
             (NavPerformanceText, () => NavPerformanceText.Text = Loc.Get("settings.nav.performance")),
             (NavDonatingText, () => NavDonatingText.Text = Loc.Get("settings.nav.donating")),
             (NavUpdatesText, () => NavUpdatesText.Text = Loc.Get("settings.nav.updates")),
+
+            (PrivacyHeader, () => PrivacyHeader.Text = Loc.Get("settings.header.privacy")),
+            (LocalOnlyModeCheck, () => LocalOnlyModeCheck.Content = Loc.Get("settings.privacy.localOnly")),
+            (LocalOnlyBadgeText, () => LocalOnlyBadgeText.Text = Loc.Get("settings.privacy.localOnly.badge")),
+            (LocalOnlyModeHint, () => LocalOnlyModeHint.Text = Loc.Get("settings.privacy.localOnly.hint")),
+            (PrivacyNetworkHeader, () => PrivacyNetworkHeader.Text = Loc.Get("settings.privacy.section.network")),
+            (AutoCheckUpdatesCheck, () => AutoCheckUpdatesCheck.Content = Loc.Get("settings.privacy.autoUpdates")),
+            (AutoCheckUpdatesHint, () => AutoCheckUpdatesHint.Text = Loc.Get("settings.privacy.autoUpdates.hint")),
+            (EnableOnlineArtworkCheck, () => EnableOnlineArtworkCheck.Content = Loc.Get("settings.privacy.onlineArtwork")),
+            (EnableOnlineArtworkHint, () => EnableOnlineArtworkHint.Text = Loc.Get("settings.privacy.onlineArtwork.hint")),
+            (EnableOnlineLyricsCheck, () => EnableOnlineLyricsCheck.Content = Loc.Get("settings.privacy.onlineLyrics")),
+            (EnableOnlineLyricsHint, () => EnableOnlineLyricsHint.Text = Loc.Get("settings.privacy.onlineLyrics.hint")),
+            (PrivacySensorsHeader, () => PrivacySensorsHeader.Text = Loc.Get("settings.privacy.section.sensors")),
+            (EnablePrivacyIndicatorsCheck, () => EnablePrivacyIndicatorsCheck.Content = Loc.Get("settings.privacy.indicators")),
+            (EnablePrivacyIndicatorsHint, () => EnablePrivacyIndicatorsHint.Text = Loc.Get("settings.privacy.indicators.hint")),
+            (EnableBrowserUrlInspectionCheck, () => EnableBrowserUrlInspectionCheck.Content = Loc.Get("settings.privacy.browserUrl")),
+            (EnableBrowserUrlInspectionHint, () => EnableBrowserUrlInspectionHint.Text = Loc.Get("settings.privacy.browserUrl.hint")),
+            (PrivacyStorageHeader, () => PrivacyStorageHeader.Text = Loc.Get("settings.privacy.section.storage")),
+            (EnableDiagnosticLoggingCheck, () => EnableDiagnosticLoggingCheck.Content = Loc.Get("settings.privacy.logging")),
+            (EnableDiagnosticLoggingHint, () => EnableDiagnosticLoggingHint.Text = Loc.Get("settings.privacy.logging.hint")),
+            (EnableSpotlightHistoryCheck, () => EnableSpotlightHistoryCheck.Content = Loc.Get("settings.privacy.spotlightHistory")),
+            (EnableSpotlightHistoryHint, () => EnableSpotlightHistoryHint.Text = Loc.Get("settings.privacy.spotlightHistory.hint")),
+            (ClearSpotlightHistoryButton, () => ClearSpotlightHistoryButton.Content = Loc.Get("settings.privacy.clearSpotlight")),
+            (ClearLogButton, () => ClearLogButton.Content = Loc.Get("settings.privacy.clearLog")),
 
             (ExpandedWidgetLabel, () => { ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget"); ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint"); RepopulateWidgetComboPreservingSelection(); }),
             (WidthLabel, () => { WidthLabel.Text = Loc.Get("settings.width"); WidthSlider.Label = Loc.Get("settings.width"); WidthSlider.Description = Loc.Get("settings.width.hint"); }),
@@ -2351,6 +2739,16 @@ public partial class SettingsWindow : Window
         IdleAutoHideDelaySlider.Value = Math.Max(2, defaults.IdleAutoHideDelay / 1000.0);
         IdleAutoHideDelaySlider.IsEnabled = defaults.EnableIdleAutoHide;
         IdleAutoHideDelaySlider.Opacity = defaults.EnableIdleAutoHide ? 1.0 : 0.4;
+
+        LocalOnlyModeCheck.IsChecked = defaults.EnableLocalOnlyMode;
+        AutoCheckUpdatesCheck.IsChecked = defaults.AutoCheckUpdates;
+        EnableOnlineArtworkCheck.IsChecked = defaults.EnableOnlineArtworkLookup;
+        EnableOnlineLyricsCheck.IsChecked = defaults.EnableOnlineLyrics;
+        EnablePrivacyIndicatorsCheck.IsChecked = defaults.EnablePrivacyIndicators;
+        EnableBrowserUrlInspectionCheck.IsChecked = defaults.EnableBrowserUrlInspection;
+        EnableDiagnosticLoggingCheck.IsChecked = defaults.EnableDiagnosticLogging;
+        EnableSpotlightHistoryCheck.IsChecked = defaults.EnableSpotlightHistory;
+        UpdateLocalOnlyDependentControls(defaults.EnableLocalOnlyMode);
         int defLangIndex = 0;
         for (int i = 0; i < LanguageCombo.Items.Count; i++)
         {
@@ -2584,12 +2982,14 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCard,
             "Devices" => DisplayCard,
             "System" => SystemCard,
+            "Privacy" => PrivacyCard,
             "Spotlight" => SpotlightCard,
             "Advanced" => AdvancedCard,
             "Performance" => PerformanceCard,
             "Donating" => DonatingCard,
             "Updates" => UpdatesCard,
             "Searching" => SearchingCard,
+            "Skins" => SkinCard,
             _ => null
         };
         TranslateTransform? activeTranslate = _activeNav switch
@@ -2598,12 +2998,14 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCardTranslate,
             "Devices" => DisplayCardTranslate,
             "System" => SystemCardTranslate,
+            "Privacy" => PrivacyCardTranslate,
             "Spotlight" => SpotlightCardTranslate,
             "Advanced" => AdvancedCardTranslate,
             "Performance" => PerformanceCardTranslate,
             "Donating" => DonatingCardTranslate,
             "Updates" => UpdatesCardTranslate,
             "Searching" => SearchingCardTranslate,
+            "Skins" => SkinCardTranslate,
             _ => null
         };
         if (activeCard != null && activeTranslate != null)
@@ -2778,6 +3180,15 @@ public partial class SettingsWindow : Window
         _settings.EnableWeather = EnableWeatherCheck.IsChecked ?? false;
         _settings.ManualCity = ManualCityTextBox.Text?.Trim() ?? string.Empty;
 
+        _settings.EnableLocalOnlyMode = LocalOnlyModeCheck.IsChecked ?? false;
+        _settings.AutoCheckUpdates = AutoCheckUpdatesCheck.IsChecked ?? true;
+        _settings.EnableOnlineArtworkLookup = EnableOnlineArtworkCheck.IsChecked ?? true;
+        _settings.EnableOnlineLyrics = EnableOnlineLyricsCheck.IsChecked ?? true;
+        _settings.EnablePrivacyIndicators = EnablePrivacyIndicatorsCheck.IsChecked ?? true;
+        _settings.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
+        _settings.EnableDiagnosticLogging = EnableDiagnosticLoggingCheck.IsChecked ?? true;
+        _settings.EnableSpotlightHistory = EnableSpotlightHistoryCheck.IsChecked ?? true;
+
         _settings.EnableYouTubeApi = YouTubeApiCheck.IsChecked ?? false;
         _settings.YouTubeApiKey = YouTubeApiKeyPasswordBox.Password?.Trim() ?? "";
 
@@ -2939,6 +3350,7 @@ public partial class SettingsWindow : Window
         _navPanels["Behavior"] = PanelBehavior;
         _navPanels["Devices"] = PanelDevices;
         _navPanels["System"] = PanelSystem;
+        _navPanels["Privacy"] = PanelPrivacy;
         _navPanels["Spotlight"] = PanelSpotlight;
         _navPanels["Advanced"] = PanelAdvanced;
         _navPanels["Performance"] = PanelPerformance;
@@ -2951,6 +3363,7 @@ public partial class SettingsWindow : Window
         _navButtons["Behavior"] = NavBehavior;
         _navButtons["Devices"] = NavDevices;
         _navButtons["System"] = NavSystem;
+        _navButtons["Privacy"] = NavPrivacy;
         _navButtons["Spotlight"] = NavSpotlight;
         _navButtons["Advanced"] = NavAdvanced;
         _navButtons["Performance"] = NavPerformance;
@@ -2974,10 +3387,43 @@ public partial class SettingsWindow : Window
     private static readonly string[] _navOrder =
     {
         "Searching", "Appearance", "Skins", "Behavior", "Devices",
-        "System", "Spotlight", "Advanced", "Performance", "Donating", "Updates"
+        "System", "Privacy", "Spotlight", "Advanced", "Performance", "Donating", "Updates"
     };
 
     private int _navTransitionVersion;
+
+    private void UpdateNavButtonVisual(Border btn, bool isActive)
+    {
+        btn.Background = isActive ? (SolidColorBrush)FindResource("NavItemActiveBg") : _transparentBrush;
+        var stack = btn.Child as StackPanel;
+        if (stack == null || stack.Children.Count < 2) return;
+
+        var targetBrush = isActive ? _whiteBrush : _navInactiveBrush;
+
+        if (stack.Children[0] is Viewbox vb)
+        {
+            if (vb.Child is System.Windows.Shapes.Path path)
+            {
+                path.Fill = targetBrush;
+            }
+            else if (vb.Child is Canvas canvas)
+            {
+                foreach (var child in canvas.Children)
+                {
+                    if (child is System.Windows.Shapes.Path cp) cp.Fill = targetBrush;
+                }
+            }
+        }
+        else if (stack.Children[0] is TextBlock iconText)
+        {
+            iconText.Foreground = targetBrush;
+        }
+
+        if (stack.Children[1] is TextBlock text)
+        {
+            text.Foreground = targetBrush;
+        }
+    }
 
     private void NavigateToSection(string section)
     {
@@ -2987,20 +3433,14 @@ public partial class SettingsWindow : Window
 
         if (_navButtons.TryGetValue(previous, out var oldBtn))
         {
-            oldBtn.Background = _transparentBrush;
-            var oldStack = oldBtn.Child as StackPanel;
-            if (oldStack != null && oldStack.Children.Count > 1 && oldStack.Children[1] is TextBlock oldText)
-                oldText.Foreground = _navInactiveBrush;
+            UpdateNavButtonVisual(oldBtn, false);
         }
 
         _activeNav = section;
 
         if (_navButtons.TryGetValue(section, out var newBtn))
         {
-            newBtn.Background = (SolidColorBrush)FindResource("NavItemActiveBg");
-            var newStack = newBtn.Child as StackPanel;
-            if (newStack != null && newStack.Children.Count > 1 && newStack.Children[1] is TextBlock newText)
-                newText.Foreground = _whiteBrush;
+            UpdateNavButtonVisual(newBtn, true);
         }
 
         int version = ++_navTransitionVersion;
@@ -3064,6 +3504,7 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCard,
             "Devices" => DisplayCard,
             "System" => SystemCard,
+            "Privacy" => PrivacyCard,
             "Spotlight" => SpotlightCard,
             "Advanced" => AdvancedCard,
             "Performance" => PerformanceCard,
@@ -3080,6 +3521,7 @@ public partial class SettingsWindow : Window
             "Behavior" => BehaviorCardTranslate,
             "Devices" => DisplayCardTranslate,
             "System" => SystemCardTranslate,
+            "Privacy" => PrivacyCardTranslate,
             "Spotlight" => SpotlightCardTranslate,
             "Advanced" => AdvancedCardTranslate,
             "Performance" => PerformanceCardTranslate,
