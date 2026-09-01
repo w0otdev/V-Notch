@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Vortice.DXGI;
 using VNotch.Models;
+using Vortice.DXGI;
 
 namespace VNotch.Services;
 
