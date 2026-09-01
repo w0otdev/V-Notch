@@ -287,5 +287,196 @@ public sealed class LiquidGlassCaptureTests
         Assert.Equal(targetScreenX, sampledDesktopX, 6);
         Assert.True(notchWidth >= 200.0);
     }
+
+    [Fact]
+    public void ComputeSourceHash_DetectsSmallContentChanges()
+    {
+        const int w = 320;
+        const int h = 120;
+        int size = w * h * 4;
+        IntPtr p1 = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+        IntPtr p2 = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+
+        try
+        {
+            byte[] zeros = new byte[size];
+            System.Runtime.InteropServices.Marshal.Copy(zeros, 0, p1, size);
+            System.Runtime.InteropServices.Marshal.Copy(zeros, 0, p2, size);
+
+            ulong hash1 = LiquidGlassController.ComputeSourceHash(p1, w, h);
+            ulong hash2 = LiquidGlassController.ComputeSourceHash(p2, w, h);
+            Assert.Equal(hash1, hash2);
+
+            // Change a small feature near the middle (like an image icon passing by)
+            int offset = (60 * w + 160) * 4;
+            byte[] patch = [0xFF, 0x88, 0x44, 0x00];
+            System.Runtime.InteropServices.Marshal.Copy(patch, 0, p2 + offset, patch.Length);
+
+            ulong hashChanged = LiquidGlassController.ComputeSourceHash(p2, w, h);
+            Assert.NotEqual(hash1, hashChanged);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(p1);
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(p2);
+        }
+    }
+
+    [Fact]
+    public void ComputeSourceHash_HandlesZeroOrInvalidPointers()
+    {
+        Assert.Equal(0UL, LiquidGlassController.ComputeSourceHash(IntPtr.Zero, 320, 120));
+        Assert.Equal(0UL, LiquidGlassController.ComputeSourceHash((IntPtr)12345, 0, 120));
+        Assert.Equal(0UL, LiquidGlassController.ComputeSourceHash((IntPtr)12345, 320, 0));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(10)]
+    [InlineData(25)]
+    public void ComputeSourceHash_DetectsHorizontalShift(int shiftPixels)
+    {
+        const int w = 400;
+        const int h = 100;
+        int size = w * h * 4;
+        IntPtr p1 = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+        IntPtr p2 = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+
+        try
+        {
+            byte[] buf1 = new byte[size];
+            byte[] buf2 = new byte[size];
+
+            // Draw a vertical stripe in buf1 at x=100..120
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 100; x < 120; x++)
+                {
+                    int idx = (y * w + x) * 4;
+                    buf1[idx] = 0xAA;
+                    buf1[idx + 1] = 0xBB;
+                    buf1[idx + 2] = 0xCC;
+                }
+            }
+
+            // Draw the same stripe shifted by shiftPixels in buf2
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 100 + shiftPixels; x < 120 + shiftPixels; x++)
+                {
+                    int idx = (y * w + x) * 4;
+                    buf2[idx] = 0xAA;
+                    buf2[idx + 1] = 0xBB;
+                    buf2[idx + 2] = 0xCC;
+                }
+            }
+
+            System.Runtime.InteropServices.Marshal.Copy(buf1, 0, p1, size);
+            System.Runtime.InteropServices.Marshal.Copy(buf2, 0, p2, size);
+
+            ulong hash1 = LiquidGlassController.ComputeSourceHash(p1, w, h);
+            ulong hash2 = LiquidGlassController.ComputeSourceHash(p2, w, h);
+
+            Assert.NotEqual(hash1, hash2);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(p1);
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(p2);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    [InlineData(8)]
+    public void ComputeSourceHash_DetectsVerticalShift(int shiftPixels)
+    {
+        const int w = 400;
+        const int h = 100;
+        int size = w * h * 4;
+        IntPtr p1 = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+        IntPtr p2 = System.Runtime.InteropServices.Marshal.AllocHGlobal(size);
+
+        try
+        {
+            byte[] buf1 = new byte[size];
+            byte[] buf2 = new byte[size];
+
+            // Draw a horizontal bar in buf1 at y=30..40
+            for (int y = 30; y < 40; y++)
+            {
+                for (int x = 50; x < 350; x++)
+                {
+                    int idx = (y * w + x) * 4;
+                    buf1[idx] = 0x55;
+                    buf1[idx + 1] = 0x66;
+                    buf1[idx + 2] = 0x77;
+                }
+            }
+
+            // Draw the same bar shifted vertically in buf2
+            for (int y = 30 + shiftPixels; y < 40 + shiftPixels; y++)
+            {
+                for (int x = 50; x < 350; x++)
+                {
+                    int idx = (y * w + x) * 4;
+                    buf2[idx] = 0x55;
+                    buf2[idx + 1] = 0x66;
+                    buf2[idx + 2] = 0x77;
+                }
+            }
+
+            System.Runtime.InteropServices.Marshal.Copy(buf1, 0, p1, size);
+            System.Runtime.InteropServices.Marshal.Copy(buf2, 0, p2, size);
+
+            ulong hash1 = LiquidGlassController.ComputeSourceHash(p1, w, h);
+            ulong hash2 = LiquidGlassController.ComputeSourceHash(p2, w, h);
+
+            Assert.NotEqual(hash1, hash2);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(p1);
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(p2);
+        }
+    }
+
+    [Fact]
+    public void IsGpuGeometryValid_RejectsInvalidDimensions()
+    {
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(0, 100, 100, 100));
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(100, 0, 100, 100));
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(100, 100, 0, 100));
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(100, 100, 100, 0));
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(-50, 100, 100, 100));
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(100, 100, 200, 100));
+        Assert.False(LiquidGlassController.IsGpuGeometryValid(100, 100, 100, 200));
+    }
+
+    [Fact]
+    public void GrowPresentCapacity_HandlesLargeAndZeroRequests()
+    {
+        Assert.Equal(0, LiquidGlassController.GrowPresentCapacity(100, 0, 64));
+        Assert.Equal(0, LiquidGlassController.GrowPresentCapacity(100, -10, 64));
+
+        int cap4k = LiquidGlassController.GrowPresentCapacity(0, 3840, 128);
+        Assert.True(cap4k >= 3968);
+        Assert.Equal(0, cap4k % 64);
+    }
+
+    [Fact]
+    public void LiquidGlassConfig_TouchLight_HasExpectedDefault()
+    {
+        var config = new VNotch.Models.LiquidGlassConfig();
+        Assert.Equal(0.9, config.TouchLight, precision: 2);
+
+        var settings = new VNotch.Models.NotchSettings();
+        Assert.Equal(0.9, settings.LiquidGlass?.TouchLight ?? 0.9, precision: 2);
+    }
 }
+
+
+
 

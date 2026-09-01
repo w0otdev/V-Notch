@@ -26,7 +26,12 @@ public sealed class RuntimeLogTests
 
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
-            string contents = await File.ReadAllTextAsync(logPath);
+            string contents;
+            using (var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(stream))
+            {
+                contents = await reader.ReadToEndAsync();
+            }
             int previousPosition = -1;
             for (int i = 0; i < 300; i++)
             {

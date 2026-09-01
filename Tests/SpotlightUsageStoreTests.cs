@@ -107,8 +107,20 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         var store = CreateStore();
         store.RecordLaunch(Item("app:one", "shell:AppsFolder\\One!App"));
 
-        // Saves are fire-and-forget; wait for the file to land.
-        Assert.True(SpinWait.SpinUntil(() => File.Exists(_path), TimeSpan.FromSeconds(5)));
+        // Saves are fire-and-forget; wait for the file to land and finish writing.
+        Assert.True(SpinWait.SpinUntil(() =>
+        {
+            try
+            {
+                if (!File.Exists(_path)) return false;
+                using var doc = JsonDocument.Parse(File.ReadAllText(_path));
+                return doc.RootElement.TryGetProperty("app:one", out _);
+            }
+            catch
+            {
+                return false;
+            }
+        }, TimeSpan.FromSeconds(5)));
 
         var reloaded = CreateStore();
         Assert.True(reloaded.GetBoost("app:one") > 0);
