@@ -111,6 +111,7 @@ public partial class MainWindow
     private void SwitchToTimerView()
     {
         if (_isTimerView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isTimerView = true;
         _isAnimating = true;
         SuspendSpotifyCanvasLifecycle();
@@ -179,6 +180,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             ExpandedContent.Visibility = Visibility.Collapsed;
             ExpandedContent.RenderTransform = null;
             ExpandedContent.Effect = null;
@@ -195,17 +197,15 @@ public partial class MainWindow
         AnimateClockViewNotchResize(
             NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth,
             NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight,
-            _clockViewWidth, _clockViewHeight, durIn, inDelay);
+            _clockViewWidth, _clockViewHeight, durIn, inDelay, generation: generation);
 
-        PlayTimerViewEntrance(durIn, inDelay);
+        PlayTimerViewEntrance(durIn, inDelay, generation);
 
         UpdateTimerDisplay();
     }
 
-    // The clock view "unfolds" out of the notch: the panel drops from the notch
-    // lip while the header falls in, the analog clock springs to size and the
     // control bar rises from below — three staggered layers.
-    private void PlayTimerViewEntrance(Duration durIn, TimeSpan inDelay)
+    private void PlayTimerViewEntrance(Duration durIn, TimeSpan inDelay, int generation)
     {
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
@@ -232,6 +232,7 @@ public partial class MainWindow
 
         fadeIn.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
@@ -242,8 +243,8 @@ public partial class MainWindow
         };
 
         RestoreTimerContentOpacity();
-        TimerContent.UpdateLayout();
-
+        TimerContent.InvalidateMeasure();
+        TimerContent.InvalidateArrange();
         TimerContent.BeginAnimation(OpacityProperty, fadeIn);
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, dropIn);
         timerScale.BeginAnimation(ScaleTransform.ScaleXProperty, growX);
@@ -339,6 +340,7 @@ public partial class MainWindow
     private void SwitchFromSecondaryToTimerView()
     {
         if (_isTimerView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isTimerView = true;
         _isSecondaryView = false;
         _isAnimating = true;
@@ -394,6 +396,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             SecondaryContent.Visibility = Visibility.Collapsed;
             SecondaryContent.RenderTransform = null;
             SecondaryContent.Effect = null;
@@ -430,6 +433,7 @@ public partial class MainWindow
 
         fadeIn.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
@@ -442,7 +446,7 @@ public partial class MainWindow
         AnimateClockViewNotchResize(
             NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth,
             NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight,
-            _clockViewWidth, _clockViewHeight, durIn, inDelay);
+            _clockViewWidth, _clockViewHeight, durIn, inDelay, generation: generation);
 
         RestoreTimerContentOpacity();
         TimerContent.UpdateLayout();
@@ -458,6 +462,7 @@ public partial class MainWindow
     private void SwitchFromTimerToPrimaryView()
     {
         if (!_isTimerView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         CancelTimerEditingInstant();
         _isTimerView = false;
         _isAnimating = true;
@@ -468,6 +473,13 @@ public partial class MainWindow
         NavIconsBackground.BeginAnimation(OpacityProperty, null);
         NavIconsBackground.Opacity = 0;
         NavIconsBackground.Visibility = Visibility.Collapsed;
+
+        MusicCompactContent.BeginAnimation(OpacityProperty, null);
+        MusicCompactContent.Opacity = 0;
+        MusicCompactContent.Visibility = Visibility.Collapsed;
+        CollapsedContent.BeginAnimation(OpacityProperty, null);
+        CollapsedContent.Opacity = 0;
+        CollapsedContent.Visibility = Visibility.Collapsed;
 
         NotchBorder.IsHitTestVisible = false;
 
@@ -487,6 +499,7 @@ public partial class MainWindow
 
         timerFadeOut.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             TimerContent.Visibility = Visibility.Collapsed;
             TimerContent.RenderTransform = null;
             TimerContent.BeginAnimation(OpacityProperty, null);
@@ -498,7 +511,7 @@ public partial class MainWindow
 
         double currentH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
         double currentWidthExit = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
-        AnimateClockViewNotchResize(currentWidthExit, currentH, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize);
+        AnimateClockViewNotchResize(currentWidthExit, currentH, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize, generation: generation);
 
         ExpandedContent.Visibility = Visibility.Visible;
         ExpandedContent.BeginAnimation(OpacityProperty, null);
@@ -539,6 +552,7 @@ public partial class MainWindow
 
         primaryFadeIn.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
@@ -583,6 +597,7 @@ public partial class MainWindow
     private void SwitchFromTimerToSecondaryView()
     {
         if (!_isTimerView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         CancelTimerEditingInstant();
         _isTimerView = false;
         _isSecondaryView = true;
@@ -620,6 +635,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             TimerContent.Visibility = Visibility.Collapsed;
             TimerContent.RenderTransform = null;
             TimerContent.Effect = null;
@@ -634,7 +650,7 @@ public partial class MainWindow
 
         double currentH2 = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
         double currentWidthExit2 = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
-        AnimateClockViewNotchResize(currentWidthExit2, currentH2, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize);
+        AnimateClockViewNotchResize(currentWidthExit2, currentH2, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize, generation: generation);
 
         SecondaryContent.Visibility = Visibility.Visible;
         SecondaryContent.BeginAnimation(OpacityProperty, null);
@@ -661,6 +677,7 @@ public partial class MainWindow
 
         fadeIn.Completed += (s, ev) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;

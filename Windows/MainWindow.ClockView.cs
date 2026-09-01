@@ -94,9 +94,9 @@ public partial class MainWindow : IClockWidgetHost
         => EnsureClockWidgetPresenterLoaded().ResizeHostWindowHeight(notchHeightDip);
 
     private void AnimateClockViewNotchResize(double fromWidth, double fromHeight,
-        double toWidth, double toHeight, Duration duration, TimeSpan delay, Action? onCompleted = null)
+        double toWidth, double toHeight, Duration duration, TimeSpan delay, Action? onCompleted = null, int? generation = null)
         => EnsureClockWidgetPresenterLoaded().AnimateClockViewNotchResize(
-            fromWidth, fromHeight, toWidth, toHeight, duration, delay, onCompleted);
+            fromWidth, fromHeight, toWidth, toHeight, duration, delay, onCompleted, generation);
 
     #endregion
 
@@ -110,6 +110,7 @@ public partial class MainWindow : IClockWidgetHost
     bool IClockWidgetHost.IsExpanded => _isExpanded;
     bool IClockWidgetHost.IsTimerView => _isTimerView;
     bool IClockWidgetHost.IsLyricsActive => _isLyricsActive;
+    int IClockWidgetHost.TransitionGeneration => _viewTransitionGeneration;
 
     Brush IClockWidgetHost.TransparentBrush => _brushTransparent;
     Brush IClockWidgetHost.WhiteBrush => _brushWhite;

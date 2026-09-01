@@ -106,6 +106,7 @@ public partial class MainWindow
     private void SwitchToAudioView()
     {
         if (_isAudioView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         CancelTimerEditingInstant();
 
         FrameworkElement outgoing;
@@ -183,7 +184,8 @@ public partial class MainWindow
                 if (!ApplyPendingAudioSnapshot())
                     SettleAudioNotchToFit();
                 StartAudioPoll();
-            });
+            },
+            generation: generation);
 
         RefreshAudioData(SettleAudioNotchToFit);
     }
@@ -191,6 +193,7 @@ public partial class MainWindow
     private void SwitchFromAudioToPrimaryView()
     {
         if (!_isAudioView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isAudioView = false;
         StopAudioPoll();
         _audioMixerServiceCached?.ReleaseSessionCache();
@@ -202,6 +205,13 @@ public partial class MainWindow
         NavIconsBackground.BeginAnimation(OpacityProperty, null);
         NavIconsBackground.Opacity = 0;
         NavIconsBackground.Visibility = Visibility.Collapsed;
+
+        MusicCompactContent.BeginAnimation(OpacityProperty, null);
+        MusicCompactContent.Opacity = 0;
+        MusicCompactContent.Visibility = Visibility.Collapsed;
+        CollapsedContent.BeginAnimation(OpacityProperty, null);
+        CollapsedContent.Opacity = 0;
+        CollapsedContent.Visibility = Visibility.Collapsed;
 
         double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
         double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _audioViewHeight;
@@ -235,12 +245,14 @@ public partial class MainWindow
                     System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(lyricsBlurFadeIn, VNotch.Services.AnimationConfig.TargetFps);
                     LyricsBlurBackground.BeginAnimation(OpacityProperty, lyricsBlurFadeIn);
                 }
-            });
+            },
+            generation: generation);
     }
 
     private void SwitchFromAudioToSecondaryView()
     {
         if (!_isAudioView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isAudioView = false;
         StopAudioPoll();
         _audioMixerServiceCached?.ReleaseSessionCache();
@@ -270,12 +282,14 @@ public partial class MainWindow
                 SecondaryContent.UpdateLayout();
                 RestoreExpandedWindowSize();
                 ResetCameraSectionLayoutInstant();
-            });
+            },
+            generation: generation);
     }
 
     private void SwitchFromAudioToTimerView()
     {
         if (!_isAudioView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isAudioView = false;
         StopAudioPoll();
         _audioMixerServiceCached?.ReleaseSessionCache();
@@ -299,14 +313,16 @@ public partial class MainWindow
                 RefreshClockView();
                 RestoreTimerContentOpacity();
             },
-            onComplete: () => UpdateTimerDisplay());
+            onComplete: () => UpdateTimerDisplay(),
+            generation: generation);
     }
 
     private void AnimateAudioViewSwap(
         FrameworkElement outgoing, FrameworkElement incoming,
         double notchFromW, double notchFromH, double notchToW, double notchToH,
-        Action? prepIncoming, Action? onComplete)
+        Action? prepIncoming, Action? onComplete, int? generation = null)
     {
+        int activeGen = generation ?? _viewTransitionGeneration;
         NotchBorder.IsHitTestVisible = false;
 
         var durOut = _dur200;
@@ -319,7 +335,6 @@ public partial class MainWindow
 
         if (outIsAudio)
         {
-
             var closeGroup = new TransformGroup();
             var closeScale = new ScaleTransform(1, 1);
             var closeTranslate = new TranslateTransform(0, 0);
@@ -338,6 +353,7 @@ public partial class MainWindow
 
             aFade.Completed += (s, e) =>
             {
+                if (activeGen != _viewTransitionGeneration) return;
                 outgoing.Visibility = Visibility.Collapsed;
                 outgoing.RenderTransform = null;
                 outgoing.BeginAnimation(OpacityProperty, null);
@@ -380,6 +396,7 @@ public partial class MainWindow
 
             fadeOut.Completed += (s, e) =>
             {
+                if (activeGen != _viewTransitionGeneration) return;
                 outgoing.Visibility = Visibility.Collapsed;
                 outgoing.RenderTransform = null;
                 outgoing.Effect = null;
@@ -396,10 +413,8 @@ public partial class MainWindow
 
         prepIncoming?.Invoke();
 
-        AnimateClockViewNotchResize(notchFromW, notchFromH, notchToW, notchToH, durIn, inDelay);
+        AnimateClockViewNotchResize(notchFromW, notchFromH, notchToW, notchToH, durIn, inDelay, generation: activeGen);
 
-        // Do not bitmap-cache transition roots: AudioContent and the other views
-        // update while hidden, and WPF can briefly reuse the previous surface.
         incoming.Visibility = Visibility.Visible;
         incoming.BeginAnimation(OpacityProperty, null);
         incoming.Opacity = 0;
@@ -407,11 +422,13 @@ public partial class MainWindow
         if (inIsAudio)
         {
             incoming.RenderTransform = null;
-            incoming.UpdateLayout();
+            incoming.InvalidateMeasure();
+            incoming.InvalidateArrange();
             var aFadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
             Timeline.SetDesiredFrameRate(aFadeIn, fps);
             aFadeIn.Completed += (s, e) =>
             {
+                if (activeGen != _viewTransitionGeneration) return;
                 _isAnimating = false;
                 _isScrollSessionLocked = false;
                 NotchBorder.IsHitTestVisible = true;
@@ -429,13 +446,17 @@ public partial class MainWindow
             {
                 incoming.HorizontalAlignment = HorizontalAlignment.Right;
                 incoming.UseLayoutRounding = false;
-                incoming.UpdateLayout();
+                incoming.InvalidateMeasure();
+                incoming.InvalidateArrange();
             }
 
             if (ReferenceEquals(incoming, ExpandedContent))
                 PrepareExpandedContentLayoutForReveal();
             else
-                incoming.UpdateLayout();
+            {
+                incoming.InvalidateMeasure();
+                incoming.InvalidateArrange();
+            }
 
             double restY = ReferenceEquals(incoming, ExpandedContent) ? ExpandedContentRestY : 0;
 
@@ -458,6 +479,7 @@ public partial class MainWindow
 
             fadeIn.Completed += (s, e) =>
             {
+                if (activeGen != _viewTransitionGeneration) return;
                 _isAnimating = false;
                 _isScrollSessionLocked = false;
                 NotchBorder.IsHitTestVisible = true;
@@ -471,12 +493,10 @@ public partial class MainWindow
                 {
                     incoming.HorizontalAlignment = HorizontalAlignment.Stretch;
                     incoming.UseLayoutRounding = savedRounding;
-                    // prepIncoming pinned a fixed Width/Height for the shrink; reset to
-                    // auto so the panel fills the notch instead of staying narrow and
-                    // centered (which offsets the media control cluster).
                     incoming.Width = double.NaN;
                     incoming.Height = double.NaN;
-                    incoming.UpdateLayout();
+                    incoming.InvalidateMeasure();
+                    incoming.InvalidateArrange();
                 }
                 if (outIsAudio)
                     RestorePrivacyDotVisibility();
@@ -530,10 +550,10 @@ public partial class MainWindow
 
         notchAnim.Completed += (_, _) =>
         {
-            _isAnimating = false;
             if (generation != _audioNotchHeightGeneration || !_isAudioView)
                 return;
 
+            _isAnimating = false;
             NotchBorder.BeginAnimation(HeightProperty, null);
             NotchBorder.Height = target;
             AudioScrollViewer.BeginAnimation(HeightProperty, null);

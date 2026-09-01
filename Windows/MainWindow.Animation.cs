@@ -350,6 +350,7 @@ public partial class MainWindow
     private void ExpandNotch()
     {
         if (_isAnimating || _isExpanded || _isGreetingActive) return;
+        int generation = NextViewTransitionGeneration();
         _isAnimating = true;
         _notchState.TryTransitionTo(NotchState.Expanding);
 
@@ -678,6 +679,7 @@ public partial class MainWindow
 
         heightAnim.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             StopMainViewHorizontalStabilizer();
             _isAnimating = false;
             _isExpanded = true;
@@ -807,6 +809,7 @@ public partial class MainWindow
     private void CollapseNotch()
     {
         if (_isDebugViewLocked || _isAnimating || !_isExpanded || _isGreetingActive) return;
+        int generation = NextViewTransitionGeneration();
 
         StopMainViewHorizontalStabilizer();
 
@@ -883,6 +886,7 @@ public partial class MainWindow
 
             secFadeOut.Completed += (s, e) =>
             {
+                if (generation != _viewTransitionGeneration) return;
                 SecondaryContent.BeginAnimation(OpacityProperty, null);
                 SecondaryContent.Opacity = 0;
                 SecondaryContent.Visibility = Visibility.Collapsed;
@@ -936,6 +940,7 @@ public partial class MainWindow
 
             timerFadeOut.Completed += (s, e) =>
             {
+                if (generation != _viewTransitionGeneration) return;
                 TimerContent.BeginAnimation(OpacityProperty, null);
                 TimerContent.Opacity = 0;
                 TimerContent.Visibility = Visibility.Collapsed;
@@ -962,6 +967,7 @@ public partial class MainWindow
 
             audioFadeOut.Completed += (s, e) =>
             {
+                if (generation != _viewTransitionGeneration) return;
                 AudioContent.BeginAnimation(OpacityProperty, null);
                 AudioContent.Opacity = 0;
                 AudioContent.Visibility = Visibility.Collapsed;
@@ -1005,6 +1011,7 @@ public partial class MainWindow
 
         fadeOutAnim.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             ExpandedContent.BeginAnimation(OpacityProperty, null);
             ExpandedContent.Opacity = 0;
             ExpandedContent.Visibility = Visibility.Collapsed;
@@ -1152,6 +1159,7 @@ public partial class MainWindow
 
         heightAnim.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isExpanded = false;
             _notchState.TryTransitionTo(NotchState.Collapsed);

@@ -22,6 +22,7 @@ public interface IClockWidgetHost
     bool IsExpanded { get; }
     bool IsTimerView { get; }
     bool IsLyricsActive { get; }
+    int TransitionGeneration { get; }
 
     Brush TransparentBrush { get; }
     Brush WhiteBrush { get; }
@@ -540,9 +541,10 @@ public sealed class ClockWidgetPresenter : IDisposable
     }
 
     public void AnimateClockViewNotchResize(double fromWidth, double fromHeight,
-        double toWidth, double toHeight, Duration duration, TimeSpan delay, Action? onCompleted = null)
+        double toWidth, double toHeight, Duration duration, TimeSpan delay, Action? onCompleted = null, int? generation = null)
     {
         int fps = VNotch.Services.AnimationConfig.TargetFps;
+        int activeGen = generation ?? _host.TransitionGeneration;
 
         var notchBorder = _refs.NotchBorder;
 
@@ -554,34 +556,34 @@ public sealed class ClockWidgetPresenter : IDisposable
         TimeSpan totalSpan = duration.HasTimeSpan && duration.TimeSpan > TimeSpan.Zero ? duration.TimeSpan : TimeSpan.FromMilliseconds(440);
         TimeSpan startDelay = delay.Ticks > 0 ? delay : TimeSpan.Zero;
         TimeSpan easeSpan = totalSpan;
-        TimeSpan holdSpan = totalSpan + TimeSpan.FromMilliseconds(100);
 
         var widthAnim = new DoubleAnimationUsingKeyFrames
         {
-            Duration = new Duration(holdSpan + startDelay),
+            Duration = new Duration(easeSpan + startDelay),
             FillBehavior = FillBehavior.HoldEnd
         };
         if (startDelay > TimeSpan.Zero)
             widthAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromWidth, KeyTime.FromTimeSpan(startDelay)));
         widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(toWidth, KeyTime.FromTimeSpan(startDelay + easeSpan), _easeExpOut6));
-        widthAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(toWidth, KeyTime.FromTimeSpan(startDelay + holdSpan)));
         Timeline.SetDesiredFrameRate(widthAnim, fps);
 
         var heightAnim = new DoubleAnimationUsingKeyFrames
         {
-            Duration = new Duration(holdSpan + startDelay),
+            Duration = new Duration(easeSpan + startDelay),
             FillBehavior = FillBehavior.HoldEnd
         };
         if (startDelay > TimeSpan.Zero)
             heightAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromHeight, KeyTime.FromTimeSpan(startDelay)));
         heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(toHeight, KeyTime.FromTimeSpan(startDelay + easeSpan), _easeExpOut6));
-        heightAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(toHeight, KeyTime.FromTimeSpan(startDelay + holdSpan)));
         Timeline.SetDesiredFrameRate(heightAnim, fps);
 
         _host.IsAnimating = true;
 
         heightAnim.Completed += (_, _) =>
         {
+            if (activeGen != _host.TransitionGeneration)
+                return;
+
             _host.IsAnimating = false;
             notchBorder.BeginAnimation(FrameworkElement.WidthProperty, null);
             notchBorder.BeginAnimation(FrameworkElement.HeightProperty, null);

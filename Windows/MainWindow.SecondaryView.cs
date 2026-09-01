@@ -135,6 +135,7 @@ public partial class MainWindow
     private void SwitchToSecondaryView()
     {
         if (_isSecondaryView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isSecondaryView = true;
         _isAnimating = true;
         SuspendSpotifyCanvasLifecycle();
@@ -195,6 +196,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             ExpandedContent.Visibility = Visibility.Collapsed;
             ExpandedContent.RenderTransform = null;
             ExpandedContent.Effect = null;
@@ -235,6 +237,7 @@ public partial class MainWindow
 
         fadeIn.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
@@ -265,6 +268,7 @@ public partial class MainWindow
     private void SwitchToPrimaryView()
     {
         if (!_isSecondaryView || _isAnimating) return;
+        int generation = NextViewTransitionGeneration();
         _isSecondaryView = false;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -283,6 +287,13 @@ public partial class MainWindow
         NavIconsBackground.BeginAnimation(OpacityProperty, null);
         NavIconsBackground.Opacity = 0;
         NavIconsBackground.Visibility = Visibility.Collapsed;
+
+        MusicCompactContent.BeginAnimation(OpacityProperty, null);
+        MusicCompactContent.Opacity = 0;
+        MusicCompactContent.Visibility = Visibility.Collapsed;
+        CollapsedContent.BeginAnimation(OpacityProperty, null);
+        CollapsedContent.Opacity = 0;
+        CollapsedContent.Visibility = Visibility.Collapsed;
 
         NotchBorder.IsHitTestVisible = false;
 
@@ -313,6 +324,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             SecondaryContent.Visibility = Visibility.Collapsed;
             SecondaryContent.RenderTransform = null;
             SecondaryContent.Effect = null;
@@ -352,6 +364,7 @@ public partial class MainWindow
 
         fadeIn.Completed += (s, e) =>
         {
+            if (generation != _viewTransitionGeneration) return;
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;

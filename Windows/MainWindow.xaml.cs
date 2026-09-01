@@ -179,6 +179,9 @@ public partial class MainWindow : Window
 
     private readonly VNotch.Controllers.CompactPillArbiter _compactPillArbiter = new();
 
+    private int _viewTransitionGeneration;
+    private int NextViewTransitionGeneration() => ++_viewTransitionGeneration;
+
     private static readonly TimeSpan ProgressRenderInterval = TimeSpan.FromMilliseconds(16);
     private static readonly TimeSpan LyricsUpdateInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan VolumeSyncInterval = TimeSpan.FromMilliseconds(500);
