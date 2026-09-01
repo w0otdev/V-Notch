@@ -5,7 +5,7 @@
 <h1 align="center">V-Notch</h1>
 
 <p align="center">
-  <b>macOS Notch for Windows — Smart Notch Experience</b>
+  <b>macOS Notch & Dynamic Island for Windows — Smart Ambient Desktop Experience</b>
 </p>
 
 <p align="center">
@@ -13,101 +13,105 @@
     <img src="https://img.shields.io/github/v/release/rainaku/V-Notch?style=for-the-badge&color=8B5CF6&logo=github" alt="Latest Release">
   </a>
   <img src="https://img.shields.io/badge/platform-Windows_10%2F11-lightgrey?style=for-the-badge&logo=windows" alt="Platform">
-  <img src="https://img.shields.io/badge/.NET-10.0-purple?style=for-the-badge&logo=dotnet" alt="Framework">
+  <img src="https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-purple?style=for-the-badge&logo=dotnet" alt="Framework">
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/rainaku/V-Notch?style=for-the-badge" alt="License">
   </a>
 </p>
 
 <p align="center">
-  V-Notch brings the Dynamic Island experience from Apple devices to your Windows PC.<br>
-  A smart, interactive notch that displays media controls, system info, and notifications with smooth animations.
+  V-Notch brings the Apple Dynamic Island and macOS notch experience to your Windows PC.<br>
+  A smart, interactive notch that presents live media controls, synced lyrics, Spotify Canvas, system hardware telemetry, audio mixing, Spotlight launcher, and notifications with fluid animations and realistic Liquid Glass optics.
 </p>
 
 <p align="center">
-  MyDockFinder 100% compatible for immersive experience !<br>
+  <b>100% compatible with MyDockFinder for an immersive desktop experience!</b>
 </p>
 
 <p align="center">
-  This project is entirely <b>non-profit</b> and <b>free</b>.<br>
-  If you'd like to support my work, you can donate at: <a href="https://www.paypal.me/PhuocLe678"><b>PayPal</b></a>
+  This project is entirely <b>free</b> and <b>open-source</b>.<br>
+  If you enjoy using V-Notch and would like to support its continued development, you can donate via <a href="https://www.paypal.me/PhuocLe678"><b>PayPal</b></a>.
 </p>
 
 ---
 
-## Preview
+## Previews
+
 <p align="center">
-  These previews are from version 1.6, maybe changed in later versions.
+  <i>Visual showcase of V-Notch core features. UI elements and animations may evolve in newer releases.</i>
 </p>
+
 <table>
   <tr>
     <td align="center" width="50%">
       <img src="Introduction/listening.gif" alt="Media Pill"><br>
       <b>Media Pill</b><br>
-      macOS notch-style media pill — control Spotify, YouTube, Apple Music and more with real-time progress, volume control, and album art.
+      macOS notch-style media pill — control Spotify, YouTube, Apple Music, and more with real-time seeking progress, volume control, and dynamic album art colors.
     </td>
     <td align="center" width="50%">
       <img src="Introduction/Spotify.gif" alt="Spotify Integration"><br>
-      <b>Spotify Integration</b><br>
-      Full Spotify support with smart-cropped album art, color-adaptive UI, seamless playback control, and real-time synced lyrics (covers ~90% of global tracks).
+      <b>Spotify Integration &amp; Synced Lyrics</b><br>
+      Full Spotify playback integration with smart-cropped album art, color-adaptive gradients, real-time synced lyrics (LRCLIB &amp; lrc mux), and Spotify Canvas video backgrounds.
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <img src="Introduction/fileshelf.gif" alt="File Shelf"><br>
       <b>File Shelf</b><br>
-      Drag & drop files onto the notch for quick temporary storage. Pick them up later and drop into any app.
+      Drag &amp; drop files onto the notch for quick temporary staging. Select with lasso or pick them up later to drop into any app.
     </td>
     <td align="center" width="50%">
       <img src="Introduction/Copied.gif" alt="Clipboard Notification"><br>
-      <b>Clipboard Notification</b><br>
-      Get a visual confirmation on the notch whenever you copy something to the clipboard.
+      <b>Clipboard Peek &amp; Notification</b><br>
+      Get immediate visual confirmation and content previews on the notch whenever you copy text or images to the clipboard.
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <img src="Introduction/DI.gif" alt="Dynamic Island mode"><br>
-      <b>Say hello to Dynamic Island</b><br>
-      Experience the signature Apple-style Dynamic Island on your Windows desktop. Enjoy smooth, fluid animations that seamlessly blend with your workflow, bringing notifications and media controls to life.
+      <b>Dynamic Island Mode</b><br>
+      Experience the signature Apple-style floating Dynamic Island on your Windows desktop. Enjoy fluid spring physics and realistic Liquid Glass optical refraction.
     </td>
     <td align="center" width="50%">
       <img src="Introduction/privacy.gif" alt="Privacy Indicators"><br>
       <b>Privacy Indicators</b><br>
-      Know when your camera or microphone is in use with a clear visual indicator on the notch.
+      Instantly know when your camera, microphone, or screen recording is in use by any system application with subtle colored indicator dots.
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <img src="Introduction/volume.gif" alt="Volume Control"><br>
-      <b>Volume Control</b><br>
-      A color-adaptive volume slider that matches the dominant color of the current track, so you always know what you're adjusting just by scrolling.
+      <b>Volume &amp; Audio Mixer</b><br>
+      Color-adaptive master volume slider matching current album art, plus an integrated multi-app audio mixer to adjust individual application levels.
     </td>
     <td align="center" width="50%">
       <img src="Introduction/camera.gif" alt="Camera Preview"><br>
       <b>Camera Preview</b><br>
-      Live camera feed right inside the notch — quickly check yourself without opening any app. And NO, VNotch not going to record that.
+      Live local camera mirror inside the notch — quickly check your appearance without opening separate software. Frames are never recorded or stored.
     </td>
   </tr>
   <tr>
-  <td align="center" width="50%">
+    <td align="center" width="50%">
       <img src="Introduction/gesture.gif" alt="Gesture Controls"><br>
       <b>Gesture Controls</b><br>
-      Hold and drag the notch left or right to skip or rewind media, or drag down to quickly open the file tray.
+      Swipe left or right across the notch to skip or rewind media, scroll to switch views, or swipe down to immediately access the File Shelf.
     </td>
     <td align="center" width="50%">
       <img src="Introduction/setting.gif" alt="Settings"><br>
-      <b>Settings & Customization</b><br>
-      Fine-tune your experience — choose monitor, language, startup behavior, and more.
+      <b>Rich Customization &amp; Settings</b><br>
+      Fine-tune notch dimensions, glass presets, monitor selection, auto-start behavior, hot corners, and 7 supported languages.
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
       <img src="Introduction/spotlight.gif" alt="Spotlight Search"><br>
-      <b>Spotlight Search</b><br>
-      Lightning-fast file and app search powered by Everything IPC and OLE DB. Press <code>Alt + Space</code> to find anything instantly.
+      <b>Spotlight Search (<code>Alt + Space</code>)</b><br>
+      Lightning-fast application and file search powered by Windows Search and voidtools Everything IPC, complete with an inline math calculator.
     </td>
     <td align="center" width="50%">
-      <!-- Placeholder for future feature -->
+      <img src="Assets/logo.png" width="100" height="100" alt="Liquid Glass Engine"><br>
+      <b>Liquid Glass Optics Engine</b><br>
+      Real-time DirectX 11 screen sampling, chromatic aberration, rim specular highlights, edge refraction, and interactive touch light glow.
     </td>
   </tr>
 </table>
@@ -116,139 +120,128 @@
 
 ## Features
 
-### Media Controls
-- Control Spotify, Apple Music, YouTube, SoundCloud, TikTok and more directly from the notch
-- Intelligent media detection combining Windows SMTC and process monitoring
-- Real-time progress bar with high-precision seeking and elapsed/remaining time display
-- Automatic thumbnail fetching for YouTube, smart-cropped album art (removes Spotify branding bars)
-- Color-adaptive UI based on album art using HSL color analysis
+### 🎵 Media Controls &amp; Synced Lyrics
+- Control Spotify, Apple Music, YouTube, SoundCloud, Tidal, TikTok/Reels, and any Windows Media Session (SMTC) source.
+- High-precision progress tracking with smooth seeking, time elapsed, and time remaining.
+- Real-time synced lyrics powered by LRCLIB and lrc mux fallback aggregator.
+- Timed YouTube closed captions and subtitles via YoutubeExplode.
+- Optional Spotify Canvas video background streaming (session encrypted locally with Windows DPAPI).
+- On-device smart artwork cropping powered by local YOLO11n ONNX object detection (centers faces/subjects and removes banner borders).
+- Dynamic color-adaptive gradients and glows extracted using HSL color analysis.
 
-### File Shelf
-- Dynamic clipboard for files — drag and drop files to store temporarily
-- Lasso selection for multi-file picking
-- Drag files out to any application (Explorer, Discord, Email, etc.)
-- Compact grid layout with thread-safe file management
+### 🔍 Spotlight Search Launcher (`Alt + Space`)
+- Instant app launching for Start Menu shortcuts and installed Windows applications.
+- File and folder search powered by local Windows Search (OLE DB) and voidtools Everything IPC.
+- Built-in inline math evaluator for arithmetic and algebraic calculations using MathNet.Numerics.
+- Intelligent local launch ranking (capped at 100 entries, stored 100% locally).
 
-### System Widgets
-- Battery status with charging animation
-- Integrated calendar and clock
-- Camera indicator
+### 📁 File Shelf
+- Floating staging shelf for files — drag and drop items onto the notch for quick temporary storage.
+- Multi-file lasso selection and keyboard shortcuts.
+- Drag staged files out to any application (Windows Explorer, Discord, browser uploads, email clients).
 
-### Animation & UI
-- Apple-style expand/collapse transitions configurable up to 120 FPS
-- Glassmorphism blur effects with hardware acceleration
-- Glow engine — real-time HSL color extraction for vibrant UI accents
-- Spring animations for language switching and UI element transitions
+### 🎛️ Audio Mixer &amp; System Monitor
+- Live per-app audio mixer to independently adjust volume levels across active programs.
+- Real-time hardware performance monitor displaying CPU usage %, physical RAM consumption, and GPU utilization.
 
-### System
-- **Spotlight Search** — Press `Alt + Space` to find and open installed apps, indexed files, and folders
-- **Fullscreen Aware** — Automatically hides when gaming or watching movies (supports both exclusive and windowed fullscreen)
-- **Slide animation** when hiding/showing for fullscreen transitions
-- **Multi-Monitor** — Choose which display shows the notch
-- **Cursor Bypass** — Smart click-through that doesn't interfere with your workflow
-- **Hot Corners** — Quick access via configurable screen corners
-- **Auto-Update** — Checks and updates automatically from GitHub Releases
-- **Start with Windows** — Launch on system startup
-- **Multilingual** — English and Vietnamese with real-time switching
+### 🔮 Liquid Glass Optics Engine
+- Real-time desktop backdrop sampling via DXGI Desktop Duplication and Windows Magnification API.
+- Physically inspired optical refraction, chromatic aberration, bevel lighting, and edge bending.
+- Interactive Touch Light reactive specular highlights and ambient overhead illumination.
+
+### ⏰ Ambient Widgets &amp; Tools
+- Digital and analog clock widgets with customizable greetings.
+- Interactive monthly calendar and world clock.
+- Configurable countdown timer and stopwatch with progress tracking.
+- Weather forecast widget with temperature, daily highs/lows, and conditions via Open-Meteo.
+
+### 🛡️ Privacy &amp; System Integration
+- Real-time privacy dots for active microphone, webcam, and screen recording sensors.
+- Bluetooth device connection notifications and accessory battery level monitoring.
+- Clipboard change confirmation badge with optional preview.
+- Fullscreen auto-hide (supports both exclusive and windowed fullscreen for games and media).
+- Multi-monitor support — position the notch on any connected display.
+- Multilingual support across **7 languages**: English, Vietnamese, Spanish, French, German, Japanese, and Hindi with instantaneous live switching.
 
 ---
 
-## Download & Installation
+## Download &amp; Installation
 
 ### Requirements
-- Windows 10/11 (64-bit)
-- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
+- **Operating System:** Windows 10 (version 19041+) or Windows 11 (64-bit)
+- **Runtime:** [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) *(or download the Self-Contained installer which includes the runtime)*
+- **Hardware:** Decent GPU recommended for hardware-accelerated Liquid Glass refraction and smooth 60–120 FPS animations.
 
-### Install
-1. Download `V-Notch-Setup.exe` from [Releases](https://github.com/rainaku/V-Notch/releases)
-2. Run the installer and follow the Setup Wizard
-3. Launch **V-Notch** from the Start Menu
-4. (Optional) Enable "Start with Windows" in Settings
+### Install from Releases
+1. Download `V-Notch-Setup.exe` (or `V-Notch-Setup-SelfContained.exe`) from [Releases](https://github.com/rainaku/V-Notch/releases).
+2. Run the installer and complete the Setup Wizard.
+3. Launch **V-Notch** from your Start Menu or desktop shortcut.
+4. *(Optional)* Enable "Start with Windows" in Settings.
 
-### Build the latest (without waiting for a release)
-Muốn dùng code mới nhất mà chưa có bản release? Bạn có thể tự build setup ngay trên GitHub:
+### Build the Latest Version (GitHub Actions)
+To use the latest development build directly from GitHub Actions without waiting for an official release:
 
-1. Vào tab **Actions** của repo (fork về tài khoản của bạn nếu cần).
-2. Chọn workflow **Build Installer (Nightly / On-Demand)** → bấm **Run workflow**.
-   Chọn **Loại build**:
-   - `framework-dependent` — nhẹ, cần cài [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
-   - `self-contained` — chạy ngay không cần cài .NET (file lớn hơn).
-   - `both` — build cả hai.
-3. Khi chạy xong, tải file `.exe` ở phần **Artifacts** của lần chạy đó,
-   hoặc tải trực tiếp từ prerelease **`nightly`** trong [Releases](https://github.com/rainaku/V-Notch/releases).
-
-> Workflow cũng tự chạy mỗi khi có push vào `main`, nên prerelease `nightly` luôn là bản mới nhất.
+1. Go to the **Actions** tab of this repository (or your fork).
+2. Select the **Release Installer** workflow and click **Run workflow**.
+3. Choose your desired build variant:
+   - `framework-dependent` — smaller download, requires [.NET Desktop Runtime](https://dotnet.microsoft.com/download/dotnet).
+   - `self-contained` — standalone package, runs out-of-the-box without separate .NET installation.
+4. When the build completes, download the setup executable from the **Artifacts** section or the automated **`nightly`** release.
 
 ---
 
-## Usage
+## Usage &amp; Shortcuts
 
-### Basic Controls
-| Action | Result |
-|--------|--------|
-| **Hover** | Expand notch to show media controls |
-| **Scroll Down** | Switch to File Shelf |
+### Basic Navigation
+| Action | Description |
+|---|---|
+| **Hover** | Expands the notch to reveal media controls and widgets |
+| **Scroll Down** | Switch to File Shelf view |
 | **Scroll Up** | Switch back to Media Controls |
-| **Click** | Toggle compact/expanded view |
-| **Media buttons** | Play/Pause, Next/Previous, Seek |
-| **Alt + Space** | Open or close Spotlight Search |
-| **↑ / ↓, Enter, Esc** | Navigate results, open the selected result, or close Spotlight |
+| **Click / Tap** | Toggle between compact pill and expanded view |
+| **Swipe Left / Right** | Skip to next or previous audio track |
+| **Swipe Down** | Quickly open the File Shelf |
+| **`Alt + Space`** | Open or close the Spotlight Search launcher |
+| **`↑` / `↓`, `Enter`, `Esc`** | Navigate search results, launch selected item, or dismiss Spotlight |
 
 ### File Shelf
-| Action | Result |
-|--------|--------|
-| **Drag & drop onto notch** | Add files to the shelf |
-| **Lasso (drag on empty space)** | Multi-select files |
-| **Ctrl + Click** | Toggle individual file selection |
-| **Drag out** | Move files to any folder or app |
-| **Delete** | Remove files from the shelf |
+| Action | Description |
+|---|---|
+| **Drag &amp; Drop onto Notch** | Stage files into the shelf |
+| **Lasso Drag (on empty area)** | Select multiple staged files |
+| **`Ctrl + Click`** | Toggle individual file selection |
+| **Drag Out** | Move staged files into any destination app or directory |
+| **`Delete`** | Remove selected items from the shelf |
 
-### Supported Platforms
-| Platform | Capability |
-|----------|------------|
-| **Spotify** | Full control, smart-cropped album art |
-| **Apple Music** | Native Windows app support |
-| **YouTube** | Thumbnail fetching, title parsing, full-video skip |
-| **TikTok/Reels** | Video title detection, basic playback |
-| **SoundCloud** | Browser session detection |
-| **Generic** | Any app using Windows Media Session |
-
----
-
-## System Requirements
-
-| Component | Requirement |
-|-----------|-------------|
-| OS | Windows 10/11 (64-bit) |
-| Runtime | .NET 10 Desktop Runtime |
-| RAM | >4GB for stability |
-| CPU | Minimal usage |
-| Display | Any resolution (adaptive positioning) |
-| GPU | Any GPU should work but i do recommended a decent GPU for best performance |
 ---
 
 ## Privacy Policy
 
-V-Notch does not collect, transmit, or store personal data on any external server. The application contains no analytics, telemetry, or user tracking.
+V-Notch is built with a **strict local-first architecture**. It contains no telemetry, no analytics, no advertising, and no tracking identifiers.
 
-Network connections are limited to:
-- **GitHub API** — checking for application updates
-- **YouTube / SoundCloud** — retrieving album artwork for display
+Network communication is strictly limited to user-driven or functional features:
+- **GitHub Releases API** — Checking for application updates.
+- **LRCLIB / lrc mux** — Retrieving synchronized song lyrics for the current track.
+- **YouTube / SoundCloud** — Fetching public thumbnails and captions.
+- **Spotify Web Services** — Optional Spotify Canvas video background streaming (credentials protected with Windows DPAPI).
+- **Open-Meteo / ipwho.is** — Optional weather forecast queries.
 
-All user settings are stored locally at `%APPDATA%\V-Notch\`. Camera and media data are processed in real-time for display only and are never recorded or transmitted.
+All user preferences, cache records, and launch statistics are stored locally on your machine at `%APPDATA%\V-Notch\`.
 
-Full policy: [English](https://github.com/rainaku/V-Notch/blob/main/PRIVACY_POLICY.md) | [Tiếng Việt](https://github.com/rainaku/V-Notch/blob/main/PRIVACY_POLICY_VI.md)
+Read the complete Privacy Policy:
+- [English Privacy Policy](PRIVACY_POLICY.md)
+- [Chính Sách Bảo Mật (Tiếng Việt)](PRIVACY_POLICY_VI.md)
 
 ---
 
 ## License
 
-Apache License 2.0 — See [LICENSE](LICENSE) for details.
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
 <p align="center">
-  <b>Made with love by <a href="https://rainaku.id.vn">rainaku</a></b>
+  <b>Developed with ❤️ by <a href="https://rainaku.id.vn">rainaku</a></b>
 </p>
 
 <p align="center">
@@ -262,6 +255,6 @@ Apache License 2.0 — See [LICENSE](LICENSE) for details.
     <img src="https://img.shields.io/badge/Facebook-1877F2?logo=facebook&logoColor=white" alt="Facebook">
   </a>
   <a href="https://rainaku.id.vn">
-    <img src="https://img.shields.io/badge/Website-FF7139?logo=firefox&logoColor=white" alt="Website">
+    <img src="https://img.shields.io/badge/Portfolio-FF7139?logo=firefox&logoColor=white" alt="Portfolio">
   </a>
 </p>
