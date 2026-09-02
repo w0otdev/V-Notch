@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using VNotch.Models;
 
 namespace VNotch.Services;
@@ -267,6 +269,109 @@ public class SettingsService : ISettingsService
 
         return changed;
     }
+    public void ExportSettingsToFile(string filePath, NotchSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("File path cannot be empty", nameof(filePath));
+        if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+        string json = ExportSettingsToString(settings);
+        var dir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+        File.WriteAllText(filePath, json);
+    }
+
+    public string ExportSettingsToString(NotchSettings settings)
+    {
+        if (settings == null) throw new ArgumentNullException(nameof(settings));
+
+        var clone = settings.Clone();
+        clone.SettingsVersion = SettingsMigrator.CurrentVersion;
+
+        var jsonNode = JsonSerializer.SerializeToNode(clone, new JsonSerializerOptions { WriteIndented = true });
+        if (jsonNode is not JsonObject settingsObj)
+        {
+            settingsObj = new JsonObject();
+        }
+
+        // Ensure keys are portable across machines (unprotected plaintext in .vns)
+        settingsObj[nameof(NotchSettings.YouTubeApiKey)] = clone.YouTubeApiKey ?? "";
+        settingsObj[nameof(NotchSettings.SpotifySpDc)] = clone.SpotifySpDc ?? "";
+
+        var rootObj = new JsonObject
+        {
+            ["format"] = "vns",
+            ["fileVersion"] = 1,
+            ["appVersion"] = GetAppVersion(),
+            ["exportedAt"] = DateTime.UtcNow.ToString("o"),
+            ["settings"] = settingsObj
+        };
+
+        return rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    public (NotchSettings Settings, bool RequiresRestart) ImportSettingsFromFile(string filePath, NotchSettings? currentSettings = null)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) throw new ArgumentException("File path cannot be empty", nameof(filePath));
+        if (!File.Exists(filePath)) throw new FileNotFoundException("Settings file not found", filePath);
+
+        string rawJson = File.ReadAllText(filePath);
+        return ImportSettingsFromString(rawJson, currentSettings);
+    }
+
+    public (NotchSettings Settings, bool RequiresRestart) ImportSettingsFromString(string rawJson, NotchSettings? currentSettings = null)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+            throw new JsonException("Settings file content is empty");
+
+        var node = JsonNode.Parse(rawJson)
+                   ?? throw new JsonException("Failed to parse settings JSON");
+
+        string settingsJsonToMigrate;
+
+        // Check if this is an envelope package format (.vns)
+        if (node is JsonObject rootObj && rootObj.TryGetPropertyValue("settings", out var innerSettings) && innerSettings != null)
+        {
+            settingsJsonToMigrate = innerSettings.ToJsonString();
+        }
+        else
+        {
+            // Direct settings JSON format
+            settingsJsonToMigrate = rawJson;
+        }
+
+        var (settings, _) = SettingsMigrator.Migrate(settingsJsonToMigrate);
+        NormalizeSettings(settings);
+
+        bool requiresRestart = CheckRequiresRestart(settings, currentSettings);
+        return (settings, requiresRestart);
+    }
+
+    public static bool CheckRequiresRestart(NotchSettings imported, NotchSettings? current)
+    {
+        if (current == null) return false;
+
+        // GPU Preference requires restart because DXGI device adapter is bound on launch
+        if (imported.GpuPreference != current.GpuPreference)
+            return true;
+
+        // Process Priority applies at startup
+        if (!string.Equals(imported.ProcessPriority, current.ProcessPriority, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    private static string GetAppVersion()
+    {
+        var v = Assembly.GetExecutingAssembly().GetName().Version;
+        return v != null
+            ? (v.Revision > 0 ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}" : $"{v.Major}.{v.Minor}.{v.Build}")
+            : "1.9.1";
+    }
+
     private string QuarantineCorruptFile(string rawContents, Exception reason)
     {
         try
