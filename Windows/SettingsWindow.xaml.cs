@@ -2655,103 +2655,110 @@ public partial class SettingsWindow : Window
 
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
-        bool confirmed = VNotch.Windows.ConfirmationDialog.Show(
-            this,
-            Loc.Get("settings.reset.confirm"),
-            Loc.Get("settings.reset.title"),
-            Loc.Get("dialog.confirm"),
-            Loc.Get("dialog.cancel"),
-            VNotch.Windows.ConfirmationDialog.DialogIcon.Warning,
-            VNotch.Windows.ConfirmationDialog.DialogStyle.Danger);
-
-        if (!confirmed) return;
-
-        var defaults = new NotchSettings();
-
-        WidthSlider.Value = defaults.Width;
-        DynamicIslandWidthSlider.Value = defaults.DynamicIslandWidth;
-        DynamicIslandHeightSlider.Value = defaults.DynamicIslandHeight;
-        HeightSlider.Value = defaults.Height;
-        RadiusSlider.Value = defaults.CornerRadius;
-        OpacitySlider.Value = defaults.Opacity * 100;
-        BlurBrightnessSlider.Value = defaults.MediaBlurBrightnessBoost * 100;
-        BlurDarkOverlaySlider.Value = defaults.MediaBlurDarkOverlay * 100;
-        SpotifyCanvasBrightnessSlider.Value = defaults.SpotifyCanvasBrightness * 100;
-        AnimationFpsSlider.Value = defaults.AnimationFps;
-        EnableBlurEffectsCheck.IsChecked = defaults.EnableBlurEffects;
-        MediaArtBackgroundCheck.IsChecked = defaults.ShowMediaArtBackground;
-        _settings.NotchStyle = defaults.NotchStyle;
-        _settings.LiquidGlass = (defaults.LiquidGlass ?? new Models.LiquidGlassConfig()).Clone();
-        LoadLiquidGlassUi();
-        EnableSubjectBlurCheck.IsChecked = defaults.EnableSubjectBlur;
-        EnableSmartCropCheck.IsChecked = defaults.EnableSmartCrop;
-        UpdatePerformanceDependentControls(defaults.EnableBlurEffects);
-        EnableSpotifyLyricsCheck.IsChecked = defaults.EnableSpotifyLyrics;
-        EnableSpotifyCanvasCheck.IsChecked = defaults.EnableSpotifyCanvas;
-        EnableYouTubeSubtitlesCheck.IsChecked = defaults.EnableYouTubeSubtitles;
-        IgnoreYouTubeAutoSubtitlesCheck.IsChecked = defaults.IgnoreYouTubeAutoSubtitles;
-        UpdateLyricsDependentControls(defaults.EnableSpotifyLyrics);
-        UpdateSpotifyCanvasDependentControls();
-        UpdateYouTubeSubtitlesDependentControls(defaults.EnableYouTubeSubtitles);
-
-        _settings.SubtitlePriority = defaults.SubtitlePriority;
-        LoadSubtitlePriority();
-
-        DynamicIslandModeCheck.IsChecked = defaults.EnableDynamicIslandMode;
-        UpdateDynamicIslandDependentControls(defaults.EnableDynamicIslandMode);
-
-        HoverExpandCheck.IsChecked = defaults.EnableHoverExpand;
-        HoverDelaySlider.Value = defaults.HoverExpandDelay;
-        HoverDelaySlider.IsEnabled = defaults.EnableHoverExpand;
-        HoverDelaySlider.Opacity = defaults.EnableHoverExpand ? 1.0 : 0.4;
-        DisableMouseLeaveAutoCloseCheck.IsChecked = defaults.DisableMouseLeaveAutoClose;
-        ReopenLastViewCheck.IsChecked = defaults.ReopenLastViewOnExpand;
-
-        MusicNotifyCheck.IsChecked = defaults.ShowMusicNotifications;
-        SystemNotifyCheck.IsChecked = defaults.ShowSystemNotifications;
-        StayBehindWindowsCheck.IsChecked = defaults.StayBehindWindows;
-        ShelfUnlockCheck.IsChecked = defaults.IsShelfUploadLimitUnlocked;
-        CopyShelfClipboardCheck.IsChecked = defaults.CopyShelfFilesToClipboard;
-        EnableSpotlightCheck.IsChecked = defaults.EnableSpotlight;
-        EnableDebugModeCheck.IsChecked = defaults.EnableDebugMode;
-        ShowBatteryCheck.IsChecked = defaults.ShowBatteryIndicator;
-        _settings.BatteryDeviceId = defaults.BatteryDeviceId;
-        HideOnExclusiveFullscreenCheck.IsChecked = defaults.HideOnExclusiveFullscreen;
-        HideOnWindowedFullscreenCheck.IsChecked = defaults.HideOnWindowedFullscreen;
-        IdleAutoHideCheck.IsChecked = defaults.EnableIdleAutoHide;
-        IdleAutoHideDelaySlider.Value = Math.Max(2, defaults.IdleAutoHideDelay / 1000.0);
-        IdleAutoHideDelaySlider.IsEnabled = defaults.EnableIdleAutoHide;
-        IdleAutoHideDelaySlider.Opacity = defaults.EnableIdleAutoHide ? 1.0 : 0.4;
-
-        LocalOnlyModeCheck.IsChecked = defaults.EnableLocalOnlyMode;
-        AutoCheckUpdatesCheck.IsChecked = defaults.AutoCheckUpdates;
-        EnableOnlineArtworkCheck.IsChecked = defaults.EnableOnlineArtworkLookup;
-        EnableOnlineLyricsCheck.IsChecked = defaults.EnableOnlineLyrics;
-        EnablePrivacyIndicatorsCheck.IsChecked = defaults.EnablePrivacyIndicators;
-        EnableBrowserUrlInspectionCheck.IsChecked = defaults.EnableBrowserUrlInspection;
-        EnableDiagnosticLoggingCheck.IsChecked = defaults.EnableDiagnosticLogging;
-        EnableSpotlightHistoryCheck.IsChecked = defaults.EnableSpotlightHistory;
-        UpdateLocalOnlyDependentControls(defaults.EnableLocalOnlyMode);
-        int defLangIndex = 0;
-        for (int i = 0; i < LanguageCombo.Items.Count; i++)
+        try
         {
-            if (LanguageCombo.Items[i] is System.Windows.Controls.ComboBoxItem item && item.Tag as string == defaults.Language)
+            bool confirmed = VNotch.Windows.ConfirmationDialog.Show(
+                this,
+                Loc.Get("settings.reset.confirm"),
+                Loc.Get("settings.reset.title"),
+                Loc.Get("dialog.confirm"),
+                Loc.Get("dialog.cancel"),
+                VNotch.Windows.ConfirmationDialog.DialogIcon.Warning,
+                VNotch.Windows.ConfirmationDialog.DialogStyle.Danger);
+
+            if (!confirmed) return;
+
+            var defaults = new NotchSettings();
+
+            WidthSlider.Value = defaults.Width;
+            DynamicIslandWidthSlider.Value = defaults.DynamicIslandWidth;
+            DynamicIslandHeightSlider.Value = defaults.DynamicIslandHeight;
+            HeightSlider.Value = defaults.Height;
+            RadiusSlider.Value = defaults.CornerRadius;
+            OpacitySlider.Value = defaults.Opacity * 100;
+            BlurBrightnessSlider.Value = defaults.MediaBlurBrightnessBoost * 100;
+            BlurDarkOverlaySlider.Value = defaults.MediaBlurDarkOverlay * 100;
+            SpotifyCanvasBrightnessSlider.Value = defaults.SpotifyCanvasBrightness * 100;
+            AnimationFpsSlider.Value = defaults.AnimationFps;
+            EnableBlurEffectsCheck.IsChecked = defaults.EnableBlurEffects;
+            MediaArtBackgroundCheck.IsChecked = defaults.ShowMediaArtBackground;
+            _settings.NotchStyle = defaults.NotchStyle;
+            _settings.LiquidGlass = (defaults.LiquidGlass ?? new Models.LiquidGlassConfig()).Clone();
+            LoadLiquidGlassUi();
+            EnableSubjectBlurCheck.IsChecked = defaults.EnableSubjectBlur;
+            EnableSmartCropCheck.IsChecked = defaults.EnableSmartCrop;
+            UpdatePerformanceDependentControls(defaults.EnableBlurEffects);
+            EnableSpotifyLyricsCheck.IsChecked = defaults.EnableSpotifyLyrics;
+            EnableSpotifyCanvasCheck.IsChecked = defaults.EnableSpotifyCanvas;
+            EnableYouTubeSubtitlesCheck.IsChecked = defaults.EnableYouTubeSubtitles;
+            IgnoreYouTubeAutoSubtitlesCheck.IsChecked = defaults.IgnoreYouTubeAutoSubtitles;
+            UpdateLyricsDependentControls(defaults.EnableSpotifyLyrics);
+            UpdateSpotifyCanvasDependentControls();
+            UpdateYouTubeSubtitlesDependentControls(defaults.EnableYouTubeSubtitles);
+
+            _settings.SubtitlePriority = defaults.SubtitlePriority;
+            LoadSubtitlePriority();
+
+            DynamicIslandModeCheck.IsChecked = defaults.EnableDynamicIslandMode;
+            UpdateDynamicIslandDependentControls(defaults.EnableDynamicIslandMode);
+
+            HoverExpandCheck.IsChecked = defaults.EnableHoverExpand;
+            HoverDelaySlider.Value = defaults.HoverExpandDelay;
+            HoverDelaySlider.IsEnabled = defaults.EnableHoverExpand;
+            HoverDelaySlider.Opacity = defaults.EnableHoverExpand ? 1.0 : 0.4;
+            DisableMouseLeaveAutoCloseCheck.IsChecked = defaults.DisableMouseLeaveAutoClose;
+            ReopenLastViewCheck.IsChecked = defaults.ReopenLastViewOnExpand;
+
+            MusicNotifyCheck.IsChecked = defaults.ShowMusicNotifications;
+            SystemNotifyCheck.IsChecked = defaults.ShowSystemNotifications;
+            StayBehindWindowsCheck.IsChecked = defaults.StayBehindWindows;
+            ShelfUnlockCheck.IsChecked = defaults.IsShelfUploadLimitUnlocked;
+            CopyShelfClipboardCheck.IsChecked = defaults.CopyShelfFilesToClipboard;
+            EnableSpotlightCheck.IsChecked = defaults.EnableSpotlight;
+            EnableDebugModeCheck.IsChecked = defaults.EnableDebugMode;
+            ShowBatteryCheck.IsChecked = defaults.ShowBatteryIndicator;
+            _settings.BatteryDeviceId = defaults.BatteryDeviceId;
+            HideOnExclusiveFullscreenCheck.IsChecked = defaults.HideOnExclusiveFullscreen;
+            HideOnWindowedFullscreenCheck.IsChecked = defaults.HideOnWindowedFullscreen;
+            IdleAutoHideCheck.IsChecked = defaults.EnableIdleAutoHide;
+            IdleAutoHideDelaySlider.Value = Math.Max(2, defaults.IdleAutoHideDelay / 1000.0);
+            IdleAutoHideDelaySlider.IsEnabled = defaults.EnableIdleAutoHide;
+            IdleAutoHideDelaySlider.Opacity = defaults.EnableIdleAutoHide ? 1.0 : 0.4;
+
+            LocalOnlyModeCheck.IsChecked = defaults.EnableLocalOnlyMode;
+            AutoCheckUpdatesCheck.IsChecked = defaults.AutoCheckUpdates;
+            EnableOnlineArtworkCheck.IsChecked = defaults.EnableOnlineArtworkLookup;
+            EnableOnlineLyricsCheck.IsChecked = defaults.EnableOnlineLyrics;
+            EnablePrivacyIndicatorsCheck.IsChecked = defaults.EnablePrivacyIndicators;
+            EnableBrowserUrlInspectionCheck.IsChecked = defaults.EnableBrowserUrlInspection;
+            EnableDiagnosticLoggingCheck.IsChecked = defaults.EnableDiagnosticLogging;
+            EnableSpotlightHistoryCheck.IsChecked = defaults.EnableSpotlightHistory;
+            UpdateLocalOnlyDependentControls(defaults.EnableLocalOnlyMode);
+            int defLangIndex = 0;
+            for (int i = 0; i < LanguageCombo.Items.Count; i++)
             {
-                defLangIndex = i;
-                break;
+                if (LanguageCombo.Items[i] is System.Windows.Controls.ComboBoxItem item && item.Tag as string == defaults.Language)
+                {
+                    defLangIndex = i;
+                    break;
+                }
             }
+            LanguageCombo.SelectedIndex = defLangIndex;
+            _settings.ExpandedWidget = defaults.ExpandedWidget;
+            WidgetCombo.SelectedIndex = defaults.ExpandedWidget switch
+            {
+                "clock" => 1,
+                "wordclock" => 2,
+                "digitalclock" => 3,
+                "weather" => 4,
+                "sysmon" => 5,
+                _ => 0
+            };
         }
-        LanguageCombo.SelectedIndex = defLangIndex;
-        _settings.ExpandedWidget = defaults.ExpandedWidget;
-        WidgetCombo.SelectedIndex = defaults.ExpandedWidget switch
+        catch (Exception ex)
         {
-            "clock" => 1,
-            "wordclock" => 2,
-            "digitalclock" => 3,
-            "weather" => 4,
-            "sysmon" => 5,
-            _ => 0
-        };
+            VNotch.Services.RuntimeLog.Error("SETTINGS", ex, "Error in Reset_Click");
+        }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
@@ -2829,57 +2836,95 @@ public partial class SettingsWindow : Window
 
     private void ClearCache_Click(object sender, RoutedEventArgs e)
     {
-        bool confirmed = VNotch.Windows.ConfirmationDialog.Show(
-            this,
-            Loc.Get("settings.clearCache.confirm"),
-            Loc.Get("settings.clearCache.title"),
-            Loc.Get("dialog.confirm"),
-            Loc.Get("dialog.cancel"),
-            VNotch.Windows.ConfirmationDialog.DialogIcon.Question,
-            VNotch.Windows.ConfirmationDialog.DialogStyle.Normal,
-            Loc.Get("settings.clearCache.detail"));
-
-        if (!confirmed) return;
-
-        int deletedCount = 0;
-        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "V-Notch");
-        var baseDir = AppContext.BaseDirectory;
-
-        var filesToDelete = new[]
-        {
-            Path.Combine(appData, "source_cache.json"),
-            Path.Combine(baseDir, "vnotch-debug.log"),
-            Path.Combine(baseDir, "vnotch-debug.log.old"),
-        };
-
-        foreach (var file in filesToDelete)
-        {
-            try
-            {
-                if (File.Exists(file))
-                {
-                    File.Delete(file);
-                    deletedCount++;
-                }
-            }
-            catch { }
-        }
-
         try
         {
-            foreach (var corrupt in Directory.GetFiles(appData, "settings.corrupt-*.json"))
+            bool confirmed = VNotch.Windows.ConfirmationDialog.Show(
+                this,
+                Loc.Get("settings.clearCache.confirm"),
+                Loc.Get("settings.clearCache.title"),
+                Loc.Get("dialog.confirm"),
+                Loc.Get("dialog.cancel"),
+                VNotch.Windows.ConfirmationDialog.DialogIcon.Trash,
+                VNotch.Windows.ConfirmationDialog.DialogStyle.Normal,
+                Loc.Get("settings.clearCache.detail"));
+
+            if (!confirmed) return;
+
+            int deletedCount = 0;
+            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "V-Notch");
+            var baseDir = AppContext.BaseDirectory;
+
+            // In-memory cache resets
+            FileIconProvider.ClearCache();
+
+            // Clear cache directories
+            var cacheDirs = new[]
             {
-                try { File.Delete(corrupt); deletedCount++; } catch { }
+                Path.Combine(appData, "cache"),
+                Path.Combine(appData, "canvas_cache"),
+                Path.Combine(appData, "lyrics_cache"),
+                Path.Combine(appData, "thumbnails"),
+                Path.Combine(appData, "temp"),
+            };
+
+            foreach (var dir in cacheDirs)
+            {
+                try
+                {
+                    if (Directory.Exists(dir))
+                    {
+                        var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
+                        foreach (var f in files)
+                        {
+                            try { File.Delete(f); deletedCount++; } catch { }
+                        }
+                    }
+                }
+                catch { }
             }
+
+            var filesToDelete = new[]
+            {
+                Path.Combine(appData, "source_cache.json"),
+                Path.Combine(baseDir, "vnotch-debug.log.old"),
+            };
+
+            foreach (var file in filesToDelete)
+            {
+                try
+                {
+                    if (File.Exists(file))
+                    {
+                        File.Delete(file);
+                        deletedCount++;
+                    }
+                }
+                catch { }
+            }
+
+            try
+            {
+                if (Directory.Exists(appData))
+                {
+                    foreach (var corrupt in Directory.GetFiles(appData, "settings.corrupt-*.json"))
+                    {
+                        try { File.Delete(corrupt); deletedCount++; } catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                VNotch.Services.RuntimeLog.Warn("SETTINGS", $"Failed to enumerate corrupt backups: {ex.Message}");
+            }
+
+            ClearCacheHint.Text = deletedCount > 0
+                ? Loc.Get("settings.clearCache.done", deletedCount)
+                : Loc.Get("settings.clearCache.clean");
         }
         catch (Exception ex)
         {
-            VNotch.Services.RuntimeLog.Warn("SETTINGS", $"Failed to enumerate corrupt backups: {ex.Message}");
+            VNotch.Services.RuntimeLog.Error("SETTINGS", ex, "Error in ClearCache_Click");
         }
-
-        ClearCacheHint.Text = deletedCount > 0
-            ? Loc.Get("settings.clearCache.done", deletedCount)
-            : Loc.Get("settings.clearCache.clean");
     }
 
     private void Apply_Click(object sender, RoutedEventArgs e)

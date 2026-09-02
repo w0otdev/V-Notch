@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using VNotch.Services;
 
@@ -14,7 +15,8 @@ public partial class ConfirmationDialog : Window
         Warning,
         Question,
         Error,
-        Info
+        Info,
+        Trash
     }
 
     public enum DialogStyle
@@ -24,11 +26,13 @@ public partial class ConfirmationDialog : Window
     }
 
     public bool Confirmed { get; private set; }
+    private bool _isClosing = false;
+
+    private const string TrashIconPathData = "M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z";
 
     public ConfirmationDialog()
     {
         InitializeComponent();
-        AnimationPrimitives.ApplyFpsToTree(this);
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         Title = Loc.Get("dialog.confirm.title");
         TitleText.Text = Loc.Get("dialog.confirm.title");
@@ -37,7 +41,7 @@ public partial class ConfirmationDialog : Window
     }
 
     /// <summary>
-    /// Show a confirmation dialog with custom message
+    /// Show a confirmation dialog matching native V-Notch Settings design
     /// </summary>
     public static bool Show(
         Window? owner,
@@ -49,81 +53,165 @@ public partial class ConfirmationDialog : Window
         DialogStyle style = DialogStyle.Normal,
         string? detailText = null)
     {
-        var dialog = new ConfirmationDialog();
-
-        if (owner != null)
+        try
         {
-            dialog.Owner = owner;
+            var dialog = new ConfirmationDialog();
+
+            if (owner != null && owner.IsVisible)
+            {
+                dialog.Owner = owner;
+            }
+
+            // Set title
+            dialog.TitleText.Text = string.IsNullOrEmpty(title) ? Loc.Get("dialog.confirm.title") : title;
+
+            // Set message
+            dialog.MessageText.Text = message;
+
+            // Set detail text in card if provided
+            if (!string.IsNullOrEmpty(detailText))
+            {
+                dialog.DetailText.Text = detailText;
+                dialog.DetailCard.Visibility = Visibility.Visible;
+            }
+
+            // Set button text
+            dialog.ConfirmButton.Content = string.IsNullOrEmpty(confirmText) ? Loc.Get("dialog.confirm") : confirmText;
+            dialog.CancelButton.Content = string.IsNullOrEmpty(cancelText) ? Loc.Get("dialog.cancel") : cancelText;
+
+            // Set button style
+            if (style == DialogStyle.Danger)
+            {
+                dialog.ConfirmButton.Style = (Style)dialog.FindResource("DangerButton");
+            }
+
+            // Set icon
+            dialog.SetIcon(icon);
+
+            dialog.ShowDialog();
+            return dialog.Confirmed;
         }
-
-        // Set title
-        dialog.TitleText.Text = string.IsNullOrEmpty(title) ? Loc.Get("dialog.confirm.title") : title;
-
-        // Set message
-        dialog.MessageText.Text = message;
-
-        // Set detail text if provided
-        if (!string.IsNullOrEmpty(detailText))
+        catch (Exception ex)
         {
-            dialog.DetailText.Text = detailText;
-            dialog.DetailText.Visibility = Visibility.Visible;
+            RuntimeLog.Error("CONFIRM-DIALOG", ex, "ConfirmationDialog.Show failed, falling back to MessageBox");
+            var combinedMessage = string.IsNullOrEmpty(detailText) ? message : $"{message}\n\n{detailText}";
+            var dlgTitle = string.IsNullOrEmpty(title) ? Loc.Get("dialog.confirm.title") : title;
+            var msgBoxIcon = icon switch
+            {
+                DialogIcon.Error => MessageBoxImage.Error,
+                DialogIcon.Question => MessageBoxImage.Question,
+                DialogIcon.Info => MessageBoxImage.Information,
+                _ => MessageBoxImage.Warning
+            };
+
+            var result = MessageBox.Show(combinedMessage, dlgTitle, MessageBoxButton.OKCancel, msgBoxIcon);
+            return result == MessageBoxResult.OK;
         }
-
-        // Set button text
-        dialog.ConfirmButton.Content = string.IsNullOrEmpty(confirmText) ? Loc.Get("dialog.confirm") : confirmText;
-        dialog.CancelButton.Content = string.IsNullOrEmpty(cancelText) ? Loc.Get("dialog.cancel") : cancelText;
-
-        // Set button style
-        if (style == DialogStyle.Danger)
-        {
-            dialog.ConfirmButton.Style = (Style)dialog.FindResource("DangerButton");
-        }
-
-        // Set icon
-        dialog.SetIcon(icon);
-
-        dialog.ShowDialog();
-        return dialog.Confirmed;
     }
 
     private void SetIcon(DialogIcon icon)
     {
-        Color iconColor;
-        string pathData;
-
         switch (icon)
         {
+            case DialogIcon.Trash:
+            case DialogIcon.Question:
+                DialogIconPath.Fill = Brushes.White;
+                DialogIconPath.Stroke = null;
+                DialogIconPath.StrokeThickness = 0;
+                DialogIconPath.Data = Geometry.Parse(TrashIconPathData);
+                break;
+
             case DialogIcon.Warning:
-                iconColor = Color.FromRgb(255, 165, 0); // Orange
-                pathData = "M12,2 L22,20 L2,20 Z M12,8 L12,14 M12,16 L12,18";
+                DialogIconPath.Fill = null;
+                DialogIconPath.Stroke = Brushes.White;
+                DialogIconPath.StrokeThickness = 2;
+                DialogIconPath.Data = Geometry.Parse("M12,2.5 L22.5,20.5 L1.5,20.5 Z M12,9 L12,14 M12,17 L12,17.01");
                 break;
 
             case DialogIcon.Error:
-                iconColor = Color.FromRgb(220, 53, 69); // Red
-                pathData = "M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M12,8 L12,14 M12,16 L12,18";
-                break;
-
-            case DialogIcon.Question:
-                iconColor = Color.FromRgb(0, 102, 255); // Blue
-                pathData = "M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M12,17 L12,17 M12,14 L12,10 C12,8.9 12.9,8 14,8 C15.1,8 16,8.9 16,10";
+                DialogIconPath.Fill = null;
+                DialogIconPath.Stroke = new SolidColorBrush(Color.FromRgb(217, 56, 58));
+                DialogIconPath.StrokeThickness = 2;
+                DialogIconPath.Data = Geometry.Parse("M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M15,9 L9,15 M9,9 L15,15");
                 break;
 
             case DialogIcon.Info:
-                iconColor = Color.FromRgb(23, 162, 184); // Cyan
-                pathData = "M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M12,7 L12,7 M12,10 L12,17";
-                break;
-
             default:
-                iconColor = Color.FromRgb(255, 165, 0);
-                pathData = "M12,2 L22,20 L2,20 Z M12,8 L12,14 M12,16 L12,18";
+                DialogIconPath.Fill = null;
+                DialogIconPath.Stroke = Brushes.White;
+                DialogIconPath.StrokeThickness = 2;
+                DialogIconPath.Data = Geometry.Parse("M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M12,7 L12,7.01 M12,11 L12,17");
                 break;
         }
-
-        WarningIcon.Stroke = new SolidColorBrush(iconColor);
-        WarningIcon.Data = Geometry.Parse(pathData);
     }
 
-    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        var easeOut = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
+        var dur = TimeSpan.FromMilliseconds(280);
+        int fps = AnimationConfig.TargetFps;
+
+        var scaleX = new DoubleAnimation(0.9, 1.0, dur) { EasingFunction = easeOut };
+        var scaleY = new DoubleAnimation(0.9, 1.0, dur) { EasingFunction = easeOut };
+        var transY = new DoubleAnimation(12.0, 0.0, dur) { EasingFunction = easeOut };
+        var opacity = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(220)) { EasingFunction = easeOut };
+
+        Timeline.SetDesiredFrameRate(scaleX, fps);
+        Timeline.SetDesiredFrameRate(scaleY, fps);
+        Timeline.SetDesiredFrameRate(transY, fps);
+        Timeline.SetDesiredFrameRate(opacity, fps);
+
+        CardScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
+        CardScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+        CardTranslate.BeginAnimation(TranslateTransform.YProperty, transY);
+        DialogCard.BeginAnimation(UIElement.OpacityProperty, opacity);
+    }
+
+    private void CloseWithAnimation(bool confirmed)
+    {
+        if (_isClosing) return;
+        _isClosing = true;
+
+        Confirmed = confirmed;
+
+        var easeIn = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 6 };
+        var dur = TimeSpan.FromMilliseconds(180);
+        int fps = AnimationConfig.TargetFps;
+
+        var scaleX = new DoubleAnimation(1.0, 0.92, dur) { EasingFunction = easeIn };
+        var scaleY = new DoubleAnimation(1.0, 0.92, dur) { EasingFunction = easeIn };
+        var transY = new DoubleAnimation(0.0, 8.0, dur) { EasingFunction = easeIn };
+        var opacity = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(160)) { EasingFunction = easeIn };
+
+        Timeline.SetDesiredFrameRate(scaleX, fps);
+        Timeline.SetDesiredFrameRate(scaleY, fps);
+        Timeline.SetDesiredFrameRate(transY, fps);
+        Timeline.SetDesiredFrameRate(opacity, fps);
+
+        opacity.Completed += (s, e) =>
+        {
+            Close();
+        };
+
+        CardScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
+        CardScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+        CardTranslate.BeginAnimation(TranslateTransform.YProperty, transY);
+        DialogCard.BeginAnimation(UIElement.OpacityProperty, opacity);
+    }
+
+    private void Window_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CloseWithAnimation(false);
+        }
+        else if (e.Key == Key.Enter)
+        {
+            CloseWithAnimation(true);
+        }
+    }
+
+    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.LeftButton == MouseButtonState.Pressed)
         {
@@ -133,21 +221,18 @@ public partial class ConfirmationDialog : Window
 
     private void ConfirmButton_Click(object sender, RoutedEventArgs e)
     {
-        Confirmed = true;
-        Close();
+        CloseWithAnimation(true);
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
     {
-        Confirmed = false;
-        Close();
+        CloseWithAnimation(false);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
 
-        // Set WS_EX_TOOLWINDOW to prevent this window from appearing in Alt+Tab
         var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
         {
