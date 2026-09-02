@@ -75,6 +75,7 @@ internal static class FileIconProvider
 
     private const uint SHGFI_ICON = 0x000000100;
     private const uint SHGFI_LARGEICON = 0x000000000;
+    private const uint SHGFI_SMALLICON = 0x000000001;
     private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
     private const uint FILE_ATTRIBUTE_NORMAL = 0x000000080;
 
@@ -89,6 +90,35 @@ internal static class FileIconProvider
     private static readonly Guid _shellItemImageFactoryIid = new Guid("bcc18b79-ba16-442f-80c4-8746c1f01a3b");
 
     #endregion
+
+    public static ImageSource? GetAppIcon(string exePath, bool small = true)
+    {
+        if (string.IsNullOrEmpty(exePath)) return null;
+        string key = $"app:{(small ? "s" : "l")}:{exePath}";
+        if (_iconCache.TryGetValue(key, out var cached))
+        {
+            cached.LastAccess = Interlocked.Increment(ref _accessCounter);
+            return cached.Icon;
+        }
+
+        try
+        {
+            if (!File.Exists(exePath)) return null;
+            if (_iconCache.Count >= MaxCacheSize) EvictOldest();
+
+            var icon = TryGetShellFileIcon(exePath, small) ?? TryGetAssociatedIcon(exePath);
+            _iconCache[key] = new CacheEntry
+            {
+                Icon = icon,
+                LastAccess = Interlocked.Increment(ref _accessCounter)
+            };
+            return icon;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     public static ImageSource? GetFileIcon(string filePath)
     {
@@ -121,8 +151,13 @@ internal static class FileIconProvider
                 }
             }
 
+            if (ext == ".exe" || ext == ".lnk")
+            {
+                result ??= TryGetShellFileIcon(filePath, small: false);
+            }
+
             result ??= TryGetAssociatedIcon(filePath);
-            result ??= TryGetShellFileIcon(filePath);
+            result ??= TryGetShellFileIcon(filePath, small: false);
 
             _iconCache[filePath] = new CacheEntry
             {
@@ -228,17 +263,18 @@ internal static class FileIconProvider
         }
     }
 
-    private static ImageSource? TryGetShellFileIcon(string filePath)
+    private static ImageSource? TryGetShellFileIcon(string filePath, bool small = false)
     {
         try
         {
             var shinfo = new SHFILEINFO();
+            uint flags = SHGFI_ICON | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON);
             IntPtr res = SHGetFileInfo(
                 filePath,
                 0,
                 ref shinfo,
                 (uint)Marshal.SizeOf(shinfo),
-                SHGFI_ICON | SHGFI_LARGEICON);
+                flags);
 
             if (res == IntPtr.Zero || shinfo.hIcon == IntPtr.Zero)
             {
@@ -250,7 +286,7 @@ internal static class FileIconProvider
                     FILE_ATTRIBUTE_NORMAL,
                     ref shinfo,
                     (uint)Marshal.SizeOf(shinfo),
-                    SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES);
+                    flags | SHGFI_USEFILEATTRIBUTES);
             }
 
             if (shinfo.hIcon == IntPtr.Zero) return null;

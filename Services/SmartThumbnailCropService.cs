@@ -307,9 +307,9 @@ public sealed class SmartThumbnailCropService : IDisposable
             GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
             ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
             InterOpNumThreads = 1,
-            IntraOpNumThreads = 4,
+            IntraOpNumThreads = 2,
             EnableMemoryPattern = true,
-            EnableCpuMemArena = true
+            EnableCpuMemArena = false
         };
 
         _cachedSession = new InferenceSession(GetModelPath(), options);

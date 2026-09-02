@@ -568,6 +568,18 @@ public sealed class LiquidGlassController
             _host.Source = null;
             _bitmap = null;
             ResetGpuGeometryTracking();
+            ReleaseGdiResources();
+            _outBuffer = Array.Empty<byte>();
+            _blurTmp = Array.Empty<byte>();
+            _sourceBlurBuffer = Array.Empty<byte>();
+            _sourceBlurTmp = Array.Empty<byte>();
+            _idxR = Array.Empty<int>();
+            _auxR = Array.Empty<int>();
+            _idxG = Array.Empty<int>();
+            _auxG = Array.Empty<int>();
+            _idxB = Array.Empty<int>();
+            _auxB = Array.Empty<int>();
+            _edgeMask = Array.Empty<byte>();
         }
         catch { /* shutting down */ }
     }

@@ -4542,6 +4542,9 @@ public partial class SettingsWindow : Window
         CompositionTarget.Rendering -= OnGlassRegionRendering;
         _liquidGlass?.Stop();
         DetachGpuRefraction();
+        _liquidGlass = null;
+        _glassRefractionEffect = null;
+        MemoryOptimizerService.Instance.ScheduleTrim(200, aggressive: true);
     }
 
     #endregion

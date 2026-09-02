@@ -574,6 +574,8 @@ public partial class MainWindow
 
     private void UpdateDynamicFresnel(LiquidGlassController.BackdropOptics optics)
     {
+        if (UseGpuRefraction || _activeFresnelLevel <= 0.001) return;
+
         EnsureDynamicFresnelBrush();
         var brush = _dynamicFresnelBrush!;
         var innerBrush = _dynamicInnerFresnelBrush!;

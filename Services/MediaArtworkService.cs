@@ -173,6 +173,11 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 }
             }
 
+            if (ReferenceEquals(workingSource, source) && rect.X == 0 && rect.Y == 0 && rect.Width == width && rect.Height == height)
+            {
+                return source;
+            }
+
             var cropped = new CroppedBitmap(workingSource, rect);
             cropped.Freeze();
 

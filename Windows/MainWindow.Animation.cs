@@ -1271,6 +1271,7 @@ public partial class MainWindow
                 _pendingFlipThumbnail = null;
             }
 
+            MemoryOptimizerService.Instance.ScheduleTrim(1200);
         };
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);

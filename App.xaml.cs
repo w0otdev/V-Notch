@@ -269,6 +269,7 @@ public partial class App : Application
                         var introWindow = new IntroducingWindow();
                         introWindow.WindowStartupLocation = WindowStartupLocation.CenterScreen;
                         introWindow.ShowDialog();
+                        MemoryOptimizerService.Instance.ScheduleTrim(500);
                     }
                     catch (System.Exception introEx)
                     {

@@ -220,7 +220,7 @@ public sealed class AudioMixerService : IDisposable
 
         if (!string.IsNullOrEmpty(exePath))
         {
-            try { icon = FileIconProvider.GetFileIcon(exePath); } catch { }
+            try { icon = FileIconProvider.GetAppIcon(exePath, small: true); } catch { }
         }
     }
 
@@ -575,7 +575,14 @@ public sealed class AudioMixerService : IDisposable
         }
     }
 
-    public void ReleaseSessionCache() => ReleaseSessions();
+    public void ReleaseSessionCache()
+    {
+        ReleaseSessions();
+        lock (_enumLock)
+        {
+            DisposeEnumerator();
+        }
+    }
 
     #region IPolicyConfig COM interop
 

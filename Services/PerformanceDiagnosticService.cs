@@ -349,13 +349,15 @@ public sealed class PerformanceDiagnosticService
                 long wsDelta = (long)procWorkingSet - (long)_lastWorkingSetBytes;
                 double deltaMb = wsDelta / 1024.0 / 1024.0;
                 double currentMb = procWorkingSet / 1024.0 / 1024.0;
-                if (deltaMb > 45.0 && currentMb > 180.0 && (now - _lastMemSurgeAlert).TotalSeconds > 4.0)
+                double mbPerSec = wsDeltaSec > 0 ? deltaMb / wsDeltaSec : 0;
+                if (mbPerSec > 40.0 && deltaMb > 30.0 && currentMb > 180.0 && (now - _lastMemSurgeAlert).TotalSeconds > 4.0)
                 {
                     _lastMemSurgeAlert = now;
                     hasAlert = true;
                     _currentHealthLevel = PerformanceHealthLevel.Warning;
-                    _currentHealthSummary = $"Memory Surge: +{deltaMb:0.0} MB/s (Total: {currentMb:0} MB)";
-                    AddLog(PerformanceHealthLevel.Warning, "MEMORY", $"Rapid memory allocation surge: +{deltaMb:0.0} MB within {wsDeltaSec:0.1}s (Working Set: {currentMb:0.0} MB).");
+                    _currentHealthSummary = $"Memory Surge: +{mbPerSec:0.0} MB/s (Total: {currentMb:0} MB)";
+                    AddLog(PerformanceHealthLevel.Warning, "MEMORY", $"Rapid memory allocation surge: +{deltaMb:0.0} MB within {wsDeltaSec:0.1}s (+{mbPerSec:0.1} MB/s, Working Set: {currentMb:0.0} MB).");
+                    MemoryOptimizerService.Instance.ScheduleTrim(1000);
                 }
                 _lastWorkingSetBytes = procWorkingSet;
                 _lastWorkingSetTicks = Stopwatch.GetTimestamp();
