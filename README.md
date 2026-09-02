@@ -109,7 +109,7 @@
       Lightning-fast application and file search powered by Windows Search and voidtools Everything IPC, complete with an inline math calculator.
     </td>
     <td align="center" width="50%">
-      <img src="Assets/logo.png" width="100" height="100" alt="Liquid Glass Engine"><br>
+      <img src="Introduction/DX11.png" alt="Liquid Glass Optics Engine"><br>
       <b>Liquid Glass Optics Engine</b><br>
       Real-time DirectX 11 screen sampling, chromatic aberration, rim specular highlights, edge refraction, and interactive touch light glow.
     </td>
