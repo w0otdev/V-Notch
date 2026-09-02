@@ -2473,55 +2473,65 @@
                         </Grid>
                     </ScrollViewer>
 
-                    <Border x:Name="RestartPromptBanner"
-                            VerticalAlignment="Bottom"
-                            Margin="16,0,16,10"
-                            Background="#F018140E"
-                            BorderBrush="#60FF9F0A"
-                            BorderThickness="1"
-                            CornerRadius="16"
-                            Padding="16,12"
-                            Opacity="0"
-                            Visibility="Collapsed"
-                            Panel.ZIndex="10"
-                            RenderTransformOrigin="0.5,0.5">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.45" Color="Black" Direction="270"/>
-                        </Border.Effect>
-                        <Border.RenderTransform>
+                    <Grid x:Name="RestartPromptBanner"
+                          VerticalAlignment="Bottom"
+                          Margin="16,0,16,10"
+                          Opacity="0"
+                          Visibility="Collapsed"
+                          Panel.ZIndex="10"
+                          RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
                             <TranslateTransform x:Name="RestartPromptTranslate" Y="20"/>
-                        </Border.RenderTransform>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
+                        </Grid.RenderTransform>
 
-                            <Viewbox Width="32" Height="32" VerticalAlignment="Center" Margin="2,0,14,0">
-                                <Canvas Width="24" Height="24">
-                                    <Path Data="M12 2.99988C16.9706 2.99988 21 7.02931 21 11.9999C21 16.9704 16.9706 20.9999 12 20.9999C7.02944 20.9999 3 16.9704 3 11.9999C3 9.17261 4.30367 6.64983 6.34267 4.99988"
-                                          Stroke="#FF9F0A" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-                                    <Path Data="M3 4.49988H7V8.49988"
-                                          Stroke="#FF9F0A" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-                                </Canvas>
-                            </Viewbox>
+                        <!-- Shadow Layer -->
+                        <Border CornerRadius="16"
+                                Background="#F018140E">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.45" Color="Black" Direction="270"/>
+                            </Border.Effect>
+                        </Border>
 
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
-                                <TextBlock x:Name="RestartPromptTitle" Text="Restart required" FontSize="13.5" FontWeight="Bold" Foreground="#FFFFFF"/>
-                                <TextBlock x:Name="RestartPromptMessage" Text="Some settings require restarting V-Notch to take full effect. Restart now?"
-                                           FontSize="11.5" FontWeight="SemiBold" Foreground="#D0A8B3C3" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                            </StackPanel>
+                        <!-- Content & Sharp Uniform Border Layer -->
+                        <Border Background="#F018140E"
+                                BorderBrush="#90FF9F0A"
+                                BorderThickness="1.25"
+                                CornerRadius="16"
+                                Padding="16,12"
+                                SnapsToDevicePixels="True"
+                                UseLayoutRounding="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button x:Name="RestartLaterButton" Content="Later" Height="34" MinWidth="68" Margin="0,0,8,0"
-                                        Click="RestartLater_Click"/>
-                                <Button x:Name="RestartNowButton" Content="Restart Now" Height="34" MinWidth="110"
-                                        Style="{StaticResource PrimaryButton}"
-                                        Click="RestartNow_Click"/>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                                <Viewbox Width="32" Height="32" VerticalAlignment="Center" Margin="2,0,14,0">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Data="M12 2.99988C16.9706 2.99988 21 7.02931 21 11.9999C21 16.9704 16.9706 20.9999 12 20.9999C7.02944 20.9999 3 16.9704 3 11.9999C3 9.17261 4.30367 6.64983 6.34267 4.99988"
+                                              Stroke="#FF9F0A" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                        <Path Data="M3 4.49988H7V8.49988"
+                                              Stroke="#FF9F0A" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                    </Canvas>
+                                </Viewbox>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
+                                    <TextBlock x:Name="RestartPromptTitle" Text="Restart required" FontSize="13.5" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                    <TextBlock x:Name="RestartPromptMessage" Text="Some settings require restarting V-Notch to take full effect. Restart now?"
+                                               FontSize="11.5" FontWeight="SemiBold" Foreground="#D0A8B3C3" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="RestartLaterButton" Content="Later" Height="34" MinWidth="68" Margin="0,0,8,0"
+                                            Click="RestartLater_Click"/>
+                                    <Button x:Name="RestartNowButton" Content="Restart Now" Height="34" MinWidth="110"
+                                            Style="{StaticResource PrimaryButton}"
+                                            Click="RestartNow_Click"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </Grid>
             </Grid>
 
