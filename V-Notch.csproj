@@ -79,7 +79,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Introduction\**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Introduction\spotlight.gif" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
