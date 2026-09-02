@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Services.Spotlight;
 
@@ -54,18 +55,11 @@ internal static class ServicePrewarmer
 
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
-        try
-        {
-            provider.GetService<SpotlightSearchService>()?.WarmupAsync().GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error("PREWARM", ex, "Spotlight app index warmup failed");
-        }
+        NotchSettings? settings = null;
 
         try
         {
-            var settings = provider.GetService<ISettingsService>()?.Load();
+            settings = provider.GetService<ISettingsService>()?.Load();
             if (settings != null)
             {
                 RuntimeLog.Log("PREWARM", $"settings loaded (lang={settings.Language})");
@@ -80,6 +74,25 @@ internal static class ServicePrewarmer
         catch (Exception ex)
         {
             RuntimeLog.Error("PREWARM", ex, "Settings warmup failed");
+        }
+
+        // Building the app index walks both Start Menu trees and shell:AppsFolder.
+        // Skip it entirely when Spotlight is switched off, otherwise every launch
+        // pays for a feature the user cannot reach.
+        if (settings?.EnableSpotlight ?? true)
+        {
+            try
+            {
+                _ = provider.GetService<SpotlightSearchService>()?.WarmupAsync();
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("PREWARM", ex, "Spotlight app index warmup failed");
+            }
+        }
+        else
+        {
+            RuntimeLog.Log("PREWARM", "Spotlight disabled; app index warmup skipped");
         }
 
         try
@@ -150,6 +163,7 @@ internal static class ServicePrewarmer
         }
 
         RuntimeLog.Log("PREWARM", "background warmup complete");
+        MemoryOptimizerService.Instance.SchedulePostStartupTrim(3000);
     }
 
     private static T? SafeResolve<T>(IServiceProvider provider) where T : class

@@ -48,4 +48,15 @@ public sealed class LyricsServiceTests
 
         Assert.Null(LyricsService.ParseLrcMuxResult(json));
     }
+
+    [Theory]
+    [InlineData("DƯỚI TÁN CÂY KHÔ HOA NỞ", "duoi tan cay kho hoa no")]
+    [InlineData("JACK - J97 | DƯỚI TÁN CÂY KHÔ HOA NỞ (prod. Hino)", "jack j97 duoi tan cay kho hoa no")]
+    [InlineData("Shape of You (Official Music Video)", "shape of you")]
+    public void NormalizeForMatching_StripsPunctuationAndParentheses(string input, string expected)
+    {
+        string result = LyricsService.NormalizeForMatching(input);
+        Assert.Equal(expected, result);
+    }
 }
+

@@ -70,40 +70,49 @@ internal static class ThumbnailHeuristics
             int width = Math.Max(1, formatted.PixelWidth);
             int height = Math.Max(1, formatted.PixelHeight);
             int stride = width * 4;
-            byte[] pixels = new byte[stride * height];
-            formatted.CopyPixels(pixels, stride, 0);
+            int bufLen = stride * height;
+            byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
 
-            var quantizedBins = new HashSet<int>();
-            double saturationSum = 0;
-            int nearGrayCount = 0;
-            int brightCount = 0;
-            int pixelCount = width * height;
-
-            for (int i = 0; i < pixels.Length; i += 4)
+            try
             {
-                byte b = pixels[i];
-                byte g = pixels[i + 1];
-                byte r = pixels[i + 2];
+                formatted.CopyPixels(pixels, stride, 0);
 
-                int max = Math.Max(r, Math.Max(g, b));
-                int min = Math.Min(r, Math.Min(g, b));
-                int delta = max - min;
+                var quantizedBins = new HashSet<int>();
+                double saturationSum = 0;
+                int nearGrayCount = 0;
+                int brightCount = 0;
+                int pixelCount = width * height;
 
-                if (delta <= 12) nearGrayCount++;
-                if (max >= 220 && min >= 220) brightCount++;
+                for (int i = 0; i < bufLen; i += 4)
+                {
+                    byte b = pixels[i];
+                    byte g = pixels[i + 1];
+                    byte r = pixels[i + 2];
 
-                quantizedBins.Add(((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5));
-                saturationSum += max == 0 ? 0 : (double)delta / max;
+                    int max = Math.Max(r, Math.Max(g, b));
+                    int min = Math.Min(r, Math.Min(g, b));
+                    int delta = max - min;
+
+                    if (delta <= 12) nearGrayCount++;
+                    if (max >= 220 && min >= 220) brightCount++;
+
+                    quantizedBins.Add(((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5));
+                    saturationSum += max == 0 ? 0 : (double)delta / max;
+                }
+
+                double avgSaturation = saturationSum / pixelCount;
+                double grayRatio = (double)nearGrayCount / pixelCount;
+                double brightRatio = (double)brightCount / pixelCount;
+
+                return quantizedBins.Count <= 18 &&
+                       avgSaturation <= 0.08 &&
+                       grayRatio >= 0.84 &&
+                       brightRatio >= 0.02;
             }
-
-            double avgSaturation = saturationSum / pixelCount;
-            double grayRatio = (double)nearGrayCount / pixelCount;
-            double brightRatio = (double)brightCount / pixelCount;
-
-            return quantizedBins.Count <= 18 &&
-                   avgSaturation <= 0.08 &&
-                   grayRatio >= 0.84 &&
-                   brightRatio >= 0.02;
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
+            }
         }
         catch
         {

@@ -1741,9 +1741,7 @@ public partial class SettingsWindow : Window
     {
         string requestedStyle =
             (SkinCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "default";
-        bool islandEnabled = DynamicIslandModeCheck?.IsChecked ?? false;
-        _settings.NotchStyle = islandEnabled &&
-                               string.Equals(requestedStyle, "liquidglass", StringComparison.OrdinalIgnoreCase)
+        _settings.NotchStyle = string.Equals(requestedStyle, "liquidglass", StringComparison.OrdinalIgnoreCase)
             ? "liquidglass"
             : "default";
 
@@ -1832,7 +1830,7 @@ public partial class SettingsWindow : Window
         {
             Content = Loc.Get("settings.skin.liquidglass"),
             Tag = "liquidglass",
-            IsEnabled = _settings.EnableDynamicIslandMode
+            IsEnabled = true
         });
     }
 
@@ -1840,40 +1838,10 @@ public partial class SettingsWindow : Window
     {
         if (SkinCombo == null) return;
 
-        System.Windows.Controls.ComboBoxItem? defaultItem = null;
-        System.Windows.Controls.ComboBoxItem? glassItem = null;
-        foreach (object entry in SkinCombo.Items)
-        {
-            if (entry is not System.Windows.Controls.ComboBoxItem item) continue;
-            if ((item.Tag as string) == "default") defaultItem = item;
-            if ((item.Tag as string) == "liquidglass") glassItem = item;
-        }
-
-        if (glassItem != null)
-            glassItem.IsEnabled = islandEnabled;
-
         bool glassSelected = SkinCombo.SelectedItem is System.Windows.Controls.ComboBoxItem selected &&
                              (selected.Tag as string) == "liquidglass";
-        if (!islandEnabled && glassSelected && defaultItem != null)
-        {
-            bool previousLoadingState = _isLoadingSettings;
-            _isLoadingSettings = true;
-            try
-            {
-                SkinCombo.SelectedItem = defaultItem;
-            }
-            finally
-            {
-                _isLoadingSettings = previousLoadingState;
-            }
-            glassSelected = false;
-        }
 
-        AnimateCollapsibleRow(LiquidGlassConfigPanel, islandEnabled && glassSelected, animate);
-
-        // Do not combine a mode transition with destruction of the active glass
-        if (DynamicIslandModeCheck != null)
-            DynamicIslandModeCheck.IsEnabled = !glassSelected;
+        AnimateCollapsibleRow(LiquidGlassConfigPanel, glassSelected, animate);
     }
 
     private void GlassConfigSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)

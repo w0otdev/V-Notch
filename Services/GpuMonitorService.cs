@@ -15,10 +15,12 @@ public sealed class GpuMonitorService : IDisposable
 
     private string? _gpuName;
     private ulong _dedicatedVramBytes;
+    private bool _gpuInfoInitialized = false;
+    private readonly object _gpuInfoLock = new();
 
     private readonly IntPtr _currentProcessHandle = Win32Interop.GetCurrentProcess();
-    private readonly int _currentPid = Process.GetCurrentProcess().Id;
-    private readonly int _processorCount = Environment.ProcessorCount;
+    private readonly int _currentPid = Environment.ProcessId;
+    private readonly int _processorCount = Math.Max(1, Environment.ProcessorCount);
 
     // Process CPU tracking (GetProcessTimes)
     private ulong _lastProcTime = 0;
@@ -39,89 +41,104 @@ public sealed class GpuMonitorService : IDisposable
 
     private Thread? _gpuSamplerThread;
     private volatile bool _isRunning = false;
+    private readonly object _samplerLock = new();
 
     public GpuMonitorService()
     {
-        StartGpuSampler();
     }
 
-    private void StartGpuSampler()
+    public void EnsureSamplerRunning()
     {
         if (_isRunning) return;
-        _isRunning = true;
-        _gpuSamplerThread = new Thread(GpuSamplingWorker)
+        lock (_samplerLock)
         {
-            IsBackground = true,
-            Name = "VNotch-GpuPerformanceWorker",
-            Priority = ThreadPriority.Lowest
-        };
-        _gpuSamplerThread.Start();
+            if (_isRunning) return;
+            _isRunning = true;
+            _gpuSamplerThread = new Thread(GpuSamplingWorker)
+            {
+                IsBackground = true,
+                Name = "VNotch-GpuPerformanceWorker",
+                Priority = ThreadPriority.Lowest
+            };
+            _gpuSamplerThread.Start();
+        }
     }
 
-    private long _lastGpuInfoQueryTicks = 0;
+    public (float ProcessGpuPercent, float GlobalGpuPercent) GetGpuUsage()
+    {
+        EnsureSamplerRunning();
+        return (_cachedProcessGpu, _cachedGlobalGpu);
+    }
 
     public (string GpuName, ulong DedicatedVramBytes) GetGpuInfo()
     {
-        long now = Stopwatch.GetTimestamp();
-        if (_gpuName != null && (now - _lastGpuInfoQueryTicks) / Stopwatch.Frequency < 10)
+        if (_gpuInfoInitialized && _gpuName != null)
         {
             return (_gpuName, _dedicatedVramBytes);
         }
-        _lastGpuInfoQueryTicks = now;
 
-        try
+        lock (_gpuInfoLock)
         {
-            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-            string? bestGpuName = null;
-            ulong bestVram = 0;
-            long bestScore = -1;
-
-            for (uint i = 0; factory.EnumAdapters1(i, out var adapter).Success; i++)
+            if (_gpuInfoInitialized && _gpuName != null)
             {
-                using (adapter)
+                return (_gpuName, _dedicatedVramBytes);
+            }
+
+            try
+            {
+                using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+                string? bestGpuName = null;
+                ulong bestVram = 0;
+                long bestScore = -1;
+
+                for (uint i = 0; factory.EnumAdapters1(i, out var adapter).Success; i++)
                 {
-                    var desc = adapter.Description1;
-                    if ((desc.Flags & AdapterFlags.Software) != 0) continue;
-
-                    string name = desc.Description.Trim();
-                    ulong vram = (ulong)desc.DedicatedVideoMemory;
-
-                    // Score GPUs:
-                    // 1. Dedicated VRAM (MB)
-                    // 2. Discrete high-performance GPU keywords get large priority bonus
-                    long score = (long)(vram / (1024 * 1024));
-                    if (name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("RTX", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("GTX", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("Radeon RX", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("Arc", StringComparison.OrdinalIgnoreCase))
+                    using (adapter)
                     {
-                        score += 100_000;
-                    }
+                        var desc = adapter.Description1;
+                        if ((desc.Flags & AdapterFlags.Software) != 0) continue;
 
-                    if (score > bestScore)
-                    {
-                        bestScore = score;
-                        bestGpuName = name;
-                        bestVram = vram;
+                        string name = desc.Description.Trim();
+                        ulong vram = (ulong)desc.DedicatedVideoMemory;
+
+                        // Score GPUs:
+                        // 1. Dedicated VRAM (MB)
+                        // 2. Discrete high-performance GPU keywords get large priority bonus
+                        long score = (long)(vram / (1024 * 1024));
+                        if (name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("RTX", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("GTX", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Radeon RX", StringComparison.OrdinalIgnoreCase) ||
+                            name.Contains("Arc", StringComparison.OrdinalIgnoreCase))
+                        {
+                            score += 100_000;
+                        }
+
+                        if (score > bestScore)
+                        {
+                            bestScore = score;
+                            bestGpuName = name;
+                            bestVram = vram;
+                        }
                     }
                 }
-            }
 
-            if (!string.IsNullOrEmpty(bestGpuName))
+                if (!string.IsNullOrEmpty(bestGpuName))
+                {
+                    _gpuName = bestGpuName;
+                    _dedicatedVramBytes = bestVram;
+                }
+            }
+            catch (Exception ex)
             {
-                _gpuName = bestGpuName;
-                _dedicatedVramBytes = bestVram;
+                RuntimeLog.Log("GPU-MONITOR", $"Failed to query DXGI adapter: {ex.Message}");
+                _gpuName = "DirectX Display Adapter";
             }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("GPU-MONITOR", $"Failed to query DXGI adapter: {ex.Message}");
-            _gpuName = "DirectX Display Adapter";
-        }
 
-        return (_gpuName ?? "GPU", _dedicatedVramBytes);
+            _gpuInfoInitialized = true;
+            return (_gpuName ?? "GPU", _dedicatedVramBytes);
+        }
     }
 
     /// <summary>
@@ -129,6 +146,8 @@ public sealed class GpuMonitorService : IDisposable
     /// </summary>
     public PerformanceDebugSnapshot SampleFastMetrics(double fps, int hz, double netDown = 0, double netUp = 0)
     {
+        EnsureSamplerRunning();
+
         // 1. Process CPU & RAM via Win32
         double procCpu = 0;
         ulong procRam = 0;
@@ -166,15 +185,7 @@ public sealed class GpuMonitorService : IDisposable
                 procRam = (ulong)memCounters.WorkingSetSize;
             }
         }
-        catch
-        {
-            try
-            {
-                using var proc = Process.GetCurrentProcess();
-                procRam = (ulong)proc.WorkingSet64;
-            }
-            catch { }
-        }
+        catch { }
 
         // 2. Global CPU via GetSystemTimes
         double globalCpu = 0;
@@ -235,7 +246,7 @@ public sealed class GpuMonitorService : IDisposable
             DedicatedVramBytes = vram,
             ProcessCpuPercent = procCpu,
             GlobalCpuPercent = globalCpu,
-            ProcessRamBytes = procRam,
+            ProcessWorkingSetBytes = procRam,
             GlobalRamUsedBytes = globalRamUsed,
             GlobalRamTotalBytes = globalRamTotal,
             GlobalRamPercent = globalRamPercent,
@@ -260,7 +271,8 @@ public sealed class GpuMonitorService : IDisposable
                 long now = Stopwatch.GetTimestamp();
                 double secSinceRefresh = (double)(now - lastRefresh) / Stopwatch.Frequency;
 
-                if (procCounters == null || globalCounters == null || secSinceRefresh > 15.0)
+                // Refresh GPU Engine instance counters every 60 seconds (or on first run)
+                if (procCounters == null || globalCounters == null || secSinceRefresh > 60.0)
                 {
                     DisposeCounterList(procCounters);
                     DisposeCounterList(globalCounters);
@@ -297,13 +309,13 @@ public sealed class GpuMonitorService : IDisposable
                 }
 
                 double procTotal = 0;
-                if (procCounters != null)
+                if (procCounters != null && procCounters.Count > 0)
                 {
                     foreach (var c in procCounters) { try { procTotal += c.NextValue(); } catch { } }
                 }
 
                 double globalTotal = 0;
-                if (globalCounters != null)
+                if (globalCounters != null && globalCounters.Count > 0)
                 {
                     foreach (var c in globalCounters) { try { globalTotal += c.NextValue(); } catch { } }
                 }
@@ -313,7 +325,8 @@ public sealed class GpuMonitorService : IDisposable
             }
             catch { }
 
-            Thread.Sleep(100);
+            // Sample every 1000ms (1 second) to prevent registry/PDH lock contention and memory surges
+            Thread.Sleep(1000);
         }
 
         DisposeCounterList(procCounters);
@@ -332,3 +345,4 @@ public sealed class GpuMonitorService : IDisposable
         _isRunning = false;
     }
 }
+

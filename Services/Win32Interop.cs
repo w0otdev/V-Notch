@@ -523,6 +523,18 @@ internal static class Win32Interop
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetCurrentProcess();
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetProcessHandleCount(IntPtr hProcess, out uint pdwHandleCount);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+
+    [DllImport("psapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool EmptyWorkingSet(IntPtr hProcess);
+
     [StructLayout(LayoutKind.Sequential, Size = 72)]
     public struct PROCESS_MEMORY_COUNTERS_EX
     {

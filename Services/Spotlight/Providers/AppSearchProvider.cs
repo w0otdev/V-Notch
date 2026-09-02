@@ -44,13 +44,12 @@ internal sealed class AppSearchProvider : ISpotlightProvider
         AddStartMenuShortcuts(apps, Environment.GetFolderPath(Environment.SpecialFolder.StartMenu));
         AddStartMenuShortcuts(apps, Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu));
         AddAppsFolderItems(apps);
-        return apps.Values.Select(LoadIcon).ToArray();
-    }
 
-    private static SpotlightSearchItem LoadIcon(SpotlightSearchItem item) =>
-        string.IsNullOrEmpty(item.IconPath)
-            ? item
-            : item with { Icon = FileIconProvider.GetFileIcon(item.IconPath) };
+        // Icons are decoded lazily: SpotlightSearchService.Merge loads them for the
+        // handful of results actually shown. Decoding every installed app up front
+        // costs hundreds of bitmaps that no one ever looks at.
+        return apps.Values.ToArray();
+    }
 
     private static void AddStartMenuShortcuts(
         IDictionary<string, SpotlightSearchItem> apps,

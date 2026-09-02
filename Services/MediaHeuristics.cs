@@ -33,6 +33,10 @@ internal static class MediaHeuristics
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return false;
 
+        if (sourceAppId.Contains("V-Notch", StringComparison.OrdinalIgnoreCase) ||
+            sourceAppId.Contains("vnotch", StringComparison.OrdinalIgnoreCase))
+            return true;
+
         return false;
     }
 

@@ -19,52 +19,65 @@ public sealed class ColorExtractionService : IColorExtractionService
 
         try
         {
+            const int sampleDimension = 64;
             var formatConvertedBitmap = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
 
-            int width = formatConvertedBitmap.PixelWidth;
-            int height = formatConvertedBitmap.PixelHeight;
+            double scaleX = (double)sampleDimension / formatConvertedBitmap.PixelWidth;
+            double scaleY = (double)sampleDimension / formatConvertedBitmap.PixelHeight;
+            var smallBitmap = new TransformedBitmap(formatConvertedBitmap, new ScaleTransform(scaleX, scaleY));
+
+            int width = smallBitmap.PixelWidth;
+            int height = smallBitmap.PixelHeight;
             int stride = width * 4;
-            byte[] pixels = new byte[height * stride];
+            int bufLen = height * stride;
+            byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
 
-            formatConvertedBitmap.CopyPixels(pixels, stride, 0);
-
-            var sampledColors = new List<Color>();
-            var random = new Random(42);
-
-            for (int i = 0; i < 300; i++)
+            try
             {
-                int x = random.Next(0, width);
-                int y = random.Next(0, height);
-                int index = (y * stride) + (x * 4);
+                smallBitmap.CopyPixels(pixels, stride, 0);
 
-                byte b = pixels[index];
-                byte g = pixels[index + 1];
-                byte r = pixels[index + 2];
-                byte a = pixels[index + 3];
+                var sampledColors = new List<Color>(300);
+                var random = new Random(42);
 
-                int brightness = (r + g + b) / 3;
-
-                bool isTooDark = brightness < 60;
-                bool isTooBright = brightness > 245;
-                bool isTransparent = a < 100;
-
-                if (!isTooDark && !isTooBright && !isTransparent)
+                for (int i = 0; i < 300; i++)
                 {
-                    sampledColors.Add(Color.FromArgb(a, r, g, b));
+                    int x = random.Next(0, width);
+                    int y = random.Next(0, height);
+                    int index = (y * stride) + (x * 4);
+
+                    byte b = pixels[index];
+                    byte g = pixels[index + 1];
+                    byte r = pixels[index + 2];
+                    byte a = pixels[index + 3];
+
+                    int brightness = (r + g + b) / 3;
+
+                    bool isTooDark = brightness < 60;
+                    bool isTooBright = brightness > 245;
+                    bool isTransparent = a < 100;
+
+                    if (!isTooDark && !isTooBright && !isTransparent)
+                    {
+                        sampledColors.Add(Color.FromArgb(a, r, g, b));
+                    }
                 }
-            }
 
-            if (sampledColors.Count == 0)
+                if (sampledColors.Count == 0)
+                {
+                    return Color.FromRgb(255, 255, 255);
+                }
+
+                var dominantColor = FindMostCommonColor(sampledColors);
+
+                dominantColor = EnhanceSaturation(dominantColor, 1.3);
+                dominantColor = EnsureMinimumBrightness(dominantColor, 100);
+
+                return dominantColor;
+            }
+            finally
             {
-                return Color.FromRgb(255, 255, 255);
+                System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
             }
-
-            var dominantColor = FindMostCommonColor(sampledColors);
-
-            dominantColor = EnhanceSaturation(dominantColor, 1.3);
-            dominantColor = EnsureMinimumBrightness(dominantColor, 100);
-
-            return dominantColor;
         }
         catch
         {

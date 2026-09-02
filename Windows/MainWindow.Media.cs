@@ -31,7 +31,13 @@ public partial class MainWindow
     {
         bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
         if (!isThumbnailOnlyUpdate)
+        {
             _currentMediaInfo = info;
+        }
+        else if (_currentMediaInfo != null && !string.IsNullOrEmpty(info.YouTubeVideoId))
+        {
+            _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
+        }
 
         Dispatcher.BeginInvoke(() =>
         {
@@ -77,13 +83,22 @@ public partial class MainWindow
             }
             CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
 
+            bool isSpotify = result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify;
+            bool isYouTube = result.HasRealTrack && (
+                MediaPlatformExtensions.ParsePlatform(renderedSource) is MediaPlatform.YouTube or MediaPlatform.Browser ||
+                !string.IsNullOrEmpty(info.YouTubeVideoId) ||
+                info.Platform == MediaPlatform.YouTube ||
+                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) == MediaPlatform.YouTube ||
+                (info.CurrentArtist != null && info.CurrentArtist.Contains("YouTube", StringComparison.OrdinalIgnoreCase))
+            );
+
             if (result.IsNewTrack)
             {
-                if (result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify)
+                if (isSpotify)
                 {
                     FetchLyricsForTrack(info).SafeFireAndForget("LYRICS");
                 }
-                else if (result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.YouTube)
+                else if (isYouTube)
                 {
                     FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
                 }
@@ -94,10 +109,16 @@ public partial class MainWindow
             }
             else
             {
-                if (result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.YouTube
-                    && !string.IsNullOrEmpty(info.YouTubeVideoId))
+                if (isYouTube && (!string.IsNullOrEmpty(info.YouTubeVideoId) || !string.IsNullOrEmpty(info.CurrentTrack)))
                 {
-                    FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
+                    string targetKey = !string.IsNullOrEmpty(info.YouTubeVideoId)
+                        ? $"yt:{info.YouTubeVideoId}"
+                        : $"yt:{info.CurrentTrack}|{info.CurrentArtist}";
+
+                    if (targetKey != _lyricsTrackKey)
+                    {
+                        FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
+                    }
                 }
             }
 

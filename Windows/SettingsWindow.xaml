@@ -1239,7 +1239,7 @@
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,6,0,4"/>
                                                 <TextBlock x:Name="SkinWarningNote"
-                                                           Text="Note: Very broken / may not run on your device. Currently, Liquid Glass is only supported on Dynamic Island mode."
+                                                           Text="Note: High RAM &amp; memory usage. Very experimental / may not run smoothly on low-end devices."
                                                            Foreground="#E0A330"
                                                            FontSize="12"
                                                            FontWeight="SemiBold"

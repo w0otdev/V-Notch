@@ -19,10 +19,6 @@ public interface IMediaArtworkService
 
 public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 {
-    // 512 keeps a 16:9 thumbnail sharp after square-crop at up to 200% DPI
-    // (102 DIU display size) and matches the 416px smart-crop model input.
-    private const int ArtworkDecodeWidth = 512;
-
     private static readonly HttpClient _httpClient = new();
     private readonly SmartThumbnailCropService _smartCrop;
     private bool _smartCropAvailable;
@@ -70,7 +66,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(1800));
+            timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(4000));
             var bytes = await _httpClient.GetByteArrayAsync(url, timeoutCts.Token);
 
             BitmapImage? bitmap = null;
@@ -79,31 +75,22 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             {
                 await dispatcher.InvokeAsync(() =>
                 {
-                    var ms = BitmapBufferPool.RentStream();
-                    try
-                    {
-                        ms.Write(bytes, 0, bytes.Length);
-                        ms.Position = 0;
-
-                        bitmap = new BitmapImage();
-                        bitmap.BeginInit();
-                        bitmap.StreamSource = ms;
-                        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                        bitmap.DecodePixelWidth = ArtworkDecodeWidth;
-                        bitmap.EndInit();
-                        bitmap.Freeze();
-                    }
-                    finally
-                    {
-                        BitmapBufferPool.ReturnStream(ms);
-                    }
+                    using var ms = new MemoryStream(bytes);
+                    var bi = new BitmapImage();
+                    bi.BeginInit();
+                    bi.StreamSource = ms;
+                    bi.CacheOption = BitmapCacheOption.OnLoad;
+                    bi.EndInit();
+                    bi.Freeze();
+                    bitmap = bi;
                 });
             }
 
             return bitmap;
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Log("ARTWORK", $"DownloadImageAsync failed for {url}: {ex.Message}");
             return null;
         }
     }
@@ -186,61 +173,26 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 }
             }
 
-            var result = BitmapBufferPool.CreateCroppedBitmapImage(workingSource, rect);
-            if (result != null)
-                return result;
-
             var cropped = new CroppedBitmap(workingSource, rect);
             cropped.Freeze();
 
-            int cropW = cropped.PixelWidth;
-            int cropH = cropped.PixelHeight;
-            int stride = cropW * 4;
+            using var ms = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(cropped));
+            encoder.Save(ms);
+            ms.Position = 0;
 
-            BitmapSource cropSource = cropped;
-            if (cropped.Format != System.Windows.Media.PixelFormats.Bgra32)
-            {
-                var converted = new FormatConvertedBitmap(cropped, System.Windows.Media.PixelFormats.Bgra32, null, 0);
-                converted.Freeze();
-                cropSource = converted;
-            }
-
-            var wb = new WriteableBitmap(cropW, cropH, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
-            wb.Lock();
-            try
-            {
-                cropSource.CopyPixels(new Int32Rect(0, 0, cropW, cropH), wb.BackBuffer, wb.BackBufferStride * cropH, wb.BackBufferStride);
-                wb.AddDirtyRect(new Int32Rect(0, 0, cropW, cropH));
-            }
-            finally
-            {
-                wb.Unlock();
-            }
-            wb.Freeze();
-
-            var ms = BitmapBufferPool.RentStream();
-            try
-            {
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(wb));
-                encoder.Save(ms);
-                ms.Position = 0;
-
-                var bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.StreamSource = ms;
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.EndInit();
-                bitmapImage.Freeze();
-                return bitmapImage;
-            }
-            finally
-            {
-                BitmapBufferPool.ReturnStream(ms);
-            }
+            var bitmapImage = new BitmapImage();
+            bitmapImage.BeginInit();
+            bitmapImage.StreamSource = ms;
+            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+            bitmapImage.EndInit();
+            bitmapImage.Freeze();
+            return bitmapImage;
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Log("ARTWORK", $"CropToSquare failed: {ex.Message}");
             return null;
         }
     }
@@ -256,16 +208,13 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     {
         try
         {
-            using var memoryStream = new MemoryStream();
+            byte[] bytes;
             using (var reader = new DataReader(stream))
             {
                 await reader.LoadAsync((uint)stream.Size).AsTask(ct);
-                var bytes = new byte[stream.Size];
+                bytes = new byte[stream.Size];
                 reader.ReadBytes(bytes);
-                memoryStream.Write(bytes, 0, bytes.Length);
             }
-
-            memoryStream.Position = 0;
 
             BitmapImage? bitmap = null;
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -276,19 +225,21 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
             await dispatcher.InvokeAsync(() =>
             {
-                bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.StreamSource = memoryStream;
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.DecodePixelWidth = ArtworkDecodeWidth;
-                bitmap.EndInit();
-                bitmap.Freeze();
+                using var ms = new MemoryStream(bytes);
+                var bi = new BitmapImage();
+                bi.BeginInit();
+                bi.StreamSource = ms;
+                bi.CacheOption = BitmapCacheOption.OnLoad;
+                bi.EndInit();
+                bi.Freeze();
+                bitmap = bi;
             });
 
             return bitmap;
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Log("ARTWORK", $"ConvertToWpfBitmapAsync failed: {ex.Message}");
             return null;
         }
     }
@@ -408,10 +359,9 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
     private static BitmapImage? ConvertToBitmapImage(BitmapSource source)
     {
-        MemoryStream? ms = null;
         try
         {
-            ms = BitmapBufferPool.RentStream();
+            using var ms = new MemoryStream();
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(source));
             encoder.Save(ms);
@@ -425,14 +375,10 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             bitmapImage.Freeze();
             return bitmapImage;
         }
-        catch
+        catch (Exception ex)
         {
+            RuntimeLog.Log("ARTWORK", $"ConvertToBitmapImage failed: {ex.Message}");
             return null;
-        }
-        finally
-        {
-            if (ms != null)
-                BitmapBufferPool.ReturnStream(ms);
         }
     }
 

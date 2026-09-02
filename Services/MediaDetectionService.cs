@@ -2994,7 +2994,7 @@ public class MediaDetectionService : IMediaDetectionService
         return (session, spotifyGroundTruth);
     }
 
-    private Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
+    public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
         => _metadataLookup.TryGetYouTubeVideoIdWithInfoAsync(title, artist, ct);
 
     private async Task<string?> TryGetYouTubeVideoIdAsync(string title, CancellationToken ct = default)

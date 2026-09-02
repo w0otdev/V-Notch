@@ -86,7 +86,8 @@ public partial class MainWindow
                     },
                     liveMetricsProvider: () =>
                     {
-                        return (_currentMeasuredFps, _currentDisplayHz, _lastNetDownBytesPerSec, _lastNetUpBytesPerSec);
+                        PerformanceDiagnosticService.Instance.PingDispatcher(Dispatcher);
+                        return (_currentMeasuredFps, _currentDisplayHz, _currentMeasuredFrameTimeMs, _lastNetDownBytesPerSec, _lastNetUpBytesPerSec);
                     },
                     onLockViewChanged: (locked) => SetDebugViewLock(locked),
                     onDragNotchChanged: (draggable) => SetDebugDraggable(draggable),
@@ -100,6 +101,8 @@ public partial class MainWindow
             CompositionTarget.Rendering += CompositionTarget_Rendering_DebugFps;
             _lastFpsUpdate = Stopwatch.GetTimestamp();
             _fpsWindowStartTicks = _lastFpsUpdate;
+            _lastFrameTimestamp = _lastFpsUpdate;
+            _currentMeasuredFrameTimeMs = 0;
             _fpsWindowFrameCount = 0;
             _frameCount = 0;
 
@@ -217,11 +220,20 @@ public partial class MainWindow
 
     private int _fpsWindowFrameCount = 0;
     private long _fpsWindowStartTicks = 0;
+    private double _currentMeasuredFrameTimeMs = 0;
+    private long _lastFrameTimestamp = 0;
 
     private void CompositionTarget_Rendering_DebugFps(object? sender, EventArgs e)
     {
         _fpsWindowFrameCount++;
         long now = Stopwatch.GetTimestamp();
+
+        if (_lastFrameTimestamp > 0)
+        {
+            double ft = (double)(now - _lastFrameTimestamp) / Stopwatch.Frequency * 1000.0;
+            _currentMeasuredFrameTimeMs = _currentMeasuredFrameTimeMs == 0 ? ft : (_currentMeasuredFrameTimeMs * 0.8 + ft * 0.2);
+        }
+        _lastFrameTimestamp = now;
 
         if (_fpsWindowStartTicks == 0)
         {

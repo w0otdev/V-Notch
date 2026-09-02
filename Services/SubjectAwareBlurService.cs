@@ -39,77 +39,91 @@ public static class SubjectAwareBlurService
                 int stride = width * 4;
                 int bufLen = height * stride;
 
-                byte[] basePixels = new byte[bufLen];
-                small.CopyPixels(basePixels, stride, 0);
+                byte[] basePixels = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
+                byte[] background = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
+                byte[] subjectLayer = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
+                byte[] tmp = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
+                byte[] result = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
 
-                byte[] background = (byte[])basePixels.Clone();
-                byte[] tmp = new byte[bufLen];
-                for (int i = 0; i < 2; i++)
+                try
                 {
-                    BoxBlurHorizontal(background, tmp, width, height, backgroundBlurRadius);
-                    BoxBlurVertical(tmp, background, width, height, backgroundBlurRadius);
-                }
-                Darken(background, 0.78f);
+                    small.CopyPixels(basePixels, stride, 0);
 
-                byte[] subjectLayer = (byte[])basePixels.Clone();
-                if (subjectBlurRadius >= 1)
-                {
-                    BoxBlurHorizontal(subjectLayer, tmp, width, height, subjectBlurRadius);
-                    BoxBlurVertical(tmp, subjectLayer, width, height, subjectBlurRadius);
-                }
-                Brighten(subjectLayer, 1.04f);
-
-                float cx = Math.Clamp(s.CenterX, 0f, 1f) * width;
-                float cy = Math.Clamp(s.CenterY, 0f, 1f) * height;
-                float rx = MathF.Max(width * 0.18f, s.Width * width * 0.55f);
-                float ry = MathF.Max(height * 0.22f, s.Height * height * 0.55f);
-                float feather = 0.40f;
-
-                byte[] result = new byte[bufLen];
-                for (int y = 0; y < height; y++)
-                {
-                    int row = y * stride;
-                    float dy = (y - cy) / ry;
-                    for (int x = 0; x < width; x++)
+                    Buffer.BlockCopy(basePixels, 0, background, 0, bufLen);
+                    for (int i = 0; i < 2; i++)
                     {
-                        float dx = (x - cx) / rx;
-                        float distSq = dx * dx + dy * dy;
-                        float dist = MathF.Sqrt(distSq);
-
-                        float t;
-                        if (dist <= 1f)
-                        {
-                            t = 1f;
-                        }
-                        else if (dist >= 1f + feather)
-                        {
-                            t = 0f;
-                        }
-                        else
-                        {
-                            float u = (dist - 1f) / feather;
-                            t = 1f - u * u * (3f - 2f * u);
-                        }
-
-                        int p = row + x * 4;
-                        byte bb = background[p];
-                        byte gb = background[p + 1];
-                        byte rb = background[p + 2];
-                        byte bs = subjectLayer[p];
-                        byte gs = subjectLayer[p + 1];
-                        byte rs = subjectLayer[p + 2];
-
-                        result[p] = (byte)(bb + (bs - bb) * t);
-                        result[p + 1] = (byte)(gb + (gs - gb) * t);
-                        result[p + 2] = (byte)(rb + (rs - rb) * t);
-                        result[p + 3] = 255;
+                        BoxBlurHorizontal(background, tmp, width, height, backgroundBlurRadius);
+                        BoxBlurVertical(tmp, background, width, height, backgroundBlurRadius);
                     }
-                }
+                    Darken(background, 0.78f);
 
-                var wb = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-                wb.WritePixels(new Int32Rect(0, 0, width, height), result, stride, 0);
-                wb.Freeze();
-                return (BitmapSource)wb;
+                    Buffer.BlockCopy(basePixels, 0, subjectLayer, 0, bufLen);
+                    if (subjectBlurRadius >= 1)
+                    {
+                        BoxBlurHorizontal(subjectLayer, tmp, width, height, subjectBlurRadius);
+                        BoxBlurVertical(tmp, subjectLayer, width, height, subjectBlurRadius);
+                    }
+                    Brighten(subjectLayer, 1.04f);
+
+                    float cx = Math.Clamp(s.CenterX, 0f, 1f) * width;
+                    float cy = Math.Clamp(s.CenterY, 0f, 1f) * height;
+                    float rx = MathF.Max(width * 0.18f, s.Width * width * 0.55f);
+                    float ry = MathF.Max(height * 0.22f, s.Height * height * 0.55f);
+                    float feather = 0.40f;
+
+                    for (int y = 0; y < height; y++)
+                    {
+                        int row = y * stride;
+                        float dy = (y - cy) / ry;
+                        for (int x = 0; x < width; x++)
+                        {
+                            float dx = (x - cx) / rx;
+                            float distSq = dx * dx + dy * dy;
+                            float dist = MathF.Sqrt(distSq);
+
+                            float t;
+                            if (dist <= 1f)
+                            {
+                                t = 1f;
+                            }
+                            else if (dist >= 1f + feather)
+                            {
+                                t = 0f;
+                            }
+                            else
+                            {
+                                float u = (dist - 1f) / feather;
+                                t = 1f - u * u * (3f - 2f * u);
+                            }
+
+                            int p = row + x * 4;
+                            byte bb = background[p];
+                            byte gb = background[p + 1];
+                            byte rb = background[p + 2];
+                            byte bs = subjectLayer[p];
+                            byte gs = subjectLayer[p + 1];
+                            byte rs = subjectLayer[p + 2];
+
+                            result[p] = (byte)(bb + (bs - bb) * t);
+                            result[p + 1] = (byte)(gb + (gs - gb) * t);
+                            result[p + 2] = (byte)(rb + (rs - rb) * t);
+                            result[p + 3] = 255;
+                        }
+                    }
+
+                    var wb = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+                    wb.WritePixels(new Int32Rect(0, 0, width, height), result, stride, 0);
+                    wb.Freeze();
+                    return (BitmapSource)wb;
+                }
+                finally
+                {
+                    System.Buffers.ArrayPool<byte>.Shared.Return(basePixels);
+                    System.Buffers.ArrayPool<byte>.Shared.Return(background);
+                    System.Buffers.ArrayPool<byte>.Shared.Return(subjectLayer);
+                    System.Buffers.ArrayPool<byte>.Shared.Return(tmp);
+                    System.Buffers.ArrayPool<byte>.Shared.Return(result);
+                }
             }
             catch
             {

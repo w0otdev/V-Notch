@@ -150,51 +150,60 @@ internal static class DynamicIslandColorExtractor
                 new ScaleTransform((double)sampleSize / formatted.PixelWidth, (double)sampleSize / formatted.PixelHeight));
 
             int stride = sampleSize * 4;
-            byte[] pixels = new byte[sampleSize * sampleSize * 4];
-            scaled.CopyPixels(pixels, stride, 0);
+            int bufLen = sampleSize * sampleSize * 4;
+            byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
 
-            double totalLuminance = 0;
-            int brightPixelCount = 0;
-            int pixelCount = sampleSize * sampleSize;
-
-            for (int i = 0; i < pixels.Length; i += 4)
+            try
             {
-                double r = pixels[i + 2] / 255.0;
-                double g = pixels[i + 1] / 255.0;
-                double b = pixels[i] / 255.0;
+                scaled.CopyPixels(pixels, stride, 0);
 
-                double lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                totalLuminance += lum;
+                double totalLuminance = 0;
+                int brightPixelCount = 0;
+                int pixelCount = sampleSize * sampleSize;
 
-                if (lum > 0.75) brightPixelCount++;
+                for (int i = 0; i < bufLen; i += 4)
+                {
+                    double r = pixels[i + 2] / 255.0;
+                    double g = pixels[i + 1] / 255.0;
+                    double b = pixels[i] / 255.0;
+
+                    double lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    totalLuminance += lum;
+
+                    if (lum > 0.75) brightPixelCount++;
+                }
+
+                double avgLuminance = totalLuminance / pixelCount;
+                double brightRatio = (double)brightPixelCount / pixelCount;
+
+                double overlayOpacity = 0;
+
+                if (avgLuminance > 0.55)
+                {
+                    double t = Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0);
+                    overlayOpacity = t * 0.45;
+                }
+
+                if (brightRatio > 0.40)
+                {
+                    double t = Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0);
+                    overlayOpacity = Math.Max(overlayOpacity, t * 0.40);
+                }
+
+                double combined = overlayOpacity;
+                if (avgLuminance > 0.55 && brightRatio > 0.40)
+                {
+                    double lumContrib = Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0) * 0.45;
+                    double ratioContrib = Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0) * 0.40;
+                    combined = Math.Max(lumContrib, ratioContrib) + Math.Min(lumContrib, ratioContrib) * 0.3;
+                }
+
+                return Math.Clamp(combined, 0.0, 0.65);
             }
-
-            double avgLuminance = totalLuminance / pixelCount;
-            double brightRatio = (double)brightPixelCount / pixelCount;
-
-            double overlayOpacity = 0;
-
-            if (avgLuminance > 0.55)
+            finally
             {
-                double t = Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0);
-                overlayOpacity = t * 0.45;
+                System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
             }
-
-            if (brightRatio > 0.40)
-            {
-                double t = Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0);
-                overlayOpacity = Math.Max(overlayOpacity, t * 0.40);
-            }
-
-            double combined = overlayOpacity;
-            if (avgLuminance > 0.55 && brightRatio > 0.40)
-            {
-                double lumContrib = Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0) * 0.45;
-                double ratioContrib = Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0) * 0.40;
-                combined = Math.Max(lumContrib, ratioContrib) + Math.Min(lumContrib, ratioContrib) * 0.3;
-            }
-
-            return Math.Clamp(combined, 0.0, 0.55);
         }
         catch
         {
@@ -206,17 +215,19 @@ internal static class DynamicIslandColorExtractor
 
     #region Advanced palette extraction (K-Means HSV + weighted zones)
 
-    private readonly record struct PaletteResult(
+    public readonly record struct PaletteResult(
         Color Primary, Color Secondary, Color Accent,
         bool IsMonotone, bool IsFlatBg, Color TextOnPrimary);
 
-    private static PaletteResult ExtractAdvancedPalette(BitmapSource bitmap, Rect smartCropBbox)
+    private static PaletteResult ExtractAdvancedPalette(BitmapSource bitmap, Rect smartCropBbox, int analysisSize = 36)
     {
+        if (bitmap == null)
+            return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
+
         try
         {
-
             var formattedBitmap = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
-            const int analysisSize = 40;
+
             double scaleX = (double)analysisSize / formattedBitmap.PixelWidth;
             double scaleY = (double)analysisSize / formattedBitmap.PixelHeight;
             var small = new TransformedBitmap(formattedBitmap, new ScaleTransform(scaleX, scaleY));
@@ -227,73 +238,72 @@ internal static class DynamicIslandColorExtractor
                 return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
 
             int stride = width * 4;
-            byte[] pixels = new byte[height * stride];
-            small.CopyPixels(pixels, stride, 0);
+            int bufLen = height * stride;
+            byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
 
-            const int NUM_BUCKETS = 36;
-            float[] bucketSatSum = new float[NUM_BUCKETS];
-            float[] bucketValSum = new float[NUM_BUCKETS];
-            float[] bucketWeight = new float[NUM_BUCKETS];
-            int[] bucketCount = new int[NUM_BUCKETS];
-            float[] bucketPeakS = new float[NUM_BUCKETS];
-            float[] bucketPeakH = new float[NUM_BUCKETS];
-            float[] bucketPeakV = new float[NUM_BUCKETS];
-
-            float centerX = width / 2f, centerY = height / 2f;
-            int totalColorPixels = 0;
-            int totalPixels = 0;
-
-            for (int y = 0; y < height; y++)
+            try
             {
-                for (int x = 0; x < width; x++)
+                small.CopyPixels(pixels, stride, 0);
+
+                const int NUM_BUCKETS = 36;
+                float[] bucketSatSum = new float[NUM_BUCKETS];
+                float[] bucketValSum = new float[NUM_BUCKETS];
+                float[] bucketWeight = new float[NUM_BUCKETS];
+                int[] bucketCount = new int[NUM_BUCKETS];
+                float[] bucketPeakS = new float[NUM_BUCKETS];
+                float[] bucketPeakH = new float[NUM_BUCKETS];
+                float[] bucketPeakV = new float[NUM_BUCKETS];
+
+                float centerX = width / 2f, centerY = height / 2f;
+                int totalColorPixels = 0;
+                int totalPixels = 0;
+
+                for (int y = 0; y < height; y++)
                 {
-                    int i = y * stride + x * 4;
-                    byte a = pixels[i + 3];
-                    if (a < 80) continue;
-
-                    float rf = pixels[i + 2] / 255f;
-                    float gf = pixels[i + 1] / 255f;
-                    float bf = pixels[i] / 255f;
-
-                    var (h, s, v) = RgbToHsv(rf, gf, bf);
-                    totalPixels++;
-
-                    if (v < 0.06f) continue;
-                    if (s < 0.12f) continue;
-
-                    totalColorPixels++;
-
-                    int bucket = (int)(h * NUM_BUCKETS) % NUM_BUCKETS;
-                    if (bucket < 0) bucket += NUM_BUCKETS;
-
-                    float dx = (x - centerX) / centerX;
-                    float dy = (y - centerY) / centerY;
-                    float dist = MathF.Sqrt(dx * dx + dy * dy);
-                    float zoneWeight = 1.0f + MathF.Max(0, 1.0f - dist) * 0.5f;
-
-                    bucketSatSum[bucket] += s * zoneWeight;
-                    bucketValSum[bucket] += v * zoneWeight;
-                    bucketWeight[bucket] += zoneWeight;
-                    bucketCount[bucket]++;
-
-                    float vibrancy = s * MathF.Max(v, 0.3f);
-                    if (vibrancy > bucketPeakS[bucket])
+                    for (int x = 0; x < width; x++)
                     {
-                        bucketPeakS[bucket] = vibrancy;
-                        bucketPeakH[bucket] = h;
-                        bucketPeakV[bucket] = Math.Max(v, 0.4f);
+                        int i = y * stride + x * 4;
+                        byte a = pixels[i + 3];
+                        if (a < 80) continue;
+
+                        float rf = pixels[i + 2] / 255f;
+                        float gf = pixels[i + 1] / 255f;
+                        float bf = pixels[i] / 255f;
+
+                        var (h, s, v) = RgbToHsv(rf, gf, bf);
+                        totalPixels++;
+
+                        if (v < 0.06f) continue;
+                        if (s < 0.12f) continue;
+
+                        totalColorPixels++;
+
+                        int bucket = (int)(h * NUM_BUCKETS) % NUM_BUCKETS;
+                        if (bucket < 0) bucket += NUM_BUCKETS;
+
+                        float dx = (x - centerX) / centerX;
+                        float dy = (y - centerY) / centerY;
+                        float dist = MathF.Sqrt(dx * dx + dy * dy);
+                        float zoneWeight = 1.0f + MathF.Max(0, 1.0f - dist) * 0.5f;
+
+                        bucketSatSum[bucket] += s * zoneWeight;
+                        bucketValSum[bucket] += v * zoneWeight;
+                        bucketWeight[bucket] += zoneWeight;
+                        bucketCount[bucket]++;
+
+                        float vibrancy = s * MathF.Max(v, 0.3f);
+                        if (vibrancy > bucketPeakS[bucket])
+                        {
+                            bucketPeakS[bucket] = vibrancy;
+                            bucketPeakH[bucket] = h;
+                            bucketPeakV[bucket] = Math.Max(v, 0.4f);
+                        }
                     }
                 }
-            }
 
-            bool isMonotone = totalPixels > 0 && (float)totalColorPixels / totalPixels < 0.08f;
-
-            RuntimeLog.Log("COLOR-EXTRACT",
-                $"monotone check: totalPixels={totalPixels} colorPixels={totalColorPixels} " +
-                $"ratio={((float)totalColorPixels / Math.Max(totalPixels, 1)):F3} isMonotone={isMonotone}");
-
-            if (isMonotone)
-                return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
+                bool isMonotone = totalPixels > 0 && (float)totalColorPixels / totalPixels < 0.08f;
+                if (isMonotone)
+                    return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
 
             float bestScore = -1, secondScore = -1;
             int bestBucket = -1, secondBucket = -1;
@@ -363,11 +373,16 @@ internal static class DynamicIslandColorExtractor
 
             return new PaletteResult(primary, secondary, secondary, false, isFlatBg, textOnPrimary);
         }
-        catch
+        finally
         {
-            return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
+            System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
         }
     }
+    catch
+    {
+        return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
+    }
+}
 
     private static bool IsValidCluster(float h, float s, float v)
     {

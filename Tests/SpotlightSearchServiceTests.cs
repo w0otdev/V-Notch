@@ -101,6 +101,43 @@ public sealed class SpotlightSearchServiceTests
         viewModel.Dispose();
     }
 
+    [Fact]
+    public void Merge_HandlesItemsWithoutEagerIcons_AndCapsResults()
+    {
+        var items = new List<SpotlightSearchItem>();
+        for (int i = 0; i < 60; i++)
+        {
+            items.Add(new SpotlightSearchItem(
+                $"app:{i}",
+                SpotlightResultKind.Application,
+                $"App {i:D2}",
+                "Application",
+                $@"C:\Dummy\App{i}.exe",
+                $@"C:\Dummy\App{i}.exe")
+            {
+                Score = i
+            });
+        }
+
+        var merged = SpotlightSearchService.Merge([items], 50);
+
+        Assert.Equal(50, merged.Count);
+        // Scores are ordered descending, so highest score is first
+        Assert.Equal("App 59", merged[0].Title);
+        // Non-existent dummy paths simply result in null icon without failing
+        Assert.Null(merged[0].Icon);
+    }
+
+    [Fact]
+    public void LoadIcon_ReturnsItemUnchanged_WhenIconPathIsEmpty()
+    {
+        var item = new SpotlightSearchItem("calc:1", SpotlightResultKind.Calculation, "42", "Calc", "42", null);
+        var result = SpotlightSearchService.LoadIcon(item);
+
+        Assert.Same(item, result);
+        Assert.Null(result.Icon);
+    }
+
     private static SpotlightSearchItem Item(
         string id, string title, string target, double score) =>
         new(id, SpotlightResultKind.File, title, target, target) { Score = score };

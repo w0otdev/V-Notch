@@ -99,7 +99,11 @@ public partial class SpotlightWindow : Window
         IsVisibleChanged += (_, args) =>
         {
             // Last-resort ownership invariant: no hidden Spotlight HWND may
-            if (args.NewValue is false) ReleaseMorphSession();
+            if (args.NewValue is false)
+            {
+                ReleaseMorphSession();
+                MemoryOptimizerService.Instance.TrimWorkingSet();
+            }
         };
 
         // The entrance morph publishes results while the shell is still at

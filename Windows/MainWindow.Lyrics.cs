@@ -60,7 +60,7 @@ public partial class MainWindow
 
         string trackKey = $"{info.CurrentTrack}|{info.CurrentArtist}";
 
-        if (trackKey == _lyricsTrackKey) return;
+        if (trackKey == _lyricsTrackKey && (_currentLyrics != null && _currentLyrics.Count > 0 || !_isLyricsActive)) return;
         _lyricsTrackKey = trackKey;
         _syncedTextSource = SyncedTextSource.SpotifyLyrics;
 
@@ -73,10 +73,13 @@ public partial class MainWindow
 
         StartSpotifyCanvasFetch(info, trackKey);
 
-        _currentLyrics = null;
-        _currentLyricIndex = -1;
-        _lyricsProvider = "";
-        ShowLyricsSearchState(isYouTube: false);
+        if (_isLyricsActive)
+        {
+            _currentLyrics = null;
+            _currentLyricIndex = -1;
+            _lyricsProvider = "";
+            ShowLyricsSearchState(isYouTube: false);
+        }
 
         int durationSec = (int)info.Duration.TotalSeconds;
         if (durationSec <= 0) durationSec = 240;
@@ -571,26 +574,61 @@ public partial class MainWindow
             return;
         }
 
-        if (string.IsNullOrEmpty(info.YouTubeVideoId))
-            return;
+        string videoId = info.YouTubeVideoId ?? "";
+        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(info.CurrentTrack, info.CurrentArtist);
+            if (lookup != null && !string.IsNullOrEmpty(lookup.Id))
+            {
+                videoId = lookup.Id;
+                info.YouTubeVideoId = videoId;
+            }
+        }
 
-        _lastKnownYouTubeVideoId = info.YouTubeVideoId;
-
-        string trackKey = $"yt:{info.YouTubeVideoId}";
-        if (!force && trackKey == _lyricsTrackKey) return;
+        string trackKey = !string.IsNullOrEmpty(videoId) ? $"yt:{videoId}" : $"yt-lrc:{info.CurrentTrack}|{info.CurrentArtist}";
+        if (!force && trackKey == _lyricsTrackKey && (_currentLyrics != null && _currentLyrics.Count > 0 || !_isLyricsActive)) return;
         _lyricsTrackKey = trackKey;
         _syncedTextSource = SyncedTextSource.YouTubeSubtitles;
 
-        _currentLyrics = null;
-        _currentLyricIndex = -1;
-        _lyricsProvider = "";
-        ShowLyricsSearchState(isYouTube: true);
+        if (_isLyricsActive)
+        {
+            ShowLyricsSearchState(isYouTube: true);
+        }
 
-        var subtitles = await _youtubeSubtitleService.FetchSubtitlesAsync(info.YouTubeVideoId, force: force);
+        List<LyricLine>? subtitles = null;
+        if (!string.IsNullOrEmpty(videoId))
+        {
+            subtitles = await _youtubeSubtitleService.FetchSubtitlesAsync(videoId, force: force);
+        }
 
         if (trackKey != _lyricsTrackKey) return;
 
-        ApplySyncedLines(subtitles, info, isYouTube: true, provider: "YouTube");
+        if (subtitles != null && subtitles.Count > 0)
+        {
+            ApplySyncedLines(subtitles, info, isYouTube: true, provider: "YouTube");
+            return;
+        }
+
+        if (_settings.EnableOnlineLyrics && !string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            string fallbackArtist = (!string.IsNullOrEmpty(info.CurrentArtist) &&
+                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser))
+                ? info.CurrentArtist
+                : "";
+            int durSec = (int)info.Duration.TotalSeconds;
+            if (durSec <= 0) durSec = 240;
+
+            var lrcResult = await _lyricsService.FetchSyncedLyricsAsync(info.CurrentTrack, fallbackArtist, durSec);
+            if (trackKey != _lyricsTrackKey) return;
+
+            if (lrcResult?.Lines != null && lrcResult.Lines.Count > 0)
+            {
+                ApplySyncedLines(lrcResult.Lines, info, isYouTube: true, provider: lrcResult.Provider ?? "LRCLIB");
+                return;
+            }
+        }
+
+        ApplySyncedLines(null, info, isYouTube: true);
     }
 
     private void ApplySyncedLines(
@@ -601,7 +639,9 @@ public partial class MainWindow
     {
         if (lines == null || lines.Count == 0)
         {
-            _lyricsTrackKey = "";
+            _currentLyrics = null;
+            _currentLyricIndex = -1;
+            _lyricsProvider = "";
             ResetSpotifyCanvas();
             if (_isLyricsActive)
                 HideLyricsWidget();
@@ -630,15 +670,13 @@ public partial class MainWindow
                 HideLyricsPlaceholder();
                 AnimateLyricLine(_currentLyrics[idx].Text, transitionFromSearch);
             }
-            else if (LyricsPlaceholderPanel.Visibility != Visibility.Visible || LyricsPlaceholderPanel.Opacity < 0.01)
+            else
             {
-                bool isYouTubeArtistResolved = isYouTube &&
-                    !string.IsNullOrEmpty(info.CurrentArtist) &&
-                    MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser);
-                string placeholderTitle = isYouTube
-                    ? (isYouTubeArtistResolved ? info.CurrentArtist : info.CurrentTrack)
-                    : info.CurrentTrack;
-                string placeholderArtist = isYouTube ? "" : info.CurrentArtist;
+                string placeholderTitle = !string.IsNullOrWhiteSpace(info.CurrentTrack) ? info.CurrentTrack : "";
+                string placeholderArtist = (!string.IsNullOrWhiteSpace(info.CurrentArtist) &&
+                    MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser))
+                    ? info.CurrentArtist
+                    : "";
                 ShowLyricsPlaceholder(
                     placeholderTitle,
                     placeholderArtist,

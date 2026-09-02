@@ -22,7 +22,7 @@ internal static class FileIconProvider
     }
 
     private static readonly ConcurrentDictionary<string, CacheEntry> _iconCache = new(StringComparer.OrdinalIgnoreCase);
-    private const int MaxCacheSize = 200;
+    private const int MaxCacheSize = 64;
     private static long _accessCounter;
     private static readonly object _evictLock = new();
 
@@ -113,7 +113,7 @@ internal static class FileIconProvider
 
             if (isImage || isVideo)
             {
-                result ??= TryGetShellThumbnail(filePath, 128);
+                result ??= TryGetShellThumbnail(filePath, 64);
 
                 if (result == null && isImage && ext is not ".svg")
                 {
@@ -188,7 +188,7 @@ internal static class FileIconProvider
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.UriSource = new Uri(filePath);
-            bitmap.DecodePixelWidth = 128;
+            bitmap.DecodePixelWidth = 48;
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
             bitmap.EndInit();
             bitmap.Freeze();

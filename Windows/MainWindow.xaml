@@ -2729,20 +2729,14 @@
                                     <Grid x:Name="AnimatedLyricsLayer"
                                           ClipToBounds="True"
                                           VerticalAlignment="Stretch">
-                                        <Grid.OpacityMask>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                <GradientStop Color="Transparent" Offset="0"/>
-                                                <GradientStop Color="Black" Offset="0.06"/>
-                                                <GradientStop Color="Black" Offset="0.94"/>
-                                                <GradientStop Color="Transparent" Offset="1"/>
-                                            </LinearGradientBrush>
-                                        </Grid.OpacityMask>
-
                                         <TextBlock x:Name="LyricTextA"
                                                Text=""
                                                Style="{StaticResource SubtitleText}"
                                                FontSize="12.5"
                                                FontWeight="Bold"
+                                               LineHeight="17"
+                                               LineStackingStrategy="MaxHeight"
+                                               Padding="0,2,0,4"
                                                TextWrapping="Wrap"
                                                TextTrimming="CharacterEllipsis"
                                                MaxHeight="110"
@@ -2765,6 +2759,9 @@
                                                Style="{StaticResource SubtitleText}"
                                                FontSize="12.5"
                                                FontWeight="Bold"
+                                               LineHeight="17"
+                                               LineStackingStrategy="MaxHeight"
+                                               Padding="0,2,0,4"
                                                TextWrapping="Wrap"
                                                TextTrimming="CharacterEllipsis"
                                                MaxHeight="110"

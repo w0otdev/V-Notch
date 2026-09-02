@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -27,25 +28,35 @@ public static class FastBlurService
                 var smallBitmap = new TransformedBitmap(formattedBitmap, new ScaleTransform((double)width / formattedBitmap.PixelWidth, (double)height / formattedBitmap.PixelHeight));
 
                 int stride = width * 4;
-                byte[] pixels = new byte[height * stride];
-                smallBitmap.CopyPixels(pixels, stride, 0);
+                int bufferSize = height * stride;
 
-                byte[] target = new byte[pixels.Length];
+                byte[] pixels = ArrayPool<byte>.Shared.Rent(bufferSize);
+                byte[] target = ArrayPool<byte>.Shared.Rent(bufferSize);
 
-                int passes = 2;
-                for (int i = 0; i < passes; i++)
+                try
                 {
-                    BoxBlurHorizontal(pixels, target, width, height, blurRadius);
-                    BoxBlurVertical(target, pixels, width, height, blurRadius);
+                    smallBitmap.CopyPixels(pixels, stride, 0);
+
+                    int passes = 2;
+                    for (int i = 0; i < passes; i++)
+                    {
+                        BoxBlurHorizontal(pixels, target, width, height, blurRadius);
+                        BoxBlurVertical(target, pixels, width, height, blurRadius);
+                    }
+
+                    DarkenPixels(pixels, bufferSize, 0.96f);
+
+                    var writeableBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+                    writeableBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+                    writeableBitmap.Freeze();
+
+                    return (BitmapSource)writeableBitmap;
                 }
-
-                DarkenPixels(pixels, 0.96f);
-
-                var writeableBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-                writeableBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
-                writeableBitmap.Freeze();
-
-                return (BitmapSource)writeableBitmap;
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(pixels);
+                    ArrayPool<byte>.Shared.Return(target);
+                }
             }
             catch
             {
@@ -54,16 +65,16 @@ public static class FastBlurService
         });
     }
 
-    private static void DarkenPixels(byte[] pixels, float factor)
+    private static void DarkenPixels(byte[] pixels, int length, float factor)
     {
-        for (int i = 0; i < pixels.Length; i += 4)
+        for (int i = 0; i < length; i += 4)
         {
             pixels[i] = (byte)(pixels[i] * factor);
             pixels[i + 1] = (byte)(pixels[i + 1] * factor);
             pixels[i + 2] = (byte)(pixels[i + 2] * factor);
-
         }
     }
+
 
     private static void BoxBlurHorizontal(byte[] source, byte[] target, int w, int h, int radius)
     {

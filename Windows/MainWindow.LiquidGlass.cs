@@ -21,7 +21,6 @@ public partial class MainWindow
         LiquidGlassRefractionEffect.IsAvailable;
 
     private bool IsLiquidGlassEnabled =>
-        _settings.EnableDynamicIslandMode &&
         string.Equals(_settings.NotchStyle, LiquidGlassStyleId, StringComparison.OrdinalIgnoreCase);
 
     private void ApplyLiquidGlassSkin()

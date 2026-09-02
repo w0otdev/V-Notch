@@ -46,30 +46,28 @@ internal sealed class LyricsService : IDisposable
 
         try
         {
-            // 1. Exact lookup — fastest, but lrclib requires track/artist/duration
-            //    to match closely. Spotify titles often carry suffixes
-            //    ("- Remastered", "(feat. X)") or a slightly different duration,
-            //    so this misses plenty of songs that DO have lyrics.
-            var exact = await TryGetExactAsync(trackName, artistName, durationSeconds, token);
-            if (exact is { Count: > 0 }) return new LyricsResult(exact, "LRCLIB");
+            var candidates = GenerateSearchCandidates(trackName, artistName);
 
-            // 2. Fuzzy search fallback — far more forgiving. Try the raw title
-            //    first, then a cleaned version with the noisy suffixes removed.
-            var searched = await TrySearchAsync(trackName, artistName, durationSeconds, token);
-            if (searched is { Count: > 0 }) return new LyricsResult(searched, "LRCLIB");
-
-            string cleanTrack = CleanTitle(trackName);
-            string cleanArtist = CleanArtist(artistName);
-            if (cleanTrack != trackName || cleanArtist != artistName)
+            foreach (var (candTrack, candArtist) in candidates)
             {
-                var cleaned = await TrySearchAsync(cleanTrack, cleanArtist, durationSeconds, token);
-                if (cleaned is { Count: > 0 }) return new LyricsResult(cleaned, "LRCLIB");
+                // Exact search
+                if (!string.IsNullOrEmpty(candArtist))
+                {
+                    var exact = await TryGetExactAsync(candTrack, candArtist, durationSeconds, token);
+                    if (exact is { Count: > 0 }) return new LyricsResult(exact, "LRCLIB");
+                }
+
+                // Fuzzy search
+                var searched = await TrySearchAsync(candTrack, candArtist, durationSeconds, token);
+                if (searched is { Count: > 0 }) return new LyricsResult(searched, "LRCLIB");
             }
 
-            // LRCLIB has already been tried, so ask lrc mux only for its other
-            // providers. It may return either word- or line-synchronised lyrics.
-            var aggregated = await TryLrcMuxAsync(trackName, artistName, durationSeconds, token);
-            if (aggregated != null) return aggregated;
+            // Fallback to LRCMux
+            foreach (var (candTrack, candArtist) in candidates)
+            {
+                var aggregated = await TryLrcMuxAsync(candTrack, candArtist, durationSeconds, token);
+                if (aggregated != null) return aggregated;
+            }
 
             return null;
         }
@@ -82,6 +80,81 @@ internal sealed class LyricsService : IDisposable
             RuntimeLog.Log("LYRICS", $"Error: {ex.Message}");
             return null;
         }
+    }
+
+    public static List<(string Track, string Artist)> GenerateSearchCandidates(string trackName, string artistName)
+    {
+        var candidates = new List<(string Track, string Artist)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddCandidate(string t, string a)
+        {
+            string cleanT = CleanTitle(t);
+            string cleanA = CleanArtist(a);
+            if (string.IsNullOrWhiteSpace(cleanT)) return;
+
+            // Strip browser/generic platform names from artist
+            if (cleanA.Equals("YouTube", StringComparison.OrdinalIgnoreCase) ||
+                cleanA.Equals("Browser", StringComparison.OrdinalIgnoreCase) ||
+                cleanA.Equals("Google Chrome", StringComparison.OrdinalIgnoreCase) ||
+                cleanA.Equals("Microsoft Edge", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanA = "";
+            }
+
+            string key = $"{cleanT}|{cleanA}";
+            if (seen.Add(key))
+            {
+                candidates.Add((cleanT, cleanA));
+            }
+        }
+
+        // 1. Raw inputs
+        AddCandidate(trackName, artistName);
+
+        // 2. Cleaned inputs
+        string cTrack = CleanTitle(trackName);
+        string cArtist = CleanArtist(artistName);
+        AddCandidate(cTrack, cArtist);
+
+        // 3. Decompose pipe '|' (common in YouTube music video titles: "Artist | Title" or "Artist - Nick | Title")
+        if (cTrack.Contains('|'))
+        {
+            var parts = cTrack.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length == 2)
+            {
+                AddCandidate(parts[1], parts[0]);
+                AddCandidate(parts[0], parts[1]);
+            }
+            else if (parts.Length > 2)
+            {
+                AddCandidate(parts[1], parts[0]);
+                AddCandidate(parts[0], parts[1]);
+                AddCandidate(string.Join(" ", parts.Skip(1)), parts[0]);
+            }
+        }
+
+        // 4. Decompose standard dashes " - ", " – ", " — "
+        foreach (var dash in new[] { " - ", " – ", " — ", " // " })
+        {
+            if (cTrack.Contains(dash))
+            {
+                var parts = cTrack.Split(new[] { dash }, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length == 2)
+                {
+                    AddCandidate(parts[1], parts[0]);
+                    AddCandidate(parts[0], parts[1]);
+                }
+            }
+        }
+
+        // 5. Track name only if artist is empty or generic
+        if (!string.IsNullOrEmpty(cTrack))
+        {
+            AddCandidate(cTrack, "");
+        }
+
+        return candidates;
     }
 
     private async Task<List<LyricLine>?> TryGetExactAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
@@ -125,8 +198,11 @@ internal sealed class LyricsService : IDisposable
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
             return null;
 
-        // Pick the candidate that actually has synced lyrics and whose duration is
-        // closest to what's playing — guards against matching the wrong edit.
+        string targetTrackNorm = NormalizeForMatching(trackName);
+        string targetArtistNorm = NormalizeForMatching(artistName);
+
+        // Pick the candidate that actually has synced lyrics, matches the title,
+        // and whose duration is closest to what's playing.
         JsonElement best = default;
         bool found = false;
         int bestDelta = int.MaxValue;
@@ -137,6 +213,25 @@ internal sealed class LyricsService : IDisposable
                 continue;
             if (string.IsNullOrWhiteSpace(sp.GetString()))
                 continue;
+
+            string itemTrack = item.TryGetProperty("trackName", out var tp) ? tp.GetString() ?? "" : "";
+            string itemArtist = item.TryGetProperty("artistName", out var ap) ? ap.GetString() ?? "" : "";
+
+            string itemTrackNorm = NormalizeForMatching(itemTrack);
+            string itemArtistNorm = NormalizeForMatching(itemArtist);
+
+            // Title validation: prevent matching completely different songs by the same artist
+            if (!string.IsNullOrEmpty(targetTrackNorm) && !string.IsNullOrEmpty(itemTrackNorm))
+            {
+                bool titleMatches = itemTrackNorm.Equals(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
+                                    itemTrackNorm.Contains(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
+                                    targetTrackNorm.Contains(itemTrackNorm, StringComparison.OrdinalIgnoreCase);
+
+                if (!titleMatches)
+                {
+                    continue;
+                }
+            }
 
             int dur = item.TryGetProperty("duration", out var dp) && dp.ValueKind == JsonValueKind.Number
                 ? (int)Math.Round(dp.GetDouble())
@@ -157,6 +252,35 @@ internal sealed class LyricsService : IDisposable
         if (lines is { Count: > 0 })
             RuntimeLog.Log("LYRICS", $"Got {lines.Count} synced lines (search, Δ{bestDelta}s) for '{trackName}'");
         return lines;
+    }
+
+    internal static string NormalizeForMatching(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        string s = System.Text.RegularExpressions.Regex.Replace(text, @"[\(\[][^\)\]]*[\)\]]", "");
+        s = RemoveDiacritics(s);
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"[^a-zA-Z0-9]+", " ");
+        return s.Trim().ToLowerInvariant();
+    }
+
+    private static string RemoveDiacritics(string text)
+    {
+        var normalizedString = text.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(normalizedString.Length);
+
+        foreach (var c in normalizedString)
+        {
+            var category = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+            if (category != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                if (c == 'đ' || c == 'Đ')
+                    sb.Append('d');
+                else
+                    sb.Append(c);
+            }
+        }
+
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 
     private async Task<LyricsResult?> TryLrcMuxAsync(
@@ -261,11 +385,15 @@ internal sealed class LyricsService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(title)) return title;
 
-        // Drop bracketed/parenthesised extras and "- Remastered/Live/Version" tails
-        // that Spotify appends but lrclib's catalogue usually omits.
+        // Drop bracketed/parenthesised extras like (Official Music Video), (Lyric Video), [MV], etc.
         string s = System.Text.RegularExpressions.Regex.Replace(title, @"\s*[\(\[][^\)\]]*[\)\]]", "");
-        int dash = s.IndexOf(" - ", StringComparison.Ordinal);
-        if (dash > 0) s = s[..dash];
+
+        // Remove YouTube visualizer/MV suffix patterns
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s*\|\s*(?:Official|OFFICIAL|MV|mv|Music Video|Visualizer|Lyric Video|Audio|Track\s*No\.\d+).*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Strip standard remaster/live suffixes
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s*-\s*(?:Remaster(?:ed)?|Live|Acoustic|Radio Edit|Bonus Track|Single Version|Instrumental|Deluxe|Mono|Stereo).*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
         return s.Trim().Length == 0 ? title.Trim() : s.Trim();
     }
 

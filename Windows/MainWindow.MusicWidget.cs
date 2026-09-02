@@ -214,20 +214,23 @@ public partial class MainWindow
         var fadeInControls = MakeAnim(0d, 1d, new Duration(TimeSpan.FromMilliseconds(300)), _easePowerOut3, contentDelay);
         MediaControls.BeginAnimation(OpacityProperty, fadeInControls);
 
-        CalendarWidget.BeginAnimation(OpacityProperty, null);
-        CalendarWidget.Opacity = 0;
-        CalendarWidget.Visibility = Visibility.Visible;
-        var fadeInCalendar = MakeAnim(0d, 1d, new Duration(TimeSpan.FromMilliseconds(300)), _easePowerOut3, TimeSpan.FromMilliseconds(120));
-        CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
-
         if (_isLyricsActive)
         {
             CalendarWidget.Visibility = Visibility.Collapsed;
             GreetingSection.Visibility = Visibility.Collapsed;
+            LyricsWidget.BeginAnimation(OpacityProperty, null);
             LyricsWidget.Visibility = Visibility.Visible;
             LyricsWidget.Opacity = 0;
             var fadeInLyrics = MakeAnim(0d, 1d, new Duration(TimeSpan.FromMilliseconds(300)), _easePowerOut3, TimeSpan.FromMilliseconds(120));
             LyricsWidget.BeginAnimation(OpacityProperty, fadeInLyrics);
+        }
+        else
+        {
+            CalendarWidget.BeginAnimation(OpacityProperty, null);
+            CalendarWidget.Opacity = 0;
+            CalendarWidget.Visibility = Visibility.Visible;
+            var fadeInCalendar = MakeAnim(0d, 1d, new Duration(TimeSpan.FromMilliseconds(300)), _easePowerOut3, TimeSpan.FromMilliseconds(120));
+            CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
         }
 
         if (_settings.ShowBatteryIndicator)
@@ -286,7 +289,7 @@ public partial class MainWindow
 
         GreetingSection.BeginAnimation(OpacityProperty, null);
         GreetingSection.Opacity = 0;
-        bool showGreeting = !_isLyricsActive && !IsNonCalendarWidgetMode;
+        bool showGreeting = ShouldShowGreetingSection;
         GreetingSection.Visibility = showGreeting ? Visibility.Visible : Visibility.Collapsed;
         if (showGreeting)
         {
