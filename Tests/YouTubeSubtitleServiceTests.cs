@@ -120,4 +120,14 @@ public class YouTubeSubtitleServiceTests
         Assert.NotNull(lrc);
         Assert.NotEmpty(lrc.Lines);
     }
+
+    [Fact]
+    public async Task FetchSubtitlesAsync_LiveVideo_ReturnsSubtitlesViaInnertube()
+    {
+        var service = new YouTubeSubtitleService();
+        var lines = await service.FetchSubtitlesAsync("o3L4T4BIXHo", force: true);
+
+        Assert.NotNull(lines);
+        Assert.NotEmpty(lines);
+    }
 }

@@ -577,6 +577,16 @@ public partial class MainWindow
         string videoId = info.YouTubeVideoId ?? "";
         if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
         {
+            // If _lyricsTrackKey is already a resolved "yt:{id}" key, do NOT overwrite it with an
+            // unresolved fallback. This can happen when MediaChanged fires with empty videoId after
+            // a successful subtitle fetch — we must keep the existing resolved state.
+            if (!force && _lyricsTrackKey.StartsWith("yt:", StringComparison.Ordinal)
+                && !_lyricsTrackKey.StartsWith("yt-lrc:", StringComparison.Ordinal)
+                && _currentLyrics != null && _currentLyrics.Count > 0)
+            {
+                return;
+            }
+
             var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(info.CurrentTrack, info.CurrentArtist);
             if (lookup != null && !string.IsNullOrEmpty(lookup.Id))
             {
@@ -609,25 +619,7 @@ public partial class MainWindow
             return;
         }
 
-        if (_settings.EnableOnlineLyrics && !string.IsNullOrEmpty(info.CurrentTrack))
-        {
-            string fallbackArtist = (!string.IsNullOrEmpty(info.CurrentArtist) &&
-                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser))
-                ? info.CurrentArtist
-                : "";
-            int durSec = (int)info.Duration.TotalSeconds;
-            if (durSec <= 0) durSec = 240;
-
-            var lrcResult = await _lyricsService.FetchSyncedLyricsAsync(info.CurrentTrack, fallbackArtist, durSec);
-            if (trackKey != _lyricsTrackKey) return;
-
-            if (lrcResult?.Lines != null && lrcResult.Lines.Count > 0)
-            {
-                ApplySyncedLines(lrcResult.Lines, info, isYouTube: true, provider: lrcResult.Provider ?? "LRCLIB");
-                return;
-            }
-        }
-
+        // No YouTube subtitles found — do NOT fall back to LRCLIB in YouTube subtitle mode.
         ApplySyncedLines(null, info, isYouTube: true);
     }
 
@@ -652,10 +644,9 @@ public partial class MainWindow
         _currentLyricIndex = -1;
         _lyricsProvider = provider?.Trim() ?? "";
 
-        if (!_isLyricsActive)
-        {
-            ShowLyricsWidget();
-        }
+        // Always call ShowLyricsWidget — it now handles both the first-time and already-active cases,
+        // ensuring CalendarWidget is collapsed and LyricsWidget is visible even after races.
+        ShowLyricsWidget();
 
         Dispatcher.Invoke(() =>
         {
@@ -993,20 +984,24 @@ public partial class MainWindow
         else if (newIndex < 0 && _currentLyricIndex >= 0)
         {
             _currentLyricIndex = -1;
-            if (_syncedTextSource == SyncedTextSource.YouTubeSubtitles && _currentMediaInfo != null)
+
+            // Show track info during instrumental gaps — always use _currentMediaInfo for accurate data.
+            string gapTitle = "";
+            string gapArtist = "";
+
+            if (_currentMediaInfo != null)
             {
-                bool ytArtistResolved = !string.IsNullOrEmpty(_currentMediaInfo.CurrentArtist) &&
-                    MediaPlatformExtensions.ParsePlatform(_currentMediaInfo.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser);
-                string ytPlaceholderTitle = ytArtistResolved ? _currentMediaInfo.CurrentArtist : _currentMediaInfo.CurrentTrack;
-                ShowLyricsPlaceholder(ytPlaceholderTitle, "", _lyricsProvider);
+                gapTitle = _currentMediaInfo.CurrentTrack ?? "";
+
+                // Only show artist if it's a real artist name, not a platform identifier
+                if (!string.IsNullOrWhiteSpace(_currentMediaInfo.CurrentArtist) &&
+                    MediaPlatformExtensions.ParsePlatform(_currentMediaInfo.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser))
+                {
+                    gapArtist = _currentMediaInfo.CurrentArtist;
+                }
             }
-            else
-            {
-                string trackKey = _lyricsTrackKey;
-                string[] parts = trackKey.Split('|', 2);
-                if (parts.Length == 2)
-                    ShowLyricsPlaceholder(parts[0], parts[1], _lyricsProvider);
-            }
+
+            ShowLyricsPlaceholder(gapTitle, gapArtist, _lyricsProvider);
         }
     }
 
@@ -1121,46 +1116,77 @@ public partial class MainWindow
 
     private void ShowLyricsWidget()
     {
-        if (_isLyricsActive) return;
+        bool alreadyActive = _isLyricsActive;
         _isLyricsActive = true;
 
         Dispatcher.Invoke(() =>
         {
-            var fadeOutCalendar = new DoubleAnimation(CalendarWidget.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(250)))
+            // Always enforce: CalendarWidget hidden, LyricsWidget visible.
+            // This corrects cases where _isLyricsActive was already true (e.g. from ShowLyricsSearchState)
+            // but the visual state was not yet committed (animation still in flight, or race with RestoreExpandedContentOpacity).
+            if (CalendarWidget.Visibility != Visibility.Collapsed || CalendarWidget.Opacity > 0.01)
             {
-                EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
-            };
-            fadeOutCalendar.Completed += (s, e) =>
-            {
-                CalendarWidget.Visibility = Visibility.Collapsed;
                 CalendarWidget.BeginAnimation(OpacityProperty, null);
-            };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutCalendar, VNotch.Services.AnimationConfig.TargetFps);
-            CalendarWidget.BeginAnimation(OpacityProperty, fadeOutCalendar);
+                if (!alreadyActive)
+                {
+                    // Animate fade-out when transitioning for the first time
+                    var fadeOutCalendar = new DoubleAnimation(CalendarWidget.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(250)))
+                    {
+                        EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
+                    };
+                    fadeOutCalendar.Completed += (s, e) =>
+                    {
+                        CalendarWidget.Visibility = Visibility.Collapsed;
+                        CalendarWidget.BeginAnimation(OpacityProperty, null);
+                    };
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutCalendar, VNotch.Services.AnimationConfig.TargetFps);
+                    CalendarWidget.BeginAnimation(OpacityProperty, fadeOutCalendar);
+                }
+                else
+                {
+                    // Already active — snap to collapsed immediately so it doesn't show through
+                    CalendarWidget.Opacity = 0;
+                    CalendarWidget.Visibility = Visibility.Collapsed;
+                }
+            }
 
-            var fadeOutGreeting = new DoubleAnimation(GreetingSection.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(250)))
+            if (!alreadyActive)
             {
-                EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
-            };
-            fadeOutGreeting.Completed += (s, e) =>
-            {
-                GreetingSection.Visibility = Visibility.Collapsed;
-                GreetingSection.BeginAnimation(OpacityProperty, null);
-            };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutGreeting, VNotch.Services.AnimationConfig.TargetFps);
-            GreetingSection.BeginAnimation(OpacityProperty, fadeOutGreeting);
+                var fadeOutGreeting = new DoubleAnimation(GreetingSection.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(250)))
+                {
+                    EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
+                };
+                fadeOutGreeting.Completed += (s, e) =>
+                {
+                    GreetingSection.Visibility = Visibility.Collapsed;
+                    GreetingSection.BeginAnimation(OpacityProperty, null);
+                };
+                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutGreeting, VNotch.Services.AnimationConfig.TargetFps);
+                GreetingSection.BeginAnimation(OpacityProperty, fadeOutGreeting);
+            }
 
-            LyricsWidget.BeginAnimation(OpacityProperty, null);
-            LyricsWidget.Visibility = Visibility.Visible;
-            LyricsWidget.Opacity = 0;
-
-            var fadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
+            // Always make LyricsWidget visible
+            if (LyricsWidget.Visibility != Visibility.Visible || LyricsWidget.Opacity < 0.99)
             {
-                EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut },
-                BeginTime = TimeSpan.FromMilliseconds(100)
-            };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
-            LyricsWidget.BeginAnimation(OpacityProperty, fadeIn);
+                LyricsWidget.BeginAnimation(OpacityProperty, null);
+                LyricsWidget.Visibility = Visibility.Visible;
+
+                if (!alreadyActive)
+                {
+                    LyricsWidget.Opacity = 0;
+                    var fadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
+                    {
+                        EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut },
+                        BeginTime = TimeSpan.FromMilliseconds(100)
+                    };
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
+                    LyricsWidget.BeginAnimation(OpacityProperty, fadeIn);
+                }
+                else
+                {
+                    LyricsWidget.Opacity = 1.0;
+                }
+            }
 
             RestoreLyricsBlurFallback();
 

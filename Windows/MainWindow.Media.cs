@@ -111,14 +111,20 @@ public partial class MainWindow
             {
                 if (isYouTube && (!string.IsNullOrEmpty(info.YouTubeVideoId) || !string.IsNullOrEmpty(info.CurrentTrack)))
                 {
-                    string targetKey = !string.IsNullOrEmpty(info.YouTubeVideoId)
-                        ? $"yt:{info.YouTubeVideoId}"
-                        : $"yt:{info.CurrentTrack}|{info.CurrentArtist}";
-
-                    if (targetKey != _lyricsTrackKey)
+                    // Only re-fetch if the resolved video ID has changed.
+                    // If videoId is not yet resolved, do NOT use a fallback key — it would differ from
+                    // the already-resolved _lyricsTrackKey (e.g. "yt:Xn2Lm6AHW6Q") and incorrectly
+                    // trigger a new fetch that resets the lyrics state.
+                    if (!string.IsNullOrEmpty(info.YouTubeVideoId))
                     {
-                        FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
+                        string targetKey = $"yt:{info.YouTubeVideoId}";
+                        if (targetKey != _lyricsTrackKey)
+                        {
+                            FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
+                        }
                     }
+                    // If videoId is empty but _lyricsTrackKey is already a "yt:..." key, no action needed.
+                    // FetchSubtitlesForTrack will resolve the ID on its own when called for a new track.
                 }
             }
 

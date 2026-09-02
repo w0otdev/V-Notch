@@ -1321,9 +1321,24 @@ public partial class MainWindow
 
         if (CalendarWidget != null)
         {
-            CalendarWidget.BeginAnimation(OpacityProperty, null);
-            if (CalendarWidget.Visibility == Visibility.Visible)
-                CalendarWidget.Opacity = 1.0;
+            if (_isLyricsActive)
+            {
+                // Lyrics are active — ensure calendar is suppressed and lyrics widget is visible
+                CalendarWidget.BeginAnimation(OpacityProperty, null);
+                CalendarWidget.Visibility = Visibility.Collapsed;
+                CalendarWidget.Opacity = 0;
+                if (LyricsWidget != null && LyricsWidget.Visibility == Visibility.Visible)
+                {
+                    LyricsWidget.BeginAnimation(OpacityProperty, null);
+                    LyricsWidget.Opacity = 1.0;
+                }
+            }
+            else
+            {
+                CalendarWidget.BeginAnimation(OpacityProperty, null);
+                if (CalendarWidget.Visibility == Visibility.Visible)
+                    CalendarWidget.Opacity = 1.0;
+            }
         }
 
         if (MusicViz != null)
