@@ -2484,6 +2484,39 @@ public partial class SettingsWindow : Window
             (DonatingBankTitle, () => DonatingBankTitle.Text = Loc.Get("settings.donating.bank")),
             (DonatingBankHint, () => DonatingBankHint.Text = Loc.Get("settings.donating.bank.hint")),
 
+            (BackupHeader, () => BackupHeader.Text = Loc.Get("settings.section.backup")),
+            (ExportSettingsLabel, () => ExportSettingsLabel.Text = Loc.Get("settings.exportSettings")),
+            (ExportSettingsHint, () => ExportSettingsHint.Text = Loc.Get("settings.exportSettings.hint")),
+            (ImportSettingsLabel, () => ImportSettingsLabel.Text = Loc.Get("settings.importSettings")),
+            (ImportSettingsHint, () => ImportSettingsHint.Text = Loc.Get("settings.importSettings.hint")),
+            (RestartPromptTitle, () => RestartPromptTitle.Text = Loc.Get("settings.restartBanner.title")),
+            (RestartPromptMessage, () => RestartPromptMessage.Text = Loc.Get("settings.restartBanner.message")),
+
+            (ProcessPriorityLabel, () => ProcessPriorityLabel.Text = Loc.Get("settings.processPriority")),
+            (ProcessPriorityHint, () => ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint")),
+            (GpuPreferenceLabel, () => GpuPreferenceLabel.Text = Loc.Get("settings.gpuPreference")),
+            (GpuPreferenceHint, () => GpuPreferenceHint.Text = Loc.Get("settings.gpuPreference.hint")),
+            (GpuPreferenceRestartBadge, () => GpuPreferenceRestartBadge.Text = Loc.Get("settings.badge.restartRequired")),
+            (GpuPreferenceRestartNote, () => GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restartNote")),
+            (ProcessPriorityCombo, () =>
+            {
+                if (ProcessPriorityCombo.Items.Count >= 3)
+                {
+                    ((ComboBoxItem)ProcessPriorityCombo.Items[0]).Content = Loc.Get("settings.processPriority.normal");
+                    ((ComboBoxItem)ProcessPriorityCombo.Items[1]).Content = Loc.Get("settings.processPriority.high");
+                    ((ComboBoxItem)ProcessPriorityCombo.Items[2]).Content = Loc.Get("settings.processPriority.realtime");
+                }
+            }),
+            (GpuPreferenceCombo, () =>
+            {
+                if (GpuPreferenceCombo.Items.Count >= 3)
+                {
+                    ((ComboBoxItem)GpuPreferenceCombo.Items[0]).Content = Loc.Get("settings.gpuPreference.auto");
+                    ((ComboBoxItem)GpuPreferenceCombo.Items[1]).Content = Loc.Get("settings.gpuPreference.igpu");
+                    ((ComboBoxItem)GpuPreferenceCombo.Items[2]).Content = Loc.Get("settings.gpuPreference.dgpu");
+                }
+            }),
+
             (SkinCard, () =>
             {
                 ApplyLiquidGlassLocalization();
@@ -2491,6 +2524,17 @@ public partial class SettingsWindow : Window
                 GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
             }),
         };
+
+        AnimateContentChange(ExportSettingsButton, () => ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn"), staggerMs, easeOut, fps, slideDist);
+        staggerMs += staggerStep;
+        AnimateContentChange(ImportSettingsButton, () => ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn"), staggerMs, easeOut, fps, slideDist);
+        staggerMs += staggerStep;
+        AnimateContentChange(RestartNowButton, () => RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow"), staggerMs, easeOut, fps, slideDist);
+        staggerMs += staggerStep;
+        AnimateContentChange(RestartLaterButton, () => RestartLaterButton.Content = Loc.Get("settings.restartBanner.later"), staggerMs, easeOut, fps, slideDist);
+        staggerMs += staggerStep;
+        TooltipHelper.SetLocalizedTooltip(ExportSettingsButton, "tooltip.exportSettings");
+        TooltipHelper.SetLocalizedTooltip(ImportSettingsButton, "tooltip.importSettings");
 
         AnimateContentChange(CheckUpdateButton, () => CheckUpdateButton.Content = Loc.Get("settings.checkUpdate"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;

@@ -4342,7 +4342,19 @@ public static class Loc
             ("settings.import.success", "Settings imported successfully!"),
             ("settings.import.error", "Failed to import settings: {0}"),
             ("tooltip.exportSettings", "Export current settings to a .vns file"),
-            ("tooltip.importSettings", "Import settings from a .vns file"));
+            ("tooltip.importSettings", "Import settings from a .vns file"),
+            ("settings.processPriority", "Process Priority"),
+            ("settings.processPriority.hint", "Adjust the priority of V-Notch in Windows to ensure smooth animations under heavy system load."),
+            ("settings.processPriority.normal", "Normal (Default)"),
+            ("settings.processPriority.high", "High"),
+            ("settings.processPriority.realtime", "Realtime"),
+            ("settings.gpuPreference", "GPU Render App"),
+            ("settings.gpuPreference.hint", "Select which GPU Windows should use to render V-Notch."),
+            ("settings.gpuPreference.restartNote", "Requires restarting the app to take effect."),
+            ("settings.gpuPreference.auto", "Let Windows Decide"),
+            ("settings.gpuPreference.igpu", "Power Saving (iGPU)"),
+            ("settings.gpuPreference.dgpu", "High Performance (dGPU)"),
+            ("settings.badge.restartRequired", "RESTART REQUIRED"));
 
         AddStrings("vi",
             ("settings.section.backup", "SAO LƯU & CHUYỂN CÀI ĐẶT"),
@@ -4360,7 +4372,19 @@ public static class Loc
             ("settings.import.success", "Đã nhập cài đặt thành công!"),
             ("settings.import.error", "Không thể nhập cài đặt: {0}"),
             ("tooltip.exportSettings", "Xuất cài đặt hiện tại ra file .vns"),
-            ("tooltip.importSettings", "Nhập cài đặt từ file .vns"));
+            ("tooltip.importSettings", "Nhập cài đặt từ file .vns"),
+            ("settings.processPriority", "Độ ưu tiên tiến trình"),
+            ("settings.processPriority.hint", "Điều chỉnh mức ưu tiên của V-Notch trong Windows để đảm bảo hiệu ứng mượt mà khi hệ thống tải nặng."),
+            ("settings.processPriority.normal", "Bình thường (Mặc định)"),
+            ("settings.processPriority.high", "Cao"),
+            ("settings.processPriority.realtime", "Thời gian thực"),
+            ("settings.gpuPreference", "GPU xử lý đồ họa"),
+            ("settings.gpuPreference.hint", "Chọn GPU Windows sẽ sử dụng để render giao diện V-Notch."),
+            ("settings.gpuPreference.restartNote", "Cần khởi động lại ứng dụng để có hiệu lực."),
+            ("settings.gpuPreference.auto", "Để Windows tự quyết định"),
+            ("settings.gpuPreference.igpu", "Tiết kiệm điện (iGPU)"),
+            ("settings.gpuPreference.dgpu", "Hiệu năng cao (dGPU)"),
+            ("settings.badge.restartRequired", "CẦN KHỞI ĐỘNG LẠI"));
 
         AddStrings("es",
             ("settings.section.backup", "COPIA DE SEGURIDAD Y TRANSFERENCIA"),
@@ -4378,7 +4402,19 @@ public static class Loc
             ("settings.import.success", "¡Configuración importada con éxito!"),
             ("settings.import.error", "Error al importar la configuración: {0}"),
             ("tooltip.exportSettings", "Exportar configuración actual a un archivo .vns"),
-            ("tooltip.importSettings", "Importar configuración desde un archivo .vns"));
+            ("tooltip.importSettings", "Importar configuración desde un archivo .vns"),
+            ("settings.processPriority", "Prioridad del proceso"),
+            ("settings.processPriority.hint", "Ajusta la prioridad de V-Notch en Windows para garantizar animaciones fluidas bajo una carga alta del sistema."),
+            ("settings.processPriority.normal", "Normal (Predeterminado)"),
+            ("settings.processPriority.high", "Alta"),
+            ("settings.processPriority.realtime", "Tiempo real"),
+            ("settings.gpuPreference", "GPU de renderizado"),
+            ("settings.gpuPreference.hint", "Selecciona qué GPU debe usar Windows para renderizar V-Notch."),
+            ("settings.gpuPreference.restartNote", "Requiere reiniciar la aplicación para que surta efecto."),
+            ("settings.gpuPreference.auto", "Dejar que Windows decida"),
+            ("settings.gpuPreference.igpu", "Ahorro de energía (iGPU)"),
+            ("settings.gpuPreference.dgpu", "Alto rendimiento (dGPU)"),
+            ("settings.badge.restartRequired", "REINICIO REQUERIDO"));
 
         AddStrings("fr",
             ("settings.section.backup", "SAUVEGARDE ET TRANSFERT DES PARAMÈTRES"),
@@ -4396,7 +4432,19 @@ public static class Loc
             ("settings.import.success", "Paramètres importés avec succès !"),
             ("settings.import.error", "Échec de l'importation des paramètres : {0}"),
             ("tooltip.exportSettings", "Exporter les paramètres actuels dans un fichier .vns"),
-            ("tooltip.importSettings", "Importer les paramètres depuis un fichier .vns"));
+            ("tooltip.importSettings", "Importer les paramètres depuis un fichier .vns"),
+            ("settings.processPriority", "Priorité du processus"),
+            ("settings.processPriority.hint", "Ajustez la priorité de V-Notch dans Windows pour garantir des animations fluides sous forte charge système."),
+            ("settings.processPriority.normal", "Normale (Par défaut)"),
+            ("settings.processPriority.high", "Haute"),
+            ("settings.processPriority.realtime", "Temps réel"),
+            ("settings.gpuPreference", "GPU de rendu"),
+            ("settings.gpuPreference.hint", "Sélectionnez le GPU que Windows doit utiliser pour afficher V-Notch."),
+            ("settings.gpuPreference.restartNote", "Nécessite le redémarrage de l'application pour prendre effet."),
+            ("settings.gpuPreference.auto", "Laisser Windows décider"),
+            ("settings.gpuPreference.igpu", "Économie d'énergie (iGPU)"),
+            ("settings.gpuPreference.dgpu", "Haute performance (dGPU)"),
+            ("settings.badge.restartRequired", "REDÉMARRAGE REQUIS"));
 
         AddStrings("de",
             ("settings.section.backup", "EINSTELLUNGEN SICHERN & ÜBERTRAGEN"),
@@ -4414,7 +4462,19 @@ public static class Loc
             ("settings.import.success", "Einstellungen erfolgreich importiert!"),
             ("settings.import.error", "Fehler beim Importieren der Einstellungen: {0}"),
             ("tooltip.exportSettings", "Aktuelle Einstellungen in eine .vns-Datei exportieren"),
-            ("tooltip.importSettings", "Einstellungen aus einer .vns-Datei importieren"));
+            ("tooltip.importSettings", "Einstellungen aus einer .vns-Datei importieren"),
+            ("settings.processPriority", "Prozesspriorität"),
+            ("settings.processPriority.hint", "Passen Sie die Priorität von V-Notch in Windows an, um flüssige Animationen bei hoher Systemauslastung zu gewährleisten."),
+            ("settings.processPriority.normal", "Normal (Standard)"),
+            ("settings.processPriority.high", "Hoch"),
+            ("settings.processPriority.realtime", "Echtzeit"),
+            ("settings.gpuPreference", "GPU-Render-Präferenz"),
+            ("settings.gpuPreference.hint", "Wählen Sie aus, welche GPU Windows zum Rendern von V-Notch verwenden soll."),
+            ("settings.gpuPreference.restartNote", "Erfordert einen Neustart der Anwendung, um wirksam zu werden."),
+            ("settings.gpuPreference.auto", "Windows entscheiden lassen"),
+            ("settings.gpuPreference.igpu", "Energiesparen (iGPU)"),
+            ("settings.gpuPreference.dgpu", "Hohe Leistung (dGPU)"),
+            ("settings.badge.restartRequired", "NEUSTART ERFORDERLICH"));
 
         AddStrings("ja",
             ("settings.section.backup", "設定のバックアップと転送"),
@@ -4432,7 +4492,19 @@ public static class Loc
             ("settings.import.success", "設定が正常にインポートされました！"),
             ("settings.import.error", "設定のインポートに失敗しました: {0}"),
             ("tooltip.exportSettings", "現在の設定を.vnsファイルにエクスポート"),
-            ("tooltip.importSettings", ".vnsファイルから設定をインポート"));
+            ("tooltip.importSettings", ".vnsファイルから設定をインポート"),
+            ("settings.processPriority", "プロセスの優先度"),
+            ("settings.processPriority.hint", "システムの高負荷時でも滑らかなアニメーションを維持するために、WindowsにおけるV-Notchの優先度を調整します。"),
+            ("settings.processPriority.normal", "通常 (デフォルト)"),
+            ("settings.processPriority.high", "高"),
+            ("settings.processPriority.realtime", "リアルタイム"),
+            ("settings.gpuPreference", "GPUレンダリング設定"),
+            ("settings.gpuPreference.hint", "WindowsがV-Notchを描画する際に使用するGPUを選択します。"),
+            ("settings.gpuPreference.restartNote", "変更を適用するにはアプリの再起動が必要です。"),
+            ("settings.gpuPreference.auto", "Windowsに決定させる"),
+            ("settings.gpuPreference.igpu", "省電力 (iGPU)"),
+            ("settings.gpuPreference.dgpu", "高パフォーマンス (dGPU)"),
+            ("settings.badge.restartRequired", "再起動が必要"));
 
         AddStrings("hi",
             ("settings.section.backup", "सेटिंग्स बैकअप और स्थानांतरण"),
@@ -4450,7 +4522,19 @@ public static class Loc
             ("settings.import.success", "सेटिंग्स सफलतापूर्वक आयात की गईं!"),
             ("settings.import.error", "सेटिंग्स आयात करने में विफल: {0}"),
             ("tooltip.exportSettings", "वर्तमान सेटिंग्स को .vns फ़ाइल में निर्यात करें"),
-            ("tooltip.importSettings", ".vns फ़ाइल से सेटिंग्स आयात करें"));
+            ("tooltip.importSettings", ".vns फ़ाइल से सेटिंग्स आयात करें"),
+            ("settings.processPriority", "प्रक्रिया प्राथमिकता"),
+            ("settings.processPriority.hint", "भारी सिस्टम लोड के तहत सुचारू एनिमेशन सुनिश्चित करने के लिए विंडोज में V-Notch की प्राथमिकता समायोजित करें।"),
+            ("settings.processPriority.normal", "सामान्य (डिफ़ॉल्ट)"),
+            ("settings.processPriority.high", "उच्च"),
+            ("settings.processPriority.realtime", "रीयल-टाइम"),
+            ("settings.gpuPreference", "जीपीयू रेंडर वरीयता"),
+            ("settings.gpuPreference.hint", "चुनें कि विंडोज़ को V-Notch रेंडर करने के लिए किस जीपीयू का उपयोग करना चाहिए।"),
+            ("settings.gpuPreference.restartNote", "लागू करने के लिए ऐप को पुनरारंभ करने की आवश्यकता है।"),
+            ("settings.gpuPreference.auto", "विंडोज को तय करने दें"),
+            ("settings.gpuPreference.igpu", "पावर सेविंग (iGPU)"),
+            ("settings.gpuPreference.dgpu", "उच्च प्रदर्शन (dGPU)"),
+            ("settings.badge.restartRequired", "पुनरारंभ आवश्यक"));
     }
 
     private static void AddStrings(string language, params (string Key, string Value)[] entries)
