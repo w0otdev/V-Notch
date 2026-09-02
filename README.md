@@ -118,53 +118,6 @@
 
 ---
 
-## Features
-
-### 🎵 Media Controls &amp; Synced Lyrics
-- Control Spotify, Apple Music, YouTube, SoundCloud, Tidal, TikTok/Reels, and any Windows Media Session (SMTC) source.
-- High-precision progress tracking with smooth seeking, time elapsed, and time remaining.
-- Real-time synced lyrics powered by LRCLIB and lrc mux fallback aggregator.
-- Timed YouTube closed captions and subtitles via YoutubeExplode.
-- Optional Spotify Canvas video background streaming (session encrypted locally with Windows DPAPI).
-- On-device smart artwork cropping powered by local YOLO11n ONNX object detection (centers faces/subjects and removes banner borders).
-- Dynamic color-adaptive gradients and glows extracted using HSL color analysis.
-
-### 🔍 Spotlight Search Launcher (`Alt + Space`)
-- Instant app launching for Start Menu shortcuts and installed Windows applications.
-- File and folder search powered by local Windows Search (OLE DB) and voidtools Everything IPC.
-- Built-in inline math evaluator for arithmetic and algebraic calculations using MathNet.Numerics.
-- Intelligent local launch ranking (capped at 100 entries, stored 100% locally).
-
-### 📁 File Shelf
-- Floating staging shelf for files — drag and drop items onto the notch for quick temporary storage.
-- Multi-file lasso selection and keyboard shortcuts.
-- Drag staged files out to any application (Windows Explorer, Discord, browser uploads, email clients).
-
-### 🎛️ Audio Mixer &amp; System Monitor
-- Live per-app audio mixer to independently adjust volume levels across active programs.
-- Real-time hardware performance monitor displaying CPU usage %, physical RAM consumption, and GPU utilization.
-
-### 🔮 Liquid Glass Optics Engine
-- Real-time desktop backdrop sampling via DXGI Desktop Duplication and Windows Magnification API.
-- Physically inspired optical refraction, chromatic aberration, bevel lighting, and edge bending.
-- Interactive Touch Light reactive specular highlights and ambient overhead illumination.
-
-### ⏰ Ambient Widgets &amp; Tools
-- Digital and analog clock widgets with customizable greetings.
-- Interactive monthly calendar and world clock.
-- Configurable countdown timer and stopwatch with progress tracking.
-- Weather forecast widget with temperature, daily highs/lows, and conditions via Open-Meteo.
-
-### 🛡️ Privacy &amp; System Integration
-- Real-time privacy dots for active microphone, webcam, and screen recording sensors.
-- Bluetooth device connection notifications and accessory battery level monitoring.
-- Clipboard change confirmation badge with optional preview.
-- Fullscreen auto-hide (supports both exclusive and windowed fullscreen for games and media).
-- Multi-monitor support — position the notch on any connected display.
-- Multilingual support across **7 languages**: English, Vietnamese, Spanish, French, German, Japanese, and Hindi with instantaneous live switching.
-
----
-
 ## Download &amp; Installation
 
 ### Requirements
