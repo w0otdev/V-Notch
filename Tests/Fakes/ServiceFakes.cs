@@ -72,6 +72,17 @@ public sealed class FakeSettingsService : ISettingsService
         _settings = settings;
         LastSaved = settings;
     }
+
+    public void ExportSettingsToFile(string filePath, NotchSettings settings)
+    {
+        _settings = settings;
+        LastSaved = settings;
+    }
+
+    public (NotchSettings Settings, bool RequiresRestart) ImportSettingsFromFile(string filePath, NotchSettings? currentSettings = null)
+    {
+        return (_settings, false);
+    }
 }
 
 public sealed class FakeVolumeService : IVolumeService
