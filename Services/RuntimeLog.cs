@@ -41,6 +41,8 @@ public static class RuntimeLog
         set => Volatile.Write(ref _minimumLevel, (int)value);
     }
 
+    public static event Action<LogLevel, string, string>? EntryWritten;
+
     public static string LogPath => _logPath;
 
     public static bool IsEnabled(LogLevel level) =>
@@ -216,6 +218,12 @@ public static class RuntimeLog
                 _writer?.TryEnqueue(line, level);
             }
         }
+
+        try
+        {
+            EntryWritten?.Invoke(level, category, message);
+        }
+        catch { }
     }
 
     private static void RotateIfNeeded()

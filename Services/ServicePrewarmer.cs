@@ -22,7 +22,19 @@ internal static class ServicePrewarmer
             RuntimeLog.Error("PREWARM", ex, "Service resolution failed");
         }
 
-        Task.Run(() => RunBackgroundWarmups(provider));
+        Task.Run(async () =>
+        {
+            try
+            {
+                // Give MainWindow time to finish its first frame layout and render before background warmups
+                await Task.Delay(1200).ConfigureAwait(false);
+                RunBackgroundWarmups(provider);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("PREWARM", ex, "Background warmup loop failed");
+            }
+        });
     }
 
     private static void ResolveAll(IServiceProvider provider)
@@ -163,7 +175,7 @@ internal static class ServicePrewarmer
         }
 
         RuntimeLog.Log("PREWARM", "background warmup complete");
-        MemoryOptimizerService.Instance.SchedulePostStartupTrim(3000);
+        MemoryOptimizerService.Instance.SchedulePostStartupTrim(1800, 4500);
     }
 
     private static T? SafeResolve<T>(IServiceProvider provider) where T : class

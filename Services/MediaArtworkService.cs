@@ -40,10 +40,6 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     public void ConfigureSmartCrop(bool enabled)
     {
         EnableSmartCrop = enabled;
-        if (enabled && !_smartCropAvailable)
-        {
-            InitializeSmartCrop();
-        }
     }
 
     public SubjectBounds? GetDominantSubjectBounds(BitmapImage source)

@@ -667,6 +667,18 @@ public class MediaDetectionService : IMediaDetectionService
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         if (dispatcher != null)
         {
+            if (!string.IsNullOrEmpty(info.CurrentTrack))
+            {
+                string status = info.IsPlaying ? "Playing" : "Paused";
+                string artist = !string.IsNullOrEmpty(info.CurrentArtist) ? $" by {info.CurrentArtist}" : "";
+                string source = !string.IsNullOrEmpty(info.MediaSource) ? $" [{info.MediaSource}]" : "";
+                RuntimeLog.Info("MEDIA", $"{status}: '{info.CurrentTrack}'{artist}{source}");
+            }
+            else if (!info.IsAnyMediaPlaying)
+            {
+                RuntimeLog.Info("MEDIA", "No media playback active (Idle).");
+            }
+
             RuntimeLog.Debug("MEDIA-EVENT", () =>
                 $"Firing MediaChanged: Source={info.MediaSource}, App={info.SourceAppId}, Track='{info.CurrentTrack}', Artist='{info.CurrentArtist}', " +
                 $"Pos={info.Position.TotalSeconds:F3}s, Dur={info.Duration.TotalSeconds:F3}s, IsPlaying={info.IsPlaying}, " +

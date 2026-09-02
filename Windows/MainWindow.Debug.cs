@@ -222,16 +222,32 @@ public partial class MainWindow
     private long _fpsWindowStartTicks = 0;
     private double _currentMeasuredFrameTimeMs = 0;
     private long _lastFrameTimestamp = 0;
+    private TimeSpan _lastRenderingTime = TimeSpan.MinValue;
 
     private void CompositionTarget_Rendering_DebugFps(object? sender, EventArgs e)
     {
+        if (e is RenderingEventArgs rea)
+        {
+            if (rea.RenderingTime == _lastRenderingTime)
+            {
+                // Discard duplicate callbacks pumped by modal mouse-drag loops (e.g. moving DebugWindow) within the same VSync frame
+                return;
+            }
+            _lastRenderingTime = rea.RenderingTime;
+        }
+
         _fpsWindowFrameCount++;
         long now = Stopwatch.GetTimestamp();
 
         if (_lastFrameTimestamp > 0)
         {
             double ft = (double)(now - _lastFrameTimestamp) / Stopwatch.Frequency * 1000.0;
-            _currentMeasuredFrameTimeMs = _currentMeasuredFrameTimeMs == 0 ? ft : (_currentMeasuredFrameTimeMs * 0.8 + ft * 0.2);
+            // Only count active animation frames (ft <= 100ms).
+            // Intervals > 100ms are WPF retained-mode idle intervals (DWM pauses), not slow frames.
+            if (ft <= 100.0)
+            {
+                _currentMeasuredFrameTimeMs = _currentMeasuredFrameTimeMs == 0 ? ft : (_currentMeasuredFrameTimeMs * 0.8 + ft * 0.2);
+            }
         }
         _lastFrameTimestamp = now;
 
@@ -242,10 +258,11 @@ public partial class MainWindow
         else
         {
             double elapsedSec = (double)(now - _fpsWindowStartTicks) / Stopwatch.Frequency;
-            if (elapsedSec >= 0.3) // Refresh FPS count every 300ms for stable, accurate readings
+            if (elapsedSec >= 0.4) // Refresh FPS count every 400ms for stable, accurate readings
             {
                 double calculatedFps = _fpsWindowFrameCount / elapsedSec;
-                _currentMeasuredFps = Math.Round(calculatedFps);
+                double maxAllowedFps = _currentDisplayHz > 0 ? _currentDisplayHz : 240;
+                _currentMeasuredFps = Math.Min(Math.Round(calculatedFps), maxAllowedFps);
                 _fpsWindowFrameCount = 0;
                 _fpsWindowStartTicks = now;
             }

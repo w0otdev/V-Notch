@@ -63,11 +63,16 @@ public sealed class MemoryOptimizerService : IDisposable
     }
 
     /// <summary>
-    /// Schedules a full working set trim and garbage collection after application startup has settled.
+    /// Schedules a dual-stage working set trim and garbage collection after application startup has settled.
+    /// Stage 1 cleans up initial JIT/XAML initialization garbage, and Stage 2 settles after background warmups.
     /// </summary>
-    public void SchedulePostStartupTrim(int delayMs = 3500)
+    public void SchedulePostStartupTrim(int firstDelayMs = 1800, int secondDelayMs = 4500)
     {
-        ScheduleTrim(delayMs, aggressive: true);
+        ScheduleTrim(firstDelayMs, aggressive: true);
+        Task.Delay(secondDelayMs).ContinueWith(_ =>
+        {
+            TrimWorkingSet(aggressive: true);
+        }, TaskScheduler.Default);
         StartPeriodicOptimizer(60);
     }
 

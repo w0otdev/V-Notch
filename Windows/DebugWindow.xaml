@@ -2,9 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="V-Notch Inspector"
-        Width="350"
+        Width="Auto"
         Height="Auto"
-        SizeToContent="Height"
+        SizeToContent="WidthAndHeight"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -261,8 +261,17 @@
     </Window.Resources>
 
     <Grid Margin="10">
-        <!-- Main Inspector Window Panel with ImGui Dark Charcoal Styling -->
-        <Border CornerRadius="6"
+        <Grid.ColumnDefinitions>
+            <!-- Left: Performance Inspector Panel -->
+            <ColumnDefinition Width="Auto"/>
+            <!-- Right: Service Runtime Logs Panel -->
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ==================================================== -->
+        <!-- COLUMN 0: MAIN PERFORMANCE INSPECTOR PANEL          -->
+        <!-- ==================================================== -->
+        <Border Grid.Column="0" Width="350" CornerRadius="6"
                 Background="#F51E1E22"
                 BorderBrush="#33333C"
                 BorderThickness="1"
@@ -369,246 +378,482 @@
                 <!-- ========================================== -->
                 <!-- 2. SECTION: V-NOTCH USAGE (PROCESS PROFILE) -->
                 <!-- ========================================== -->
-                <Border Background="#1C2B3A" CornerRadius="3" Height="20" Padding="6,0" Margin="0,5,0,3">
+                <Border Background="#1C2B3A" CornerRadius="3" Height="20" Padding="6,0" Margin="0,5,0,2"
+                        Cursor="Hand" MouseLeftButtonDown="ToggleProcessUsage_Click">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Path Data="M 0 0 L 4 5 L 8 0 Z" Fill="#64D2FF" VerticalAlignment="Center" Margin="0,1,6,0"/>
+                        <Path x:Name="ProcessUsageArrow" Data="M 0 0 L 4 5 L 8 0 Z" Fill="#64D2FF" VerticalAlignment="Center" Margin="0,1,6,0"/>
                         <TextBlock Text="V-NOTCH USAGE (PROCESS)" Foreground="#64D2FF" FontSize="10.5" FontWeight="Bold"/>
                     </StackPanel>
                 </Border>
 
-                <!-- V-Notch CPU -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
-                        <Grid>
-                            <Border x:Name="VNotchCpuBar" HorizontalAlignment="Left" Background="#1E88E5" Width="0" CornerRadius="2"/>
-                            <TextBlock x:Name="VNotchCpuText" Text="0.0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                    <TextBlock x:Name="VNotchCpuThreadsText" Grid.Column="1" Text="CPU (0 th / 0 hd)" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                <!-- Collapsible Container for V-Notch Usage -->
+                <StackPanel x:Name="ProcessUsageContent">
+                    <!-- V-Notch CPU -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
+                            <Grid>
+                                <Border x:Name="VNotchCpuBar" HorizontalAlignment="Stretch" Background="#1E88E5" CornerRadius="2" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="VNotchCpuScale" ScaleX="0" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TextBlock x:Name="VNotchCpuText" Text="0.0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="VNotchCpuThreadsText" Grid.Column="1" Text="CPU (0 th / 0 hd)" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
 
-                <!-- V-Notch Working Set RAM -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
-                        <Grid>
-                            <Border x:Name="VNotchRamBar" HorizontalAlignment="Left" Background="#1E88E5" Width="0" CornerRadius="2"/>
-                            <TextBlock x:Name="VNotchRamText" Text="0 MB" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                    <TextBlock x:Name="VNotchPrivateRamText" Grid.Column="1" Text="RAM (0 MB Priv)" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                    <!-- V-Notch Working Set RAM -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
+                            <Grid>
+                                <Border x:Name="VNotchRamBar" HorizontalAlignment="Stretch" Background="#1E88E5" CornerRadius="2" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="VNotchRamScale" ScaleX="0" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TextBlock x:Name="VNotchRamText" Text="0 MB" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="VNotchPrivateRamText" Grid.Column="1" Text="RAM (0 MB Priv)" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
 
-                <!-- Managed GC Heap & Alloc Rate -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" Padding="5,0">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock x:Name="GcHeapText" Text="Heap 0 MB" Foreground="#FFFFFF" FontSize="10" Margin="0,0,4,0"/>
-                            <TextBlock x:Name="AllocRateText" Text="(0 B/s)" Foreground="#A0A0AA" FontSize="9.5"/>
-                        </StackPanel>
-                    </Border>
-                    <TextBlock x:Name="GcGenText" Grid.Column="1" Text="GC (0/0/0)" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                    <!-- Managed GC Heap & Alloc Rate -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" Padding="5,0">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock x:Name="GcHeapText" Text="Heap 0 MB" Foreground="#FFFFFF" FontSize="10" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="AllocRateText" Text="(0 B/s)" Foreground="#A0A0AA" FontSize="9.5"/>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock x:Name="GcGenText" Grid.Column="1" Text="GC (0/0/0)" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
 
-                <!-- V-Notch GPU & Render Latency -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
-                        <Grid>
-                            <Border x:Name="VNotchGpuBar" HorizontalAlignment="Left" Background="#1E88E5" Width="0" CornerRadius="2"/>
-                            <TextBlock x:Name="VNotchGpuText" Text="0.0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                    <TextBlock x:Name="RenderLatencyText" Grid.Column="1" Text="GPU 3D (0ms / 0ms UI)" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                    <!-- V-Notch GPU & Render Latency -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
+                            <Grid>
+                                <Border x:Name="VNotchGpuBar" HorizontalAlignment="Stretch" Background="#1E88E5" CornerRadius="2" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="VNotchGpuScale" ScaleX="0" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TextBlock x:Name="VNotchGpuText" Text="0.0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="RenderLatencyText" Grid.Column="1" Text="GPU 3D (0ms / 0ms UI)" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                </StackPanel>
 
                 <!-- ========================================== -->
                 <!-- 3. SECTION: GLOBAL SYSTEM USAGE            -->
                 <!-- ========================================== -->
-                <Border Background="#2D2214" CornerRadius="3" Height="20" Padding="6,0" Margin="0,6,0,3">
+                <Border Background="#2D2214" CornerRadius="3" Height="20" Padding="6,0" Margin="0,6,0,2"
+                        Cursor="Hand" MouseLeftButtonDown="ToggleGlobalUsage_Click">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Path Data="M 0 0 L 4 5 L 8 0 Z" Fill="#FF9F0A" VerticalAlignment="Center" Margin="0,1,6,0"/>
+                        <Path x:Name="GlobalUsageArrow" Data="M 0 0 L 4 5 L 8 0 Z" Fill="#FF9F0A" VerticalAlignment="Center" Margin="0,1,6,0"/>
                         <TextBlock Text="GLOBAL SYSTEM USAGE" Foreground="#FF9F0A" FontSize="10.5" FontWeight="Bold"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Global CPU -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
-                        <Grid>
-                            <Border x:Name="GlobalCpuBar" HorizontalAlignment="Left" Background="#FF9F0A" Width="0" CornerRadius="2"/>
-                            <TextBlock x:Name="GlobalCpuText" Text="0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                    <TextBlock Grid.Column="1" Text="Global CPU" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                </Grid>
+                <!-- Collapsible Container for Global System Usage -->
+                <StackPanel x:Name="GlobalUsageContent">
+                    <!-- Global CPU -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
+                            <Grid>
+                                <Border x:Name="GlobalCpuBar" HorizontalAlignment="Stretch" Background="#FF9F0A" CornerRadius="2" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="GlobalCpuScale" ScaleX="0" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TextBlock x:Name="GlobalCpuText" Text="0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="Global CPU" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    </Grid>
 
-                <!-- Global RAM -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
-                        <Grid>
-                            <Border x:Name="GlobalRamBar" HorizontalAlignment="Left" Background="#FF9F0A" Width="0" CornerRadius="2"/>
-                            <TextBlock x:Name="GlobalRamText" Text="0 GB (0%)" Foreground="#FFFFFF" FontSize="10" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                    <TextBlock x:Name="GlobalRamAvailText" Grid.Column="1" Text="RAM (0 GB free)" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                    <!-- Global RAM -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
+                            <Grid>
+                                <Border x:Name="GlobalRamBar" HorizontalAlignment="Stretch" Background="#FF9F0A" CornerRadius="2" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="GlobalRamScale" ScaleX="0" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TextBlock x:Name="GlobalRamText" Text="0 GB (0%)" Foreground="#FFFFFF" FontSize="10" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="GlobalRamAvailText" Grid.Column="1" Text="RAM (0 GB free)" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
 
-                <!-- Global GPU & VRAM -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
-                        <Grid>
-                            <Border x:Name="GlobalGpuBar" HorizontalAlignment="Left" Background="#FF9F0A" Width="0" CornerRadius="2"/>
-                            <TextBlock x:Name="GlobalGpuText" Text="0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                    <TextBlock x:Name="GpuNameText" Grid.Column="1" Text="GPU Hardware" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
-                </Grid>
+                    <!-- Global GPU & VRAM -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" ClipToBounds="True">
+                            <Grid>
+                                <Border x:Name="GlobalGpuBar" HorizontalAlignment="Stretch" Background="#FF9F0A" CornerRadius="2" RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="GlobalGpuScale" ScaleX="0" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TextBlock x:Name="GlobalGpuText" Text="0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="GpuNameText" Grid.Column="1" Text="GPU Hardware" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
 
-                <!-- Global Network I/O -->
-                <Grid Margin="0,2,0,2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" Padding="4,0">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="↓" Foreground="#64D2FF" FontSize="10.5" FontWeight="Bold" Margin="0,0,2,0"/>
-                            <TextBlock x:Name="NetDownText" Text="0 B/s" Foreground="#FFFFFF" FontSize="9.5" Margin="0,0,6,0"/>
-                            <TextBlock Text="↑" Foreground="#FF9F0A" FontSize="10.5" FontWeight="Bold" Margin="0,0,2,0"/>
-                            <TextBlock x:Name="NetUpText" Text="0 B/s" Foreground="#FFFFFF" FontSize="9.5"/>
-                        </StackPanel>
-                    </Border>
-                    <TextBlock Grid.Column="1" Text="Network I/O" Foreground="#D0D0D8" FontSize="10.5"
-                               VerticalAlignment="Center" Margin="8,0,0,0"/>
-                </Grid>
+                    <!-- Global Network I/O -->
+                    <Grid Margin="0,2,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" Padding="4,0">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="↓" Foreground="#64D2FF" FontSize="10.5" FontWeight="Bold" Margin="0,0,2,0"/>
+                                <TextBlock x:Name="NetDownText" Text="0 B/s" Foreground="#FFFFFF" FontSize="9.5" Margin="0,0,6,0"/>
+                                <TextBlock Text="↑" Foreground="#FF9F0A" FontSize="10.5" FontWeight="Bold" Margin="0,0,2,0"/>
+                                <TextBlock x:Name="NetUpText" Text="0 B/s" Foreground="#FFFFFF" FontSize="9.5"/>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="Network I/O" Foreground="#D0D0D8" FontSize="10.5"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    </Grid>
+                </StackPanel>
 
                 <!-- ========================================== -->
-                <!-- 4. SECTION: LIVE DIAGNOSTICS & BOTTLENECK LOG -->
+                <!-- 4. SECTION: BOTTLENECKS & HEALTH LOG       -->
                 <!-- ========================================== -->
-                <Border Background="#222228" CornerRadius="3" Height="20" Padding="6,0" Margin="0,6,0,3">
+                <Border Background="#222228" CornerRadius="3" Height="20" Padding="6,0" Margin="0,6,0,2"
+                        Cursor="Hand" MouseLeftButtonDown="ToggleBottlenecks_Click">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Data="M 0 0 L 4 5 L 8 0 Z" Fill="#A0A0AA" VerticalAlignment="Center" Margin="0,1,6,0"/>
-                            <TextBlock Text="LIVE DIAGNOSTICS &amp; BOTTLENECK LOG" Foreground="#D8D8E0" FontSize="10" FontWeight="Bold"/>
+                            <Path x:Name="BottlenecksArrow" Data="M 0 0 L 4 5 L 8 0 Z" Fill="#A0A0AA" VerticalAlignment="Center" Margin="0,1,6,0"/>
+                            <TextBlock Text="BOTTLENECK &amp; HEALTH ALERTS" Foreground="#D8D8E0" FontSize="10" FontWeight="Bold"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="CopyAllLogsBtn" Click="CopyAllLogsBtn_Click"
-                                    Style="{StaticResource ImGuiButtonStyle}" Content="Copy All" Padding="5,1" FontSize="9.5" Margin="0,0,4,0"/>
+                                    Style="{StaticResource ImGuiButtonStyle}" Content="Copy" Padding="5,1" FontSize="9.5" Margin="0,0,4,0"/>
                             <Button x:Name="ClearLogsBtn" Click="ClearLogsBtn_Click"
                                     Style="{StaticResource ImGuiButtonStyle}" Content="Clear" Padding="5,1" FontSize="9.5"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- Diagnostic Log Viewer -->
-                <Border Background="#18181C" BorderBrush="#303038" BorderThickness="1" CornerRadius="3" MaxHeight="120" Height="110" Margin="0,2,0,4" Padding="3,2">
-                    <ScrollViewer x:Name="LogsScrollViewer"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  ScrollChanged="LogsScrollViewer_ScrollChanged">
-                        <ScrollViewer.Resources>
-                            <Style TargetType="ScrollBar" BasedOn="{StaticResource InspectorScrollBar}"/>
-                        </ScrollViewer.Resources>
-                        <ItemsControl x:Name="DiagnosticLogsItemsControl">
-                            <ItemsControl.ItemTemplate>
+                <!-- Collapsible Container for Bottlenecks & Health Alerts Log -->
+                <StackPanel x:Name="BottlenecksContent">
+                    <Border Background="#18181C" BorderBrush="#303038" BorderThickness="1" CornerRadius="3" Height="130" Margin="0,2,0,4" Padding="2,2">
+                        <ListBox x:Name="DiagnosticLogsListBox"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.CanContentScroll="True"
+                                 VirtualizingStackPanel.IsVirtualizing="True"
+                                 VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                 SelectionMode="Single">
+                            <ListBox.Resources>
+                                <Style TargetType="ScrollBar" BasedOn="{StaticResource InspectorScrollBar}"/>
+                            </ListBox.Resources>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Focusable" Value="False"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="0"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <ContentPresenter/>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Margin="1,1.5,1,2.5">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox Text="{Binding FormattedTime, Mode=OneWay}"
-                                                 IsReadOnly="True"
-                                                 IsReadOnlyCaretVisible="False"
-                                                 BorderThickness="0"
-                                                 Background="Transparent"
-                                                 Foreground="#7E7E88"
-                                                 FontSize="9.5"
-                                                 FontFamily="Consolas, Segoe UI, monospace"
-                                                 Padding="0"
-                                                 Margin="0,0,5,0"
-                                                 VerticalAlignment="Top"
-                                                 Cursor="IBeam"
-                                                 SelectionBrush="#1E88E5"/>
-                                        <Border Grid.Column="1" Background="{Binding SeverityBackground}" CornerRadius="2" Padding="3,0" Margin="0,0,5,0" VerticalAlignment="Top">
-                                            <TextBlock Text="{Binding Category}" Foreground="{Binding SeverityForeground}" FontSize="9" FontWeight="Bold"/>
-                                        </Border>
-                                        <TextBox Grid.Column="2"
-                                                 Text="{Binding Message, Mode=OneWay}"
-                                                 IsReadOnly="True"
-                                                 IsReadOnlyCaretVisible="False"
-                                                 BorderThickness="0"
-                                                 Background="Transparent"
-                                                 Foreground="#D0D0D8"
-                                                 FontSize="10"
-                                                 TextWrapping="Wrap"
-                                                 Padding="0"
-                                                 VerticalAlignment="Top"
-                                                 Cursor="IBeam"
-                                                 SelectionBrush="#1E88E5"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Border>
+                                    <Border Background="#141419" BorderBrush="#24242D" BorderThickness="1" CornerRadius="3" Padding="5,3" Margin="1,1,1,2.5">
+                                        <StackPanel>
+                                            <!-- Row 1: Timestamp & Category Badge -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                <TextBox Text="{Binding FormattedTime, Mode=OneWay}"
+                                                         IsReadOnly="True"
+                                                         IsReadOnlyCaretVisible="False"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         Foreground="#82828C"
+                                                         FontSize="9.5"
+                                                         FontFamily="Consolas, Segoe UI, monospace"
+                                                         Padding="0"
+                                                         Margin="0,0,6,0"
+                                                         VerticalAlignment="Center"
+                                                         Cursor="IBeam"
+                                                         SelectionBrush="#1E88E5"/>
+                                                <Border Background="{Binding SeverityBackground}" CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Category}" Foreground="{Binding SeverityForeground}" FontSize="9" FontWeight="Bold"/>
+                                                </Border>
+                                            </StackPanel>
 
-                <!-- Footer: FPS & Hz Summary -->
+                                            <!-- Row 2: Full Log Message (100% Width) -->
+                                            <TextBox Text="{Binding Message, Mode=OneWay}"
+                                                     IsReadOnly="True"
+                                                     IsReadOnlyCaretVisible="False"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     Foreground="#E2E2E8"
+                                                     FontSize="10"
+                                                     FontFamily="Consolas, Segoe UI, monospace"
+                                                     TextWrapping="Wrap"
+                                                     Padding="0"
+                                                     VerticalAlignment="Top"
+                                                     Cursor="IBeam"
+                                                     SelectionBrush="#1E88E5"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </StackPanel>
+
+                <!-- Footer: FPS & Hz Summary + Toggle Service Logs Button -->
                 <Border Height="1" Background="#33333C" Margin="0,4,0,4"/>
 
                 <Grid Margin="0,0,0,1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="FpsSummaryText" Text="-- FPS" Foreground="#E0E0E6" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <TextBlock x:Name="HzSummaryText" Text=" (-- Hz)" Foreground="#8A8A94" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
                         <TextBlock x:Name="FrameTimeSummaryText" Text=" • 0.0ms" Foreground="#64D2FF" FontSize="10.5" VerticalAlignment="Center" Margin="4,0,0,0"/>
                     </StackPanel>
+                    <Button Grid.Column="1" x:Name="ToggleServiceLogsBtn"
+                            Click="ToggleServiceLogsBtn_Click"
+                            Style="{StaticResource ImGuiButtonStyle}"
+                            Content="Service Logs ▶"
+                            Padding="6,2" FontSize="10"/>
                 </Grid>
             </StackPanel>
+        </Border>
+
+        <!-- ==================================================== -->
+        <!-- COLUMN 1: DEDICATED SERVICE RUNTIME LOGS SIDE PANEL -->
+        <!-- ==================================================== -->
+        <Border Grid.Column="1" x:Name="ServiceLogsPanel" Width="460" CornerRadius="6"
+                Background="#F51E1E22"
+                BorderBrush="#33333C"
+                BorderThickness="1"
+                Padding="9,8,9,9"
+                Margin="8,0,0,0"
+                Visibility="Visible">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" Opacity="0.75" ShadowDepth="4" Direction="270" Color="#000000"/>
+            </Border.Effect>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <Grid Grid.Row="0" Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path Data="M 0 0 L 4 5 L 8 0 Z" Fill="#64D2FF" VerticalAlignment="Center" Margin="0,1,6,0"/>
+                        <TextBlock Text="SERVICE RUNTIME LOGS" Foreground="#64D2FF" FontSize="11.5" FontWeight="Bold"/>
+                    </StackPanel>
+
+                    <!-- Close Side Panel Button -->
+                    <Button Grid.Column="1" Click="CloseServiceLogsBtn_Click"
+                            Width="16" Height="16"
+                            VerticalAlignment="Center"
+                            Cursor="Hand"
+                            Focusable="False">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="3">
+                                    <Path Data="M 3,3 L 11,11 M 11,3 L 3,11"
+                                          Stroke="#8A8A94" StrokeThickness="1.2"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="BtnBorder" Property="Background" Value="#44FF453A"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+
+                <!-- Filter Bar and Action Buttons -->
+                <Grid Grid.Row="1" Margin="0,2,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ComboBox x:Name="ServiceCategoryFilterComboBox"
+                              Style="{StaticResource ImGuiComboBoxStyle}"
+                              SelectionChanged="ServiceCategoryFilterComboBox_SelectionChanged">
+                        <ComboBoxItem Content="All Categories" IsSelected="True"/>
+                        <ComboBoxItem Content="Media (Playback &amp; Track)"/>
+                        <ComboBoxItem Content="Audio Mixer"/>
+                        <ComboBoxItem Content="Battery &amp; Power"/>
+                        <ComboBoxItem Content="Bluetooth"/>
+                        <ComboBoxItem Content="Spotify"/>
+                        <ComboBoxItem Content="Weather"/>
+                        <ComboBoxItem Content="Spotlight Search"/>
+                        <ComboBoxItem Content="Subtitles &amp; Lyrics"/>
+                        <ComboBoxItem Content="Liquid Glass"/>
+                        <ComboBoxItem Content="Memory &amp; GC"/>
+                    </ComboBox>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="6,0,0,0">
+                        <Button x:Name="CopyServiceLogsBtn" Click="CopyServiceLogsBtn_Click"
+                                Style="{StaticResource ImGuiButtonStyle}" Content="Copy All" Padding="6,2" FontSize="9.5" Margin="0,0,4,0"/>
+                        <Button x:Name="ClearServiceLogsBtn" Click="ClearServiceLogsBtn_Click"
+                                Style="{StaticResource ImGuiButtonStyle}" Content="Clear" Padding="6,2" FontSize="9.5"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Service Logs ListBox (Virtualized) -->
+                <Border Grid.Row="2" Background="#18181C" BorderBrush="#303038" BorderThickness="1" CornerRadius="3"
+                        Height="400" Padding="2,2">
+                    <ListBox x:Name="ServiceLogsListBox"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Padding="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.CanContentScroll="True"
+                             VirtualizingStackPanel.IsVirtualizing="True"
+                             VirtualizingStackPanel.VirtualizationMode="Recycling"
+                             SelectionMode="Single">
+                        <ListBox.Resources>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource InspectorScrollBar}"/>
+                        </ListBox.Resources>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Focusable" Value="False"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#141419" BorderBrush="#24242D" BorderThickness="1" CornerRadius="3" Padding="6,3.5" Margin="1,1,1,2.5">
+                                    <StackPanel>
+                                        <!-- Row 1: Timestamp & Category Tag -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                            <TextBox Text="{Binding FormattedTime, Mode=OneWay}"
+                                                     IsReadOnly="True"
+                                                     IsReadOnlyCaretVisible="False"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     Foreground="#82828C"
+                                                     FontSize="9.5"
+                                                     FontFamily="Consolas, Segoe UI, monospace"
+                                                     Padding="0"
+                                                     Margin="0,0,6,0"
+                                                     VerticalAlignment="Center"
+                                                     Cursor="IBeam"
+                                                     SelectionBrush="#1E88E5"/>
+                                            <Border Background="{Binding SeverityBackground}" CornerRadius="2" Padding="4,1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Category}" Foreground="{Binding SeverityForeground}" FontSize="9" FontWeight="Bold"/>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <!-- Row 2: Full Log Message (100% Width) -->
+                                        <TextBox Text="{Binding Message, Mode=OneWay}"
+                                                 IsReadOnly="True"
+                                                 IsReadOnlyCaretVisible="False"
+                                                 BorderThickness="0"
+                                                 Background="Transparent"
+                                                 Foreground="#ECECEE"
+                                                 FontSize="10.5"
+                                                 FontFamily="Consolas, Segoe UI, monospace"
+                                                 TextWrapping="Wrap"
+                                                 Padding="0"
+                                                 VerticalAlignment="Top"
+                                                 Cursor="IBeam"
+                                                 SelectionBrush="#1E88E5"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <!-- Footer Summary of Service Logs -->
+                <TextBlock Grid.Row="3" x:Name="ServiceLogCountText" Text="0 service log events" Foreground="#7E7E88" FontSize="9.5" Margin="2,4,0,0"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>

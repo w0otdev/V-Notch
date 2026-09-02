@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -38,6 +39,10 @@ public partial class DebugWindow : Window
     private readonly DispatcherTimer _updateTimer;
     private int _logRefreshCounter = 0;
 
+    // Observable collections for high-performance virtualized ListBoxes
+    private readonly ObservableCollection<DiagnosticLogViewModel> _diagnosticLogs = new();
+    private readonly ObservableCollection<DiagnosticLogViewModel> _serviceLogs = new();
+
     // Brushes for health levels
     private static readonly SolidColorBrush NominalBg = new(Color.FromArgb(0xFF, 0x1B, 0x33, 0x20));
     private static readonly SolidColorBrush NominalBorder = new(Color.FromArgb(0xFF, 0x2E, 0x7D, 0x32));
@@ -52,6 +57,10 @@ public partial class DebugWindow : Window
     private static readonly SolidColorBrush TagWarningFg = new(Color.FromArgb(0xFF, 0xFF, 0xB7, 0x4D));
     private static readonly SolidColorBrush TagCriticalBg = new(Color.FromArgb(0x55, 0xD3, 0x2F, 0x2F));
     private static readonly SolidColorBrush TagCriticalFg = new(Color.FromArgb(0xFF, 0xE5, 0x73, 0x73));
+    private static readonly SolidColorBrush TagServiceBg = new(Color.FromArgb(0x44, 0x1E, 0x88, 0xE5));
+    private static readonly SolidColorBrush TagServiceFg = new(Color.FromArgb(0xFF, 0x64, 0xD2, 0xFF));
+    private static readonly SolidColorBrush TagMemoryBg = new(Color.FromArgb(0x44, 0x8E, 0x24, 0xAA));
+    private static readonly SolidColorBrush TagMemoryFg = new(Color.FromArgb(0xFF, 0xCE, 0x93, 0xD8));
 
     // Cache previous strings
     private string _prevFps = "";
@@ -101,9 +110,9 @@ public partial class DebugWindow : Window
         Loaded += DebugWindow_Loaded;
         IsVisibleChanged += DebugWindow_IsVisibleChanged;
 
-        _updateTimer = new DispatcherTimer(DispatcherPriority.Normal)
+        _updateTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(100)
+            Interval = TimeSpan.FromMilliseconds(200)
         };
         _updateTimer.Tick += UpdateTimer_Tick;
     }
@@ -124,11 +133,15 @@ public partial class DebugWindow : Window
         }
         else
         {
-            Left = Math.Max(10, SystemParameters.WorkArea.Right - 440);
+            Left = Math.Max(10, SystemParameters.WorkArea.Right - 840);
             Top = Math.Max(10, SystemParameters.WorkArea.Top + 24);
         }
 
+        DiagnosticLogsListBox.ItemsSource = _diagnosticLogs;
+        ServiceLogsListBox.ItemsSource = _serviceLogs;
+
         RefreshDiagnosticLogs();
+        RefreshServiceLogs();
 
         if (IsVisible && !_updateTimer.IsEnabled)
             _updateTimer.Start();
@@ -139,6 +152,7 @@ public partial class DebugWindow : Window
         if (IsVisible)
         {
             RefreshDiagnosticLogs();
+            RefreshServiceLogs();
             if (!_updateTimer.IsEnabled) _updateTimer.Start();
         }
         else
@@ -158,9 +172,17 @@ public partial class DebugWindow : Window
             UpdateSnapshot(snapshot);
 
             _logRefreshCounter++;
-            if (_logRefreshCounter % 3 == 0) // Refresh log UI every ~300ms
+            if (_logRefreshCounter % 2 == 0) // Refresh log UI every ~400ms
             {
-                RefreshDiagnosticLogs();
+                if (BottlenecksContent.Visibility == Visibility.Visible)
+                {
+                    RefreshDiagnosticLogs();
+                }
+
+                if (ServiceLogsPanel.Visibility == Visibility.Visible)
+                {
+                    RefreshServiceLogs();
+                }
             }
         }
         catch { }
@@ -258,7 +280,7 @@ public partial class DebugWindow : Window
             _prevVNotchCpu = vCpuStr;
             VNotchCpuText.Text = vCpuStr;
         }
-        SetBarWidth(VNotchCpuBar, snapshot.ProcessCpuPercent);
+        SetBarPercent(VNotchCpuScale, snapshot.ProcessCpuPercent);
 
         string vCpuThStr = $"CPU ({snapshot.ProcessThreadCount} th / {snapshot.ProcessHandleCount} hd)";
         if (VNotchCpuThreadsText != null && _prevVNotchCpuThreads != vCpuThStr)
@@ -275,7 +297,7 @@ public partial class DebugWindow : Window
             VNotchRamText.Text = vRamStr;
         }
         double vRamPercent = Math.Clamp((snapshot.ProcessWorkingSetBytes / 1024.0 / 1024.0) / 10.0 * 100.0, 0, 100);
-        SetBarWidth(VNotchRamBar, vRamPercent);
+        SetBarPercent(VNotchRamScale, vRamPercent);
 
         string vPrivStr = $"RAM ({FormatMb(snapshot.ProcessPrivateBytes)} MB Priv)";
         if (VNotchPrivateRamText != null && _prevVNotchPrivateRam != vPrivStr)
@@ -313,7 +335,7 @@ public partial class DebugWindow : Window
             _prevVNotchGpu = vGpuStr;
             VNotchGpuText.Text = vGpuStr;
         }
-        SetBarWidth(VNotchGpuBar, snapshot.ProcessGpuPercent);
+        SetBarPercent(VNotchGpuScale, snapshot.ProcessGpuPercent);
 
         string renderLatStr = $"GPU ({snapshot.FrameTimeMs:0.0}ms / {snapshot.DispatcherLatencyMs:0.0}ms UI)";
         if (RenderLatencyText != null && _prevRenderLatency != renderLatStr)
@@ -329,7 +351,7 @@ public partial class DebugWindow : Window
             _prevGlobalCpu = gCpuStr;
             GlobalCpuText.Text = gCpuStr;
         }
-        SetBarWidth(GlobalCpuBar, snapshot.GlobalCpuPercent);
+        SetBarPercent(GlobalCpuScale, snapshot.GlobalCpuPercent);
 
         // 7. Global RAM
         string gRamStr = snapshot.GlobalRamTotalBytes > 0
@@ -340,7 +362,7 @@ public partial class DebugWindow : Window
             _prevGlobalRam = gRamStr;
             GlobalRamText.Text = gRamStr;
         }
-        SetBarWidth(GlobalRamBar, snapshot.GlobalRamPercent);
+        SetBarPercent(GlobalRamScale, snapshot.GlobalRamPercent);
 
         string gAvailStr = $"RAM ({FormatGb(snapshot.GlobalRamAvailBytes)} GB free)";
         if (GlobalRamAvailText != null && _prevGlobalRamAvail != gAvailStr)
@@ -356,7 +378,7 @@ public partial class DebugWindow : Window
             _prevGlobalGpu = gGpuStr;
             GlobalGpuText.Text = gGpuStr;
         }
-        SetBarWidth(GlobalGpuBar, snapshot.GlobalGpuPercent);
+        SetBarPercent(GlobalGpuScale, snapshot.GlobalGpuPercent);
 
         string gpuNameVram = snapshot.DedicatedVramBytes > 0
             ? $"{snapshot.GpuName} ({FormatGb(snapshot.DedicatedVramBytes)} GB)"
@@ -411,12 +433,95 @@ public partial class DebugWindow : Window
         }
     }
 
+    #region Collapsible Section Handlers
+
+    private static readonly Geometry DownArrowGeometry = Geometry.Parse("M 0 0 L 4 5 L 8 0 Z");
+    private static readonly Geometry RightArrowGeometry = Geometry.Parse("M 0 0 L 5 4 L 0 8 Z");
+
+    private void ToggleProcessUsage_Click(object sender, MouseButtonEventArgs e)
+    {
+        bool isVisible = ProcessUsageContent.Visibility == Visibility.Visible;
+        ProcessUsageContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+        ProcessUsageArrow.Data = isVisible ? RightArrowGeometry : DownArrowGeometry;
+    }
+
+    private void ToggleGlobalUsage_Click(object sender, MouseButtonEventArgs e)
+    {
+        bool isVisible = GlobalUsageContent.Visibility == Visibility.Visible;
+        GlobalUsageContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+        GlobalUsageArrow.Data = isVisible ? RightArrowGeometry : DownArrowGeometry;
+    }
+
+    private void ToggleBottlenecks_Click(object sender, MouseButtonEventArgs e)
+    {
+        bool isVisible = BottlenecksContent.Visibility == Visibility.Visible;
+        BottlenecksContent.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+        BottlenecksArrow.Data = isVisible ? RightArrowGeometry : DownArrowGeometry;
+        if (!isVisible)
+        {
+            RefreshDiagnosticLogs();
+        }
+    }
+
+    private void ToggleServiceLogsBtn_Click(object sender, RoutedEventArgs e)
+    {
+        bool isVisible = ServiceLogsPanel.Visibility == Visibility.Visible;
+        ServiceLogsPanel.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+        ToggleServiceLogsBtn.Content = isVisible ? "Service Logs ▶" : "Service Logs ◀";
+        if (!isVisible)
+        {
+            RefreshServiceLogs();
+        }
+    }
+
+    private void CloseServiceLogsBtn_Click(object sender, RoutedEventArgs e)
+    {
+        ServiceLogsPanel.Visibility = Visibility.Collapsed;
+        ToggleServiceLogsBtn.Content = "Service Logs ▶";
+    }
+
+    #endregion
+
+    #region Log Viewers (Bottlenecks & Services)
+
     private int _lastLogCount = -1;
     private DateTime _lastLogTimestamp = DateTime.MinValue;
-    private bool _userScrolledUp = false;
+
+    private int _lastServiceLogCount = -1;
+    private DateTime _lastServiceLogTimestamp = DateTime.MinValue;
+    private string _lastActiveFilter = "";
+
+    private static DiagnosticLogViewModel MapToViewModel(DiagnosticLogEntry l, bool isService = false)
+    {
+        bool isMemory = l.Category is "MEMORY" or "GC" or "SMART-CROP" or "CROP";
+        SolidColorBrush bg = l.Severity switch
+        {
+            PerformanceHealthLevel.Critical => TagCriticalBg,
+            PerformanceHealthLevel.Warning => TagWarningBg,
+            _ => isService ? (isMemory ? TagMemoryBg : TagServiceBg) : TagNominalBg
+        };
+
+        SolidColorBrush fg = l.Severity switch
+        {
+            PerformanceHealthLevel.Critical => TagCriticalFg,
+            PerformanceHealthLevel.Warning => TagWarningFg,
+            _ => isService ? (isMemory ? TagMemoryFg : TagServiceFg) : TagNominalFg
+        };
+
+        return new DiagnosticLogViewModel
+        {
+            FormattedTime = l.Timestamp.ToString("HH:mm:ss"),
+            Category = l.Category,
+            Message = l.Message,
+            SeverityBackground = bg,
+            SeverityForeground = fg
+        };
+    }
 
     private void RefreshDiagnosticLogs()
     {
+        if (BottlenecksContent.Visibility != Visibility.Visible) return;
+
         try
         {
             var rawLogs = PerformanceDiagnosticService.Instance.GetRecentLogs();
@@ -425,62 +530,119 @@ public partial class DebugWindow : Window
                 return;
             }
 
+            int previousCount = _lastLogCount;
             _lastLogCount = rawLogs.Count;
             _lastLogTimestamp = rawLogs.Count > 0 ? rawLogs[^1].Timestamp : DateTime.MinValue;
 
-            // Chronological order: oldest at top, newest at BOTTOM
-            var viewModels = rawLogs.Select(l => new DiagnosticLogViewModel
+            if (previousCount <= 0 || rawLogs.Count < _diagnosticLogs.Count)
             {
-                FormattedTime = l.Timestamp.ToString("HH:mm:ss"),
-                Category = l.Category,
-                Message = l.Message,
-                SeverityBackground = l.Severity switch
+                _diagnosticLogs.Clear();
+                foreach (var log in rawLogs)
                 {
-                    PerformanceHealthLevel.Critical => TagCriticalBg,
-                    PerformanceHealthLevel.Warning => TagWarningBg,
-                    _ => TagNominalBg
-                },
-                SeverityForeground = l.Severity switch
-                {
-                    PerformanceHealthLevel.Critical => TagCriticalFg,
-                    PerformanceHealthLevel.Warning => TagWarningFg,
-                    _ => TagNominalFg
+                    _diagnosticLogs.Add(MapToViewModel(log));
                 }
-            }).ToList();
-
-            DiagnosticLogsItemsControl.ItemsSource = viewModels;
-
-            if (!_userScrolledUp && LogsScrollViewer != null)
+            }
+            else if (rawLogs.Count > previousCount)
             {
-                Dispatcher.BeginInvoke(new Action(() =>
+                for (int i = previousCount; i < rawLogs.Count; i++)
                 {
-                    try
-                    {
-                        LogsScrollViewer.ScrollToEnd();
-                    }
-                    catch { }
-                }), DispatcherPriority.Loaded);
+                    _diagnosticLogs.Add(MapToViewModel(rawLogs[i]));
+                }
+            }
+
+            while (_diagnosticLogs.Count > 200)
+            {
+                _diagnosticLogs.RemoveAt(0);
+            }
+
+            if (_diagnosticLogs.Count > 0)
+            {
+                DiagnosticLogsListBox.ScrollIntoView(_diagnosticLogs[^1]);
             }
         }
         catch { }
     }
 
-    private void LogsScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    private void RefreshServiceLogs()
     {
-        if (LogsScrollViewer == null) return;
+        if (ServiceLogsPanel.Visibility != Visibility.Visible) return;
 
-        if (e.ExtentHeightChange != 0)
+        try
         {
-            if (!_userScrolledUp || (LogsScrollViewer.VerticalOffset + LogsScrollViewer.ViewportHeight >= LogsScrollViewer.ExtentHeight - 20))
+            var rawLogs = PerformanceDiagnosticService.Instance.GetRecentServiceLogs();
+            string filter = "";
+            if (ServiceCategoryFilterComboBox?.SelectedItem is ComboBoxItem cbi && cbi.Content is string text)
             {
-                LogsScrollViewer.ScrollToEnd();
-                _userScrolledUp = false;
+                filter = text;
+            }
+
+            bool filterChanged = filter != _lastActiveFilter;
+            _lastActiveFilter = filter;
+
+            if (!filterChanged && rawLogs.Count == _lastServiceLogCount && rawLogs.Count > 0 && rawLogs[^1].Timestamp == _lastServiceLogTimestamp)
+            {
+                return;
+            }
+
+            int previousRawCount = _lastServiceLogCount;
+            _lastServiceLogCount = rawLogs.Count;
+            _lastServiceLogTimestamp = rawLogs.Count > 0 ? rawLogs[^1].Timestamp : DateTime.MinValue;
+
+            bool hasFilter = !string.IsNullOrEmpty(filter) && filter != "All Categories";
+
+            if (filterChanged || hasFilter || previousRawCount <= 0 || rawLogs.Count < previousRawCount)
+            {
+                IEnumerable<DiagnosticLogEntry> filtered = filter switch
+                {
+                    "Media (Playback & Track)" => rawLogs.Where(l => l.Category.StartsWith("MEDIA", StringComparison.OrdinalIgnoreCase)),
+                    "Audio Mixer" => rawLogs.Where(l => l.Category.StartsWith("AUDIO", StringComparison.OrdinalIgnoreCase)),
+                    "Battery & Power" => rawLogs.Where(l => l.Category.StartsWith("BATTERY", StringComparison.OrdinalIgnoreCase)),
+                    "Bluetooth" => rawLogs.Where(l => l.Category.StartsWith("BLUETOOTH", StringComparison.OrdinalIgnoreCase)),
+                    "Spotify" => rawLogs.Where(l => l.Category.StartsWith("SPOTIFY", StringComparison.OrdinalIgnoreCase)),
+                    "Weather" => rawLogs.Where(l => l.Category.StartsWith("WEATHER", StringComparison.OrdinalIgnoreCase)),
+                    "Spotlight Search" => rawLogs.Where(l => l.Category.StartsWith("SPOTLIGHT", StringComparison.OrdinalIgnoreCase)),
+                    "Subtitles & Lyrics" => rawLogs.Where(l => l.Category.StartsWith("SUBTITLE", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("LYRICS", StringComparison.OrdinalIgnoreCase)),
+                    "Liquid Glass" => rawLogs.Where(l => l.Category.StartsWith("LIQUIDGLASS", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GLASS", StringComparison.OrdinalIgnoreCase)),
+                    "Memory & GC" => rawLogs.Where(l => l.Category.StartsWith("MEMORY", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GC", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("CROP", StringComparison.OrdinalIgnoreCase)),
+                    _ => rawLogs
+                };
+
+                _serviceLogs.Clear();
+                foreach (var log in filtered)
+                {
+                    _serviceLogs.Add(MapToViewModel(log, isService: true));
+                }
+            }
+            else if (rawLogs.Count > previousRawCount)
+            {
+                for (int i = previousRawCount; i < rawLogs.Count; i++)
+                {
+                    _serviceLogs.Add(MapToViewModel(rawLogs[i], isService: true));
+                }
+            }
+
+            while (_serviceLogs.Count > 500)
+            {
+                _serviceLogs.RemoveAt(0);
+            }
+
+            if (ServiceLogCountText != null)
+            {
+                ServiceLogCountText.Text = $"{_serviceLogs.Count} service events logged";
+            }
+
+            if (_serviceLogs.Count > 0)
+            {
+                ServiceLogsListBox.ScrollIntoView(_serviceLogs[^1]);
             }
         }
-        else if (e.VerticalChange != 0)
-        {
-            _userScrolledUp = (LogsScrollViewer.VerticalOffset + LogsScrollViewer.ViewportHeight < LogsScrollViewer.ExtentHeight - 10);
-        }
+        catch { }
+    }
+
+    private void ServiceCategoryFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        _lastServiceLogCount = -1;
+        RefreshServiceLogs();
     }
 
     private void CopyAllLogsBtn_Click(object sender, RoutedEventArgs e)
@@ -503,7 +665,7 @@ public partial class DebugWindow : Window
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();
-                if (CopyAllLogsBtn != null) CopyAllLogsBtn.Content = "Copy All";
+                if (CopyAllLogsBtn != null) CopyAllLogsBtn.Content = "Copy";
             };
             timer.Start();
         }
@@ -513,17 +675,53 @@ public partial class DebugWindow : Window
         }
     }
 
-    private static void SetBarWidth(FrameworkElement? bar, double percent)
+    private void CopyServiceLogsBtn_Click(object sender, RoutedEventArgs e)
     {
-        if (bar?.Parent is not FrameworkElement track) return;
-        double trackWidth = track.ActualWidth;
-        if (double.IsNaN(trackWidth) || trackWidth <= 0) return;
-
-        double clamped = Math.Clamp(percent, 0, 100);
-        double target = trackWidth * (clamped / 100.0);
-        if (Math.Abs(bar.Width - target) > 0.5)
+        try
         {
-            bar.Width = target;
+            var rawLogs = PerformanceDiagnosticService.Instance.GetRecentServiceLogs();
+            if (rawLogs.Count == 0) return;
+
+            var sb = new System.Text.StringBuilder();
+            foreach (var log in rawLogs)
+            {
+                sb.AppendLine($"{log.Timestamp:HH:mm:ss} [{log.Category}] {log.Message}");
+            }
+
+            Clipboard.SetText(sb.ToString());
+            CopyServiceLogsBtn.Content = "Copied!";
+
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            timer.Tick += (s, ev) =>
+            {
+                timer.Stop();
+                if (CopyServiceLogsBtn != null) CopyServiceLogsBtn.Content = "Copy All";
+            };
+            timer.Start();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log("DEBUG-WINDOW", $"Clipboard copy failed: {ex.Message}");
+        }
+    }
+
+    private void ClearServiceLogsBtn_Click(object sender, RoutedEventArgs e)
+    {
+        PerformanceDiagnosticService.Instance.ClearServiceLogs();
+        _lastServiceLogCount = -1;
+        _serviceLogs.Clear();
+        RefreshServiceLogs();
+    }
+
+    #endregion
+
+    private static void SetBarPercent(ScaleTransform? scale, double percent)
+    {
+        if (scale == null) return;
+        double clamped = Math.Clamp(percent / 100.0, 0.0, 1.0);
+        if (Math.Abs(scale.ScaleX - clamped) > 0.005)
+        {
+            scale.ScaleX = clamped;
         }
     }
 
@@ -531,7 +729,7 @@ public partial class DebugWindow : Window
         (bytes / 1024.0 / 1024.0).ToString("0.0");
 
     private static string FormatGb(ulong bytes) =>
-        (bytes / 1024.0 / 1024.0).ToString("0.0");
+        (bytes / 1024.0 / 1024.0 / 1024.0).ToString("0.0");
 
     private static string FormatRate(double bytesPerSec)
     {
@@ -584,8 +782,9 @@ public partial class DebugWindow : Window
                     LockStateCheckBox.IsChecked = true;
                 }
             }
-            _onViewStateChanged?.Invoke(tag);
         }
+
+        _onViewStateChanged?.Invoke((ViewStateComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "Current");
     }
 
     private void ResetPositionBtn_Click(object sender, RoutedEventArgs e)
@@ -598,6 +797,7 @@ public partial class DebugWindow : Window
         PerformanceDiagnosticService.Instance.ClearLogs();
         _lastLogCount = -1;
         _lastLogTimestamp = DateTime.MinValue;
+        _diagnosticLogs.Clear();
         RefreshDiagnosticLogs();
     }
 }
