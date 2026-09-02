@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -29,6 +30,7 @@ public partial class ConfirmationDialog : Window
     private bool _isClosing = false;
 
     private const string TrashIconPathData = "M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z";
+    private const string WarningFilledPathData = "M12,1.67 C12.955,1.67 13.845,2.137 14.39,2.917 L14.495,3.077 L22.609,16.625 C23.63,18.33 22.4,20.99 20.302,21 L4.077,21 C1.979,20.99 0.749,18.33 1.77,16.625 L9.88,3.087 C10.425,2.137 11.315,1.67 12,1.67 Z M12.01,15 L11.883,15.007 A1,1 0 0,0 12.01,17 A1,1 0 0,0 12.01,15 Z M12,8 A1,1 0 0,0 11.007,8.883 L11,9 L11,13 A1,1 0 0,0 13,13 L13,9 A1,1 0 0,0 12,8 Z";
 
     public ConfirmationDialog()
     {
@@ -113,6 +115,13 @@ public partial class ConfirmationDialog : Window
     {
         switch (icon)
         {
+            case DialogIcon.Warning:
+                DialogIconPath.Fill = Brushes.White;
+                DialogIconPath.Stroke = null;
+                DialogIconPath.StrokeThickness = 0;
+                DialogIconPath.Data = Geometry.Parse(WarningFilledPathData);
+                break;
+
             case DialogIcon.Trash:
             case DialogIcon.Question:
                 DialogIconPath.Fill = Brushes.White;
@@ -121,17 +130,13 @@ public partial class ConfirmationDialog : Window
                 DialogIconPath.Data = Geometry.Parse(TrashIconPathData);
                 break;
 
-            case DialogIcon.Warning:
-                DialogIconPath.Fill = null;
-                DialogIconPath.Stroke = Brushes.White;
-                DialogIconPath.StrokeThickness = 2;
-                DialogIconPath.Data = Geometry.Parse("M12,2.5 L22.5,20.5 L1.5,20.5 Z M12,9 L12,14 M12,17 L12,17.01");
-                break;
-
             case DialogIcon.Error:
                 DialogIconPath.Fill = null;
                 DialogIconPath.Stroke = new SolidColorBrush(Color.FromRgb(217, 56, 58));
                 DialogIconPath.StrokeThickness = 2;
+                DialogIconPath.StrokeStartLineCap = PenLineCap.Round;
+                DialogIconPath.StrokeEndLineCap = PenLineCap.Round;
+                DialogIconPath.StrokeLineJoin = PenLineJoin.Round;
                 DialogIconPath.Data = Geometry.Parse("M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M15,9 L9,15 M9,9 L15,15");
                 break;
 
@@ -140,6 +145,9 @@ public partial class ConfirmationDialog : Window
                 DialogIconPath.Fill = null;
                 DialogIconPath.Stroke = Brushes.White;
                 DialogIconPath.StrokeThickness = 2;
+                DialogIconPath.StrokeStartLineCap = PenLineCap.Round;
+                DialogIconPath.StrokeEndLineCap = PenLineCap.Round;
+                DialogIconPath.StrokeLineJoin = PenLineJoin.Round;
                 DialogIconPath.Data = Geometry.Parse("M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M12,7 L12,7.01 M12,11 L12,17");
                 break;
         }
@@ -199,14 +207,25 @@ public partial class ConfirmationDialog : Window
         DialogCard.BeginAnimation(UIElement.OpacityProperty, opacity);
     }
 
+    private void Window_Closing(object sender, CancelEventArgs e)
+    {
+        if (!_isClosing)
+        {
+            e.Cancel = true;
+            CloseWithAnimation(Confirmed);
+        }
+    }
+
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
+            e.Handled = true;
             CloseWithAnimation(false);
         }
         else if (e.Key == Key.Enter)
         {
+            e.Handled = true;
             CloseWithAnimation(true);
         }
     }

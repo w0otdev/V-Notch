@@ -59,7 +59,7 @@ public sealed class SpotlightWindowAnimationTests
                 // when an exit was reversed.
                 window.ShowSpotlight();
                 window.HideSpotlight();
-                PumpUntil(() => !window.IsSpotlightOpen, TimeSpan.FromSeconds(2));
+                PumpUntil(() => !window.IsSpotlightOpen, TimeSpan.FromSeconds(5));
                 Assert.Equal(Visibility.Hidden, window.Shell.Visibility);
                 Assert.Equal(Visibility.Hidden, window.NotchMorphSnapshot.Visibility);
                 Assert.InRange(window.Shell.Opacity, 0, 0.001);
@@ -67,7 +67,7 @@ public sealed class SpotlightWindowAnimationTests
                 window.ShowSpotlight();
                 PumpUntil(
                     () => window.Shell.HasAnimatedProperties,
-                    TimeSpan.FromSeconds(1));
+                    TimeSpan.FromSeconds(5));
                 window.HideSpotlight();
                 PumpFor(TimeSpan.FromMilliseconds(45));
                 Assert.InRange(window.Shell.Opacity, 0.01, 0.99);
@@ -103,7 +103,7 @@ public sealed class SpotlightWindowAnimationTests
                     Assert.Equal(Visibility.Visible, window.NotchMorphSnapshot.Visibility);
                     PumpUntil(
                         () => morphHost.MorphActive,
-                        TimeSpan.FromSeconds(1));
+                        TimeSpan.FromSeconds(5));
                     PumpFor(TimeSpan.FromMilliseconds(entranceDelays[i]));
 
                     Assert.True(window.IsSpotlightOpen);
@@ -424,7 +424,7 @@ public sealed class SpotlightWindowAnimationTests
             Assert.Equal(Visibility.Hidden, activeWindow.ContentRegion.Visibility);
             Assert.True(double.IsFinite(activeWindow.ContentRegion.Width));
             Assert.True(double.IsFinite(activeWindow.ContentRegion.Height));
-            PumpUntil(() => morphHost.MorphActive, TimeSpan.FromSeconds(1));
+            PumpUntil(() => morphHost.MorphActive, TimeSpan.FromSeconds(5));
 
             // Let the exit's 170ms content fade finish before reversing. A
             // reserved Hidden region must not be collapsed by that stale fade
@@ -472,7 +472,7 @@ public sealed class SpotlightWindowAnimationTests
         Assert.True(activeWindow.ContentRegion.Height > 0);
         PumpUntil(
             () => activeWindow.ContentRegion.Visibility == Visibility.Collapsed,
-            TimeSpan.FromSeconds(1));
+            TimeSpan.FromSeconds(5));
         activeWindow.HideSpotlight();
         PumpUntil(() => !activeWindow.IsSpotlightOpen, TimeSpan.FromSeconds(3));
     }

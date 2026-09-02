@@ -2067,10 +2067,31 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4" BorderThickness="0">
                                             <StackPanel>
-                                                <TextBlock x:Name="GpuPreferenceLabel" Text="GPU Render App" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="GpuPreferenceHint" Text="Select which GPU Windows should use to render V-Notch. Requires a restart."
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock x:Name="GpuPreferenceLabel" Text="GPU Render App" Style="{StaticResource SettingTitleText}"/>
+                                                    <Border Background="#26FF9F0A"
+                                                            BorderBrush="#55FF9F0A"
+                                                            BorderThickness="1"
+                                                            CornerRadius="6"
+                                                            Padding="6,2"
+                                                            Margin="8,0,0,0"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock x:Name="GpuPreferenceRestartBadge"
+                                                                   Text="RESTART REQUIRED"
+                                                                   FontSize="10"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="#FF9F0A"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock x:Name="GpuPreferenceHint" Text="Select which GPU Windows should use to render V-Notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,6,0,4"/>
+                                                <TextBlock x:Name="GpuPreferenceRestartNote"
+                                                           Text="Requires restarting the app to take effect."
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FF9F0A"
+                                                           Margin="0,0,0,8"/>
                                                 <ComboBox x:Name="GpuPreferenceCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="GpuPreferenceCombo_SelectionChanged">
                                                     <ComboBoxItem Content="Let Windows Decide" Tag="0"/>
                                                     <ComboBoxItem Content="Power Saving (iGPU)" Tag="1"/>

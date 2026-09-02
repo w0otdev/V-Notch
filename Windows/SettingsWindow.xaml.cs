@@ -954,6 +954,19 @@ public partial class SettingsWindow : Window
         if (YouTubeSubtitlesAlphaBadge != null)
             YouTubeSubtitlesAlphaBadge.Text = Loc.Get("settings.badge.alpha");
 
+        if (GpuPreferenceLabel != null)
+            GpuPreferenceLabel.Text = Loc.Get("settings.gpuPreference");
+        if (GpuPreferenceHint != null)
+            GpuPreferenceHint.Text = Loc.Get("settings.gpuPreference.hint");
+        if (GpuPreferenceRestartNote != null)
+            GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restart");
+        if (GpuPreferenceRestartBadge != null)
+            GpuPreferenceRestartBadge.Text = Loc.Get("settings.badge.restartRequired");
+        if (ProcessPriorityLabel != null)
+            ProcessPriorityLabel.Text = Loc.Get("settings.processPriority");
+        if (ProcessPriorityHint != null)
+            ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint");
+
         UpdateSpotifyCanvasConnectionStatus();
         UpdateYouTubeApiKeyStatus();
     }
@@ -4026,13 +4039,20 @@ public partial class SettingsWindow : Window
 
     private bool IsAnyComboBoxDropDownOpen()
     {
-        return WidgetCombo.IsDropDownOpen
-            || MonitorCombo.IsDropDownOpen
-            || LanguageCombo.IsDropDownOpen
-            || CameraCombo.IsDropDownOpen
-            || VisualizerAudioCombo.IsDropDownOpen
-            || SkinCombo.IsDropDownOpen
-            || GlassPresetCombo.IsDropDownOpen;
+        if (WidgetCombo?.IsDropDownOpen == true ||
+            MonitorCombo?.IsDropDownOpen == true ||
+            LanguageCombo?.IsDropDownOpen == true ||
+            CameraCombo?.IsDropDownOpen == true ||
+            VisualizerAudioCombo?.IsDropDownOpen == true ||
+            SkinCombo?.IsDropDownOpen == true ||
+            GlassPresetCombo?.IsDropDownOpen == true ||
+            ProcessPriorityCombo?.IsDropDownOpen == true ||
+            GpuPreferenceCombo?.IsDropDownOpen == true)
+        {
+            return true;
+        }
+
+        return FindVisualChildren<ComboBox>(this).Any(c => c.IsDropDownOpen);
     }
 
     private void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

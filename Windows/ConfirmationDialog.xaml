@@ -12,6 +12,7 @@
         ShowInTaskbar="False"
         Topmost="True"
         Loaded="Window_Loaded"
+        Closing="Window_Closing"
         KeyDown="Window_KeyDown">
 
     <Window.Resources>
@@ -195,21 +196,17 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0"
-                            Width="36"
-                            Height="36"
-                            CornerRadius="10"
-                            Background="{StaticResource SurfaceBrush}"
-                            BorderBrush="#22FFFFFF"
-                            BorderThickness="1"
-                            Margin="0,0,12,0"
-                            VerticalAlignment="Top">
-                        <Viewbox Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path x:Name="DialogIconPath"
-                                  Data="M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z"
-                                  Fill="White"/>
-                        </Viewbox>
-                    </Border>
+                    <Viewbox Grid.Column="0"
+                             Width="32"
+                             Height="34"
+                             Stretch="Uniform"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Margin="0,0,14,0">
+                        <Path x:Name="DialogIconPath"
+                              Data="M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z"
+                              Fill="White"/>
+                    </Viewbox>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock x:Name="TitleText"
@@ -257,7 +254,6 @@
                             Content="Cancel"
                             Style="{StaticResource DialogButton}"
                             Click="CancelButton_Click"
-                            IsCancel="True"
                             Margin="0,0,6,0"/>
 
                     <Button x:Name="ConfirmButton"
@@ -265,7 +261,6 @@
                             Content="Confirm"
                             Style="{StaticResource PrimaryButton}"
                             Click="ConfirmButton_Click"
-                            IsDefault="True"
                             Margin="6,0,0,0"/>
                 </Grid>
             </StackPanel>
