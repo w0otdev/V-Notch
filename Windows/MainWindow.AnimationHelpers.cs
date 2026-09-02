@@ -1348,6 +1348,22 @@ public partial class MainWindow
                 MusicViz.Opacity = 1.0;
         }
 
+        if (GreetingSection != null)
+        {
+            GreetingSection.BeginAnimation(OpacityProperty, null);
+            if (_isLyricsActive)
+            {
+                GreetingSection.Visibility = Visibility.Collapsed;
+                GreetingSection.Opacity = 0;
+            }
+            else
+            {
+                bool showGreeting = ShouldShowGreetingSection;
+                GreetingSection.Visibility = showGreeting ? Visibility.Visible : Visibility.Collapsed;
+                if (showGreeting)
+                    GreetingSection.Opacity = 1.0;
+            }
+        }
     }
 
     private void AnimateTimerContentFadeOut()

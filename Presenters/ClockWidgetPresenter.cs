@@ -149,6 +149,10 @@ public sealed class ClockWidgetPresenter : IDisposable
 
         bool show = (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode) && !_host.IsLyricsActive;
         _refs.GreetingSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show && _refs.GreetingSection.Opacity < 0.01)
+        {
+            _refs.GreetingSection.Opacity = 1.0;
+        }
     }
 
     #endregion

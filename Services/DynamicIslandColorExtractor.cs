@@ -305,84 +305,84 @@ internal static class DynamicIslandColorExtractor
                 if (isMonotone)
                     return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
 
-            float bestScore = -1, secondScore = -1;
-            int bestBucket = -1, secondBucket = -1;
+                float bestScore = -1, secondScore = -1;
+                int bestBucket = -1, secondBucket = -1;
 
-            for (int i = 0; i < NUM_BUCKETS; i++)
-            {
-                if (bucketCount[i] == 0) continue;
-
-                float area = (float)bucketCount[i] / Math.Max(totalColorPixels, 1);
-                float avgSat = bucketSatSum[i] / bucketWeight[i];
-                float avgVal = bucketValSum[i] / bucketWeight[i];
-
-                float score = MathF.Pow(area, 0.3f) * avgSat * avgVal;
-
-                if (score > bestScore)
+                for (int i = 0; i < NUM_BUCKETS; i++)
                 {
-                    if (bestBucket >= 0)
+                    if (bucketCount[i] == 0) continue;
+
+                    float area = (float)bucketCount[i] / Math.Max(totalColorPixels, 1);
+                    float avgSat = bucketSatSum[i] / bucketWeight[i];
+                    float avgVal = bucketValSum[i] / bucketWeight[i];
+
+                    float score = MathF.Pow(area, 0.3f) * avgSat * avgVal;
+
+                    if (score > bestScore)
+                    {
+                        if (bestBucket >= 0)
+                        {
+                            int hueDist = Math.Min(Math.Abs(i - bestBucket), NUM_BUCKETS - Math.Abs(i - bestBucket));
+                            if (hueDist >= 4 && bestScore > secondScore)
+                            {
+                                secondScore = bestScore;
+                                secondBucket = bestBucket;
+                            }
+                        }
+                        bestScore = score;
+                        bestBucket = i;
+                    }
+                    else if (score > secondScore)
                     {
                         int hueDist = Math.Min(Math.Abs(i - bestBucket), NUM_BUCKETS - Math.Abs(i - bestBucket));
-                        if (hueDist >= 4 && bestScore > secondScore)
+                        if (hueDist >= 4)
                         {
-                            secondScore = bestScore;
-                            secondBucket = bestBucket;
+                            secondScore = score;
+                            secondBucket = i;
                         }
                     }
-                    bestScore = score;
-                    bestBucket = i;
                 }
-                else if (score > secondScore)
+
+                Color primary = Color.FromRgb(30, 30, 30);
+                if (bestBucket >= 0)
                 {
-                    int hueDist = Math.Min(Math.Abs(i - bestBucket), NUM_BUCKETS - Math.Abs(i - bestBucket));
-                    if (hueDist >= 4)
-                    {
-                        secondScore = score;
-                        secondBucket = i;
-                    }
+                    float pH = bucketPeakH[bestBucket];
+                    float pS = Math.Min(bucketPeakS[bestBucket] / Math.Max(bucketPeakV[bestBucket], 0.3f), 1.0f);
+                    float pV = bucketPeakV[bestBucket];
+                    pV = Math.Max(pV, 0.45f);
+                    pS = Math.Max(pS, 0.50f);
+                    primary = HsvToColor(pH, pS, pV);
                 }
-            }
 
-            Color primary = Color.FromRgb(30, 30, 30);
-            if (bestBucket >= 0)
+                Color secondary = default;
+                if (secondBucket >= 0)
+                {
+                    float pH = bucketPeakH[secondBucket];
+                    float pS = Math.Min(bucketPeakS[secondBucket] / Math.Max(bucketPeakV[secondBucket], 0.3f), 1.0f);
+                    float pV = bucketPeakV[secondBucket];
+                    pV = Math.Max(pV, 0.45f);
+                    pS = Math.Max(pS, 0.50f);
+                    secondary = HsvToColor(pH, pS, pV);
+                }
+
+                bool isFlatBg = bestScore > 0 && secondScore > 0 &&
+                                (bestScore / (bestScore + secondScore)) > 0.85f;
+
+                double primaryLum = GetRelativeLuminance(primary);
+                Color textOnPrimary = primaryLum > 0.4 ? Colors.Black : Colors.White;
+
+                return new PaletteResult(primary, secondary, secondary, false, isFlatBg, textOnPrimary);
+            }
+            finally
             {
-                float pH = bucketPeakH[bestBucket];
-                float pS = Math.Min(bucketPeakS[bestBucket] / Math.Max(bucketPeakV[bestBucket], 0.3f), 1.0f);
-                float pV = bucketPeakV[bestBucket];
-                pV = Math.Max(pV, 0.45f);
-                pS = Math.Max(pS, 0.50f);
-                primary = HsvToColor(pH, pS, pV);
+                System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
             }
-
-            Color secondary = default;
-            if (secondBucket >= 0)
-            {
-                float pH = bucketPeakH[secondBucket];
-                float pS = Math.Min(bucketPeakS[secondBucket] / Math.Max(bucketPeakV[secondBucket], 0.3f), 1.0f);
-                float pV = bucketPeakV[secondBucket];
-                pV = Math.Max(pV, 0.45f);
-                pS = Math.Max(pS, 0.50f);
-                secondary = HsvToColor(pH, pS, pV);
-            }
-
-            bool isFlatBg = bestScore > 0 && secondScore > 0 &&
-                            (bestScore / (bestScore + secondScore)) > 0.85f;
-
-            double primaryLum = GetRelativeLuminance(primary);
-            Color textOnPrimary = primaryLum > 0.4 ? Colors.Black : Colors.White;
-
-            return new PaletteResult(primary, secondary, secondary, false, isFlatBg, textOnPrimary);
         }
-        finally
+        catch
         {
-            System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
+            return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
         }
     }
-    catch
-    {
-        return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
-    }
-}
 
     private static bool IsValidCluster(float h, float s, float v)
     {

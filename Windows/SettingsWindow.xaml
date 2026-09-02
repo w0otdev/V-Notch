@@ -1905,6 +1905,18 @@
                                                            Text="Display synced closed captions inside the expanded notch when watching on YouTube."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,3,0,0"/>
+
+                                                <CheckBox x:Name="IgnoreYouTubeAutoSubtitlesCheck"
+                                                          x:Uid="ignoreYouTubeAutoSubtitles"
+                                                          Checked="IgnoreYouTubeAutoSubtitlesCheck_Changed"
+                                                          Unchecked="IgnoreYouTubeAutoSubtitlesCheck_Changed"
+                                                          Margin="0,12,0,0">
+                                                    <TextBlock x:Name="IgnoreYouTubeAutoSubtitlesLabel" Text="Ignore auto-generated subtitles" VerticalAlignment="Center"/>
+                                                </CheckBox>
+                                                <TextBlock x:Name="IgnoreYouTubeAutoSubtitlesHint"
+                                                           Text="Only display manually uploaded captions and skip automatic speech recognition subtitles."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,3,0,0"/>
                                             </StackPanel>
                                         </Border>
 

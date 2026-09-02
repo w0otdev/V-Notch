@@ -101,6 +101,7 @@ public class NotchSettings
     public string SpotifySpDc { get; set; } = "";
 
     public bool EnableYouTubeSubtitles { get; set; } = false;
+    public bool IgnoreYouTubeAutoSubtitles { get; set; } = false;
 
     public bool IsShelfUploadLimitUnlocked { get; set; } = true;
 

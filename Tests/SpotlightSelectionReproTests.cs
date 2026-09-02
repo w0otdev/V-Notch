@@ -15,6 +15,7 @@ namespace VNotch.Tests;
 /// the real view model and a ListBox wired exactly like SpotlightWindow:
 /// grouped default view, TwoWay SelectedItem binding, SelectedIndex moves.
 /// </summary>
+[Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class SpotlightSelectionReproTests
 {
     [Fact]
@@ -55,6 +56,7 @@ public sealed class SpotlightSelectionReproTests
             int next = (list.SelectedIndex + 1 + count) % count;
             list.SelectedIndex = next;
 
+            PumpUntil(() => viewModel.SelectedResult?.Id == "app:1", "selection was not transferred to ViewModel");
             Assert.Equal(1, list.SelectedIndex);
             Assert.Equal("app:1", viewModel.SelectedResult?.Id);
 
@@ -66,6 +68,8 @@ public sealed class SpotlightSelectionReproTests
 
             // A second arrow press keeps working after the merge publish.
             list.SelectedIndex = 2;
+            PumpUntil(() => viewModel.SelectedResult?.Id == "app:2", "selection was not transferred to ViewModel");
+            Assert.Equal(2, list.SelectedIndex);
             Assert.Equal("app:2", viewModel.SelectedResult?.Id);
             File.Delete(usagePath);
         });

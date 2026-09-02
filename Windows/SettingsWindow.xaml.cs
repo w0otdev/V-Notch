@@ -153,6 +153,7 @@ public partial class SettingsWindow : Window
         UpdateSpotifyCanvasDependentControls();
         UpdateSpotifyCanvasConnectionStatus();
         EnableYouTubeSubtitlesCheck.IsChecked = _settings.EnableYouTubeSubtitles;
+        IgnoreYouTubeAutoSubtitlesCheck.IsChecked = _settings.IgnoreYouTubeAutoSubtitles;
         UpdateYouTubeSubtitlesDependentControls(_settings.EnableYouTubeSubtitles);
 
         LoadSubtitlePriority();
@@ -292,6 +293,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(IdleAutoHideCheck, "tooltip.idleAutoHide");
         TooltipHelper.SetLocalizedTooltip(EnableSpotifyLyricsCheck, "tooltip.spotifyLyrics");
         TooltipHelper.SetLocalizedTooltip(EnableYouTubeSubtitlesCheck, "tooltip.youtubeSubtitles");
+        TooltipHelper.SetLocalizedTooltip(IgnoreYouTubeAutoSubtitlesCheck, "settings.ignoreYouTubeAutoSubtitles.hint");
         TooltipHelper.SetLocalizedTooltip(YouTubeApiCheck, "tooltip.youtubeApi");
         TooltipHelper.SetLocalizedTooltip(HideOnExclusiveFullscreenCheck, "tooltip.hideExclusiveFs");
         TooltipHelper.SetLocalizedTooltip(HideOnWindowedFullscreenCheck, "tooltip.hideWindowedFs");
@@ -428,6 +430,8 @@ public partial class SettingsWindow : Window
         EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles");
         if (YouTubeSubtitlesAlphaBadge != null) YouTubeSubtitlesAlphaBadge.Text = Loc.Get("settings.badge.alpha");
         EnableYouTubeSubtitlesHint.Text = Loc.Get("settings.enableYouTubeSubtitles.hint");
+        IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles");
+        IgnoreYouTubeAutoSubtitlesHint.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles.hint");
 
         SubtitlePriorityLabel.Text = Loc.Get("settings.subtitlePriority");
         SubtitlePriorityHint.Text = Loc.Get("settings.subtitlePriority.hint");
@@ -1098,6 +1102,12 @@ public partial class SettingsWindow : Window
         PushLivePreview();
     }
 
+    private void IgnoreYouTubeAutoSubtitlesCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        PushLivePreview();
+    }
+
     #region Subtitle Priority
 
     private class SubtitlePriorityItem
@@ -1317,6 +1327,8 @@ public partial class SettingsWindow : Window
 
     private void UpdateYouTubeSubtitlesDependentControls(bool subtitlesEnabled, bool animate = false)
     {
+        AnimateDependentElement(IgnoreYouTubeAutoSubtitlesCheck, subtitlesEnabled, 0.45, animate);
+        AnimateDependentElement(IgnoreYouTubeAutoSubtitlesHint, subtitlesEnabled, 0.45, animate);
         AnimateDependentElement(SubtitlePriorityRow, subtitlesEnabled, 0.45, animate);
     }
 
@@ -2169,6 +2181,7 @@ public partial class SettingsWindow : Window
             (EnableSpotifyLyricsHint, () => EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint")),
             (EnableSpotifyCanvasHint, () => EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint")),
             (EnableYouTubeSubtitlesHint, () => EnableYouTubeSubtitlesHint.Text = Loc.Get("settings.enableYouTubeSubtitles.hint")),
+            (IgnoreYouTubeAutoSubtitlesHint, () => IgnoreYouTubeAutoSubtitlesHint.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles.hint")),
             (YouTubeSubtitlesAlphaBadge, () => YouTubeSubtitlesAlphaBadge.Text = Loc.Get("settings.badge.alpha")),
             (SubtitlePriorityLabel, () => SubtitlePriorityLabel.Text = Loc.Get("settings.subtitlePriority")),
             (SubtitlePriorityHint, () =>
@@ -2318,6 +2331,8 @@ public partial class SettingsWindow : Window
         AnimateContentChange(SpotifyDisconnectButton, () => SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;
         AnimateContentChange(EnableYouTubeSubtitlesCheck, () => EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles"), staggerMs, easeOut, fps, slideDist);
+        staggerMs += staggerStep;
+        AnimateContentChange(IgnoreYouTubeAutoSubtitlesCheck, () => IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;
         AnimateContentChange(EnableBlurEffectsCheck, () => EnableBlurEffectsCheck.Content = Loc.Get("settings.enableBlurEffects"), staggerMs, easeOut, fps, slideDist);
         staggerMs += staggerStep;
@@ -2675,6 +2690,7 @@ public partial class SettingsWindow : Window
         EnableSpotifyLyricsCheck.IsChecked = defaults.EnableSpotifyLyrics;
         EnableSpotifyCanvasCheck.IsChecked = defaults.EnableSpotifyCanvas;
         EnableYouTubeSubtitlesCheck.IsChecked = defaults.EnableYouTubeSubtitles;
+        IgnoreYouTubeAutoSubtitlesCheck.IsChecked = defaults.IgnoreYouTubeAutoSubtitles;
         UpdateLyricsDependentControls(defaults.EnableSpotifyLyrics);
         UpdateSpotifyCanvasDependentControls();
         UpdateYouTubeSubtitlesDependentControls(defaults.EnableYouTubeSubtitles);
@@ -3115,6 +3131,7 @@ public partial class SettingsWindow : Window
         _settings.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
         _settings.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked ?? true;
         _settings.EnableYouTubeSubtitles = EnableYouTubeSubtitlesCheck.IsChecked ?? true;
+        _settings.IgnoreYouTubeAutoSubtitles = IgnoreYouTubeAutoSubtitlesCheck.IsChecked ?? false;
 
         _settings.SubtitlePriority = GetSubtitlePriorityString();
 

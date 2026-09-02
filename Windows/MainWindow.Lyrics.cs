@@ -1259,7 +1259,7 @@ public partial class MainWindow
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeInCalendar, VNotch.Services.AnimationConfig.TargetFps);
             CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
 
-            if (!IsNonCalendarWidgetMode && !_isLyricsActive)
+            if (ShouldShowGreetingSection)
             {
                 GreetingSection.Visibility = Visibility.Visible;
                 GreetingSection.Opacity = 0;
