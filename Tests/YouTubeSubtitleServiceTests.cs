@@ -141,25 +141,45 @@ public class YouTubeSubtitleServiceTests
     }
 
     [Fact]
-    public async Task LiveFetch_mA_UxOle3YQ_ReturnsSubtitles()
+    public void GenerateSearchCandidates_YouTubeTitleWithPipesAndGenericArtist_ExtractsCleanedCandidates()
     {
         string rawYouTubeTitle = "JACK - J97 | XÓA TÊN ANH ĐI | Official Music Video | [Album26]";
         string rawYouTubeArtist = "YouTube";
 
-        var lyricsService = new LyricsService();
-        var lrc = await lyricsService.FetchSyncedLyricsAsync(rawYouTubeTitle, rawYouTubeArtist, 240);
+        var candidates = LyricsService.GenerateSearchCandidates(rawYouTubeTitle, rawYouTubeArtist);
 
-        Assert.NotNull(lrc);
-        Assert.NotEmpty(lrc.Lines);
+        Assert.NotEmpty(candidates);
+        Assert.Contains(candidates, c => c.Track == "XÓA TÊN ANH ĐI" && c.Artist == "JACK - J97");
+        Assert.DoesNotContain(candidates, c => c.Artist == "YouTube");
     }
 
     [Fact]
-    public async Task FetchSubtitlesAsync_LiveVideo_ReturnsSubtitlesViaInnertube()
+    public void GetOrderedCandidateTracks_WithNativeLangHint_PrioritizesHintedLanguage()
     {
-        var service = new YouTubeSubtitleService();
-        var lines = await service.FetchSubtitlesAsync("o3L4T4BIXHo", force: true);
+        var tracks = new List<YouTubeCaptionTrack>
+        {
+            new("en", "English", ".en", "https://url/en_manual", false),
+            new("vi", "Tiếng Việt", ".vi", "https://url/vi_manual", false),
+            new("ja", "Japanese", ".ja", "https://url/ja_manual", false),
+        };
 
-        Assert.NotNull(lines);
-        Assert.NotEmpty(lines);
+        var ordered = YouTubeSubtitleService.GetOrderedCandidateTracks(tracks, ["native", "english", "auto"], nativeLangHint: "vi");
+        Assert.NotEmpty(ordered);
+        Assert.Equal("vi", ordered[0].LanguageCode);
+    }
+
+    [Fact]
+    public void ParseXml_HandlesHtmlEntitiesAndFormattingTags()
+    {
+        const string xml = """
+        <transcript>
+            <text start="1.5" dur="2.0">&lt;font color="#cccccc"&gt;Tom &amp;amp; Jerry &#39;Special&#39;&lt;/font&gt;</text>
+        </transcript>
+        """;
+
+        var lines = YouTubeSubtitleService.ParseXml(xml);
+        Assert.Single(lines);
+        Assert.Equal("Tom & Jerry 'Special'", lines[0].Text);
+        Assert.Equal(TimeSpan.FromSeconds(1.5), lines[0].Time);
     }
 }

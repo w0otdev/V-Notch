@@ -9,7 +9,7 @@ namespace VNotch.Tests;
 public sealed class LiquidGlassAvailabilityTests
 {
     [Fact]
-    public void Load_DisablesLiquidGlassWhenDynamicIslandModeIsOff()
+    public void Load_PreservesLiquidGlassWhenDynamicIslandModeIsOff()
     {
         string directory = Path.Combine(Path.GetTempPath(), $"vnotch-glass-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -27,7 +27,7 @@ public sealed class LiquidGlassAvailabilityTests
 
             NotchSettings loaded = new SettingsService(path, _ => { }).Load();
 
-            Assert.Equal("default", loaded.NotchStyle);
+            Assert.Equal("liquidglass", loaded.NotchStyle);
         }
         finally
         {

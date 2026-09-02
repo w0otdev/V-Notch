@@ -1725,8 +1725,7 @@ public partial class SettingsWindow : Window
 
             EnsureGlassPresetItems();
 
-            bool glass = _settings.EnableDynamicIslandMode &&
-                         string.Equals(_settings.NotchStyle, "liquidglass", StringComparison.OrdinalIgnoreCase);
+            bool glass = string.Equals(_settings.NotchStyle, "liquidglass", StringComparison.OrdinalIgnoreCase);
             SkinCombo.SelectedIndex = glass ? 1 : 0;
 
             var c = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
