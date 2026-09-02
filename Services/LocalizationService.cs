@@ -85,6 +85,7 @@ public static class Loc
         InitializeHindi();
         InitializeWeatherStatusStrings();
         InitializeAdditionalStrings();
+        AddSettingsBackupTransferStrings();
         TranslationsByText = BuildTranslationLookup();
     }
 
@@ -4321,6 +4322,135 @@ public static class Loc
             ("settings.privacy.clearedSpotlight", "Spotlight खोज इतिहास साफ़ कर दिया गया"),
             ("settings.privacy.clearedLog", "डायग्नोस्टिक लॉग साफ़ कर दिया गया"),
             ("settings.privacy.cleared", "✓ साफ़ किया गया"));
+    }
+
+    private static void AddSettingsBackupTransferStrings()
+    {
+        AddStrings("en",
+            ("settings.section.backup", "SETTINGS BACKUP & TRANSFER"),
+            ("settings.exportSettings", "Export settings (.vns)"),
+            ("settings.exportSettings.hint", "Save your preferences and configurations to a .vns file for backup or transferring to another PC."),
+            ("settings.exportSettings.btn", "Export..."),
+            ("settings.importSettings", "Import settings (.vns)"),
+            ("settings.importSettings.hint", "Restore settings from a .vns file from an old PC or backup."),
+            ("settings.importSettings.btn", "Import..."),
+            ("settings.restartBanner.title", "Restart required"),
+            ("settings.restartBanner.message", "Some settings require restarting V-Notch to take full effect. Restart now?"),
+            ("settings.restartBanner.restartNow", "Restart Now"),
+            ("settings.restartBanner.later", "Later"),
+            ("settings.export.success", "Settings exported successfully!"),
+            ("settings.import.success", "Settings imported successfully!"),
+            ("settings.import.error", "Failed to import settings: {0}"),
+            ("tooltip.exportSettings", "Export current settings to a .vns file"),
+            ("tooltip.importSettings", "Import settings from a .vns file"));
+
+        AddStrings("vi",
+            ("settings.section.backup", "SAO LƯU & CHUYỂN CÀI ĐẶT"),
+            ("settings.exportSettings", "Xuất cài đặt (.vns)"),
+            ("settings.exportSettings.hint", "Lưu các tùy chỉnh và cài đặt thành file .vns để sao lưu hoặc chuyển sang máy khác."),
+            ("settings.exportSettings.btn", "Xuất..."),
+            ("settings.importSettings", "Nhập cài đặt (.vns)"),
+            ("settings.importSettings.hint", "Khôi phục cài đặt từ file .vns của máy cũ hoặc bản sao lưu."),
+            ("settings.importSettings.btn", "Nhập..."),
+            ("settings.restartBanner.title", "Cần khởi động lại ứng dụng"),
+            ("settings.restartBanner.message", "Một số cài đặt cần khởi động lại V-Notch để áp dụng hoàn toàn. Khởi động lại ngay?"),
+            ("settings.restartBanner.restartNow", "Khởi động lại ngay"),
+            ("settings.restartBanner.later", "Để sau"),
+            ("settings.export.success", "Đã xuất cài đặt thành công!"),
+            ("settings.import.success", "Đã nhập cài đặt thành công!"),
+            ("settings.import.error", "Không thể nhập cài đặt: {0}"),
+            ("tooltip.exportSettings", "Xuất cài đặt hiện tại ra file .vns"),
+            ("tooltip.importSettings", "Nhập cài đặt từ file .vns"));
+
+        AddStrings("es",
+            ("settings.section.backup", "COPIA DE SEGURIDAD Y TRANSFERENCIA"),
+            ("settings.exportSettings", "Exportar configuración (.vns)"),
+            ("settings.exportSettings.hint", "Guarda tus preferencias y configuraciones en un archivo .vns para respaldo o para transferirlas a otra PC."),
+            ("settings.exportSettings.btn", "Exportar..."),
+            ("settings.importSettings", "Importar configuración (.vns)"),
+            ("settings.importSettings.hint", "Restaura tu configuración desde un archivo .vns de una PC anterior o copia de seguridad."),
+            ("settings.importSettings.btn", "Importar..."),
+            ("settings.restartBanner.title", "Reinicio requerido"),
+            ("settings.restartBanner.message", "Algunas configuraciones requieren reiniciar V-Notch para surtir efecto completo. ¿Reiniciar ahora?"),
+            ("settings.restartBanner.restartNow", "Reiniciar ahora"),
+            ("settings.restartBanner.later", "Más tarde"),
+            ("settings.export.success", "¡Configuración exportada con éxito!"),
+            ("settings.import.success", "¡Configuración importada con éxito!"),
+            ("settings.import.error", "Error al importar la configuración: {0}"),
+            ("tooltip.exportSettings", "Exportar configuración actual a un archivo .vns"),
+            ("tooltip.importSettings", "Importar configuración desde un archivo .vns"));
+
+        AddStrings("fr",
+            ("settings.section.backup", "SAUVEGARDE ET TRANSFERT DES PARAMÈTRES"),
+            ("settings.exportSettings", "Exporter les paramètres (.vns)"),
+            ("settings.exportSettings.hint", "Enregistrez vos préférences et configurations dans un fichier .vns pour sauvegarde ou transfert."),
+            ("settings.exportSettings.btn", "Exporter..."),
+            ("settings.importSettings", "Importer les paramètres (.vns)"),
+            ("settings.importSettings.hint", "Restaurez vos paramètres depuis un fichier .vns d'un ancien PC ou d'une sauvegarde."),
+            ("settings.importSettings.btn", "Importer..."),
+            ("settings.restartBanner.title", "Redémarrage requis"),
+            ("settings.restartBanner.message", "Certains paramètres nécessitent de redémarrer V-Notch pour prendre effet. Redémarrer maintenant ?"),
+            ("settings.restartBanner.restartNow", "Redémarrer maintenant"),
+            ("settings.restartBanner.later", "Plus tard"),
+            ("settings.export.success", "Paramètres exportés avec succès !"),
+            ("settings.import.success", "Paramètres importés avec succès !"),
+            ("settings.import.error", "Échec de l'importation des paramètres : {0}"),
+            ("tooltip.exportSettings", "Exporter les paramètres actuels dans un fichier .vns"),
+            ("tooltip.importSettings", "Importer les paramètres depuis un fichier .vns"));
+
+        AddStrings("de",
+            ("settings.section.backup", "EINSTELLUNGEN SICHERN & ÜBERTRAGEN"),
+            ("settings.exportSettings", "Einstellungen exportieren (.vns)"),
+            ("settings.exportSettings.hint", "Speichern Sie Ihre Einstellungen in einer .vns-Datei zur Sicherung oder Übertragung."),
+            ("settings.exportSettings.btn", "Exportieren..."),
+            ("settings.importSettings", "Einstellungen importieren (.vns)"),
+            ("settings.importSettings.hint", "Stellen Sie Ihre Einstellungen aus einer .vns-Datei von einem alten PC oder Backup wieder her."),
+            ("settings.importSettings.btn", "Importieren..."),
+            ("settings.restartBanner.title", "Neustart erforderlich"),
+            ("settings.restartBanner.message", "Einige Einstellungen erfordern einen Neustart von V-Notch. Jetzt neu starten?"),
+            ("settings.restartBanner.restartNow", "Jetzt neu starten"),
+            ("settings.restartBanner.later", "Später"),
+            ("settings.export.success", "Einstellungen erfolgreich exportiert!"),
+            ("settings.import.success", "Einstellungen erfolgreich importiert!"),
+            ("settings.import.error", "Fehler beim Importieren der Einstellungen: {0}"),
+            ("tooltip.exportSettings", "Aktuelle Einstellungen in eine .vns-Datei exportieren"),
+            ("tooltip.importSettings", "Einstellungen aus einer .vns-Datei importieren"));
+
+        AddStrings("ja",
+            ("settings.section.backup", "設定のバックアップと転送"),
+            ("settings.exportSettings", "設定のエクスポート (.vns)"),
+            ("settings.exportSettings.hint", "設定やカスタマイズを.vnsファイルに保存して、バックアップや別のPCへの移行を行えます。"),
+            ("settings.exportSettings.btn", "エクスポート..."),
+            ("settings.importSettings", "設定のインポート (.vns)"),
+            ("settings.importSettings.hint", "古いPCや過去のバックアップの.vnsファイルから設定を復元します。"),
+            ("settings.importSettings.btn", "インポート..."),
+            ("settings.restartBanner.title", "再起動が必要です"),
+            ("settings.restartBanner.message", "一部の設定を完全に適用するにはV-Notchの再起動が必要です。今すぐ再起動しますか？"),
+            ("settings.restartBanner.restartNow", "今すぐ再起動"),
+            ("settings.restartBanner.later", "後で"),
+            ("settings.export.success", "設定が正常にエクスポートされました！"),
+            ("settings.import.success", "設定が正常にインポートされました！"),
+            ("settings.import.error", "設定のインポートに失敗しました: {0}"),
+            ("tooltip.exportSettings", "現在の設定を.vnsファイルにエクスポート"),
+            ("tooltip.importSettings", ".vnsファイルから設定をインポート"));
+
+        AddStrings("hi",
+            ("settings.section.backup", "सेटिंग्स बैकअप और स्थानांतरण"),
+            ("settings.exportSettings", "सेटिंग्स निर्यात करें (.vns)"),
+            ("settings.exportSettings.hint", "बैकअप या किसी अन्य पीसी पर स्थानांतरित करने के लिए अपनी सेटिंग्स को .vns फ़ाइल में सहेजें।"),
+            ("settings.exportSettings.btn", "निर्यात..."),
+            ("settings.importSettings", "सेटिंग्स आयात करें (.vns)"),
+            ("settings.importSettings.hint", "किसी पुराने पीसी या पिछले बैकअप से .vns फ़ाइल से अपनी सेटिंग्स पुनर्स्थापित करें।"),
+            ("settings.importSettings.btn", "आयात..."),
+            ("settings.restartBanner.title", "पुनरारंभ आवश्यक है"),
+            ("settings.restartBanner.message", "कुछ सेटिंग्स को पूरी तरह लागू करने के लिए V-Notch को पुनरारंभ करने की आवश्यकता है। क्या अभी पुनरारंभ करें?"),
+            ("settings.restartBanner.restartNow", "अभी पुनरारंभ करें"),
+            ("settings.restartBanner.later", "बाद में"),
+            ("settings.export.success", "सेटिंग्स सफलतापूर्वक निर्यात की गईं!"),
+            ("settings.import.success", "सेटिंग्स सफलतापूर्वक आयात की गईं!"),
+            ("settings.import.error", "सेटिंग्स आयात करने में विफल: {0}"),
+            ("tooltip.exportSettings", "वर्तमान सेटिंग्स को .vns फ़ाइल में निर्यात करें"),
+            ("tooltip.importSettings", ".vns फ़ाइल से सेटिंग्स आयात करें"));
     }
 
     private static void AddStrings(string language, params (string Key, string Value)[] entries)
