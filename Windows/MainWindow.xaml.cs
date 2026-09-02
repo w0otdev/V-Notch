@@ -2233,30 +2233,8 @@ public partial class MainWindow : Window
 
     private void Restart_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            var exePath = Environment.ProcessPath
-                ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
-
-            if (!string.IsNullOrEmpty(exePath))
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "cmd.exe",
-                    Arguments = $"/c ping -n 2 127.0.0.1 >nul & start \"\" \"{exePath}\" --restart",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Restart failed: {ex.Message}");
-        }
-
         CleanupBeforeShutdown();
-        System.Windows.Application.Current.Shutdown();
+        App.RestartApplication();
     }
 
     private void CleanupBeforeShutdown()

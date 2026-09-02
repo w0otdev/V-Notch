@@ -228,6 +228,33 @@ public partial class App : Application
             RuntimeLog.Shutdown(TimeSpan.FromSeconds(2));
         }
     }
+    public static void RestartApplication()
+    {
+        try
+        {
+            var exePath = Environment.ProcessPath
+                ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+
+            if (!string.IsNullOrEmpty(exePath))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c ping -n 2 127.0.0.1 >nul & start \"\" \"{exePath}\" --restart",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("APP", ex, "Restart failed");
+        }
+
+        Current?.Shutdown();
+    }
+
     private static bool IsRecoverableException(Exception ex)
     {
         return ex is RecoverableAnimationException
