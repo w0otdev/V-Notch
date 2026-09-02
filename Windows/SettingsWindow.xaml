@@ -1412,6 +1412,69 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelSystem" Visibility="Collapsed">
+                                <Border x:Name="BackupCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10" Opacity="0">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="BackupCardTranslate" Y="12"/>
+                                    </Border.RenderTransform>
+                                    <StackPanel>
+                                        <TextBlock x:Name="BackupHeader" Text="SETTINGS BACKUP &amp; TRANSFER" Style="{StaticResource SectionHeader}"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
+                                                    <TextBlock x:Name="ExportSettingsLabel" Text="Export settings (.vns)" Style="{StaticResource SettingTitleText}"/>
+                                                    <TextBlock x:Name="ExportSettingsHint" Text="Save your preferences and configurations to a .vns file for backup or transferring to another PC."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,4,0,0"/>
+                                                </StackPanel>
+
+                                                <Button x:Name="ExportSettingsButton"
+                                                        Grid.Column="1"
+                                                        Content="Export..."
+                                                        MinWidth="96"
+                                                        Height="38"
+                                                        Click="ExportSettings_Click"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,4,0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
+                                                    <TextBlock x:Name="ImportSettingsLabel" Text="Import settings (.vns)" Style="{StaticResource SettingTitleText}"/>
+                                                    <TextBlock x:Name="ImportSettingsHint" Text="Restore settings from a .vns file from an old PC or backup."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,4,0,0"/>
+                                                </StackPanel>
+
+                                                <Button x:Name="ImportSettingsButton"
+                                                        Grid.Column="1"
+                                                        Content="Import..."
+                                                        MinWidth="96"
+                                                        Height="38"
+                                                        Click="ImportSettings_Click"/>
+                                            </Grid>
+                                        </Border>
+
+                                        <TextBlock x:Name="BackupStatusText"
+                                                   Text=""
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#30D158"
+                                                   Margin="0,4,0,0"
+                                                   Visibility="Collapsed"/>
+                                    </StackPanel>
+                                </Border>
+
                                 <Border x:Name="SystemCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
                                     <Border.RenderTransform>
                                         <TranslateTransform x:Name="SystemCardTranslate" Y="12"/>
@@ -1526,10 +1589,10 @@
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
                                                 <CheckBox x:Name="EnableWeatherCheck"
-                                                          x:Uid="enableWeather"
-                                                          Content="Enable weather"
-                                                          Checked="EnableWeatherCheck_Changed"
-                                                          Unchecked="EnableWeatherCheck_Changed"/>
+                                                           x:Uid="enableWeather"
+                                                           Content="Enable weather"
+                                                           Checked="EnableWeatherCheck_Changed"
+                                                           Unchecked="EnableWeatherCheck_Changed"/>
                                                 <TextBlock x:Name="EnableWeatherHint"
                                                            Text="Show current weather in the expanded notch. When enabled, your approximate location is resolved via IP."
                                                            Style="{StaticResource SettingHintText}"
@@ -2409,6 +2472,52 @@
 
                         </Grid>
                     </ScrollViewer>
+
+                    <Border x:Name="RestartPromptBanner"
+                            VerticalAlignment="Bottom"
+                            Margin="16,0,16,10"
+                            Background="#F018140E"
+                            BorderBrush="#60FF9F0A"
+                            BorderThickness="1"
+                            CornerRadius="16"
+                            Padding="16,12"
+                            Opacity="0"
+                            Visibility="Collapsed"
+                            Panel.ZIndex="10"
+                            RenderTransformOrigin="0.5,0.5">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.45" Color="Black" Direction="270"/>
+                        </Border.Effect>
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="RestartPromptTranslate" Y="20"/>
+                        </Border.RenderTransform>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Width="34" Height="34" CornerRadius="17" Background="#26FF9F0A" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <TextBlock Text="&#xE777;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="#FF9F0A"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
+                                <TextBlock x:Name="RestartPromptTitle" Text="Restart required" FontSize="13.5" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                <TextBlock x:Name="RestartPromptMessage" Text="Some settings require restarting V-Notch to take full effect. Restart now?"
+                                           FontSize="11.5" FontWeight="SemiBold" Foreground="#D0A8B3C3" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="RestartLaterButton" Content="Later" Height="34" MinWidth="68" Margin="0,0,8,0"
+                                        Click="RestartLater_Click"/>
+                                <Button x:Name="RestartNowButton" Content="Restart Now" Height="34" MinWidth="110"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Click="RestartNow_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Grid>
 

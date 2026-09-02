@@ -21,7 +21,7 @@ namespace VNotch;
 
 public partial class SettingsWindow : Window
 {
-    private readonly NotchSettings _settings;
+    private NotchSettings _settings;
     private NotchSettings _originalSettings;
     private readonly SettingsService _settingsService;
     private readonly BluetoothModule? _bluetoothModule;
@@ -279,6 +279,8 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(ResetButton, "tooltip.resetSettings");
         TooltipHelper.SetLocalizedTooltip(ApplyButton, "tooltip.applySettings");
         TooltipHelper.SetLocalizedTooltip(SaveButton, "tooltip.saveSettings");
+        TooltipHelper.SetLocalizedTooltip(ExportSettingsButton, "tooltip.exportSettings");
+        TooltipHelper.SetLocalizedTooltip(ImportSettingsButton, "tooltip.importSettings");
 
         // Checkbox tooltips
         TooltipHelper.SetLocalizedTooltip(AutoStartCheck, "tooltip.autoStart");
@@ -966,6 +968,30 @@ public partial class SettingsWindow : Window
             ProcessPriorityLabel.Text = Loc.Get("settings.processPriority");
         if (ProcessPriorityHint != null)
             ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint");
+
+        if (BackupHeader != null)
+            BackupHeader.Text = Loc.Get("settings.section.backup");
+        if (ExportSettingsLabel != null)
+            ExportSettingsLabel.Text = Loc.Get("settings.exportSettings");
+        if (ExportSettingsHint != null)
+            ExportSettingsHint.Text = Loc.Get("settings.exportSettings.hint");
+        if (ExportSettingsButton != null)
+            ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn");
+        if (ImportSettingsLabel != null)
+            ImportSettingsLabel.Text = Loc.Get("settings.importSettings");
+        if (ImportSettingsHint != null)
+            ImportSettingsHint.Text = Loc.Get("settings.importSettings.hint");
+        if (ImportSettingsButton != null)
+            ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn");
+
+        if (RestartPromptTitle != null)
+            RestartPromptTitle.Text = Loc.Get("settings.restartBanner.title");
+        if (RestartPromptMessage != null)
+            RestartPromptMessage.Text = Loc.Get("settings.restartBanner.message");
+        if (RestartNowButton != null)
+            RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow");
+        if (RestartLaterButton != null)
+            RestartLaterButton.Content = Loc.Get("settings.restartBanner.later");
 
         UpdateSpotifyCanvasConnectionStatus();
         UpdateYouTubeApiKeyStatus();
@@ -1989,6 +2015,11 @@ public partial class SettingsWindow : Window
         {
             _settings.ProcessPriority = tag;
             ApplyProcessPriority(tag);
+
+            if (!string.Equals(_settings.ProcessPriority, _originalSettings.ProcessPriority, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowRestartBanner();
+            }
         }
     }
 
@@ -1999,7 +2030,179 @@ public partial class SettingsWindow : Window
         {
             _settings.GpuPreference = val;
             ApplyGpuPreference(val);
+
+            if (_settings.GpuPreference != _originalSettings.GpuPreference)
+            {
+                ShowRestartBanner();
+            }
         }
+    }
+
+    private void ExportSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "V-Notch Settings (*.vns)|*.vns|All Files (*.*)|*.*",
+                DefaultExt = ".vns",
+                FileName = $"VNotch-Settings-{DateTime.Now:yyyyMMdd-HHmmss}.vns",
+                Title = Loc.Get("settings.exportSettings")
+            };
+
+            if (dialog.ShowDialog(this) == true)
+            {
+                ApplySettingsFromUi(persist: false);
+                _settingsService.ExportSettingsToFile(dialog.FileName, _settings);
+
+                if (BackupStatusText != null)
+                {
+                    BackupStatusText.Text = Loc.Get("settings.export.success");
+                    BackupStatusText.Foreground = new SolidColorBrush(Color.FromRgb(48, 209, 88));
+                    BackupStatusText.Visibility = Visibility.Visible;
+
+                    var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                    timer.Tick += (s, args) =>
+                    {
+                        timer.Stop();
+                        BackupStatusText.Visibility = Visibility.Collapsed;
+                    };
+                    timer.Start();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SETTINGS-EXPORT", ex, "Failed to export settings");
+            MessageBox.Show(
+                ex.Message,
+                Loc.Get("error.title"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ImportSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "V-Notch Settings (*.vns;*.json)|*.vns;*.json|V-Notch Settings (*.vns)|*.vns|JSON Files (*.json)|*.json|All Files (*.*)|*.*",
+                DefaultExt = ".vns",
+                Title = Loc.Get("settings.importSettings")
+            };
+
+            if (dialog.ShowDialog(this) == true)
+            {
+                var (imported, requiresRestart) = _settingsService.ImportSettingsFromFile(dialog.FileName, _settings);
+
+                _settings = imported.Clone();
+                _originalSettings = imported.Clone();
+                _settingsService.Save(_settings);
+                StartupManager.SetAutoStart(_settings.AutoStart);
+
+                LoadSettings();
+                SettingsChanged?.Invoke(this, _settings);
+
+                if (BackupStatusText != null)
+                {
+                    BackupStatusText.Text = Loc.Get("settings.import.success");
+                    BackupStatusText.Foreground = new SolidColorBrush(Color.FromRgb(48, 209, 88));
+                    BackupStatusText.Visibility = Visibility.Visible;
+
+                    var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                    timer.Tick += (s, args) =>
+                    {
+                        timer.Stop();
+                        BackupStatusText.Visibility = Visibility.Collapsed;
+                    };
+                    timer.Start();
+                }
+
+                // Show the restart banner so the user can immediately restart and refresh all subsystems
+                ShowRestartBanner();
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SETTINGS-IMPORT", ex, "Failed to import settings");
+            MessageBox.Show(
+                Loc.Get("settings.import.error", ex.Message),
+                Loc.Get("error.title"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private bool _isRestartBannerVisible;
+
+    public void ShowRestartBanner(string? title = null, string? message = null)
+    {
+        if (RestartPromptBanner == null) return;
+
+        if (!string.IsNullOrEmpty(title) && RestartPromptTitle != null)
+            RestartPromptTitle.Text = title;
+        if (!string.IsNullOrEmpty(message) && RestartPromptMessage != null)
+            RestartPromptMessage.Text = message;
+
+        if (_isRestartBannerVisible && RestartPromptBanner.Visibility == Visibility.Visible)
+            return;
+
+        _isRestartBannerVisible = true;
+        RestartPromptBanner.Visibility = Visibility.Visible;
+
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
+
+        RestartPromptBanner.BeginAnimation(OpacityProperty, null);
+        RestartPromptTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = ease };
+        var slide = new DoubleAnimation(20, 0, TimeSpan.FromMilliseconds(350)) { EasingFunction = ease };
+
+        Timeline.SetDesiredFrameRate(fade, fps);
+        Timeline.SetDesiredFrameRate(slide, fps);
+
+        RestartPromptBanner.BeginAnimation(OpacityProperty, fade);
+        RestartPromptTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
+    }
+
+    public void HideRestartBanner()
+    {
+        if (RestartPromptBanner == null || !_isRestartBannerVisible) return;
+
+        _isRestartBannerVisible = false;
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var ease = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 5 };
+
+        var fade = new DoubleAnimation(RestartPromptBanner.Opacity, 0, TimeSpan.FromMilliseconds(250)) { EasingFunction = ease };
+        var slide = new DoubleAnimation(RestartPromptTranslate.Y, 20, TimeSpan.FromMilliseconds(250)) { EasingFunction = ease };
+
+        Timeline.SetDesiredFrameRate(fade, fps);
+        Timeline.SetDesiredFrameRate(slide, fps);
+
+        fade.Completed += (s, e) =>
+        {
+            if (!_isRestartBannerVisible)
+            {
+                RestartPromptBanner.Visibility = Visibility.Collapsed;
+            }
+        };
+
+        RestartPromptBanner.BeginAnimation(OpacityProperty, fade);
+        RestartPromptTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
+    }
+
+    private void RestartNow_Click(object sender, RoutedEventArgs e)
+    {
+        ApplySettingsFromUi(persist: true);
+        App.RestartApplication();
+    }
+
+    private void RestartLater_Click(object sender, RoutedEventArgs e)
+    {
+        HideRestartBanner();
     }
 
     private void ApplyProcessPriority(string priority)
@@ -3051,6 +3254,8 @@ public partial class SettingsWindow : Window
         };
         if (activeCard != null && activeTranslate != null)
             AnimateExitItem(activeCard, activeTranslate, 60);
+        if (_activeNav == "System" && BackupCard != null && BackupCardTranslate != null)
+            AnimateExitItem(BackupCard, BackupCardTranslate, 80);
 
         AnimateExitItem(SettingsHeader, HeaderTranslate, 100);
 
@@ -3615,9 +3820,10 @@ public partial class SettingsWindow : Window
         scale.ScaleX = 0.985;
         scale.ScaleY = 0.985;
 
-        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease };
-        var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
-        var grow = new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
+        var systemCardDelay = section == "System" && BackupCard != null ? TimeSpan.FromMilliseconds(40) : TimeSpan.Zero;
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, BeginTime = systemCardDelay };
+        var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
+        var grow = new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
         Timeline.SetDesiredFrameRate(fade, fps);
         Timeline.SetDesiredFrameRate(slide, fps);
         Timeline.SetDesiredFrameRate(grow, fps);
@@ -3626,6 +3832,38 @@ public partial class SettingsWindow : Window
         translate.BeginAnimation(TranslateTransform.YProperty, slide);
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+
+        if (section == "System" && BackupCard != null && BackupCardTranslate != null)
+        {
+            if (VNotch.Services.AnimationConfig.ReduceMotion)
+            {
+                BackupCard.BeginAnimation(OpacityProperty, null);
+                BackupCard.Opacity = 1;
+                BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                BackupCardTranslate.Y = 0;
+            }
+            else
+            {
+                var backupScale = EnsureCardScale(BackupCard, BackupCardTranslate);
+                BackupCard.Opacity = 0;
+                BackupCardTranslate.Y = fromY;
+                backupScale.ScaleX = 0.985;
+                backupScale.ScaleY = 0.985;
+
+                var backupFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease };
+                var backupSlide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
+                var backupGrow = new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
+
+                Timeline.SetDesiredFrameRate(backupFade, fps);
+                Timeline.SetDesiredFrameRate(backupSlide, fps);
+                Timeline.SetDesiredFrameRate(backupGrow, fps);
+
+                BackupCard.BeginAnimation(OpacityProperty, backupFade);
+                BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, backupSlide);
+                backupScale.BeginAnimation(ScaleTransform.ScaleXProperty, backupGrow);
+                backupScale.BeginAnimation(ScaleTransform.ScaleYProperty, backupGrow);
+            }
+        }
     }
 
     #endregion
