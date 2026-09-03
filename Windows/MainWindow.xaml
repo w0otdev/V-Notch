@@ -656,17 +656,30 @@
                         <Grid.RenderTransform>
                             <TranslateTransform x:Name="NavIconsTranslate" Y="0"/>
                         </Grid.RenderTransform>
-                        <StackPanel Orientation="Horizontal"
+                        <StackPanel x:Name="NavTabsStackPanel"
+                                    Orientation="Horizontal"
                                     HorizontalAlignment="Left" VerticalAlignment="Top"
                                     Margin="14,3,0,0"
                                     Background="Transparent">
                             <Border x:Name="HomeIconButton"
+                                    Tag="Media"
                                     Width="22" Height="22"
                                     Background="Transparent"
                                     Cursor="Hand"
                                     Margin="0,0,4,0"
                                     Opacity="1.0"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    PreviewMouseLeftButtonDown="NavIcon_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="NavIcon_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="NavIcon_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="NavIcon_LostMouseCapture"
                                     MouseLeftButtonDown="HomeIconButton_Click">
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform X="0" Y="0"/>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
                                 <Border.Effect>
                                     <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/>
                                 </Border.Effect>
@@ -677,12 +690,24 @@
                                 </Viewbox>
                             </Border>
                             <Border x:Name="FileShelfIconButton"
+                                    Tag="Secondary"
                                     Width="22" Height="22"
                                     Background="Transparent"
                                     Cursor="Hand"
                                     Opacity="0.4"
                                     Margin="0,0,4,0"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    PreviewMouseLeftButtonDown="NavIcon_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="NavIcon_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="NavIcon_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="NavIcon_LostMouseCapture"
                                     MouseLeftButtonDown="FileShelfIconButton_Click">
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform X="0" Y="0"/>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
                                 <Border.Effect>
                                     <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/>
                                 </Border.Effect>
@@ -693,12 +718,24 @@
                                 </Viewbox>
                             </Border>
                             <Border x:Name="TimerIconButton"
+                                    Tag="Timer"
                                     Width="22" Height="22"
                                     Background="Transparent"
                                     Cursor="Hand"
                                     Margin="0,0,4,0"
                                     Opacity="0.4"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    PreviewMouseLeftButtonDown="NavIcon_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="NavIcon_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="NavIcon_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="NavIcon_LostMouseCapture"
                                     MouseLeftButtonDown="TimerIconButton_Click">
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform X="0" Y="0"/>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
                                 <Border.Effect>
                                     <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/>
                                 </Border.Effect>
@@ -709,11 +746,24 @@
                                 </Viewbox>
                             </Border>
                             <Border x:Name="AudioIconButton"
+                                    Tag="AudioMixer"
                                     Width="22" Height="22"
                                     Background="Transparent"
                                     Cursor="Hand"
+                                    Margin="0,0,4,0"
                                     Opacity="0.4"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    PreviewMouseLeftButtonDown="NavIcon_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="NavIcon_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="NavIcon_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="NavIcon_LostMouseCapture"
                                     MouseLeftButtonDown="AudioIconButton_Click">
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform X="0" Y="0"/>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
                                 <Border.Effect>
                                     <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/>
                                 </Border.Effect>
@@ -2795,8 +2845,8 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1*"/>
-                            <ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="1*" x:Name="SecondaryLeftCol"/>
+                            <ColumnDefinition Width="3*" x:Name="SecondaryRightCol"/>
                         </Grid.ColumnDefinitions>
 
                         <Border x:Name="CameraSection"
@@ -2848,6 +2898,69 @@
                                 </Border>
 
                             </Grid>
+                        </Border>
+
+                        <Border x:Name="ShelfSysMonSection"
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                Background="#1A1A1A"
+                                CornerRadius="12"
+                                Margin="0,0,8,0"
+                                ClipToBounds="True"
+                                Visibility="Collapsed">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10,0">
+                                <StackPanel Orientation="Vertical" Margin="0,0,0,8">
+                                    <Grid Width="110">
+                                        <TextBlock Text="CPU" Style="{StaticResource SmallText}" FontSize="10" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="ShelfSysMonCpuText" Text="0%" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
+                                        <Border x:Name="ShelfSysMonCpuBar" Width="0" Height="4" CornerRadius="2" Background="#FF4ED164" HorizontalAlignment="Left"/>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Orientation="Vertical" Margin="0,0,0,8">
+                                    <Grid Width="110">
+                                        <TextBlock Text="RAM" Style="{StaticResource SmallText}" FontSize="10" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
+                                        <TextBlock x:Name="ShelfSysMonRamText" Text="—" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
+                                        <Border x:Name="ShelfSysMonRamBar" Width="0" Height="4" CornerRadius="2" Background="#FF4ED164" HorizontalAlignment="Left"/>
+                                    </Border>
+                                </StackPanel>
+                                <Grid Width="110">
+                                    <TextBlock x:Name="ShelfSysMonNetDownText" Text="↓ 0 B/s" Style="{StaticResource SmallText}" FontSize="9" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
+                                    <TextBlock x:Name="ShelfSysMonNetUpText" Text="↑ 0 B/s" Style="{StaticResource SmallText}" FontSize="9" Foreground="#99FFFFFF" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="ShelfWeatherSection"
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                Background="#1A1A1A"
+                                CornerRadius="12"
+                                Margin="0,0,8,0"
+                                ClipToBounds="True"
+                                Visibility="Collapsed">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
+                                <TextBlock x:Name="ShelfWeatherTempText" Text="--°" Style="{StaticResource TitleText}" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="ShelfWeatherDescText" Text="Weather" Style="{StaticResource SmallText}" FontSize="11" Foreground="#CCFFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="ShelfWeatherCityText" Text="" Style="{StaticResource SmallText}" FontSize="9" Foreground="#88FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="ShelfClockSection"
+                                Grid.Row="1"
+                                Grid.Column="0"
+                                Background="#1A1A1A"
+                                CornerRadius="12"
+                                Margin="0,0,8,0"
+                                ClipToBounds="True"
+                                Visibility="Collapsed">
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
+                                <TextBlock x:Name="ShelfClockTimeText" Text="12:00" Style="{StaticResource TitleText}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="ShelfClockDateText" Text="Mon, Jan 1" Style="{StaticResource SmallText}" FontSize="10" Foreground="#AAFFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            </StackPanel>
                         </Border>
 
                         <Border x:Name="FileShelf"
@@ -3078,12 +3191,23 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <ctrl:AnalogClock x:Name="ClockViewClock"
-                                              Grid.Column="0"
-                                              Width="150" Height="150"
-                                              ShowDate="False"
-                                              VerticalAlignment="Center"
-                                              HorizontalAlignment="Center"/>
+                            <Grid Grid.Column="0" Width="150" Height="150" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <ctrl:AnalogClock x:Name="ClockViewClock"
+                                                  Width="150" Height="150"
+                                                  ShowDate="False"
+                                                  VerticalAlignment="Center"
+                                                  HorizontalAlignment="Center"/>
+                                <ctrl:DigitalClock x:Name="ClockViewDigitalClock"
+                                                   Width="150" Height="150"
+                                                   VerticalAlignment="Center"
+                                                   HorizontalAlignment="Center"
+                                                   Visibility="Collapsed"/>
+                                <ctrl:WordClock x:Name="ClockViewWordClock"
+                                                Width="150" Height="150"
+                                                VerticalAlignment="Center"
+                                                HorizontalAlignment="Center"
+                                                Visibility="Collapsed"/>
+                            </Grid>
 
                             <Grid Grid.Column="2" VerticalAlignment="Center">
                                 <Grid.RowDefinitions>

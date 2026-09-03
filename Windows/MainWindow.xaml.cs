@@ -1148,6 +1148,9 @@ public partial class MainWindow : Window
             ConfigureOverlayWindow();
 
         ApplyExpandedWidgetMode();
+        ApplyNavTabOrderAndVisibility();
+        ApplyShelfWidgetMode();
+        ApplyClockPageStyle();
 
         _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
         _hoverThumbnailDelayTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverExpandDelay);

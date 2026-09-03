@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using VNotch.Models;
 using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch;
@@ -13,7 +14,10 @@ public partial class MainWindow
 {
     private void NotchWrapper_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_isAudioView) return;
+        if (_isAudioView && e.OriginalSource is Visual v && AudioScrollViewer != null && v.IsDescendantOf(AudioScrollViewer))
+        {
+            return;
+        }
 
         if (!_isExpanded && !_isAnimating)
         {
@@ -43,29 +47,36 @@ public partial class MainWindow
 
         if ((DateTime.UtcNow - _lastViewSwitchUtc) < ViewSwitchCooldown) return;
 
+        var activeTabs = GetActiveTabSequence();
+        if (activeTabs.Count <= 1) return;
+
+        NotchView currentView = _isAudioView ? NotchView.AudioMixer
+                              : _isTimerView ? NotchView.Timer
+                              : _isSecondaryView ? NotchView.Secondary
+                              : NotchView.Media;
+
+        int currentIndex = activeTabs.IndexOf(currentView);
+        if (currentIndex < 0) currentIndex = 0;
+
+        int targetIndex = currentIndex;
         if (e.Delta < 0)
         {
-            if (!_isSecondaryView && !_isTimerView)
+            if (currentIndex < activeTabs.Count - 1)
             {
-                SwitchToSecondaryView();
-            }
-            else if (_isSecondaryView && !_isTimerView)
-            {
-                StopCameraPreviewForViewExit();
-                SwitchFromSecondaryToTimerView();
+                targetIndex = currentIndex + 1;
             }
         }
         else if (e.Delta > 0)
         {
-            if (_isTimerView)
+            if (currentIndex > 0)
             {
-                SwitchFromTimerToSecondaryView();
+                targetIndex = currentIndex - 1;
             }
-            else if (_isSecondaryView)
-            {
-                StopCameraPreviewForViewExit();
-                SwitchToPrimaryView();
-            }
+        }
+
+        if (targetIndex != currentIndex)
+        {
+            NavigateToNotchView(activeTabs[targetIndex]);
         }
     }
 
@@ -405,6 +416,14 @@ public partial class MainWindow
 
     private void UpdateNavIconsActiveState()
     {
+        if (HomeIconButton == null || FileShelfIconButton == null || TimerIconButton == null || AudioIconButton == null)
+            return;
+
+        HomeIconButton.BeginAnimation(UIElement.OpacityProperty, null);
+        FileShelfIconButton.BeginAnimation(UIElement.OpacityProperty, null);
+        TimerIconButton.BeginAnimation(UIElement.OpacityProperty, null);
+        AudioIconButton.BeginAnimation(UIElement.OpacityProperty, null);
+
         var showShelfCountBadge = false;
 
         if (_isAudioView)
@@ -427,7 +446,7 @@ public partial class MainWindow
             FileShelfIconButton.Opacity = 1.0;
             TimerIconButton.Opacity = 0.4;
             AudioIconButton.Opacity = 0.4;
-            showShelfCountBadge = ShelfUnlockBanner.Visibility != Visibility.Visible;
+            showShelfCountBadge = ShelfUnlockBanner?.Visibility != Visibility.Visible;
         }
         else
         {

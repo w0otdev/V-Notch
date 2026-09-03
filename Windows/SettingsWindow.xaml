@@ -973,6 +973,28 @@
                                     <StackPanel>
                                         <TextBlock x:Name="AppearanceHeader" Text="APPEARANCE" Style="{StaticResource SectionHeader}"/>
 
+                                        <!-- Navigation Tabs Order & Visibility -->
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="NavTabsLabel" Text="Navigation Tabs" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="NavTabsHint" Text="Hold and drag icons in the notch to reorder tabs, or arrange them here."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,6,0,8"/>
+                                                <Border Background="{StaticResource SurfaceBrush}"
+                                                        CornerRadius="14"
+                                                        Padding="10,8"
+                                                        Margin="0,4,0,10">
+                                                    <StackPanel x:Name="NavTabsSettingsContainer"/>
+                                                </Border>
+                                                <Button x:Name="ResetTabOrderButton"
+                                                        Content="Reset to Default Order"
+                                                        HorizontalAlignment="Left"
+                                                        Padding="12,6"
+                                                        Margin="0,0,0,8"
+                                                        Click="ResetTabOrderButton_Click"/>
+                                            </StackPanel>
+                                        </Border>
+
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
                                                 <TextBlock x:Name="ExpandedWidgetLabel" Text="Expanded widget" Style="{StaticResource SettingTitleText}"/>
@@ -980,6 +1002,26 @@
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,6,0,8"/>
                                                 <ComboBox x:Name="WidgetCombo" SelectionChanged="WidgetCombo_SelectionChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="ShelfWidgetLabel" Text="Shelf page side widget" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="ShelfWidgetHint" Text="Choose what content appears on the left side of the file shelf."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,6,0,8"/>
+                                                <ComboBox x:Name="ShelfWidgetCombo" SelectionChanged="ShelfWidgetCombo_SelectionChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="ClockPageStyleLabel" Text="Clock page style" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="ClockPageStyleHint" Text="Choose the main clock display for the Clock &amp; Timer page."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,6,0,8"/>
+                                                <ComboBox x:Name="ClockPageStyleCombo" SelectionChanged="ClockPageStyleCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
 

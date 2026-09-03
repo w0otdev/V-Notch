@@ -120,6 +120,10 @@ public class NotchSettings
     public string Language { get; set; } = "en";
 
     public string ExpandedWidget { get; set; } = "clock";
+    public string NavTabOrder { get; set; } = "Media,Secondary,Timer,AudioMixer";
+    public string VisibleNavTabs { get; set; } = "Media,Secondary,Timer,AudioMixer";
+    public string ShelfWidget { get; set; } = "camera";
+    public string ClockPageStyle { get; set; } = "analog";
 
     public string ProcessPriority { get; set; } = "Normal";
     public int GpuPreference { get; set; } = 0;

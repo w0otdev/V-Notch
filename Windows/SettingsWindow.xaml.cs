@@ -205,6 +205,9 @@ public partial class SettingsWindow : Window
         LanguageCombo.SelectedIndex = selectedIndex;
 
         PopulateWidgetCombo();
+        PopulateShelfWidgetCombo();
+        PopulateClockPageStyleCombo();
+        PopulateNavTabsSettings();
 
         YouTubeApiCheck.IsChecked = _settings.EnableYouTubeApi;
         YouTubeApiKeyPasswordBox.Password = _settings.YouTubeApiKey;
@@ -391,9 +394,19 @@ public partial class SettingsWindow : Window
         ClearSpotlightHistoryButton.Content = Loc.Get("settings.privacy.clearSpotlight");
         ClearLogButton.Content = Loc.Get("settings.privacy.clearLog");
 
+        NavTabsLabel.Text = Loc.Get("settings.navTabs");
+        NavTabsHint.Text = Loc.Get("settings.navTabs.hint");
+        ResetTabOrderButton.Content = Loc.Get("settings.tab.reset");
         ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget");
         ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint");
+        ShelfWidgetLabel.Text = Loc.Get("settings.shelfWidget");
+        ShelfWidgetHint.Text = Loc.Get("settings.shelfWidget.hint");
+        ClockPageStyleLabel.Text = Loc.Get("settings.clockPageStyle");
+        ClockPageStyleHint.Text = Loc.Get("settings.clockPageStyle.hint");
         RepopulateWidgetComboPreservingSelection();
+        RepopulateShelfWidgetComboPreservingSelection();
+        RepopulateClockPageStyleComboPreservingSelection();
+        PopulateNavTabsSettings();
         WidthLabel.Text = Loc.Get("settings.width");
         WidthSlider.Label = Loc.Get("settings.width");
         WidthSlider.Description = Loc.Get("settings.width.hint");
@@ -1429,6 +1442,7 @@ public partial class SettingsWindow : Window
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.digitalclock"), Tag = "digitalclock" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.weather"), Tag = "weather" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.sysmon"), Tag = "sysmon" });
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.none"), Tag = "none" });
         WidgetCombo.SelectedIndex = _settings.ExpandedWidget switch
         {
             "clock" => 1,
@@ -1436,6 +1450,7 @@ public partial class SettingsWindow : Window
             "digitalclock" => 3,
             "weather" => 4,
             "sysmon" => 5,
+            "none" => 6,
             _ => 0
         };
     }
@@ -1460,6 +1475,225 @@ public partial class SettingsWindow : Window
             _settings.ExpandedWidget = widget;
             PushLivePreview();
         }
+    }
+
+    private void PopulateShelfWidgetCombo()
+    {
+        if (ShelfWidgetCombo == null) return;
+        ShelfWidgetCombo.Items.Clear();
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.camera"), Tag = "camera" });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.sysmon"), Tag = "sysmon" });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.weather"), Tag = "weather" });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.clock"), Tag = "clock" });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.none"), Tag = "none" });
+
+        ShelfWidgetCombo.SelectedIndex = (_settings.ShelfWidget ?? "camera").ToLowerInvariant() switch
+        {
+            "sysmon" => 1,
+            "weather" => 2,
+            "clock" => 3,
+            "none" => 4,
+            _ => 0
+        };
+    }
+
+    private void RepopulateShelfWidgetComboPreservingSelection()
+    {
+        if (ShelfWidgetCombo == null) return;
+        bool wasLoading = _isLoadingSettings;
+        _isLoadingSettings = true;
+        PopulateShelfWidgetCombo();
+        _isLoadingSettings = wasLoading;
+    }
+
+    private void ShelfWidgetCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        if (ShelfWidgetCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string widget)
+        {
+            if (widget == _settings.ShelfWidget) return;
+            _settings.ShelfWidget = widget;
+            PushLivePreview();
+        }
+    }
+
+    private void PopulateClockPageStyleCombo()
+    {
+        if (ClockPageStyleCombo == null) return;
+        ClockPageStyleCombo.Items.Clear();
+        ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.analog"), Tag = "analog" });
+        ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.digital"), Tag = "digital" });
+        ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.wordclock"), Tag = "wordclock" });
+
+        ClockPageStyleCombo.SelectedIndex = (_settings.ClockPageStyle ?? "analog").ToLowerInvariant() switch
+        {
+            "digital" => 1,
+            "wordclock" => 2,
+            _ => 0
+        };
+    }
+
+    private void RepopulateClockPageStyleComboPreservingSelection()
+    {
+        if (ClockPageStyleCombo == null) return;
+        bool wasLoading = _isLoadingSettings;
+        _isLoadingSettings = true;
+        PopulateClockPageStyleCombo();
+        _isLoadingSettings = wasLoading;
+    }
+
+    private void ClockPageStyleCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        if (ClockPageStyleCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string style)
+        {
+            if (style == _settings.ClockPageStyle) return;
+            _settings.ClockPageStyle = style;
+            PushLivePreview();
+        }
+    }
+
+    private void PopulateNavTabsSettings()
+    {
+        if (NavTabsSettingsContainer == null) return;
+        NavTabsSettingsContainer.Children.Clear();
+
+        var tabMetadata = new Dictionary<string, (string title, string iconPath)>
+        {
+            ["Media"] = ("Home", "M8 0L0 6V8H1V15H4V10H7V15H15V8H16V6L14 4.5V1H11V2.25L8 0ZM9 10H12V13H9V10Z"),
+            ["Secondary"] = ("File Shelf", "M479.66,268.7l-32-151.81C441.48,83.77,417.68,64,384,64H128c-16.8,0-31,4.69-42.1,13.94s-18.37,22.31-21.58,38.89l-32,151.87A16.65,16.65,0,0,0,32,272V384a64,64,0,0,0,64,64H416a64,64,0,0,0,64-64V272A16.65,16.65,0,0,0,479.66,268.7Zm-384-145.4c0-.1,0-.19,0-.28,3.55-18.43,13.81-27,32.29-27H384c18.61,0,28.87,8.55,32.27,26.91,0,.13.05.26.07.39l26.93,127.88a4,4,0,0,1-3.92,4.82H320a15.92,15.92,0,0,0-16,15.82,48,48,0,1,1-96,0A15.92,15.92,0,0,0,192,256H72.65a4,4,0,0,1-3.92-4.82Z"),
+            ["Timer"] = ("Clock & Timer", "M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM15.8321 14.5547C15.5257 15.0142 14.9048 15.1384 14.4453 14.8321L11.8451 13.0986C11.3171 12.7466 11 12.1541 11 11.5196V11.5V7C11 6.44772 11.4477 6 12 6C12.5523 6 13 6.44772 13 7V11.4648L15.5547 13.1679C16.0142 13.4743 16.1384 14.0952 15.8321 14.5547Z"),
+            ["AudioMixer"] = ("Audio Mixer", "M13.5 2.5C13.5 2.1 13.05 1.86 12.72 2.09L6.8 6.2H3.5C2.95 6.2 2.5 6.65 2.5 7.2V12.8C2.5 13.35 2.95 13.8 3.5 13.8H6.8L12.72 17.91C13.05 18.14 13.5 17.9 13.5 17.5V2.5ZM16.04 6.05C15.74 5.79 15.28 5.82 15.02 6.13C14.76 6.43 14.79 6.89 15.1 7.15C16.0 7.93 16.5 8.93 16.5 10C16.5 11.07 16.0 12.07 15.1 12.85C14.79 13.11 14.76 13.57 15.02 13.87C15.28 14.18 15.74 14.21 16.04 13.95C17.25 12.91 18 11.5 18 10C18 8.5 17.25 7.09 16.04 6.05Z")
+        };
+
+        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var key in tabMetadata.Keys)
+        {
+            if (!orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase))
+                orderTokens.Add(key);
+        }
+
+        var visibleTokens = new HashSet<string>(
+            (_settings.VisibleNavTabs ?? "Media,Secondary,Timer,AudioMixer")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.OrdinalIgnoreCase);
+        visibleTokens.Add("Media");
+
+        for (int i = 0; i < orderTokens.Count; i++)
+        {
+            string token = orderTokens[i];
+            if (!tabMetadata.TryGetValue(token, out var meta)) continue;
+
+            var rowGrid = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var leftStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+            var check = new CheckBox
+            {
+                IsChecked = visibleTokens.Contains(token),
+                IsEnabled = !string.Equals(token, "Media", StringComparison.OrdinalIgnoreCase),
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            string capturedToken = token;
+            check.Checked += (s, e) =>
+            {
+                visibleTokens.Add(capturedToken);
+                _settings.VisibleNavTabs = string.Join(",", visibleTokens);
+                ApplySettingsFromUi(persist: true);
+            };
+            check.Unchecked += (s, e) =>
+            {
+                visibleTokens.Remove(capturedToken);
+                _settings.VisibleNavTabs = string.Join(",", visibleTokens);
+                ApplySettingsFromUi(persist: true);
+            };
+            leftStack.Children.Add(check);
+
+            var iconBox = new Viewbox { Width = 14, Height = 14, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            iconBox.Child = new System.Windows.Shapes.Path { Data = Geometry.Parse(meta.iconPath), Fill = Brushes.White };
+            leftStack.Children.Add(iconBox);
+
+            var titleText = new TextBlock { Text = meta.title, Style = (Style)FindResource("ValueText"), VerticalAlignment = VerticalAlignment.Center };
+            leftStack.Children.Add(titleText);
+
+            rowGrid.Children.Add(leftStack);
+            Grid.SetColumn(leftStack, 0);
+
+            var buttonStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+            if (i > 0)
+            {
+                var upBtn = new Button
+                {
+                    Content = "▲",
+                    Width = 28, Height = 24,
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0, 0, 4, 0),
+                    ToolTip = Loc.Get("settings.tab.moveUp")
+                };
+                int currentIndex = i;
+                upBtn.Click += (s, e) =>
+                {
+                    string temp = orderTokens[currentIndex - 1];
+                    orderTokens[currentIndex - 1] = orderTokens[currentIndex];
+                    orderTokens[currentIndex] = temp;
+                    _settings.NavTabOrder = string.Join(",", orderTokens);
+                    PopulateNavTabsSettings();
+                    ApplySettingsFromUi(persist: true);
+                };
+                buttonStack.Children.Add(upBtn);
+            }
+            else
+            {
+                buttonStack.Children.Add(new Border { Width = 28, Height = 24, Margin = new Thickness(0, 0, 4, 0) });
+            }
+
+            if (i < orderTokens.Count - 1)
+            {
+                var downBtn = new Button
+                {
+                    Content = "▼",
+                    Width = 28, Height = 24,
+                    Padding = new Thickness(0),
+                    ToolTip = Loc.Get("settings.tab.moveDown")
+                };
+                int currentIndex = i;
+                downBtn.Click += (s, e) =>
+                {
+                    string temp = orderTokens[currentIndex + 1];
+                    orderTokens[currentIndex + 1] = orderTokens[currentIndex];
+                    orderTokens[currentIndex] = temp;
+                    _settings.NavTabOrder = string.Join(",", orderTokens);
+                    PopulateNavTabsSettings();
+                    ApplySettingsFromUi(persist: true);
+                };
+                buttonStack.Children.Add(downBtn);
+            }
+            else
+            {
+                buttonStack.Children.Add(new Border { Width = 28, Height = 24 });
+            }
+
+            rowGrid.Children.Add(buttonStack);
+            Grid.SetColumn(buttonStack, 1);
+
+            NavTabsSettingsContainer.Children.Add(rowGrid);
+        }
+    }
+
+    private void ResetTabOrderButton_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.NavTabOrder = "Media,Secondary,Timer,AudioMixer";
+        _settings.VisibleNavTabs = "Media,Secondary,Timer,AudioMixer";
+        PopulateNavTabsSettings();
+        ApplySettingsFromUi(persist: true);
     }
 
     #region Liquid Glass skin
@@ -2383,7 +2617,10 @@ public partial class SettingsWindow : Window
             (ClearSpotlightHistoryButton, () => ClearSpotlightHistoryButton.Content = Loc.Get("settings.privacy.clearSpotlight")),
             (ClearLogButton, () => ClearLogButton.Content = Loc.Get("settings.privacy.clearLog")),
 
+            (NavTabsLabel, () => { NavTabsLabel.Text = Loc.Get("settings.navTabs"); NavTabsHint.Text = Loc.Get("settings.navTabs.hint"); ResetTabOrderButton.Content = Loc.Get("settings.tab.reset"); PopulateNavTabsSettings(); }),
             (ExpandedWidgetLabel, () => { ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget"); ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint"); RepopulateWidgetComboPreservingSelection(); }),
+            (ShelfWidgetLabel, () => { ShelfWidgetLabel.Text = Loc.Get("settings.shelfWidget"); ShelfWidgetHint.Text = Loc.Get("settings.shelfWidget.hint"); RepopulateShelfWidgetComboPreservingSelection(); }),
+            (ClockPageStyleLabel, () => { ClockPageStyleLabel.Text = Loc.Get("settings.clockPageStyle"); ClockPageStyleHint.Text = Loc.Get("settings.clockPageStyle.hint"); RepopulateClockPageStyleComboPreservingSelection(); }),
             (WidthLabel, () => { WidthLabel.Text = Loc.Get("settings.width"); WidthSlider.Label = Loc.Get("settings.width"); WidthSlider.Description = Loc.Get("settings.width.hint"); }),
             (DynamicIslandWidthLabel, () => { DynamicIslandWidthLabel.Text = Loc.Get("settings.dynamicIslandWidth"); DynamicIslandWidthSlider.Label = Loc.Get("settings.dynamicIslandWidth"); DynamicIslandWidthSlider.Description = Loc.Get("settings.dynamicIslandWidth.hint"); }),
             (DynamicIslandHeightLabel, () => { DynamicIslandHeightLabel.Text = Loc.Get("settings.dynamicIslandHeight"); DynamicIslandHeightSlider.Label = Loc.Get("settings.dynamicIslandHeight"); DynamicIslandHeightSlider.Description = Loc.Get("settings.dynamicIslandHeight.hint"); }),
@@ -3005,6 +3242,10 @@ public partial class SettingsWindow : Window
             }
             LanguageCombo.SelectedIndex = defLangIndex;
             _settings.ExpandedWidget = defaults.ExpandedWidget;
+            _settings.ShelfWidget = defaults.ShelfWidget;
+            _settings.ClockPageStyle = defaults.ClockPageStyle;
+            _settings.NavTabOrder = defaults.NavTabOrder;
+            _settings.VisibleNavTabs = defaults.VisibleNavTabs;
             WidgetCombo.SelectedIndex = defaults.ExpandedWidget switch
             {
                 "clock" => 1,
@@ -3012,8 +3253,12 @@ public partial class SettingsWindow : Window
                 "digitalclock" => 3,
                 "weather" => 4,
                 "sysmon" => 5,
+                "none" => 6,
                 _ => 0
             };
+            PopulateShelfWidgetCombo();
+            PopulateClockPageStyleCombo();
+            PopulateNavTabsSettings();
         }
         catch (Exception ex)
         {
@@ -3488,6 +3733,12 @@ public partial class SettingsWindow : Window
 
         if (WidgetCombo.SelectedItem is System.Windows.Controls.ComboBoxItem widgetItem && widgetItem.Tag is string widgetCode)
             _settings.ExpandedWidget = widgetCode;
+
+        if (ShelfWidgetCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem shelfItem && shelfItem.Tag is string shelfCode)
+            _settings.ShelfWidget = shelfCode;
+
+        if (ClockPageStyleCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem clockItem && clockItem.Tag is string clockCode)
+            _settings.ClockPageStyle = clockCode;
         if (persist)
         {
             _settingsService.Save(_settings);

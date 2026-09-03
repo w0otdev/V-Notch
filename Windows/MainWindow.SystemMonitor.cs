@@ -67,6 +67,21 @@ public partial class MainWindow
             if (SysMonNetDownText != null) SysMonNetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
             if (SysMonNetUpText != null) SysMonNetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
         }
+
+        if (ShelfSysMonSection != null && ShelfSysMonSection.Visibility == Visibility.Visible)
+        {
+            if (ShelfSysMonCpuText != null) ShelfSysMonCpuText.Text = $"{Math.Round(stats.CpuPercent)}%";
+            SetUsageBar(ShelfSysMonCpuBar, stats.CpuPercent);
+
+            if (stats.RamTotalBytes > 0)
+            {
+                if (ShelfSysMonRamText != null) ShelfSysMonRamText.Text = $"{FormatGb(stats.RamUsedBytes)} GB";
+            }
+            SetUsageBar(ShelfSysMonRamBar, stats.RamPercent);
+
+            if (ShelfSysMonNetDownText != null) ShelfSysMonNetDownText.Text = $"↓ {FormatRate(stats.NetDownBytesPerSec)}";
+            if (ShelfSysMonNetUpText != null) ShelfSysMonNetUpText.Text = $"↑ {FormatRate(stats.NetUpBytesPerSec)}";
+        }
     }
 
     private static void SetUsageBar(System.Windows.FrameworkElement? bar, double percent)
