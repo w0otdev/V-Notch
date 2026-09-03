@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using NAudio.CoreAudioApi;
 using VNotch.Controllers;
@@ -93,7 +94,8 @@ public partial class SettingsWindow : Window
 
     private static bool IsInteractiveElement(DependencyObject? source)
     {
-        while (source != null)
+        int maxDepth = 64;
+        while (source != null && maxDepth-- > 0)
         {
             if (source is ButtonBase or Slider or Thumb or ComboBox or ComboBoxItem or CheckBox or ScrollBar or TextBox or PasswordBox)
             {
@@ -102,11 +104,12 @@ public partial class SettingsWindow : Window
 
             if (source is FrameworkElement fe)
             {
-                if (fe.Name == "SubtitlePriorityItems")
+                if (fe.Name is "SubtitlePriorityItems" or "NavTabsSettingsContainer" or "NavTabsSettingsCard")
                     return true;
 
-                if (fe is Border border && border.Tag is string tag &&
-                    (tag == "Searching" || tag == "Appearance" || tag == "Skins" || tag == "Behavior" || tag == "Devices" ||
+                if (fe.Tag is string tag &&
+                    (tag is "NavTabRow" or "Media" or "Secondary" or "Timer" or "AudioMixer" ||
+                     tag == "Searching" || tag == "Appearance" || tag == "Skins" || tag == "Behavior" || tag == "Devices" ||
                      tag == "System" || tag == "Privacy" || tag == "Spotlight" || tag == "Advanced" || tag == "Performance" ||
                      tag == "Donating" || tag == "Updates" || Array.IndexOf(_navOrder, tag) >= 0))
                 {
@@ -114,7 +117,16 @@ public partial class SettingsWindow : Window
                 }
             }
 
-            source = VisualTreeHelper.GetParent(source);
+            if (source is Visual or System.Windows.Media.Media3D.Visual3D)
+            {
+                try { source = VisualTreeHelper.GetParent(source); }
+                catch { source = null; }
+            }
+            else
+            {
+                try { source = LogicalTreeHelper.GetParent(source); }
+                catch { source = null; }
+            }
         }
 
         return false;
@@ -1553,6 +1565,17 @@ public partial class SettingsWindow : Window
         }
     }
 
+    #region Navigation Tabs Drag Reordering in Settings
+
+    private FrameworkElement? _settingsNavDragRow = null;
+    private Point _settingsNavDragStartPoint;
+    private bool _isSettingsNavRowDragging = false;
+    private bool _hasCapturedSettingsNavMouse = false;
+    private int _settingsNavInitialSlot = -1;
+    private int _settingsNavTargetSlot = -1;
+    private double _settingsNavRowPitch = 44.0;
+    private readonly Dictionary<FrameworkElement, double> _settingsNavNeighborOffsets = new();
+
     private void PopulateNavTabsSettings()
     {
         if (NavTabsSettingsContainer == null) return;
@@ -1588,10 +1611,28 @@ public partial class SettingsWindow : Window
             string token = orderTokens[i];
             if (!tabMetadata.TryGetValue(token, out var meta)) continue;
 
-            var rowGrid = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+            var rowBorder = new Border
+            {
+                Tag = token,
+                Height = 38,
+                Background = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 0, 10, 0),
+                Margin = new Thickness(0, 3, 0, 3),
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new TransformGroup
+                {
+                    Children = { new TranslateTransform(), new ScaleTransform() }
+                }
+            };
+
+            var rowGrid = new Grid();
             rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+            // Left side: CheckBox + Icon + Title
             var leftStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
             var check = new CheckBox
@@ -1606,13 +1647,15 @@ public partial class SettingsWindow : Window
             {
                 visibleTokens.Add(capturedToken);
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
-                ApplySettingsFromUi(persist: true);
+                _settingsService.Save(_settings);
+                (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
             };
             check.Unchecked += (s, e) =>
             {
                 visibleTokens.Remove(capturedToken);
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
-                ApplySettingsFromUi(persist: true);
+                _settingsService.Save(_settings);
+                (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
             };
             leftStack.Children.Add(check);
 
@@ -1626,67 +1669,417 @@ public partial class SettingsWindow : Window
             rowGrid.Children.Add(leftStack);
             Grid.SetColumn(leftStack, 0);
 
-            var buttonStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-
-            if (i > 0)
+            // Right side: Drag Handle Grip (≡)
+            var dragHandle = new Border
             {
-                var upBtn = new Button
-                {
-                    Content = "▲",
-                    Width = 28, Height = 24,
-                    Padding = new Thickness(0),
-                    Margin = new Thickness(0, 0, 4, 0),
-                    ToolTip = Loc.Get("settings.tab.moveUp")
-                };
-                int currentIndex = i;
-                upBtn.Click += (s, e) =>
-                {
-                    string temp = orderTokens[currentIndex - 1];
-                    orderTokens[currentIndex - 1] = orderTokens[currentIndex];
-                    orderTokens[currentIndex] = temp;
-                    _settings.NavTabOrder = string.Join(",", orderTokens);
-                    PopulateNavTabsSettings();
-                    ApplySettingsFromUi(persist: true);
-                };
-                buttonStack.Children.Add(upBtn);
-            }
-            else
-            {
-                buttonStack.Children.Add(new Border { Width = 28, Height = 24, Margin = new Thickness(0, 0, 4, 0) });
-            }
+                Width = 34,
+                Height = 26,
+                Background = new SolidColorBrush(Color.FromArgb(16, 255, 255, 255)),
+                CornerRadius = new CornerRadius(6),
+                Cursor = Cursors.SizeNS,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                ToolTip = Loc.Get("settings.tab.drag")
+            };
 
-            if (i < orderTokens.Count - 1)
+            var gripIcon = new Viewbox
             {
-                var downBtn = new Button
-                {
-                    Content = "▼",
-                    Width = 28, Height = 24,
-                    Padding = new Thickness(0),
-                    ToolTip = Loc.Get("settings.tab.moveDown")
-                };
-                int currentIndex = i;
-                downBtn.Click += (s, e) =>
-                {
-                    string temp = orderTokens[currentIndex + 1];
-                    orderTokens[currentIndex + 1] = orderTokens[currentIndex];
-                    orderTokens[currentIndex] = temp;
-                    _settings.NavTabOrder = string.Join(",", orderTokens);
-                    PopulateNavTabsSettings();
-                    ApplySettingsFromUi(persist: true);
-                };
-                buttonStack.Children.Add(downBtn);
-            }
-            else
+                Width = 14,
+                Height = 10,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            gripIcon.Child = new System.Windows.Shapes.Path
             {
-                buttonStack.Children.Add(new Border { Width = 28, Height = 24 });
-            }
+                Data = Geometry.Parse("M2 2.2h16v1.6H2zm0 3.8h16v1.6H2zm0 3.8h16v1.6H2z"),
+                Fill = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255))
+            };
+            dragHandle.Child = gripIcon;
 
-            rowGrid.Children.Add(buttonStack);
-            Grid.SetColumn(buttonStack, 1);
+            dragHandle.MouseEnter += (s, e) =>
+            {
+                if (!_isSettingsNavRowDragging)
+                    dragHandle.Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+            };
+            dragHandle.MouseLeave += (s, e) =>
+            {
+                if (!_isSettingsNavRowDragging)
+                    dragHandle.Background = new SolidColorBrush(Color.FromArgb(16, 255, 255, 255));
+            };
 
-            NavTabsSettingsContainer.Children.Add(rowGrid);
+            rowGrid.Children.Add(dragHandle);
+            Grid.SetColumn(dragHandle, 1);
+
+            rowBorder.Child = rowGrid;
+
+            // Wire drag-and-drop exclusively to the dragHandle so CheckBox has zero interference
+            dragHandle.PreviewMouseLeftButtonDown += (s, e) => StartSettingsNavRowDrag(rowBorder, e);
+
+            rowBorder.PreviewMouseMove += SettingsNavRow_PreviewMouseMove;
+            rowBorder.PreviewMouseLeftButtonUp += SettingsNavRow_PreviewMouseLeftButtonUp;
+            rowBorder.LostMouseCapture += SettingsNavRow_LostMouseCapture;
+
+            NavTabsSettingsContainer.Children.Add(rowBorder);
         }
     }
+
+    private void StartSettingsNavRowDrag(FrameworkElement rowBorder, MouseButtonEventArgs e)
+    {
+        if (NavTabsSettingsContainer == null) return;
+
+        _settingsNavDragRow = rowBorder;
+        _settingsNavDragStartPoint = e.GetPosition(NavTabsSettingsContainer);
+        _isSettingsNavRowDragging = false;
+        _hasCapturedSettingsNavMouse = rowBorder.CaptureMouse();
+        _settingsNavInitialSlot = NavTabsSettingsContainer.Children.IndexOf(rowBorder);
+        _settingsNavTargetSlot = _settingsNavInitialSlot;
+        _settingsNavNeighborOffsets.Clear();
+        if (rowBorder.RenderTransform is TransformGroup group)
+        {
+            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            translate?.BeginAnimation(TranslateTransform.YProperty, null);
+            translate?.BeginAnimation(TranslateTransform.XProperty, null);
+        }
+
+        e.Handled = true;
+    }
+
+    private void SettingsNavRow_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_settingsNavDragRow == null || e.LeftButton != MouseButtonState.Pressed || NavTabsSettingsContainer == null) return;
+
+        Point current = e.GetPosition(NavTabsSettingsContainer);
+        double deltaY = current.Y - _settingsNavDragStartPoint.Y;
+
+        if (!_isSettingsNavRowDragging)
+        {
+            if (Math.Abs(deltaY) > 3)
+            {
+                _isSettingsNavRowDragging = true;
+                if (!_hasCapturedSettingsNavMouse)
+                {
+                    _hasCapturedSettingsNavMouse = _settingsNavDragRow.CaptureMouse();
+                }
+                Panel.SetZIndex(_settingsNavDragRow, 100);
+
+                if (_settingsNavDragRow is Border border)
+                {
+                    border.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
+                    border.BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255));
+                    border.Effect = new DropShadowEffect
+                    {
+                        Color = Colors.Black,
+                        BlurRadius = 16,
+                        ShadowDepth = 3,
+                        Opacity = 0.55
+                    };
+                }
+
+                if (_settingsNavDragRow.RenderTransform is TransformGroup group)
+                {
+                    var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+                    if (scale != null)
+                    {
+                        var animScale = new DoubleAnimation
+                        {
+                            To = 1.025,
+                            Duration = new Duration(TimeSpan.FromMilliseconds(150)),
+                            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                        };
+                        Timeline.SetDesiredFrameRate(animScale, VNotch.Services.AnimationConfig.TargetFps);
+                        scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
+                        scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
+                    }
+                }
+
+                Mouse.OverrideCursor = Cursors.SizeNS;
+            }
+        }
+
+        if (_isSettingsNavRowDragging)
+        {
+            e.Handled = true;
+
+            // Directly track vertical displacement
+            if (_settingsNavDragRow.RenderTransform is TransformGroup group)
+            {
+                var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+                if (translate != null)
+                {
+                    translate.Y = deltaY;
+                }
+            }
+
+            UpdateSettingsNavNeighborDisplacements();
+        }
+    }
+
+    private void UpdateSettingsNavNeighborDisplacements()
+    {
+        if (_settingsNavDragRow == null || NavTabsSettingsContainer == null) return;
+
+        int totalRows = NavTabsSettingsContainer.Children.Count;
+        if (totalRows <= 1 || _settingsNavInitialSlot < 0) return;
+
+        double currentTranslateY = 0.0;
+        if (_settingsNavDragRow.RenderTransform is TransformGroup group)
+        {
+            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            if (translate != null)
+            {
+                currentTranslateY = translate.Y;
+            }
+        }
+
+        double visualY = (_settingsNavInitialSlot * _settingsNavRowPitch) + currentTranslateY;
+        int targetSlot = CalculateSettingsTargetSlotWithHysteresis(_settingsNavTargetSlot, visualY, _settingsNavRowPitch, totalRows);
+        _settingsNavTargetSlot = targetSlot;
+
+        for (int i = 0; i < totalRows; i++)
+        {
+            var child = NavTabsSettingsContainer.Children[i] as FrameworkElement;
+            if (child == null || child == _settingsNavDragRow) continue;
+
+            double desiredOffset = 0.0;
+
+            if (targetSlot < _settingsNavInitialSlot)
+            {
+                // Dragged UP: rows between targetSlot and _settingsNavInitialSlot - 1 shift DOWN (+_settingsNavRowPitch)
+                if (i >= targetSlot && i < _settingsNavInitialSlot)
+                {
+                    desiredOffset = _settingsNavRowPitch;
+                }
+            }
+            else if (targetSlot > _settingsNavInitialSlot)
+            {
+                // Dragged DOWN: rows between _settingsNavInitialSlot + 1 and targetSlot shift UP (-_settingsNavRowPitch)
+                if (i > _settingsNavInitialSlot && i <= targetSlot)
+                {
+                    desiredOffset = -_settingsNavRowPitch;
+                }
+            }
+
+            AnimateSettingsRowToY(child, desiredOffset);
+        }
+    }
+
+    private static int CalculateSettingsTargetSlotWithHysteresis(int currentTarget, double visualPos, double pitch, int totalSlots)
+    {
+        double currentSlotCenter = currentTarget * pitch;
+        double diff = visualPos - currentSlotCenter;
+
+        int proposedSlot = currentTarget;
+        if (diff > pitch * 0.55)
+        {
+            proposedSlot = (int)Math.Floor((visualPos + pitch * 0.45) / pitch);
+        }
+        else if (diff < -pitch * 0.55)
+        {
+            proposedSlot = (int)Math.Ceiling((visualPos - pitch * 0.45) / pitch);
+        }
+
+        return Math.Clamp(proposedSlot, 0, totalSlots - 1);
+    }
+
+    private void AnimateSettingsRowToY(FrameworkElement element, double targetY)
+    {
+        if (element.RenderTransform is not TransformGroup group) return;
+        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        if (translate == null) return;
+
+        if (_settingsNavNeighborOffsets.TryGetValue(element, out double currentTarget) &&
+            Math.Abs(currentTarget - targetY) < 0.5)
+        {
+            return;
+        }
+
+        _settingsNavNeighborOffsets[element] = targetY;
+
+        var anim = new DoubleAnimation
+        {
+            To = targetY,
+            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+        translate.BeginAnimation(TranslateTransform.YProperty, anim);
+    }
+
+    private void SettingsNavRow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isSettingsNavRowDragging || _settingsNavDragRow != null)
+        {
+            e.Handled = true;
+            EndSettingsNavRowDrag();
+        }
+    }
+
+    private void SettingsNavRow_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (_isSettingsNavRowDragging)
+        {
+            EndSettingsNavRowDrag();
+        }
+    }
+
+    private void EndSettingsNavRowDrag()
+    {
+        var row = _settingsNavDragRow;
+        if (row == null) return;
+
+        bool wasDragging = _isSettingsNavRowDragging;
+        _isSettingsNavRowDragging = false;
+        _settingsNavDragRow = null;
+
+        if (_hasCapturedSettingsNavMouse)
+        {
+            _hasCapturedSettingsNavMouse = false;
+            try { row.ReleaseMouseCapture(); } catch { }
+        }
+
+        Mouse.OverrideCursor = null;
+
+        if (wasDragging && _settingsNavTargetSlot >= 0 && _settingsNavInitialSlot >= 0 && _settingsNavTargetSlot != _settingsNavInitialSlot)
+        {
+            double finalOffsetY = (_settingsNavTargetSlot - _settingsNavInitialSlot) * _settingsNavRowPitch;
+            AnimateSettingsRowDropSettle(row, finalOffsetY, onCompleted: () =>
+            {
+                CommitSettingsNavTabOrder();
+            });
+        }
+        else
+        {
+            AnimateSettingsRowDropSettle(row, 0.0, onCompleted: () =>
+            {
+                ResetAllSettingsNavRowTransforms();
+            });
+        }
+    }
+
+    private void CommitSettingsNavTabOrder()
+    {
+        if (NavTabsSettingsContainer == null || _settingsNavInitialSlot < 0 || _settingsNavTargetSlot < 0 || _settingsNavInitialSlot == _settingsNavTargetSlot)
+        {
+            ResetAllSettingsNavRowTransforms();
+            return;
+        }
+
+        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (_settingsNavInitialSlot < orderTokens.Count && _settingsNavTargetSlot < orderTokens.Count)
+        {
+            string movedToken = orderTokens[_settingsNavInitialSlot];
+            orderTokens.RemoveAt(_settingsNavInitialSlot);
+            orderTokens.Insert(_settingsNavTargetSlot, movedToken);
+
+            _settings.NavTabOrder = string.Join(",", orderTokens);
+            _settingsService.Save(_settings);
+            (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
+        }
+
+        ResetAllSettingsNavRowTransforms();
+        PopulateNavTabsSettings();
+    }
+
+    private void AnimateSettingsRowDropSettle(FrameworkElement row, double targetY, Action? onCompleted = null)
+    {
+        Panel.SetZIndex(row, 100);
+
+        if (row is Border border)
+        {
+            border.Background = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255));
+            border.BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255));
+            border.Effect = null;
+        }
+
+        if (row.RenderTransform is not TransformGroup group)
+        {
+            Panel.SetZIndex(row, 0);
+            onCompleted?.Invoke();
+            return;
+        }
+
+        var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+
+        if (scale != null)
+        {
+            var animScale = new DoubleAnimation
+            {
+                To = 1.0,
+                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Timeline.SetDesiredFrameRate(animScale, VNotch.Services.AnimationConfig.TargetFps);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
+        }
+
+        if (translate != null)
+        {
+            var animY = new DoubleAnimation
+            {
+                To = targetY,
+                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Timeline.SetDesiredFrameRate(animY, VNotch.Services.AnimationConfig.TargetFps);
+            animY.Completed += (s, e) =>
+            {
+                Panel.SetZIndex(row, 0);
+                onCompleted?.Invoke();
+            };
+            translate.BeginAnimation(TranslateTransform.YProperty, animY);
+        }
+        else
+        {
+            Panel.SetZIndex(row, 0);
+            onCompleted?.Invoke();
+        }
+    }
+
+    private void ResetAllSettingsNavRowTransforms()
+    {
+        if (NavTabsSettingsContainer == null) return;
+
+        foreach (var child in NavTabsSettingsContainer.Children.OfType<FrameworkElement>())
+        {
+            if (child.RenderTransform is TransformGroup group)
+            {
+                var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+                if (translate != null)
+                {
+                    translate.BeginAnimation(TranslateTransform.YProperty, null);
+                    translate.Y = 0;
+                }
+
+                var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+                if (scale != null)
+                {
+                    scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                    scale.ScaleX = 1.0;
+                    scale.ScaleY = 1.0;
+                }
+            }
+
+            Panel.SetZIndex(child, 0);
+
+            if (child is Border border)
+            {
+                border.Background = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255));
+                border.BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255));
+                border.Effect = null;
+            }
+        }
+    }
+
+    #endregion
 
     private void ResetTabOrderButton_Click(object sender, RoutedEventArgs e)
     {
@@ -3487,7 +3880,7 @@ public partial class SettingsWindow : Window
         Top = currentTop;
         Left = currentLeft;
 
-        // Removing a WPF animation exposes its base value. Preserve the
+        // Removing a WPF animation exposes its base value. Preserve the active appearance
         MainShell.Opacity = currentShellOpacity;
         ShellScale.ScaleX = currentScaleX;
         ShellScale.ScaleY = currentScaleY;
@@ -3498,12 +3891,8 @@ public partial class SettingsWindow : Window
 
         MainShell.Effect = null;
 
-        // --- Performance Optimizations ---
-        MainShell.CacheMode = new BitmapCache { EnableClearType = false, RenderAtScale = 1.0 };
-        // 2. Disable pixel snapping and layout rounding during animation to prevent animation jitter
         MainShell.SnapsToDevicePixels = false;
         MainShell.UseLayoutRounding = false;
-        // 3. Set scaling mode to LowQuality (bilinear) for faster scaling animation on the GPU
         RenderOptions.SetBitmapScalingMode(MainShell, BitmapScalingMode.LowQuality);
 
         AnimateExitItem(FooterBar, FooterTranslate, 0);
@@ -3593,17 +3982,17 @@ public partial class SettingsWindow : Window
         {
             EasingFunction = easeInStrong
         };
-        Timeline.SetDesiredFrameRate(flyUpWindow, Math.Min(60, fps));
+        Timeline.SetDesiredFrameRate(flyUpWindow, fps);
 
         var flyLeftWindow = new DoubleAnimation(Left, targetLeft, totalDur)
         {
             EasingFunction = easeInStrong
         };
-        Timeline.SetDesiredFrameRate(flyLeftWindow, Math.Min(60, fps));
+        Timeline.SetDesiredFrameRate(flyLeftWindow, fps);
 
         squishX.Completed += (s, e) =>
         {
-            // Blank and hide the layered window before destroying it so
+            // Blank and hide the layered window before destroying it
             Opacity = 0;
             Hide();
             Close();
@@ -3617,9 +4006,6 @@ public partial class SettingsWindow : Window
 
         void AnimateExitItem(UIElement element, TranslateTransform translate, int delayMs)
         {
-            // Enable bitmap caching on child elements to animate their fade & slide on GPU
-            element.CacheMode = new BitmapCache { EnableClearType = false, RenderAtScale = 1.0 };
-
             var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(550))
             {
                 EasingFunction = easeInStrong,

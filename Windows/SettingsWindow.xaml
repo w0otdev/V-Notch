@@ -168,22 +168,20 @@
                                         <Storyboard>
                                             <ThicknessAnimation Storyboard.TargetName="SwitchThumb"
                                                                 Storyboard.TargetProperty="Margin"
-                                                                From="0,0,0,0"
                                                                 To="18,0,0,0"
-                                                                Duration="0:0:0.4"
+                                                                Duration="0:0:0.2"
                                                                 Timeline.DesiredFrameRate="60">
                                                 <ThicknessAnimation.EasingFunction>
-                                                    <BackEase EasingMode="EaseOut" Amplitude="0.4"/>
+                                                    <CubicEase EasingMode="EaseOut"/>
                                                 </ThicknessAnimation.EasingFunction>
                                             </ThicknessAnimation>
                                             <ColorAnimation Storyboard.TargetName="SwitchTrack"
                                                             Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
-                                                            From="#000000"
                                                             To="#00FF00"
-                                                            Duration="0:0:0.4"
+                                                            Duration="0:0:0.2"
                                                             Timeline.DesiredFrameRate="60">
                                                 <ColorAnimation.EasingFunction>
-                                                    <BackEase EasingMode="EaseOut" Amplitude="0.3"/>
+                                                    <CubicEase EasingMode="EaseOut"/>
                                                 </ColorAnimation.EasingFunction>
                                             </ColorAnimation>
                                         </Storyboard>
@@ -195,19 +193,19 @@
                                             <ThicknessAnimation Storyboard.TargetName="SwitchThumb"
                                                                 Storyboard.TargetProperty="Margin"
                                                                 To="0,0,0,0"
-                                                                Duration="0:0:0.4"
+                                                                Duration="0:0:0.2"
                                                                 Timeline.DesiredFrameRate="60">
                                                 <ThicknessAnimation.EasingFunction>
-                                                    <BackEase EasingMode="EaseOut" Amplitude="0.4"/>
+                                                    <CubicEase EasingMode="EaseOut"/>
                                                 </ThicknessAnimation.EasingFunction>
                                             </ThicknessAnimation>
                                             <ColorAnimation Storyboard.TargetName="SwitchTrack"
                                                             Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
                                                             To="#000000"
-                                                            Duration="0:0:0.4"
+                                                            Duration="0:0:0.2"
                                                             Timeline.DesiredFrameRate="60">
                                                 <ColorAnimation.EasingFunction>
-                                                    <BackEase EasingMode="EaseOut" Amplitude="0.3"/>
+                                                    <CubicEase EasingMode="EaseOut"/>
                                                 </ColorAnimation.EasingFunction>
                                             </ColorAnimation>
                                         </Storyboard>
@@ -980,7 +978,8 @@
                                                 <TextBlock x:Name="NavTabsHint" Text="Hold and drag icons in the notch to reorder tabs, or arrange them here."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,6,0,8"/>
-                                                <Border Background="{StaticResource SurfaceBrush}"
+                                                <Border x:Name="NavTabsSettingsCard"
+                                                        Background="{StaticResource SurfaceBrush}"
                                                         CornerRadius="14"
                                                         Padding="10,8"
                                                         Margin="0,4,0,10">

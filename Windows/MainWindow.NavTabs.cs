@@ -23,6 +23,9 @@ public partial class MainWindow
     private static readonly TimeSpan HoldToDragThreshold = TimeSpan.FromMilliseconds(160);
 
     private bool _isEndingNavDrag = false;
+    private int _dragInitialSlot = -1;
+    private int _dragTargetSlot = -1;
+    private readonly Dictionary<FrameworkElement, double> _neighborTargetOffsets = new();
 
     #region Hold-to-Drag Reordering Handlers
 
@@ -35,6 +38,9 @@ public partial class MainWindow
             _navMouseDownTime = DateTime.UtcNow;
             _isNavDragging = false;
             _hasCapturedNavMouse = false;
+            _dragInitialSlot = -1;
+            _dragTargetSlot = -1;
+            _neighborTargetOffsets.Clear();
             e.Handled = true;
         }
     }
@@ -58,6 +64,16 @@ public partial class MainWindow
                 Panel.SetZIndex(_navDragItem, 1000);
                 AnimateNavDragLift(_navDragItem, true);
                 Mouse.OverrideCursor = Cursors.SizeWE;
+
+                if (NavTabsStackPanel != null)
+                {
+                    var visibleChildren = NavTabsStackPanel.Children
+                        .OfType<FrameworkElement>()
+                        .Where(c => c.Visibility == Visibility.Visible)
+                        .ToList();
+                    _dragInitialSlot = visibleChildren.IndexOf(_navDragItem);
+                    _dragTargetSlot = _dragInitialSlot;
+                }
             }
         }
 
@@ -65,7 +81,7 @@ public partial class MainWindow
         {
             e.Handled = true;
 
-            // Live horizontal displacement
+            // Live horizontal displacement tracking cursor directly
             if (_navDragItem.RenderTransform is TransformGroup group)
             {
                 var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
@@ -75,102 +91,111 @@ public partial class MainWindow
                 }
             }
 
-            CheckAndPerformNavTabSwap(deltaX);
+            UpdateNeighborSlotDisplacements();
         }
     }
 
-    private void CheckAndPerformNavTabSwap(double deltaX)
+    private void UpdateNeighborSlotDisplacements()
     {
         if (_navDragItem == null || NavTabsStackPanel == null) return;
 
-        int currentIndex = NavTabsStackPanel.Children.IndexOf(_navDragItem);
-        if (currentIndex < 0) return;
+        var visibleChildren = NavTabsStackPanel.Children
+            .OfType<FrameworkElement>()
+            .Where(c => c.Visibility == Visibility.Visible)
+            .ToList();
 
-        // Moving right (deadband 0.65 to prevent rapid oscillation)
-        if (deltaX > (NavTabSlotWidth * 0.65))
+        int totalSlots = visibleChildren.Count;
+        if (totalSlots <= 1) return;
+
+        int initialSlot = visibleChildren.IndexOf(_navDragItem);
+        if (initialSlot < 0) return;
+
+        _dragInitialSlot = initialSlot;
+
+        // Calculate visual position of dragged item
+        double currentTranslateX = 0.0;
+        if (_navDragItem.RenderTransform is TransformGroup group)
         {
-            int nextIndex = -1;
-            for (int i = currentIndex + 1; i < NavTabsStackPanel.Children.Count; i++)
+            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            if (translate != null)
             {
-                if (NavTabsStackPanel.Children[i].Visibility == Visibility.Visible)
-                {
-                    nextIndex = i;
-                    break;
-                }
-            }
-
-            if (nextIndex >= 0)
-            {
-                var neighbor = NavTabsStackPanel.Children[nextIndex] as FrameworkElement;
-                NavTabsStackPanel.Children.RemoveAt(currentIndex);
-                NavTabsStackPanel.Children.Insert(nextIndex, _navDragItem);
-                _navDragStartPoint.X += NavTabSlotWidth;
-
-                if (_navDragItem.RenderTransform is TransformGroup group)
-                {
-                    var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
-                    if (translate != null)
-                    {
-                        translate.X -= NavTabSlotWidth;
-                    }
-                }
-
-                AnimateNeighborSlide(neighbor, NavTabSlotWidth);
+                currentTranslateX = translate.X;
             }
         }
-        // Moving left (deadband 0.65 to prevent rapid oscillation)
-        else if (deltaX < -(NavTabSlotWidth * 0.65))
+
+        double visualX = (initialSlot * NavTabSlotWidth) + currentTranslateX;
+        int targetSlot = CalculateNavTargetSlotWithHysteresis(_dragTargetSlot, visualX, NavTabSlotWidth, totalSlots);
+        _dragTargetSlot = targetSlot;
+
+        // Smoothly glide neighbors to open a gap for the dragged item
+        for (int i = 0; i < totalSlots; i++)
         {
-            int prevIndex = -1;
-            for (int i = currentIndex - 1; i >= 0; i--)
+            var child = visibleChildren[i];
+            if (child == _navDragItem) continue;
+
+            double desiredOffset = 0.0;
+
+            if (targetSlot < initialSlot)
             {
-                if (NavTabsStackPanel.Children[i].Visibility == Visibility.Visible)
+                // Dragged to the left: items between targetSlot and initialSlot-1 shift right (+NavTabSlotWidth)
+                if (i >= targetSlot && i < initialSlot)
                 {
-                    prevIndex = i;
-                    break;
+                    desiredOffset = NavTabSlotWidth;
+                }
+            }
+            else if (targetSlot > initialSlot)
+            {
+                // Dragged to the right: items between initialSlot+1 and targetSlot shift left (-NavTabSlotWidth)
+                if (i > initialSlot && i <= targetSlot)
+                {
+                    desiredOffset = -NavTabSlotWidth;
                 }
             }
 
-            if (prevIndex >= 0)
-            {
-                var neighbor = NavTabsStackPanel.Children[prevIndex] as FrameworkElement;
-                NavTabsStackPanel.Children.RemoveAt(currentIndex);
-                NavTabsStackPanel.Children.Insert(prevIndex, _navDragItem);
-                _navDragStartPoint.X -= NavTabSlotWidth;
-
-                if (_navDragItem.RenderTransform is TransformGroup group)
-                {
-                    var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
-                    if (translate != null)
-                    {
-                        translate.X += NavTabSlotWidth;
-                    }
-                }
-
-                AnimateNeighborSlide(neighbor, -NavTabSlotWidth);
-            }
+            AnimateElementToX(child, desiredOffset);
         }
     }
 
-    private void AnimateNeighborSlide(FrameworkElement? neighbor, double fromOffset)
+    private static int CalculateNavTargetSlotWithHysteresis(int currentTarget, double visualPos, double pitch, int totalSlots)
     {
-        if (neighbor?.RenderTransform is not TransformGroup group) return;
+        double currentSlotCenter = currentTarget * pitch;
+        double diff = visualPos - currentSlotCenter;
+
+        int proposedSlot = currentTarget;
+        if (diff > pitch * 0.55)
+        {
+            proposedSlot = (int)Math.Floor((visualPos + pitch * 0.45) / pitch);
+        }
+        else if (diff < -pitch * 0.55)
+        {
+            proposedSlot = (int)Math.Ceiling((visualPos - pitch * 0.45) / pitch);
+        }
+
+        return Math.Clamp(proposedSlot, 0, totalSlots - 1);
+    }
+
+    private void AnimateElementToX(FrameworkElement element, double targetX)
+    {
+        if (element.RenderTransform is not TransformGroup group) return;
         var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
         if (translate == null) return;
 
-        translate.BeginAnimation(TranslateTransform.XProperty, null);
-        translate.X = fromOffset;
-
-        var slideAnim = new DoubleAnimation(0.0, new Duration(TimeSpan.FromMilliseconds(200)))
+        if (_neighborTargetOffsets.TryGetValue(element, out double currentTarget) &&
+            Math.Abs(currentTarget - targetX) < 0.5)
         {
+            return;
+        }
+
+        _neighborTargetOffsets[element] = targetX;
+
+        var anim = new DoubleAnimation
+        {
+            To = targetX,
+            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
-        slideAnim.Completed += (s, e) =>
-        {
-            translate.BeginAnimation(TranslateTransform.XProperty, null);
-            translate.X = 0;
-        };
-        translate.BeginAnimation(TranslateTransform.XProperty, slideAnim);
+        Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+        translate.BeginAnimation(TranslateTransform.XProperty, anim);
     }
 
     private void NavIcon_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -227,26 +252,84 @@ public partial class MainWindow
                     catch { }
                 }
 
-                Panel.SetZIndex(item, 0);
-                AnimateNavDragLift(item, false);
                 Mouse.OverrideCursor = null;
 
-                if (saveOrder && wasDragging)
+                if (wasDragging && _dragTargetSlot >= 0 && _dragInitialSlot >= 0 && _dragTargetSlot != _dragInitialSlot)
                 {
-                    PersistNavTabOrderFromUI();
+                    double finalTranslateX = (_dragTargetSlot - _dragInitialSlot) * NavTabSlotWidth;
+                    AnimateNavDragDropSettle(item, finalTranslateX, onCompleted: () =>
+                    {
+                        CommitFinalTabOrder();
+                        if (saveOrder) PersistNavTabOrderFromUI();
+                    });
+                }
+                else
+                {
+                    AnimateNavDragDropSettle(item, 0.0, onCompleted: () =>
+                    {
+                        ResetAllNavTabTransforms();
+                        UpdateNavIconsActiveState();
+                    });
                 }
             }
-
-            ResetAllNavTabTransforms(excludeItem: item);
+            else
+            {
+                ResetAllNavTabTransforms();
+                UpdateNavIconsActiveState();
+            }
         }
         catch (Exception ex)
         {
             VNotch.Services.RuntimeLog.Error("NAV-DRAG", ex, "Error during EndNavDrag");
+            ResetAllNavTabTransforms();
+            UpdateNavIconsActiveState();
         }
         finally
         {
             _isEndingNavDrag = false;
+            _neighborTargetOffsets.Clear();
         }
+    }
+
+    private void CommitFinalTabOrder()
+    {
+        if (NavTabsStackPanel == null || _dragInitialSlot < 0 || _dragTargetSlot < 0 || _dragInitialSlot == _dragTargetSlot)
+        {
+            ResetAllNavTabTransforms();
+            UpdateNavIconsActiveState();
+            return;
+        }
+
+        var visibleChildren = NavTabsStackPanel.Children
+            .OfType<FrameworkElement>()
+            .Where(c => c.Visibility == Visibility.Visible)
+            .ToList();
+
+        if (_dragInitialSlot < visibleChildren.Count && _dragTargetSlot < visibleChildren.Count)
+        {
+            var dragged = visibleChildren[_dragInitialSlot];
+            visibleChildren.RemoveAt(_dragInitialSlot);
+            visibleChildren.Insert(_dragTargetSlot, dragged);
+
+            var allChildren = NavTabsStackPanel.Children.OfType<FrameworkElement>().ToList();
+            NavTabsStackPanel.Children.Clear();
+
+            foreach (var child in visibleChildren)
+            {
+                NavTabsStackPanel.Children.Add(child);
+            }
+
+            foreach (var child in allChildren)
+            {
+                if (child.Visibility != Visibility.Visible)
+                {
+                    NavTabsStackPanel.Children.Add(child);
+                }
+            }
+        }
+
+        ResetAllNavTabTransforms();
+        UpdateNavIconsActiveState();
     }
 
     private void AnimateNavDragLift(FrameworkElement? item, bool lifted)
@@ -262,7 +345,7 @@ public partial class MainWindow
             // Scale up slightly to 1.18x
             if (scale != null)
             {
-                var animScale = new DoubleAnimation(1.18, new Duration(TimeSpan.FromMilliseconds(180)))
+                var animScale = new DoubleAnimation(1.18, new Duration(TimeSpan.FromMilliseconds(160)))
                 {
                     EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 }
                 };
@@ -273,97 +356,97 @@ public partial class MainWindow
             // Lift upward slightly (-2px)
             if (translate != null)
             {
-                var animY = new DoubleAnimation(-2.0, new Duration(TimeSpan.FromMilliseconds(180)))
+                var animY = new DoubleAnimation(-2.0, new Duration(TimeSpan.FromMilliseconds(160)))
                 {
                     EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
                 };
                 translate.BeginAnimation(TranslateTransform.YProperty, animY);
             }
 
-            // Ensure dragged item is clearly visible while dragging
+            // Ensure dragged item is clearly visible
             item.BeginAnimation(UIElement.OpacityProperty, null);
             item.Opacity = 1.0;
 
-            // Deepen black drop shadow for elevation
-            if (shadow != null)
+            if (shadow != null && !shadow.IsFrozen)
             {
-                if (shadow.IsFrozen)
-                {
-                    shadow = shadow.Clone();
-                    item.Effect = shadow;
-                }
                 shadow.Color = Colors.Black;
                 shadow.BlurRadius = 12;
                 shadow.ShadowDepth = 2;
                 shadow.Opacity = 0.95;
             }
         }
+    }
+
+    private void AnimateNavDragDropSettle(FrameworkElement item, double targetX, Action? onCompleted = null)
+    {
+        Panel.SetZIndex(item, 1000);
+
+        if (item.RenderTransform is not TransformGroup group)
+        {
+            Panel.SetZIndex(item, 0);
+            onCompleted?.Invoke();
+            return;
+        }
+
+        var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        var shadow = item.Effect as DropShadowEffect;
+
+        if (shadow != null && !shadow.IsFrozen)
+        {
+            shadow.Color = Colors.Black;
+            shadow.BlurRadius = 8;
+            shadow.ShadowDepth = 0;
+            shadow.Opacity = 0.9;
+        }
+
+        item.BeginAnimation(UIElement.OpacityProperty, null);
+
+        // Settle scale back to 1.0
+        if (scale != null)
+        {
+            var animScale = new DoubleAnimation
+            {
+                To = 1.0,
+                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Timeline.SetDesiredFrameRate(animScale, VNotch.Services.AnimationConfig.TargetFps);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
+        }
+
+        // Settle Y back to 0
+        if (translate != null)
+        {
+            var animY = new DoubleAnimation
+            {
+                To = 0.0,
+                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Timeline.SetDesiredFrameRate(animY, VNotch.Services.AnimationConfig.TargetFps);
+            translate.BeginAnimation(TranslateTransform.YProperty, animY);
+
+            // Settle X into slot
+            var animX = new DoubleAnimation
+            {
+                To = targetX,
+                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Timeline.SetDesiredFrameRate(animX, VNotch.Services.AnimationConfig.TargetFps);
+            animX.Completed += (s, e) =>
+            {
+                Panel.SetZIndex(item, 0);
+                onCompleted?.Invoke();
+            };
+            translate.BeginAnimation(TranslateTransform.XProperty, animX);
+        }
         else
         {
-            // Settle scale back to 1.0
-            if (scale != null)
-            {
-                var animScale = new DoubleAnimation(1.0, new Duration(TimeSpan.FromMilliseconds(200)))
-                {
-                    EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.2 }
-                };
-                animScale.Completed += (s, e) =>
-                {
-                    scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                    scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                    scale.ScaleX = 1.0;
-                    scale.ScaleY = 1.0;
-                };
-                scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
-            }
-
-            // Settle Y back to 0
-            if (translate != null)
-            {
-                var animY = new DoubleAnimation(0.0, new Duration(TimeSpan.FromMilliseconds(200)))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                };
-                animY.Completed += (s, e) =>
-                {
-                    translate.BeginAnimation(TranslateTransform.YProperty, null);
-                    translate.Y = 0;
-                };
-                translate.BeginAnimation(TranslateTransform.YProperty, animY);
-
-                // Settle residual X offset back to 0
-                var animX = new DoubleAnimation(0.0, new Duration(TimeSpan.FromMilliseconds(200)))
-                {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                };
-                animX.Completed += (s, e) =>
-                {
-                    translate.BeginAnimation(TranslateTransform.XProperty, null);
-                    translate.X = 0;
-                };
-                translate.BeginAnimation(TranslateTransform.XProperty, animX);
-            }
-
-            // Restore normal black drop shadow
-            if (shadow != null)
-            {
-                if (shadow.IsFrozen)
-                {
-                    shadow = shadow.Clone();
-                    item.Effect = shadow;
-                }
-                shadow.Color = Colors.Black;
-                shadow.BlurRadius = 8;
-                shadow.ShadowDepth = 0;
-                shadow.Opacity = 0.9;
-            }
-
-            // Clear any opacity animations on item
-            item.BeginAnimation(UIElement.OpacityProperty, null);
-
-            // Re-apply correct active/inactive opacities across all tabs
-            UpdateNavIconsActiveState();
+            Panel.SetZIndex(item, 0);
+            onCompleted?.Invoke();
         }
     }
 
@@ -463,13 +546,22 @@ public partial class MainWindow
             }
         }
 
-        // Reorder children in NavTabsStackPanel
-        NavTabsStackPanel.Children.Clear();
-        foreach (var token in orderTokens)
+        // Reorder children in NavTabsStackPanel only if the order actually changed
+        var currentChildrenTags = NavTabsStackPanel.Children
+            .OfType<FrameworkElement>()
+            .Select(f => f.Tag?.ToString())
+            .Where(t => !string.IsNullOrEmpty(t))
+            .ToList();
+
+        if (!currentChildrenTags.SequenceEqual(orderTokens, StringComparer.OrdinalIgnoreCase))
         {
-            if (elementsByTag.TryGetValue(token, out var element))
+            NavTabsStackPanel.Children.Clear();
+            foreach (var token in orderTokens)
             {
-                NavTabsStackPanel.Children.Add(element);
+                if (elementsByTag.TryGetValue(token, out var element))
+                {
+                    NavTabsStackPanel.Children.Add(element);
+                }
             }
         }
 
@@ -488,6 +580,20 @@ public partial class MainWindow
             {
                 fe.Visibility = visibleTokens.Contains(tag) ? Visibility.Visible : Visibility.Collapsed;
             }
+        }
+
+        // If the active view's tab was just disabled, return gracefully to Home
+        if (_isAudioView && !visibleTokens.Contains("AudioMixer"))
+        {
+            NavigateToNotchView(NotchView.Media);
+        }
+        else if (_isTimerView && !visibleTokens.Contains("Timer"))
+        {
+            NavigateToNotchView(NotchView.Media);
+        }
+        else if (_isSecondaryView && !visibleTokens.Contains("Secondary"))
+        {
+            NavigateToNotchView(NotchView.Media);
         }
 
         ResetAllNavTabTransforms();

@@ -80,6 +80,7 @@ public sealed class TabReorderingAndPageWidgetTests
             "settings.navTabs.hint",
             "settings.tab.moveUp",
             "settings.tab.moveDown",
+            "settings.tab.drag",
             "settings.tab.reset",
             "settings.shelfWidget",
             "settings.shelfWidget.hint",
