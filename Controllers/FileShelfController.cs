@@ -289,26 +289,14 @@ public sealed class FileShelfController : IDisposable
         {
             foreach (var path in _filesList)
             {
-                bool intersects = intersectedPaths.Contains(path);
+                bool select = isCtrl
+                    ? (intersectedPaths.Contains(path) ^ initialState.Contains(path))
+                    : intersectedPaths.Contains(path);
 
-                if (isCtrl)
-                {
-                    if (intersects)
-                    {
-                        if (initialState.Contains(path)) _selectedFiles.Remove(path);
-                        else _selectedFiles.Add(path);
-                    }
-                    else
-                    {
-                        if (initialState.Contains(path)) _selectedFiles.Add(path);
-                        else _selectedFiles.Remove(path);
-                    }
-                }
+                if (select)
+                    _selectedFiles.Add(path);
                 else
-                {
-                    if (intersects) _selectedFiles.Add(path);
-                    else _selectedFiles.Remove(path);
-                }
+                    _selectedFiles.Remove(path);
             }
         }
     }
@@ -561,15 +549,7 @@ public sealed class FileShelfController : IDisposable
         bool hasOtherFiles;
         lock (_lock)
         {
-            hasOtherFiles = false;
-            foreach (var f in _filesList)
-            {
-                if (string.Equals(Path.GetDirectoryName(f), dir, StringComparison.OrdinalIgnoreCase))
-                {
-                    hasOtherFiles = true;
-                    break;
-                }
-            }
+            hasOtherFiles = _filesList.Any(f => string.Equals(Path.GetDirectoryName(f), dir, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!hasOtherFiles && _watchers.TryGetValue(dir, out var watcher))

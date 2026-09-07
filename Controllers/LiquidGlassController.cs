@@ -1,3 +1,5 @@
+#pragma warning disable S6640 // Direct unmanaged memory pointers and DIB raster processing are required for high-performance real-time glass rendering
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -25,27 +27,27 @@ public sealed class LiquidGlassController
 
     public struct GlassParams
     {
-        public double PowerFactor;
-        public double RefractionA;
-        public double RefractionB;
-        public double RefractionC;
-        public double RefractionD;
-        public double FPower;
-        public double Noise;
-        public double GlowWeight;
-        public double GlowBias;
-        public double GlowEdge0;
-        public double GlowEdge1;
-        public double Refraction;
-        public double EdgeBend;
-        public double ChromaticAberration;
-        public double Distortion;
-        public double ZRadius;
-        public double Saturation;
-        public double Brightness;
-        public int BevelMode;
-        public double TopCornerRadius;
-        public double BottomCornerRadius;
+        public double PowerFactor { get; set; }
+        public double RefractionA { get; set; }
+        public double RefractionB { get; set; }
+        public double RefractionC { get; set; }
+        public double RefractionD { get; set; }
+        public double FPower { get; set; }
+        public double Noise { get; set; }
+        public double GlowWeight { get; set; }
+        public double GlowBias { get; set; }
+        public double GlowEdge0 { get; set; }
+        public double GlowEdge1 { get; set; }
+        public double Refraction { get; set; }
+        public double EdgeBend { get; set; }
+        public double ChromaticAberration { get; set; }
+        public double Distortion { get; set; }
+        public double ZRadius { get; set; }
+        public double Saturation { get; set; }
+        public double Brightness { get; set; }
+        public int BevelMode { get; set; }
+        public double TopCornerRadius { get; set; }
+        public double BottomCornerRadius { get; set; }
 
         public static GlassParams Default => new()
         {
@@ -73,6 +75,7 @@ public sealed class LiquidGlassController
         };
     }
 
+    private const string LogCategory = "LIQUIDGLASS";
     private const int MaxWidth = 1600;
     private const int MaxHeight = 600;
     private const int GpuSamplingMarginLimit = 160;
@@ -80,9 +83,6 @@ public sealed class LiquidGlassController
     private readonly int _maxRegionW;
     private readonly int _maxRegionH;
 
-    private const double ProcessScale = 0.72;
-    private const double MagProcessScale = 0.85;
-    private const int GpuTextureSizeQuantum = 32;
     private readonly Image _host;
     private readonly Dispatcher _dispatcher;
     private readonly Func<IntPtr> _getHwnd;
@@ -127,7 +127,6 @@ public sealed class LiquidGlassController
     private IntPtr _stagingOldBmp;
     private int _stagingW, _stagingH;
 
-
     private int[] _idxR = Array.Empty<int>();
     private int[] _auxR = Array.Empty<int>();
     private int[] _idxG = Array.Empty<int>();
@@ -167,13 +166,17 @@ public sealed class LiquidGlassController
     }
 
     private double _bitmapDpi = 96;
-    private volatile bool _magPath;
 
     private IntPtr _fgProbeHwnd;
     private bool _fgProbeResult;
 
     private volatile bool _gpuMode;
-    public volatile int AverageBackgroundBrightnessInt = 128;
+    private int _averageBackgroundBrightnessInt = 128;
+    public int AverageBackgroundBrightnessInt
+    {
+        get => Volatile.Read(ref _averageBackgroundBrightnessInt);
+        set => Volatile.Write(ref _averageBackgroundBrightnessInt, value);
+    }
     public double AverageBackgroundBrightness => AverageBackgroundBrightnessInt / 255.0;
     private int _averageBackgroundColorRgb = 0x808080;
     private int _outsideBackdropColorRgb = 0x808080;
@@ -254,7 +257,7 @@ public sealed class LiquidGlassController
         {
             _gpuMode = false;
             _mapsDirty = true;
-            RuntimeLog.Log("LIQUIDGLASS", $"D3DImage presenter unavailable; using CPU fallback: {error?.Message}");
+            RuntimeLog.Log(LogCategory, $"D3DImage presenter unavailable; using CPU fallback: {error?.Message}");
             return false;
         }
 
@@ -270,7 +273,7 @@ public sealed class LiquidGlassController
             if (_dispatcher.CheckAccess())
                 EnsureGpuPresenterOnDispatcher();
             else
-                _dispatcher.Invoke(EnsureGpuPresenterOnDispatcher, DispatcherPriority.Send);
+                _dispatcher.Invoke(EnsureGpuPresenterOnDispatcher, DispatcherPriority.Send, CancellationToken.None);
             error = null;
             return true;
         }
@@ -321,7 +324,7 @@ public sealed class LiquidGlassController
             if (_dispatcher.CheckAccess())
                 DisposeGpuPresenterOnDispatcher();
             else
-                _dispatcher.Invoke(DisposeGpuPresenterOnDispatcher, DispatcherPriority.Send);
+                _dispatcher.Invoke(DisposeGpuPresenterOnDispatcher, DispatcherPriority.Send, CancellationToken.None);
         }
         catch
         {
@@ -409,7 +412,7 @@ public sealed class LiquidGlassController
                 }
                 catch (Exception magEx)
                 {
-                    RuntimeLog.Log("LIQUIDGLASS", $"[{_logTag}] Magnifier init failed: {magEx.Message}");
+                    RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier init failed: {magEx.Message}");
                     _magReady = false;
                 }
             }
@@ -549,11 +552,11 @@ public sealed class LiquidGlassController
                 IntPtr h = _getHwnd();
                 _mag = MagnifierCaptureSource.AcquireShared(h);
                 _magReady = _mag.IsReady;
-                RuntimeLog.Log("LIQUIDGLASS", $"[{_logTag}] Magnifier Hardware Capture acquired: ready={_magReady}");
+                RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier Hardware Capture acquired: ready={_magReady}");
             }
             catch (Exception ex)
             {
-                RuntimeLog.Log("LIQUIDGLASS", $"[{_logTag}] Magnifier init failed: {ex.Message}");
+                RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier init failed: {ex.Message}");
                 _magReady = false;
             }
         }
@@ -595,7 +598,7 @@ public sealed class LiquidGlassController
         SetWindowDisplayAffinitySafe(WDA_NONE);
 
         IntPtr h = IntPtr.Zero;
-        try { h = _getHwnd(); } catch { }
+        try { h = _getHwnd(); } catch { /* best-effort handle retrieval during shutdown */ }
         MagnifierCaptureSource.ReleaseShared(h);
         _mag = null;
         _magReady = false;
@@ -624,13 +627,13 @@ public sealed class LiquidGlassController
             if (result != 0)
             {
                 Interlocked.Exchange(ref _renderTimerPeriodRequested, 0);
-                RuntimeLog.Log("LIQUIDGLASS", $"High-resolution timer request failed: {result}");
+                RuntimeLog.Log(LogCategory, $"High-resolution timer request failed: {result}");
             }
         }
         catch (Exception ex)
         {
             Interlocked.Exchange(ref _renderTimerPeriodRequested, 0);
-            RuntimeLog.Log("LIQUIDGLASS", $"High-resolution timer unavailable: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"High-resolution timer unavailable: {ex.Message}");
         }
     }
 
@@ -657,7 +660,7 @@ public sealed class LiquidGlassController
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("LIQUIDGLASS", $"SetWindowDisplayAffinity({affinity}) failed: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"SetWindowDisplayAffinity({affinity}) failed: {ex.Message}");
             return false;
         }
     }
@@ -668,127 +671,166 @@ public sealed class LiquidGlassController
         double nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
         try
         {
-            while (_isActive && generation == Volatile.Read(ref _renderGeneration))
+            while (ShouldContinueWorker(generation))
             {
-                double frameStart = clock.Elapsed.TotalMilliseconds;
-
-                bool animating = _animating;
-                double frameIntervalMs = ChooseLockedFrameIntervalMs(
-                    Volatile.Read(ref _activeIntervalMs));
-
-                if (IsCaptureOverlayActive())
-                {
-                    _exactBitBltCapture = false;
-                    SetWindowDisplayAffinitySafe(WDA_NONE);
-                    Thread.Sleep((int)Math.Max(15, frameIntervalMs));
-                    continue;
-                }
-
-                if (!_exactBitBltCapture)
-                {
-                    _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
-                }
-
-
-                if (!_gpuMode && _presentInFlight)
-                {
-                    SleepWithCapturePolling(frameIntervalMs);
-                    continue;
-                }
-
-                if (_presentationPaused)
-                {
-                    SleepWithCapturePolling(frameIntervalMs);
-                    // Reset the cadence clock so we don't burst capture when unpaused
-                    nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
-                    continue;
-                }
-
-                CaptureRegion? region = GetRegionCached(animating, frameStart);
-                if (!_isActive || generation != Volatile.Read(ref _renderGeneration)) break;
-
-                if (region is { } r)
-                {
-                    try
-                    {
-                        if (ProcessFrame(r, generation))
-                            Present(generation);
-                    }
-                    catch (Exception ex)
-                    {
-                        _presentInFlight = false;
-                        RuntimeLog.Log("LIQUIDGLASS", $"Render failed: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    SleepWithCapturePolling(200);
-                    continue;
-                }
-
-                if (!_isActive) break;
-
-                _dbgFrameCount++;
-                double sinceLastLog = frameStart - _dbgLastLogMs;
-                if (sinceLastLog >= 5000.0)
-                {
-                    int presented = Interlocked.Exchange(ref _dbgPresentCount, 0);
-                    double loopFps = _dbgFrameCount * 1000.0 / sinceLastLog;
-                    double targetFps = 1000.0 / _activeIntervalMs;
-                    BackdropOptics optics = CurrentBackdropOptics;
-                    var outside = OutsideBackdropColor;
-                    string geometry = _hasPresentedGpuGeometry
-                        ? $" src={_lastPresentedGpuGeometry.SrcW:F0}x{_lastPresentedGpuGeometry.SrcH:F0}" +
-                          $" notch={_lastPresentedGpuGeometry.NotchW:F0}x{_lastPresentedGpuGeometry.NotchH:F0}" +
-                          $" off={_lastPresentedGpuGeometry.OffX:F1},{_lastPresentedGpuGeometry.OffY:F1}" +
-                          $" origin={_lastPresentedGpuGeometry.CaptureOriginX},{_lastPresentedGpuGeometry.CaptureOriginY}"
-                        : string.Empty;
-                    RuntimeLog.Log("LIQUIDGLASS",
-                        $"[{_logTag}] fps={loopFps:F1}/{targetFps:F0} presented={presented} " +
-                        $"renderer={(_gpuMode ? "GPU" : "CPU")} backdrop=rgb({optics.Red},{optics.Green},{optics.Blue})" +
-                        $" outside=rgb({outside.Red},{outside.Green},{outside.Blue})" +
-                        geometry);
-                    _dbgFrameCount = 0;
-                    _dbgLastLogMs = frameStart;
-                }
-
-                nextFrameAtMs += frameIntervalMs;
-                double nowMs = clock.Elapsed.TotalMilliseconds;
-                if (nextFrameAtMs < nowMs - 250.0)
-                {
-                    // A long external stall should not trigger a large catch-up
-                    nextFrameAtMs = nowMs;
-                }
-                else if (nextFrameAtMs > nowMs)
-                {
-                    // Preserve the absolute deadline. A slightly late wake-up is
-                    SleepWithCapturePolling(nextFrameAtMs - nowMs);
-                }
+                if (!ExecuteWorkerFrame(generation, clock, ref nextFrameAtMs))
+                    break;
             }
         }
         finally
         {
-            ReleaseGdiResources();
-            _outBuffer = _blurTmp = Array.Empty<byte>();
-            _idxR = _auxR = _idxG = _auxG = _idxB = _auxB = Array.Empty<int>();
-            _edgeMask = Array.Empty<byte>();
-            _outW = _outH = _srcW = _srcH = _margin = 0;
-            _presentInFlight = false;
-            ReleaseRenderTimerPeriod();
-            _sourceBlurBuffer = _sourceBlurTmp = Array.Empty<byte>();
-            // Restart on the dispatcher after this worker has released all native
-            // resources. A rapid close/reopen cannot revive a retiring worker.
-            try
-            {
-                _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
-                {
-                    _worker = null;
-                    if (_isActive) RequestRenderTimerPeriod();
-                    StartWorkerIfNeeded();
-                }));
-            }
-            catch { _worker = null; }
+            CleanupWorkerResources();
         }
+    }
+
+    private bool ShouldContinueWorker(int generation) =>
+        _isActive && generation == Volatile.Read(ref _renderGeneration);
+
+    private bool ExecuteWorkerFrame(int generation, Stopwatch clock, ref double nextFrameAtMs)
+    {
+        double frameStart = clock.Elapsed.TotalMilliseconds;
+        double frameIntervalMs = ChooseLockedFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
+
+        if (HandleCaptureOverlay(frameIntervalMs))
+            return true;
+
+        if (IsPresentationBlocked(frameIntervalMs, ref nextFrameAtMs, clock))
+            return true;
+
+        CaptureRegion? region = GetRegionCached(_animating, frameStart);
+        if (!ShouldContinueWorker(generation)) return false;
+
+        if (region == null)
+        {
+            SleepWithCapturePolling(200);
+            return true;
+        }
+
+        TryRenderRegion(region.Value, generation);
+        if (!_isActive) return false;
+
+        TrackDiagnostics(frameStart);
+        nextFrameAtMs = AdvanceFrameDeadline(nextFrameAtMs, frameIntervalMs, clock.Elapsed.TotalMilliseconds);
+        return true;
+    }
+
+    private bool IsPresentationBlocked(double frameIntervalMs, ref double nextFrameAtMs, Stopwatch clock)
+    {
+        if (!_gpuMode && _presentInFlight)
+        {
+            SleepWithCapturePolling(frameIntervalMs);
+            return true;
+        }
+
+        if (_presentationPaused)
+        {
+            SleepWithCapturePolling(frameIntervalMs);
+            nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
+            return true;
+        }
+
+        return false;
+    }
+
+    private void TrackDiagnostics(double frameStart)
+    {
+        _dbgFrameCount++;
+        double sinceLastLog = frameStart - _dbgLastLogMs;
+        if (sinceLastLog >= 5000.0)
+            LogPeriodicFpsDiagnostics(frameStart, sinceLastLog);
+    }
+
+    private void CleanupWorkerResources()
+    {
+        ReleaseGdiResources();
+        _outBuffer = _blurTmp = Array.Empty<byte>();
+        _idxR = _auxR = _idxG = _auxG = _idxB = _auxB = Array.Empty<int>();
+        _edgeMask = Array.Empty<byte>();
+        _outW = _outH = _srcW = _srcH = _margin = 0;
+        _presentInFlight = false;
+        ReleaseRenderTimerPeriod();
+        _sourceBlurBuffer = _sourceBlurTmp = Array.Empty<byte>();
+        try
+        {
+            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
+            {
+                _worker = null;
+                if (_isActive) RequestRenderTimerPeriod();
+                StartWorkerIfNeeded();
+            }));
+        }
+        catch
+        {
+            // Ignored if dispatcher is shutting down
+            _worker = null;
+        }
+    }
+
+    private bool HandleCaptureOverlay(double frameIntervalMs)
+    {
+        if (IsCaptureOverlayActive())
+        {
+            _exactBitBltCapture = false;
+            SetWindowDisplayAffinitySafe(WDA_NONE);
+            Thread.Sleep((int)Math.Max(15, frameIntervalMs));
+            return true;
+        }
+
+        if (!_exactBitBltCapture)
+        {
+            _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+        }
+        return false;
+    }
+
+    private void TryRenderRegion(CaptureRegion region, int generation)
+    {
+        try
+        {
+            if (ProcessFrame(region, generation))
+                Present(generation);
+        }
+        catch (Exception ex)
+        {
+            _presentInFlight = false;
+            RuntimeLog.Log(LogCategory, $"Render failed: {ex.Message}");
+        }
+    }
+
+    private void LogPeriodicFpsDiagnostics(double frameStart, double sinceLastLog)
+    {
+        int presented = Interlocked.Exchange(ref _dbgPresentCount, 0);
+        double loopFps = _dbgFrameCount * 1000.0 / sinceLastLog;
+        double targetFps = 1000.0 / _activeIntervalMs;
+        BackdropOptics optics = CurrentBackdropOptics;
+        var outside = OutsideBackdropColor;
+        string geometry = _hasPresentedGpuGeometry
+            ? $" src={_lastPresentedGpuGeometry.SrcW:F0}x{_lastPresentedGpuGeometry.SrcH:F0}" +
+              $" notch={_lastPresentedGpuGeometry.NotchW:F0}x{_lastPresentedGpuGeometry.NotchH:F0}" +
+              $" off={_lastPresentedGpuGeometry.OffX:F1},{_lastPresentedGpuGeometry.OffY:F1}" +
+              $" origin={_lastPresentedGpuGeometry.CaptureOriginX},{_lastPresentedGpuGeometry.CaptureOriginY}"
+            : string.Empty;
+        RuntimeLog.Log(LogCategory,
+            $"[{_logTag}] fps={loopFps:F1}/{targetFps:F0} presented={presented} " +
+            $"renderer={(_gpuMode ? "GPU" : "CPU")} backdrop=rgb({optics.Red},{optics.Green},{optics.Blue})" +
+            $" outside=rgb({outside.Red},{outside.Green},{outside.Blue})" +
+            geometry);
+        _dbgFrameCount = 0;
+        _dbgLastLogMs = frameStart;
+    }
+
+    private double AdvanceFrameDeadline(double nextFrameAtMs, double frameIntervalMs, double nowMs)
+    {
+        nextFrameAtMs += frameIntervalMs;
+        if (nextFrameAtMs < nowMs - 250.0)
+        {
+            return nowMs;
+        }
+        if (nextFrameAtMs > nowMs)
+        {
+            SleepWithCapturePolling(nextFrameAtMs - nowMs);
+        }
+        return nextFrameAtMs;
     }
 
     private CaptureRegion? _cachedRegion;
@@ -946,20 +988,29 @@ public sealed class LiquidGlassController
             if (pid != 0)
             {
                 string name = SafeProcessName(pid);
-                for (int i = 0; i < _captureProcessNames.Length; i++)
+                if (IsCaptureProcess(name))
                 {
-                    if (string.Equals(name, _captureProcessNames[i], StringComparison.OrdinalIgnoreCase))
-                    {
-                        _fgProbeResult = true;
-                        return true;
-                    }
+                    _fgProbeResult = true;
+                    return true;
                 }
             }
         }
         catch
         {
+            /* probe may fail if window handle becomes invalid */
         }
         return _fgProbeResult;
+    }
+
+    private static bool IsCaptureProcess(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        for (int i = 0; i < _captureProcessNames.Length; i++)
+        {
+            if (string.Equals(name, _captureProcessNames[i], StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static bool DetectCaptureOverlay()
@@ -969,45 +1020,44 @@ public sealed class LiquidGlassController
         {
             EnumWindows((hwnd, _) =>
             {
-                if (!IsWindowVisible(hwnd)) return true;
-                if (!GetWindowRect(hwnd, out var r)) return true;
-
-                int w = r.Right - r.Left;
-                int h = r.Bottom - r.Top;
-                if (w < 400 || h < 400) return true;
-
-                var sb = new StringBuilder(128);
-                if (GetClassName(hwnd, sb, sb.Capacity) > 0)
+                if (IsCaptureOverlayWindow(hwnd))
                 {
-                    string cls = sb.ToString();
-                    if (cls.IndexOf("ScreenClipping", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        found = true;
-                        return false;
-                    }
-                }
-
-                GetWindowThreadProcessId(hwnd, out uint pid);
-                if (pid == 0) return true;
-
-                string name = SafeProcessName(pid);
-                if (name.Length == 0) return true;
-
-                for (int i = 0; i < _captureProcessNames.Length; i++)
-                {
-                    if (string.Equals(name, _captureProcessNames[i], StringComparison.OrdinalIgnoreCase))
-                    {
-                        found = true;
-                        return false;
-                    }
+                    found = true;
+                    return false;
                 }
                 return true;
             }, IntPtr.Zero);
         }
         catch
         {
+            /* EnumWindows may fail during desktop switch */
         }
         return found;
+    }
+
+    private static bool IsCaptureOverlayWindow(IntPtr hwnd)
+    {
+        if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var r))
+            return false;
+
+        int w = r.Right - r.Left;
+        int h = r.Bottom - r.Top;
+        if (w < 400 || h < 400)
+            return false;
+
+        var sb = new StringBuilder(128);
+        if (GetClassName(hwnd, sb, sb.Capacity) > 0 &&
+            sb.ToString().IndexOf("ScreenClipping", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return true;
+        }
+
+        GetWindowThreadProcessId(hwnd, out uint pid);
+        if (pid == 0)
+            return false;
+
+        string name = SafeProcessName(pid);
+        return IsCaptureProcess(name);
     }
 
     private static readonly ConcurrentDictionary<uint, (string Name, long ExpireTicks)> _pidNameCache = new();
@@ -1040,13 +1090,34 @@ public sealed class LiquidGlassController
     {
         try
         {
-            return _dispatcher.Invoke(_regionProvider, DispatcherPriority.Send);
+            return _dispatcher.Invoke(_regionProvider, DispatcherPriority.Send, CancellationToken.None);
         }
         catch (Exception)
         {
             return null;
         }
     }
+
+    private readonly record struct FrameDimensions(
+        int OutW, int OutH, double OutScale,
+        int BufW, int BufH,
+        int NotchOffX, int NotchOffY,
+        double MinHalf, int Margin,
+        int SrcW, int SrcH,
+        int PhysSrcW, int PhysSrcH,
+        int SrcX, int SrcY,
+        int CaptureShiftX, int CaptureShiftY,
+        int MapCaptureShiftY);
+
+    private readonly record struct BackdropCaptureParams(
+        int SrcX, int SrcY, int SrcW, int SrcH,
+        int PhysSrcW, int PhysSrcH,
+        int RegionY, int DisplayH,
+        bool UseMag, IntPtr ScreenDc);
+
+    private readonly record struct FrameRenderContext(
+        bool GpuMode, bool UseMag, bool MapsChanged,
+        int BlurSigma, int[] BlurPassRadii, int DisplayH);
 
     private bool ProcessFrame(CaptureRegion region, int generation)
     {
@@ -1062,7 +1133,6 @@ public sealed class LiquidGlassController
 
         p.TopCornerRadius = Math.Max(0.0, region.TopCornerRadiusDip);
         p.BottomCornerRadius = Math.Max(0.0, region.BottomCornerRadiusDip);
-
         _presentSubX = region.SubX;
         _presentSubY = region.SubY;
 
@@ -1071,39 +1141,56 @@ public sealed class LiquidGlassController
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
+        bool useMag = _magReady && _mag != null;
+        var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
+        _outScale = dims.OutScale;
 
-        var mag = _mag;
-        bool useMag = !_exactBitBltCapture && _magReady && mag != null;
-        _magPath = useMag;
-        // Native resolution is required for spatially correct glass. Downscaling the
+        bool mapsChanged = false;
+        if (!gpuMode)
+        {
+            var mapDimensions = new MapDimensions(
+                dims.BufW, dims.BufH, dims.SrcW, dims.SrcH, dims.Margin,
+                dims.OutW, dims.OutH, dims.NotchOffX, dims.NotchOffY,
+                dims.CaptureShiftX, dims.MapCaptureShiftY);
+            mapsChanged = EnsureMaps(p, mapDimensions);
+        }
+
+        var ctx = new FrameRenderContext(gpuMode, useMag, mapsChanged, blurSigma, blurPassRadii, displayH);
+        return ExecuteFrameRender(p, region, dims, generation, ctx);
+    }
+
+    private FrameDimensions ComputeFrameDimensions(
+        CaptureRegion region, GlassParams p, bool gpuMode, bool useMag, int displayW, int displayH)
+    {
         double scale = 1.0;
-
         int outW = Math.Max(8, (int)Math.Round(displayW * scale));
         int outH = Math.Max(8, (int)Math.Round(displayH * scale));
-
-        _outScale = displayW > 0 ? (double)outW / displayW * (_bitmapDpi / 96.0) : 1.0;
+        double outScale = displayW > 0 ? (double)outW / displayW * (_bitmapDpi / 96.0) : 1.0;
 
         int overscan = gpuMode
             ? 0
             : Math.Clamp((int)Math.Round(80 * (_bitmapDpi / 96.0)), 64, 150);
-        int baseBufW = outW + overscan * 2;
-        int baseBufH = outH + overscan;
-        // A WPF ShaderEffect samples the Image after layout, not its unscaled bitmap
-        int bufW = baseBufW;
-        int bufH = baseBufH;
+        int bufW = outW + overscan * 2;
+        int bufH = outH + overscan;
         int notchOffX = overscan;
         int notchOffY = 0;
 
         double minHalf = Math.Min(outW, outH) * 0.5;
-        double rimWidth = ComputeRimWidth(p.ZRadius, _outScale, minHalf);
+        double rimWidth = ComputeRimWidth(p.ZRadius, outScale, minHalf);
         int requiredMargin = ComputeSamplingMargin(
             rimWidth, p.Refraction, p.ChromaticAberration, p.Distortion,
             p.BevelMode, p.EdgeBend);
-        int margin = gpuMode
-            ? (CaptureFullSurface ? GpuSamplingMarginLimit : Math.Clamp(requiredMargin + 96, 64, GpuSamplingMarginLimit))
-            : requiredMargin;
-        int srcW = gpuMode && CaptureFullSurface ? SurfaceWidth : bufW + margin * 2;
-        int srcH = gpuMode && CaptureFullSurface ? SurfaceHeight : bufH + margin * 2;
+
+        int margin = requiredMargin;
+        if (gpuMode)
+        {
+            margin = CaptureFullSurface
+                ? GpuSamplingMarginLimit
+                : Math.Clamp(requiredMargin + 96, 64, GpuSamplingMarginLimit);
+        }
+
+        int srcW = (gpuMode && CaptureFullSurface) ? SurfaceWidth : bufW + margin * 2;
+        int srcH = (gpuMode && CaptureFullSurface) ? SurfaceHeight : bufH + margin * 2;
 
         double inv = 1.0 / scale;
         int physMargin = (int)Math.Round(margin * inv);
@@ -1120,148 +1207,50 @@ public sealed class LiquidGlassController
 
         bool spatiallyExactSource = useMag || _exactBitBltCapture;
         int mapCaptureShiftY = spatiallyExactSource ? captureShiftY : 0;
-        bool mapsChanged = false;
-        if (!gpuMode)
-            mapsChanged = EnsureMaps(p, bufW, bufH, srcW, srcH, margin, outW, outH,
-                notchOffX, notchOffY, captureShiftX, mapCaptureShiftY);
 
+        return new FrameDimensions(
+            outW, outH, outScale,
+            bufW, bufH,
+            notchOffX, notchOffY,
+            minHalf, margin,
+            srcW, srcH,
+            physSrcW, physSrcH,
+            srcX, srcY,
+            captureShiftX, captureShiftY,
+            mapCaptureShiftY);
+    }
 
-
-        bool needsGdi = !(_memDc != IntPtr.Zero && _dibBits != IntPtr.Zero && _dibW == srcW && _dibH == srcH);
+    private bool ExecuteFrameRender(
+        GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, FrameRenderContext ctx)
+    {
+        bool needsGdi = !(_memDc != IntPtr.Zero && _dibBits != IntPtr.Zero && _dibW == dims.SrcW && _dibH == dims.SrcH);
         IntPtr screenDc = needsGdi ? GetDC(IntPtr.Zero) : IntPtr.Zero;
         try
         {
-            if (needsGdi && !EnsureGdiResources(srcW, srcH, screenDc)) return false;
+            if (needsGdi && !EnsureGdiResources(dims.SrcW, dims.SrcH, screenDc)) return false;
 
-            if (useMag)
-            {
-                int actualSrcX = srcX;
-                int actualSrcY = srcY;
-                if (physSrcW == srcW && physSrcH == srcH)
-                {
-                    if (!mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _dibBits, out actualSrcX, out actualSrcY))
-                    {
-                        if (++_magFailStreak >= 60)
-                        {
-                            _magReady = false;
-                            RuntimeLog.Log("LIQUIDGLASS", $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
-                        }
-                        return false;
-                    }
-                    _magFailStreak = 0;
-                }
-                else
-                {
-                    if (screenDc == IntPtr.Zero) screenDc = GetDC(IntPtr.Zero);
-                    if (!EnsureStagingResources(physSrcW, physSrcH, screenDc)) return false;
-
-                    if (!mag!.CaptureInto(srcX, srcY, physSrcW, physSrcH, _stagingBits, out actualSrcX, out actualSrcY))
-                    {
-                        if (++_magFailStreak >= 60)
-                        {
-                            _magReady = false;
-                            RuntimeLog.Log("LIQUIDGLASS", $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
-                        }
-                        return false;
-                    }
-                    _magFailStreak = 0;
-
-                    if (!StretchBlt(_memDc, 0, 0, srcW, srcH, _stagingDc, 0, 0, physSrcW, physSrcH, SRCCOPY))
-                        return false;
-                    GdiFlush();
-                }
-                srcX = actualSrcX;
-                srcY = actualSrcY;
-            }
-            else
-            {
-                if (screenDc == IntPtr.Zero) screenDc = GetDC(IntPtr.Zero);
-                if (!_exactBitBltCapture)
-                {
-                    srcY = ComputeFallbackSourceY(region.Y, displayH);
-                }
-
-                if (!StretchBlt(_memDc, 0, 0, srcW, srcH, screenDc,
-                    srcX, srcY, physSrcW, physSrcH, SRCCOPY))
-                    return false;
-                GdiFlush();
-            }
+            var captureParams = new BackdropCaptureParams(
+                dims.SrcX, dims.SrcY, dims.SrcW, dims.SrcH,
+                dims.PhysSrcW, dims.PhysSrcH, region.Y, ctx.DisplayH, ctx.UseMag, screenDc);
+            if (!CaptureBackdrop(captureParams))
+                return false;
 
             if ((_dbgFrameCount & 3) == 0)
             {
                 UpdateBackdropOptics(
-                    srcW, srcH,
-                    margin + notchOffX - captureShiftX,
-                    margin + notchOffY - mapCaptureShiftY,
-                    outW, outH);
-            }
-            if (_presentationPaused || !_isActive || gpuMode != _gpuMode || generation != Volatile.Read(ref _renderGeneration))
-                return false;
-
-            if (gpuMode)
-            {
-                double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, minHalf);
-                double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, minHalf);
-
-                // Preserve real desktop pixels around the visible notch. Refraction
-                double offX = Math.Clamp(
-                    margin - captureShiftX + _presentSubX, 0, Math.Max(0, srcW - outW));
-                double offY = Math.Clamp(
-                    margin - mapCaptureShiftY + _presentSubY, 0, Math.Max(0, srcH - outH));
-
-                var geom = new GpuGeometry(
-                    srcW, srcH, outW, outH, offX, offY,
-                    topR, bottomR,
-                    p.PowerFactor, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD,
-                    p.FPower, p.Noise, p.GlowWeight, p.GlowBias, p.GlowEdge0, p.GlowEdge1,
-                    Math.Clamp(p.ChromaticAberration, 0.0, 2.0),
-                    double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0,
-                    1.0 + p.Saturation, p.Brightness,
-                    p.BevelMode >= 1 ? 1.0 : 0.0,
-                    srcX, srcY);
-
-                ulong sourceHash = ComputeSourceHash(srcW, srcH);
-                long nowTicks = Environment.TickCount64;
-                bool unchanged = _hasUploadedGpuFrame &&
-                    sourceHash == _lastCaptureHash &&
-                    _lastUploadedGpuGeometry.Equals(geom);
-                if (!CaptureFullSurface && unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
-                    return false;
-
-                if (PresentRawGpu(srcW, srcH, geom, generation))
-                {
-                    _hasUploadedGpuFrame = true;
-                    _lastCaptureHash = sourceHash;
-                    _lastUploadedGpuGeometry = geom;
-                    _lastPresentTicks = nowTicks;
-                }
-                return false;
+                    dims.SrcW, dims.SrcH,
+                    dims.Margin + dims.NotchOffX - dims.CaptureShiftX,
+                    dims.Margin + dims.NotchOffY - dims.MapCaptureShiftY,
+                    dims.OutW, dims.OutH);
             }
 
-            ulong cpuSourceHash = ComputeSourceHash(srcW, srcH);
-            long cpuNowTicks = Environment.TickCount64;
-            bool cpuUnchanged = _hasPresentedCpuFrame && !mapsChanged &&
-                cpuSourceHash == _lastCaptureHash &&
-                _presentSubX == _lastPresentedSubX &&
-                _presentSubY == _lastPresentedSubY &&
-                p.Saturation == _lastPresentedSaturation &&
-                p.Brightness == _lastPresentedBrightness;
-            if (cpuUnchanged && cpuNowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+            if (_presentationPaused || !_isActive || ctx.GpuMode != _gpuMode || generation != Volatile.Read(ref _renderGeneration))
                 return false;
 
-            byte[]? blurredSource = blurSigma > 0
-                ? BlurCapturedSource(srcW, srcH, blurPassRadii)
-                : null;
-            Refract(p, blurredSource);
+            if (ctx.GpuMode)
+                return ProcessGpuFrame(p, dims, generation);
 
-            _hasPresentedCpuFrame = true;
-            _lastCaptureHash = cpuSourceHash;
-            _lastPresentedSubX = _presentSubX;
-            _lastPresentedSubY = _presentSubY;
-            _lastPresentedSaturation = p.Saturation;
-            _lastPresentedBrightness = p.Brightness;
-            _lastPresentTicks = cpuNowTicks;
-            return true;
+            return ProcessCpuFrame(p, dims.SrcW, dims.SrcH, ctx.MapsChanged, ctx.BlurSigma, ctx.BlurPassRadii);
         }
         finally
         {
@@ -1269,8 +1258,130 @@ public sealed class LiquidGlassController
         }
     }
 
-    private static int RoundUp(int value, int quantum) =>
-        ((value + quantum - 1) / quantum) * quantum;
+    private bool CaptureBackdrop(BackdropCaptureParams cp)
+    {
+        if (cp.UseMag && TryMagnifierCapture(cp))
+            return true;
+
+        return BitBltCapture(cp);
+    }
+
+    private bool TryMagnifierCapture(BackdropCaptureParams cp)
+    {
+        var mag = _mag;
+        if (mag == null) return false;
+
+        bool captured = false;
+        if (cp.PhysSrcW == cp.SrcW && cp.PhysSrcH == cp.SrcH)
+        {
+            if (mag.CaptureInto(cp.SrcX, cp.SrcY, cp.PhysSrcW, cp.PhysSrcH, _dibBits, out _, out _))
+            {
+                captured = true;
+                _magFailStreak = 0;
+            }
+            else if (++_magFailStreak >= 60)
+            {
+                _magReady = false;
+                RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
+            }
+        }
+        else
+        {
+            IntPtr screenDc = cp.ScreenDc == IntPtr.Zero ? GetDC(IntPtr.Zero) : cp.ScreenDc;
+            if (EnsureStagingResources(cp.PhysSrcW, cp.PhysSrcH, screenDc) &&
+                mag.CaptureInto(cp.SrcX, cp.SrcY, cp.PhysSrcW, cp.PhysSrcH, _stagingBits, out _, out _) &&
+                StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, _stagingDc, 0, 0, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
+            {
+                GdiFlush();
+                captured = true;
+                _magFailStreak = 0;
+            }
+            else if (++_magFailStreak >= 60)
+            {
+                _magReady = false;
+                RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
+            }
+        }
+        return captured;
+    }
+
+    private bool BitBltCapture(BackdropCaptureParams cp)
+    {
+        IntPtr screenDc = cp.ScreenDc == IntPtr.Zero ? GetDC(IntPtr.Zero) : cp.ScreenDc;
+        int bltSrcY = _exactBitBltCapture ? cp.SrcY : ComputeFallbackSourceY(cp.RegionY, cp.DisplayH);
+        if (!StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
+            return false;
+        GdiFlush();
+        return true;
+    }
+
+    private bool ProcessGpuFrame(GlassParams p, FrameDimensions dims, int generation)
+    {
+        double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, dims.MinHalf);
+        double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, dims.MinHalf);
+
+        double offX = Math.Clamp(
+            dims.Margin - dims.CaptureShiftX + _presentSubX, 0, Math.Max(0, dims.SrcW - dims.OutW));
+        double offY = Math.Clamp(
+            dims.Margin - dims.MapCaptureShiftY + _presentSubY, 0, Math.Max(0, dims.SrcH - dims.OutH));
+
+        var geom = new GpuGeometry(
+            dims.SrcW, dims.SrcH, dims.OutW, dims.OutH, offX, offY,
+            topR, bottomR,
+            p.PowerFactor, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD,
+            p.FPower, p.Noise, p.GlowWeight, p.GlowBias, p.GlowEdge0, p.GlowEdge1,
+            Math.Clamp(p.ChromaticAberration, 0.0, 2.0),
+            double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0,
+            1.0 + p.Saturation, p.Brightness,
+            p.BevelMode >= 1 ? 1.0 : 0.0,
+            dims.SrcX, dims.SrcY);
+
+        ulong sourceHash = ComputeSourceHash(dims.SrcW, dims.SrcH);
+        long nowTicks = Environment.TickCount64;
+        bool unchanged = _hasUploadedGpuFrame &&
+            sourceHash == _lastCaptureHash &&
+            _lastUploadedGpuGeometry.Equals(geom);
+        if (!CaptureFullSurface && unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+            return false;
+
+        if (PresentRawGpu(dims.SrcW, dims.SrcH, geom, generation))
+        {
+            _hasUploadedGpuFrame = true;
+            _lastCaptureHash = sourceHash;
+            _lastUploadedGpuGeometry = geom;
+            _lastPresentTicks = nowTicks;
+        }
+        return false;
+    }
+
+    private bool ProcessCpuFrame(
+        GlassParams p, int srcW, int srcH, bool mapsChanged, int blurSigma, int[] blurPassRadii)
+    {
+        ulong cpuSourceHash = ComputeSourceHash(srcW, srcH);
+        long cpuNowTicks = Environment.TickCount64;
+        bool cpuUnchanged = _hasPresentedCpuFrame && !mapsChanged &&
+            cpuSourceHash == _lastCaptureHash &&
+            Math.Abs(_presentSubX - _lastPresentedSubX) < 0.001 &&
+            Math.Abs(_presentSubY - _lastPresentedSubY) < 0.001 &&
+            Math.Abs(p.Saturation - _lastPresentedSaturation) < 0.001 &&
+            Math.Abs(p.Brightness - _lastPresentedBrightness) < 0.001;
+        if (cpuUnchanged && cpuNowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+            return false;
+
+        byte[]? blurredSource = blurSigma > 0
+            ? BlurCapturedSource(srcW, srcH, blurPassRadii)
+            : null;
+        Refract(p, blurredSource);
+
+        _hasPresentedCpuFrame = true;
+        _lastCaptureHash = cpuSourceHash;
+        _lastPresentedSubX = _presentSubX;
+        _lastPresentedSubY = _presentSubY;
+        _lastPresentedSaturation = p.Saturation;
+        _lastPresentedBrightness = p.Brightness;
+        _lastPresentTicks = cpuNowTicks;
+        return true;
+    }
 
     private static int ClampCaptureOriginToVirtualDesktop(int requested, int captureLength, bool horizontal)
     {
@@ -1351,8 +1462,7 @@ public sealed class LiquidGlassController
         if (!_isActive) return;
         int w = _outW, h = _outH;
         byte[] buffer = _outBuffer;
-        double presentDpi = _bitmapDpi;
-        if (presentDpi < 1.0) presentDpi = 96.0;
+        double presentDpi = _bitmapDpi < 1.0 ? 96.0 : _bitmapDpi;
         double dpiScale = _bitmapDpi > 0 ? _bitmapDpi / 96.0 : 1.0;
         double txDip = -_presentSubX / dpiScale;
         double tyDip = -_presentSubY / dpiScale;
@@ -1366,52 +1476,7 @@ public sealed class LiquidGlassController
                 {
                     if (!_isActive || _gpuMode || generation != _renderGeneration) return;
 
-                    bool dpiChanged = _bitmap != null && Math.Abs(_bitmap.DpiX - presentDpi) > 0.5;
-                    bool needsBitmap = _bitmap == null || dpiChanged ||
-                        _bitmap.PixelWidth < w || _bitmap.PixelHeight < h;
-
-                    if (needsBitmap)
-                    {
-                        int previousW = dpiChanged ? 0 : _bitmap?.PixelWidth ?? 0;
-                        int previousH = dpiChanged ? 0 : _bitmap?.PixelHeight ?? 0;
-                        int capacityW = GrowPresentCapacity(previousW, w, 128);
-                        int capacityH = GrowPresentCapacity(previousH, h, 96);
-                        var nextBitmap = new WriteableBitmap(
-                            capacityW, capacityH, presentDpi, presentDpi, PixelFormats.Bgra32, null);
-                        int nextX = (capacityW - w) / 2;
-                        nextBitmap.WritePixels(new Int32Rect(nextX, 0, w, h), buffer, w * 4, 0);
-                        _bitmap = nextBitmap;
-
-                        _host.Stretch = Stretch.None;
-                        _host.HorizontalAlignment = HorizontalAlignment.Center;
-                        _host.VerticalAlignment = VerticalAlignment.Top;
-                        RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.Linear);
-                        _hostTransform ??= new TranslateTransform();
-                        _host.RenderTransform = _hostTransform;
-                        _host.Source = _bitmap;
-                    }
-                    else
-                    {
-                        var bitmap = _bitmap!;
-                        int frameX = (bitmap.PixelWidth - w) / 2;
-                        bitmap.WritePixels(new Int32Rect(frameX, 0, w, h), buffer, w * 4, 0);
-                        if (!ReferenceEquals(_host.Source, bitmap))
-                        {
-                            _host.Stretch = Stretch.None;
-                            _host.HorizontalAlignment = HorizontalAlignment.Center;
-                            _host.VerticalAlignment = VerticalAlignment.Top;
-                            RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.Linear);
-                            _hostTransform ??= new TranslateTransform();
-                            _host.RenderTransform = _hostTransform;
-                        }
-                    }
-                    if (_hostTransform != null)
-                    {
-                        _hostTransform.X = txDip;
-                        _hostTransform.Y = tyDip;
-                    }
-                    if (!ReferenceEquals(_host.Source, _bitmap))
-                        _host.Source = _bitmap;
+                    UpdatePresentBitmap(w, h, buffer, presentDpi, txDip, tyDip);
                     _hasVisibleFrame = true;
                     Interlocked.Increment(ref _dbgPresentCount);
                 }
@@ -1424,6 +1489,48 @@ public sealed class LiquidGlassController
         catch (Exception)
         {
             _presentInFlight = false;
+        }
+    }
+
+    private void UpdatePresentBitmap(int w, int h, byte[] buffer, double presentDpi, double txDip, double tyDip)
+    {
+        bool dpiChanged = _bitmap != null && Math.Abs(_bitmap.DpiX - presentDpi) > 0.5;
+        bool needsBitmap = _bitmap == null || dpiChanged ||
+            _bitmap.PixelWidth < w || _bitmap.PixelHeight < h;
+
+        if (needsBitmap)
+        {
+            int previousW = dpiChanged ? 0 : _bitmap?.PixelWidth ?? 0;
+            int previousH = dpiChanged ? 0 : _bitmap?.PixelHeight ?? 0;
+            int capacityW = GrowPresentCapacity(previousW, w, 128);
+            int capacityH = GrowPresentCapacity(previousH, h, 96);
+            _bitmap = new WriteableBitmap(
+                capacityW, capacityH, presentDpi, presentDpi, PixelFormats.Bgra32, null);
+        }
+
+        var bitmap = _bitmap!;
+        int frameX = (bitmap.PixelWidth - w) / 2;
+        bitmap.WritePixels(new Int32Rect(frameX, 0, w, h), buffer, w * 4, 0);
+
+        ConfigureHostForBitmap(bitmap, txDip, tyDip);
+    }
+
+    private void ConfigureHostForBitmap(WriteableBitmap bitmap, double txDip, double tyDip)
+    {
+        if (!ReferenceEquals(_host.Source, bitmap))
+        {
+            _host.Stretch = Stretch.None;
+            _host.HorizontalAlignment = HorizontalAlignment.Center;
+            _host.VerticalAlignment = VerticalAlignment.Top;
+            RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.Linear);
+            _hostTransform ??= new TranslateTransform();
+            _host.RenderTransform = _hostTransform;
+            _host.Source = bitmap;
+        }
+        if (_hostTransform != null)
+        {
+            _hostTransform.X = txDip;
+            _hostTransform.Y = tyDip;
         }
     }
 
@@ -1565,6 +1672,20 @@ public sealed class LiquidGlassController
         }
 
         double meanL = sumL / count;
+        (double lightX, double lightY, double contrast) = ComputeDirectionalLighting(luminance, columns, rows, meanL, minL, maxL);
+
+        return new BackdropOptics(
+            (byte)Math.Clamp((int)Math.Round(sumR / count), 0, 255),
+            (byte)Math.Clamp((int)Math.Round(sumG / count), 0, 255),
+            (byte)Math.Clamp((int)Math.Round(sumB / count), 0, 255),
+            lightX,
+            lightY,
+            contrast);
+    }
+
+    private static (double LightX, double LightY, double Contrast) ComputeDirectionalLighting(
+        ReadOnlySpan<double> luminance, int columns, int rows, double meanL, double minL, double maxL)
+    {
         double weightedX = 0, weightedY = 0, totalWeight = 0;
         for (int y = 0; y < rows; y++)
         {
@@ -1587,13 +1708,7 @@ public sealed class LiquidGlassController
         double lightX = totalWeight > 1e-6 ? weightedX / totalWeight * directionalStrength : 0.0;
         double lightY = totalWeight > 1e-6 ? weightedY / totalWeight * directionalStrength : 0.0;
 
-        return new BackdropOptics(
-            (byte)Math.Clamp((int)Math.Round(sumR / count), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(sumG / count), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(sumB / count), 0, 255),
-            Math.Clamp(lightX, -1.0, 1.0),
-            Math.Clamp(lightY, -1.0, 1.0),
-            contrast);
+        return (Math.Clamp(lightX, -1.0, 1.0), Math.Clamp(lightY, -1.0, 1.0), contrast);
     }
 
     private bool EnsureGdiResources(int srcW, int srcH, IntPtr screenDc)
@@ -1698,6 +1813,32 @@ public sealed class LiquidGlassController
         MaxDegreeOfParallelism = Math.Max(1, Math.Min(Environment.ProcessorCount - 1, 8))
     };
 
+    private readonly record struct ColorAdjustment(bool Adjust, double SatFactor, double BrightAdd);
+
+    private readonly unsafe struct GatherChannelMap
+    {
+        public readonly int* Idx;
+        public readonly int* Aux;
+        public GatherChannelMap(int* idx, int* aux) { Idx = idx; Aux = aux; }
+    }
+
+    private readonly unsafe struct GatherBuffers
+    {
+        public readonly byte* Src;
+        public readonly byte* Dst;
+        public readonly GatherChannelMap R;
+        public readonly GatherChannelMap G;
+        public readonly GatherChannelMap B;
+        public GatherBuffers(byte* src, byte* dst, GatherChannelMap r, GatherChannelMap g, GatherChannelMap b)
+        {
+            Src = src;
+            Dst = dst;
+            R = r;
+            G = g;
+            B = b;
+        }
+    }
+
     private unsafe void Refract(GlassParams p, byte[]? sourceOverride)
     {
         if (sourceOverride == null)
@@ -1720,6 +1861,7 @@ public sealed class LiquidGlassController
         bool adjust = Math.Abs(sat) > 1e-3 || Math.Abs(bright) > 1e-3;
         double satFactor = 1.0 + sat;
         double brightAdd = bright * 255.0;
+        var colorAdj = new ColorAdjustment(adjust, satFactor, brightAdd);
 
         fixed (byte* dst = _outBuffer)
         fixed (int* ir = _idxR, ar = _auxR, ig = _idxG, ag = _auxG, ib = _idxB, ab = _auxB)
@@ -1728,25 +1870,36 @@ public sealed class LiquidGlassController
             {
                 IntPtr srcP = (IntPtr)src, dstP = (IntPtr)dst;
                 IntPtr irP = (IntPtr)ir, arP = (IntPtr)ar, igP = (IntPtr)ig, agP = (IntPtr)ag, ibP = (IntPtr)ib, abP = (IntPtr)ab;
-                bool adj = adjust; double sf = satFactor, ba = brightAdd; int st = stride;
+                int st = stride;
 
                 Parallel.ForEach(Partitioner.Create(0, count), ParallelOpts, range =>
                 {
-                    Gather((byte*)srcP, (byte*)dstP, (int*)irP, (int*)arP, (int*)igP, (int*)agP, (int*)ibP, (int*)abP,
-                        st, range.Item1, range.Item2, adj, sf, ba);
+                    var mapR = new GatherChannelMap((int*)irP, (int*)arP);
+                    var mapG = new GatherChannelMap((int*)igP, (int*)agP);
+                    var mapB = new GatherChannelMap((int*)ibP, (int*)abP);
+                    var threadBuffers = new GatherBuffers((byte*)srcP, (byte*)dstP, mapR, mapG, mapB);
+                    Gather(threadBuffers, st, range.Item1, range.Item2, colorAdj);
                 });
             }
             else
             {
-                Gather(src, dst, ir, ar, ig, ag, ib, ab, stride, 0, count, adjust, satFactor, brightAdd);
+                var mapR = new GatherChannelMap(ir, ar);
+                var mapG = new GatherChannelMap(ig, ag);
+                var mapB = new GatherChannelMap(ib, ab);
+                var buffers = new GatherBuffers(src, dst, mapR, mapG, mapB);
+                Gather(buffers, stride, 0, count, colorAdj);
             }
         }
     }
 
-    private static unsafe void Gather(byte* src, byte* dst,
-        int* idxR, int* auxR, int* idxG, int* auxG, int* idxB, int* auxB,
-        int stride, int start, int end, bool adjust, double satFactor, double brightAdd)
+    private static unsafe void Gather(GatherBuffers buffers, int stride, int start, int end, ColorAdjustment color)
     {
+        byte* src = buffers.Src;
+        byte* dst = buffers.Dst;
+        int* idxR = buffers.R.Idx, auxR = buffers.R.Aux;
+        int* idxG = buffers.G.Idx, auxG = buffers.G.Aux;
+        int* idxB = buffers.B.Idx, auxB = buffers.B.Aux;
+
         for (int i = start; i < end; i++)
         {
             int o = i << 2;
@@ -1754,7 +1907,7 @@ public sealed class LiquidGlassController
             int g = Bilerp(src, idxG[i], auxG[i], stride, 1);
             int r = Bilerp(src, idxR[i], auxR[i], stride, 2);
 
-            if (!adjust)
+            if (!color.Adjust)
             {
                 dst[o + 0] = (byte)b;
                 dst[o + 1] = (byte)g;
@@ -1764,9 +1917,9 @@ public sealed class LiquidGlassController
             else
             {
                 double lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                dst[o + 0] = ClampByte(lum + (b - lum) * satFactor + brightAdd);
-                dst[o + 1] = ClampByte(lum + (g - lum) * satFactor + brightAdd);
-                dst[o + 2] = ClampByte(lum + (r - lum) * satFactor + brightAdd);
+                dst[o + 0] = ClampByte(lum + (b - lum) * color.SatFactor + color.BrightAdd);
+                dst[o + 1] = ClampByte(lum + (g - lum) * color.SatFactor + color.BrightAdd);
+                dst[o + 2] = ClampByte(lum + (r - lum) * color.SatFactor + color.BrightAdd);
                 dst[o + 3] = 255;
             }
         }
@@ -1795,55 +1948,6 @@ public sealed class LiquidGlassController
         if (v <= 0) return 0;
         if (v >= 255) return 255;
         return (byte)(v + 0.5);
-    }
-
-    private void EdgeAntiAlias()
-    {
-        int w = _outW, h = _outH;
-        int n = w * h;
-        if (w < 3 || h < 3 || _edgeMask.Length != n || _outBuffer.Length != n * 4 || _blurTmp.Length != n * 4)
-            return;
-
-        byte[] src = _outBuffer, tmp = _blurTmp;
-
-        ParallelRange(h, (y0, y1) =>
-        {
-            for (int y = y0; y < y1; y++)
-            {
-                int row = y * w;
-                for (int x = 0; x < w; x++)
-                {
-                    int i = row + x;
-                    if (_edgeMask[i] == 0) continue;
-
-                    int o = i << 2;
-                    int oL = (x > 0 ? i - 1 : i) << 2;
-                    int oR = (x < w - 1 ? i + 1 : i) << 2;
-                    int oU = (y > 0 ? i - w : i) << 2;
-                    int oD = (y < h - 1 ? i + w : i) << 2;
-
-                    tmp[o] = (byte)((src[o] + src[oL] + src[oR] + src[oU] + src[oD]) / 5);
-                    tmp[o + 1] = (byte)((src[o + 1] + src[oL + 1] + src[oR + 1] + src[oU + 1] + src[oD + 1]) / 5);
-                    tmp[o + 2] = (byte)((src[o + 2] + src[oL + 2] + src[oR + 2] + src[oU + 2] + src[oD + 2]) / 5);
-                    tmp[o + 3] = 255;
-                }
-            }
-        });
-
-        ParallelRange(h, (y0, y1) =>
-        {
-            for (int y = y0; y < y1; y++)
-            {
-                int row = y * w;
-                for (int x = 0; x < w; x++)
-                {
-                    int i = row + x;
-                    if (_edgeMask[i] == 0) continue;
-                    int o = i << 2;
-                    src[o] = tmp[o]; src[o + 1] = tmp[o + 1]; src[o + 2] = tmp[o + 2]; src[o + 3] = 255;
-                }
-            }
-        });
     }
 
     internal static int[] GaussianBoxRadii(double sigma, int passes = 3)
@@ -1891,7 +1995,7 @@ public sealed class LiquidGlassController
         {
             int r = Math.Clamp(passRadii[pass], 0, maximumRadius);
             if (r < 1) continue;
-            ParallelRange(h, (y0, y1) => BoxBlurHorizontal(a, b, w, h, r, y0, y1));
+            ParallelRange(h, (y0, y1) => BoxBlurHorizontal(a, b, w, r, y0, y1));
             ParallelRange(w, (x0, x1) => BoxBlurVertical(b, a, w, h, r, x0, x1));
         }
 
@@ -1906,7 +2010,7 @@ public sealed class LiquidGlassController
             body(0, length);
     }
 
-    private static void BoxBlurHorizontal(byte[] src, byte[] dst, int w, int h, int radius, int y0, int y1)
+    private static void BoxBlurHorizontal(byte[] src, byte[] dst, int w, int radius, int y0, int y1)
     {
         int window = 2 * radius + 1;
         for (int y = y0; y < y1; y++)
@@ -1915,7 +2019,7 @@ public sealed class LiquidGlassController
             int sumB = 0, sumG = 0, sumR = 0, sumA = 0;
             for (int dx = -radius; dx <= radius; dx++)
             {
-                int nx = dx < 0 ? 0 : (dx >= w ? w - 1 : dx);
+                int nx = Math.Clamp(dx, 0, w - 1);
                 int o = rowBase + nx * 4;
                 sumB += src[o]; sumG += src[o + 1]; sumR += src[o + 2]; sumA += src[o + 3];
             }
@@ -1927,8 +2031,8 @@ public sealed class LiquidGlassController
                 dst[t + 2] = (byte)(sumR / window);
                 dst[t + 3] = (byte)(sumA / window);
 
-                int outX = x - radius; outX = outX < 0 ? 0 : outX;
-                int inX = x + 1 + radius; inX = inX >= w ? w - 1 : inX;
+                int outX = Math.Max(0, x - radius);
+                int inX = Math.Min(w - 1, x + 1 + radius);
                 int oOut = rowBase + outX * 4;
                 int oIn = rowBase + inX * 4;
                 sumB += src[oIn] - src[oOut];
@@ -1949,7 +2053,7 @@ public sealed class LiquidGlassController
             int sumB = 0, sumG = 0, sumR = 0, sumA = 0;
             for (int dy = -radius; dy <= radius; dy++)
             {
-                int ny = dy < 0 ? 0 : (dy >= h ? h - 1 : dy);
+                int ny = Math.Clamp(dy, 0, h - 1);
                 int o = ny * rowStride + col;
                 sumB += src[o]; sumG += src[o + 1]; sumR += src[o + 2]; sumA += src[o + 3];
             }
@@ -1961,8 +2065,8 @@ public sealed class LiquidGlassController
                 dst[t + 2] = (byte)(sumR / window);
                 dst[t + 3] = (byte)(sumA / window);
 
-                int outY = y - radius; outY = outY < 0 ? 0 : outY;
-                int inY = y + 1 + radius; inY = inY >= h ? h - 1 : inY;
+                int outY = Math.Max(0, y - radius);
+                int inY = Math.Min(h - 1, y + 1 + radius);
                 int oOut = outY * rowStride + col;
                 int oIn = inY * rowStride + col;
                 sumB += src[oIn] - src[oOut];
@@ -1973,30 +2077,81 @@ public sealed class LiquidGlassController
         }
     }
 
-    private bool EnsureMaps(GlassParams p, int outW, int outH, int srcW, int srcH, int margin,
-        int notchW, int notchH, int notchOffX, int notchOffY,
-        int captureShiftX, int captureShiftY)
+    internal readonly record struct MapDimensions(
+        int OutW, int OutH,
+        int SrcW, int SrcH,
+        int Margin,
+        int NotchW, int NotchH,
+        int NotchOffX, int NotchOffY,
+        int CaptureShiftX, int CaptureShiftY);
+
+    private readonly record struct MapGeometry(
+        double HalfX, double HalfY, double Cx, double Cy, double MinHalf,
+        double TopR, double BottomR, double UChroma, double Distort, double VerticalBalance);
+
+    private readonly record struct SampleBounds(int SrcW, int MaxX, int MaxY);
+
+    private bool EnsureMaps(GlassParams p, MapDimensions d)
     {
         p.TopCornerRadius = Math.Round(p.TopCornerRadius * 2.0) / 2.0;
         p.BottomCornerRadius = Math.Round(p.BottomCornerRadius * 2.0) / 2.0;
 
-        if (!_mapsDirty && _outW == outW && _outH == outH && _srcW == srcW && _srcH == srcH && _margin == margin
-            && _idxR.Length == outW * outH
-            && _mapNotchW == notchW && _mapNotchH == notchH && _mapNotchOffX == notchOffX && _mapNotchOffY == notchOffY
-            && _mapCaptureShiftX == captureShiftX && _mapCaptureShiftY == captureShiftY
-            && Math.Abs(_mapTopCornerRadius - p.TopCornerRadius) < 1e-3
-            && Math.Abs(_mapBottomCornerRadius - p.BottomCornerRadius) < 1e-3
-            && Math.Abs(_mapZRadius - p.ZRadius) < 1e-4)
+        if (IsMapCacheValid(p, d))
             return false;
 
+        UpdateMapCacheState(p, d);
+        EnsureMapBuffers(d.OutW, d.OutH);
+
+        var geom = CreateMapGeometry(p, d);
+        var bounds = new SampleBounds(d.SrcW, d.SrcW - 1, d.SrcH - 1);
+
+        void BuildRows(int y0, int y1)
+        {
+            for (int y = y0; y < y1; y++)
+            {
+                for (int x = 0; x < d.OutW; x++)
+                {
+                    ComputeRefractionSample(x, y, p, d, geom, bounds);
+                }
+            }
+        }
+
+        if (d.OutH >= 64)
+            Parallel.ForEach(Partitioner.Create(0, d.OutH), ParallelOpts, range => BuildRows(range.Item1, range.Item2));
+        else
+            BuildRows(0, d.OutH);
+
+        return true;
+    }
+
+    private bool IsMapCacheValid(GlassParams p, MapDimensions d)
+    {
+        return !_mapsDirty
+            && _outW == d.OutW && _outH == d.OutH
+            && _srcW == d.SrcW && _srcH == d.SrcH
+            && _margin == d.Margin
+            && _idxR.Length == d.OutW * d.OutH
+            && _mapNotchW == d.NotchW && _mapNotchH == d.NotchH
+            && _mapNotchOffX == d.NotchOffX && _mapNotchOffY == d.NotchOffY
+            && _mapCaptureShiftX == d.CaptureShiftX && _mapCaptureShiftY == d.CaptureShiftY
+            && Math.Abs(_mapTopCornerRadius - p.TopCornerRadius) < 1e-3
+            && Math.Abs(_mapBottomCornerRadius - p.BottomCornerRadius) < 1e-3
+            && Math.Abs(_mapZRadius - p.ZRadius) < 1e-4;
+    }
+
+    private void UpdateMapCacheState(GlassParams p, MapDimensions d)
+    {
         _mapsDirty = false;
-        _outW = outW; _outH = outH; _srcW = srcW; _srcH = srcH; _margin = margin;
-        _mapNotchW = notchW; _mapNotchH = notchH; _mapNotchOffX = notchOffX; _mapNotchOffY = notchOffY;
-        _mapCaptureShiftX = captureShiftX; _mapCaptureShiftY = captureShiftY;
+        _outW = d.OutW; _outH = d.OutH; _srcW = d.SrcW; _srcH = d.SrcH; _margin = d.Margin;
+        _mapNotchW = d.NotchW; _mapNotchH = d.NotchH; _mapNotchOffX = d.NotchOffX; _mapNotchOffY = d.NotchOffY;
+        _mapCaptureShiftX = d.CaptureShiftX; _mapCaptureShiftY = d.CaptureShiftY;
         _mapTopCornerRadius = p.TopCornerRadius;
         _mapBottomCornerRadius = p.BottomCornerRadius;
         _mapZRadius = p.ZRadius;
+    }
 
+    private void EnsureMapBuffers(int outW, int outH)
+    {
         int n = outW * outH;
         int needed = n * 4;
         if (_outBuffer.Length < needed)
@@ -2012,97 +2167,79 @@ public sealed class LiquidGlassController
         }
         if (_edgeMask.Length < n)
             _edgeMask = new byte[n];
+    }
 
-
-
-        double halfX = notchW * 0.5;
-        double halfY = notchH * 0.5;
-        double cx = notchOffX + (notchW - 1) * 0.5;
-        double cy = notchOffY + (notchH - 1) * 0.5;
+    private MapGeometry CreateMapGeometry(GlassParams p, MapDimensions d)
+    {
+        double halfX = d.NotchW * 0.5;
+        double halfY = d.NotchH * 0.5;
+        double cx = d.NotchOffX + (d.NotchW - 1) * 0.5;
+        double cy = d.NotchOffY + (d.NotchH - 1) * 0.5;
         double minHalf = Math.Min(halfX, halfY);
 
         double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, minHalf);
         double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, minHalf);
         double uChroma = Math.Clamp(p.ChromaticAberration, 0.0, 2.0);
         double distort = Math.Clamp(p.Distortion, 0.0, 2.0);
-        double aspect = Math.Clamp(notchH / Math.Max((double)notchW, 1.0) * 2.5, 0.0, 1.0);
+        double aspect = Math.Clamp(d.NotchH / Math.Max((double)d.NotchW, 1.0) * 2.5, 0.0, 1.0);
         double verticalBalance = 0.68 + 0.32 * aspect;
 
-        int maxSrcX = srcW - 1;
-        int maxSrcY = srcH - 1;
+        return new MapGeometry(halfX, halfY, cx, cy, minHalf, topR, bottomR, uChroma, distort, verticalBalance);
+    }
 
-        void BuildRows(int y0, int y1)
+    private void ComputeRefractionSample(
+        int x, int y, GlassParams p, MapDimensions d, MapGeometry geom, SampleBounds bounds)
+    {
+        int idx = y * d.OutW + x;
+        double lx = x - geom.Cx;
+        double ly = y - geom.Cy;
+        double baseX = x + d.Margin - d.CaptureShiftX;
+        double baseY = y + d.Margin - d.CaptureShiftY;
+
+        double inside = -RoundedRectSdf(lx, ly, geom.HalfX, geom.HalfY, geom.TopR, geom.BottomR);
+        if (inside <= 0.0)
         {
-            for (int y = y0; y < y1; y++)
-            {
-                double ly = y - cy;
-                for (int x = 0; x < outW; x++)
-                {
-                    double lx = x - cx;
-                    int idx = y * outW + x;
-
-                    // If the requested source rectangle extended beyond the virtual
-                    double baseX = x + margin - captureShiftX;
-                    double baseY = y + margin - captureShiftY;
-
-                    double inside = -RoundedRectSdf(lx, ly, halfX, halfY, topR, bottomR);
-
-                    if (inside <= 0.0)
-                    {
-                        _edgeMask[idx] = 0;
-                        SetSample(baseX, baseY, srcW, maxSrcX, maxSrcY, _idxG, _auxG, idx);
-                        SetSample(baseX, baseY, srcW, maxSrcX, maxSrcY, _idxR, _auxR, idx);
-                        SetSample(baseX, baseY, srcW, maxSrcX, maxSrcY, _idxB, _auxB, idx);
-                        continue;
-                    }
-
-                    // OverShifted normalized coordinates in [-1, 1]
-                    double pxNorm = lx / Math.Max(halfX, 1.0);
-                    double pyNorm = ly / Math.Max(halfY, 1.0);
-                    double distNorm = Math.Clamp(inside / Math.Max(minHalf, 1.0), 0.0, 1.0);
-
-                    // OverShifted exponential lens refraction: f(x) = 1.0 - b * (c * e)^(-d * x - a)
-                    double fVal = ExponentialRefract(distNorm, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD);
-                    double fPow = Math.Max(p.FPower, 0.1);
-                    double refractFactor = Math.Pow(Math.Max(fVal, 0.0001), fPow);
-
-                    double bend = Math.Max(p.EdgeBend, 0.1);
-                    double dispX = (pxNorm * refractFactor - pxNorm) * halfX * bend;
-                    double dispY = (pyNorm * refractFactor - pyNorm) * halfY * bend;
-
-                    if (distort > 0.0)
-                    {
-                        double noiseX = ValueNoise(lx * 0.045, ly * 0.045) * 2.0 - 1.0;
-                        double noiseY = ValueNoise(lx * 0.045 + 19.7, ly * 0.045 + 43.1) * 2.0 - 1.0;
-                        dispX += noiseX * distort * 2.25 * (1.0 - distNorm);
-                        dispY += noiseY * verticalBalance * distort * 2.25 * (1.0 - distNorm);
-                    }
-
-                    _edgeMask[idx] = 0;
-                    double caS = Math.Min(uChroma * (1.0 - distNorm) * 3.0, 8.0);
-                    double dispLen = Math.Sqrt(dispX * dispX + dispY * dispY);
-                    double caDirX = dispLen > 1e-6 ? dispX / dispLen : 0.0;
-                    double caDirY = dispLen > 1e-6 ? dispY / dispLen : 0.0;
-                    double caX = caDirX * caS;
-                    double caY = caDirY * verticalBalance * caS;
-
-                    baseX += dispX;
-                    baseY += dispY;
-
-                    SetSample(baseX, baseY, srcW, maxSrcX, maxSrcY, _idxG, _auxG, idx);
-                    SetSample(baseX + caX, baseY + caY, srcW, maxSrcX, maxSrcY, _idxR, _auxR, idx);
-                    SetSample(baseX - caX, baseY - caY, srcW, maxSrcX, maxSrcY, _idxB, _auxB, idx);
-                }
-            }
+            _edgeMask[idx] = 0;
+            SetSample(baseX, baseY, bounds, _idxG, _auxG, idx);
+            SetSample(baseX, baseY, bounds, _idxR, _auxR, idx);
+            SetSample(baseX, baseY, bounds, _idxB, _auxB, idx);
+            return;
         }
 
-        if (outH >= 64)
-            Parallel.ForEach(Partitioner.Create(0, outH), ParallelOpts,
-                range => BuildRows(range.Item1, range.Item2));
-        else
-            BuildRows(0, outH);
+        double pxNorm = lx / Math.Max(geom.HalfX, 1.0);
+        double pyNorm = ly / Math.Max(geom.HalfY, 1.0);
+        double distNorm = Math.Clamp(inside / Math.Max(geom.MinHalf, 1.0), 0.0, 1.0);
 
-        return true;
+        double fVal = ExponentialRefract(distNorm, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD);
+        double fPow = Math.Max(p.FPower, 0.1);
+        double refractFactor = Math.Pow(Math.Max(fVal, 0.0001), fPow);
+
+        double bend = Math.Max(p.EdgeBend, 0.1);
+        double dispX = (pxNorm * refractFactor - pxNorm) * geom.HalfX * bend;
+        double dispY = (pyNorm * refractFactor - pyNorm) * geom.HalfY * bend;
+
+        if (geom.Distort > 0.0)
+        {
+            double noiseX = ValueNoise(lx * 0.045, ly * 0.045) * 2.0 - 1.0;
+            double noiseY = ValueNoise(lx * 0.045 + 19.7, ly * 0.045 + 43.1) * 2.0 - 1.0;
+            dispX += noiseX * geom.Distort * 2.25 * (1.0 - distNorm);
+            dispY += noiseY * geom.VerticalBalance * geom.Distort * 2.25 * (1.0 - distNorm);
+        }
+
+        _edgeMask[idx] = 0;
+        double caS = Math.Min(geom.UChroma * (1.0 - distNorm) * 3.0, 8.0);
+        double dispLen = Math.Sqrt(dispX * dispX + dispY * dispY);
+        double caDirX = dispLen > 1e-6 ? dispX / dispLen : 0.0;
+        double caDirY = dispLen > 1e-6 ? dispY / dispLen : 0.0;
+        double caX = caDirX * caS;
+        double caY = caDirY * geom.VerticalBalance * caS;
+
+        baseX += dispX;
+        baseY += dispY;
+
+        SetSample(baseX, baseY, bounds, _idxG, _auxG, idx);
+        SetSample(baseX + caX, baseY + caY, bounds, _idxR, _auxR, idx);
+        SetSample(baseX - caX, baseY - caY, bounds, _idxB, _auxB, idx);
     }
 
     private static double RoundedRectSdf(double px, double py, double bx, double by,
@@ -2129,13 +2266,6 @@ public sealed class LiquidGlassController
         return s - Math.Floor(s);
     }
 
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    private static double Rand(double px, double py)
-    {
-        double s = Math.Sin(px * 12.9898 + py * 78.233) * 43758.5453;
-        return s - Math.Floor(s);
-    }
-
     private static double ValueNoise(double px, double py)
     {
         double ix = Math.Floor(px), iy = Math.Floor(py);
@@ -2145,7 +2275,7 @@ public sealed class LiquidGlassController
         return top + (bottom - top) * fy;
     }
 
-    private static void SetSample(double sx, double sy, int srcW, int maxX, int maxY,
+    private static void SetSample(double sx, double sy, in SampleBounds bounds,
         int[] idxArr, int[] auxArr, int i)
     {
         int ix = (int)Math.Floor(sx);
@@ -2155,11 +2285,11 @@ public sealed class LiquidGlassController
 
         int flags = 0;
         if (ix < 0) { ix = 0; fx = 0; }
-        else if (ix >= maxX) { ix = maxX; fx = 0; }
+        else if (ix >= bounds.MaxX) { ix = bounds.MaxX; fx = 0; }
         else flags |= 1; // has right neighbour
 
         if (iy < 0) { iy = 0; fy = 0; }
-        else if (iy >= maxY) { iy = maxY; fy = 0; }
+        else if (iy >= bounds.MaxY) { iy = bounds.MaxY; fy = 0; }
         else flags |= 2; // has bottom neighbour
 
         int wx = (int)Math.Round(fx * 256.0);
@@ -2167,7 +2297,7 @@ public sealed class LiquidGlassController
         int wy = (int)Math.Round(fy * 256.0);
         if (wy < 0) wy = 0; else if (wy > 256) wy = 256;
 
-        idxArr[i] = (iy * srcW + ix) << 2;
+        idxArr[i] = (iy * bounds.SrcW + ix) << 2;
         auxArr[i] = flags | (wx << 2) | (wy << 12);
     }
     internal static double ExponentialRefract(double x, double a, double b, double c, double d)
