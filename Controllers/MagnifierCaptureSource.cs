@@ -92,7 +92,10 @@ public sealed class MagnifierCaptureSource : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr DispatchMessageW(ref MSG msg);
     [DllImport("user32.dll")] private static extern bool InvalidateRect(IntPtr hWnd, IntPtr lpRect, bool bErase);
     [DllImport("user32.dll")] private static extern bool UpdateWindow(IntPtr hWnd);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool GetWindowDisplayAffinity(IntPtr hWnd, out uint pdwAffinity);
     [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandleW(string? name);
+
+    private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
     private static readonly object _sharedSync = new();
     private static MagnifierCaptureSource? _sharedInstance;
@@ -254,7 +257,15 @@ public sealed class MagnifierCaptureSource : IDisposable
         {
             foreach (var h in _filterHwnds)
             {
-                if (h != IntPtr.Zero && !list.Contains(h)) list.Add(h);
+                if (h != IntPtr.Zero && !list.Contains(h))
+                {
+                    // If the window already has WDA_EXCLUDEFROMCAPTURE, DWM's compositor
+                    // excludes it cleanly. Passing a WS_EX_LAYERED window with display
+                    // affinity to MagSetWindowFilterList causes DWM to paint the region as solid black.
+                    if (GetWindowDisplayAffinity(h, out uint aff) && aff == WDA_EXCLUDEFROMCAPTURE)
+                        continue;
+                    list.Add(h);
+                }
             }
             _filterListDirty = false;
             version = _filterVersion;
@@ -315,11 +326,11 @@ public sealed class MagnifierCaptureSource : IDisposable
         bool ready;
         lock (_frameLock)
             ready = _hasCompletedFrame && _completedFilterVersion == Volatile.Read(ref _filterVersion);
-        if (!ready) _frameReceivedEvent.Wait(80);
+        if (!ready) _frameReceivedEvent.Wait(12);
         else
         {
             lock (_frameLock) ready = _frameCounter != previous;
-            if (!ready) _frameReceivedEvent.Wait(3);
+            if (!ready) _frameReceivedEvent.Wait(2);
         }
 
         lock (_frameLock)

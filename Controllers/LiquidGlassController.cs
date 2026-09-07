@@ -563,7 +563,7 @@ public sealed class LiquidGlassController
         _captureVisibilityUntilTicks = 0;
         _overlayActiveCached = false;
         _lastOverlayCheckTicks = 0;
-        SetWindowDisplayAffinitySafe(WDA_NONE);
+        _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
         StartWorkerIfNeeded();
     }
 
@@ -684,19 +684,9 @@ public sealed class LiquidGlassController
                     continue;
                 }
 
-                if (!_magReady)
+                if (!_exactBitBltCapture)
                 {
-                    if (_mag != null && _mag.IsReady && (_dbgFrameCount & 127) == 0)
-                    {
-                        _magReady = true;
-                        _magFailStreak = 0;
-                    }
                     _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
-                }
-                else
-                {
-                    _exactBitBltCapture = false;
-                    SetWindowDisplayAffinitySafe(WDA_NONE);
                 }
 
 
@@ -1083,7 +1073,7 @@ public sealed class LiquidGlassController
         bool gpuMode = _gpuMode;
 
         var mag = _mag;
-        bool useMag = _magReady && mag != null;
+        bool useMag = !_exactBitBltCapture && _magReady && mag != null;
         _magPath = useMag;
         // Native resolution is required for spatially correct glass. Downscaling the
         double scale = 1.0;
