@@ -30,7 +30,10 @@ public sealed class WebcamCaptureController : IDisposable
     private long _lastFrameTimestamp;
     private const long FrameIntervalTicks = 333_333;
 
+    // Pinned so the GC never moves it; never shrunk once allocated to avoid LOH churn
+    // during the brief resolution-negotiation phase at camera startup.
     private byte[] _frameBuffer = Array.Empty<byte>();
+    private int _frameBufferCapacity;
     private int _frameBufferInUse;
     public bool IsActive
     {
@@ -426,9 +429,13 @@ public sealed class WebcamCaptureController : IDisposable
             int height = softwareBitmap.PixelHeight;
             int requiredSize = checked(width * height * 4);
 
-            if (_frameBuffer.Length < requiredSize)
+            if (requiredSize > _frameBufferCapacity)
             {
-                _frameBuffer = GC.AllocateUninitializedArray<byte>(requiredSize);
+                // Always grow by at least 25% headroom so successive slight resolution
+                // increases (e.g. auto-focus crop changes) don't trigger repeated LOH allocs.
+                int newCapacity = Math.Max(requiredSize, requiredSize + requiredSize / 4);
+                _frameBuffer = GC.AllocateUninitializedArray<byte>(newCapacity, pinned: true);
+                _frameBufferCapacity = newCapacity;
             }
 
             softwareBitmap.CopyToBuffer(_frameBuffer.AsBuffer());

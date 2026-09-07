@@ -3490,39 +3490,44 @@ public partial class SettingsWindow : Window
         this.BeginAnimation(TopProperty, moveTop);
         this.BeginAnimation(LeftProperty, moveLeft);
 
+        // Entrance: cascade top → bottom (Header → Social → Nav → Card → Footer)
+        // Items slide in from -12px (above) to 0 — opposite of the close direction.
         int contentDelay = 250;
         AnimateEntranceItem(SettingsHeader, HeaderTranslate, contentDelay);
 
-        int socialDelay = contentDelay + 80;
+        int socialDelay = contentDelay + 60;
         AnimateSocialIcon(SocialWebsite, SocialWebsiteTranslate, socialDelay);
-        AnimateSocialIcon(SocialGitHub, SocialGitHubTranslate, socialDelay + 60);
-        AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 120);
-        AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 180);
+        AnimateSocialIcon(SocialGitHub, SocialGitHubTranslate, socialDelay + 50);
+        AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 100);
+        AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 150);
 
-        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 40);
+        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 80);
 
-        AnimateActivePanel(_activeNav);
+        // Pass entranceDirection so the card slides in from above on first open
+        AnimateActivePanel(_activeNav, entranceDirection: true);
 
-        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 160);
+        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 200);
 
         void AnimateSocialIcon(UIElement element, TranslateTransform translate, int delayMs)
         {
-            var fade = CreateAnimation(0, 1, 350, itemEase);
+            var fade = CreateAnimation(0, 1, 320, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
 
-            var slide = CreateAnimation(6, 0, 400, itemEase);
+            // Slide in from above (-6px → 0)
+            var slide = CreateAnimation(-6, 0, 380, itemEase);
             slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
         }
 
         void AnimateEntranceItem(UIElement element, TranslateTransform translate, int delayMs)
         {
-            var fade = CreateAnimation(0, 1, 420, itemEase);
+            var fade = CreateAnimation(0, 1, 380, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
 
-            var slide = CreateAnimation(12, 0, 520, itemEase);
+            // Slide in from above (-12px → 0) to match the top-down cascade direction
+            var slide = CreateAnimation(-12, 0, 480, itemEase);
             slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
         }
@@ -3895,9 +3900,6 @@ public partial class SettingsWindow : Window
         MainShell.UseLayoutRounding = false;
         RenderOptions.SetBitmapScalingMode(MainShell, BitmapScalingMode.LowQuality);
 
-        AnimateExitItem(FooterBar, FooterTranslate, 0);
-        AnimateExitItem(NavPanel, NavPanelTranslate, 40);
-
         UIElement? activeCard = _activeNav switch
         {
             "Appearance" => AppearanceCard,
@@ -3930,12 +3932,6 @@ public partial class SettingsWindow : Window
             "Skins" => SkinCardTranslate,
             _ => null
         };
-        if (activeCard != null && activeTranslate != null)
-            AnimateExitItem(activeCard, activeTranslate, 60);
-        if (_activeNav == "System" && BackupCard != null && BackupCardTranslate != null)
-            AnimateExitItem(BackupCard, BackupCardTranslate, 80);
-
-        AnimateExitItem(SettingsHeader, HeaderTranslate, 100);
 
         double notchRadius = 8;
         double notchW = 230, notchH = 32;
@@ -3998,6 +3994,17 @@ public partial class SettingsWindow : Window
             Close();
         };
 
+        // Fade-out order: top → bottom (Header → Card → Nav → Footer)
+        AnimateExitItem(SettingsHeader, HeaderTranslate, 0);
+
+        if (activeCard != null && activeTranslate != null)
+            AnimateExitItem(activeCard, activeTranslate, 60);
+        if (_activeNav == "System" && BackupCard != null && BackupCardTranslate != null)
+            AnimateExitItem(BackupCard, BackupCardTranslate, 80);
+
+        AnimateExitItem(NavPanel, NavPanelTranslate, 120);
+        AnimateExitItem(FooterBar, FooterTranslate, 160);
+
         ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, squishX);
         ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrinkY);
         this.BeginAnimation(ShellCornerRadiusProperty, cornerAnim);
@@ -4006,17 +4013,19 @@ public partial class SettingsWindow : Window
 
         void AnimateExitItem(UIElement element, TranslateTransform translate, int delayMs)
         {
-            var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(550))
+            var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(380))
             {
-                EasingFunction = easeInStrong,
+                EasingFunction = easeIn,
                 BeginTime = TimeSpan.FromMilliseconds(delayMs)
             };
             Timeline.SetDesiredFrameRate(fade, fps);
             element.BeginAnimation(OpacityProperty, fade);
 
-            var slide = new DoubleAnimation(0, 12, TimeSpan.FromMilliseconds(550))
+            // Slide upward (-8px) as items disappear — the shell is collapsing up
+            // toward the notch, so content should lift in the same direction.
+            var slide = new DoubleAnimation(0, -8, TimeSpan.FromMilliseconds(380))
             {
-                EasingFunction = easeInStrong,
+                EasingFunction = easeIn,
                 BeginTime = TimeSpan.FromMilliseconds(delayMs)
             };
             Timeline.SetDesiredFrameRate(slide, fps);
@@ -4477,7 +4486,7 @@ public partial class SettingsWindow : Window
         return scale;
     }
 
-    private void AnimateActivePanel(string section, int direction = 1)
+    private void AnimateActivePanel(string section, int direction = 1, bool entranceDirection = false)
     {
         var (card, translate) = GetSectionCardParts(section);
         if (card == null || translate == null) return;
@@ -4495,7 +4504,9 @@ public partial class SettingsWindow : Window
         var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
         var scale = EnsureCardScale(card, translate);
 
-        double fromY = 18 * direction;
+        // entranceDirection=true → slide from above (-18px) to match top-down open cascade
+        // Normal nav switching uses ±direction * 18
+        double fromY = entranceDirection ? -18 : 18 * direction;
         card.Opacity = 0;
         translate.Y = fromY;
         scale.ScaleX = 0.985;

@@ -58,4 +58,7 @@ public partial class MainWindow : ISpotlightMorphHost
 
     void ISpotlightMorphHost.BeginSpotlightReturnHandoff(TimeSpan duration) =>
         BeginSpotlightReturnHandoff(duration);
+
+    ImageSource? ISpotlightMorphHost.GetGlassBackdropImageSource() =>
+        GlassBackdropImage?.Source;
 }

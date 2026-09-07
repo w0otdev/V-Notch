@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using VNotch.Services;
@@ -93,23 +94,79 @@ public sealed class MagnifierCaptureSource : IDisposable
     [DllImport("user32.dll")] private static extern bool UpdateWindow(IntPtr hWnd);
     [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandleW(string? name);
 
+    private static readonly object _sharedSync = new();
+    private static MagnifierCaptureSource? _sharedInstance;
+    private static int _sharedRefCount;
+
+    public static MagnifierCaptureSource AcquireShared(IntPtr excludeHwnd)
+    {
+        lock (_sharedSync)
+        {
+            if (_sharedInstance == null || !_sharedInstance._running || !_sharedInstance.IsReady)
+            {
+                try { _sharedInstance?.Dispose(); } catch { }
+                _sharedInstance = new MagnifierCaptureSource();
+                _sharedInstance.Initialize(excludeHwnd);
+            }
+            else if (excludeHwnd != IntPtr.Zero)
+            {
+                _sharedInstance.AddExcludeHwnd(excludeHwnd);
+            }
+            _sharedRefCount++;
+            _sharedInstance._captureEnabled = true;
+            _sharedInstance._request.Set();
+            return _sharedInstance;
+        }
+    }
+
+    public static void ReleaseShared(IntPtr excludeHwnd)
+    {
+        lock (_sharedSync)
+        {
+            if (excludeHwnd != IntPtr.Zero && _sharedInstance != null)
+            {
+                _sharedInstance.RemoveExcludeHwnd(excludeHwnd);
+            }
+            _sharedRefCount = Math.Max(0, _sharedRefCount - 1);
+            if (_sharedRefCount == 0 && _sharedInstance != null)
+            {
+                _sharedInstance._captureEnabled = false;
+                _sharedInstance._request.Set();
+            }
+        }
+    }
+
+    public static void ShutdownShared()
+    {
+        lock (_sharedSync)
+        {
+            try { _sharedInstance?.Dispose(); } catch { }
+            _sharedInstance = null;
+            _sharedRefCount = 0;
+        }
+    }
+
     private Thread? _thread;
     private volatile bool _running;
+    private volatile bool _captureEnabled = true;
     private readonly ManualResetEventSlim _initDone = new(false);
     private readonly AutoResetEvent _request = new(false);
     private readonly ManualResetEventSlim _frameReceivedEvent = new(false);
+    private readonly ManualResetEventSlim _unfilteredFrameReceivedEvent = new(false);
 
-    private IntPtr _excludeHwnd;
     private IntPtr _hostWnd;
     private IntPtr _magWnd;
     private MagImageScalingCallback? _callback;   // keep alive
+    private static readonly WndProcDelegate SharedWndProc = DefWindowProcW;
     private WndProcDelegate? _wndProc;             // keep alive
 
-    private const int MagWindowW = 1600;
-    private const int MagWindowH = 700;
+    private readonly object _filterLock = new();
+    private readonly HashSet<IntPtr> _filterHwnds = new();
+    private volatile bool _filterListDirty = true;
 
-    private readonly object _requestSync = new();
-    private CaptureRequest _pendingRequest;
+    private int _magWindowW = 2560;
+    private int _magWindowH = 1600;
+
     private CaptureRequest _activeRequest;
 
     private readonly record struct CaptureRequest(int X, int Y, int Width, int Height);
@@ -120,14 +177,110 @@ public sealed class MagnifierCaptureSource : IDisposable
     private int _completedWidth, _completedHeight;
     private int _completedX, _completedY;
     private bool _hasCompletedFrame;
+    // A desktop frame captured before an overlay HWND is added to the Magnifier
+    // exclusion list. On some WPF layered-window configurations the excluded
+    // rectangle is returned as opaque black instead of the desktop behind it.
+    private byte[] _unfilteredBuffer = Array.Empty<byte>();
+    private int _unfilteredWidth, _unfilteredHeight;
+    private int _unfilteredX, _unfilteredY;
+    private bool _hasUnfilteredFrame;
     private ulong _frameCounter;
-    private ulong _lastServedFrame;
+    private int _filterVersion;
+    private int _appliedFilterVersion;
+    private int _completedFilterVersion;
 
     public bool IsReady { get; private set; }
 
+    /// <summary>
+    /// Captures one desktop frame before any glass overlay is registered as an
+    /// excluded HWND. That frame is used only when a later excluded crop is
+    /// demonstrably all black.
+    /// </summary>
+    public static bool PrewarmUnfilteredDesktopFrame(TimeSpan timeout)
+    {
+        MagnifierCaptureSource source = AcquireShared(IntPtr.Zero);
+        try
+        {
+            lock (source._frameLock)
+            {
+                if (source._hasUnfilteredFrame)
+                    return true;
+                source._unfilteredFrameReceivedEvent.Reset();
+            }
+
+            source._request.Set();
+            return source._unfilteredFrameReceivedEvent.Wait(timeout);
+        }
+        finally
+        {
+            ReleaseShared(IntPtr.Zero);
+        }
+    }
+
+    public void AddExcludeHwnd(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        lock (_filterLock)
+        {
+            if (_filterHwnds.Add(hwnd))
+            {
+                _filterListDirty = true;
+                _filterVersion++;
+            }
+        }
+        _request.Set();
+    }
+
+    public void RemoveExcludeHwnd(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return;
+        lock (_filterLock)
+        {
+            if (_filterHwnds.Remove(hwnd))
+            {
+                _filterListDirty = true;
+                _filterVersion++;
+            }
+        }
+        _request.Set();
+    }
+
+    private void ApplyFiltersIfDirty()
+    {
+        if (!_filterListDirty || _magWnd == IntPtr.Zero) return;
+        var list = new List<IntPtr>();
+        int version;
+        lock (_filterLock)
+        {
+            foreach (var h in _filterHwnds)
+            {
+                if (h != IntPtr.Zero && !list.Contains(h)) list.Add(h);
+            }
+            _filterListDirty = false;
+            version = _filterVersion;
+        }
+        if (_hostWnd != IntPtr.Zero && !list.Contains(_hostWnd)) list.Add(_hostWnd);
+        if (_magWnd != IntPtr.Zero && !list.Contains(_magWnd)) list.Add(_magWnd);
+
+        IntPtr[] arr = list.ToArray();
+        if (MagSetWindowFilterList(_magWnd, MW_FILTERMODE_EXCLUDE, arr.Length, arr))
+            _appliedFilterVersion = version;
+        else
+        {
+            // Retain the last displayed texture until exclusion is working;
+            // capturing the glass itself creates dark recursive feedback.
+            _appliedFilterVersion = -1;
+            _filterListDirty = true;
+        }
+    }
+
     public bool Initialize(IntPtr excludeHwnd)
     {
-        _excludeHwnd = excludeHwnd;
+        if (excludeHwnd != IntPtr.Zero)
+        {
+            lock (_filterLock) { _filterHwnds.Add(excludeHwnd); }
+        }
+        _filterListDirty = true;
         _running = true;
         _thread = new Thread(PumpThread)
         {
@@ -152,44 +305,43 @@ public sealed class MagnifierCaptureSource : IDisposable
         actualY = y;
         if (!IsReady || !_running || destBits == IntPtr.Zero || w <= 0 || h <= 0) return false;
 
-        bool isFirstFrame = !_hasCompletedFrame;
-        bool rectChanged;
-        lock (_requestSync)
-        {
-            rectChanged = _pendingRequest.X != x || _pendingRequest.Y != y ||
-                          _pendingRequest.Width != w || _pendingRequest.Height != h;
-            _pendingRequest = new CaptureRequest(x, y, w, h);
-            _request.Set();
-        }
-
-        if (isFirstFrame || rectChanged)
-        {
-            _frameReceivedEvent.Reset();
-            _frameReceivedEvent.Wait(isFirstFrame ? 60 : 15);
-        }
+        // All glass windows consume crops of the same stationary desktop frame.
+        // Moving/resizing a shared magnifier source lets one consumer overwrite
+        // another's request and mislabels delayed callbacks during morphs.
+        ulong previous;
+        lock (_frameLock) previous = _frameCounter;
+        _frameReceivedEvent.Reset();
+        _request.Set();
+        bool ready;
+        lock (_frameLock)
+            ready = _hasCompletedFrame && _completedFilterVersion == Volatile.Read(ref _filterVersion);
+        if (!ready) _frameReceivedEvent.Wait(80);
         else
         {
-            // If the latest frame was already served, wait up to 3ms for DWM's next VSync callback
-            ulong curFrame;
-            lock (_frameLock)
-            {
-                curFrame = _frameCounter;
-            }
-            if (curFrame <= _lastServedFrame)
-            {
-                _frameReceivedEvent.Wait(3);
-            }
+            lock (_frameLock) ready = _frameCounter != previous;
+            if (!ready) _frameReceivedEvent.Wait(3);
         }
 
         lock (_frameLock)
         {
-            if (!_hasCompletedFrame || _completedWidth != w || _completedHeight != h)
-                return false;
+            if (!_hasCompletedFrame ||
+                _completedFilterVersion != Volatile.Read(ref _filterVersion)) return false;
 
-            _lastServedFrame = _frameCounter;
-            actualX = _completedX;
-            actualY = _completedY;
-            return CopyToDest(destBits, w, h);
+            if (IsEffectivelyBlackCrop(_completedBuffer, _completedWidth, _completedHeight,
+                    _completedX, _completedY, x, y, w, h))
+            {
+                if (_hasUnfilteredFrame &&
+                    !IsEffectivelyBlackCrop(_unfilteredBuffer, _unfilteredWidth, _unfilteredHeight,
+                        _unfilteredX, _unfilteredY, x, y, w, h))
+                {
+                    return CopyDesktopCrop(_unfilteredBuffer, _unfilteredWidth, _unfilteredHeight,
+                        _unfilteredX, _unfilteredY, x, y, w, h, destBits);
+                }
+                return false;
+            }
+
+            return CopyDesktopCrop(_completedBuffer, _completedWidth, _completedHeight,
+                _completedX, _completedY, x, y, w, h, destBits);
         }
     }
 
@@ -209,7 +361,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
             IntPtr hInst = GetModuleHandleW(null);
             const string hostClass = "VNotchMagHost";
-            _wndProc = DefWindowProcW;
+            _wndProc = SharedWndProc;
             var wc = new WNDCLASS
             {
                 lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
@@ -218,10 +370,19 @@ public sealed class MagnifierCaptureSource : IDisposable
             };
             RegisterClassW(ref wc);   // harmless if already registered
 
+            int screenX = Win32Interop.GetSystemMetrics(76); // SM_XVIRTUALSCREEN
+            int screenY = Win32Interop.GetSystemMetrics(77); // SM_YVIRTUALSCREEN
+            int screenW = Win32Interop.GetSystemMetrics(78); // SM_CXVIRTUALSCREEN
+            int screenH = Win32Interop.GetSystemMetrics(79); // SM_CYVIRTUALSCREEN
+            if (screenW <= 0) screenW = Win32Interop.GetSystemMetrics(0); // SM_CXSCREEN
+            if (screenH <= 0) screenH = Win32Interop.GetSystemMetrics(1); // SM_CYSCREEN
+            _magWindowW = screenW;
+            _magWindowH = screenH;
+
             _hostWnd = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW,
                 hostClass, "VNotchMagHost", WS_POPUP,
-                0, 0, MagWindowW, MagWindowH, IntPtr.Zero, IntPtr.Zero, hInst, IntPtr.Zero);
+                screenX, screenY, _magWindowW, _magWindowH, IntPtr.Zero, IntPtr.Zero, hInst, IntPtr.Zero);
             if (_hostWnd == IntPtr.Zero) { RuntimeLog.Log("LIQUIDGLASS", "Mag host create failed."); Cleanup(); _initDone.Set(); return; }
 
             // Set alpha to 1 (virtually invisible, keeps DWM composition active at full monitor refresh rate)
@@ -230,11 +391,10 @@ public sealed class MagnifierCaptureSource : IDisposable
 
             _magWnd = CreateWindowExW(
                 0, WC_MAGNIFIER, "VNotchMag", (uint)(WS_CHILD | WS_VISIBLE),
-                0, 0, MagWindowW, MagWindowH, _hostWnd, IntPtr.Zero, hInst, IntPtr.Zero);
+                0, 0, _magWindowW, _magWindowH, _hostWnd, IntPtr.Zero, hInst, IntPtr.Zero);
             if (_magWnd == IntPtr.Zero) { RuntimeLog.Log("LIQUIDGLASS", "Mag control create failed."); Cleanup(); _initDone.Set(); return; }
 
-            var exclude = new[] { _excludeHwnd, _hostWnd, _magWnd };
-            MagSetWindowFilterList(_magWnd, MW_FILTERMODE_EXCLUDE, exclude.Length, exclude);
+            ApplyFiltersIfDirty();
 
             _callback = ScalingCallback;
             if (!MagSetImageScalingCallback(_magWnd, _callback))
@@ -248,6 +408,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
             Win32Interop.RECT lastRect = default;
             bool hasConfiguredRect = false;
+            bool hostShown = true;
 
             // High-frequency pump loop: update source rect and query DWM for the freshest frame
             while (_running)
@@ -255,15 +416,36 @@ public sealed class MagnifierCaptureSource : IDisposable
                 if (_request.WaitOne(1))
                 {
                     if (!_running) break;
-                    CaptureRequest req;
-                    lock (_requestSync)
+                    if (!_captureEnabled)
                     {
-                        req = _pendingRequest;
+                        if (hostShown) ShowWindow(_hostWnd, 0);
+                        hostShown = false;
+                        lock (_frameLock) _hasCompletedFrame = false;
+                        continue;
                     }
+                    if (!hostShown) ShowWindow(_hostWnd, SW_SHOWNA);
+                    hostShown = true;
+                    ApplyFiltersIfDirty();
+
+                    // A fixed source also gives callbacks an unambiguous physical
+                    // origin. `unclipped` is the scaled destination, not this origin.
+                    var req = new CaptureRequest(
+                        Win32Interop.GetSystemMetrics(76),
+                        Win32Interop.GetSystemMetrics(77),
+                        Win32Interop.GetSystemMetrics(78),
+                        Win32Interop.GetSystemMetrics(79));
 
                     if (req.Width > 0 && req.Height > 0)
                     {
                         _activeRequest = req;
+                        if (req.Width != _magWindowW || req.Height != _magWindowH)
+                        {
+                            _magWindowW = req.Width;
+                            _magWindowH = req.Height;
+                            MoveWindow(_hostWnd, req.X, req.Y, _magWindowW, _magWindowH, false);
+                            MoveWindow(_magWnd, 0, 0, _magWindowW, _magWindowH, false);
+                        }
+
                         var rect = new Win32Interop.RECT
                         {
                             Left = req.X,
@@ -277,7 +459,7 @@ public sealed class MagnifierCaptureSource : IDisposable
                             rect.Left != lastRect.Left || rect.Top != lastRect.Top ||
                             rect.Right != lastRect.Right || rect.Bottom != lastRect.Bottom)
                         {
-                            MagSetWindowSource(_magWnd, rect);
+                            if (!MagSetWindowSource(_magWnd, rect)) continue;
                             lastRect = rect;
                             hasConfiguredRect = true;
                         }
@@ -343,12 +525,18 @@ public sealed class MagnifierCaptureSource : IDisposable
             int w = (int)srcheader.width;
             int rows = (int)srcheader.height;
             int srcStride = (int)srcheader.stride;
-            if (w <= 0 || rows <= 0 || srcStride <= 0 || rows > 4096 || srcStride > 1 << 18) return false;
+            if (w <= 0 || rows <= 0 || srcStride <= 0 || rows > 16384 || srcStride > 1 << 18) return false;
+            ulong available = srcheader.cbSize.ToUInt64();
+            if (srcheader.offset > available ||
+                !IsCompleteFrame(w, rows, w, rows, srcStride,
+                    (int)Math.Min(int.MaxValue, available - srcheader.offset)) ||
+                w < _activeRequest.Width || rows < _activeRequest.Height)
+                return false;
 
             int dstStride = checked(w * 4);
             int needed = checked(dstStride * rows);
 
-            byte* src = (byte*)srcdata;
+            byte* src = (byte*)srcdata + srcheader.offset;
 
             lock (_frameLock)
             {
@@ -388,10 +576,24 @@ public sealed class MagnifierCaptureSource : IDisposable
 
                 _completedWidth = w;
                 _completedHeight = rows;
-                _completedX = unclipped.Left;
-                _completedY = unclipped.Top;
+                _completedX = _activeRequest.X;
+                _completedY = _activeRequest.Y;
+                _completedFilterVersion = _appliedFilterVersion;
                 _hasCompletedFrame = true;
                 _frameCounter++;
+
+                if (_appliedFilterVersion == 0)
+                {
+                    if (_unfilteredBuffer.Length < needed)
+                        _unfilteredBuffer = new byte[needed];
+                    Buffer.BlockCopy(_completedBuffer, 0, _unfilteredBuffer, 0, needed);
+                    _unfilteredWidth = w;
+                    _unfilteredHeight = rows;
+                    _unfilteredX = _activeRequest.X;
+                    _unfilteredY = _activeRequest.Y;
+                    _hasUnfilteredFrame = true;
+                    _unfilteredFrameReceivedEvent.Set();
+                }
             }
 
             _frameReceivedEvent.Set();
@@ -403,20 +605,62 @@ public sealed class MagnifierCaptureSource : IDisposable
         }
     }
 
-    private unsafe bool CopyToDest(IntPtr dest, int w, int h)
+    internal static unsafe bool CopyDesktopCrop(byte[] source, int sourceWidth, int sourceHeight,
+        int desktopX, int desktopY, int x, int y, int width, int height, IntPtr destination)
     {
-        byte[] src;
-        lock (_frameLock)
+        if (destination == IntPtr.Zero || sourceWidth <= 0 || sourceHeight <= 0 ||
+            width <= 0 || height <= 0 || (long)sourceWidth * sourceHeight * 4 > source.Length)
+            return false;
+
+        // Extend edge pixels when a sampling margin crosses the virtual desktop.
+        // No transparent/uninitialized pixels can enter a valid glass texture.
+        fixed (byte* bytes = source)
         {
-            if (!_hasCompletedFrame || _completedWidth != w || _completedHeight != h) return false;
-            src = _completedBuffer;
+            uint* src = (uint*)bytes;
+            uint* dst = (uint*)destination;
+            long offsetX = (long)x - desktopX;
+            
+            long offsetY = (long)y - desktopY;
+            for (int row = 0; row < height; row++)
+            {
+                int sy = (int)Math.Clamp(offsetY + row, 0, sourceHeight - 1);
+                if (offsetX >= 0 && offsetX + width <= sourceWidth)
+                {
+                    Buffer.MemoryCopy(src + sy * sourceWidth + (int)offsetX,
+                        dst + row * width, (long)width * 4, (long)width * 4);
+                }
+                else
+                {
+                    for (int col = 0; col < width; col++)
+                    {
+                        int sx = (int)Math.Clamp(offsetX + col, 0, sourceWidth - 1);
+                        dst[row * width + col] = src[sy * sourceWidth + sx];
+                    }
+                }
+            }
         }
+        return true;
+    }
 
-        long bytes = (long)w * h * 4;
-        if (src.Length < bytes) return false;
+    private static bool IsEffectivelyBlackCrop(byte[] source, int sourceWidth, int sourceHeight,
+        int desktopX, int desktopY, int x, int y, int width, int height)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 ||
+            (long)sourceWidth * sourceHeight * 4 > source.Length)
+            return true;
 
-        fixed (byte* srcBase = src)
-            Buffer.MemoryCopy(srcBase, (void*)dest, bytes, bytes);
+        const int samplesPerAxis = 6;
+        for (int row = 0; row < samplesPerAxis; row++)
+        {
+            int sy = Math.Clamp(y - desktopY + (height - 1) * row / (samplesPerAxis - 1), 0, sourceHeight - 1);
+            for (int column = 0; column < samplesPerAxis; column++)
+            {
+                int sx = Math.Clamp(x - desktopX + (width - 1) * column / (samplesPerAxis - 1), 0, sourceWidth - 1);
+                int offset = (sy * sourceWidth + sx) * 4;
+                if (source[offset] > 8 || source[offset + 1] > 8 || source[offset + 2] > 8)
+                    return false;
+            }
+        }
 
         return true;
     }
@@ -443,6 +687,7 @@ public sealed class MagnifierCaptureSource : IDisposable
         _thread = null;
         _callback = null;
         _wndProc = null;
-        _frameReceivedEvent.Dispose();
+        try { _frameReceivedEvent.Dispose(); } catch { }
+        try { _unfilteredFrameReceivedEvent.Dispose(); } catch { }
     }
 }

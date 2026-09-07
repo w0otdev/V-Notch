@@ -31,6 +31,7 @@ internal sealed class SpotlightController : ISpotlightController
     private bool _fallbackSpaceDown;
     private bool _escapeDown;
     private uint _lastFallbackSpaceEventTime;
+    private NotchSettings? _settings;
     private bool _disposed;
 
     public bool IsHotkeyRegistered => _nativeRegistered || _keyboardHook != IntPtr.Zero;
@@ -46,14 +47,19 @@ internal sealed class SpotlightController : ISpotlightController
         if (_source != null) return;
 
         _host = host;
-        _hwnd = new WindowInteropHelper(host).Handle;
-        _source = HwndSource.FromHwnd(_hwnd);
-        _source?.AddHook(WndProc);
+        _hwnd = new WindowInteropHelper(host).EnsureHandle();
+        if (_hwnd != IntPtr.Zero)
+        {
+            _source = HwndSource.FromHwnd(_hwnd);
+            _source?.AddHook(WndProc);
+        }
         ApplySettings(settings);
     }
 
     public void ApplySettings(NotchSettings settings)
     {
+        _settings = settings.Clone();
+        _window?.ApplySettings(_settings);
         if (_hwnd == IntPtr.Zero) return;
         DisableHotkey();
 
@@ -179,13 +185,18 @@ internal sealed class SpotlightController : ISpotlightController
         return CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
     }
 
-    private void ToggleSpotlight()
+    internal void ToggleSpotlight()
     {
         if (_disposed) return;
         if (_window == null)
         {
             _window = _windowFactory();
             if (_host != null) _window.Owner = _host;
+            if (_settings != null) _window.ApplySettings(_settings);
+        }
+        else if (_settings != null)
+        {
+            _window.ApplySettings(_settings);
         }
         _window.ToggleFromHotkey();
     }

@@ -2,6 +2,7 @@ using System.Data.OleDb;
 using System.IO;
 using System.Text;
 using VNotch.Models;
+using VNotch.Services;
 
 namespace VNotch.Services.Spotlight.Providers;
 
@@ -16,14 +17,32 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
     private const int QueryTimeoutMilliseconds = 1500;
     private const string ConnectionString =
         "Provider=Search.CollatorDSO;Extended Properties='Application=Windows'";
+    private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(30);
 
-    public bool IsAvailable { get; private set; } = true;
+    private bool _isAvailable = true;
+    private DateTime _lastFailureTime = DateTime.MinValue;
+    private bool _loggedUnavailable;
+
+    public bool IsAvailable
+    {
+        get
+        {
+            if (_isAvailable) return true;
+            if (DateTime.UtcNow - _lastFailureTime > RetryCooldown)
+            {
+                return true;
+            }
+            return false;
+        }
+    }
 
     public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
         string query,
         int limit,
         CancellationToken cancellationToken)
     {
+        if (!IsAvailable) return Array.Empty<SpotlightSearchItem>();
+
         string sanitizedQuery = SanitizeQuery(query);
         if (sanitizedQuery.Length == 0 || limit <= 0) return Array.Empty<SpotlightSearchItem>();
         limit = Math.Min(limit, 50);
@@ -35,7 +54,8 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
             var items = await Task.Run(
                 () => ExecuteQuery(sanitizedQuery, limit, timeoutCts.Token), timeoutCts.Token)
                 .ConfigureAwait(false);
-            IsAvailable = true;
+            _isAvailable = true;
+            _loggedUnavailable = false;
 
             return items
                 .Select(item => item with { Score = SpotlightRanker.Score(item, query) })
@@ -51,13 +71,33 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            IsAvailable = false;
             return Array.Empty<SpotlightSearchItem>();
         }
-        catch
+        catch (OleDbException ex)
         {
-            IsAvailable = false;
-            throw;
+            _isAvailable = false;
+            _lastFailureTime = DateTime.UtcNow;
+            if (!_loggedUnavailable)
+            {
+                _loggedUnavailable = true;
+                bool isStopped = (uint)ex.ErrorCode == 0x80041820 || (uint)ex.HResult == 0x80041820;
+                string detail = isStopped
+                    ? "Windows Search service (WSearch) is stopped or not running (0x80041820)."
+                    : ex.Message;
+                RuntimeLog.Log("SPOTLIGHT-SEARCH", $"WindowsSearchProvider disabled: {detail}");
+            }
+            return Array.Empty<SpotlightSearchItem>();
+        }
+        catch (Exception ex)
+        {
+            _isAvailable = false;
+            _lastFailureTime = DateTime.UtcNow;
+            if (!_loggedUnavailable)
+            {
+                _loggedUnavailable = true;
+                RuntimeLog.Log("SPOTLIGHT-SEARCH", $"WindowsSearchProvider error: {ex.Message}");
+            }
+            return Array.Empty<SpotlightSearchItem>();
         }
     }
 

@@ -220,6 +220,7 @@ public partial class App : Application
             }
 
             _guard?.Dispose();
+            VNotch.Controllers.MagnifierCaptureSource.ShutdownShared();
             RuntimeLog.Log("SYSTEM", "Application exit");
             base.OnExit(e);
         }

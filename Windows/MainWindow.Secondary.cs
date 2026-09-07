@@ -647,10 +647,9 @@ public partial class MainWindow
 
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-        var iconSource = GetFileIcon(filePath);
         var image = new Image
         {
-            Source = iconSource,
+            Source = null,  // loaded asynchronously below
             Width = iconSize,
             Height = iconSize,
             Margin = new Thickness(0, isSmall ? 2 : 6, 0, isSmall ? 2 : 4),
@@ -662,6 +661,21 @@ public partial class MainWindow
                 Rect = new Rect(0, 0, iconSize, iconSize)
             }
         };
+
+        // Load the shell icon off the UI thread to avoid blocking layout during the
+        // camera-open transition, which realizes the entire visible shelf simultaneously
+        // and would otherwise spike memory by calling SHCreateItemFromParsingName /
+        // SHGetFileInfo synchronously for every file in a single burst.
+        var capturedPath = filePath;
+        System.Threading.Tasks.Task.Run(() => GetFileIcon(capturedPath))
+            .ContinueWith(t =>
+            {
+                var icon = t.Result;
+                if (icon != null)
+                    image.Source = icon;
+            }, System.Threading.CancellationToken.None,
+            System.Threading.Tasks.TaskContinuationOptions.OnlyOnRanToCompletion,
+            System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
 
         stack.Children.Add(image);
 

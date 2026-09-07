@@ -33,6 +33,9 @@ public partial class MainWindow
     private const int CameraSectionCollapseDurationMs = 420;
 
     private WriteableBitmap? _cameraWriteableBitmap;
+    // Tracks the bitmap's allocated pixel dimensions so we can reuse oversized bitmaps.
+    private int _cameraBitmapAllocW;
+    private int _cameraBitmapAllocH;
     private bool _cameraFrameDispatchPending = false;
 
     private bool _isCameraActive => _camera.IsActive;
@@ -443,6 +446,8 @@ public partial class MainWindow
     {
         _cameraPreviewMorphPending = false;
         _cameraWriteableBitmap = null;
+        _cameraBitmapAllocW = 0;
+        _cameraBitmapAllocH = 0;
         _cameraFrameDispatchPending = false;
 
         var (reader, capture, initializingCapture) = _camera.DetachForSafeStop();
@@ -487,9 +492,17 @@ public partial class MainWindow
                     if (!_isCameraActive || frameToken != _camera.FadeToken) return;
 
                     var wbmp = _cameraWriteableBitmap;
-                    if (wbmp == null || wbmp.PixelWidth != w || wbmp.PixelHeight != h)
+                    // Reuse the bitmap when it is large enough; only grow, never shrink.
+                    // This eliminates the repeated LOH allocation caused by tiny resolution
+                    // changes during the webcam's startup negotiation phase.
+                    if (wbmp == null || _cameraBitmapAllocW < w || _cameraBitmapAllocH < h)
                     {
-                        wbmp = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgra32, null);
+                        wbmp = new WriteableBitmap(
+                            Math.Max(w, _cameraBitmapAllocW > 0 ? _cameraBitmapAllocW : w),
+                            Math.Max(h, _cameraBitmapAllocH > 0 ? _cameraBitmapAllocH : h),
+                            96, 96, PixelFormats.Bgra32, null);
+                        _cameraBitmapAllocW = wbmp.PixelWidth;
+                        _cameraBitmapAllocH = wbmp.PixelHeight;
                         _cameraWriteableBitmap = wbmp;
                         CameraPreviewImage.Source = wbmp;
                     }
@@ -530,6 +543,8 @@ public partial class MainWindow
             AnimateCameraSectionToShelf(false);
             _cameraPreviewMorphPending = false;
             _cameraWriteableBitmap = null;
+            _cameraBitmapAllocW = 0;
+            _cameraBitmapAllocH = 0;
             _cameraFrameDispatchPending = false;
 
             double overlayFrom = Math.Clamp(CameraOverlay.Opacity, 0.0, 1.0);

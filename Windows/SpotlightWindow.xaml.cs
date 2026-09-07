@@ -62,8 +62,20 @@ public partial class SpotlightWindow : Window
     private SolidColorBrush? _shellBorderBrush;
     private EventHandler? _freshEntranceRenderingHandler;
     private HwndSource? _hwndSource;
+    private IntPtr _hwnd = IntPtr.Zero;
     private bool _isParked;
     private double _unparkedWindowOpacity = 1;
+
+    private IntPtr EnsureHwnd()
+    {
+        if (_hwnd != IntPtr.Zero) return _hwnd;
+        try
+        {
+            _hwnd = new WindowInteropHelper(this).EnsureHandle();
+        }
+        catch { }
+        return _hwnd;
+    }
 
     private bool _unparkedWindowHitTesting = true;
     private bool _unparkedWindowFocusable = true;
@@ -74,15 +86,17 @@ public partial class SpotlightWindow : Window
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
 
-    internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher)
+    internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null)
     {
         InitializeComponent();
+        if (settings != null) _settings = settings.Clone();
         _viewModel = viewModel;
         _launcher = launcher;
         DataContext = viewModel;
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         PlaceholderText.Text = Loc.Get("spotlight.placeholder");
         SearchBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("spotlight.placeholder"));
+        ApplyLiquidGlassSkin();
 
         // Activation from the global hotkey can land after ShowSpotlight has
         Activated += (_, _) =>
@@ -130,6 +144,8 @@ public partial class SpotlightWindow : Window
         };
     }
 
+    private bool _preparingGlassEntrance;
+
     internal void ShowSpotlight()
     {
         if (_isClosing) return;
@@ -154,6 +170,10 @@ public partial class SpotlightWindow : Window
         if (restoreQuery) SearchBox.SelectAll();
         else _ = _viewModel.SearchAsync(string.Empty);
 
+        _preparingGlassEntrance = true;
+        ApplyLiquidGlassSkin();
+        _liquidGlass?.SetAnimating(true);
+
         // Acquire the source view before Show(). WPF can deactivate MainWindow
         SetMorphSessionActive(true);
         try
@@ -161,6 +181,7 @@ public partial class SpotlightWindow : Window
             RefreshStatus();
             if (_isParked) UnparkWindow();
             else if (!IsVisible) Show();
+            IntPtr hwnd = EnsureHwnd();
             UpdateLayout();
             FocusSearchBox(generation);
             PrepareEntranceContentReservation();
@@ -170,12 +191,17 @@ public partial class SpotlightWindow : Window
                 target.Left,
                 target.Top,
                 generation);
+            UpdateLayout();
+            _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
+            _preparingGlassEntrance = false;
+            if (hwnd != IntPtr.Zero && IsLiquidGlassEnabled) _liquidGlass?.Start();
             ScheduleFreshEntranceAfterComposition(
                 startEntrance,
                 generation);
         }
         catch
         {
+            _preparingGlassEntrance = false;
             CancelPendingFreshEntrance();
             ReleaseMorphSession();
             throw;
@@ -255,7 +281,8 @@ public partial class SpotlightWindow : Window
         CancelPendingFreshEntrance();
 
         // Hide() disconnects an AllowsTransparency layered HWND from WPF's
-        int pulsesRemaining = 2;
+        int pulsesRemaining = 3;
+        long glassWaitStarted = Environment.TickCount64;
         EventHandler handler = null!;
         handler = (_, _) =>
         {
@@ -269,7 +296,17 @@ public partial class SpotlightWindow : Window
                 return;
             }
 
-            if (--pulsesRemaining > 0) return;
+            if (IsLiquidGlassEnabled && _liquidGlass != null && !_liquidGlass.HasPresentedFrame)
+            {
+                // An upload is not a presented frame. Keep the live notch visible
+                // until Spotlight has its own initialized texture and geometry.
+                if (Environment.TickCount64 - glassWaitStarted < 1500) return;
+                Shell.Background = (Brush)FindResource("ShellBrush");
+            }
+            else if (--pulsesRemaining > 1)
+            {
+                return;
+            }
 
             CompositionTarget.Rendering -= handler;
             if (ReferenceEquals(_freshEntranceRenderingHandler, handler))
@@ -433,6 +470,9 @@ public partial class SpotlightWindow : Window
         CancelPendingFreshEntrance();
         ClearMorphAnimations();
         ReleaseMorphSession();
+        CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+        _liquidGlass?.Stop();
+        DetachGpuRefraction();
         _viewModel.Dispose();
         Close();
     }
@@ -450,14 +490,26 @@ public partial class SpotlightWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        _hwndSource = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
-        _hwndSource?.AddHook(WindowProc);
+        _hwnd = EnsureHwnd();
+        if (_hwnd != IntPtr.Zero)
+        {
+            _hwndSource = HwndSource.FromHwnd(_hwnd);
+            _hwndSource?.AddHook(WindowProc);
+        }
+        if (IsLiquidGlassEnabled && IsSpotlightOpen && !_isClosing && !_preparingGlassEntrance)
+        {
+            _liquidGlass?.Start();
+        }
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+        _liquidGlass?.Stop();
+        DetachGpuRefraction();
         _hwndSource?.RemoveHook(WindowProc);
         _hwndSource = null;
+        _hwnd = IntPtr.Zero;
         base.OnClosed(e);
     }
 
@@ -491,6 +543,11 @@ public partial class SpotlightWindow : Window
         IsHitTestVisible = false;
         Opacity = 0;
 
+        _liquidGlass?.ClearLiveRegion();
+        _liquidGlass?.Stop();
+        DetachGpuRefraction();
+        CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+
         // Hide() used to return activation to the previous foreground app.
         IntPtr hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero
@@ -511,6 +568,7 @@ public partial class SpotlightWindow : Window
         IsHitTestVisible = _unparkedWindowHitTesting;
 
         _isParked = false;
+        ApplyLiquidGlassSkin();
     }
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -1628,6 +1686,7 @@ public partial class SpotlightWindow : Window
             startTop = notch.Top;
         }
         bool hasNotchSnapshot = morphsFromNotch
+            && !IsLiquidGlassEnabled
             && PrepareNotchMorphSnapshot();
 
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
@@ -1655,7 +1714,7 @@ public partial class SpotlightWindow : Window
         Top = startTop;
         Shell.Opacity = 1;
         // If capture failed, leave the real source unobscured until the render
-        Shell.Visibility = !morphsFromNotch || hasNotchSnapshot
+        Shell.Visibility = !morphsFromNotch || hasNotchSnapshot || IsLiquidGlassEnabled
             ? Visibility.Visible
             : Visibility.Hidden;
         ShellScale.ScaleX = 1;
@@ -1665,6 +1724,13 @@ public partial class SpotlightWindow : Window
         ShellCornerRadius = startBottomRadius;
         ShellTopCornerRadius = startTopRadius;
         if (morphsFromNotch) Shell.BorderThickness = new Thickness(0);
+        if (IsLiquidGlassEnabled)
+        {
+            NotchMorphSnapshot.Visibility = Visibility.Collapsed;
+            NotchMorphSnapshot.Opacity = 0;
+            if (ShellLeftEar != null) { ShellLeftEar.Opacity = 0; ShellLeftEar.Visibility = Visibility.Collapsed; }
+            if (ShellRightEar != null) { ShellRightEar.Opacity = 0; ShellRightEar.Visibility = Visibility.Collapsed; }
+        }
         ShellContent.Opacity = 0;
         ContentTranslate.Y = 8;
         var contentBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 10 };
@@ -1696,6 +1762,7 @@ public partial class SpotlightWindow : Window
         {
             if (generation != _animationGeneration || _isClosing || !IsSpotlightOpen) return;
 
+            _liquidGlass?.SetAnimating(true);
             Shell.Visibility = Visibility.Visible;
             if (morphsFromNotch)
             {
@@ -1762,6 +1829,8 @@ public partial class SpotlightWindow : Window
         _lastDismissedQuery = null;
         SearchBox.IsEnabled = true;
         SetResultsDimmed(false, animate: false);
+        ApplyLiquidGlassSkin();
+        _liquidGlass?.SetAnimating(true);
 
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.CacheMode = null;
@@ -1860,6 +1929,7 @@ public partial class SpotlightWindow : Window
 
     private void PlayExit(int generation)
     {
+        _liquidGlass?.SetAnimating(true);
         if (AnimationConfig.ReduceMotion)
         {
             CompleteHide();
@@ -1978,7 +2048,7 @@ public partial class SpotlightWindow : Window
         // Shed the panel outline early so the shell arrives looking like the
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
 
-        if (targetTopRadius == 0)
+        if (!IsLiquidGlassEnabled && targetTopRadius == 0)
             AnimateMorphEars(0, 1, TimeSpan.FromMilliseconds(260), TimeSpan.FromMilliseconds(260));
         else
             AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
@@ -2035,6 +2105,8 @@ public partial class SpotlightWindow : Window
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.RenderTransformOrigin = new Point(0.5, 0.5);
         RestoreShadow(animate: false);
+        _liquidGlass?.SetAnimating(false);
+        UpdateGlassClip();
 
         // Results that arrived mid-morph waited for the shell to land. A
         _entranceActive = false;
@@ -2058,6 +2130,10 @@ public partial class SpotlightWindow : Window
         NotchMorphSnapshot.Opacity = 0;
         ClearMorphAnimations();
         ReleaseMorphSession();
+        _liquidGlass?.ClearLiveRegion();
+        _liquidGlass?.Stop();
+        DetachGpuRefraction();
+        CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
         SetResultsDimmed(false, animate: false);
@@ -2102,6 +2178,7 @@ public partial class SpotlightWindow : Window
     private bool PrepareNotchMorphSnapshot()
     {
         ResetNotchMorphSnapshot();
+        if (IsLiquidGlassEnabled) return false;
         ISpotlightMorphHost? morphHost = GetMorphHost();
         if (morphHost == null) return false;
 
@@ -2266,6 +2343,14 @@ public partial class SpotlightWindow : Window
     private void AnimateMorphEars(double fromOpacity, double toOpacity, TimeSpan duration, TimeSpan beginTime)
     {
         if (ShellLeftEar == null || ShellRightEar == null) return;
+        if (IsLiquidGlassEnabled)
+        {
+            ShellLeftEar.Opacity = 0;
+            ShellRightEar.Opacity = 0;
+            ShellLeftEar.Visibility = Visibility.Collapsed;
+            ShellRightEar.Visibility = Visibility.Collapsed;
+            return;
+        }
 
         ShellLeftEar.BeginAnimation(OpacityProperty, null);
         ShellRightEar.BeginAnimation(OpacityProperty, null);
@@ -2350,7 +2435,7 @@ public partial class SpotlightWindow : Window
             CreateAnimation(startOpacity, targetOpacity, duration, ease, synchronizedMorph: true));
     }
 
-    private static DoubleAnimation CreateAnimation(
+    private DoubleAnimation CreateAnimation(
         double from,
         double to,
         TimeSpan duration,
@@ -2359,7 +2444,7 @@ public partial class SpotlightWindow : Window
     {
         var animation = new DoubleAnimation(from, to, duration) { EasingFunction = easing };
         Timeline.SetDesiredFrameRate(animation,
-            synchronizedMorph ? Math.Min(60, AnimationConfig.TargetFps) : AnimationConfig.TargetFps);
+            synchronizedMorph && !IsLiquidGlassEnabled ? Math.Min(60, AnimationConfig.TargetFps) : AnimationConfig.TargetFps);
         return animation;
     }
 
@@ -2402,6 +2487,7 @@ public partial class SpotlightWindow : Window
             var corners = new CornerRadius(top, top, bottom, bottom);
             window.Shell.CornerRadius = corners;
             window.NotchMorphSnapshot.CornerRadius = corners;
+            window.SyncGlassCornerRadius(corners);
         }
     }
 

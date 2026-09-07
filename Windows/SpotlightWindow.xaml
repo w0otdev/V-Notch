@@ -1,6 +1,7 @@
 <Window x:Class="VNotch.SpotlightWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
         xmlns:controls="clr-namespace:VNotch.Controls"
         Title="V-Notch Spotlight"
         Width="720"
@@ -14,12 +15,15 @@
         Topmost="True"
         WindowStartupLocation="Manual"
         Opacity="0"
-        FontFamily="{StaticResource SFProDisplay}"
+        FontFamily="{DynamicResource SFProDisplay}"
         FontWeight="Bold"
         PreviewKeyDown="Window_PreviewKeyDown"
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">
     <Window.Resources>
+        <FontFamily x:Key="SFProDisplay">Segoe UI</FontFamily>
+        <FontFamily x:Key="SFProText">Segoe UI</FontFamily>
+        <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
         <controls:SpotlightHotkeyConverter x:Key="HotkeyConverter"/>
 
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F4FFFFFF"/>
@@ -238,6 +242,178 @@
                   VerticalAlignment="Top"
                   IsHitTestVisible="False"
                   Opacity="0"/>
+
+            <!-- Final rounded clip for the complete material stack. It is
+                 intentionally outside every blurred child so post-effects
+                 cannot spread blur into the transparent canvas corners. -->
+            <Grid x:Name="GlassMaterialClipHost"
+                  IsHitTestVisible="False"
+                  SizeChanged="GlassMaterialClipHost_SizeChanged">
+                <Border x:Name="GlassBackdropHost"
+                        IsHitTestVisible="False"
+                        ClipToBounds="True"
+                        Visibility="Collapsed"
+                        CornerRadius="14">
+                    <Image x:Name="GlassBackdropImage"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           Stretch="Fill"
+                           Margin="0"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                </Border>
+
+                <Border x:Name="GlassGrainOverlay"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        CornerRadius="14"/>
+
+                <Border x:Name="GlassTintOverlay"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        CornerRadius="14">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1" po:Freeze="True">
+                            <GradientStop Color="#0CFFFFFF" Offset="0"/>
+                            <GradientStop Color="#06FFFFFF" Offset="0.5"/>
+                            <GradientStop Color="#160A0E14" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Optical rim stack: depth, spectral split, Fresnel,
+                     broken edge reflection and a focused specular glint. -->
+                <Border x:Name="GlassDepthRimBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="1.2"
+                        CornerRadius="14">
+                    <Border.BorderBrush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" po:Freeze="True">
+                            <GradientStop Color="#00000000" Offset="0"/>
+                            <GradientStop Color="#08000000" Offset="0.42"/>
+                            <GradientStop Color="#B8000000" Offset="0.78"/>
+                            <GradientStop Color="#54000000" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.BorderBrush>
+                </Border>
+
+                <Border x:Name="GlassCoolRimBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="1.8"
+                        CornerRadius="14">
+                    <Border.BorderBrush>
+                        <RadialGradientBrush Center="0.14,0.72"
+                                               GradientOrigin="0.14,0.72"
+                                               RadiusX="0.68" RadiusY="0.82"
+                                               po:Freeze="True">
+                            <GradientStop Color="#E57D92FF" Offset="0"/>
+                            <GradientStop Color="#8871C8FF" Offset="0.26"/>
+                            <GradientStop Color="#247BDFFF" Offset="0.58"/>
+                            <GradientStop Color="#007BDFFF" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Border.BorderBrush>
+                </Border>
+
+                <Border x:Name="GlassWarmRimBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="1.65"
+                        CornerRadius="14">
+                    <Border.BorderBrush>
+                        <RadialGradientBrush Center="0.9,0.2"
+                                               GradientOrigin="0.9,0.2"
+                                               RadiusX="0.58" RadiusY="0.76"
+                                               po:Freeze="True">
+                            <GradientStop Color="#E5FFD27A" Offset="0"/>
+                            <GradientStop Color="#7CFFAB5C" Offset="0.3"/>
+                            <GradientStop Color="#18FF9348" Offset="0.64"/>
+                            <GradientStop Color="#00FF9348" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Border.BorderBrush>
+                </Border>
+
+                <Border x:Name="GlassFresnelBloomBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="3.2"
+                        CornerRadius="14"
+                        BorderBrush="Transparent">
+                    <Border.Effect>
+                        <BlurEffect Radius="3.2"
+                                    KernelType="Gaussian"
+                                    RenderingBias="Quality"/>
+                    </Border.Effect>
+                </Border>
+
+                <Border x:Name="GlassFresnelBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="1.15"
+                        CornerRadius="14"
+                        BorderBrush="Transparent"/>
+
+                <Border x:Name="GlassInnerFresnelBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        Margin="1.15"
+                        BorderThickness="0.8"
+                        CornerRadius="13"
+                        BorderBrush="Transparent"/>
+
+                <Border x:Name="GlassDarkOverlay"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        CornerRadius="14"
+                        Background="#90000000"/>
+
+                <Border x:Name="GlassRimBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="0.75"
+                        CornerRadius="14">
+                    <Border.BorderBrush>
+                        <LinearGradientBrush StartPoint="0.04,0" EndPoint="0.96,1" po:Freeze="True">
+                            <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                            <GradientStop Color="#B8E9F7FF" Offset="0.16"/>
+                            <GradientStop Color="#30FFFFFF" Offset="0.38"/>
+                            <GradientStop Color="#18000000" Offset="0.57"/>
+                            <GradientStop Color="#A6000000" Offset="0.76"/>
+                            <GradientStop Color="#48FFFFFF" Offset="0.91"/>
+                            <GradientStop Color="#D8FFFFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.BorderBrush>
+                </Border>
+
+                <Border x:Name="GlassSpecularBorder"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        BorderThickness="1.15"
+                        CornerRadius="14">
+                    <Border.BorderBrush>
+                        <RadialGradientBrush Center="0.22,0.08"
+                                               GradientOrigin="0.18,0.02"
+                                               RadiusX="0.38" RadiusY="0.62"
+                                               po:Freeze="True">
+                            <GradientStop Color="#FFFFFFFF" Offset="0"/>
+                            <GradientStop Color="#FFFFFFFF" Offset="0.13"/>
+                            <GradientStop Color="#8CFFFFFF" Offset="0.34"/>
+                            <GradientStop Color="#10FFFFFF" Offset="0.68"/>
+                            <GradientStop Color="#00FFFFFF" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Border.BorderBrush>
+                </Border>
+            </Grid>
 
             <!-- ClipToBounds keeps rows inside the shell while its explicit
                  morph height is smaller than the content's natural height. -->

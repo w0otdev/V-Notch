@@ -62,6 +62,7 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
             // 3. Fallback to UriSource
             ps.UriSource = resourceUri;
             IsAvailable = true;
+            if (ps.CanFreeze) ps.Freeze();
             return ps;
         }
         catch (Exception ex)
@@ -69,6 +70,11 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
             RuntimeLog.Log("LIQUIDGLASS", $"GPU shader load failed: {ex.Message}");
             IsAvailable = false;
             return ps;
+        }
+        finally
+        {
+            if (ps.CanFreeze && !ps.IsFrozen)
+                ps.Freeze();
         }
     }
 

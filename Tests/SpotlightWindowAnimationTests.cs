@@ -199,7 +199,7 @@ public sealed class SpotlightWindowAnimationTests
                 window.SearchBox.Text = "new";
                 PumpFor(TimeSpan.FromMilliseconds(100));
                 Assert.Equal(Visibility.Collapsed, window.StatusPanel.Visibility);
-                PumpFor(TimeSpan.FromMilliseconds(300));
+                PumpUntil(() => window.StatusPanel.Visibility == Visibility.Visible, TimeSpan.FromSeconds(3));
                 Assert.Equal(Visibility.Visible, window.StatusPanel.Visibility);
                 window.DismissFromGlobalShortcut();
                 window.DismissFromGlobalShortcut();
@@ -217,7 +217,6 @@ public sealed class SpotlightWindowAnimationTests
                 window?.Shutdown();
                 AnimationConfig.SetReduceMotion(originalReduceMotion);
                 if (File.Exists(usagePath)) File.Delete(usagePath);
-                application?.Shutdown();
             }
         });
     }
@@ -527,31 +526,7 @@ public sealed class SpotlightWindowAnimationTests
             $"Expected {actual:F3} to remain within {tolerance:F3} of {expected:F3}.");
     }
 
-    private static void RunSta(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                SynchronizationContext.SetSynchronizationContext(
-                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-                action();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-            finally
-            {
-                Dispatcher.CurrentDispatcher.InvokeShutdown();
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(45)), "STA test thread timed out.");
-        if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
-    }
+    private static void RunSta(Action action) => SharedStaTestRunner.Run(action, 45);
 
     private readonly record struct MorphRect(
         double Left,

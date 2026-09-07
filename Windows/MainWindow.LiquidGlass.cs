@@ -15,6 +15,8 @@ public partial class MainWindow
     private LiquidGlassRefractionEffect? _glassRefractionEffect;
     private LiquidGlassInteractionController? _glassInteractionController;
     private bool _gpuRefractionConfigured;
+    private bool _glassInitialFramePending;
+    private double _glassConfiguredOpacity = 1.0;
 
     private bool UseGpuRefraction =>
         (_settings.LiquidGlass?.UseGpuRefraction ?? true) &&
@@ -29,6 +31,12 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled)
         {
+            // The first Magnifier callback can still contain this HWND while DWM
+            // applies its exclusion list. Keep the material transparent until a
+            // complete frame is actually presented, so that transient feedback
+            // cannot expose the opaque fallback as a black notch.
+            bool needsInitialFrame = _liquidGlass?.HasPresentedFrame != true;
+            _glassInitialFramePending = needsInitialFrame;
             NotchBackground.Opacity = 0;
             ExpandedContent.Background = System.Windows.Media.Brushes.Transparent;
 
@@ -51,6 +59,8 @@ public partial class MainWindow
                 return;
             }
 
+            if (needsInitialFrame)
+                GlassBackdropHost.Opacity = 0;
             GlassBackdropHost.Visibility = Visibility.Visible;
             GlassTintOverlay.Visibility = Visibility.Visible;
             SetOpticalRimVisibility(Visibility.Visible);
@@ -91,6 +101,7 @@ public partial class MainWindow
         }
         else
         {
+            _glassInitialFramePending = false;
             _liquidGlass?.Stop();
             DetachGpuRefraction();
 
@@ -150,7 +161,9 @@ public partial class MainWindow
         // GPU mode blurs on the host element instead of the CPU box blur.
         ApplyGpuBlur(cfg.BlurAmount);
 
-        GlassBackdropHost.Opacity = Math.Clamp(cfg.Opacity, 0, 1);
+        _glassConfiguredOpacity = Math.Clamp(cfg.Opacity, 0, 1);
+        if (!_glassInitialFramePending)
+            GlassBackdropHost.Opacity = _glassConfiguredOpacity;
 
         if (GlassGrainOverlay != null)
         {
@@ -475,7 +488,7 @@ public partial class MainWindow
     }
 
     // Dark base shown behind the live glass image if a frame is unavailable
-    private static readonly SolidColorBrush _glassBaseFill = Frozen(0xFF, 0x0B, 0x0E, 0x12);
+    private static readonly SolidColorBrush _glassBaseFill = Frozen(0x18, 0x0B, 0x0E, 0x12);
 
     private void SetOpticalRimVisibility(Visibility visibility)
     {
@@ -1171,6 +1184,13 @@ public partial class MainWindow
     private void OnLiquidGlassFrameUpdate(object? sender, EventArgs e)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled) return;
+
+        if (_glassInitialFramePending && _liquidGlass.HasPresentedFrame)
+        {
+            _glassInitialFramePending = false;
+            GlassBackdropHost.BeginAnimation(OpacityProperty, null);
+            GlassBackdropHost.Opacity = _glassConfiguredOpacity;
+        }
 
         double curHeight = GlassBackdropHost?.ActualHeight ?? 0;
         if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
