@@ -86,7 +86,6 @@ namespace VNotch.Controls
         private const double DownwardDropBoost = 0.18;
         private const double MinReleaseAlpha = 0.66;
         private const double MotionContrast = 1.22;
-        private const double LeftMiniBarSensitivity = 0.78;
         private const double RightBiasStrength = 0.12;
         private const double RightBiasDeadzone = 0.025;
         private const double MinHeightChangeThreshold = 0.0012;
@@ -229,6 +228,7 @@ namespace VNotch.Controls
             InvalidateVisual();
         }
 
+#pragma warning disable S3776 // Cognitive complexity is inherent to the multi-state audio reactivity animation loop
         private bool UpdateAnimation(double dt, double totalSec)
         {
             bool isSettled = true;
@@ -265,7 +265,7 @@ namespace VNotch.Controls
                     double band = Math.Clamp(levels[i], 0.0, 1.0);
                     double crossBandLift = Math.Clamp(audioEnergy * AudioReactiveCrossBandLift, 0.0, 0.16);
                     double audioShaped = Math.Pow(Math.Clamp(band + crossBandLift, 0.0, 1.0), 0.88);
-                    double rhythm = GetAudioReactiveRhythmAt(i, totalSec, sid, audioEnergy);
+                    double rhythm = GetAudioReactiveRhythmAt(i, totalSec, audioEnergy);
                     double rhythmMixBase = LegacyRhythmMinMix + ((1.0 - audioEnergy) * (LegacyRhythmMaxMix - LegacyRhythmMinMix));
                     double rhythmMix = Math.Clamp(
                         rhythmMixBase + (AudioReactiveRhythmPush * (0.35 + audioEnergy)),
@@ -273,21 +273,16 @@ namespace VNotch.Controls
                         0.30);
                     double normalized = (audioShaped * (1.0 - rhythmMix)) + (rhythm * rhythmMix);
                     normalized += (rhythm - 0.5) * (0.08 + (audioEnergy * 0.08));
-                    normalized = Math.Max(normalized, GetAudioReactiveFloor(i, totalSec, sid, audioEnergy, beatAccent));
+                    normalized = Math.Max(normalized, GetAudioReactiveFloor(i, totalSec, audioEnergy, beatAccent));
                     normalized = Math.Clamp(normalized + (beatAccent * GetBeatLiftWeight(i) * 0.42), 0.0, 1.0);
-                    normalized = ApplyMiniBarSensitivity(i, normalized);
+                    normalized = ApplyMiniBarSensitivity(normalized);
                     normalized = ApplyBarPersonality(i, normalized, audioEnergy);
                     normalized = ApplyMotionContrast(normalized);
                     targetH = MapNormalizedToHeight(normalized);
                 }
-                else if (_state == VisualizerState.Playing)
+                else if (_state is VisualizerState.Playing or VisualizerState.Seeking)
                 {
-                    double normalized = ApplyMotionContrast(GetNoAudioPulseAt(i, totalSec, sid));
-                    targetH = MapNormalizedToHeight(normalized);
-                }
-                else if (_state == VisualizerState.Seeking)
-                {
-                    double normalized = ApplyMotionContrast(GetNoAudioPulseAt(i, totalSec, sid));
+                    double normalized = ApplyMotionContrast(GetNoAudioPulseAt(i, totalSec));
                     targetH = MapNormalizedToHeight(normalized);
                 }
                 else if (_state == VisualizerState.Paused)
@@ -352,8 +347,9 @@ namespace VNotch.Controls
 
             return isSettled;
         }
+#pragma warning restore S3776
 
-        private double MapNormalizedToHeight(double normalized)
+        private static double MapNormalizedToHeight(double normalized)
         {
             double clamped = Math.Clamp(normalized, 0.0, 1.0);
             return MinHeightRatio + clamped * (MaxHeightRatio - MinHeightRatio);
@@ -365,7 +361,7 @@ namespace VNotch.Controls
             return Math.Clamp(0.5 + ((clamped - 0.5) * MotionContrast), 0.0, 1.0);
         }
 
-        private static double ApplyMiniBarSensitivity(int barIndex, double normalized)
+        private static double ApplyMiniBarSensitivity(double normalized)
         {
             return Math.Clamp(normalized, 0.0, 1.0);
         }
@@ -398,7 +394,7 @@ namespace VNotch.Controls
             return Math.Clamp(shaped + energyLift, 0.0, 1.0);
         }
 
-        private double GetNoAudioPulseAt(int index, double t, string sid)
+        private double GetNoAudioPulseAt(int index, double t)
         {
             uint hash = _noAudioHash[index];
             double phase = (hash % 1000) / 1000.0 * Math.PI * 2;
@@ -422,7 +418,7 @@ namespace VNotch.Controls
             };
         }
 
-        private double GetAudioReactiveFloor(int index, double t, string sid, double energy, double beatAccent)
+        private double GetAudioReactiveFloor(int index, double t, double energy, double beatAccent)
         {
             uint hash = _floorHash[index];
             double phase = (hash % 1000) / 1000.0 * Math.PI * 2;
@@ -444,7 +440,7 @@ namespace VNotch.Controls
             return Math.Clamp(floor, 0.0, 0.26);
         }
 
-        private double GetAudioReactiveRhythmAt(int index, double t, string sid, double energy)
+        private double GetAudioReactiveRhythmAt(int index, double t, double energy)
         {
             uint hash = _noAudioHash[index];
             double phase = (hash % 1000) / 1000.0 * Math.PI * 2;
@@ -473,7 +469,7 @@ namespace VNotch.Controls
             }
         }
 
-        private uint GetDeterministicHash(string str)
+        private static uint GetDeterministicHash(string str)
         {
             uint hash = 2166136261;
             foreach (char c in str)
@@ -513,6 +509,7 @@ namespace VNotch.Controls
             StartAudioCapture();
         }
 
+#pragma warning disable S2696 // Multi-instance visualizers coordinate a single shared loopback audio capture lease
         private void AcquireCaptureLease()
         {
             lock (_lockObj)
@@ -540,6 +537,7 @@ namespace VNotch.Controls
 
             if (stopPhysical) StopAudioCapture();
         }
+#pragma warning restore S2696
 
         private void PrepareDrawHeights()
         {
@@ -590,7 +588,7 @@ namespace VNotch.Controls
         private Color _cachedGradientBaseColor;
         private LinearGradientBrush? _cachedBarGradient;
 
-        private LinearGradientBrush GetBarGradientBrush(double top, double bottom)
+        private LinearGradientBrush GetBarGradientBrush()
         {
             Color baseColor;
             if (ActiveBrush is SolidColorBrush scb)
@@ -624,7 +622,7 @@ namespace VNotch.Controls
             _cachedDpi = newDpi;
         }
 
-        protected override void OnRender(DrawingContext dc)
+        protected override void OnRender(DrawingContext drawingContext)
         {
             double width = ActualWidth;
             double height = ActualHeight;
@@ -642,11 +640,11 @@ namespace VNotch.Controls
 
             double snappedW = Math.Max(1.0, Math.Round(barWidth * dpi.DpiScaleX) / dpi.DpiScaleX);
 
-            dc.PushOpacity(_currentOpacity);
+            drawingContext.PushOpacity(_currentOpacity);
 
             PrepareDrawHeights();
 
-            var gradientBrush = GetBarGradientBrush(0, height);
+            var gradientBrush = GetBarGradientBrush();
 
             for (int i = 0; i < BarCount; i++)
             {
@@ -664,12 +662,12 @@ namespace VNotch.Controls
 
                 double radius = snappedW * CornerRadiusRatio;
 
-                dc.DrawRoundedRectangle(gradientBrush, null,
+                drawingContext.DrawRoundedRectangle(gradientBrush, null,
                     new Rect(snappedX, snappedTop, snappedW, snappedH),
                     radius, radius);
             }
 
-            dc.Pop();
+            drawingContext.Pop();
         }
 
         #region Audio Loopback Capture
@@ -1108,6 +1106,7 @@ namespace VNotch.Controls
             return Math.Pow(normalized, CompressionPower);
         }
 
+#pragma warning disable S107 // High parameter count is required for passing 6 FFT frequency bands and 3 transient components by ref
         private static void ApplySpectralContrast(ref double subBass, ref double bass, ref double lowMid, ref double mid, ref double highMid, ref double high, ref double kick, ref double snare, ref double rms)
         {
             double max = Math.Max(Math.Max(Math.Max(subBass, bass), Math.Max(lowMid, mid)), Math.Max(highMid, high));
@@ -1154,6 +1153,7 @@ namespace VNotch.Controls
             snare = ExpandDynamicRange(snare);
             rms = ExpandDynamicRange(rms);
         }
+#pragma warning restore S107
 
         private static double EnhanceBand(double band, double avg, double contrast)
         {

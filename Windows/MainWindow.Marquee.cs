@@ -11,7 +11,6 @@ public partial class MainWindow
         TrackTitleNextLayer, TrackTitleNext, TitleMarqueeTranslateNext, TitleMorphTranslateNext,
         TrackArtistLayer, TrackArtist, ArtistMarqueeTranslate, ArtistMorphTranslate,
         TrackArtistNextLayer, TrackArtistNext, ArtistMarqueeTranslateNext, ArtistMorphTranslateNext,
-        CompactTitleMarquee, CompactTitleMarqueeTranslate,
         GetVisibleMediaTextWidth);
 
     private void RefreshMediaMarquee() => Marquee.RefreshMediaMarquee();

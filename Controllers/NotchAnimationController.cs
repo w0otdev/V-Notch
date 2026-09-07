@@ -10,19 +10,9 @@ public sealed class NotchAnimationController
 {
     private readonly NotchStateManager _stateManager;
 
-    private bool _isAnimating;
-    public bool IsAnimating
-    {
-        get => _isAnimating;
-        set => _isAnimating = value;
-    }
+    public bool IsAnimating { get; set; }
 
-    private (double X, double Y)? _cachedThumbnailExpandTarget;
-    public (double X, double Y)? CachedThumbnailExpandTarget
-    {
-        get => _cachedThumbnailExpandTarget;
-        set => _cachedThumbnailExpandTarget = value;
-    }
+    public (double X, double Y)? CachedThumbnailExpandTarget { get; set; }
 
     private DoubleAnimation? _cachedThumbWidthExpand;
     private DoubleAnimation? _cachedThumbHeightExpand;
@@ -49,21 +39,21 @@ public sealed class NotchAnimationController
     }
 
     public bool IsExpanded => _stateManager.IsExpanded;
-    public bool CanExpand => !_isAnimating && !IsExpanded;
-    public bool CanCollapse => !_isAnimating && IsExpanded;
+    public bool CanExpand => !IsAnimating && !IsExpanded;
+    public bool CanCollapse => !IsAnimating && IsExpanded;
 
     public bool TryBeginExpand()
     {
         if (!CanExpand) return false;
         if (!_stateManager.TryTransitionTo(NotchState.Expanding)) return false;
-        _isAnimating = true;
+        IsAnimating = true;
         ExpandStarted?.Invoke();
         return true;
     }
 
     public void CompleteExpand()
     {
-        _isAnimating = false;
+        IsAnimating = false;
         _stateManager.TryTransitionTo(NotchState.Expanded);
         ExpandCompleted?.Invoke();
     }
@@ -72,14 +62,14 @@ public sealed class NotchAnimationController
     {
         if (!CanCollapse) return false;
         if (!_stateManager.TryTransitionTo(NotchState.Collapsing)) return false;
-        _isAnimating = true;
+        IsAnimating = true;
         CollapseStarted?.Invoke();
         return true;
     }
 
     public void CompleteCollapse()
     {
-        _isAnimating = false;
+        IsAnimating = false;
         _stateManager.TryTransitionTo(NotchState.Collapsed);
         CollapseCompleted?.Invoke();
     }
@@ -107,7 +97,7 @@ public sealed class NotchAnimationController
             _cachedThumbRectExpand.Freeze();
         }
 
-        return (_cachedThumbWidthExpand!, _cachedThumbHeightExpand!, _cachedThumbRectExpand!);
+        return (_cachedThumbWidthExpand, _cachedThumbHeightExpand, _cachedThumbRectExpand);
     }
 
     public (DoubleAnimation width, DoubleAnimation height, RectAnimation rect) GetOrCreateCollapseThumbAnims(
@@ -133,7 +123,7 @@ public sealed class NotchAnimationController
             _cachedThumbRectCollapse.Freeze();
         }
 
-        return (_cachedThumbWidthCollapse!, _cachedThumbHeightCollapse!, _cachedThumbRectCollapse!);
+        return (_cachedThumbWidthCollapse, _cachedThumbHeightCollapse, _cachedThumbRectCollapse);
     }
 
     public void InvalidateThumbCache()

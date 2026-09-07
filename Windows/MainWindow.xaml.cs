@@ -45,6 +45,8 @@ public partial class MainWindow : Window
     private NotchSettings _settings;
 
     private readonly NotchShellState _shellState = new();
+    private const string CollapseBlockedLogTag = "COLLAPSE-BLOCKED";
+    private const string CollapseTriggerLogTag = "COLLAPSE-TRIGGER";
 
     private bool _isNotchVisible
     {
@@ -57,11 +59,7 @@ public partial class MainWindow : Window
         set => _shellState.IsHiddenByFullscreen = value;
     }
 
-    private IntPtr _hwnd
-    {
-        get => _shellState.Hwnd;
-        set => _shellState.Hwnd = value;
-    }
+    private IntPtr _hwnd => _shellState.Hwnd;
 
     private readonly OverlayWindowController _overlayWindow;
     private readonly ClipboardListenerController _clipboardListener;
@@ -89,12 +87,10 @@ public partial class MainWindow : Window
 
     private readonly NotchStateManager _notchState = new();
 
-    private readonly NotchAnimationController _animController;
-    private readonly MusicWidgetController _musicController;
     private readonly MediaDisplayController _mediaDisplayController;
     private readonly FullscreenAutoHideController _fullscreenController;
     private readonly BluetoothNotificationController _bluetoothController;
-    private DragDropController _dragDropController = null!;
+    private DragDropController _dragDropController;
     private readonly TimerManager _timerManager;
 
     private bool _isAnimating
@@ -108,13 +104,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool _isExpandedBacking;
     private bool _isExpanded
     {
         get => _notchState.IsExpanded;
         set
         {
-            _isExpandedBacking = value;
+            _notchState.IsExpanded = value;
             UpdateGlassMotionState();
         }
     }
@@ -132,11 +127,7 @@ public partial class MainWindow : Window
         set => _shellState.CollapsedHeight = value;
     }
     private bool _modeTransitionPending;
-    private double _expandedWidth
-    {
-        get => _shellState.ExpandedWidth;
-        set => _shellState.ExpandedWidth = value;
-    }
+    private double _expandedWidth => _shellState.ExpandedWidth;
     private double _expandedHeight
     {
         get => _shellState.ExpandedHeight;
@@ -147,11 +138,7 @@ public partial class MainWindow : Window
         get => _shellState.CornerRadiusCollapsed;
         set => _shellState.CornerRadiusCollapsed = value;
     }
-    private double _cornerRadiusExpanded
-    {
-        get => _shellState.CornerRadiusExpanded;
-        set => _shellState.CornerRadiusExpanded = value;
-    }
+    private double _cornerRadiusExpanded => _shellState.CornerRadiusExpanded;
     private int _fixedX
     {
         get => _shellState.FixedX;
@@ -162,7 +149,7 @@ public partial class MainWindow : Window
         get => _shellState.FixedY;
         set => _shellState.FixedY = value;
     }
-    private int _windowWidth { get => _shellState.WindowWidth; set => _shellState.WindowWidth = value; }
+    private int _windowWidth => _shellState.WindowWidth;
     private int _windowHeight { get => _shellState.WindowHeight; set => _shellState.WindowHeight = value; }
 
     private MediaInfo? _currentMediaInfo;
@@ -195,7 +182,6 @@ public partial class MainWindow : Window
     private static readonly SolidColorBrush _brushWhite = CreateFrozenBrush(255, 255, 255);
     private static readonly SolidColorBrush _brushBlack = CreateFrozenBrush(0, 0, 0);
     private static readonly SolidColorBrush _brushTransparent = CreateFrozenBrush(0, 0, 0, 0);
-    private static readonly SolidColorBrush _brushGray = CreateFrozenBrush(102, 102, 102);
 
     private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b, byte a = 255)
     {
@@ -220,6 +206,7 @@ public partial class MainWindow : Window
 
     #endregion
 
+#pragma warning disable S107, S3776 // WPF Main window composition root accepts injected modules and sets up initial UI event wiring
     public MainWindow(
         ISettingsService settingsService,
         IMediaDetectionService mediaService,
@@ -248,8 +235,6 @@ public partial class MainWindow : Window
         _updateService = updateService;
         _spotlightController = spotlightController;
 
-        _animController = new NotchAnimationController(_notchState);
-        _musicController = new MusicWidgetController(_notchState);
         _mediaDisplayController = new MediaDisplayController();
         InitializeCameraController();
         _fullscreenController = new FullscreenAutoHideController(() => _hwnd, _settings);
@@ -357,19 +342,19 @@ public partial class MainWindow : Window
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
                 {
-                    RuntimeLog.Log("COLLAPSE-BLOCKED",
+                    RuntimeLog.Log(CollapseBlockedLogTag,
                         $"HoverCollapseTimer suppressed at fire time: remaining={(_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds:F0}ms");
                     return;
                 }
 
                 if (_hwnd != IntPtr.Zero && IsCursorInsideWindow())
                 {
-                    RuntimeLog.Log("COLLAPSE-BLOCKED",
-                        $"HoverCollapseTimer: WPF says IsMouseOver=False but cursor is inside window rect â€” suppressing");
+                    RuntimeLog.Log(CollapseBlockedLogTag,
+                        $"HoverCollapseTimer: WPF says IsMouseOver=False but cursor is inside window rect — suppressing");
                     return;
                 }
 
-                RuntimeLog.Log("COLLAPSE-TRIGGER",
+                RuntimeLog.Log(CollapseTriggerLogTag,
                     $"HoverCollapseTimer fired: isExpanded={_isExpanded} isMouseOver={NotchWrapper.IsMouseOver} " +
                     $"isSecondary={_isSecondaryView} isMusicExpanded={_isMusicExpanded}");
                 CollapseNotch();
@@ -423,6 +408,7 @@ public partial class MainWindow : Window
         InitializeBluetoothNotificationController();
         InitializeIdleAutoHide();
     }
+#pragma warning restore S107, S3776
 
     #region Window Lifecycle
 
@@ -456,7 +442,7 @@ public partial class MainWindow : Window
         ConfigureOverlayWindow();
         PositionAtTop();
         StartZOrderWatchdog();
-        UpdateFullscreenAutoHideState(_overlayWindow.GetForegroundWindowHandle(), force: true);
+        UpdateFullscreenAutoHideState(OverlayWindowController.GetForegroundWindowHandle(), force: true);
 
         _updateTimer.Start();
         _updateCheckTimer.Start();
@@ -495,7 +481,7 @@ public partial class MainWindow : Window
                 isMusicExpanded: false,
                 isAnimating: _isAnimating))
         {
-            RuntimeLog.Log("COLLAPSE-TRIGGER",
+            RuntimeLog.Log(CollapseTriggerLogTag,
                 $"WM_ACTIVATEAPP(deactivate) -> CollapseNotch: isSecondary={_isSecondaryView} isTimer={_isTimerView}");
             CollapseNotch();
         }
@@ -512,7 +498,7 @@ public partial class MainWindow : Window
                 _isMusicExpanded,
                 _isAnimating))
         {
-            RuntimeLog.Log("COLLAPSE-TRIGGER",
+            RuntimeLog.Log(CollapseTriggerLogTag,
                 $"Deactivated event -> CollapseAll: isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded} isSecondary={_isSecondaryView} isTimer={_isTimerView}");
             CollapseAll();
         }
@@ -593,7 +579,7 @@ public partial class MainWindow : Window
     }
 
     // The ViewModel is the single production subscriber to media state.  This window
-    private void ViewModel_MediaInfoUpdated(object? sender, MediaInfo info) => OnMediaChanged(sender, info);
+    private void ViewModel_MediaInfoUpdated(object? sender, MediaInfo info) => OnMediaChanged(info);
 
     protected override void OnClosed(EventArgs e)
     {
@@ -727,7 +713,7 @@ public partial class MainWindow : Window
         {
             if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
             {
-                RuntimeLog.Log("COLLAPSE-TRIGGER",
+                RuntimeLog.Log(CollapseTriggerLogTag,
                     $"FullscreenAutoHide -> CollapseAll: shouldHide={shouldHide} isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded}");
                 CollapseAll();
             }
@@ -757,7 +743,7 @@ public partial class MainWindow : Window
             };
             _fullscreenRecheckTimer.Tick += (s, e) =>
             {
-                _fullscreenRecheckTimer!.Stop();
+                _fullscreenRecheckTimer.Stop();
                 UpdateFullscreenAutoHideState(force: true);
             };
         }
@@ -812,11 +798,6 @@ public partial class MainWindow : Window
         _zOrderManager.TriggerBurst(duration, aggressive);
     }
 
-    private void AssertTopmostNow()
-    {
-        _zOrderManager.AssertNow();
-    }
-
     private static string TryGetProcessName(IntPtr hwnd) => FullscreenDetector.TryGetProcessName(hwnd);
 
     private static bool IsMyDockFinder(string processName)
@@ -834,7 +815,7 @@ public partial class MainWindow : Window
 
         if (_hwnd != IntPtr.Zero)
         {
-            UpdateFullscreenAutoHideState(_overlayWindow.GetForegroundWindowHandle(), force: true);
+            UpdateFullscreenAutoHideState(OverlayWindowController.GetForegroundWindowHandle(), force: true);
         }
     }
 
@@ -1047,6 +1028,7 @@ public partial class MainWindow : Window
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
     }
 
+#pragma warning disable S3776 // Complex modal settings configuration and reactive subsystem update dispatch
     private void OpenAppSettings()
     {
         var settingsWindow = new SettingsWindow(
@@ -1121,10 +1103,6 @@ public partial class MainWindow : Window
             }
         };
 
-        settingsWindow.AnimatedClosing += (s, e) =>
-        {
-        };
-
         settingsWindow.Closed += (s, e) =>
         {
             PlayNotchReturnBounce();
@@ -1133,7 +1111,9 @@ public partial class MainWindow : Window
 
         settingsWindow.ShowDialog();
     }
+#pragma warning restore S3776
 
+#pragma warning disable S3776 // Synchronizes multiple WPF visual tree elements with application configuration
     private void ApplySettings(bool animatePulse = false)
     {
         VNotch.Services.AnimationConfig.Configure(_settings.AnimationFps);
@@ -1170,7 +1150,7 @@ public partial class MainWindow : Window
 
         if (_hwnd != IntPtr.Zero)
         {
-            UpdateFullscreenAutoHideState(_overlayWindow.GetForegroundWindowHandle(), force: true);
+            UpdateFullscreenAutoHideState(OverlayWindowController.GetForegroundWindowHandle(), force: true);
         }
 
         _collapsedWidth = GetCollapsedWidth();
@@ -1203,18 +1183,7 @@ public partial class MainWindow : Window
 
             if (isFirstLayout)
             {
-                NotchBorder.Width = _collapsedWidth;
-                NotchBorder.Height = _collapsedHeight;
-
-                var cr = MakeNotchCornerRadius(_cornerRadiusCollapsed);
-                NotchBorder.CornerRadius = cr;
-                InnerClipBorder.CornerRadius = cr;
-                NotchBackground.CornerRadius = cr;
-                NotchBorderShadow.CornerRadius = cr;
-                MediaBackground.CornerRadius = cr;
-                MediaBackground2.CornerRadius = cr;
-                SyncGlassCornerRadius(cr);
-                CurrentCornerRadius = _cornerRadiusCollapsed;
+                ApplyCollapsedLayoutDirect();
             }
             else if (willModeTransition)
             {
@@ -1222,6 +1191,7 @@ public partial class MainWindow : Window
             }
             else if (_isModeTransitioning)
             {
+                // Mode transition in flight, maintain current animated dimensions
             }
             else if (animatePulse && (Math.Abs(NotchBorder.ActualWidth - _collapsedWidth) > 0.5 ||
                                       Math.Abs(NotchBorder.ActualHeight - _collapsedHeight) > 0.5 ||
@@ -1283,17 +1253,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                NotchBorder.Width = _collapsedWidth;
-                NotchBorder.Height = _collapsedHeight;
-                var cr = MakeNotchCornerRadius(_cornerRadiusCollapsed);
-                NotchBorder.CornerRadius = cr;
-                InnerClipBorder.CornerRadius = cr;
-                NotchBackground.CornerRadius = cr;
-                NotchBorderShadow.CornerRadius = cr;
-                MediaBackground.CornerRadius = cr;
-                MediaBackground2.CornerRadius = cr;
-                SyncGlassCornerRadius(cr);
-                CurrentCornerRadius = _cornerRadiusCollapsed;
+                ApplyCollapsedLayoutDirect();
             }
 
             UpdateNotchClip();
@@ -1382,6 +1342,22 @@ public partial class MainWindow : Window
         {
             _overlayWindow.ReassertBounds();
         }
+    }
+#pragma warning restore S3776
+
+    private void ApplyCollapsedLayoutDirect()
+    {
+        NotchBorder.Width = _collapsedWidth;
+        NotchBorder.Height = _collapsedHeight;
+        var cr = MakeNotchCornerRadius(_cornerRadiusCollapsed);
+        NotchBorder.CornerRadius = cr;
+        InnerClipBorder.CornerRadius = cr;
+        NotchBackground.CornerRadius = cr;
+        NotchBorderShadow.CornerRadius = cr;
+        MediaBackground.CornerRadius = cr;
+        MediaBackground2.CornerRadius = cr;
+        SyncGlassCornerRadius(cr);
+        CurrentCornerRadius = _cornerRadiusCollapsed;
     }
 
     private void ApplyPerformanceSettings()
@@ -1486,6 +1462,7 @@ public partial class MainWindow : Window
 
     private const double DynamicIslandTopMargin = 8.0;
 
+#pragma warning disable S3776 // Synchronizes visual margins, transforms, and visibility for Dynamic Island layout mode
     private void ApplyDynamicIslandLayout(bool animateTransition = false)
     {
         bool islandMode = _settings.EnableDynamicIslandMode;
@@ -1569,6 +1546,7 @@ public partial class MainWindow : Window
             chargingContent.Margin = islandMode ? new Thickness(0) : new Thickness(0, 0, 0, 4);
         }
     }
+#pragma warning restore S3776
 
     #endregion
 
@@ -1761,7 +1739,7 @@ public partial class MainWindow : Window
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
                 {
-                    RuntimeLog.Log("COLLAPSE-BLOCKED",
+                    RuntimeLog.Log(CollapseBlockedLogTag,
                         $"HoverService_HoverLeave suppressed during grace period: remaining={(_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds:F0}ms");
                     return;
                 }
@@ -1842,8 +1820,9 @@ public partial class MainWindow : Window
                     .TransformBounds(new Rect(0, 0, CompactHoverInfo.ActualWidth, CompactHoverInfo.ActualHeight));
                 exitBounds.Union(hoverBounds);
             }
-            catch
+            catch (InvalidOperationException)
             {
+                // CompactHoverInfo visual tree not connected during layout transitions
             }
         }
 
@@ -1859,7 +1838,9 @@ public partial class MainWindow : Window
     {
         try
         {
+#pragma warning disable S4036 // URI scheme is launched via Windows shell protocol
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:batterysaver") { UseShellExecute = true });
+#pragma warning restore S4036
         }
         catch (Exception ex)
         {
@@ -1908,10 +1889,8 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void SettingsButton_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-    }
+    private void SettingsButton_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e) =>
+        Settings_Click(sender, e);
 
     private void SettingsButton_MouseEnter(object sender, MouseEventArgs e)
     {
@@ -2011,9 +1990,10 @@ public partial class MainWindow : Window
 
         if (_isTimerView) return;
 
+        double fallbackWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : NotchBorder.Width;
         double notchLength = NotchContent?.ActualWidth > 0
             ? NotchContent.ActualWidth
-            : (NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : NotchBorder.Width);
+            : fallbackWidth;
         if (notchLength <= 0) return;
 
         double primaryLength = notchLength * (2.0 / 3.0);
@@ -2214,7 +2194,7 @@ public partial class MainWindow : Window
 
         if (_isNotchVisible)
         {
-            UpdateFullscreenAutoHideState(_overlayWindow.GetForegroundWindowHandle(), force: true);
+            UpdateFullscreenAutoHideState(OverlayWindowController.GetForegroundWindowHandle(), force: true);
             if (IsEffectivelyNotchVisible)
             {
                 TriggerZOrderBurst(TimeSpan.FromMilliseconds(900));

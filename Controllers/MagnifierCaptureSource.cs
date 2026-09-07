@@ -11,6 +11,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     // Set true if colours come out with red/blue swapped on a given machine.
     private static readonly bool SwapRedBlue = false;
 
+    private const string LogTag = "LIQUIDGLASS";
     private const string MagDll = "Magnification.dll";
     private const string WC_MAGNIFIER = "Magnifier";
     private const int MW_FILTERMODE_EXCLUDE = 0;
@@ -25,6 +26,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     private const int SW_SHOWNA = 8;
     private const uint PM_REMOVE = 1;
 
+#pragma warning disable IDE1006, S101 // Match Win32 SDK structure naming conventions
     [StructLayout(LayoutKind.Sequential)]
     private struct MAGIMAGEHEADER
     {
@@ -62,12 +64,15 @@ public sealed class MagnifierCaptureSource : IDisposable
         public int ptx;
         public int pty;
     }
+#pragma warning restore IDE1006, S101
 
+#pragma warning disable S107 // Win32 MagImageScalingCallback signature is mandated by the Windows Magnification API
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate bool MagImageScalingCallback(
         IntPtr hwnd, IntPtr srcdata, MAGIMAGEHEADER srcheader,
         IntPtr destdata, MAGIMAGEHEADER destheader,
         Win32Interop.RECT unclipped, Win32Interop.RECT clipped, IntPtr dirty);
+#pragma warning restore S107
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -107,7 +112,14 @@ public sealed class MagnifierCaptureSource : IDisposable
         {
             if (_sharedInstance == null || !_sharedInstance._running || !_sharedInstance.IsReady)
             {
-                try { _sharedInstance?.Dispose(); } catch { }
+                try
+                {
+                    _sharedInstance?.Dispose();
+                }
+                catch (Exception)
+                {
+                    // Ignore errors when replacing an unready shared instance.
+                }
                 _sharedInstance = new MagnifierCaptureSource();
                 _sharedInstance.Initialize(excludeHwnd);
             }
@@ -143,7 +155,14 @@ public sealed class MagnifierCaptureSource : IDisposable
     {
         lock (_sharedSync)
         {
-            try { _sharedInstance?.Dispose(); } catch { }
+            try
+            {
+                _sharedInstance?.Dispose();
+            }
+            catch (Exception)
+            {
+                // Ignore errors during shared shutdown.
+            }
             _sharedInstance = null;
             _sharedRefCount = 0;
         }
@@ -159,16 +178,15 @@ public sealed class MagnifierCaptureSource : IDisposable
 
     private IntPtr _hostWnd;
     private IntPtr _magWnd;
+#pragma warning disable IDE0052 // Keep delegate reference alive to prevent GC collection while native Win32 window is alive
     private MagImageScalingCallback? _callback;   // keep alive
     private static readonly WndProcDelegate SharedWndProc = DefWindowProcW;
     private WndProcDelegate? _wndProc;             // keep alive
+#pragma warning restore IDE0052
 
     private readonly object _filterLock = new();
     private readonly HashSet<IntPtr> _filterHwnds = new();
     private volatile bool _filterListDirty = true;
-
-    private int _magWindowW = 2560;
-    private int _magWindowH = 1600;
 
     private CaptureRequest _activeRequest;
 
@@ -248,6 +266,7 @@ public sealed class MagnifierCaptureSource : IDisposable
         _request.Set();
     }
 
+#pragma warning disable S3776 // High performance filter list compilation requires nested checks
     private void ApplyFiltersIfDirty()
     {
         if (!_filterListDirty || _magWnd == IntPtr.Zero) return;
@@ -284,6 +303,7 @@ public sealed class MagnifierCaptureSource : IDisposable
             _filterListDirty = true;
         }
     }
+#pragma warning restore S3776
 
     public bool Initialize(IntPtr excludeHwnd)
     {
@@ -359,13 +379,14 @@ public sealed class MagnifierCaptureSource : IDisposable
     public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits) =>
         CaptureInto(x, y, w, h, destBits, out _, out _);
 
+#pragma warning disable S3776 // Win32 message pump STA loop handles device lifecycle, window layout, and DWM sync
     private void PumpThread()
     {
         try
         {
             if (!MagInitialize())
             {
-                RuntimeLog.Log("LIQUIDGLASS", "MagInitialize failed.");
+                RuntimeLog.Log(LogTag, "MagInitialize failed.");
                 _initDone.Set();
                 return;
             }
@@ -387,14 +408,14 @@ public sealed class MagnifierCaptureSource : IDisposable
             int screenH = Win32Interop.GetSystemMetrics(79); // SM_CYVIRTUALSCREEN
             if (screenW <= 0) screenW = Win32Interop.GetSystemMetrics(0); // SM_CXSCREEN
             if (screenH <= 0) screenH = Win32Interop.GetSystemMetrics(1); // SM_CYSCREEN
-            _magWindowW = screenW;
-            _magWindowH = screenH;
+            int magWindowW = screenW;
+            int magWindowH = screenH;
 
             _hostWnd = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW,
                 hostClass, "VNotchMagHost", WS_POPUP,
-                screenX, screenY, _magWindowW, _magWindowH, IntPtr.Zero, IntPtr.Zero, hInst, IntPtr.Zero);
-            if (_hostWnd == IntPtr.Zero) { RuntimeLog.Log("LIQUIDGLASS", "Mag host create failed."); Cleanup(); _initDone.Set(); return; }
+                screenX, screenY, magWindowW, magWindowH, IntPtr.Zero, IntPtr.Zero, hInst, IntPtr.Zero);
+            if (_hostWnd == IntPtr.Zero) { RuntimeLog.Log(LogTag, "Mag host create failed."); Cleanup(); _initDone.Set(); return; }
 
             // Set alpha to 1 (virtually invisible, keeps DWM composition active at full monitor refresh rate)
             SetLayeredWindowAttributes(_hostWnd, 0, 1, LWA_ALPHA);
@@ -402,15 +423,15 @@ public sealed class MagnifierCaptureSource : IDisposable
 
             _magWnd = CreateWindowExW(
                 0, WC_MAGNIFIER, "VNotchMag", (uint)(WS_CHILD | WS_VISIBLE),
-                0, 0, _magWindowW, _magWindowH, _hostWnd, IntPtr.Zero, hInst, IntPtr.Zero);
-            if (_magWnd == IntPtr.Zero) { RuntimeLog.Log("LIQUIDGLASS", "Mag control create failed."); Cleanup(); _initDone.Set(); return; }
+                0, 0, magWindowW, magWindowH, _hostWnd, IntPtr.Zero, hInst, IntPtr.Zero);
+            if (_magWnd == IntPtr.Zero) { RuntimeLog.Log(LogTag, "Mag control create failed."); Cleanup(); _initDone.Set(); return; }
 
             ApplyFiltersIfDirty();
 
             _callback = ScalingCallback;
             if (!MagSetImageScalingCallback(_magWnd, _callback))
             {
-                RuntimeLog.Log("LIQUIDGLASS", "MagSetImageScalingCallback unsupported.");
+                RuntimeLog.Log(LogTag, "MagSetImageScalingCallback unsupported.");
                 Cleanup(); _initDone.Set(); return;
             }
 
@@ -449,12 +470,12 @@ public sealed class MagnifierCaptureSource : IDisposable
                     if (req.Width > 0 && req.Height > 0)
                     {
                         _activeRequest = req;
-                        if (req.Width != _magWindowW || req.Height != _magWindowH)
+                        if (req.Width != magWindowW || req.Height != magWindowH)
                         {
-                            _magWindowW = req.Width;
-                            _magWindowH = req.Height;
-                            MoveWindow(_hostWnd, req.X, req.Y, _magWindowW, _magWindowH, false);
-                            MoveWindow(_magWnd, 0, 0, _magWindowW, _magWindowH, false);
+                            magWindowW = req.Width;
+                            magWindowH = req.Height;
+                            MoveWindow(_hostWnd, req.X, req.Y, magWindowW, magWindowH, false);
+                            MoveWindow(_magWnd, 0, 0, magWindowW, magWindowH, false);
                         }
 
                         var rect = new Win32Interop.RECT
@@ -485,7 +506,7 @@ public sealed class MagnifierCaptureSource : IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("LIQUIDGLASS", $"Magnifier pump exception: {ex.Message}");
+            RuntimeLog.Log(LogTag, $"Magnifier pump exception: {ex.Message}");
             _initDone.Set();
         }
         finally
@@ -493,6 +514,7 @@ public sealed class MagnifierCaptureSource : IDisposable
             Cleanup();
         }
     }
+#pragma warning restore S3776
 
     internal static bool IsCompleteFrame(
         int requestedWidth,
@@ -513,18 +535,16 @@ public sealed class MagnifierCaptureSource : IDisposable
         return requiredBytes <= bufferLength;
     }
 
-    private bool DrainMessages()
+    private static void DrainMessages()
     {
-        bool any = false;
         while (PeekMessageW(out var msg, IntPtr.Zero, 0, 0, PM_REMOVE))
         {
             TranslateMessage(ref msg);
             DispatchMessageW(ref msg);
-            any = true;
         }
-        return any;
     }
 
+#pragma warning disable S3776, S6640, S107 // High performance unmanaged Magnification callback with fixed native signature
     private unsafe bool ScalingCallback(IntPtr hwnd, IntPtr srcdata, MAGIMAGEHEADER srcheader,
         IntPtr destdata, MAGIMAGEHEADER destheader,
         Win32Interop.RECT unclipped, Win32Interop.RECT clipped, IntPtr dirty)
@@ -610,12 +630,14 @@ public sealed class MagnifierCaptureSource : IDisposable
             _frameReceivedEvent.Set();
             return true;
         }
-        catch
+        catch (Exception)
         {
             return false;
         }
     }
+#pragma warning restore S3776, S6640, S107
 
+#pragma warning disable S6640, S107 // High performance unmanaged memory blitting
     internal static unsafe bool CopyDesktopCrop(byte[] source, int sourceWidth, int sourceHeight,
         int desktopX, int desktopY, int x, int y, int width, int height, IntPtr destination)
     {
@@ -652,7 +674,9 @@ public sealed class MagnifierCaptureSource : IDisposable
         }
         return true;
     }
+#pragma warning restore S6640, S107
 
+#pragma warning disable S107 // Black crop analysis parameters
     private static bool IsEffectivelyBlackCrop(byte[] source, int sourceWidth, int sourceHeight,
         int desktopX, int desktopY, int x, int y, int width, int height)
     {
@@ -675,6 +699,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
         return true;
     }
+#pragma warning restore S107
 
     private void Cleanup()
     {
@@ -685,7 +710,10 @@ public sealed class MagnifierCaptureSource : IDisposable
             if (_hostWnd != IntPtr.Zero) { DestroyWindow(_hostWnd); _hostWnd = IntPtr.Zero; }
             MagUninitialize();
         }
-        catch { /* ignore */ }
+        catch (Exception)
+        {
+            // Window destruction errors on cleanup are safely ignored.
+        }
     }
 
     public void Dispose()
@@ -694,11 +722,32 @@ public sealed class MagnifierCaptureSource : IDisposable
         IsReady = false;
         _request.Set();
         _frameReceivedEvent.Set();
-        try { _thread?.Join(500); } catch { /* ignore */ }
+        try
+        {
+            _thread?.Join(500);
+        }
+        catch (Exception)
+        {
+            // Thread join timeout during dispose is safely ignored.
+        }
         _thread = null;
         _callback = null;
         _wndProc = null;
-        try { _frameReceivedEvent.Dispose(); } catch { }
-        try { _unfilteredFrameReceivedEvent.Dispose(); } catch { }
+        try
+        {
+            _frameReceivedEvent.Dispose();
+        }
+        catch (Exception)
+        {
+            // Event handle cleanup errors on dispose are safely ignored.
+        }
+        try
+        {
+            _unfilteredFrameReceivedEvent.Dispose();
+        }
+        catch (Exception)
+        {
+            // Event handle cleanup errors on dispose are safely ignored.
+        }
     }
 }

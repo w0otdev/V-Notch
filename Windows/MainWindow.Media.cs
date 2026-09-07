@@ -14,12 +14,10 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    private const string ThumbAnimLogTag = "THUMB-ANIM";
+
     private string _lastAnimatedTrackSignature = "";
-    private string _lastColorTrackSignature = "";
-    private string _lastRenderedMediaSource = "";
     private ImageSource? _pendingFlipThumbnail;
-    private ImageSource? _lastAnimatedThumbnail;
-    private DateTime _lastAnimationStartTime = DateTime.MinValue;
     private int _thumbnailSwitchGeneration = 0;
     private int _compactThumbnailAnimationGeneration = 0;
     private bool _thumbnailShownForCurrentTrack = false;
@@ -27,7 +25,8 @@ public partial class MainWindow
 
     #region Media Changed Handler
 
-    private void OnMediaChanged(object? sender, MediaInfo info)
+#pragma warning disable S3776 // Cognitive complexity is inherent to dispatching rich media UI states
+    private void OnMediaChanged(MediaInfo info)
     {
         bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
         if (!isThumbnailOnlyUpdate)
@@ -64,12 +63,8 @@ public partial class MainWindow
                 return;
 
             _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
-            _lastColorTrackSignature = _mediaDisplayController.LastColorTrackSignature;
-            _lastRenderedMediaSource = _mediaDisplayController.LastRenderedMediaSource;
-            _lastAnimatedThumbnail = _mediaDisplayController.LastAnimatedThumbnail;
             _thumbnailShownForCurrentTrack = _mediaDisplayController.ThumbnailShownForCurrentTrack;
 
-            string trackIdentity = result.TrackIdentity;
             string renderedSource = result.RenderedSource;
 
             if (result.IsNewTrack)
@@ -109,22 +104,14 @@ public partial class MainWindow
             }
             else
             {
-                if (isYouTube && (!string.IsNullOrEmpty(info.YouTubeVideoId) || !string.IsNullOrEmpty(info.CurrentTrack)))
+                if (isYouTube && !string.IsNullOrEmpty(info.YouTubeVideoId))
                 {
                     // Only re-fetch if the resolved video ID has changed.
-                    // If videoId is not yet resolved, do NOT use a fallback key — it would differ from
-                    // the already-resolved _lyricsTrackKey (e.g. "yt:Xn2Lm6AHW6Q") and incorrectly
-                    // trigger a new fetch that resets the lyrics state.
-                    if (!string.IsNullOrEmpty(info.YouTubeVideoId))
+                    string targetKey = $"yt:{info.YouTubeVideoId}";
+                    if (targetKey != _lyricsTrackKey)
                     {
-                        string targetKey = $"yt:{info.YouTubeVideoId}";
-                        if (targetKey != _lyricsTrackKey)
-                        {
-                            FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
-                        }
+                        FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
                     }
-                    // If videoId is empty but _lyricsTrackKey is already a "yt:..." key, no action needed.
-                    // FetchSubtitlesForTrack will resolve the ID on its own when called for a new track.
                 }
             }
 
@@ -267,7 +254,7 @@ public partial class MainWindow
                 }
             }
 
-            if ((DateTime.Now - _lastMediaActionTime).TotalMilliseconds > 500 && _isPlaying != info.IsPlaying)
+            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds > 500 && _isPlaying != info.IsPlaying)
             {
                 _isPlaying = info.IsPlaying;
                 UpdatePlayPauseIcon();
@@ -280,7 +267,9 @@ public partial class MainWindow
             MusicViz.IsPlaying = info?.IsPlaying ?? false;
         });
     }
+#pragma warning restore S3776
 
+#pragma warning disable S3776 // Complex thumbnail morph animation with multiple easing phases and fallback paths
     private void AnimateThumbnailSwitchOnly(ImageSource newThumb, bool force = false)
     {
         if (IsCountdownCompletionVisualActive)
@@ -288,19 +277,19 @@ public partial class MainWindow
             ThumbnailImage.Source = newThumb;
             CompactThumbnail.Source = newThumb;
             SuppressCompactMediaChromeForCountdownCompletion();
-            VNotch.Services.RuntimeLog.Debug("THUMB-ANIM", "skipped (countdown completion overlay active)");
+            VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, "skipped (countdown completion overlay active)");
             return;
         }
 
         if (_isAnimating)
         {
-            VNotch.Services.RuntimeLog.Debug("THUMB-ANIM", () => $"queued-pending (isAnimating=true) force={force}");
+            VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, () => $"queued-pending (isAnimating=true) force={force}");
             _pendingFlipThumbnail = newThumb;
             return;
         }
         if (_isThumbnailSwitchActive && !force)
         {
-            VNotch.Services.RuntimeLog.Debug("THUMB-ANIM", () =>
+            VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, () =>
                 $"coalesced (blur morph already active, updating target) force={force}");
             ThumbnailImageNext.Source = newThumb;
             CompactThumbnailNext.Source = newThumb;
@@ -308,17 +297,17 @@ public partial class MainWindow
         }
         if (!force && newThumb != null && ReferenceEquals(ThumbnailImage.Source, newThumb))
         {
-            VNotch.Services.RuntimeLog.Debug("THUMB-ANIM", "skipped (same reference, no force)");
+            VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, "skipped (same reference, no force)");
             return;
         }
         if (!force && _thumbnailShownForCurrentTrack && newThumb != null)
         {
-            VNotch.Services.RuntimeLog.Debug("THUMB-ANIM",
+            VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag,
                 "skipped (thumbnail already shown for current track, no force)");
             return;
         }
 
-        VNotch.Services.RuntimeLog.Debug("THUMB-ANIM", () => $"BLUR-MORPH-START force={force}");
+        VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, () => $"BLUR-MORPH-START force={force}");
 
         _suppressOutsideClickUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
 
@@ -482,6 +471,7 @@ public partial class MainWindow
             }
         };
     }
+#pragma warning restore S3776
 
     private void CancelThumbnailSwitchAnimations(ImageSource? targetThumb = null)
     {
@@ -653,7 +643,7 @@ public partial class MainWindow
 
     private void UpdateMusicCompactMode(MediaInfo info)
     {
-        bool shouldBeCompact = _mediaDisplayController.ShouldBeCompactMode(info);
+        bool shouldBeCompact = MediaDisplayController.ShouldBeCompactMode(info);
 
         _collapsedWidth = GetCollapsedWidth();
 
@@ -696,9 +686,9 @@ public partial class MainWindow
             _musicCompactExitDebounceTimer = new DispatcherTimer { Interval = MusicCompactExitDebounceDelay };
             _musicCompactExitDebounceTimer.Tick += (_, _) =>
             {
-                _musicCompactExitDebounceTimer!.Stop();
+                _musicCompactExitDebounceTimer.Stop();
                 var current = _currentMediaInfo;
-                if (_isMusicCompactMode && !_mediaDisplayController.ShouldBeCompactMode(current))
+                if (_isMusicCompactMode && !MediaDisplayController.ShouldBeCompactMode(current))
                 {
                     ApplyMusicCompactMode(shouldBeCompact: false, current);
                 }
@@ -713,36 +703,31 @@ public partial class MainWindow
 
     private void CancelPendingMusicCompactExit() => _musicCompactExitDebounceTimer?.Stop();
 
+#pragma warning disable S3776 // Complex multi-state music compact visual mode transition
     private void ApplyMusicCompactMode(bool shouldBeCompact, MediaInfo? info)
     {
         if (shouldBeCompact == _isMusicCompactMode)
         {
             if (shouldBeCompact)
             {
-                if (info?.Thumbnail != null)
+                if (info?.Thumbnail != null && _mediaDisplayController.ShouldAnimateCompactThumbnail(info))
                 {
-                    if (_mediaDisplayController.ShouldAnimateCompactThumbnail(info))
+                    _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
+                    if (!_isClipboardPeekActive)
                     {
-                        _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
-                        if (!_isClipboardPeekActive)
-                        {
-                            AnimateThumbnailSwitchOnly(info.Thumbnail);
-                            PlayTrackChangeBounce();
-                        }
+                        AnimateThumbnailSwitchOnly(info.Thumbnail);
+                        PlayTrackChangeBounce();
                     }
                 }
 
-                if (info != null)
+                if (info != null && !_isClipboardPeekActive)
                 {
-                    if (!_isClipboardPeekActive)
-                    {
-                        MusicViz.IsPlaying = info.IsPlaying;
-                        MusicViz.TrackId = info.GetSignature();
+                    MusicViz.IsPlaying = info.IsPlaying;
+                    MusicViz.TrackId = info.GetSignature();
 
-                        if (info.IsPlaying && !_isVolumeIndicatorActive)
-                        {
-                            ShowMusicVisualizer(duration: _dur200);
-                        }
+                    if (info.IsPlaying && !_isVolumeIndicatorActive)
+                    {
+                        ShowMusicVisualizer(duration: _dur200);
                     }
                 }
             }
@@ -827,6 +812,7 @@ public partial class MainWindow
             CollapsedContent.Opacity = 0;
         }
     }
+#pragma warning restore S3776
 
     #endregion
 
@@ -1036,7 +1022,7 @@ public partial class MainWindow
         };
         Storyboard.SetTarget(anim0, TrackTitle);
         Storyboard.SetTargetProperty(anim0,
-            new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[0].(GradientStop.Offset)"));
+            new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[0].(GradientStop.Offset)", Array.Empty<object>()));
 
         var anim1 = new DoubleAnimation
         {
@@ -1046,7 +1032,7 @@ public partial class MainWindow
         };
         Storyboard.SetTarget(anim1, TrackTitle);
         Storyboard.SetTargetProperty(anim1,
-            new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[1].(GradientStop.Offset)"));
+            new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[1].(GradientStop.Offset)", Array.Empty<object>()));
 
         var anim2 = new DoubleAnimation
         {
@@ -1056,7 +1042,7 @@ public partial class MainWindow
         };
         Storyboard.SetTarget(anim2, TrackTitle);
         Storyboard.SetTargetProperty(anim2,
-            new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[2].(GradientStop.Offset)"));
+            new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[2].(GradientStop.Offset)", Array.Empty<object>()));
 
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim0, VNotch.Services.AnimationConfig.TargetFps);
         storyboard.Children.Add(anim0);

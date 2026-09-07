@@ -103,5 +103,5 @@ public sealed class TimerManager : IDisposable
         _timers.Clear();
     }
 
-    private record ManagedTimer(DispatcherTimer Timer, EventHandler Handler);
+    private sealed record ManagedTimer(DispatcherTimer Timer, EventHandler Handler);
 }

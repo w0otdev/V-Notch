@@ -28,7 +28,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ShouldBeCompactMode_Null_False()
     {
-        Assert.False(_sut.ShouldBeCompactMode(null));
+        Assert.False(MediaDisplayController.ShouldBeCompactMode(null));
     }
 
     [Fact]
@@ -36,26 +36,26 @@ public class MediaDisplayControllerTests
     {
         var info = Track("Song");
         info.IsAnyMediaPlaying = false;
-        Assert.False(_sut.ShouldBeCompactMode(info));
+        Assert.False(MediaDisplayController.ShouldBeCompactMode(info));
     }
 
     [Fact]
     public void ShouldBeCompactMode_EmptyTrack_False()
     {
         var info = Track("");
-        Assert.False(_sut.ShouldBeCompactMode(info));
+        Assert.False(MediaDisplayController.ShouldBeCompactMode(info));
     }
 
     [Fact]
     public void ShouldBeCompactMode_PlayingWithTrack_True()
     {
-        Assert.True(_sut.ShouldBeCompactMode(Track("Song")));
+        Assert.True(MediaDisplayController.ShouldBeCompactMode(Track("Song")));
     }
 
     [Fact]
     public void ShouldBeCompactMode_BrowserWithTrack_True()
     {
-        Assert.True(_sut.ShouldBeCompactMode(Track("Some video", source: "Browser")));
+        Assert.True(MediaDisplayController.ShouldBeCompactMode(Track("Some video", source: "Browser")));
     }
 
     #endregion

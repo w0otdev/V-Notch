@@ -109,6 +109,7 @@ public sealed class WebcamCaptureController : IDisposable
             return ++_fadeToken;
     }
 
+#pragma warning disable S3776 // Asynchronous UWP MediaCapture pipeline initialization involves multi-stage validation and cancellation checks
     public async Task<string?> StartAsync(string? deviceId, Func<bool> isContextValid)
     {
         int startToken;
@@ -228,7 +229,14 @@ public sealed class WebcamCaptureController : IDisposable
                                 _initializingMediaCapture = null;
                             }
                         }
-                        try { capture.Dispose(); } catch { }
+                        try
+                        {
+                            capture.Dispose();
+                        }
+                        catch (Exception)
+                        {
+                            // Ignore errors during capture disposal on initialization failure.
+                        }
                     }
                     return ((MediaCapture?)null, (MediaFrameReader?)null, ex.Message);
                 }
@@ -304,6 +312,7 @@ public sealed class WebcamCaptureController : IDisposable
             }
         }
     }
+#pragma warning restore S3776
 
     public (MediaFrameReader? reader, MediaCapture? capture, MediaCapture? initializing) DetachForSafeStop()
     {
@@ -376,12 +385,33 @@ public sealed class WebcamCaptureController : IDisposable
     {
         if (reader != null)
         {
-            try { await reader.StopAsync(); }
-            catch { }
-            try { reader.Dispose(); } catch { }
+            try
+            {
+                await reader.StopAsync();
+            }
+            catch (Exception)
+            {
+                // FrameReader may already be stopped or in faulted state during teardown.
+            }
+
+            try
+            {
+                reader.Dispose();
+            }
+            catch (Exception)
+            {
+                // FrameReader disposal errors during teardown are safely ignored.
+            }
         }
 
-        try { capture?.Dispose(); } catch { }
+        try
+        {
+            capture?.Dispose();
+        }
+        catch (Exception)
+        {
+            // MediaCapture disposal errors during teardown are safely ignored.
+        }
     }
 
     private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)

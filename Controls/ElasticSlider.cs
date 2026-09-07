@@ -121,7 +121,7 @@ public class ElasticSlider : Slider
         UpdateValueText();
         UpdateIndicatorPosition();
 
-        if (IsSnapToTickEnabled && TickFrequency > 0 && !double.IsNaN(_lastAnimatedValue) && oldValue != newValue)
+        if (IsSnapToTickEnabled && TickFrequency > 0 && !double.IsNaN(_lastAnimatedValue) && Math.Abs(oldValue - newValue) > 0.001)
             AnimateFillSpring();
         else
             AnimateFillSmooth();

@@ -352,8 +352,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 D3DResourceType.IDirect3DSurface9,
                 _attachedSurface.NativePointer,
                 enableSoftwareFallback: true);
-            // WPF discards its copy of the surface across a front-buffer loss;
-            // the next present must refresh the full envelope once.
+            // WPF discards its copy of the surface across a front-buffer loss,
+            // so the next present must refresh the full envelope once.
             _lastDirtyWidth = _surfaceWidth;
             _lastDirtyHeight = _surfaceHeight;
         }
@@ -388,6 +388,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             _dispatcher.BeginInvoke(DispatcherPriority.Send, () => Failed?.Invoke(ex));
     }
 
+#pragma warning disable S6640 // Pointer-based row blitting is required for high-performance frame presentation
     private static unsafe void CopyRows(
         IntPtr source,
         int sourceStride,
@@ -415,6 +416,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 rowBytes);
         }
     }
+#pragma warning restore S6640
 
     public void Dispose()
     {
@@ -449,7 +451,14 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
         lock (_surfaceSync)
         {
-            try { DetachBackBuffer(); } catch { }
+            try
+            {
+                DetachBackBuffer();
+            }
+            catch (Exception)
+            {
+                // Surface detachment errors during shutdown/device disposal are harmless and ignored.
+            }
             _uploadSurface?.Dispose();
             if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
                 _renderSurface.Dispose();

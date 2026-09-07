@@ -60,8 +60,7 @@ public sealed class LiquidGlassInteractionController : IDisposable
 
     private void OnMouseEnter(object sender, MouseEventArgs e)
     {
-        _activeTarget = 1.0;
-        UpdatePointer(e.GetPosition(_coordinateElement));
+        OnMouseMove(sender, e);
     }
 
     private void OnMouseLeave(object sender, MouseEventArgs e)

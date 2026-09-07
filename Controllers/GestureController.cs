@@ -20,8 +20,6 @@ public sealed class GestureController
     private DateTime _lastTapTime = DateTime.MinValue;
     private bool _gestureTriggered;
 
-    private bool _isGestureActive;
-
     public event Action? SwipeLeft;
     public event Action? SwipeRight;
     public event Action? SwipeDown;
@@ -108,11 +106,7 @@ public sealed class GestureController
 
     public bool IsTracking => _isTracking;
 
-    public bool IsGestureActive
-    {
-        get => _isGestureActive;
-        set => _isGestureActive = value;
-    }
+    public bool IsGestureActive { get; set; }
 
     public bool GestureTriggered => _gestureTriggered;
 

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
@@ -33,20 +34,21 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
                 Path.Combine(baseDir, "..", "..", "..", "Shaders", "LiquidGlassRefraction.ps")
             };
 
-            foreach (var path in candidatePaths)
+            string? existingPath = candidatePaths.FirstOrDefault(File.Exists);
+            if (existingPath != null)
             {
-                if (File.Exists(path))
-                {
-                    using var stream = File.OpenRead(path);
-                    ps.SetStreamSource(stream);
-                    IsAvailable = true;
-                    RuntimeLog.Log("LIQUIDGLASS", $"GPU shader loaded from file: {path}");
-                    return ps;
-                }
+                using var stream = File.OpenRead(existingPath);
+                ps.SetStreamSource(stream);
+                IsAvailable = true;
+                RuntimeLog.Log("LIQUIDGLASS", $"GPU shader loaded from file: {existingPath}");
+                return ps;
             }
 
             // 2. Try loading from application resource stream
-            var resourceUri = new Uri("pack://application:,,,/V-Notch;component/Shaders/LiquidGlassRefraction.ps", UriKind.Absolute);
+#pragma warning disable S1075 // Pack URI scheme is required to access WPF embedded assembly resources
+            string assemblyName = typeof(LiquidGlassRefractionEffect).Assembly.GetName().Name ?? "V-Notch";
+            var resourceUri = new Uri($"pack://application:,,,/{assemblyName};component/Shaders/LiquidGlassRefraction.ps", UriKind.Absolute);
+#pragma warning restore S1075
             var streamInfo = Application.GetResourceStream(resourceUri);
             if (streamInfo != null)
             {

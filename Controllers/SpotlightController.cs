@@ -17,6 +17,7 @@ public interface ISpotlightController : IDisposable
 
 internal sealed class SpotlightController : ISpotlightController
 {
+    private const string LogTag = "SPOTLIGHT-HOTKEY";
     private const int HotkeyId = 0x564E;
     private const uint EscapeVirtualKey = 0x1B;
     private const uint StaleFallbackKeyDownMs = 500;
@@ -26,7 +27,9 @@ internal sealed class SpotlightController : ISpotlightController
     private HwndSource? _source;
     private IntPtr _hwnd;
     private IntPtr _keyboardHook;
+#pragma warning disable IDE0052 // Keep delegate reference alive to prevent GC collection during native low-level keyboard hook
     private LowLevelKeyboardProc? _keyboardProc;
+#pragma warning restore IDE0052
     private bool _nativeRegistered;
     private bool _fallbackSpaceDown;
     private bool _escapeDown;
@@ -72,21 +75,21 @@ internal sealed class SpotlightController : ISpotlightController
         _nativeRegistered = RegisterHotKey(_hwnd, HotkeyId, MOD_ALT | MOD_NOREPEAT, VK_SPACE);
         if (_nativeRegistered)
         {
-            RuntimeLog.Log("SPOTLIGHT-HOTKEY", "Alt+Space registered with Windows");
+            RuntimeLog.Log(LogTag, "Alt+Space registered with Windows");
             if (!EnsureKeyboardHook())
-                RuntimeLog.Warn("SPOTLIGHT-HOTKEY", "Global Escape shortcut is unavailable");
+                RuntimeLog.Warn(LogTag, "Global Escape shortcut is unavailable");
             return;
         }
 
         int error = Marshal.GetLastWin32Error();
         if (error == 1409 && EnsureKeyboardHook())
         {
-            RuntimeLog.Warn("SPOTLIGHT-HOTKEY",
+            RuntimeLog.Warn(LogTag,
                 "Alt+Space is owned by another app; keyboard fallback enabled");
             return;
         }
 
-        RuntimeLog.Warn("SPOTLIGHT-HOTKEY",
+        RuntimeLog.Warn(LogTag,
             $"Could not enable Alt+Space (Win32={error})");
     }
 
@@ -124,8 +127,57 @@ internal sealed class SpotlightController : ISpotlightController
         if (_keyboardHook != IntPtr.Zero) return true;
 
         _keyboardProc = null;
-        RuntimeLog.Warn("SPOTLIGHT-HOTKEY",
+        RuntimeLog.Warn(LogTag,
             $"Could not install keyboard hook (Win32={Marshal.GetLastWin32Error()})");
+        return false;
+    }
+
+    private bool TryHandleEscapeHook(KBDLLHOOKSTRUCT key, int message)
+    {
+        if (!IsEscapeKey(key.vkCode))
+            return false;
+
+        if (_escapeDown && message is WM_KEYUP or WM_SYSKEYUP)
+        {
+            _escapeDown = false;
+            return true;
+        }
+
+        if (_window?.IsSpotlightOpen == true && message is WM_KEYDOWN or WM_SYSKEYDOWN)
+        {
+            if (!_escapeDown)
+            {
+                _escapeDown = true;
+                _source?.Dispatcher.BeginInvoke(_window.HandleGlobalEscape);
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryHandleFallbackHotkey(KBDLLHOOKSTRUCT key, int message)
+    {
+        if (_fallbackSpaceDown && key.vkCode == VK_SPACE && message is WM_KEYUP or WM_SYSKEYUP)
+        {
+            _fallbackSpaceDown = false;
+            return true;
+        }
+
+        if (!_nativeRegistered && IsAltSpaceKey(key.vkCode, key.flags) && message is WM_KEYDOWN or WM_SYSKEYDOWN)
+        {
+            if (ShouldDispatchFallbackToggle(
+                    _fallbackSpaceDown,
+                    _lastFallbackSpaceEventTime,
+                    key.time))
+            {
+                _fallbackSpaceDown = true;
+                _source?.Dispatcher.BeginInvoke(ToggleSpotlight);
+            }
+            _lastFallbackSpaceEventTime = key.time;
+            return true;
+        }
+
         return false;
     }
 
@@ -136,50 +188,8 @@ internal sealed class SpotlightController : ISpotlightController
             var key = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
             int message = wParam.ToInt32();
 
-            if (_escapeDown
-                && IsEscapeKey(key.vkCode)
-                && message is WM_KEYUP or WM_SYSKEYUP)
-            {
-                _escapeDown = false;
+            if (TryHandleEscapeHook(key, message) || TryHandleFallbackHotkey(key, message))
                 return new IntPtr(1);
-            }
-
-            if (IsEscapeKey(key.vkCode)
-                && _window?.IsSpotlightOpen == true
-                && message is WM_KEYDOWN or WM_SYSKEYDOWN)
-            {
-                if (!_escapeDown)
-                {
-                    _escapeDown = true;
-                    _source?.Dispatcher.BeginInvoke(_window.HandleGlobalEscape);
-                }
-                return new IntPtr(1);
-            }
-
-            if (_fallbackSpaceDown
-                && key.vkCode == VK_SPACE
-                && message is WM_KEYUP or WM_SYSKEYUP)
-            {
-                _fallbackSpaceDown = false;
-                return new IntPtr(1);
-            }
-
-            if (!_nativeRegistered && IsAltSpaceKey(key.vkCode, key.flags))
-            {
-                if (message is WM_KEYDOWN or WM_SYSKEYDOWN)
-                {
-                    if (ShouldDispatchFallbackToggle(
-                            _fallbackSpaceDown,
-                            _lastFallbackSpaceEventTime,
-                            key.time))
-                    {
-                        _fallbackSpaceDown = true;
-                        _source?.Dispatcher.BeginInvoke(ToggleSpotlight);
-                    }
-                    _lastFallbackSpaceEventTime = key.time;
-                    return new IntPtr(1);
-                }
-            }
         }
 
         return CallNextHookEx(_keyboardHook, nCode, wParam, lParam);

@@ -49,32 +49,8 @@ public sealed class DxgiCaptureSource : IDisposable
         {
             using IDXGIFactory1 factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
 
-            int adapterIdx = -1, outputIdx = -1;
-            int firstAdapterIdx = -1, firstOutputIdx = -1;
-            for (uint a = 0; factory.EnumAdapters1(a, out IDXGIAdapter1 adapter).Success; a++)
-            {
-                using (adapter)
-                {
-                    for (uint o = 0; adapter.EnumOutputs(o, out IDXGIOutput output).Success; o++)
-                    {
-                        using (output)
-                        {
-                            var dc = output.Description.DesktopCoordinates;
-                            if (firstAdapterIdx < 0) { firstAdapterIdx = (int)a; firstOutputIdx = (int)o; }
-                            if (px >= dc.Left && px < dc.Right && py >= dc.Top && py < dc.Bottom)
-                            {
-                                adapterIdx = (int)a;
-                                outputIdx = (int)o;
-                            }
-                        }
-                        if (adapterIdx >= 0) break;
-                    }
-                }
-                if (adapterIdx >= 0) break;
-            }
-
-            if (adapterIdx < 0) { adapterIdx = firstAdapterIdx; outputIdx = firstOutputIdx; }
-            if (adapterIdx < 0) return false;
+            if (!TryFindTargetOutput(factory, px, py, out int adapterIdx, out int outputIdx))
+                return false;
 
             factory.EnumAdapters1((uint)adapterIdx, out IDXGIAdapter1 targetAdapter).CheckError();
             using (targetAdapter)
@@ -92,7 +68,7 @@ public sealed class DxgiCaptureSource : IDisposable
                 targetAdapter.EnumOutputs((uint)outputIdx, out IDXGIOutput output).CheckError();
                 using (output)
                 {
-                    using var dxgiDevice = _device!.QueryInterface<IDXGIDevice>();
+                    using var dxgiDevice = _device.QueryInterface<IDXGIDevice>();
                     // Do not use IDXGIOutput5.DuplicateOutput1 here. With the
                     // Vortice 3.8.3 interop layer it can raise an unmanaged
                     // access violation during COM marshalling on some drivers;
@@ -120,6 +96,53 @@ public sealed class DxgiCaptureSource : IDisposable
             ReleaseDeviceLocked();
             return false;
         }
+    }
+
+    private static bool TryFindTargetOutput(
+        IDXGIFactory1 factory,
+        int px,
+        int py,
+        out int targetAdapterIdx,
+        out int targetOutputIdx)
+    {
+        targetAdapterIdx = -1;
+        targetOutputIdx = -1;
+        int firstAdapterIdx = -1;
+        int firstOutputIdx = -1;
+
+        for (uint a = 0; factory.EnumAdapters1(a, out IDXGIAdapter1 adapter).Success; a++)
+        {
+            using (adapter)
+            {
+                for (uint o = 0; adapter.EnumOutputs(o, out IDXGIOutput output).Success; o++)
+                {
+                    using (output)
+                    {
+                        var dc = output.Description.DesktopCoordinates;
+                        if (firstAdapterIdx < 0)
+                        {
+                            firstAdapterIdx = (int)a;
+                            firstOutputIdx = (int)o;
+                        }
+                        if (px >= dc.Left && px < dc.Right && py >= dc.Top && py < dc.Bottom)
+                        {
+                            targetAdapterIdx = (int)a;
+                            targetOutputIdx = (int)o;
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (firstAdapterIdx >= 0)
+        {
+            targetAdapterIdx = firstAdapterIdx;
+            targetOutputIdx = firstOutputIdx;
+            return true;
+        }
+
+        return false;
     }
 
     private int _stagingW;
@@ -188,6 +211,81 @@ public sealed class DxgiCaptureSource : IDisposable
                cy >= _outputTop && cy < _outputTop + _height;
     }
 
+    private bool EnsureDuplicationForRect(int x, int y, int w, int h)
+    {
+        if (_duplication != null && RectOnCurrentOutput(x, y, w, h))
+            return true;
+
+        long now = Environment.TickCount64;
+        if (now < _nextInitAttemptTicks)
+            return false;
+
+        _nextInitAttemptTicks = now + ReinitThrottleMs;
+        return TryInitDuplication(x + w / 2, y + h / 2);
+    }
+
+    private bool TryAcquireDesktopFrame(IDXGIOutputDuplication duplication, ID3D11DeviceContext context)
+    {
+        var res = duplication.AcquireNextFrame(2, out _, out IDXGIResource? desktopResource);
+        if (res.Success)
+        {
+            try
+            {
+                using var tex = desktopResource.QueryInterface<ID3D11Texture2D>();
+                var desktop = EnsureDesktopTexture();
+                if (desktop == null) return false;
+                context.CopyResource(desktop, tex);
+                _hasFrame = true;
+                return true;
+            }
+            finally
+            {
+                desktopResource?.Dispose();
+                duplication.ReleaseFrame();
+            }
+        }
+
+        if (res == Vortice.DXGI.ResultCode.WaitTimeout)
+        {
+            // Static desktop: no new frame arrived, but the staging
+            // texture still holds the last complete one — serve that
+            // instead of reporting a failure.
+            return _hasFrame;
+        }
+
+        // ACCESS_LOST and friends (resolution change, secure
+        // desktop, driver reset): drop the duplication and
+        // re-create it on the next call.
+        RuntimeLog.Log("LIQUIDGLASS", $"DXGI AcquireNextFrame failed ({res}); scheduling re-init.");
+        ReleaseDuplicationLocked();
+        _nextInitAttemptTicks = Environment.TickCount64 + ReinitThrottleMs;
+        return false;
+    }
+
+#pragma warning disable S6640 // Direct pointer copy between unmanaged DXGI mapped surface and output buffer is required for performance
+    private static unsafe void CopyMappedRows(
+        IntPtr sourcePointer,
+        int sourcePitch,
+        IntPtr destinationPointer,
+        int destinationPitch,
+        int copyWidth,
+        int copyHeight)
+    {
+        byte* src = (byte*)sourcePointer;
+        byte* dst = (byte*)destinationPointer;
+        long copyBytes = (long)copyWidth * 4;
+
+        for (int row = 0; row < copyHeight; row++)
+        {
+            Buffer.MemoryCopy(
+                src + (long)row * sourcePitch,
+                dst + (long)row * destinationPitch,
+                destinationPitch,
+                copyBytes);
+        }
+    }
+#pragma warning restore S6640
+
     public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits)
     {
         if (w <= 0 || h <= 0 || destBits == IntPtr.Zero) return false;
@@ -196,13 +294,12 @@ public sealed class DxgiCaptureSource : IDisposable
         {
             if (_disposed) return false;
 
-            if (_duplication == null || !RectOnCurrentOutput(x, y, w, h))
-            {
-                long now = Environment.TickCount64;
-                if (now < _nextInitAttemptTicks) return false;
-                _nextInitAttemptTicks = now + ReinitThrottleMs;
-                if (!TryInitDuplication(x + w / 2, y + h / 2)) return false;
-            }
+            if (!EnsureDuplicationForRect(x, y, w, h))
+                return false;
+
+            var duplication = _duplication;
+            var context = _context;
+            if (duplication == null || context == null) return false;
 
             int tx = x - _outputLeft;
             int ty = y - _outputTop;
@@ -223,70 +320,31 @@ public sealed class DxgiCaptureSource : IDisposable
 
             try
             {
-                var res = _duplication!.AcquireNextFrame(2, out _, out IDXGIResource? desktopResource);
-                if (res.Success)
-                {
-                    try
-                    {
-                        using var tex = desktopResource!.QueryInterface<ID3D11Texture2D>();
-                        var desktop = EnsureDesktopTexture();
-                        if (desktop == null) return false;
-                        _context!.CopyResource(desktop, tex);
-                        _hasFrame = true;
-                    }
-                    finally
-                    {
-                        desktopResource?.Dispose();
-                        _duplication.ReleaseFrame();
-                    }
-                }
-                else if (res == Vortice.DXGI.ResultCode.WaitTimeout)
-                {
-                    // Static desktop: no new frame arrived, but the staging
-                    // texture still holds the last complete one — serve that
-                    // instead of reporting a failure.
-                    if (!_hasFrame) return false;
-                }
-                else
-                {
-                    // ACCESS_LOST and friends (resolution change, secure
-                    // desktop, driver reset): drop the duplication and
-                    // re-create it on the next call.
-                    RuntimeLog.Log("LIQUIDGLASS", $"DXGI AcquireNextFrame failed ({res}); scheduling re-init.");
-                    ReleaseDuplicationLocked();
-                    _nextInitAttemptTicks = Environment.TickCount64 + ReinitThrottleMs;
+                if (!TryAcquireDesktopFrame(duplication, context))
                     return false;
-                }
 
                 var cachedDesktop = _desktopTexture;
                 if (cachedDesktop == null || !_hasFrame) return false;
-                var box = new Box(srcLeft, srcTop, 0, srcRight, srcBottom, 1);
-                _context!.CopySubresourceRegion(staging, 0, 0, 0, 0, cachedDesktop, 0, box);
 
-                var mapped = _context!.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+                var box = new Box(srcLeft, srcTop, 0, srcRight, srcBottom, 1);
+                context.CopySubresourceRegion(staging, 0, 0, 0, 0, cachedDesktop, 0, box);
+
+                var mapped = context.Map(staging, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
                 try
                 {
-                    unsafe
-                    {
-                        byte* src = (byte*)mapped.DataPointer;
-                        byte* dst = (byte*)destBits;
-                        int srcStride = (int)mapped.RowPitch;
-                        int dstStride = w * 4;
-                        long copyBytes = (long)copyW * 4;
-
-                        for (int row = 0; row < copyH; row++)
-                        {
-                            Buffer.MemoryCopy(
-                                src + (long)row * srcStride,
-                                dst + (long)(row + dstOffsetY) * dstStride + (long)dstOffsetX * 4,
-                                dstStride,
-                                copyBytes);
-                        }
-                    }
+                    int dstStride = w * 4;
+                    IntPtr dstStart = destBits + dstOffsetY * dstStride + dstOffsetX * 4;
+                    CopyMappedRows(
+                        mapped.DataPointer,
+                        (int)mapped.RowPitch,
+                        dstStart,
+                        dstStride,
+                        copyW,
+                        copyH);
                 }
                 finally
                 {
-                    _context.Unmap(staging, 0);
+                    context.Unmap(staging, 0);
                 }
 
                 return true;

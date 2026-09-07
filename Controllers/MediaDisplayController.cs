@@ -41,7 +41,6 @@ public sealed class MediaDisplayController
         }
 
         bool hasRealTrack = !string.IsNullOrEmpty(info.CurrentTrack);
-
         string incomingSource = hasRealTrack ? (info.MediaSource ?? "") : "";
         string currentTrackKey = $"{info.CurrentTrack}|{info.CurrentArtist}";
         bool sameTrackAsBefore = hasRealTrack && currentTrackKey == _lastAnimatedTrackSignature;
@@ -51,88 +50,101 @@ public sealed class MediaDisplayController
         result.SourceChanged = renderedSource != _lastRenderedMediaSource;
 
         string trackIdentity = $"{info.CurrentTrack}|{info.CurrentArtist}";
-        bool isNewTrack = trackIdentity != _lastAnimatedTrackSignature;
+        bool isNewTrack = ResolveTrackIdentity(info, hasRealTrack, trackIdentity);
 
+        result.IsNewTrack = isNewTrack;
+        result.TrackIdentity = trackIdentity;
+        result.DisplayText = ResolveDisplayText(info, hasRealTrack, renderedSource);
+
+        if (hasRealTrack)
+        {
+            ProcessRealTrack(info, trackIdentity, isNewTrack, result);
+        }
+        else
+        {
+            ProcessNoTrack(info, result);
+        }
+
+        _lastRenderedMediaSource = renderedSource;
+        return result;
+    }
+
+    private bool ResolveTrackIdentity(MediaInfo info, bool hasRealTrack, string trackIdentity)
+    {
+        bool isNewTrack = trackIdentity != _lastAnimatedTrackSignature;
         if (isNewTrack && hasRealTrack && !string.IsNullOrEmpty(_lastAnimatedTrackSignature))
         {
             string titlePrefix = $"{info.CurrentTrack}|";
             if (_lastAnimatedTrackSignature.StartsWith(titlePrefix, StringComparison.Ordinal))
             {
-                isNewTrack = false;
                 _lastAnimatedTrackSignature = trackIdentity;
-
                 if (_lastColorTrackSignature.StartsWith(titlePrefix, StringComparison.Ordinal))
                 {
                     _lastColorTrackSignature = trackIdentity;
                 }
+                return false;
             }
         }
+        return isNewTrack;
+    }
 
-        result.IsNewTrack = isNewTrack;
-        result.TrackIdentity = trackIdentity;
+    private void ProcessRealTrack(MediaInfo info, string trackIdentity, bool isNewTrack, MediaDisplayResult result)
+    {
+        result.HasRealTrack = true;
 
-        result.DisplayText = ResolveDisplayText(info, hasRealTrack, renderedSource);
-
-        if (hasRealTrack)
+        if (info.HasThumbnail && info.Thumbnail != null)
         {
-            result.HasRealTrack = true;
+            result.HasThumbnail = true;
 
-            if (info.HasThumbnail && info.Thumbnail != null)
+            if (isNewTrack)
             {
-                result.HasThumbnail = true;
+                bool isFirstEverTrack = string.IsNullOrEmpty(_lastAnimatedTrackSignature);
+                result.ThumbnailAction = isFirstEverTrack
+                    ? ThumbnailAction.RevealFirst
+                    : ThumbnailAction.AnimateSwitch;
 
-                if (isNewTrack)
-                {
-                    bool isFirstEverTrack = string.IsNullOrEmpty(_lastAnimatedTrackSignature);
-                    result.ThumbnailAction = isFirstEverTrack
-                        ? ThumbnailAction.RevealFirst
-                        : ThumbnailAction.AnimateSwitch;
-
-                    _lastAnimatedTrackSignature = trackIdentity;
-                    _lastAnimatedThumbnail = info.Thumbnail;
-                    _thumbnailShownForCurrentTrack = true;
-                    _trackChangeBounceNeeded = false;
-                }
-                else
-                {
-                    result.ThumbnailAction = ResolveSameTrackThumbnailAction(info);
-                }
-
-                if (isNewTrack || _lastColorTrackSignature != trackIdentity || !ReferenceEquals(info.Thumbnail, _lastBackgroundThumbnail))
-                {
-                    _lastColorTrackSignature = trackIdentity;
-                    _lastBackgroundThumbnail = info.Thumbnail;
-                    result.NeedsBackgroundUpdate = true;
-                }
-            }
-            else if (isNewTrack)
-            {
                 _lastAnimatedTrackSignature = trackIdentity;
-                _lastAnimatedThumbnail = null;
-                _thumbnailShownForCurrentTrack = false;
-                _trackChangeBounceNeeded = true;
-                result.ThumbnailAction = ThumbnailAction.ShowFallback;
-            }
-
-            result.Action = MediaDisplayAction.Update;
-        }
-        else
-        {
-            result.HasRealTrack = false;
-
-            if (!info.IsAnyMediaPlaying)
-            {
-                _lastColorTrackSignature = "";
-                result.Action = MediaDisplayAction.Clear;
+                _lastAnimatedThumbnail = info.Thumbnail;
+                _thumbnailShownForCurrentTrack = true;
+                _trackChangeBounceNeeded = false;
             }
             else
             {
-                result.Action = MediaDisplayAction.Update;
+                result.ThumbnailAction = ResolveSameTrackThumbnailAction(info);
+            }
+
+            if (isNewTrack || _lastColorTrackSignature != trackIdentity || !ReferenceEquals(info.Thumbnail, _lastBackgroundThumbnail))
+            {
+                _lastColorTrackSignature = trackIdentity;
+                _lastBackgroundThumbnail = info.Thumbnail;
+                result.NeedsBackgroundUpdate = true;
             }
         }
+        else if (isNewTrack)
+        {
+            _lastAnimatedTrackSignature = trackIdentity;
+            _lastAnimatedThumbnail = null;
+            _thumbnailShownForCurrentTrack = false;
+            _trackChangeBounceNeeded = true;
+            result.ThumbnailAction = ThumbnailAction.ShowFallback;
+        }
 
-        _lastRenderedMediaSource = renderedSource;
-        return result;
+        result.Action = MediaDisplayAction.Update;
+    }
+
+    private void ProcessNoTrack(MediaInfo info, MediaDisplayResult result)
+    {
+        result.HasRealTrack = false;
+
+        if (!info.IsAnyMediaPlaying)
+        {
+            _lastColorTrackSignature = "";
+            result.Action = MediaDisplayAction.Clear;
+        }
+        else
+        {
+            result.Action = MediaDisplayAction.Update;
+        }
     }
 
     public bool ShouldAnimateCompactThumbnail(MediaInfo info)
@@ -148,7 +160,7 @@ public sealed class MediaDisplayController
         return false;
     }
 
-    public bool ShouldBeCompactMode(MediaInfo? info)
+    public static bool ShouldBeCompactMode(MediaInfo? info)
     {
         if (info == null) return false;
         if (!info.IsAnyMediaPlaying || string.IsNullOrEmpty(info.CurrentTrack)) return false;

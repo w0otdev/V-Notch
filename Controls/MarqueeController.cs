@@ -14,8 +14,6 @@ internal sealed class MarqueeController
 
     private readonly MarqueeTargets _title;
     private readonly MarqueeTargets _artist;
-    private readonly TextBlock _compactTitleText;
-    private readonly TranslateTransform _compactTitleTranslate;
     private readonly Func<double, double> _getVisibleMediaTextWidth;
     private readonly DispatcherTimer _titleMorphTimer;
     private readonly DispatcherTimer _artistMorphTimer;
@@ -38,20 +36,18 @@ internal sealed class MarqueeController
 
     #endregion
 
+#pragma warning disable S107 // WPF visual tree target elements for multi-layer text morphing and marquee
     public MarqueeController(
         UIElement titleLayerA, TextBlock titleA, TranslateTransform titleMarqueeA, TranslateTransform titleMorphA,
         UIElement titleLayerB, TextBlock titleB, TranslateTransform titleMarqueeB, TranslateTransform titleMorphB,
         UIElement artistLayerA, TextBlock artistA, TranslateTransform artistMarqueeA, TranslateTransform artistMorphA,
         UIElement artistLayerB, TextBlock artistB, TranslateTransform artistMarqueeB, TranslateTransform artistMorphB,
-        TextBlock compactTitleText, TranslateTransform compactTitleTranslate,
         Func<double, double> getVisibleMediaTextWidth)
     {
         _title = new MarqueeTargets(titleLayerA, titleA, titleMarqueeA, titleMorphA,
             titleLayerB, titleB, titleMarqueeB, titleMorphB);
         _artist = new MarqueeTargets(artistLayerA, artistA, artistMarqueeA, artistMorphA,
             artistLayerB, artistB, artistMarqueeB, artistMorphB);
-        _compactTitleText = compactTitleText;
-        _compactTitleTranslate = compactTitleTranslate;
         _getVisibleMediaTextWidth = getVisibleMediaTextWidth;
         _lastTitleText = titleA.Text ?? string.Empty;
         _lastArtistText = artistA.Text ?? string.Empty;
@@ -61,6 +57,7 @@ internal sealed class MarqueeController
         _artistMorphTimer = new DispatcherTimer(DispatcherPriority.Normal, artistA.Dispatcher);
         _artistMorphTimer.Tick += ArtistMorphTimer_Tick;
     }
+#pragma warning restore S107
 
     #region Public API
     public void RefreshMediaMarquee()
@@ -257,12 +254,12 @@ internal sealed class MarqueeController
     {
         if (activeA)
         {
-            AnimateTextMorph(t.LayerA, t.TextA, t.LayerB, t.TextB, t.MorphA, t.MorphB, newText);
+            AnimateTextMorph(t.LayerA, t.LayerB, t.TextB, t.MorphA, t.MorphB, newText);
             activeA = false;
         }
         else
         {
-            AnimateTextMorph(t.LayerB, t.TextB, t.LayerA, t.TextA, t.MorphB, t.MorphA, newText);
+            AnimateTextMorph(t.LayerB, t.LayerA, t.TextA, t.MorphB, t.MorphA, newText);
             activeA = true;
         }
 
@@ -292,7 +289,6 @@ internal sealed class MarqueeController
 
     private static void AnimateTextMorph(
         UIElement currentLayer,
-        TextBlock current,
         UIElement nextLayer,
         TextBlock next,
         TranslateTransform currentMorph,

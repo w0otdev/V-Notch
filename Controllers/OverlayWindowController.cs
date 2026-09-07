@@ -20,6 +20,7 @@ public sealed class OverlayWindowController : IDisposable
     private readonly Action _onClipboardUpdated;
     private HwndSource? _source;
 
+#pragma warning disable S107 // Component wiring constructor delegates lifecycle and placement actions
     public OverlayWindowController(
         Window window,
         NotchShellState state,
@@ -39,6 +40,7 @@ public sealed class OverlayWindowController : IDisposable
         _onDisplayChanged = onDisplayChanged;
         _onClipboardUpdated = onClipboardUpdated;
     }
+#pragma warning restore S107
 
     public void Initialize()
     {
@@ -142,10 +144,10 @@ public sealed class OverlayWindowController : IDisposable
         ApplyPreferredZOrder();
     }
 
-    private bool ApplyFixedBounds()
+    private void ApplyFixedBounds()
     {
         if (_state.Hwnd == IntPtr.Zero)
-            return false;
+            return;
 
         bool positioned = SetWindowPos(
             _state.Hwnd,
@@ -161,8 +163,6 @@ public sealed class OverlayWindowController : IDisposable
             RuntimeLog.Warn("OVERLAY-POSITION",
                 $"Failed to apply fixed bounds ({_state.FixedX},{_state.FixedY},{_state.WindowWidth}x{_state.WindowHeight}); Win32 error {Marshal.GetLastWin32Error()}");
         }
-
-        return positioned;
     }
 
     private void ApplyPreferredZOrder()
@@ -201,7 +201,7 @@ public sealed class OverlayWindowController : IDisposable
         ? GetDesktopLayerInsertAfter(_state.Hwnd)
         : HWND_TOPMOST;
 
-    public IntPtr GetForegroundWindowHandle() => GetForegroundWindow();
+    public static IntPtr GetForegroundWindowHandle() => GetForegroundWindow();
 
     public double DpiScale => GetDpiScale();
 
@@ -229,12 +229,11 @@ public sealed class OverlayWindowController : IDisposable
         if (_state.Hwnd != IntPtr.Zero)
         {
             IntPtr hMonitor = MonitorFromWindow(_state.Hwnd, MONITOR_DEFAULTTONEAREST);
-            if (hMonitor != IntPtr.Zero)
+            if (hMonitor != IntPtr.Zero &&
+                GetDpiForMonitor(hMonitor, 0, out uint dpiX, out _) == 0 &&
+                dpiX > 0)
             {
-                if (GetDpiForMonitor(hMonitor, 0, out uint dpiX, out uint dpiY) == 0)
-                {
-                    if (dpiX > 0) return dpiX / 96.0;
-                }
+                return dpiX / 96.0;
             }
         }
 
@@ -249,63 +248,75 @@ public sealed class OverlayWindowController : IDisposable
 
     public Func<Point, bool>? IsPointInteractive { get; set; }
 
+    private IntPtr HandleNcHitTest(IntPtr lParam, ref bool handled)
+    {
+        if (IsPointInteractive == null || !_isVisible())
+            return IntPtr.Zero;
+
+        try
+        {
+            short screenX = (short)(lParam.ToInt64() & 0xFFFF);
+            short screenY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+            double dpiScale = GetDpiScale();
+            if (dpiScale <= 0) dpiScale = 1.0;
+
+            Point windowPt;
+            try
+            {
+                windowPt = _window.PointFromScreen(new Point(screenX, screenY));
+            }
+            catch (Exception)
+            {
+                double windowLeftDip = _state.FixedX / dpiScale;
+                double windowTopDip = _state.FixedY / dpiScale;
+                windowPt = new Point((screenX / dpiScale) - windowLeftDip, (screenY / dpiScale) - windowTopDip);
+            }
+
+            if (!IsPointInteractive(windowPt))
+            {
+                handled = true;
+                return new IntPtr(HTTRANSPARENT);
+            }
+        }
+        catch (Exception)
+        {
+            handled = true;
+            return new IntPtr(HTTRANSPARENT);
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void HandleWindowPosChanging(IntPtr lParam)
+    {
+        var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+
+        if ((pos.flags & SWP_NOMOVE) == 0)
+        {
+            pos.y = _state.FixedY;
+            pos.x = _state.FixedX;
+        }
+
+        if ((pos.flags & SWP_NOSIZE) == 0 && _state.WindowWidth > 0 && _state.WindowHeight > 0)
+        {
+            pos.cx = _state.WindowWidth;
+            pos.cy = _state.WindowHeight;
+        }
+
+        if ((pos.flags & SWP_NOZORDER) == 0)
+            pos.hwndInsertAfter = PreferredZOrder;
+
+        Marshal.StructureToPtr(pos, lParam, false);
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         switch (msg)
         {
             case WM_NCHITTEST:
-                if (IsPointInteractive != null && _isVisible())
-                {
-                    try
-                    {
-                        short screenX = (short)(lParam.ToInt64() & 0xFFFF);
-                        short screenY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-                        double dpiScale = GetDpiScale();
-                        if (dpiScale <= 0) dpiScale = 1.0;
-
-                        Point windowPt;
-                        try
-                        {
-                            windowPt = _window.PointFromScreen(new Point(screenX, screenY));
-                        }
-                        catch
-                        {
-                            double windowLeftDip = _state.FixedX / dpiScale;
-                            double windowTopDip = _state.FixedY / dpiScale;
-                            windowPt = new Point((screenX / dpiScale) - windowLeftDip, (screenY / dpiScale) - windowTopDip);
-                        }
-
-                        if (!IsPointInteractive(windowPt))
-                        {
-                            handled = true;
-                            return new IntPtr(HTTRANSPARENT);
-                        }
-                    }
-                    catch
-                    {
-                        handled = true;
-                        return new IntPtr(HTTRANSPARENT);
-                    }
-                }
-                break;
+                return HandleNcHitTest(lParam, ref handled);
             case WM_WINDOWPOSCHANGING when lParam != IntPtr.Zero && _state.HasFixedBounds:
-                var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-
-                if ((pos.flags & SWP_NOMOVE) == 0)
-                {
-                    pos.y = _state.FixedY;
-                    pos.x = _state.FixedX;
-                }
-
-                if ((pos.flags & SWP_NOSIZE) == 0 && _state.WindowWidth > 0 && _state.WindowHeight > 0)
-                {
-                    pos.cx = _state.WindowWidth;
-                    pos.cy = _state.WindowHeight;
-                }
-
-                if ((pos.flags & SWP_NOZORDER) == 0)
-                    pos.hwndInsertAfter = PreferredZOrder;
-                Marshal.StructureToPtr(pos, lParam, false);
+                HandleWindowPosChanging(lParam);
                 break;
             case WM_ACTIVATE when _isVisible():
                 SetWindowPos(_state.Hwnd, PreferredZOrder, 0, 0, 0, 0,
