@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -114,8 +115,9 @@ internal static class ThumbnailHeuristics
                 System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
             }
         }
-        catch
+        catch (Exception)
         {
+            // Corrupt bitmap or conversion failure; treat as not low-entropy monochrome.
             return false;
         }
     }
@@ -146,49 +148,56 @@ internal static class ThumbnailHeuristics
 
     public static SmtcThumbnailDecision DecideSmtcThumbnail(in SmtcThumbnailInputs x)
     {
-        bool skipSmtcThumbForFreshSoundCloudTrack = x.IsSoundCloudSource &&
-                                                    x.TrackChanged &&
-                                                    !x.HasVerifiedSoundCloudThumb &&
-                                                    !x.LikelySoundCloudArtwork;
-
         double aspect = x.PixelHeight == 0 ? 0 : (double)x.PixelWidth / x.PixelHeight;
-        bool isWideVideoFrame = aspect > 1.3;
-        bool skipUnverifiedSmtcThumbAfterBrowserSessionChange =
-            x.IsYouTubeLikeSource &&
-            x.BrowserSessionChanged &&
-            x.TrackChanged &&
-            !x.HasVerifiedYouTubeThumb;
-        bool skipSmtcThumbForFreshYouTubeTrack = x.IsYouTubeLikeSource &&
-                                                 isWideVideoFrame &&
-                                                 (x.TrackChanged || (x.RecentTrackChange && x.CachedThumbnailIsNull));
-
-        if (skipSmtcThumbForFreshSoundCloudTrack ||
-            skipSmtcThumbForFreshYouTubeTrack ||
-            skipUnverifiedSmtcThumbAfterBrowserSessionChange)
+        if (ShouldRejectSmtcThumbnail(in x, aspect))
         {
             return SmtcThumbnailDecision.Reject;
         }
 
         bool isSquare = Math.Abs(aspect - 1.0) < 0.05;
-        bool isLikelySoundCloudPlaceholder = x.IsSoundCloudSource &&
-                                             isSquare &&
-                                             (x.PixelWidth <= 320 || x.PixelHeight <= 320);
-        bool isUnverifiedBrowserIcon = x.IsBrowserSession &&
-                                       x.IsBrowserOrYouTubePlatform &&
-                                       !x.HasVerifiedYouTubeThumb &&
-                                       isSquare;
-        bool isGenericIcon = (x.IsBrowserOrYouTubePlatform || isLikelySoundCloudPlaceholder) &&
-                             isSquare &&
-                             (x.PixelWidth <= 300 || isUnverifiedBrowserIcon);
         bool shouldPreferVerifiedYouTubeLookup = x.IsYouTubeLikeSource &&
                                                  !x.HasVerifiedYouTubeThumb &&
                                                  !x.TrackChanged;
 
-        if (!(isSquare && isGenericIcon) && !shouldPreferVerifiedYouTubeLookup)
+        if (!IsGenericOrPlaceholderIcon(in x, isSquare) && !shouldPreferVerifiedYouTubeLookup)
         {
             return SmtcThumbnailDecision.Accept;
         }
 
         return SmtcThumbnailDecision.Skip;
+    }
+
+    private static bool ShouldRejectSmtcThumbnail(in SmtcThumbnailInputs x, double aspect)
+    {
+        if (x.IsSoundCloudSource && x.TrackChanged && !x.HasVerifiedSoundCloudThumb && !x.LikelySoundCloudArtwork)
+        {
+            return true;
+        }
+
+        if (x.IsYouTubeLikeSource && x.BrowserSessionChanged && x.TrackChanged && !x.HasVerifiedYouTubeThumb)
+        {
+            return true;
+        }
+
+        bool isWideVideoFrame = aspect > 1.3;
+        return x.IsYouTubeLikeSource &&
+               isWideVideoFrame &&
+               (x.TrackChanged || (x.RecentTrackChange && x.CachedThumbnailIsNull));
+    }
+
+    private static bool IsGenericOrPlaceholderIcon(in SmtcThumbnailInputs x, bool isSquare)
+    {
+        if (!isSquare)
+        {
+            return false;
+        }
+
+        bool isLikelySoundCloudPlaceholder = x.IsSoundCloudSource && (x.PixelWidth <= 320 || x.PixelHeight <= 320);
+        bool isUnverifiedBrowserIcon = x.IsBrowserSession &&
+                                       x.IsBrowserOrYouTubePlatform &&
+                                       !x.HasVerifiedYouTubeThumb;
+
+        return (x.IsBrowserOrYouTubePlatform || isLikelySoundCloudPlaceholder) &&
+               (x.PixelWidth <= 300 || isUnverifiedBrowserIcon);
     }
 }

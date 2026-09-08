@@ -1,4 +1,32 @@
+using System;
+using VNotch.Models;
+
 namespace VNotch.Services;
+
+public readonly record struct NewTrackDebounceParams(
+    string CurrentTrack,
+    string CurrentArtist,
+    bool IsPlaying,
+    bool ForceRefresh,
+    string LastPublishedTrackIdentity,
+    string PendingKey,
+    DateTime PendingSince,
+    DateTime NowUtc,
+    double DebounceMs = 600);
+
+public readonly record struct SoundCloudPreserveParams(
+    string MediaSource,
+    string CurrentTrack,
+    string CurrentArtist,
+    string SourceAppId,
+    string SessionInstanceKey,
+    string LastSource,
+    string LastPublishedSessionInstanceKey,
+    DateTime LastMetadataChangeTime,
+    DateTime Now,
+    bool HasSessionOverride,
+    string SessionOverride,
+    double FreshnessSeconds = 3.0);
 
 internal static class MediaTimingDecisions
 {
@@ -45,37 +73,31 @@ internal static class MediaTimingDecisions
         return (false, emptyStart, stableSignature);
     }
 
-    public static (bool debounce, string pendingKey, DateTime pendingSince) EvaluateNewTrackDebounce(
-        string currentTrack,
-        string currentArtist,
-        bool isPlaying,
-        bool forceRefresh,
-        string lastPublishedTrackIdentity,
-        string pendingKey,
-        DateTime pendingSince,
-        DateTime nowUtc,
-        double debounceMs = 600)
+    public static (bool debounce, string pendingKey, DateTime pendingSince) EvaluateNewTrackDebounce(NewTrackDebounceParams p)
     {
-        bool isNewTrack = !string.IsNullOrEmpty(currentTrack) &&
+        bool isNewTrack = !string.IsNullOrEmpty(p.CurrentTrack) &&
                           !string.Equals(
-                              MediaHeuristics.BuildTrackIdentity(currentTrack, currentArtist),
-                              lastPublishedTrackIdentity,
+                              MediaHeuristics.BuildTrackIdentity(p.CurrentTrack, p.CurrentArtist),
+                              p.LastPublishedTrackIdentity,
                               StringComparison.Ordinal);
 
-        if (isNewTrack && !isPlaying && !forceRefresh)
+        if (isNewTrack && !p.IsPlaying && !p.ForceRefresh)
         {
-            string candidateKey = MediaHeuristics.BuildTrackIdentity(currentTrack, currentArtist);
+            string candidateKey = MediaHeuristics.BuildTrackIdentity(p.CurrentTrack, p.CurrentArtist);
+            string pendingKey = p.PendingKey;
+            DateTime pendingSince = p.PendingSince;
+
             if (candidateKey != pendingKey)
             {
                 pendingKey = candidateKey;
-                pendingSince = nowUtc;
+                pendingSince = p.NowUtc;
             }
 
-            bool debounce = (nowUtc - pendingSince).TotalMilliseconds < debounceMs;
+            bool debounce = (p.NowUtc - pendingSince).TotalMilliseconds < p.DebounceMs;
             return (debounce, pendingKey, pendingSince);
         }
 
-        return (false, "", pendingSince);
+        return (false, "", p.PendingSince);
     }
 
     public static (string artist, string stableArtist) EvaluateArtistStabilization(
@@ -103,46 +125,34 @@ internal static class MediaTimingDecisions
         return (currentArtist, stableArtist);
     }
 
-    public static bool ShouldPreserveSoundCloud(
-        string mediaSource,
-        string currentTrack,
-        string currentArtist,
-        string sourceAppId,
-        string sessionInstanceKey,
-        string lastSource,
-        string lastPublishedSessionInstanceKey,
-        DateTime lastMetadataChangeTime,
-        DateTime now,
-        bool hasSessionOverride,
-        string sessionOverride,
-        double freshnessSeconds = 3.0)
+    public static bool ShouldPreserveSoundCloud(SoundCloudPreserveParams p)
     {
-        if (!string.Equals(mediaSource, MediaPlatform.Browser.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(p.MediaSource, MediaPlatform.Browser.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        if (!string.Equals(lastSource, MediaPlatform.SoundCloud.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(p.LastSource, MediaPlatform.SoundCloud.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        if (string.IsNullOrWhiteSpace(currentTrack) ||
-            string.IsNullOrWhiteSpace(sourceAppId) ||
-            !PlatformDetector.IsBrowserApp(sourceAppId) ||
-            string.IsNullOrWhiteSpace(sessionInstanceKey))
+        if (string.IsNullOrWhiteSpace(p.CurrentTrack) ||
+            string.IsNullOrWhiteSpace(p.SourceAppId) ||
+            !PlatformDetector.IsBrowserApp(p.SourceAppId) ||
+            string.IsNullOrWhiteSpace(p.SessionInstanceKey))
             return false;
 
-        if (!string.Equals(lastPublishedSessionInstanceKey, sessionInstanceKey, StringComparison.Ordinal))
+        if (!string.Equals(p.LastPublishedSessionInstanceKey, p.SessionInstanceKey, StringComparison.Ordinal))
             return false;
 
-        if ((now - lastMetadataChangeTime).TotalSeconds > freshnessSeconds)
+        if ((p.Now - p.LastMetadataChangeTime).TotalSeconds > p.FreshnessSeconds)
             return false;
 
-        bool hasYouTubeHint = currentTrack.Contains("youtube", StringComparison.OrdinalIgnoreCase) ||
-                              currentArtist.Contains("youtube", StringComparison.OrdinalIgnoreCase);
+        bool hasYouTubeHint = p.CurrentTrack.Contains("youtube", StringComparison.OrdinalIgnoreCase) ||
+                              p.CurrentArtist.Contains("youtube", StringComparison.OrdinalIgnoreCase);
         if (hasYouTubeHint)
             return false;
 
-        if (hasSessionOverride &&
-            !string.IsNullOrEmpty(sessionOverride) &&
-            !string.Equals(sessionOverride, MediaPlatform.SoundCloud.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
+        if (p.HasSessionOverride &&
+            !string.IsNullOrEmpty(p.SessionOverride) &&
+            !string.Equals(p.SessionOverride, MediaPlatform.SoundCloud.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
             return false;
 
         return true;

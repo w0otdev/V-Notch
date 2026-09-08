@@ -11,6 +11,7 @@ namespace VNotch.Services.Spotlight;
 /// </summary>
 internal sealed class SpotlightUsageStore
 {
+    private const string LogTag = "SPOTLIGHT-USAGE";
     private const int MaxEntries = 100;
     private const double CountBoostCap = 90;
     private const double CountBoostFactor = 22;
@@ -103,8 +104,10 @@ internal sealed class SpotlightUsageStore
                     File.Delete(_path);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                // Best-effort file deletion; in-memory state is already cleared
+                RuntimeLog.Warn(LogTag, $"Failed to delete history file: {ex.Message}");
             }
         }
     }
@@ -186,7 +189,7 @@ internal sealed class SpotlightUsageStore
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("SPOTLIGHT-USAGE", ex, $"Failed to read {_path}");
+            RuntimeLog.Error(LogTag, ex, $"Failed to read {_path}");
         }
         return _entries ??= new Dictionary<string, UsageEntry>();
     }
@@ -218,7 +221,7 @@ internal sealed class SpotlightUsageStore
             if (serializationError != null)
             {
                 RuntimeLog.Error(
-                    "SPOTLIGHT-USAGE",
+                    LogTag,
                     serializationError,
                     $"Failed to serialize {_path}");
                 return;
@@ -230,7 +233,7 @@ internal sealed class SpotlightUsageStore
             }
             catch (Exception ex)
             {
-                RuntimeLog.Error("SPOTLIGHT-USAGE", ex, $"Failed to write {_path}");
+                RuntimeLog.Error(LogTag, ex, $"Failed to write {_path}");
             }
 
             lock (_gate)

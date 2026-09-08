@@ -1,9 +1,41 @@
+using System;
+using System.Collections.Generic;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
 internal static class MediaSourceClassifier
 {
+    private const string YouTubeToken = "youtube";
+    private const string TwitchToken = "twitch";
+    private const string DiscordToken = "discord";
+    private const string AppleMusicToken = "apple music";
+    private const string SoundCloudToken = "soundcloud";
+    private const string TidalToken = "tidal";
+    private const string DeezerToken = "deezer";
+    private const string BandcampToken = "bandcamp";
+    private const string NetflixToken = "netflix";
+    private const string VimeoToken = "vimeo";
+
+    private static readonly (string Token, MediaPlatform Platform)[] SimpleMetadataTokens =
+    {
+        (SoundCloudToken, MediaPlatform.SoundCloud),
+        (TidalToken, MediaPlatform.Tidal),
+        (DeezerToken, MediaPlatform.Deezer),
+        (BandcampToken, MediaPlatform.Bandcamp),
+        (NetflixToken, MediaPlatform.Netflix),
+        (VimeoToken, MediaPlatform.Vimeo),
+    };
+
+    private static readonly (string Token, MediaPlatform Platform)[] SimpleWindowTokens =
+    {
+        (SoundCloudToken, MediaPlatform.SoundCloud),
+        (DeezerToken, MediaPlatform.Deezer),
+        (BandcampToken, MediaPlatform.Bandcamp),
+        (NetflixToken, MediaPlatform.Netflix),
+        (VimeoToken, MediaPlatform.Vimeo),
+    };
+
     public static void ApplyFromAppId(MediaInfo info, string sessionSourceApp)
     {
         if (string.IsNullOrEmpty(sessionSourceApp)) return;
@@ -65,68 +97,41 @@ internal static class MediaSourceClassifier
         string artist = (lowerArtist ?? "").ToLowerInvariant();
         string album = (lowerAlbum ?? "").ToLowerInvariant();
 
-        bool isYouTube = artist.Contains("youtube") ||
-                         title.Contains("youtube") ||
-                         title.EndsWith("- youtube") ||
-                         title.EndsWith("– youtube") ||
-                         album.Contains("youtube");
-
-        if (isYouTube)
+        var detected = DetectPlatformFromMetadata(title, artist, album);
+        if (detected != MediaPlatform.Unknown)
         {
-            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-            info.IsYouTubeRunning = true;
-        }
-        else if (artist.Contains("twitch") || title.Contains("twitch") || title.EndsWith("- twitch") || title.EndsWith("– twitch") || album.Contains("twitch"))
-        {
-            info.MediaSource = MediaPlatform.Twitch.ToDisplayString();
-            info.IsTwitchRunning = true;
-        }
-        else if (artist.Contains("discord") || title.Contains("discord") || album.Contains("discord"))
-        {
-            info.MediaSource = MediaPlatform.Discord.ToDisplayString();
-            info.IsDiscordRunning = true;
-        }
-        else if (artist.Contains("apple music") || title.Contains("apple music") || album.Contains("apple music") || album.Contains("music.apple.com"))
-        {
-            info.MediaSource = MediaPlatform.AppleMusic.ToDisplayString();
-            info.IsAppleMusicRunning = true;
-        }
-        else if (artist.Contains("soundcloud") || title.Contains("soundcloud") || album.Contains("soundcloud"))
-        {
-            info.MediaSource = MediaPlatform.SoundCloud.ToDisplayString();
-            info.IsSoundCloudRunning = true;
-        }
-        else if (artist.Contains("tidal") || title.Contains("tidal") || album.Contains("tidal"))
-        {
-            info.MediaSource = MediaPlatform.Tidal.ToDisplayString();
-            info.IsTidalRunning = true;
-        }
-        else if (artist.Contains("deezer") || title.Contains("deezer") || album.Contains("deezer"))
-        {
-            info.MediaSource = MediaPlatform.Deezer.ToDisplayString();
-            info.IsDeezerRunning = true;
-        }
-        else if (artist.Contains("bandcamp") || title.Contains("bandcamp") || album.Contains("bandcamp"))
-        {
-            info.MediaSource = MediaPlatform.Bandcamp.ToDisplayString();
-            info.IsBandcampRunning = true;
-        }
-        else if (artist.Contains("netflix") || title.Contains("netflix") || album.Contains("netflix"))
-        {
-            info.MediaSource = MediaPlatform.Netflix.ToDisplayString();
-            info.IsNetflixRunning = true;
-        }
-        else if (artist.Contains("bilibili") || title.Contains("bilibili") || artist.Contains("哔哩哔哩") || title.Contains("哔哩哔哩"))
-        {
-            info.MediaSource = MediaPlatform.Bilibili.ToDisplayString();
-            info.IsBilibiliRunning = true;
-        }
-        else if (artist.Contains("vimeo") || title.Contains("vimeo") || album.Contains("vimeo"))
-        {
-            info.MediaSource = MediaPlatform.Vimeo.ToDisplayString();
-            info.IsVimeoRunning = true;
+            SetPlatformRunning(info, detected);
         }
     }
+
+    private static MediaPlatform DetectPlatformFromMetadata(string title, string artist, string album)
+    {
+        if (MatchesMetadata(title, artist, album, YouTubeToken) || title.EndsWith("- youtube") || title.EndsWith("– youtube"))
+            return MediaPlatform.YouTube;
+
+        if (MatchesMetadata(title, artist, album, TwitchToken) || title.EndsWith("- twitch") || title.EndsWith("– twitch"))
+            return MediaPlatform.Twitch;
+
+        if (MatchesMetadata(title, artist, album, DiscordToken))
+            return MediaPlatform.Discord;
+
+        if (MatchesMetadata(title, artist, album, AppleMusicToken) || album.Contains("music.apple.com"))
+            return MediaPlatform.AppleMusic;
+
+        if (artist.Contains("bilibili") || title.Contains("bilibili") || artist.Contains("哔哩哔哩") || title.Contains("哔哩哔哩"))
+            return MediaPlatform.Bilibili;
+
+        foreach (var (token, platform) in SimpleMetadataTokens)
+        {
+            if (MatchesMetadata(title, artist, album, token))
+                return platform;
+        }
+
+        return MediaPlatform.Unknown;
+    }
+
+    private static bool MatchesMetadata(string title, string artist, string album, string token)
+        => artist.Contains(token) || title.Contains(token) || album.Contains(token);
 
     public static void DetectFromWindowTitles(
         MediaInfo info,
@@ -156,121 +161,140 @@ internal static class MediaSourceClassifier
                 continue;
             }
 
-            if (winTitleLower.Contains("youtube") && !winTitleLower.StartsWith("youtube -") && winTitleLower != "youtube")
+            if (TryDetectPlatformFromWindowTitle(info, title, winTitleLower))
             {
-                info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                info.IsYouTubeRunning = true;
-                string extractedYouTubeTitle = PlatformDetector.ExtractTitleFromWindow(title, "YouTube");
-                if (!string.IsNullOrWhiteSpace(extractedYouTubeTitle) &&
-                    extractedYouTubeTitle.Length > info.CurrentTrack.Length &&
-                    PlatformDetector.NormalizeForLooseMatch(extractedYouTubeTitle).Contains(PlatformDetector.NormalizeForLooseMatch(info.CurrentTrack), StringComparison.Ordinal))
-                {
-                    info.CurrentTrack = extractedYouTubeTitle;
-                }
                 break;
             }
-            else if (winTitleLower.Contains("twitch") && !winTitleLower.StartsWith("twitch -") && winTitleLower != "twitch")
-            {
-                info.MediaSource = MediaPlatform.Twitch.ToDisplayString();
-                info.IsTwitchRunning = true;
-                string extractedTwitchTitle = PlatformDetector.ExtractTitleFromWindow(title, "Twitch");
-                if (!string.IsNullOrWhiteSpace(extractedTwitchTitle) &&
-                    (string.IsNullOrEmpty(info.CurrentTrack) ||
-                     (extractedTwitchTitle.Length > info.CurrentTrack.Length &&
-                      PlatformDetector.NormalizeForLooseMatch(extractedTwitchTitle).Contains(PlatformDetector.NormalizeForLooseMatch(info.CurrentTrack), StringComparison.Ordinal))))
-                {
-                    info.CurrentTrack = extractedTwitchTitle;
-                }
-                break;
-            }
-            else if ((winTitleLower.Contains("discord") || winTitleLower.Contains("vesktop")) &&
-                     !winTitleLower.StartsWith("discord -") && winTitleLower != "discord" && winTitleLower != "vesktop")
-            {
-                info.MediaSource = MediaPlatform.Discord.ToDisplayString();
-                info.IsDiscordRunning = true;
-                string extractedDiscordTitle = PlatformDetector.ExtractTitleFromWindow(title, "Discord");
-                if (!string.IsNullOrWhiteSpace(extractedDiscordTitle) &&
-                    (string.IsNullOrEmpty(info.CurrentTrack) ||
-                     (extractedDiscordTitle.Length > info.CurrentTrack.Length &&
-                      PlatformDetector.NormalizeForLooseMatch(extractedDiscordTitle).Contains(PlatformDetector.NormalizeForLooseMatch(info.CurrentTrack), StringComparison.Ordinal))))
-                {
-                    info.CurrentTrack = extractedDiscordTitle;
-                }
-                break;
-            }
-            else if (winTitleLower.Contains("soundcloud"))
-            {
-                info.MediaSource = MediaPlatform.SoundCloud.ToDisplayString();
-                info.IsSoundCloudRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("apple music") || winTitleLower.Contains("music.apple.com") ||
-                     (winTitleLower.Contains("apple") && winTitleLower.Contains("music")))
-            {
-                info.MediaSource = MediaPlatform.AppleMusic.ToDisplayString();
-                info.IsAppleMusicRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("tidal") && (winTitleLower.Contains("listen.tidal.com") || winTitleLower.Contains(" - tidal") || winTitleLower.Contains(" – tidal")))
-            {
-                info.MediaSource = MediaPlatform.Tidal.ToDisplayString();
-                info.IsTidalRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("deezer"))
-            {
-                info.MediaSource = MediaPlatform.Deezer.ToDisplayString();
-                info.IsDeezerRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("bandcamp"))
-            {
-                info.MediaSource = MediaPlatform.Bandcamp.ToDisplayString();
-                info.IsBandcampRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("netflix"))
-            {
-                info.MediaSource = MediaPlatform.Netflix.ToDisplayString();
-                info.IsNetflixRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("bilibili") || winTitleLower.Contains("哔哩哔哩"))
-            {
-                info.MediaSource = MediaPlatform.Bilibili.ToDisplayString();
-                info.IsBilibiliRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("vimeo"))
-            {
-                info.MediaSource = MediaPlatform.Vimeo.ToDisplayString();
-                info.IsVimeoRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("facebook") && (winTitleLower.Contains("watch") || winTitleLower.Contains("video")))
-            {
-                info.MediaSource = MediaPlatform.Facebook.ToDisplayString();
-                info.IsFacebookRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("tiktok") && winTitleLower.Contains(" | "))
-            {
-                info.MediaSource = MediaPlatform.TikTok.ToDisplayString();
-                info.IsTikTokRunning = true;
-                break;
-            }
-            else if (winTitleLower.Contains("instagram") && (winTitleLower.Contains("reel") || winTitleLower.Contains("video")))
-            {
-                info.MediaSource = MediaPlatform.Instagram.ToDisplayString();
-                info.IsInstagramRunning = true;
-                break;
-            }
-            else if ((winTitleLower.Contains("twitter") || winTitleLower.Contains(" / x")) && (winTitleLower.Contains("video") || winTitleLower.Contains("watch")))
-            {
-                info.MediaSource = MediaPlatform.Twitter.ToDisplayString();
-                info.IsTwitterRunning = true;
-                break;
-            }
+        }
+    }
+
+    private static bool TryDetectPlatformFromWindowTitle(MediaInfo info, string title, string winTitleLower)
+    {
+        if (winTitleLower.Contains(YouTubeToken) && !winTitleLower.StartsWith("youtube -") && winTitleLower != YouTubeToken)
+        {
+            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+            info.IsYouTubeRunning = true;
+            UpdateTrackTitleIfBetter(info, title, "YouTube");
+            return true;
+        }
+
+        if (winTitleLower.Contains(TwitchToken) && !winTitleLower.StartsWith("twitch -") && winTitleLower != TwitchToken)
+        {
+            info.MediaSource = MediaPlatform.Twitch.ToDisplayString();
+            info.IsTwitchRunning = true;
+            UpdateTrackTitleIfBetter(info, title, "Twitch");
+            return true;
+        }
+
+        if ((winTitleLower.Contains(DiscordToken) || winTitleLower.Contains("vesktop")) &&
+            !winTitleLower.StartsWith("discord -") && winTitleLower != DiscordToken && winTitleLower != "vesktop")
+        {
+            info.MediaSource = MediaPlatform.Discord.ToDisplayString();
+            info.IsDiscordRunning = true;
+            UpdateTrackTitleIfBetter(info, title, "Discord");
+            return true;
+        }
+
+        return TryDetectSecondaryPlatformsFromWindowTitle(info, winTitleLower);
+    }
+
+    private static void UpdateTrackTitleIfBetter(MediaInfo info, string title, string platformKey)
+    {
+        string extracted = PlatformDetector.ExtractTitleFromWindow(title, platformKey);
+        if (!string.IsNullOrWhiteSpace(extracted) &&
+            (string.IsNullOrEmpty(info.CurrentTrack) ||
+             (extracted.Length > info.CurrentTrack.Length &&
+              PlatformDetector.NormalizeForLooseMatch(extracted).Contains(PlatformDetector.NormalizeForLooseMatch(info.CurrentTrack), StringComparison.Ordinal))))
+        {
+            info.CurrentTrack = extracted;
+        }
+    }
+
+    private static bool TryDetectSecondaryPlatformsFromWindowTitle(MediaInfo info, string winTitleLower)
+    {
+        var platform = DetectMusicPlatformFromWindowTitle(winTitleLower);
+        if (platform == MediaPlatform.Unknown)
+        {
+            platform = DetectSocialVideoPlatformFromWindowTitle(winTitleLower);
+        }
+
+        if (platform != MediaPlatform.Unknown)
+        {
+            SetPlatformRunning(info, platform);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static MediaPlatform DetectMusicPlatformFromWindowTitle(string winTitleLower)
+    {
+        foreach (var (token, platform) in SimpleWindowTokens)
+        {
+            if (winTitleLower.Contains(token))
+                return platform;
+        }
+
+        if (winTitleLower.Contains(AppleMusicToken) || winTitleLower.Contains("music.apple.com") ||
+            (winTitleLower.Contains("apple") && winTitleLower.Contains("music")))
+        {
+            return MediaPlatform.AppleMusic;
+        }
+
+        if (winTitleLower.Contains(TidalToken) &&
+            (winTitleLower.Contains("listen.tidal.com") || winTitleLower.Contains(" - tidal") || winTitleLower.Contains(" – tidal")))
+        {
+            return MediaPlatform.Tidal;
+        }
+
+        if (winTitleLower.Contains("bilibili") || winTitleLower.Contains("哔哩哔哩"))
+        {
+            return MediaPlatform.Bilibili;
+        }
+
+        return MediaPlatform.Unknown;
+    }
+
+    private static MediaPlatform DetectSocialVideoPlatformFromWindowTitle(string winTitleLower)
+    {
+        if (winTitleLower.Contains("facebook") && (winTitleLower.Contains("watch") || winTitleLower.Contains("video")))
+            return MediaPlatform.Facebook;
+
+        if (winTitleLower.Contains("tiktok") && winTitleLower.Contains(" | "))
+            return MediaPlatform.TikTok;
+
+        if (winTitleLower.Contains("instagram") && (winTitleLower.Contains("reel") || winTitleLower.Contains("video")))
+            return MediaPlatform.Instagram;
+
+        if ((winTitleLower.Contains("twitter") || winTitleLower.Contains(" / x")) &&
+            (winTitleLower.Contains("video") || winTitleLower.Contains("watch")))
+            return MediaPlatform.Twitter;
+
+        return MediaPlatform.Unknown;
+    }
+
+    private static void SetPlatformRunning(MediaInfo info, MediaPlatform platform)
+    {
+        info.MediaSource = platform.ToDisplayString();
+        switch (platform)
+        {
+            case MediaPlatform.Spotify: info.IsSpotifyRunning = true; break;
+            case MediaPlatform.YouTube: info.IsYouTubeRunning = true; break;
+            case MediaPlatform.Discord: info.IsDiscordRunning = true; break;
+            case MediaPlatform.Twitch: info.IsTwitchRunning = true; break;
+            case MediaPlatform.AppleMusic: info.IsAppleMusicRunning = true; break;
+            case MediaPlatform.SoundCloud: info.IsSoundCloudRunning = true; break;
+            case MediaPlatform.Tidal: info.IsTidalRunning = true; break;
+            case MediaPlatform.Deezer: info.IsDeezerRunning = true; break;
+            case MediaPlatform.Bandcamp: info.IsBandcampRunning = true; break;
+            case MediaPlatform.Netflix: info.IsNetflixRunning = true; break;
+            case MediaPlatform.Bilibili: info.IsBilibiliRunning = true; break;
+            case MediaPlatform.Vimeo: info.IsVimeoRunning = true; break;
+            case MediaPlatform.Facebook: info.IsFacebookRunning = true; break;
+            case MediaPlatform.TikTok: info.IsTikTokRunning = true; break;
+            case MediaPlatform.Instagram: info.IsInstagramRunning = true; break;
+            case MediaPlatform.Twitter: info.IsTwitterRunning = true; break;
+            default: break;
         }
     }
 
@@ -290,14 +314,14 @@ internal static class MediaSourceClassifier
                            lowerTitle == "brave" ||
                            lowerTitle == "opera" ||
                            lowerTitle == "firefox" ||
-                           lowerTitle == "discord" ||
+                           lowerTitle == DiscordToken ||
                            lowerTitle == "vesktop" ||
-                           lowerTitle == "twitch" ||
-                           lowerTitle == "netflix" ||
-                           lowerTitle == "tidal" ||
-                           lowerTitle == "deezer" ||
-                           lowerTitle == "bandcamp" ||
-                           (lowerTitle == "youtube" && (string.IsNullOrEmpty(sessionArtist) || lowerArtist == "youtube"));
+                           lowerTitle == TwitchToken ||
+                           lowerTitle == NetflixToken ||
+                           lowerTitle == TidalToken ||
+                           lowerTitle == DeezerToken ||
+                           lowerTitle == BandcampToken ||
+                           (lowerTitle == YouTubeToken && (string.IsNullOrEmpty(sessionArtist) || lowerArtist == YouTubeToken));
 
         if (!isJunkTitle) return false;
 

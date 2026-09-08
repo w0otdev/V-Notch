@@ -14,51 +14,36 @@ public class MediaTimelineSimulator
     private TimeSpan _lastObservedPosition = TimeSpan.Zero;
     private DateTime _lastPositionChangeTime = DateTime.MinValue;
 
-    private TimeSpan _recoveredDuration = TimeSpan.Zero;
-    private BitmapImage? _recoveredThumbnail;
-
     public bool IsThrottled => _isThrottled;
 
     public TimeSpan LastObservedPosition => _lastObservedPosition;
     public DateTime LastPositionChangeTime => _lastPositionChangeTime;
-    public TimeSpan RecoveredDuration
-    {
-        get => _recoveredDuration;
-        set => _recoveredDuration = value;
-    }
-    public BitmapImage? RecoveredThumbnail
-    {
-        get => _recoveredThumbnail;
-        set => _recoveredThumbnail = value;
-    }
+    public TimeSpan RecoveredDuration { get; set; } = TimeSpan.Zero;
+    public BitmapImage? RecoveredThumbnail { get; set; }
+
     public void UpdateObservedPosition(TimeSpan position)
     {
         if (position != _lastObservedPosition)
         {
             _lastObservedPosition = position;
-            _lastPositionChangeTime = DateTime.Now;
+            _lastPositionChangeTime = DateTime.UtcNow;
         }
     }
+
     public bool IsPositionStuck(TimeSpan threshold)
     {
-        return (DateTime.Now - _lastPositionChangeTime).TotalSeconds > threshold.TotalSeconds;
+        return (DateTime.UtcNow - _lastPositionChangeTime).TotalSeconds > threshold.TotalSeconds;
     }
-    public bool IsAtEndStuck(double progress, DateTime lastMetadataChangeTime, TimeSpan threshold)
+
+    public static bool IsAtEndStuck(double progress, DateTime lastMetadataChangeTime, TimeSpan threshold)
     {
-        return progress > 0.98 && (DateTime.Now - lastMetadataChangeTime) > threshold;
+        return progress > 0.98 && (DateTime.UtcNow - lastMetadataChangeTime) > threshold;
     }
+
     public void ApplySimulatedTimeline(MediaInfo info, bool atEndStuck)
     {
         var nowUtc = DateTime.UtcNow;
-
-        var sig = info.GetSignature();
-        if (_simSignature != sig || _simBaseWallTimeUtc == DateTime.MinValue)
-        {
-            _simSignature = sig;
-            _simBaseWallTimeUtc = nowUtc;
-            _simBasePosition = _lastObservedPosition != TimeSpan.Zero ? _lastObservedPosition : info.Position;
-            _simBasePlaybackRate = info.PlaybackRate > 0 ? info.PlaybackRate : 1.0;
-        }
+        EnsureSimulationBase(info, nowUtc);
 
         var elapsed = nowUtc - _simBaseWallTimeUtc;
         var sim = _simBasePosition + TimeSpan.FromSeconds(elapsed.TotalSeconds * _simBasePlaybackRate);
@@ -70,48 +55,69 @@ public class MediaTimelineSimulator
         info.IsThrottled = true;
         _isThrottled = true;
 
-        if (atEndStuck)
-        {
-            info.Duration = _recoveredDuration > TimeSpan.Zero ? _recoveredDuration : TimeSpan.Zero;
-        }
-        else
-        {
-            if (info.Duration <= TimeSpan.Zero && _recoveredDuration > TimeSpan.Zero)
-                info.Duration = _recoveredDuration;
-        }
-
-        if (info.Thumbnail == null && _recoveredThumbnail != null)
-            info.Thumbnail = _recoveredThumbnail;
+        ApplyRecoveredMetadata(info, atEndStuck);
 
         info.LastUpdated = DateTimeOffset.Now;
     }
+
+    private void EnsureSimulationBase(MediaInfo info, DateTime nowUtc)
+    {
+        var sig = info.GetSignature();
+        if (_simSignature != sig || _simBaseWallTimeUtc == DateTime.MinValue)
+        {
+            _simSignature = sig;
+            _simBaseWallTimeUtc = nowUtc;
+            _simBasePosition = _lastObservedPosition != TimeSpan.Zero ? _lastObservedPosition : info.Position;
+            _simBasePlaybackRate = info.PlaybackRate > 0 ? info.PlaybackRate : 1.0;
+        }
+    }
+
+    private void ApplyRecoveredMetadata(MediaInfo info, bool atEndStuck)
+    {
+        if (atEndStuck)
+        {
+            info.Duration = RecoveredDuration > TimeSpan.Zero ? RecoveredDuration : TimeSpan.Zero;
+        }
+        else if (info.Duration <= TimeSpan.Zero && RecoveredDuration > TimeSpan.Zero)
+        {
+            info.Duration = RecoveredDuration;
+        }
+
+        if (info.Thumbnail == null && RecoveredThumbnail != null)
+            info.Thumbnail = RecoveredThumbnail;
+    }
+
     public void EnterThrottledMode()
     {
         _isThrottled = true;
     }
+
     public void Reset()
     {
         _isThrottled = false;
-        _recoveredDuration = TimeSpan.Zero;
-        _recoveredThumbnail = null;
+        RecoveredDuration = TimeSpan.Zero;
+        RecoveredThumbnail = null;
         ResetSimulation();
     }
+
     public void ResetSimulation()
     {
         _simBaseWallTimeUtc = DateTime.MinValue;
         _simBasePosition = TimeSpan.Zero;
         _simSignature = "";
     }
+
     public void ResetRecoveredData()
     {
-        _recoveredDuration = TimeSpan.Zero;
-        _recoveredThumbnail = null;
+        RecoveredDuration = TimeSpan.Zero;
+        RecoveredThumbnail = null;
     }
+
     public bool TryExitThrottleIfPositionResumed(TimeSpan resumeThreshold)
     {
         if (!_isThrottled) return false;
 
-        if ((DateTime.Now - _lastPositionChangeTime) < resumeThreshold)
+        if ((DateTime.UtcNow - _lastPositionChangeTime) < resumeThreshold)
         {
             Reset();
             return true;
@@ -119,11 +125,12 @@ public class MediaTimelineSimulator
 
         return false;
     }
+
     public bool TryExitThrottleIfStalled(TimeSpan stallThreshold)
     {
         if (!_isThrottled) return false;
 
-        if ((DateTime.Now - _lastPositionChangeTime).TotalSeconds > stallThreshold.TotalSeconds)
+        if ((DateTime.UtcNow - _lastPositionChangeTime).TotalSeconds > stallThreshold.TotalSeconds)
         {
             Reset();
             return true;

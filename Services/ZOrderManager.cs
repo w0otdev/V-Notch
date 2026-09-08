@@ -3,7 +3,7 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
 
-public class ZOrderManager : IDisposable
+public sealed class ZOrderManager : IDisposable
 {
     private readonly Func<IntPtr> _getHwnd;
     private readonly Func<bool> _isEffectivelyVisible;
@@ -167,13 +167,18 @@ public class ZOrderManager : IDisposable
         EnsureTopmost(force: true);
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         Stop();
     }
 
     public void Start()
     {
+        if (_disposed) return;
         if (_foregroundWinEventHook == IntPtr.Zero)
         {
             _foregroundWinEventProc = ForegroundWindowChanged;

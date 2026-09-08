@@ -79,8 +79,9 @@ public static class RuntimeLog
                 _writer = new AsyncLogWriter(_logPath);
                 _initialized = true;
             }
-            catch
+            catch (Exception)
             {
+                // Failed to initialize disk logging session (e.g. access denied or path locked)
                 _writer = null;
                 _initialized = false;
             }
@@ -165,8 +166,9 @@ public static class RuntimeLog
         {
             return writer.Completion.Wait(timeout);
         }
-        catch
+        catch (Exception)
         {
+            // Ignore timeout or wait exceptions during writer shutdown
             return false;
         }
     }
@@ -182,8 +184,9 @@ public static class RuntimeLog
                 string oldPath = _logPath + ".old";
                 if (File.Exists(oldPath)) File.Delete(oldPath);
             }
-            catch
+            catch (Exception)
             {
+                // Ignore file deletion errors when clearing log (e.g. file is locked by another process)
             }
 
             if (IsEnabled(LogLevel.Info))
@@ -223,7 +226,10 @@ public static class RuntimeLog
         {
             EntryWritten?.Invoke(level, category, message);
         }
-        catch { }
+        catch (Exception)
+        {
+            // Subscriber exceptions in the event handler should not disrupt the logging pipeline
+        }
     }
 
     private static void RotateIfNeeded()
@@ -239,8 +245,9 @@ public static class RuntimeLog
                 File.Delete(backupPath);
             File.Move(_logPath, backupPath);
         }
-        catch
+        catch (Exception)
         {
+            // Ignore rotation failures when log files are locked or inaccessible
         }
     }
 
@@ -376,8 +383,9 @@ public static class RuntimeLog
                     await File.AppendAllTextAsync(_path, batch.ToString(), _utf8WithoutBom).ConfigureAwait(false);
                 }
             }
-            catch
+            catch (Exception)
             {
+                // Best-effort file write; ignore disk I/O errors to avoid terminating the background loop
             }
             finally
             {
@@ -416,6 +424,7 @@ public static class RuntimeLog
             }
             catch (SemaphoreFullException)
             {
+                // Semaphore is already signaled (capacity reached); safe to ignore
             }
         }
 

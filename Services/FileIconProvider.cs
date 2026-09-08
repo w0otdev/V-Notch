@@ -51,18 +51,18 @@ internal static class FileIconProvider
     private interface IShellItemImageFactory
     {
         [PreserveSig]
-        int GetImage([In, MarshalAs(UnmanagedType.Struct)] SIZE size, [In] int flags, [Out] out IntPtr phbm);
+        int GetImage([In, MarshalAs(UnmanagedType.Struct)] NativeSize size, [In] int flags, [Out] out IntPtr phbm);
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SIZE
+    private struct NativeSize
     {
         public int cx;
         public int cy;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct SHFILEINFO
+    private struct ShFileInfo
     {
         public IntPtr hIcon;
         public int iIcon;
@@ -83,7 +83,7 @@ internal static class FileIconProvider
     private static extern IntPtr SHGetFileInfo(
         string pszPath,
         uint dwFileAttributes,
-        ref SHFILEINFO psfi,
+        ref ShFileInfo psfi,
         uint cbFileInfo,
         uint uFlags);
 
@@ -114,7 +114,7 @@ internal static class FileIconProvider
             };
             return icon;
         }
-        catch
+        catch (Exception)
         {
             return null;
         }
@@ -166,7 +166,7 @@ internal static class FileIconProvider
             };
             return result;
         }
-        catch
+        catch (Exception)
         {
             return null;
         }
@@ -195,7 +195,7 @@ internal static class FileIconProvider
         try
         {
             SHCreateItemFromParsingName(filePath, IntPtr.Zero, _shellItemImageFactoryIid, out var factory);
-            int hr = factory.GetImage(new SIZE { cx = size, cy = size }, 0x01, out IntPtr hBitmap);
+            int hr = factory.GetImage(new NativeSize { cx = size, cy = size }, 0x01, out IntPtr hBitmap);
             if (hr != 0 || hBitmap == IntPtr.Zero) return null;
 
             try
@@ -210,7 +210,7 @@ internal static class FileIconProvider
                 DeleteObject(hBitmap);
             }
         }
-        catch
+        catch (Exception)
         {
             return null;
         }
@@ -229,7 +229,7 @@ internal static class FileIconProvider
             bitmap.Freeze();
             return bitmap;
         }
-        catch
+        catch (Exception)
         {
             return null;
         }
@@ -257,7 +257,7 @@ internal static class FileIconProvider
                 DeleteObject(hBitmap);
             }
         }
-        catch
+        catch (Exception)
         {
             return null;
         }
@@ -267,7 +267,7 @@ internal static class FileIconProvider
     {
         try
         {
-            var shinfo = new SHFILEINFO();
+            var shinfo = new ShFileInfo();
             uint flags = SHGFI_ICON | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON);
             IntPtr res = SHGetFileInfo(
                 filePath,
@@ -281,7 +281,7 @@ internal static class FileIconProvider
                 string ext = Path.GetExtension(filePath);
                 if (string.IsNullOrEmpty(ext)) return null;
 
-                res = SHGetFileInfo(
+                SHGetFileInfo(
                     ext,
                     FILE_ATTRIBUTE_NORMAL,
                     ref shinfo,
@@ -305,7 +305,7 @@ internal static class FileIconProvider
                 DestroyIcon(shinfo.hIcon);
             }
         }
-        catch
+        catch (Exception)
         {
             return null;
         }

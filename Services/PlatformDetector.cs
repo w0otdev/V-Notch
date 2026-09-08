@@ -102,35 +102,41 @@ public static class PlatformDetector
             if (lower.Contains("twitch") && !lower.StartsWith("twitch -") && lower != "twitch")
                 return MediaPlatform.Twitch;
 
-            if ((lower.Contains("discord") || lower.Contains("vesktop")) && !lower.StartsWith("discord -") && lower != "discord" && lower != "vesktop" && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Discord;
-            else if (lower.Contains("soundcloud") && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.SoundCloud;
-            else if ((lower.Contains("apple music") || lower.Contains("music.apple.com")) && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.AppleMusic;
-            else if (lower.Contains("tidal") && (lower.Contains("listen.tidal.com") || lower.Contains(" - tidal") || lower.Contains(" – tidal")) && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Tidal;
-            else if (lower.Contains("deezer") && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Deezer;
-            else if (lower.Contains("bandcamp") && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Bandcamp;
-            else if (lower.Contains("netflix") && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Netflix;
-            else if ((lower.Contains("bilibili") || lower.Contains("哔哩哔哩")) && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Bilibili;
-            else if (lower.Contains("vimeo") && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Vimeo;
-            else if (lower.Contains("facebook") && (lower.Contains("watch") || lower.Contains("video")) && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Facebook;
-            else if (lower.Contains("tiktok") && lower.Contains(" | ") && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.TikTok;
-            else if (lower.Contains("instagram") && (lower.Contains("reel") || lower.Contains("video")) && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Instagram;
-            else if ((lower.Contains("twitter") || lower.Contains(" / x")) && (lower.Contains("video") || lower.Contains("watch")) && fallback == MediaPlatform.Unknown)
-                fallback = MediaPlatform.Twitter;
+            if (fallback == MediaPlatform.Unknown)
+            {
+                fallback = MatchFallbackPlatform(lower);
+            }
         }
 
         return fallback;
+    }
+
+    private static readonly (Func<string, bool> Matcher, MediaPlatform Platform)[] FallbackMatchers =
+    {
+        (s => (s.Contains("discord") || s.Contains("vesktop")) && !s.StartsWith("discord -") && s != "discord" && s != "vesktop", MediaPlatform.Discord),
+        (s => s.Contains("soundcloud"), MediaPlatform.SoundCloud),
+        (s => s.Contains("apple music") || s.Contains("music.apple.com"), MediaPlatform.AppleMusic),
+        (s => s.Contains("tidal") && (s.Contains("listen.tidal.com") || s.Contains(" - tidal") || s.Contains(" – tidal")), MediaPlatform.Tidal),
+        (s => s.Contains("deezer"), MediaPlatform.Deezer),
+        (s => s.Contains("bandcamp"), MediaPlatform.Bandcamp),
+        (s => s.Contains("netflix"), MediaPlatform.Netflix),
+        (s => s.Contains("bilibili") || s.Contains("哔哩哔哩"), MediaPlatform.Bilibili),
+        (s => s.Contains("vimeo"), MediaPlatform.Vimeo),
+        (s => s.Contains("facebook") && (s.Contains("watch") || s.Contains("video")), MediaPlatform.Facebook),
+        (s => s.Contains("tiktok") && s.Contains(" | "), MediaPlatform.TikTok),
+        (s => s.Contains("instagram") && (s.Contains("reel") || s.Contains("video")), MediaPlatform.Instagram),
+        (s => (s.Contains("twitter") || s.Contains(" / x")) && (s.Contains("video") || s.Contains("watch")), MediaPlatform.Twitter),
+    };
+
+    private static MediaPlatform MatchFallbackPlatform(string lower)
+    {
+        foreach (var (matcher, platform) in FallbackMatchers)
+        {
+            if (matcher(lower))
+                return platform;
+        }
+
+        return MediaPlatform.Unknown;
     }
     public static string DetectPlatformHint(IEnumerable<string> windowTitles)
     {

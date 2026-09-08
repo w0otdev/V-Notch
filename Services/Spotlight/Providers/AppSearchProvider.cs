@@ -160,8 +160,14 @@ internal sealed class AppSearchProvider : ISpotlightProvider
     {
         if (value != null && Marshal.IsComObject(value))
         {
-            try { Marshal.FinalReleaseComObject(value); }
-            catch { }
+            try
+            {
+                Marshal.FinalReleaseComObject(value);
+            }
+            catch (Exception)
+            {
+                // Best-effort COM object cleanup, ignore if already released
+            }
         }
     }
 }

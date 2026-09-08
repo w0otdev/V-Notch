@@ -60,13 +60,9 @@ public static class TooltipHelper
         {
             var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
 
-            if (child is FrameworkElement element && element.ToolTip is ToolTip tooltip)
+            if (child is FrameworkElement element && element.ToolTip is ToolTip tooltip && tooltip.Tag is string locKey)
             {
-                // If the tooltip has a Tag storing the localization key, refresh it
-                if (tooltip.Tag is string locKey)
-                {
-                    tooltip.Content = Loc.Get(locKey);
-                }
+                tooltip.Content = Loc.Get(locKey);
             }
 
             RefreshTooltips(child);

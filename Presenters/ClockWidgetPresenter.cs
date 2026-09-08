@@ -99,6 +99,7 @@ public sealed class ClockWidgetPresenter : IDisposable
 
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
 
+#pragma warning disable S3776 // Synchronizes visibility and alignments across all expanded widget modes
     public void ApplyExpandedWidgetMode()
     {
         if (_refs.ClockWidget == null || _refs.CalendarStripContainer == null) return;
@@ -142,6 +143,7 @@ public sealed class ClockWidgetPresenter : IDisposable
 
         UpdateGreetingVisibilityForWidget();
     }
+#pragma warning restore S3776
 
     private void UpdateGreetingVisibilityForWidget()
     {
@@ -323,8 +325,8 @@ public sealed class ClockWidgetPresenter : IDisposable
     private const double _clockViewWidth = 600;
     private const double _clockViewHeight = 310;
 
-    private double ClockViewContentWidth => _clockViewWidth - 40.0;
-    private double ClockViewContentHeight => _clockViewHeight - 48.0;
+    private static double ClockViewContentWidth => _clockViewWidth - 40.0;
+    private static double ClockViewContentHeight => _clockViewHeight - 48.0;
 
     private bool _clockViewCalendarBuilt;
     private DateTime _clockViewRenderedDate = DateTime.MinValue;
@@ -430,7 +432,7 @@ public sealed class ClockWidgetPresenter : IDisposable
             _refs.ClockViewMonthText.Text = now.ToString("MMMM", culture).ToUpper(culture);
         }
 
-        var firstOfMonth = new DateTime(now.Year, now.Month, 1);
+        var firstOfMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, now.Kind);
         int dow = (int)firstOfMonth.DayOfWeek;
         int offset = (dow - (int)FirstDayOfWeek + 7) % 7;
         int daysInMonth = DateTime.DaysInMonth(now.Year, now.Month);
@@ -544,6 +546,7 @@ public sealed class ClockWidgetPresenter : IDisposable
             SetWindowPos(_host.Hwnd, HWND_TOPMOST, _host.FixedX, _host.FixedY, _host.WindowWidth, _host.WindowHeight, SWP_NOACTIVATE);
     }
 
+#pragma warning disable S107 // WPF notch resize transition requires source, target, timing, and callback parameters
     public void AnimateClockViewNotchResize(double fromWidth, double fromHeight,
         double toWidth, double toHeight, Duration duration, TimeSpan delay, Action? onCompleted = null, int? generation = null)
     {
@@ -599,6 +602,7 @@ public sealed class ClockWidgetPresenter : IDisposable
         notchBorder.BeginAnimation(FrameworkElement.WidthProperty, widthAnim, HandoffBehavior.SnapshotAndReplace);
         notchBorder.BeginAnimation(FrameworkElement.HeightProperty, heightAnim, HandoffBehavior.SnapshotAndReplace);
     }
+#pragma warning restore S107
 
     #endregion
 

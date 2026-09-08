@@ -2,8 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public class VolumeService : IVolumeService
+public sealed class VolumeService : IVolumeService
 {
+    private const string LogCategory = "VOLUME";
     private readonly object _sync = new();
     private IAudioEndpointVolume? _endpointVolume;
     private bool _isInitialized;
@@ -53,18 +54,18 @@ public class VolumeService : IVolumeService
             if (hr != 0 || device == null) return false;
 
             var iidAudioEndpointVolume = typeof(IAudioEndpointVolume).GUID;
-            hr = device.Activate(ref iidAudioEndpointVolume, (uint)CLSCTX.CLSCTX_ALL, IntPtr.Zero, out var endpointVolume);
+            hr = device.Activate(ref iidAudioEndpointVolume, (uint)ClsContexts.All, IntPtr.Zero, out var endpointVolume);
             if (hr != 0 || endpointVolume == null) return false;
 
             _endpointVolume = (IAudioEndpointVolume)endpointVolume;
             _isInitialized = true;
 
-            RuntimeLog.Log("VOLUME", "Initialized successfully");
+            RuntimeLog.Log(LogCategory, "Initialized successfully");
             return true;
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("VOLUME", $"Init error: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"Init error: {ex.Message}");
             _isInitialized = false;
             return false;
         }
@@ -89,11 +90,11 @@ public class VolumeService : IVolumeService
                     return level;
                 }
 
-                RuntimeLog.Log("VOLUME", $"GetVolume failed with HRESULT: 0x{hr:X8}");
+                RuntimeLog.Log(LogCategory, $"GetVolume failed with HRESULT: 0x{hr:X8}");
             }
             catch (Exception ex)
             {
-                RuntimeLog.Log("VOLUME", $"GetVolume error: {ex.Message}");
+                RuntimeLog.Log(LogCategory, $"GetVolume error: {ex.Message}");
             }
 
             _isInitialized = false;
@@ -117,11 +118,11 @@ public class VolumeService : IVolumeService
                     return true;
                 }
 
-                RuntimeLog.Log("VOLUME", $"SetVolume failed with HRESULT: 0x{hr:X8}");
+                RuntimeLog.Log(LogCategory, $"SetVolume failed with HRESULT: 0x{hr:X8}");
             }
             catch (Exception ex)
             {
-                RuntimeLog.Log("VOLUME", $"SetVolume error: {ex.Message}");
+                RuntimeLog.Log(LogCategory, $"SetVolume error: {ex.Message}");
             }
 
             _isInitialized = false;
@@ -139,7 +140,7 @@ public class VolumeService : IVolumeService
             {
                 int hr = _endpointVolume!.GetMute(out bool mute);
                 if (hr == 0) return mute;
-                RuntimeLog.Log("VOLUME", $"GetMute failed with HRESULT: 0x{hr:X8}");
+                RuntimeLog.Log(LogCategory, $"GetMute failed with HRESULT: 0x{hr:X8}");
             }
             catch (Exception ex)
             {
@@ -162,7 +163,7 @@ public class VolumeService : IVolumeService
                 int hr = _endpointVolume!.SetMute(mute, Guid.Empty);
                 if (hr != 0)
                 {
-                    RuntimeLog.Log("VOLUME", $"SetMute failed with HRESULT: 0x{hr:X8}");
+                    RuntimeLog.Log(LogCategory, $"SetMute failed with HRESULT: 0x{hr:X8}");
                     _isInitialized = false;
                 }
             }
@@ -205,7 +206,14 @@ public class VolumeService : IVolumeService
     private static void ReleaseComObject(object? value)
     {
         if (value == null || !Marshal.IsComObject(value)) return;
-        try { Marshal.ReleaseComObject(value); } catch { }
+        try
+        {
+            Marshal.ReleaseComObject(value);
+        }
+        catch (Exception)
+        {
+            // COM object may already be released or invalid; safe to ignore during cleanup.
+        }
     }
 
     #region COM Enums
@@ -225,13 +233,13 @@ public class VolumeService : IVolumeService
     }
 
     [Flags]
-    private enum CLSCTX : uint
+    private enum ClsContexts : uint
     {
-        CLSCTX_INPROC_SERVER = 0x1,
-        CLSCTX_INPROC_HANDLER = 0x2,
-        CLSCTX_LOCAL_SERVER = 0x4,
-        CLSCTX_REMOTE_SERVER = 0x10,
-        CLSCTX_ALL = CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER | CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER
+        InprocServer = 0x1,
+        InprocHandler = 0x2,
+        LocalServer = 0x4,
+        RemoteServer = 0x10,
+        All = InprocServer | InprocHandler | LocalServer | RemoteServer
     }
 
     #endregion

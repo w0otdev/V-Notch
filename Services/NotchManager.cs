@@ -5,15 +5,11 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-public class NotchManager : INotchManager
+public sealed class NotchManager : INotchManager
 {
-    private readonly Window _window;
     private NotchSettings _settings;
     private readonly NotchStateManager _stateManager;
     private readonly HoverDetectionService _hoverService;
-
-    private double _originalWidth;
-    private double _originalHeight;
 
     private Screen? _currentScreen;
     private Rect _safeArea;
@@ -28,13 +24,10 @@ public class NotchManager : INotchManager
 
     public NotchManager(Window window, NotchSettings settings)
     {
-        _window = window;
+        _ = window;
         _settings = settings;
         _stateManager = new NotchStateManager();
         _hoverService = new HoverDetectionService(settings.HoverZoneMargin);
-
-        _originalWidth = settings.Width;
-        _originalHeight = settings.Height;
 
         if (settings.EnableHoverExpand)
         {
@@ -49,8 +42,6 @@ public class NotchManager : INotchManager
     {
         var oldHoverEnabled = _settings.EnableHoverExpand;
         _settings = settings;
-        _originalWidth = settings.Width;
-        _originalHeight = settings.Height;
         AnimationConfig.Configure(settings.AnimationFps);
 
         if (settings.EnableHoverExpand && !oldHoverEnabled)

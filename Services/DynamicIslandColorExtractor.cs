@@ -12,9 +12,7 @@ internal static class DynamicIslandColorExtractor
     public readonly record struct Palette(Color Main, Color Sub);
     public readonly record struct PaletteColor(Color Color, int Population, double Score);
 
-    private const int PreprocessSize = 150;
-    private const int KClusters = 6;
-    private const int KMeansMaxIter = 12;
+    private const string LogTag = "COLOR-PICK";
 
     private static WeakReference<BitmapSource>? _lastPaletteBitmap;
     private static Palette _lastPaletteResult;
@@ -26,17 +24,17 @@ internal static class DynamicIslandColorExtractor
         if (_lastPaletteBitmap != null && _lastPaletteBitmap.TryGetTarget(out var cached) && ReferenceEquals(cached, bitmap))
             return _lastPaletteResult;
 
-        var result = ExtractAdvancedPalette(bitmap, Rect.Empty);
+        var result = ExtractAdvancedPalette(bitmap);
         Palette palette;
         if (result.IsMonotone || result.Primary == default)
         {
-            RuntimeLog.Log("COLOR-PICK",
+            RuntimeLog.Log(LogTag,
                 $"FALLBACK: IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
             palette = new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
         }
         else
         {
-            RuntimeLog.Log("COLOR-PICK",
+            RuntimeLog.Log(LogTag,
                 $"OK: Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
             var main = result.Primary;
             var darkUiBackground = Colors.Black;
@@ -51,15 +49,16 @@ internal static class DynamicIslandColorExtractor
 
     public static Palette GetDynamicIslandPalette(BitmapSource bitmap, Rect smartCropBbox)
     {
-        var result = ExtractAdvancedPalette(bitmap, smartCropBbox);
+        _ = smartCropBbox;
+        var result = ExtractAdvancedPalette(bitmap);
         if (result.IsMonotone || result.Primary == default)
         {
-            RuntimeLog.Log("COLOR-PICK",
+            RuntimeLog.Log(LogTag,
                 $"FALLBACK(bbox): IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
             return new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
         }
 
-        RuntimeLog.Log("COLOR-PICK",
+        RuntimeLog.Log(LogTag,
             $"OK(bbox): Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
         var main = result.Primary;
         var darkUiBackground = Colors.Black;
@@ -69,7 +68,7 @@ internal static class DynamicIslandColorExtractor
 
     public static Color GetDominantColor(BitmapSource bitmap)
     {
-        var result = ExtractAdvancedPalette(bitmap, Rect.Empty);
+        var result = ExtractAdvancedPalette(bitmap);
         if (result.IsMonotone) return Colors.White;
         return result.Primary != default ? result.Primary : Color.FromRgb(30, 30, 30);
     }
@@ -98,8 +97,8 @@ internal static class DynamicIslandColorExtractor
         if (d > 0)
         {
             s = l > 0.5 ? d / (2.0 - max - min) : d / (max + min);
-            if (max == r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6.0;
-            else if (max == g) h = ((b - r) / d + 2) / 6.0;
+            if (Math.Abs(max - r) < 0.0001) h = ((g - b) / d + (g < b ? 6 : 0)) / 6.0;
+            else if (Math.Abs(max - g) < 0.0001) h = ((b - r) / d + 2) / 6.0;
             else h = ((r - g) / d + 4) / 6.0;
             s = Math.Min(s, 0.90);
         }
@@ -213,13 +212,14 @@ internal static class DynamicIslandColorExtractor
 
     #endregion
 
-    #region Advanced palette extraction (K-Means HSV + weighted zones)
+    #region Advanced palette extraction (Weighted Hue Buckets + Zone Weighting)
 
     public readonly record struct PaletteResult(
         Color Primary, Color Secondary, Color Accent,
         bool IsMonotone, bool IsFlatBg, Color TextOnPrimary);
 
-    private static PaletteResult ExtractAdvancedPalette(BitmapSource bitmap, Rect smartCropBbox, int analysisSize = 36)
+#pragma warning disable S3776 // Advanced palette extraction computes multi-bucket HSV distributions and spatial zone weighting
+    private static PaletteResult ExtractAdvancedPalette(BitmapSource bitmap, int analysisSize = 36)
     {
         if (bitmap == null)
             return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
@@ -383,136 +383,7 @@ internal static class DynamicIslandColorExtractor
             return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
         }
     }
-
-    private static bool IsValidCluster(float h, float s, float v)
-    {
-        if (s < 0.12f && v > 0.92f) return false;
-        if (v < 0.10f) return false;
-        float hDeg = h * 360f;
-        if (hDeg >= 10f && hDeg <= 25f && s < 0.40f) return false;
-        return true;
-    }
-
-    private static float DeltaEHsv(float h1, float s1, float v1, float h2, float s2, float v2)
-    {
-        float dh = Math.Min(Math.Abs(h1 - h2), 1f - Math.Abs(h1 - h2)) * 2f;
-        float ds = Math.Abs(s1 - s2);
-        float dv = Math.Abs(v1 - v2);
-        return MathF.Sqrt(dh * dh * 10000f + ds * ds * 2500f + dv * dv * 2500f);
-    }
-
-    #endregion
-
-    #region K-Means HSV clustering
-
-    private sealed class HsvCluster
-    {
-        public float H, S, V;
-        public float Coverage;
-        public bool InCropZone;
-    }
-
-    private static List<HsvCluster> KMeansHsv(List<(float H, float S, float V, float Weight)> samples, int k, int maxIter)
-    {
-        var rng = new Random(42);
-        var centroids = new (float H, float S, float V)[k];
-        int firstIdx = rng.Next(samples.Count);
-        centroids[0] = (samples[firstIdx].H, samples[firstIdx].S, samples[firstIdx].V);
-
-        for (int i = 1; i < k; i++)
-        {
-            float maxDist = -1;
-            int bestIdx = 0;
-            for (int j = 0; j < Math.Min(samples.Count, 200); j++)
-            {
-                int idx = rng.Next(samples.Count);
-                float minD = float.MaxValue;
-                for (int ci = 0; ci < i; ci++)
-                {
-                    float d = HsvDist(samples[idx].H, samples[idx].S, samples[idx].V,
-                                      centroids[ci].H, centroids[ci].S, centroids[ci].V);
-                    if (d < minD) minD = d;
-                }
-                if (minD > maxDist) { maxDist = minD; bestIdx = idx; }
-            }
-            centroids[i] = (samples[bestIdx].H, samples[bestIdx].S, samples[bestIdx].V);
-        }
-
-        int[] assignments = new int[samples.Count];
-        for (int iter = 0; iter < maxIter; iter++)
-        {
-            for (int i = 0; i < samples.Count; i++)
-            {
-                float minDist = float.MaxValue;
-                int best = 0;
-                for (int c = 0; c < k; c++)
-                {
-                    float d = HsvDist(samples[i].H, samples[i].S, samples[i].V,
-                                      centroids[c].H, centroids[c].S, centroids[c].V);
-                    if (d < minDist) { minDist = d; best = c; }
-                }
-                assignments[i] = best;
-            }
-
-            var sinH = new float[k]; var cosH = new float[k];
-            var sumS = new float[k]; var sumV = new float[k]; var sumW = new float[k];
-            for (int i = 0; i < samples.Count; i++)
-            {
-                int c = assignments[i];
-                float w = samples[i].Weight;
-                float angle = samples[i].H * MathF.PI * 2f;
-                sinH[c] += MathF.Sin(angle) * w;
-                cosH[c] += MathF.Cos(angle) * w;
-                sumS[c] += samples[i].S * w;
-                sumV[c] += samples[i].V * w;
-                sumW[c] += w;
-            }
-
-            for (int c = 0; c < k; c++)
-            {
-                if (sumW[c] > 0)
-                {
-                    float avgH = MathF.Atan2(sinH[c] / sumW[c], cosH[c] / sumW[c]) / (MathF.PI * 2f);
-                    if (avgH < 0) avgH += 1f;
-                    centroids[c] = (avgH, sumS[c] / sumW[c], sumV[c] / sumW[c]);
-                }
-            }
-        }
-
-        float totalWeight = samples.Sum(s => s.Weight);
-        var clusterWeights = new float[k];
-        var inCrop = new bool[k];
-
-        for (int i = 0; i < samples.Count; i++)
-        {
-            clusterWeights[assignments[i]] += samples[i].Weight;
-            if (samples[i].Weight >= 2.0f) inCrop[assignments[i]] = true;
-        }
-
-        var result = new List<HsvCluster>(k);
-        for (int c = 0; c < k; c++)
-        {
-            if (clusterWeights[c] <= 0) continue;
-            result.Add(new HsvCluster
-            {
-                H = centroids[c].H,
-                S = centroids[c].S,
-                V = centroids[c].V,
-                Coverage = clusterWeights[c],
-                InCropZone = inCrop[c]
-            });
-        }
-
-        return result;
-    }
-
-    private static float HsvDist(float h1, float s1, float v1, float h2, float s2, float v2)
-    {
-        float dh = Math.Min(Math.Abs(h1 - h2), 1f - Math.Abs(h1 - h2)) * 2f;
-        float ds = s1 - s2;
-        float dv = v1 - v2;
-        return dh * dh + ds * ds + dv * dv;
-    }
+#pragma warning restore S3776
 
     #endregion
 
@@ -527,8 +398,8 @@ internal static class DynamicIslandColorExtractor
 
         if (d > 0.001f)
         {
-            if (max == r) h = (g - b) / d + (g < b ? 6 : 0);
-            else if (max == g) h = (b - r) / d + 2;
+            if (Math.Abs(max - r) < 0.0001f) h = (g - b) / d + (g < b ? 6 : 0);
+            else if (Math.Abs(max - g) < 0.0001f) h = (b - r) / d + 2;
             else h = (r - g) / d + 4;
             h /= 6f;
         }
@@ -571,8 +442,8 @@ internal static class DynamicIslandColorExtractor
         if (d > 0.0001)
         {
             s = l > 0.5 ? d / (2.0 - max - min) : d / (max + min);
-            if (max == r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6.0;
-            else if (max == g) h = ((b - r) / d + 2) / 6.0;
+            if (Math.Abs(max - r) < 0.0001) h = ((g - b) / d + (g < b ? 6 : 0)) / 6.0;
+            else if (Math.Abs(max - g) < 0.0001) h = ((b - r) / d + 2) / 6.0;
             else h = ((r - g) / d + 4) / 6.0;
         }
         return (h, s, l);

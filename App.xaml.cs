@@ -12,41 +12,82 @@ namespace VNotch;
 
 public partial class App : Application
 {
-    private static SingleInstanceGuard? _guard;
+    private SingleInstanceGuard? _guard;
     private static int _fatalUiExceptionInProgress;
     private const string MutexName = "VNotch_SingleInstance_Mutex";
 
     public static IServiceProvider Services { get; private set; } = null!;
 
+    private static void SetServices(IServiceProvider services)
+    {
+        Services = services;
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
-
-        var setupSource = TryGetArgumentValue(e.Args, "--setup-source");
-        var exeName = System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "");
-        var launchSetup = e.Args.Contains("--setup") || !string.IsNullOrWhiteSpace(setupSource) || exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
 
         var earlySettings = new SettingsService();
         var loadedSettings = earlySettings.Load();
         Loc.SetLanguage(loadedSettings.Language);
         AnimationConfig.Configure(loadedSettings.AnimationFps);
 
-        if (launchSetup)
+        if (HandleSetupOrUninstall(e))
         {
-            var setupWindow = new SetupWindow(setupSource);
-            setupWindow.ShowDialog();
-            Shutdown(setupWindow.ResultExitCode);
             return;
         }
 
         ApplyProcessPriority(loadedSettings.ProcessPriority);
 
-        if (e.Args.Contains("--uninstall"))
+        if (!EnsureSingleInstance(e))
         {
-            SetupOperations.RunUninstallFlow();
             return;
         }
 
+        RuntimeLog.InitializeNewSession("vnotch-debug.log");
+        RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
+
+        RegisterExceptionHandlers();
+
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        SetServices(services.BuildServiceProvider());
+
+        ServicePrewarmer.Prewarm(Services);
+
+        var mainWindow = Services.GetRequiredService<MainWindow>();
+        mainWindow.Show();
+
+        CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
+
+        base.OnStartup(e);
+    }
+
+    private bool HandleSetupOrUninstall(StartupEventArgs e)
+    {
+        var setupSource = TryGetArgumentValue(e.Args, "--setup-source");
+        var exeName = System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "");
+        var launchSetup = e.Args.Contains("--setup") || !string.IsNullOrWhiteSpace(setupSource) || exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
+
+        if (launchSetup)
+        {
+            var setupWindow = new SetupWindow(setupSource);
+            setupWindow.ShowDialog();
+            Shutdown(setupWindow.ResultExitCode);
+            return true;
+        }
+
+        if (e.Args.Contains("--uninstall"))
+        {
+            SetupOperations.RunUninstallFlow();
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool EnsureSingleInstance(StartupEventArgs e)
+    {
         _guard = new SingleInstanceGuard(MutexName);
         bool ownsMutex = _guard.TryAcquire();
 
@@ -60,97 +101,101 @@ public partial class App : Application
             MessageBox.Show(Loc.Get("error.alreadyRunning"), "V-Notch",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
+            return false;
+        }
+
+        return true;
+    }
+
+    private void RegisterExceptionHandlers()
+    {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledDomainException;
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+    }
+
+    private void OnDispatcherUnhandledException(object? sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
+    {
+        // MessageBox.Show runs a nested dispatcher loop. Without this guard,
+        // another queued UI callback can fail while the first fatal dialog is
+        // open and recursively create an entire stack of error dialogs.
+        if (Volatile.Read(ref _fatalUiExceptionInProgress) != 0)
+        {
+            args.Handled = true;
             return;
         }
 
-        RuntimeLog.InitializeNewSession("vnotch-debug.log");
-        RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
-
-        DispatcherUnhandledException += (s, args) =>
+        if (IsRecoverableException(args.Exception))
         {
-            // MessageBox.Show runs a nested dispatcher loop. Without this guard,
-            // another queued UI callback can fail while the first fatal dialog is
-            // open and recursively create an entire stack of error dialogs.
-            if (Volatile.Read(ref _fatalUiExceptionInProgress) != 0)
-            {
-                args.Handled = true;
-                return;
-            }
-
-            if (IsRecoverableException(args.Exception))
-            {
-                RuntimeLog.Error("UNHANDLED-UI-RECOVERED", args.Exception,
-                    "Recovered a known animation or media exception on the UI dispatcher");
-                args.Handled = true;
-                return;
-            }
-
-            if (Interlocked.Exchange(ref _fatalUiExceptionInProgress, 1) != 0)
-            {
-                args.Handled = true;
-                return;
-            }
-
+            RuntimeLog.Error("UNHANDLED-UI-RECOVERED", args.Exception,
+                "Recovered a known animation or media exception on the UI dispatcher");
             args.Handled = true;
-            RuntimeLog.Error("UNHANDLED-UI-FATAL", args.Exception,
-                "Unexpected UI dispatcher exception; shutting down to avoid continuing in an unknown state");
-            try { RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1)); }
-            catch { }
+            return;
+        }
 
-            try
-            {
-                MessageBox.Show(
-                    Loc.Get("app.fatalClose", RuntimeLog.LogPath),
-                    Loc.Get("error.title"),
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-            }
-            finally
-            {
-                Shutdown(1);
-            }
-        };
-
-        AppDomain.CurrentDomain.UnhandledException += (s, args) =>
+        if (Interlocked.Exchange(ref _fatalUiExceptionInProgress, 1) != 0)
         {
-            if (args.ExceptionObject is Exception ex)
-            {
-                RuntimeLog.Error("UNHANDLED-BG", ex, "Background thread crash");
+            args.Handled = true;
+            return;
+        }
 
-                // The process may terminate immediately after this callback, so
-                // synchronously preserve only this exceptional final batch.
-                if (args.IsTerminating)
-                {
-                    try { RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1)); }
-                    catch { }
-                }
-            }
-        };
-
-        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, args) =>
+        args.Handled = true;
+        RuntimeLog.Error("UNHANDLED-UI-FATAL", args.Exception,
+            "Unexpected UI dispatcher exception; shutting down to avoid continuing in an unknown state");
+        try
         {
-            RuntimeLog.Error("UNOBSERVED-TASK", args.Exception?.InnerException ?? args.Exception!,
-                "Unobserved task exception");
-            args.SetObserved();
-        };
+            RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1));
+        }
+        catch (Exception)
+        {
+            // Best-effort log flush during fatal UI error; ignore timeouts or flush failures
+        }
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        Services = services.BuildServiceProvider();
-
-        ServicePrewarmer.Prewarm(Services);
-
-        var mainWindow = Services.GetRequiredService<MainWindow>();
-        mainWindow.Show();
-
-        CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
-
-        base.OnStartup(e);
+        try
+        {
+            MessageBox.Show(
+                Loc.Get("app.fatalClose", RuntimeLog.LogPath),
+                Loc.Get("error.title"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            Shutdown(1);
+        }
     }
 
-    private void ConfigureServices(IServiceCollection services)
+    private static void OnUnhandledDomainException(object? sender, UnhandledExceptionEventArgs args)
     {
+        if (args.ExceptionObject is Exception ex)
+        {
+            RuntimeLog.Error("UNHANDLED-BG", ex, "Background thread crash");
 
+            // The process may terminate immediately after this callback, so
+            // synchronously preserve only this exceptional final batch.
+            if (args.IsTerminating)
+            {
+                try
+                {
+                    RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1));
+                }
+                catch (Exception)
+                {
+                    // Best-effort flush before process termination; ignore flush failures
+                }
+            }
+        }
+    }
+
+    private static void OnUnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs args)
+    {
+        RuntimeLog.Error("UNOBSERVED-TASK", args.Exception?.InnerException ?? args.Exception!,
+            "Unobserved task exception");
+        args.SetObserved();
+    }
+
+    private static void ConfigureServices(IServiceCollection services)
+    {
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IMediaMetadataLookupService, MediaMetadataLookupService>();
         services.AddSingleton<IMediaArtworkService, MediaArtworkService>();
@@ -210,6 +255,7 @@ public partial class App : Application
             ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}"
             : $"{v.Major}.{v.Minor}.{v.Build}";
     }
+
     protected override void OnExit(ExitEventArgs e)
     {
         try
@@ -229,6 +275,7 @@ public partial class App : Application
             RuntimeLog.Shutdown(TimeSpan.FromSeconds(2));
         }
     }
+
     public static void RestartApplication()
     {
         try
@@ -238,9 +285,10 @@ public partial class App : Application
 
             if (!string.IsNullOrEmpty(exePath))
             {
+                var cmdPath = System.IO.Path.Combine(Environment.SystemDirectory, "cmd.exe");
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "cmd.exe",
+                    FileName = cmdPath,
                     Arguments = $"/c ping -n 2 127.0.0.1 >nul & start \"\" \"{exePath}\" --restart",
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -342,7 +390,7 @@ public partial class App : Application
         return null;
     }
 
-    private void ApplyProcessPriority(string priority)
+    private static void ApplyProcessPriority(string priority)
     {
         try
         {

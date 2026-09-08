@@ -89,14 +89,7 @@ public class NotchStateManager
         var current = CurrentState;
         if (!IsTransitioning) return;
 
-        var recoveryTarget = current switch
-        {
-            NotchState.Expanding => NotchState.Collapsed,
-            NotchState.Collapsing => NotchState.Collapsed,
-            NotchState.MusicExpanding => NotchState.Collapsed,
-            NotchState.MusicCollapsing => NotchState.Collapsed,
-            _ => NotchState.Collapsed
-        };
+        var recoveryTarget = NotchState.Collapsed;
 
         RuntimeLog.Warn("STATE", $"Recovering from stuck state: {current} → {recoveryTarget} (stuck for {TimeSinceLastTransition.TotalMilliseconds:0}ms)");
         ForceState(recoveryTarget);

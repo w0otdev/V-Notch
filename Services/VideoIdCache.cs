@@ -53,14 +53,9 @@ internal sealed class VideoIdCache
                 return;
             }
 
-            var doomed = new List<string>();
-            foreach (var key in _cache.Keys)
-            {
-                if (!string.Equals(key, currentTrackIdentity, StringComparison.OrdinalIgnoreCase))
-                {
-                    doomed.Add(key);
-                }
-            }
+            var doomed = _cache.Keys
+                .Where(key => !string.Equals(key, currentTrackIdentity, StringComparison.OrdinalIgnoreCase))
+                .ToList();
             foreach (var key in doomed)
             {
                 _cache.Remove(key);

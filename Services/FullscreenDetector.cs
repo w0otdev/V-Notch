@@ -49,55 +49,70 @@ internal static class FullscreenDetector
 
     public static FullscreenType DetectFullscreenType(IntPtr hwnd, IntPtr notchHwnd, IntPtr notchMonitor)
     {
-        if (hwnd == IntPtr.Zero || hwnd == notchHwnd)
+        if (!IsCandidateWindow(hwnd, notchHwnd, out var windowRect))
         {
             return FullscreenType.None;
+        }
+
+        if (!TryGetTargetMonitorInfo(hwnd, notchMonitor, out var monitorInfo))
+        {
+            return FullscreenType.None;
+        }
+
+        return ClassifyFullscreenStyle(hwnd, windowRect, monitorInfo);
+    }
+
+    private static bool IsCandidateWindow(IntPtr hwnd, IntPtr notchHwnd, out RECT windowRect)
+    {
+        windowRect = default;
+        if (hwnd == IntPtr.Zero || hwnd == notchHwnd)
+        {
+            return false;
         }
 
         if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || IsWindowCloaked(hwnd))
         {
-            return FullscreenType.None;
+            return false;
         }
 
-        if (!TryGetWindowBounds(hwnd, out var windowRect))
+        if (!TryGetWindowBounds(hwnd, out windowRect))
         {
-            return FullscreenType.None;
+            return false;
         }
 
         int width = windowRect.Right - windowRect.Left;
         int height = windowRect.Bottom - windowRect.Top;
         if (width < 480 || height < 320)
         {
-            return FullscreenType.None;
+            return false;
         }
 
-        if (IsBlockedClass(hwnd))
+        return !IsBlockedClass(hwnd);
+    }
+
+    private static bool TryGetTargetMonitorInfo(IntPtr hwnd, IntPtr notchMonitor, out MONITORINFO monitorInfo)
+    {
+        monitorInfo = new MONITORINFO
         {
-            return FullscreenType.None;
-        }
+            cbSize = Marshal.SizeOf<MONITORINFO>()
+        };
 
         IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
         if (monitor == IntPtr.Zero)
         {
-            return FullscreenType.None;
+            return false;
         }
 
         if (notchMonitor != IntPtr.Zero && monitor != notchMonitor)
         {
-            return FullscreenType.None;
+            return false;
         }
 
-        var monitorInfo = new MONITORINFO
-        {
-            cbSize = Marshal.SizeOf<MONITORINFO>()
-        };
-        if (!GetMonitorInfo(monitor, ref monitorInfo))
-        {
-            return FullscreenType.None;
-        }
+        return GetMonitorInfo(monitor, ref monitorInfo);
+    }
 
-        var monitorRect = monitorInfo.rcMonitor;
-
+    private static FullscreenType ClassifyFullscreenStyle(IntPtr hwnd, RECT windowRect, in MONITORINFO monitorInfo)
+    {
         const int fullscreenTolerancePx = 6;
 
         var placement = new WINDOWPLACEMENT
@@ -110,7 +125,7 @@ internal static class FullscreenDetector
         bool hasCaption = (style & WS_CAPTION) == WS_CAPTION;
         bool hasResizeFrame = (style & WS_THICKFRAME) != 0;
 
-        if (RectCoversArea(windowRect, monitorRect, fullscreenTolerancePx))
+        if (RectCoversArea(windowRect, monitorInfo.rcMonitor, fullscreenTolerancePx))
         {
             if (hasCaption || hasResizeFrame)
             {
@@ -161,7 +176,7 @@ internal static class FullscreenDetector
         {
             return System.Diagnostics.Process.GetProcessById((int)processId).ProcessName;
         }
-        catch
+        catch (Exception)
         {
             return string.Empty;
         }

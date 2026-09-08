@@ -82,12 +82,25 @@ public class MediaTimingDecisionsTests
 
     #region EvaluateNewTrackDebounce
 
+    private static NewTrackDebounceParams CreateDebounceParams() => new(
+        CurrentTrack: "New Song",
+        CurrentArtist: "Artist",
+        IsPlaying: false,
+        ForceRefresh: false,
+        LastPublishedTrackIdentity: "old|artist",
+        PendingKey: "",
+        PendingSince: Base,
+        NowUtc: Base,
+        DebounceMs: 600);
+
     [Fact]
     public void NewTrackDebounce_NotANewTrack_NoDebounce()
     {
-        var (debounce, pendingKey, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(
-            currentTrack: "Song", currentArtist: "Artist", isPlaying: false, forceRefresh: false,
-            lastPublishedTrackIdentity: "song|artist", pendingKey: "", pendingSince: Base, nowUtc: Base);
+        var (debounce, pendingKey, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(CreateDebounceParams() with
+        {
+            CurrentTrack = "Song",
+            LastPublishedTrackIdentity = "song|artist"
+        });
 
         Assert.False(debounce);
         Assert.Equal("", pendingKey);
@@ -96,9 +109,11 @@ public class MediaTimingDecisionsTests
     [Fact]
     public void NewTrackDebounce_NewTrackButPlaying_NoDebounce()
     {
-        var (debounce, _, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(
-            currentTrack: "New", currentArtist: "Artist", isPlaying: true, forceRefresh: false,
-            lastPublishedTrackIdentity: "old|artist", pendingKey: "", pendingSince: Base, nowUtc: Base);
+        var (debounce, _, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(CreateDebounceParams() with
+        {
+            CurrentTrack = "New",
+            IsPlaying = true
+        });
 
         Assert.False(debounce);
     }
@@ -106,9 +121,11 @@ public class MediaTimingDecisionsTests
     [Fact]
     public void NewTrackDebounce_FirstObservation_DebouncesAndAnchorsTime()
     {
-        var (debounce, pendingKey, pendingSince) = MediaTimingDecisions.EvaluateNewTrackDebounce(
-            currentTrack: "New Song", currentArtist: "Artist", isPlaying: false, forceRefresh: false,
-            lastPublishedTrackIdentity: "old|artist", pendingKey: "", pendingSince: DateTime.MinValue, nowUtc: Base);
+        var (debounce, pendingKey, pendingSince) = MediaTimingDecisions.EvaluateNewTrackDebounce(CreateDebounceParams() with
+        {
+            CurrentTrack = "New Song",
+            PendingSince = DateTime.MinValue
+        });
 
         Assert.True(debounce);
         Assert.Equal("new song|artist", pendingKey);
@@ -118,10 +135,12 @@ public class MediaTimingDecisionsTests
     [Fact]
     public void NewTrackDebounce_WindowElapsed_StopsDebouncing()
     {
-        var (debounce, _, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(
-            currentTrack: "New Song", currentArtist: "Artist", isPlaying: false, forceRefresh: false,
-            lastPublishedTrackIdentity: "old|artist",
-            pendingKey: "new song|artist", pendingSince: Base.AddMilliseconds(-700), nowUtc: Base);
+        var (debounce, _, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(CreateDebounceParams() with
+        {
+            CurrentTrack = "New Song",
+            PendingKey = "new song|artist",
+            PendingSince = Base.AddMilliseconds(-700)
+        });
 
         Assert.False(debounce);
     }
@@ -129,9 +148,11 @@ public class MediaTimingDecisionsTests
     [Fact]
     public void NewTrackDebounce_ForceRefresh_Bypasses()
     {
-        var (debounce, _, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(
-            currentTrack: "New", currentArtist: "Artist", isPlaying: false, forceRefresh: true,
-            lastPublishedTrackIdentity: "old|artist", pendingKey: "", pendingSince: Base, nowUtc: Base);
+        var (debounce, _, _) = MediaTimingDecisions.EvaluateNewTrackDebounce(CreateDebounceParams() with
+        {
+            CurrentTrack = "New",
+            ForceRefresh = true
+        });
 
         Assert.False(debounce);
     }
@@ -188,81 +209,78 @@ public class MediaTimingDecisionsTests
 
     #region ShouldPreserveSoundCloud
 
-    private static bool PreserveSoundCloud(
-        string mediaSource = "Browser",
-        string currentTrack = "Some Song",
-        string currentArtist = "Some Artist",
-        string sourceAppId = "Chrome",
-        string sessionInstanceKey = "sess-1",
-        string lastSource = "SoundCloud",
-        string lastPublishedSessionInstanceKey = "sess-1",
-        double lastMetadataChangeSecondsAgo = 1.0,
-        bool hasSessionOverride = false,
-        string sessionOverride = "")
-        => MediaTimingDecisions.ShouldPreserveSoundCloud(
-            mediaSource, currentTrack, currentArtist, sourceAppId, sessionInstanceKey,
-            lastSource, lastPublishedSessionInstanceKey,
-            Base.AddSeconds(-lastMetadataChangeSecondsAgo), Base,
-            hasSessionOverride, sessionOverride);
+    private static SoundCloudPreserveParams CreateSoundCloudParams() => new(
+        MediaSource: "Browser",
+        CurrentTrack: "Some Song",
+        CurrentArtist: "Some Artist",
+        SourceAppId: "Chrome",
+        SessionInstanceKey: "sess-1",
+        LastSource: "SoundCloud",
+        LastPublishedSessionInstanceKey: "sess-1",
+        LastMetadataChangeTime: Base.AddSeconds(-1.0),
+        Now: Base,
+        HasSessionOverride: false,
+        SessionOverride: "",
+        FreshnessSeconds: 3.0);
 
     [Fact]
     public void ShouldPreserveSoundCloud_AllGatesPass_True()
     {
-        Assert.True(PreserveSoundCloud());
+        Assert.True(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams()));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_SourceNotBrowser_False()
     {
-        Assert.False(PreserveSoundCloud(mediaSource: "Spotify"));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { MediaSource = "Spotify" }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_LastSourceNotSoundCloud_False()
     {
-        Assert.False(PreserveSoundCloud(lastSource: "YouTube"));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { LastSource = "YouTube" }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_EmptyTrack_False()
     {
-        Assert.False(PreserveSoundCloud(currentTrack: "  "));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { CurrentTrack = "  " }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_NonBrowserApp_False()
     {
-        Assert.False(PreserveSoundCloud(sourceAppId: "Spotify.exe"));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { SourceAppId = "Spotify.exe" }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_SessionKeyMismatch_False()
     {
-        Assert.False(PreserveSoundCloud(sessionInstanceKey: "sess-2"));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { SessionInstanceKey = "sess-2" }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_StaleMetadata_False()
     {
-        Assert.False(PreserveSoundCloud(lastMetadataChangeSecondsAgo: 5.0));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { LastMetadataChangeTime = Base.AddSeconds(-5.0) }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_YouTubeHintInTrack_False()
     {
-        Assert.False(PreserveSoundCloud(currentTrack: "watch on youtube"));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { CurrentTrack = "watch on youtube" }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_SessionOverridePointsElsewhere_False()
     {
-        Assert.False(PreserveSoundCloud(hasSessionOverride: true, sessionOverride: "YouTube"));
+        Assert.False(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { HasSessionOverride = true, SessionOverride = "YouTube" }));
     }
 
     [Fact]
     public void ShouldPreserveSoundCloud_SessionOverrideIsSoundCloud_True()
     {
-        Assert.True(PreserveSoundCloud(hasSessionOverride: true, sessionOverride: "SoundCloud"));
+        Assert.True(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { HasSessionOverride = true, SessionOverride = "SoundCloud" }));
     }
 
     #endregion

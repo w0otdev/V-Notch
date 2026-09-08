@@ -145,8 +145,6 @@ public class MarqueeControllerTests
         private readonly TranslateTransform _artistMorphA = new();
         private readonly TranslateTransform _artistMarqueeB = new();
         private readonly TranslateTransform _artistMorphB = new();
-        private readonly TextBlock _compactTitle = new();
-        private readonly TranslateTransform _compactTitleTranslate = new();
 
         public MarqueeTestTargets(string title, string artist)
         {
@@ -160,7 +158,6 @@ public class MarqueeControllerTests
                 TitleLayerB, TitleB, _titleMarqueeB, _titleMorphB,
                 ArtistLayerA, ArtistA, _artistMarqueeA, _artistMorphA,
                 ArtistLayerB, ArtistB, _artistMarqueeB, _artistMorphB,
-                _compactTitle, _compactTitleTranslate,
                 width => width);
     }
 }

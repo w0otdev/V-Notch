@@ -24,6 +24,8 @@ public class WordClock : TextBlock
         "", "", "Twenty", "Thirty", "Forty", "Fifty"
     };
 
+    private const string OClockLocKey = "wordClock.oclock";
+
     private readonly DispatcherTimer _timer;
     private bool _isRunning;
     private int _lastRenderedMinuteKey = -1;
@@ -102,17 +104,23 @@ public class WordClock : TextBlock
         };
     }
 
-    private static string FormatVietnameseTime(string prefix, int hour, int minute) =>
-        minute == 0
-            ? $"{prefix}\n{SpellVietnamese(hour)} giờ"
-            : $"{prefix}\n{SpellVietnamese(hour)} giờ\n{(minute < 10 ? "lẻ " : "")}{SpellVietnamese(minute)}";
+    private static string FormatVietnameseTime(string prefix, int hour, int minute)
+    {
+        if (minute == 0)
+        {
+            return $"{prefix}\n{SpellVietnamese(hour)} giờ";
+        }
+
+        string minutePrefix = minute < 10 ? "lẻ " : "";
+        return $"{prefix}\n{SpellVietnamese(hour)} giờ\n{minutePrefix}{SpellVietnamese(minute)}";
+    }
 
     private static string FormatSpanishTime(string prefix, int hour, int minute)
     {
         string naturalPrefix = hour == 1 ? "Es la" : prefix;
         string hourText = hour == 1 ? "una" : SpellSpanish(hour);
         return minute == 0
-            ? $"{naturalPrefix}\n{hourText}\n{Loc.Get("wordClock.oclock")}"
+            ? $"{naturalPrefix}\n{hourText}\n{Loc.Get(OClockLocKey)}"
             : $"{naturalPrefix}\n{hourText}\ny {SpellSpanish(minute)}";
     }
 
@@ -120,7 +128,7 @@ public class WordClock : TextBlock
     {
         string hourText = hour == 1 ? "une heure" : $"{SpellFrench(hour)} heures";
         return minute == 0
-            ? $"{prefix}\n{hourText}\n{Loc.Get("wordClock.oclock")}"
+            ? $"{prefix}\n{hourText}\n{Loc.Get(OClockLocKey)}"
             : $"{prefix}\n{hourText}\n{SpellFrenchMinute(minute)}";
     }
 
@@ -134,12 +142,12 @@ public class WordClock : TextBlock
 
     private static string FormatJapaneseTime(string prefix, int hour, int minute) =>
         minute == 0
-            ? $"{prefix}\n{Loc.Get("wordClock.oclock")}{SpellJapanese(hour)}時"
+            ? $"{prefix}\n{Loc.Get(OClockLocKey)}{SpellJapanese(hour)}時"
             : $"{prefix}\n{SpellJapanese(hour)}時\n{SpellJapanese(minute)}分";
 
     private static string FormatHindiTime(string prefix, int hour, int minute) =>
         minute == 0
-            ? $"{prefix}\n{SpellHindi(hour)} {Loc.Get("wordClock.oclock")}"
+            ? $"{prefix}\n{SpellHindi(hour)} {Loc.Get(OClockLocKey)}"
             : $"{prefix}\n{SpellHindi(hour)} बजकर\n{SpellHindi(minute)} मिनट";
 
     private static string SpellHour(int hour24)
@@ -150,7 +158,7 @@ public class WordClock : TextBlock
 
     private static string SpellMinute(int minute)
     {
-        if (minute == 0) return Loc.Get("wordClock.oclock");
+        if (minute == 0) return Loc.Get(OClockLocKey);
         if (minute < 10) return "Oh " + Ones[minute];
         if (minute < 20) return Teens[minute - 10];
 
@@ -163,11 +171,22 @@ public class WordClock : TextBlock
     {
         string[] units = { "không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín" };
         if (value < 10) return units[value];
-        if (value < 20) return value == 10 ? "mười" : "mười " + (value == 15 ? "lăm" : units[value - 10]);
+        if (value < 20)
+        {
+            if (value == 10) return "mười";
+            string unitSuffix = value == 15 ? "lăm" : units[value - 10];
+            return "mười " + unitSuffix;
+        }
+
         int tens = value / 10;
         int unit = value % 10;
         if (unit == 0) return units[tens] + " mươi";
-        string unitText = unit == 1 ? "mốt" : unit == 5 ? "lăm" : units[unit];
+        string unitText = unit switch
+        {
+            1 => "mốt",
+            5 => "lăm",
+            _ => units[unit]
+        };
         return units[tens] + " mươi " + unitText;
     }
 

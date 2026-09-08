@@ -109,7 +109,16 @@ public partial class MainWindow : Window
         get => _notchState.IsExpanded;
         set
         {
-            _notchState.IsExpanded = value;
+            if (value)
+            {
+                if (!_notchState.TryTransitionTo(NotchState.Expanded))
+                    _notchState.ForceState(NotchState.Expanded);
+            }
+            else
+            {
+                if (!_notchState.TryTransitionTo(NotchState.Collapsed))
+                    _notchState.ForceState(NotchState.Collapsed);
+            }
             UpdateGlassMotionState();
         }
     }

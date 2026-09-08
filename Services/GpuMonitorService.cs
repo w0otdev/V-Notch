@@ -148,94 +148,11 @@ public sealed class GpuMonitorService : IDisposable
     {
         EnsureSamplerRunning();
 
-        // 1. Process CPU & RAM via Win32
-        double procCpu = 0;
-        ulong procRam = 0;
         long nowTicks = Stopwatch.GetTimestamp();
-
-        try
-        {
-            if (Win32Interop.GetProcessTimes(_currentProcessHandle, out _, out _, out var procKernel, out var procUser))
-            {
-                ulong procTotalTime = procKernel.ToUInt64() + procUser.ToUInt64();
-                if (_lastProcTicks > 0)
-                {
-                    ulong deltaProc = procTotalTime > _lastProcTime ? procTotalTime - _lastProcTime : 0;
-                    double deltaWallSec = (double)(nowTicks - _lastProcTicks) / Stopwatch.Frequency;
-                    if (deltaWallSec > 0.005)
-                    {
-                        double procSec = (double)deltaProc / 10_000_000.0;
-                        double rawProcCpu = Math.Clamp((procSec / (deltaWallSec * _processorCount)) * 100.0, 0, 100);
-                        _smoothedProcCpu = _lastProcTime == 0 ? rawProcCpu : (_smoothedProcCpu * 0.88 + rawProcCpu * 0.12);
-                    }
-                }
-                _lastProcTime = procTotalTime;
-                _lastProcTicks = nowTicks;
-                procCpu = _smoothedProcCpu < 0.05 ? 0.0 : _smoothedProcCpu;
-            }
-        }
-        catch { }
-
-        try
-        {
-            var memCounters = new Win32Interop.PROCESS_MEMORY_COUNTERS_EX();
-            memCounters.cb = (uint)Marshal.SizeOf<Win32Interop.PROCESS_MEMORY_COUNTERS_EX>();
-            if (Win32Interop.GetProcessMemoryInfo(_currentProcessHandle, out memCounters, memCounters.cb))
-            {
-                procRam = (ulong)memCounters.WorkingSetSize;
-            }
-        }
-        catch { }
-
-        // 2. Global CPU via GetSystemTimes
-        double globalCpu = 0;
-        try
-        {
-            if (Win32Interop.GetSystemTimes(out var sysIdle, out var sysKernel, out var sysUser))
-            {
-                ulong idle = sysIdle.ToUInt64();
-                ulong kernel = sysKernel.ToUInt64();
-                ulong user = sysUser.ToUInt64();
-
-                if (_lastSysIdle > 0)
-                {
-                    ulong deltaIdle = idle > _lastSysIdle ? idle - _lastSysIdle : 0;
-                    ulong deltaKernel = kernel > _lastSysKernel ? kernel - _lastSysKernel : 0;
-                    ulong deltaUser = user > _lastSysUser ? user - _lastSysUser : 0;
-                    ulong deltaTotal = deltaKernel + deltaUser;
-
-                    if (deltaTotal > 0)
-                    {
-                        double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
-                        double rawGlobalCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
-                        _smoothedGlobalCpu = _lastSysIdle == 0 ? rawGlobalCpu : (_smoothedGlobalCpu * 0.88 + rawGlobalCpu * 0.12);
-                    }
-                }
-                _lastSysIdle = idle;
-                _lastSysKernel = kernel;
-                _lastSysUser = user;
-                globalCpu = _smoothedGlobalCpu;
-            }
-        }
-        catch { }
-
-        // 3. Global RAM via GlobalMemoryStatusEx
-        ulong globalRamUsed = 0;
-        ulong globalRamTotal = 0;
-        double globalRamPercent = 0;
-        try
-        {
-            var memStatus = new Win32Interop.MEMORYSTATUSEX_METRICS();
-            memStatus.dwLength = (uint)Marshal.SizeOf<Win32Interop.MEMORYSTATUSEX_METRICS>();
-            if (Win32Interop.GlobalMemoryStatusEx(ref memStatus))
-            {
-                globalRamTotal = memStatus.ullTotalPhys;
-                globalRamUsed = memStatus.ullTotalPhys > memStatus.ullAvailPhys ? memStatus.ullTotalPhys - memStatus.ullAvailPhys : 0;
-                globalRamPercent = Math.Clamp(memStatus.dwMemoryLoad, 0, 100);
-            }
-        }
-        catch { }
-
+        double procCpu = SampleProcessCpu(nowTicks);
+        ulong procRam = SampleProcessRam();
+        double globalCpu = SampleGlobalCpu();
+        var (globalRamUsed, globalRamTotal, globalRamPercent) = SampleGlobalRam();
         var (gpuName, vram) = GetGpuInfo();
 
         return new PerformanceDebugSnapshot
@@ -257,6 +174,137 @@ public sealed class GpuMonitorService : IDisposable
         };
     }
 
+    private double SampleProcessCpu(long nowTicks)
+    {
+        try
+        {
+            if (!Win32Interop.GetProcessTimes(_currentProcessHandle, out _, out _, out var procKernel, out var procUser))
+            {
+                return 0.0;
+            }
+
+            ulong procTotalTime = procKernel.ToUInt64() + procUser.ToUInt64();
+            _smoothedProcCpu = ComputeProcessCpuDelta(procTotalTime, nowTicks);
+
+            _lastProcTime = procTotalTime;
+            _lastProcTicks = nowTicks;
+            return _smoothedProcCpu < 0.05 ? 0.0 : _smoothedProcCpu;
+        }
+        catch (Exception)
+        {
+            // Process times query failed
+        }
+        return 0.0;
+    }
+
+    private double ComputeProcessCpuDelta(ulong procTotalTime, long nowTicks)
+    {
+        if (_lastProcTicks == 0)
+        {
+            return 0.0;
+        }
+
+        ulong deltaProc = procTotalTime > _lastProcTime ? procTotalTime - _lastProcTime : 0;
+        double deltaWallSec = (double)(nowTicks - _lastProcTicks) / Stopwatch.Frequency;
+        if (deltaWallSec <= 0.005)
+        {
+            return _smoothedProcCpu;
+        }
+
+        double procSec = (double)deltaProc / 10_000_000.0;
+        double rawProcCpu = Math.Clamp((procSec / (deltaWallSec * _processorCount)) * 100.0, 0, 100);
+        return _lastProcTime == 0 ? rawProcCpu : (_smoothedProcCpu * 0.88 + rawProcCpu * 0.12);
+    }
+
+    private ulong SampleProcessRam()
+    {
+        try
+        {
+            uint cb = (uint)Marshal.SizeOf<Win32Interop.PROCESS_MEMORY_COUNTERS_EX>();
+            if (Win32Interop.GetProcessMemoryInfo(_currentProcessHandle, out var memCounters, cb))
+            {
+                return (ulong)memCounters.WorkingSetSize;
+            }
+        }
+        catch (Exception)
+        {
+            // Process memory query failed
+        }
+        return 0;
+    }
+
+    private double SampleGlobalCpu()
+    {
+        try
+        {
+            if (!Win32Interop.GetSystemTimes(out var sysIdle, out var sysKernel, out var sysUser))
+            {
+                return 0.0;
+            }
+
+            ulong idle = sysIdle.ToUInt64();
+            ulong kernel = sysKernel.ToUInt64();
+            ulong user = sysUser.ToUInt64();
+
+            _smoothedGlobalCpu = ComputeGlobalCpuDelta(idle, kernel, user);
+
+            _lastSysIdle = idle;
+            _lastSysKernel = kernel;
+            _lastSysUser = user;
+            return _smoothedGlobalCpu;
+        }
+        catch (Exception)
+        {
+            // System times query failed
+        }
+        return 0.0;
+    }
+
+    private double ComputeGlobalCpuDelta(ulong idle, ulong kernel, ulong user)
+    {
+        if (_lastSysIdle == 0)
+        {
+            return 0.0;
+        }
+
+        ulong deltaIdle = idle > _lastSysIdle ? idle - _lastSysIdle : 0;
+        ulong deltaKernel = kernel > _lastSysKernel ? kernel - _lastSysKernel : 0;
+        ulong deltaUser = user > _lastSysUser ? user - _lastSysUser : 0;
+        ulong deltaTotal = deltaKernel + deltaUser;
+
+        if (deltaTotal == 0)
+        {
+            return _smoothedGlobalCpu;
+        }
+
+        double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
+        double rawGlobalCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
+        return _smoothedGlobalCpu * 0.88 + rawGlobalCpu * 0.12;
+    }
+
+    private static (ulong UsedBytes, ulong TotalBytes, double Percent) SampleGlobalRam()
+    {
+        try
+        {
+            var memStatus = new Win32Interop.MEMORYSTATUSEX_METRICS
+            {
+                dwLength = (uint)Marshal.SizeOf<Win32Interop.MEMORYSTATUSEX_METRICS>()
+            };
+            if (Win32Interop.GlobalMemoryStatusEx(ref memStatus))
+            {
+                ulong total = memStatus.ullTotalPhys;
+                ulong used = total > memStatus.ullAvailPhys ? total - memStatus.ullAvailPhys : 0;
+                double percent = Math.Clamp(memStatus.dwMemoryLoad, 0, 100);
+                return (used, total, percent);
+            }
+        }
+        catch (Exception)
+        {
+            // Memory status query failed
+        }
+        return (0, 0, 0);
+    }
+
     private void GpuSamplingWorker()
     {
         List<PerformanceCounter>? procCounters = null;
@@ -274,56 +322,20 @@ public sealed class GpuMonitorService : IDisposable
                 // Refresh GPU Engine instance counters every 60 seconds (or on first run)
                 if (procCounters == null || globalCounters == null || secSinceRefresh > 60.0)
                 {
-                    DisposeCounterList(procCounters);
-                    DisposeCounterList(globalCounters);
-
-                    procCounters = new List<PerformanceCounter>();
-                    globalCounters = new List<PerformanceCounter>();
-
-                    try
-                    {
-                        var cat = new PerformanceCounterCategory("GPU Engine");
-                        var insts = cat.GetInstanceNames();
-                        foreach (var inst in insts)
-                        {
-                            if (inst.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase) ||
-                                inst.Contains("engtype_Compute", StringComparison.OrdinalIgnoreCase) ||
-                                inst.Contains("engtype_VR", StringComparison.OrdinalIgnoreCase))
-                            {
-                                try
-                                {
-                                    var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
-                                    counter.NextValue();
-                                    globalCounters.Add(counter);
-                                    if (inst.StartsWith(pidPrefix, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        procCounters.Add(counter);
-                                    }
-                                }
-                                catch { }
-                            }
-                        }
-                    }
-                    catch { }
+                    RefreshGpuCounters(ref procCounters, ref globalCounters, pidPrefix);
                     lastRefresh = now;
                 }
 
-                double procTotal = 0;
-                if (procCounters != null && procCounters.Count > 0)
-                {
-                    foreach (var c in procCounters) { try { procTotal += c.NextValue(); } catch { } }
-                }
-
-                double globalTotal = 0;
-                if (globalCounters != null && globalCounters.Count > 0)
-                {
-                    foreach (var c in globalCounters) { try { globalTotal += c.NextValue(); } catch { } }
-                }
+                double procTotal = SumCounterValues(procCounters);
+                double globalTotal = SumCounterValues(globalCounters);
 
                 _cachedProcessGpu = (float)Math.Clamp(procTotal, 0, 100);
                 _cachedGlobalGpu = (float)Math.Clamp(globalTotal, 0, 100);
             }
-            catch { }
+            catch (Exception)
+            {
+                // GPU sampling cycle error
+            }
 
             // Sample every 1000ms (1 second) to prevent registry/PDH lock contention and memory surges
             Thread.Sleep(1000);
@@ -333,10 +345,79 @@ public sealed class GpuMonitorService : IDisposable
         DisposeCounterList(globalCounters);
     }
 
+    private static void RefreshGpuCounters(ref List<PerformanceCounter>? procCounters, ref List<PerformanceCounter>? globalCounters, string pidPrefix)
+    {
+        DisposeCounterList(procCounters);
+        DisposeCounterList(globalCounters);
+
+        procCounters = new List<PerformanceCounter>();
+        globalCounters = new List<PerformanceCounter>();
+
+        try
+        {
+            var cat = new PerformanceCounterCategory("GPU Engine");
+            var insts = cat.GetInstanceNames();
+            var targetInstances = insts.Where(inst =>
+                inst.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase) ||
+                inst.Contains("engtype_Compute", StringComparison.OrdinalIgnoreCase) ||
+                inst.Contains("engtype_VR", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var inst in targetInstances)
+            {
+                try
+                {
+                    var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
+                    counter.NextValue();
+                    globalCounters.Add(counter);
+                    if (inst.StartsWith(pidPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        procCounters.Add(counter);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Performance counter instance creation failed
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Performance counter category query failed
+        }
+    }
+
+    private static double SumCounterValues(List<PerformanceCounter>? counters)
+    {
+        if (counters == null || counters.Count == 0) return 0;
+        double total = 0;
+        foreach (var c in counters)
+        {
+            try
+            {
+                total += c.NextValue();
+            }
+            catch (Exception)
+            {
+                // Counter reading failed
+            }
+        }
+        return total;
+    }
+
     private static void DisposeCounterList(List<PerformanceCounter>? list)
     {
         if (list == null) return;
-        foreach (var c in list) { try { c.Dispose(); } catch { } }
+        foreach (var c in list)
+        {
+            try
+            {
+                c.Dispose();
+            }
+            catch (Exception)
+            {
+                // Best effort counter disposal
+            }
+        }
         list.Clear();
     }
 

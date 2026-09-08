@@ -20,6 +20,7 @@ public sealed class MediaSessionVolumeService
     private string _cachedVolumeSourceAppId = "";
     private DateTime _cachedVolumeSessionAtUtc = DateTime.MinValue;
     private const double SessionCacheLifetimeMs = 3000;
+
     public bool TryGetVolume(string sourceAppId, out float volume, out bool isMuted)
     {
         float resolvedVolume = 0f;
@@ -37,6 +38,7 @@ public sealed class MediaSessionVolumeService
         isMuted = resolvedMuted;
         return success;
     }
+
     public bool TrySetVolume(string sourceAppId, float volume)
     {
         float target = Math.Clamp(volume, 0f, 1f);
@@ -79,7 +81,7 @@ public sealed class MediaSessionVolumeService
                 }
                 return true;
             }
-        }, skipSimpleVolumeDispose: true);
+        });
     }
 
     public void InvalidateVolumeSessionCache()
@@ -94,11 +96,19 @@ public sealed class MediaSessionVolumeService
     {
         if (_cachedSimpleVolume != null)
         {
-            try { _cachedSimpleVolume.Dispose(); } catch { }
+            try
+            {
+                _cachedSimpleVolume.Dispose();
+            }
+            catch
+            {
+                // Ignore COM disposal errors if audio session is already invalid
+            }
             _cachedSimpleVolume = null;
         }
         _cachedVolumeSourceAppId = "";
     }
+
     public bool TryToggleMute(string sourceAppId)
     {
         InvalidateVolumeSessionCache();
@@ -111,7 +121,7 @@ public sealed class MediaSessionVolumeService
         });
     }
 
-    private bool TryWithAudioSession(string sourceAppId, Func<AudioSessionControl, bool> action, bool skipSimpleVolumeDispose = false)
+    private bool TryWithAudioSession(string sourceAppId, Func<AudioSessionControl, bool> action)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return false;
@@ -126,46 +136,7 @@ public sealed class MediaSessionVolumeService
 
             var candidateProcessNames = GetProcessNameCandidates(sourceAppId);
             var candidateProcessIds = GetCachedProcessIdsForSourceApp(sourceAppId, candidateProcessNames);
-            AudioSessionControl? targetSession = null;
-            double bestScore = double.MinValue;
-
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                var session = sessions[i];
-                if (session == null || session.IsSystemSoundsSession)
-                    continue;
-
-                uint processId = session.GetProcessID;
-                bool matchedByProcess = candidateProcessIds.Contains(processId);
-                bool matchedByMetadata = SessionMatchesSourceAppId(session, sourceAppId);
-                if (!matchedByProcess && !matchedByMetadata)
-                    continue;
-
-                double score = 0;
-                if (matchedByProcess) score += 1000;
-                if (matchedByMetadata) score += 200;
-
-                if (string.Equals(sourceAppId, _lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (processId != 0 && processId == _lastMatchedProcessId) score += 300;
-                    if (string.Equals(session.GetSessionIdentifier, _lastMatchedSessionId, StringComparison.OrdinalIgnoreCase)) score += 400;
-                }
-
-                try
-                {
-                    score += session.AudioMeterInformation.MasterPeakValue * 100;
-                }
-                catch (Exception ex)
-                {
-                    RuntimeLog.Log("VOLUME-SCORE", ex.Message);
-                }
-
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    targetSession = session;
-                }
-            }
+            var targetSession = FindBestMatchingSession(sessions, sourceAppId, candidateProcessIds);
 
             if (targetSession == null)
                 return false;
@@ -180,6 +151,58 @@ public sealed class MediaSessionVolumeService
         {
             return false;
         }
+    }
+
+    private AudioSessionControl? FindBestMatchingSession(SessionCollection sessions, string sourceAppId, HashSet<uint> candidateProcessIds)
+    {
+        AudioSessionControl? targetSession = null;
+        double bestScore = double.MinValue;
+
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            var session = sessions[i];
+            if (session == null || session.IsSystemSoundsSession)
+                continue;
+
+            double score = CalculateSessionScore(session, sourceAppId, candidateProcessIds);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                targetSession = session;
+            }
+        }
+
+        return targetSession;
+    }
+
+    private double CalculateSessionScore(AudioSessionControl session, string sourceAppId, HashSet<uint> candidateProcessIds)
+    {
+        uint processId = session.GetProcessID;
+        bool matchedByProcess = candidateProcessIds.Contains(processId);
+        bool matchedByMetadata = SessionMatchesSourceAppId(session, sourceAppId);
+        if (!matchedByProcess && !matchedByMetadata)
+            return double.MinValue;
+
+        double score = 0;
+        if (matchedByProcess) score += 1000;
+        if (matchedByMetadata) score += 200;
+
+        if (string.Equals(sourceAppId, _lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase))
+        {
+            if (processId != 0 && processId == _lastMatchedProcessId) score += 300;
+            if (string.Equals(session.GetSessionIdentifier, _lastMatchedSessionId, StringComparison.OrdinalIgnoreCase)) score += 400;
+        }
+
+        try
+        {
+            score += session.AudioMeterInformation.MasterPeakValue * 100;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log("VOLUME-SCORE", ex.Message);
+        }
+
+        return score;
     }
 
     internal static HashSet<string> GetProcessNameCandidates(string sourceAppId)
@@ -260,7 +283,10 @@ public sealed class MediaSessionVolumeService
                 {
                     processIds.Add((uint)process.Id);
                 }
-                catch { }
+                catch
+                {
+                    // Process may have exited before PID inspection
+                }
                 finally
                 {
                     process.Dispose();

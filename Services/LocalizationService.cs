@@ -1,5 +1,4 @@
-using System;
-using System.Collections.Generic;
+#pragma warning disable S1192 // Localization dictionaries intentionally duplicate keys across language definitions
 using System.Globalization;
 
 namespace VNotch.Services;
@@ -9,7 +8,7 @@ public static class Loc
     private static string _currentLanguage = "en";
     private static readonly Dictionary<string, Dictionary<string, string>> _strings = new();
     private static readonly string[] SupportedLanguages = { "en", "vi", "es", "fr", "de", "ja", "hi" };
-    private static readonly Dictionary<string, IReadOnlyList<string>> TranslationsByText;
+    private static readonly Dictionary<string, IReadOnlyList<string>> TranslationsByText = InitializeTranslations();
 
     public static string CurrentLanguage => _currentLanguage;
 
@@ -74,7 +73,7 @@ public static class Loc
             : new List<string> { text };
     }
 
-    static Loc()
+    private static Dictionary<string, IReadOnlyList<string>> InitializeTranslations()
     {
         InitializeEnglish();
         InitializeVietnamese();
@@ -86,7 +85,7 @@ public static class Loc
         InitializeWeatherStatusStrings();
         InitializeAdditionalStrings();
         AddSettingsBackupTransferStrings();
-        TranslationsByText = BuildTranslationLookup();
+        return BuildTranslationLookup();
     }
 
     private static Dictionary<string, IReadOnlyList<string>> BuildTranslationLookup()

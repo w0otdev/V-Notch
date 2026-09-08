@@ -8,9 +8,12 @@ using System.Windows;
 
 namespace VNotch.Services;
 
+#pragma warning disable S1075 // Public GitHub Releases API endpoints
 public class UpdateService : IUpdateService
 {
-    private const string GithubApiUrl = "https://api.github.com/repos/rainaku/V-Notch/releases/latest";
+    private const string LogCategory = "UPDATER";
+    private static readonly Uri GithubLatestReleaseUri = new("https://api.github.com/repos/rainaku/V-Notch/releases/latest");
+    private static readonly Uri GithubAllReleasesUri = new("https://api.github.com/repos/rainaku/V-Notch/releases");
     private const string UserAgent = "V-Notch-Updater";
     internal const string SetupName = "V-Notch-Setup.exe";
     internal const string SelfContainedSetupName = "V-Notch-Setup-SelfContained.exe";
@@ -39,8 +42,19 @@ public class UpdateService : IUpdateService
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
     }
 
-    public string CurrentVersion => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version is { } v
-        ? (v.Revision > 0 ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}" : $"{v.Major}.{v.Minor}.{v.Build}") : "1.9.1";
+    public string CurrentVersion => GetAppVersion();
+
+    private static string GetAppVersion()
+    {
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        if (version == null)
+            return "1.9.1";
+
+        if (version.Revision > 0)
+            return $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
+
+        return $"{version.Major}.{version.Minor}.{version.Build}";
+    }
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync()
     {
@@ -49,7 +63,7 @@ public class UpdateService : IUpdateService
         {
             var now = DateTime.UtcNow;
             if (_cachedLatestRelease != null && now - _lastCheckUtc < MinRefreshInterval) return Clone(_cachedLatestRelease);
-            using var request = new HttpRequestMessage(HttpMethod.Get, GithubApiUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, GithubLatestReleaseUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
             if (!string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
             using var response = await SendHttpsAsync(request, CancellationToken.None);
@@ -70,11 +84,11 @@ public class UpdateService : IUpdateService
                 PublishedAt = root.GetProperty("published_at").GetDateTime()
             };
             info.IsNewerVersion = installer != null && checksum != null && CompareVersions(info.Version, CurrentVersion) > 0;
-            if (installer == null || checksum == null) RuntimeLog.Warn("UPDATER", "Latest release has no approved installer and matching SHA-256 asset; update is unavailable.");
+            if (installer == null || checksum == null) RuntimeLog.Warn(LogCategory, "Latest release has no approved installer and matching SHA-256 asset; update is unavailable.");
             _cachedLatestRelease = info;
             return Clone(info);
         }
-        catch (Exception ex) { RuntimeLog.Error("UPDATER", ex, "Update check failed"); return _cachedLatestRelease != null ? Clone(_cachedLatestRelease) : null; }
+        catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "Update check failed"); return _cachedLatestRelease != null ? Clone(_cachedLatestRelease) : null; }
         finally { _checkLock.Release(); }
     }
 
@@ -82,8 +96,7 @@ public class UpdateService : IUpdateService
     {
         try
         {
-            var url = "https://api.github.com/repos/rainaku/V-Notch/releases";
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var request = new HttpRequestMessage(HttpMethod.Get, GithubAllReleasesUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
             using var response = await SendHttpsAsync(request, CancellationToken.None);
             response.EnsureSuccessStatusCode();
@@ -110,7 +123,7 @@ public class UpdateService : IUpdateService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("UPDATER", ex, "Get all releases failed");
+            RuntimeLog.Error(LogCategory, ex, "Get all releases failed");
             return Array.Empty<UpdateInfo>();
         }
     }
@@ -137,12 +150,12 @@ public class UpdateService : IUpdateService
             var process = Process.Start(new ProcessStartInfo { FileName = installerPath, UseShellExecute = true, WorkingDirectory = directory });
             if (process == null) throw new InvalidOperationException("Could not start verified installer.");
             installerStarted = true;
-            RuntimeLog.Log("UPDATER", $"Starting verified installer {updateInfo.InstallerName}.");
+            RuntimeLog.Log(LogCategory, $"Starting verified installer {updateInfo.InstallerName}.");
             Application.Current?.Shutdown();
             return true;
         }
-        catch (OperationCanceledException) { RuntimeLog.Warn("UPDATER", "Update download canceled; current application remains open."); return false; }
-        catch (Exception ex) { RuntimeLog.Error("UPDATER", ex, "Update download/verification failed; current application remains open"); return false; }
+        catch (OperationCanceledException) { RuntimeLog.Warn(LogCategory, "Update download canceled; current application remains open."); return false; }
+        catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "Update download/verification failed; current application remains open"); return false; }
         finally
         {
             if (directory != null && !installerStarted) DeleteDirectory(directory);
@@ -182,15 +195,31 @@ public class UpdateService : IUpdateService
     internal async Task<HttpResponseMessage> SendHttpsAsync(HttpRequestMessage request, CancellationToken token)
     {
         if (!IsHttps(request.RequestUri)) throw new InvalidOperationException("Only HTTPS update URLs are accepted.");
-        for (var redirects = 0; ; redirects++)
+        const int maxRedirects = 5;
+        for (var redirects = 0; redirects < maxRedirects; redirects++)
         {
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
-            if (!IsRedirect(response.StatusCode)) { if (!IsHttps(response.RequestMessage?.RequestUri ?? request.RequestUri)) { response.Dispose(); throw new InvalidOperationException("Final update URL is not HTTPS."); } return response; }
-            if (redirects >= 5 || response.Headers.Location == null) { response.Dispose(); throw new InvalidOperationException("Invalid or excessive update redirect."); }
+            if (!IsRedirect(response.StatusCode))
+            {
+                if (!IsHttps(response.RequestMessage?.RequestUri ?? request.RequestUri))
+                {
+                    response.Dispose();
+                    throw new InvalidOperationException("Final update URL is not HTTPS.");
+                }
+                return response;
+            }
+            if (response.Headers.Location == null)
+            {
+                response.Dispose();
+                throw new InvalidOperationException("Invalid or excessive update redirect.");
+            }
             var target = response.Headers.Location.IsAbsoluteUri ? response.Headers.Location : new Uri(request.RequestUri!, response.Headers.Location);
-            response.Dispose(); if (!IsHttps(target)) throw new InvalidOperationException("Update redirect target is not HTTPS.");
+            response.Dispose();
+            if (!IsHttps(target)) throw new InvalidOperationException("Update redirect target is not HTTPS.");
             request = new HttpRequestMessage(HttpMethod.Get, target);
         }
+
+        throw new InvalidOperationException("Invalid or excessive update redirect.");
     }
 
     internal static (ReleaseAsset? Installer, ReleaseAsset? Checksum) SelectReleaseAssets(JsonElement release)
@@ -212,7 +241,7 @@ public class UpdateService : IUpdateService
     private static bool IsRedirect(HttpStatusCode status) => status is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
     private static async Task<string> ComputeSha256Async(string path, CancellationToken token) { await using var file = File.OpenRead(path); return Convert.ToHexString(await SHA256.HashDataAsync(file, token)); }
     private static HttpClient CreateHttpClient() => new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
-    private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn("UPDATER", $"Could not remove temporary update files: {ex.Message}"); } }
+    private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
     internal static int CompareVersions(string left, string right) => Version.TryParse(left, out var a) && Version.TryParse(right, out var b) ? a.CompareTo(b) : 0;
     private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion };
 }

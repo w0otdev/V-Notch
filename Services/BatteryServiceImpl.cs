@@ -7,10 +7,10 @@ namespace VNotch.Services;
 public class BatteryServiceImpl : IBatteryService
 {
     [DllImport("kernel32.dll")]
-    private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
+    private static extern bool GetSystemPowerStatus(out SystemPowerStatus lpSystemPowerStatus);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SYSTEM_POWER_STATUS
+    private struct SystemPowerStatus
     {
         public byte ACLineStatus;
         public byte BatteryFlag;
@@ -25,14 +25,14 @@ public class BatteryServiceImpl : IBatteryService
         int InformationLevel,
         IntPtr InputBuffer,
         uint InputBufferLength,
-        out SYSTEM_BATTERY_STATE OutputBuffer,
+        out SystemBatteryState OutputBuffer,
         uint OutputBufferLength);
 
-    private const int SystemBatteryState = 5;
-    private const uint STATUS_SUCCESS = 0;
+    private const int SystemBatteryStateInfoLevel = 5;
+    private const uint StatusSuccess = 0;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SYSTEM_BATTERY_STATE
+    private struct SystemBatteryState
     {
         [MarshalAs(UnmanagedType.U1)] public bool AcOnLine;
         [MarshalAs(UnmanagedType.U1)] public bool BatteryPresent;
@@ -53,10 +53,16 @@ public class BatteryServiceImpl : IBatteryService
     public BatteryInfo GetBatteryInfo()
     {
         var info = new BatteryInfo();
+        PopulateSystemPowerStatus(info);
+        PopulateNtBatteryState(info);
+        return info;
+    }
 
+    private static void PopulateSystemPowerStatus(BatteryInfo info)
+    {
         try
         {
-            if (GetSystemPowerStatus(out SYSTEM_POWER_STATUS status))
+            if (GetSystemPowerStatus(out SystemPowerStatus status))
             {
                 info.Percentage = status.BatteryLifePercent == 255 ? 100 : status.BatteryLifePercent;
                 info.IsCharging = status.ACLineStatus == 1;
@@ -76,18 +82,22 @@ public class BatteryServiceImpl : IBatteryService
                 }
             }
         }
-        catch
+        catch (Exception)
         {
+            // Fallback defaults when power status cannot be queried
             info.Percentage = 100;
             info.HasBattery = false;
         }
+    }
 
+    private static void PopulateNtBatteryState(BatteryInfo info)
+    {
         try
         {
-            uint size = (uint)Marshal.SizeOf<SYSTEM_BATTERY_STATE>();
-            uint result = CallNtPowerInformation(SystemBatteryState, IntPtr.Zero, 0, out SYSTEM_BATTERY_STATE bs, size);
+            uint size = (uint)Marshal.SizeOf<SystemBatteryState>();
+            uint result = CallNtPowerInformation(SystemBatteryStateInfoLevel, IntPtr.Zero, 0, out SystemBatteryState bs, size);
 
-            if (result == STATUS_SUCCESS && bs.BatteryPresent)
+            if (result == StatusSuccess && bs.BatteryPresent)
             {
                 int rateMilliwatts = bs.Rate;
 
@@ -103,10 +113,9 @@ public class BatteryServiceImpl : IBatteryService
                 if (bs.AcOnLine) info.IsPluggedIn = true;
             }
         }
-        catch
+        catch (Exception)
         {
+            // NtPowerInformation query may not be supported or available
         }
-
-        return info;
     }
 }

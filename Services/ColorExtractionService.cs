@@ -37,7 +37,9 @@ public sealed class ColorExtractionService : IColorExtractionService
                 smallBitmap.CopyPixels(pixels, stride, 0);
 
                 var sampledColors = new List<Color>(300);
+#pragma warning disable S2245 // Pseudo-random generator is used solely for deterministic pixel sampling of images, not security or cryptography
                 var random = new Random(42);
+#pragma warning restore S2245
 
                 for (int i = 0; i < 300; i++)
                 {
@@ -79,13 +81,13 @@ public sealed class ColorExtractionService : IColorExtractionService
                 System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
             }
         }
-        catch
+        catch (Exception)
         {
             return Color.FromRgb(255, 255, 255);
         }
     }
 
-    private Color FindMostCommonColor(List<Color> colors)
+    private static Color FindMostCommonColor(List<Color> colors)
     {
         const int tolerance = 50;
         var colorGroups = new Dictionary<string, List<Color>>();
@@ -98,10 +100,13 @@ public sealed class ColorExtractionService : IColorExtractionService
 
             string key = $"{rBucket},{gBucket},{bBucket}";
 
-            if (!colorGroups.ContainsKey(key))
-                colorGroups[key] = new List<Color>();
+            if (!colorGroups.TryGetValue(key, out var group))
+            {
+                group = new List<Color>();
+                colorGroups[key] = group;
+            }
 
-            colorGroups[key].Add(color);
+            group.Add(color);
         }
 
         var largestGroup = colorGroups.OrderByDescending(g => g.Value.Count).First().Value;
@@ -113,7 +118,7 @@ public sealed class ColorExtractionService : IColorExtractionService
         return Color.FromRgb((byte)avgR, (byte)avgG, (byte)avgB);
     }
 
-    private Color EnhanceSaturation(Color color, double factor)
+    private static Color EnhanceSaturation(Color color, double factor)
     {
         double r = color.R / 255.0;
         double g = color.G / 255.0;
@@ -129,9 +134,9 @@ public sealed class ColorExtractionService : IColorExtractionService
         {
             s = delta / max;
 
-            if (r == max)
+            if (Math.Abs(r - max) < 0.0001)
                 h = (g - b) / delta + (g < b ? 6 : 0);
-            else if (g == max)
+            else if (Math.Abs(g - max) < 0.0001)
                 h = (b - r) / delta + 2;
             else
                 h = (r - g) / delta + 4;
@@ -180,7 +185,7 @@ public sealed class ColorExtractionService : IColorExtractionService
         );
     }
 
-    private Color EnsureMinimumBrightness(Color color, int minBrightness)
+    private static Color EnsureMinimumBrightness(Color color, int minBrightness)
     {
         int currentBrightness = (color.R + color.G + color.B) / 3;
 

@@ -10,6 +10,13 @@ namespace VNotch.Services;
 
 public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 {
+    private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
+    private const string YouTubeApiLogTag = "META-YOUTUBE-API";
+    private const string ItemsPropertyName = "items";
+    private const string VideoIdPropertyName = "videoId";
+    private const string TitlePropertyName = "title";
+    private const string DurationPropertyName = "duration";
+
     private static readonly HttpClient _httpClient = new();
 
     static MediaMetadataLookupService()
@@ -84,15 +91,16 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             if (pipedResult != null)
                 return pipedResult;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Cancelled */ }
         catch (Exception ex)
         {
-            RuntimeLog.Error("META-YOUTUBE-TITLE-SEARCH", ex.ToString());
+            RuntimeLog.Error(YouTubeTitleSearchLogTag, ex.ToString());
         }
 
         return null;
     }
 
+    #pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaDataApiAsync(string query, string originalTitle, string apiKey, CancellationToken ct)
     {
         try
@@ -115,7 +123,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("items", out var items) || items.GetArrayLength() == 0)
+            if (!root.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
                 return null;
 
             foreach (var item in items.EnumerateArray())
@@ -124,11 +132,11 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 string? resultTitle = null;
                 string? channelTitle = null;
 
-                if (item.TryGetProperty("id", out var idEl) && idEl.TryGetProperty("videoId", out var vidEl))
+                if (item.TryGetProperty("id", out var idEl) && idEl.TryGetProperty(VideoIdPropertyName, out var vidEl))
                     videoId = vidEl.GetString();
                 if (item.TryGetProperty("snippet", out var snippet))
                 {
-                    if (snippet.TryGetProperty("title", out var titleEl))
+                    if (snippet.TryGetProperty(TitlePropertyName, out var titleEl))
                         resultTitle = titleEl.GetString();
                     if (snippet.TryGetProperty("channelTitle", out var chEl))
                         channelTitle = chEl.GetString();
@@ -149,10 +157,10 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
                 if (candidate.TitleMatches(originalTitle))
                 {
-                    var enriched = await ResolveVideoIdAsync(videoId!, ct);
+                    var enriched = await ResolveVideoIdAsync(videoId, ct);
                     if (enriched != null)
                     {
-                        RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"data-api-search-ok query='{query}' videoId={videoId} title='{resultTitle}'");
                         return enriched;
                     }
@@ -161,21 +169,21 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
             var firstItem = items[0];
             string? firstVideoId = null;
-            if (firstItem.TryGetProperty("id", out var firstIdEl) && firstIdEl.TryGetProperty("videoId", out var firstVidEl))
+            if (firstItem.TryGetProperty("id", out var firstIdEl) && firstIdEl.TryGetProperty(VideoIdPropertyName, out var firstVidEl))
                 firstVideoId = firstVidEl.GetString();
 
             if (!string.IsNullOrEmpty(firstVideoId))
             {
-                var enrichedFirst = await ResolveVideoIdAsync(firstVideoId!, ct);
+                var enrichedFirst = await ResolveVideoIdAsync(firstVideoId, ct);
                 if (enrichedFirst != null)
                 {
-                    RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                    RuntimeLog.Log(YouTubeTitleSearchLogTag,
                         $"data-api-search-first-result query='{query}' videoId={firstVideoId} title='{enrichedFirst.Title}'");
                     return enrichedFirst;
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Cancelled */ }
         catch (Exception ex)
         {
             RuntimeLog.Error("META-YOUTUBE-TITLE-SEARCH-API", ex.ToString());
@@ -184,6 +192,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return null;
     }
 
+    #pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaPipedAsync(string query, string originalTitle, CancellationToken ct)
     {
         string[] pipedInstances = { "pipedapi.kavin.rocks", "pipedapi.adminforge.de", "pipedapi.in.projectsegfault.com" };
@@ -205,7 +214,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
-                if (!root.TryGetProperty("items", out var items) || items.GetArrayLength() == 0)
+                if (!root.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
                     continue;
 
                 foreach (var item in items.EnumerateArray())
@@ -218,11 +227,11 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
                     if (item.TryGetProperty("url", out var urlEl))
                         itemUrl = urlEl.GetString();
-                    if (item.TryGetProperty("title", out var titleEl))
+                    if (item.TryGetProperty(TitlePropertyName, out var titleEl))
                         itemTitle = titleEl.GetString();
                     if (item.TryGetProperty("uploaderName", out var uploaderEl))
                         uploaderName = uploaderEl.GetString();
-                    if (item.TryGetProperty("duration", out var durEl) && durEl.ValueKind == JsonValueKind.Number)
+                    if (item.TryGetProperty(DurationPropertyName, out var durEl) && durEl.ValueKind == JsonValueKind.Number)
                         durationSec = durEl.GetInt64();
                     if (item.TryGetProperty("thumbnail", out var thumbEl))
                         thumbnailUrl = thumbEl.GetString();
@@ -230,7 +239,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                     if (string.IsNullOrEmpty(itemUrl))
                         continue;
 
-                    var match = Regex.Match(itemUrl!, @"v=([a-zA-Z0-9_-]{11})");
+                    var match = Regex.Match(itemUrl, @"v=([a-zA-Z0-9_-]{11})");
                     if (!match.Success)
                         continue;
 
@@ -248,7 +257,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
                     if (candidate.TitleMatches(originalTitle))
                     {
-                        RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"piped-search-ok instance={instance} query='{query}' videoId={videoId} title='{itemTitle}'");
                         CacheVideo(videoId, candidate);
                         return candidate;
@@ -261,13 +270,13 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                     string? firstUrl = first.TryGetProperty("url", out var fUrlEl) ? fUrlEl.GetString() : null;
                     if (!string.IsNullOrEmpty(firstUrl))
                     {
-                        var firstMatch = Regex.Match(firstUrl!, @"v=([a-zA-Z0-9_-]{11})");
+                        var firstMatch = Regex.Match(firstUrl, @"v=([a-zA-Z0-9_-]{11})");
                         if (firstMatch.Success)
                         {
                             string firstVideoId = firstMatch.Groups[1].Value;
-                            string? firstTitle = first.TryGetProperty("title", out var fTitleEl) ? fTitleEl.GetString() : null;
+                            string? firstTitle = first.TryGetProperty(TitlePropertyName, out var fTitleEl) ? fTitleEl.GetString() : null;
                             string? firstUploader = first.TryGetProperty("uploaderName", out var fUpEl) ? fUpEl.GetString() : null;
-                            long firstDur = first.TryGetProperty("duration", out var fDurEl) && fDurEl.ValueKind == JsonValueKind.Number ? fDurEl.GetInt64() : 0;
+                            long firstDur = first.TryGetProperty(DurationPropertyName, out var fDurEl) && fDurEl.ValueKind == JsonValueKind.Number ? fDurEl.GetInt64() : 0;
                             string? firstThumb = first.TryGetProperty("thumbnail", out var fThumbEl) ? fThumbEl.GetString() : null;
 
                             var result = new YouTubeLookupResult
@@ -280,7 +289,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                                 Source = YouTubeLookupSource.OEmbed,
                             };
 
-                            RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                            RuntimeLog.Log(YouTubeTitleSearchLogTag,
                                 $"piped-search-first-result instance={instance} query='{query}' videoId={firstVideoId} title='{firstTitle}'");
                             CacheVideo(firstVideoId, result);
                             return result;
@@ -289,7 +298,10 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 }
             }
             catch (OperationCanceledException) { throw; }
-            catch { continue; }
+            catch
+            {
+                // Ignore instance failure and try next instance
+            }
         }
 
         string[] invidiousInstances = { "vid.puffyan.us", "invidious.fdn.fr", "invidious.nerdvpn.de" };
@@ -316,8 +328,8 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
                 foreach (var item in root.EnumerateArray())
                 {
-                    string? videoId = item.TryGetProperty("videoId", out var vidEl) ? vidEl.GetString() : null;
-                    string? itemTitle = item.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : null;
+                    string? videoId = item.TryGetProperty(VideoIdPropertyName, out var vidEl) ? vidEl.GetString() : null;
+                    string? itemTitle = item.TryGetProperty(TitlePropertyName, out var titleEl) ? titleEl.GetString() : null;
                     string? author = item.TryGetProperty("author", out var authEl) ? authEl.GetString() : null;
                     long lengthSec = item.TryGetProperty("lengthSeconds", out var lenEl) && lenEl.ValueKind == JsonValueKind.Number ? lenEl.GetInt64() : 0;
 
@@ -336,9 +348,9 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
                     if (candidate.TitleMatches(originalTitle))
                     {
-                        RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"invidious-search-ok instance={instance} query='{query}' videoId={videoId} title='{itemTitle}'");
-                        CacheVideo(videoId!, candidate);
+                        CacheVideo(videoId, candidate);
                         return candidate;
                     }
                 }
@@ -346,10 +358,10 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 if (root.GetArrayLength() > 0)
                 {
                     var first = root[0];
-                    string? firstVideoId = first.TryGetProperty("videoId", out var fVidEl) ? fVidEl.GetString() : null;
+                    string? firstVideoId = first.TryGetProperty(VideoIdPropertyName, out var fVidEl) ? fVidEl.GetString() : null;
                     if (!string.IsNullOrEmpty(firstVideoId))
                     {
-                        string? firstTitle = first.TryGetProperty("title", out var fTitleEl) ? fTitleEl.GetString() : null;
+                        string? firstTitle = first.TryGetProperty(TitlePropertyName, out var fTitleEl) ? fTitleEl.GetString() : null;
                         string? firstAuthor = first.TryGetProperty("author", out var fAuthEl) ? fAuthEl.GetString() : null;
                         long firstLen = first.TryGetProperty("lengthSeconds", out var fLenEl) && fLenEl.ValueKind == JsonValueKind.Number ? fLenEl.GetInt64() : 0;
 
@@ -363,20 +375,24 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                             Source = YouTubeLookupSource.OEmbed,
                         };
 
-                        RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"invidious-search-first-result instance={instance} query='{query}' videoId={firstVideoId} title='{firstTitle}'");
-                        CacheVideo(firstVideoId!, result);
+                        CacheVideo(firstVideoId, result);
                         return result;
                     }
                 }
             }
             catch (OperationCanceledException) { throw; }
-            catch { continue; }
+            catch
+            {
+                // Ignore instance failure and try next instance
+            }
         }
 
         return null;
     }
 
+    #pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaYouTubeScrapeAsync(string query, string originalTitle, CancellationToken ct)
     {
         try
@@ -472,12 +488,12 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                     var enriched = await ResolveVideoIdAsync(videoId, ct);
                     if (enriched != null)
                     {
-                        RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"yt-scrape-ok query='{query}' videoId={videoId} title='{videoTitle}' duration={enriched.Duration}");
                         CacheVideo(videoId, enriched);
                         return enriched;
                     }
-                    RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                    RuntimeLog.Log(YouTubeTitleSearchLogTag,
                         $"yt-scrape-ok query='{query}' videoId={videoId} title='{videoTitle}' (no enrich)");
                     CacheVideo(videoId, candidate);
                     return candidate;
@@ -488,7 +504,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             var enrichedFirst = await ResolveVideoIdAsync(firstId, ct);
             if (enrichedFirst != null)
             {
-                RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+                RuntimeLog.Log(YouTubeTitleSearchLogTag,
                     $"yt-scrape-first-result query='{query}' videoId={firstId} title='{firstTitle2}' duration={enrichedFirst.Duration}");
                 CacheVideo(firstId, enrichedFirst);
                 return enrichedFirst;
@@ -504,12 +520,12 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 Source = YouTubeLookupSource.OEmbed,
             };
 
-            RuntimeLog.Log("META-YOUTUBE-TITLE-SEARCH",
+            RuntimeLog.Log(YouTubeTitleSearchLogTag,
                 $"yt-scrape-first-result query='{query}' videoId={firstId} title='{firstTitle2}' (no enrich)");
             CacheVideo(firstId, firstResult);
             return firstResult;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Cancelled */ }
         catch (Exception ex)
         {
             RuntimeLog.Error("META-YOUTUBE-TITLE-SEARCH-SCRAPE", ex.ToString());
@@ -547,7 +563,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
         if (TryGetCachedVideo(videoId, out var cached) && cached != null)
         {
-            RuntimeLog.Log("META-YOUTUBE-API",
+            RuntimeLog.Log(YouTubeApiLogTag,
                 $"cache-hit videoId={videoId} source={cached.Source} duration={cached.Duration} thumb={(string.IsNullOrEmpty(cached.ThumbnailUrl) ? "(none)" : "data-api")}");
             return cached;
         }
@@ -561,11 +577,11 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 CacheVideo(videoId, apiResult);
                 return apiResult;
             }
-            RuntimeLog.Log("META-YOUTUBE-API", $"data-api-miss videoId={videoId} -> falling back to oEmbed");
+            RuntimeLog.Log(YouTubeApiLogTag, $"data-api-miss videoId={videoId} -> falling back to oEmbed");
         }
         else
         {
-            RuntimeLog.Log("META-YOUTUBE-API", $"data-api-disabled videoId={videoId} -> using oEmbed only");
+            RuntimeLog.Log(YouTubeApiLogTag, $"data-api-disabled videoId={videoId} -> using oEmbed only");
         }
 
         var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, ct);
@@ -594,7 +610,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             var result = await TryGetSoundCloudOEmbedAsync(soundCloudUrl, ct);
             if (!string.IsNullOrWhiteSpace(result.ThumbnailUrl))
             {
-                string normalized = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl!);
+                string normalized = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl);
                 if (!IsLikelySoundCloudPlaceholderArtworkUrl(normalized))
                     return normalized;
             }
@@ -622,7 +638,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            string? oembedTitle = root.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : null;
+            string? oembedTitle = root.TryGetProperty(TitlePropertyName, out var titleEl) ? titleEl.GetString() : null;
             string? oembedAuthor = root.TryGetProperty("author_name", out var authorEl) ? authorEl.GetString() : null;
 
             return new YouTubeLookupResult
@@ -641,6 +657,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
     }
 
+    #pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TryGetVideoFromDataApiAsync(string videoId, string apiKey, CancellationToken ct)
     {
         if (IsQuotaCooldownActive())
@@ -661,11 +678,11 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 if (LooksLikeQuotaExceeded(json))
                 {
                     TripQuotaCooldown();
-                    RuntimeLog.Log("META-YOUTUBE-API", "quotaExceeded — Data API disabled until tomorrow, falling back to oEmbed.");
+                    RuntimeLog.Log(YouTubeApiLogTag, "quotaExceeded — Data API disabled until tomorrow, falling back to oEmbed.");
                 }
                 else
                 {
-                    RuntimeLog.Log("META-YOUTUBE-API", $"HTTP {(int)response.StatusCode} for videoId={videoId}");
+                    RuntimeLog.Log(YouTubeApiLogTag, $"HTTP {(int)response.StatusCode} for videoId={videoId}");
                 }
                 return null;
             }
@@ -674,7 +691,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 return null;
 
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("items", out var items) || items.GetArrayLength() == 0)
+            if (!doc.RootElement.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
                 return null;
 
             var item = items[0];
@@ -685,21 +702,21 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
             if (item.TryGetProperty("snippet", out var snippet))
             {
-                if (snippet.TryGetProperty("title", out var titleEl)) title = titleEl.GetString();
+                if (snippet.TryGetProperty(TitlePropertyName, out var titleEl)) title = titleEl.GetString();
                 if (snippet.TryGetProperty("channelTitle", out var channelEl)) channel = channelEl.GetString();
                 if (snippet.TryGetProperty("thumbnails", out var thumbs))
                     thumbnailUrl = PickBestThumbnail(thumbs);
             }
 
             if (item.TryGetProperty("contentDetails", out var details) &&
-                details.TryGetProperty("duration", out var durationEl))
+                details.TryGetProperty(DurationPropertyName, out var durationEl))
             {
                 string? iso = durationEl.GetString();
                 if (!string.IsNullOrEmpty(iso))
                     duration = ParseIso8601Duration(iso);
             }
 
-            RuntimeLog.Log("META-YOUTUBE-API",
+            RuntimeLog.Log(YouTubeApiLogTag,
                 $"data-api-ok videoId={videoId} title='{title}' channel='{channel}' duration={duration} thumb={(string.IsNullOrWhiteSpace(thumbnailUrl) ? "(none)" : "ok")}");
 
             return new YouTubeLookupResult
@@ -718,7 +735,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("META-YOUTUBE-API", ex.ToString());
+            RuntimeLog.Error(YouTubeApiLogTag, ex.ToString());
             return null;
         }
     }
@@ -797,12 +814,12 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("items", out var items) || items.GetArrayLength() == 0)
+            if (!root.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
                 return result;
 
             var firstItem = items[0];
             if (firstItem.TryGetProperty("contentDetails", out var details) &&
-                details.TryGetProperty("duration", out var durationEl))
+                details.TryGetProperty(DurationPropertyName, out var durationEl))
             {
                 string? isoDuration = durationEl.GetString();
                 if (!string.IsNullOrEmpty(isoDuration))
@@ -845,14 +862,13 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (root.TryGetProperty("EnableYouTubeApi", out var enabledEl) && enabledEl.GetBoolean())
+            if (root.TryGetProperty("EnableYouTubeApi", out var enabledEl) &&
+                enabledEl.GetBoolean() &&
+                root.TryGetProperty("YouTubeApiKey", out var keyEl))
             {
-                if (root.TryGetProperty("YouTubeApiKey", out var keyEl))
-                {
-                    string? key = DataProtection.Unprotect(keyEl.GetString())?.Trim();
-                    if (!string.IsNullOrEmpty(key) && key.Length > 10)
-                        return key;
-                }
+                string? key = DataProtection.Unprotect(keyEl.GetString())?.Trim();
+                if (!string.IsNullOrEmpty(key) && key.Length > 10)
+                    return key;
             }
         }
         catch (Exception ex)
@@ -883,11 +899,13 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
         catch
         {
+            // Settings read error, fallback to allowed
         }
 
         return true;
     }
 
+    #pragma warning disable S3776
     public async Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default)
     {
         if (!IsOnlineArtworkAllowed())
@@ -901,7 +919,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 var direct = await TryGetSoundCloudOEmbedAsync(directTrackUrl, ct);
                 if (!string.IsNullOrWhiteSpace(direct.ThumbnailUrl))
                 {
-                    string normalizedDirectThumbnail = NormalizeSoundCloudArtworkUrl(direct.ThumbnailUrl!);
+                    string normalizedDirectThumbnail = NormalizeSoundCloudArtworkUrl(direct.ThumbnailUrl);
                     if (!IsLikelySoundCloudPlaceholderArtworkUrl(normalizedDirectThumbnail))
                     {
                         return normalizedDirectThumbnail;
@@ -1018,7 +1036,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     private readonly record struct SoundCloudCandidateProbe(int Index, string? ThumbnailUrl, bool IsMatch);
 
-    private async Task<SoundCloudCandidateProbe> ProbeSoundCloudCandidateAsync(
+    private static async Task<SoundCloudCandidateProbe> ProbeSoundCloudCandidateAsync(
         string url,
         int candidateScore,
         int index,
@@ -1035,7 +1053,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 return new SoundCloudCandidateProbe(index, null, false);
             }
 
-            string normalizedThumb = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl!);
+            string normalizedThumb = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl);
             if (IsLikelySoundCloudPlaceholderArtworkUrl(normalizedThumb))
             {
                 return new SoundCloudCandidateProbe(index, null, false);
@@ -1057,7 +1075,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
     }
 
-    private async Task<string?> GetStringWithTimeoutAsync(string url, int timeoutMs, CancellationToken ct)
+    private static async Task<string?> GetStringWithTimeoutAsync(string url, int timeoutMs, CancellationToken ct)
     {
         try
         {
@@ -1086,7 +1104,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private static string NormalizeSoundCloudArtworkUrl(string url)
         => SoundCloudMatching.NormalizeArtworkUrl(url);
 
-    private async Task<(string? ThumbnailUrl, string? Title, string? Author)> TryGetSoundCloudOEmbedAsync(string trackUrl, CancellationToken ct)
+    private static async Task<(string? ThumbnailUrl, string? Title, string? Author)> TryGetSoundCloudOEmbedAsync(string trackUrl, CancellationToken ct)
     {
         try
         {
@@ -1100,7 +1118,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
             string? thumbnailUrl = root.TryGetProperty("thumbnail_url", out var thumbnailEl) ? thumbnailEl.GetString() : null;
-            string? oembedTitle = root.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : null;
+            string? oembedTitle = root.TryGetProperty(TitlePropertyName, out var titleEl) ? titleEl.GetString() : null;
             string? oembedAuthor = root.TryGetProperty("author_name", out var authorEl) ? authorEl.GetString() : null;
             return (thumbnailUrl, oembedTitle, oembedAuthor);
         }

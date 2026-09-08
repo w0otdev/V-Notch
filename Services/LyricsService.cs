@@ -1,6 +1,8 @@
+#pragma warning disable S1075 // Public lyrics API endpoints
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -10,6 +12,10 @@ namespace VNotch.Services;
 
 internal sealed class LyricsService : IDisposable
 {
+    private const string LogTag = "LYRICS";
+    private static readonly string[] GenericPlatformNames = { "YouTube", "Browser", "Google Chrome", "Microsoft Edge" };
+    private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
+
     private static readonly HttpClient _lrclibHttp = new()
     {
         BaseAddress = new Uri("https://lrclib.net"),
@@ -37,8 +43,11 @@ internal sealed class LyricsService : IDisposable
         string fetchKey = $"{trackName}|{artistName}|{durationSeconds}";
         if (fetchKey == _lastFetchKey) return null;
 
-        _cts?.Cancel();
-        _cts?.Dispose();
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
 
@@ -77,7 +86,7 @@ internal sealed class LyricsService : IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("LYRICS", $"Error: {ex.Message}");
+            RuntimeLog.Log(LogTag, $"Error: {ex.Message}");
             return null;
         }
     }
@@ -94,10 +103,7 @@ internal sealed class LyricsService : IDisposable
             if (string.IsNullOrWhiteSpace(cleanT)) return;
 
             // Strip browser/generic platform names from artist
-            if (cleanA.Equals("YouTube", StringComparison.OrdinalIgnoreCase) ||
-                cleanA.Equals("Browser", StringComparison.OrdinalIgnoreCase) ||
-                cleanA.Equals("Google Chrome", StringComparison.OrdinalIgnoreCase) ||
-                cleanA.Equals("Microsoft Edge", StringComparison.OrdinalIgnoreCase))
+            if (GenericPlatformNames.Any(p => cleanA.Equals(p, StringComparison.OrdinalIgnoreCase)))
             {
                 cleanA = "";
             }
@@ -118,35 +124,10 @@ internal sealed class LyricsService : IDisposable
         AddCandidate(cTrack, cArtist);
 
         // 3. Decompose pipe '|' (common in YouTube music video titles: "Artist | Title" or "Artist - Nick | Title")
-        if (cTrack.Contains('|'))
-        {
-            var parts = cTrack.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (parts.Length == 2)
-            {
-                AddCandidate(parts[1], parts[0]);
-                AddCandidate(parts[0], parts[1]);
-            }
-            else if (parts.Length > 2)
-            {
-                AddCandidate(parts[1], parts[0]);
-                AddCandidate(parts[0], parts[1]);
-                AddCandidate(string.Join(" ", parts.Skip(1)), parts[0]);
-            }
-        }
+        DecomposePipes(cTrack, AddCandidate);
 
         // 4. Decompose standard dashes " - ", " – ", " — "
-        foreach (var dash in new[] { " - ", " – ", " — ", " // " })
-        {
-            if (cTrack.Contains(dash))
-            {
-                var parts = cTrack.Split(new[] { dash }, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (parts.Length == 2)
-                {
-                    AddCandidate(parts[1], parts[0]);
-                    AddCandidate(parts[0], parts[1]);
-                }
-            }
-        }
+        DecomposeDashes(cTrack, AddCandidate);
 
         // 5. Track name only if artist is empty or generic
         if (!string.IsNullOrEmpty(cTrack))
@@ -157,17 +138,48 @@ internal sealed class LyricsService : IDisposable
         return candidates;
     }
 
-    private async Task<List<LyricLine>?> TryGetExactAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
+    private static void DecomposePipes(string cTrack, Action<string, string> addCandidate)
+    {
+        if (!cTrack.Contains('|')) return;
+
+        var parts = cTrack.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 2)
+        {
+            addCandidate(parts[1], parts[0]);
+            addCandidate(parts[0], parts[1]);
+        }
+        else if (parts.Length > 2)
+        {
+            addCandidate(parts[1], parts[0]);
+            addCandidate(parts[0], parts[1]);
+            addCandidate(string.Join(" ", parts.Skip(1)), parts[0]);
+        }
+    }
+
+    private static void DecomposeDashes(string cTrack, Action<string, string> addCandidate)
+    {
+        foreach (var dash in Dashes.Where(cTrack.Contains))
+        {
+            var parts = cTrack.Split(new[] { dash }, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length == 2)
+            {
+                addCandidate(parts[1], parts[0]);
+                addCandidate(parts[0], parts[1]);
+            }
+        }
+    }
+
+    private static async Task<List<LyricLine>?> TryGetExactAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
     {
         string url = $"/api/get?track_name={Uri.EscapeDataString(trackName)}" +
                      $"&artist_name={Uri.EscapeDataString(artistName)}&duration={durationSeconds}";
 
-        RuntimeLog.Log("LYRICS", $"Fetching (exact): {trackName} - {artistName} ({durationSeconds}s)");
+        RuntimeLog.Log(LogTag, $"Fetching (exact): {trackName} - {artistName} ({durationSeconds}s)");
 
         var response = await _lrclibHttp.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
-            RuntimeLog.Log("LYRICS", $"Exact HTTP {(int)response.StatusCode} for '{trackName}'");
+            RuntimeLog.Log(LogTag, $"Exact HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
@@ -175,21 +187,21 @@ internal sealed class LyricsService : IDisposable
         using var doc = JsonDocument.Parse(json);
         var lines = ExtractSyncedLines(doc.RootElement);
         if (lines is { Count: > 0 })
-            RuntimeLog.Log("LYRICS", $"Got {lines.Count} synced lines (exact) for '{trackName}'");
+            RuntimeLog.Log(LogTag, $"Got {lines.Count} synced lines (exact) for '{trackName}'");
         return lines;
     }
 
-    private async Task<List<LyricLine>?> TrySearchAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
+    private static async Task<List<LyricLine>?> TrySearchAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
     {
         string url = $"/api/search?track_name={Uri.EscapeDataString(trackName)}" +
                      $"&artist_name={Uri.EscapeDataString(artistName)}";
 
-        RuntimeLog.Log("LYRICS", $"Fetching (search): {trackName} - {artistName}");
+        RuntimeLog.Log(LogTag, $"Fetching (search): {trackName} - {artistName}");
 
         var response = await _lrclibHttp.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
-            RuntimeLog.Log("LYRICS", $"Search HTTP {(int)response.StatusCode} for '{trackName}'");
+            RuntimeLog.Log(LogTag, $"Search HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
@@ -199,39 +211,28 @@ internal sealed class LyricsService : IDisposable
             return null;
 
         string targetTrackNorm = NormalizeForMatching(trackName);
-        string targetArtistNorm = NormalizeForMatching(artistName);
+        var (best, bestDelta, found) = FindBestCandidate(doc.RootElement, targetTrackNorm, durationSeconds);
+        if (!found) return null;
 
-        // Pick the candidate that actually has synced lyrics, matches the title,
-        // and whose duration is closest to what's playing.
+        var lines = ExtractSyncedLines(best);
+        if (lines is { Count: > 0 })
+            RuntimeLog.Log(LogTag, $"Got {lines.Count} synced lines (search, Δ{bestDelta}s) for '{trackName}'");
+        return lines;
+    }
+
+    private static (JsonElement Best, int BestDelta, bool Found) FindBestCandidate(JsonElement root, string targetTrackNorm, int durationSeconds)
+    {
         JsonElement best = default;
         bool found = false;
         int bestDelta = int.MaxValue;
 
-        foreach (var item in doc.RootElement.EnumerateArray())
+        foreach (var item in root.EnumerateArray())
         {
-            if (!item.TryGetProperty("syncedLyrics", out var sp) || sp.ValueKind == JsonValueKind.Null)
-                continue;
-            if (string.IsNullOrWhiteSpace(sp.GetString()))
+            if (!HasValidSyncedLyrics(item))
                 continue;
 
-            string itemTrack = item.TryGetProperty("trackName", out var tp) ? tp.GetString() ?? "" : "";
-            string itemArtist = item.TryGetProperty("artistName", out var ap) ? ap.GetString() ?? "" : "";
-
-            string itemTrackNorm = NormalizeForMatching(itemTrack);
-            string itemArtistNorm = NormalizeForMatching(itemArtist);
-
-            // Title validation: prevent matching completely different songs by the same artist
-            if (!string.IsNullOrEmpty(targetTrackNorm) && !string.IsNullOrEmpty(itemTrackNorm))
-            {
-                bool titleMatches = itemTrackNorm.Equals(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
-                                    itemTrackNorm.Contains(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
-                                    targetTrackNorm.Contains(itemTrackNorm, StringComparison.OrdinalIgnoreCase);
-
-                if (!titleMatches)
-                {
-                    continue;
-                }
-            }
+            if (!IsTrackTitleMatch(item, targetTrackNorm))
+                continue;
 
             int dur = item.TryGetProperty("duration", out var dp) && dp.ValueKind == JsonValueKind.Number
                 ? (int)Math.Round(dp.GetDouble())
@@ -246,12 +247,27 @@ internal sealed class LyricsService : IDisposable
             }
         }
 
-        if (!found) return null;
+        return (best, bestDelta, found);
+    }
 
-        var lines = ExtractSyncedLines(best);
-        if (lines is { Count: > 0 })
-            RuntimeLog.Log("LYRICS", $"Got {lines.Count} synced lines (search, Δ{bestDelta}s) for '{trackName}'");
-        return lines;
+    private static bool HasValidSyncedLyrics(JsonElement item)
+    {
+        return item.TryGetProperty("syncedLyrics", out var sp) &&
+               sp.ValueKind != JsonValueKind.Null &&
+               !string.IsNullOrWhiteSpace(sp.GetString());
+    }
+
+    private static bool IsTrackTitleMatch(JsonElement item, string targetTrackNorm)
+    {
+        if (string.IsNullOrEmpty(targetTrackNorm)) return true;
+
+        string itemTrack = item.TryGetProperty("trackName", out var tp) ? tp.GetString() ?? "" : "";
+        string itemTrackNorm = NormalizeForMatching(itemTrack);
+        if (string.IsNullOrEmpty(itemTrackNorm)) return true;
+
+        return itemTrackNorm.Equals(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
+               itemTrackNorm.Contains(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
+               targetTrackNorm.Contains(itemTrackNorm, StringComparison.OrdinalIgnoreCase);
     }
 
     internal static string NormalizeForMatching(string text)
@@ -283,7 +299,7 @@ internal sealed class LyricsService : IDisposable
         return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
     }
 
-    private async Task<LyricsResult?> TryLrcMuxAsync(
+    private static async Task<LyricsResult?> TryLrcMuxAsync(
         string trackName,
         string artistName,
         int durationSeconds,
@@ -294,19 +310,19 @@ internal sealed class LyricsService : IDisposable
                      $"&duration={durationSeconds}" +
                      "&level=word&format=json&sources=%21lrclib";
 
-        RuntimeLog.Log("LYRICS", $"Fetching (lrc mux): {trackName} - {artistName}");
+        RuntimeLog.Log(LogTag, $"Fetching (lrc mux): {trackName} - {artistName}");
 
         using var response = await _lrcMuxHttp.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
-            RuntimeLog.Log("LYRICS", $"lrc mux HTTP {(int)response.StatusCode} for '{trackName}'");
+            RuntimeLog.Log(LogTag, $"lrc mux HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
         string json = await response.Content.ReadAsStringAsync(token);
         var result = ParseLrcMuxResult(json);
         if (result is { Lines.Count: > 0 })
-            RuntimeLog.Log("LYRICS", $"Got {result.Lines.Count} synced lines from {result.Provider} for '{trackName}'");
+            RuntimeLog.Log(LogTag, $"Got {result.Lines.Count} synced lines from {result.Provider} for '{trackName}'");
         return result;
     }
 
@@ -321,27 +337,42 @@ internal sealed class LyricsService : IDisposable
         if (!root.TryGetProperty("meta", out var meta) || meta.ValueKind != JsonValueKind.Object)
             return null;
 
+        if (!IsValidSyncLevel(meta))
+            return null;
+
+        string provider = ResolveProviderName(meta);
+
+        if (!root.TryGetProperty("lines", out var linesProp) || linesProp.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var lines = ParseLrcMuxLines(linesProp);
+        lines.Sort((a, b) => a.Time.CompareTo(b.Time));
+        return lines.Count > 0 ? new LyricsResult(lines, provider) : null;
+    }
+
+    private static bool IsValidSyncLevel(JsonElement meta)
+    {
         string syncLevel = meta.TryGetProperty("level", out var levelProp)
             ? levelProp.GetString() ?? ""
             : "";
-        if (!syncLevel.Equals("word", StringComparison.OrdinalIgnoreCase) &&
-            !syncLevel.Equals("line", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
+        return syncLevel.Equals("word", StringComparison.OrdinalIgnoreCase) ||
+               syncLevel.Equals("line", StringComparison.OrdinalIgnoreCase);
+    }
 
-        string provider = "lrc mux";
+    private static string ResolveProviderName(JsonElement meta)
+    {
         if (meta.TryGetProperty("source", out var source) &&
             source.ValueKind == JsonValueKind.Object &&
             source.TryGetProperty("name", out var nameProp) &&
             !string.IsNullOrWhiteSpace(nameProp.GetString()))
         {
-            provider = $"{nameProp.GetString()!.Trim()} via lrc mux";
+            return $"{nameProp.GetString()!.Trim()} via lrc mux";
         }
+        return "lrc mux";
+    }
 
-        if (!root.TryGetProperty("lines", out var linesProp) || linesProp.ValueKind != JsonValueKind.Array)
-            return null;
-
+    private static List<LyricLine> ParseLrcMuxLines(JsonElement linesProp)
+    {
         var lines = new List<LyricLine>();
         foreach (var item in linesProp.EnumerateArray())
         {
@@ -363,9 +394,7 @@ internal sealed class LyricsService : IDisposable
 
             lines.Add(new LyricLine(TimeSpan.FromMilliseconds(startMilliseconds), text));
         }
-
-        lines.Sort((a, b) => a.Time.CompareTo(b.Time));
-        return lines.Count > 0 ? new LyricsResult(lines, provider) : null;
+        return lines;
     }
 
     private static List<LyricLine>? ExtractSyncedLines(JsonElement element)

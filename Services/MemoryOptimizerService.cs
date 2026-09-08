@@ -8,13 +8,15 @@ namespace VNotch.Services;
 
 public sealed class MemoryOptimizerService : IDisposable
 {
+    private const string LogTag = "MEMORY";
+
     private static readonly Lazy<MemoryOptimizerService> _lazy =
         new(() => new MemoryOptimizerService());
 
     public static MemoryOptimizerService Instance => _lazy.Value;
 
     private readonly IntPtr _currentProcessHandle = Win32Interop.GetCurrentProcess();
-    private long _lastTrimTimestamp = 0;
+    private long _lastTrimTimestamp;
     private readonly object _trimLock = new();
     private CancellationTokenSource? _scheduledTrimCts;
     private readonly object _scheduleLock = new();
@@ -58,7 +60,7 @@ public sealed class MemoryOptimizerService : IDisposable
                 {
                     TrimWorkingSet(aggressive);
                 }
-            }, TaskScheduler.Default);
+            }, token, TaskContinuationOptions.None, TaskScheduler.Default);
         }
     }
 
@@ -69,10 +71,10 @@ public sealed class MemoryOptimizerService : IDisposable
     public void SchedulePostStartupTrim(int firstDelayMs = 1800, int secondDelayMs = 4500)
     {
         ScheduleTrim(firstDelayMs, aggressive: true);
-        Task.Delay(secondDelayMs).ContinueWith(_ =>
+        Task.Delay(secondDelayMs, CancellationToken.None).ContinueWith(_ =>
         {
             TrimWorkingSet(aggressive: true);
-        }, TaskScheduler.Default);
+        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
         StartPeriodicOptimizer(60);
     }
 
@@ -97,11 +99,13 @@ public sealed class MemoryOptimizerService : IDisposable
 
             try
             {
+#pragma warning disable S1215 // Intentional for explicit low-memory working set trimmer
                 // 1. Collect gen 0, 1, and 2 garbage with compaction and run pending finalizers
                 GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                 GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
                 GC.WaitForPendingFinalizers();
                 GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+#pragma warning restore S1215
 
                 // 2. Instruct Windows Memory Manager to trim unreferenced working set pages
                 Win32Interop.SetProcessWorkingSetSize(_currentProcessHandle, new IntPtr(-1), new IntPtr(-1));
@@ -109,7 +113,7 @@ public sealed class MemoryOptimizerService : IDisposable
             }
             catch (Exception ex)
             {
-                RuntimeLog.Log("MEMORY", $"Memory trim skipped: {ex.Message}");
+                RuntimeLog.Log(LogTag, $"Memory trim skipped: {ex.Message}");
             }
         }
     }

@@ -3,7 +3,7 @@ using Microsoft.Win32;
 
 namespace VNotch.Services;
 
-public class StartupManager
+public static class StartupManager
 {
     private const string RegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "V-Notch";
@@ -15,8 +15,9 @@ public class StartupManager
             using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
             return key?.GetValue(AppName) != null;
         }
-        catch
+        catch (Exception)
         {
+            // Registry key might not exist or user lacks read permissions; treat as disabled.
             return false;
         }
     }

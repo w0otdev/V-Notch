@@ -19,6 +19,7 @@ namespace VNotch.Tests;
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class SpotlightWindowAnimationCollection
 {
+    private SpotlightWindowAnimationCollection() { }
     public const string Name = "Spotlight window animation";
 }
 
@@ -33,12 +34,11 @@ public sealed class SpotlightWindowAnimationTests
             bool originalReduceMotion = AnimationConfig.ReduceMotion;
             string usagePath = Path.Combine(
                 Path.GetTempPath(), $"vnotch-spotlight-view-stress-{Guid.NewGuid():N}.json");
-            Application? application = null;
             SpotlightWindow? window = null;
 
             try
             {
-                application = CreateApplicationResources();
+                _ = CreateApplicationResources();
                 AnimationConfig.SetReduceMotion(false);
                 ExerciseMainWindowFreshCaptureAfterReturn();
 
@@ -234,11 +234,12 @@ public sealed class SpotlightWindowAnimationTests
             var configureServices = typeof(App).GetMethod(
                 "ConfigureServices",
                 System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.Static |
                 System.Reflection.BindingFlags.NonPublic);
             Assert.NotNull(configureServices);
             var appConfigurationHost =
                 (App)RuntimeHelpers.GetUninitializedObject(typeof(App));
-            configureServices.Invoke(appConfigurationHost, [services]);
+            configureServices.Invoke(configureServices.IsStatic ? null : appConfigurationHost, [services]);
             services.AddSingleton<ISettingsService>(
                 new SettingsService(settingsPath, _ => { }));
             provider = services.BuildServiceProvider();

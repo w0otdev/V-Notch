@@ -6,6 +6,8 @@ namespace VNotch.Services;
 
 public sealed class MediaTransportControlService
 {
+    private const string LogTag = "MEDIA-CTRL";
+
     private readonly Func<GlobalSystemMediaTransportControlsSession?> _getActiveSession;
 
     public MediaTransportControlService(Func<GlobalSystemMediaTransportControlsSession?> getActiveSession)
@@ -30,7 +32,7 @@ public sealed class MediaTransportControlService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "PlayPause failed");
+            RuntimeLog.Error(LogTag, ex, "PlayPause failed");
             SendMediaKey(Win32Interop.VK_MEDIA_PLAY_PAUSE);
         }
     }
@@ -54,7 +56,7 @@ public sealed class MediaTransportControlService
                 // player advance on its own (autoplay / playlist).
                 if (await TrySeekToTimelineEdgeAsync(session, toEnd: true))
                 {
-                    RuntimeLog.Log("MEDIA-CTRL", "Next: skip unsupported, jumped to end of timeline");
+                    RuntimeLog.Log(LogTag, "Next: skip unsupported, jumped to end of timeline");
                     return;
                 }
             }
@@ -62,7 +64,7 @@ public sealed class MediaTransportControlService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "NextTrack failed");
+            RuntimeLog.Error(LogTag, ex, "NextTrack failed");
             SendMediaKey(Win32Interop.VK_MEDIA_NEXT_TRACK);
         }
     }
@@ -84,7 +86,7 @@ public sealed class MediaTransportControlService
                 // meaningful "previous" for a browser video is restarting it.
                 if (await TrySeekToTimelineEdgeAsync(session, toEnd: false))
                 {
-                    RuntimeLog.Log("MEDIA-CTRL", "Previous: skip unsupported, restarted timeline");
+                    RuntimeLog.Log(LogTag, "Previous: skip unsupported, restarted timeline");
                     return;
                 }
             }
@@ -92,7 +94,7 @@ public sealed class MediaTransportControlService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "PreviousTrack failed");
+            RuntimeLog.Error(LogTag, ex, "PreviousTrack failed");
             SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
     }
@@ -150,7 +152,7 @@ public sealed class MediaTransportControlService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "Seek failed");
+            RuntimeLog.Error(LogTag, ex, "Seek failed");
         }
     }
 
@@ -178,7 +180,7 @@ public sealed class MediaTransportControlService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "SeekRelative failed");
+            RuntimeLog.Error(LogTag, ex, "SeekRelative failed");
         }
     }
 
@@ -204,7 +206,7 @@ public sealed class MediaTransportControlService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "SeekToAbsolute failed");
+            RuntimeLog.Error(LogTag, ex, "SeekToAbsolute failed");
         }
     }
 }

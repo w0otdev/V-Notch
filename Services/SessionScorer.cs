@@ -31,19 +31,36 @@ internal static class SessionScorer
 {
     public static int Score(in SessionScoreInputs x)
     {
+        return ScoreMetadata(in x)
+             + ScoreSourceKind(in x)
+             + ScoreOsAndActive(in x)
+             + ScoreTimeDecay(in x)
+             + ScoreTimelineModifiers(in x);
+    }
+
+    private static int ScoreMetadata(in SessionScoreInputs x)
+    {
+        if (!x.HasTitle) return 0;
+
+        int score = 1550;
+        if (x.HasArtist) score += 20;
+        if (x.HasThumbnail) score += 10;
+        if (x.ArtistIsNonGeneric) score += 200;
+        return score;
+    }
+
+    private static int ScoreSourceKind(in SessionScoreInputs x)
+    {
+        if (x.IsSpotify) return 400;
+        if (x.IsMusic) return 400;
+        if (x.IsYouTube) return 350;
+        if (x.IsBrowser) return 100;
+        return 0;
+    }
+
+    private static int ScoreOsAndActive(in SessionScoreInputs x)
+    {
         int score = 0;
-
-        if (x.HasTitle)
-        {
-            score += 50;
-            if (x.HasArtist) score += 20;
-            if (x.HasThumbnail) score += 10;
-        }
-
-        if (x.IsSpotify) score += 400;
-        else if (x.IsMusic) score += 400;
-        else if (x.IsYouTube) score += 350;
-        else if (x.IsBrowser) score += 100;
 
         if (x.IsOsCurrent)
         {
@@ -53,8 +70,18 @@ internal static class SessionScorer
         if (x.IsActive)
         {
             score += 500;
-            if (x.IsOsCurrent && !(x.IsBrowser || x.IsYouTube)) score += 1000;
+            if (x.IsOsCurrent && !(x.IsBrowser || x.IsYouTube))
+            {
+                score += 1000;
+            }
         }
+
+        return score;
+    }
+
+    private static int ScoreTimeDecay(in SessionScoreInputs x)
+    {
+        int score = 0;
 
         if (x.PlayStartAgeSeconds is double playStartAge && playStartAge >= 0 && playStartAge < 45)
         {
@@ -76,15 +103,13 @@ internal static class SessionScorer
             score += (int)Math.Max(0, 200 - (timelineAge * 8));
         }
 
-        if (x.TimelineBoost) score += 3000;
-        else if (x.TimelinePenalty) score -= 3000;
-
-        if (x.HasTitle)
-        {
-            score += 1500;
-            if (x.ArtistIsNonGeneric) score += 200;
-        }
-
         return score;
+    }
+
+    private static int ScoreTimelineModifiers(in SessionScoreInputs x)
+    {
+        if (x.TimelineBoost) return 3000;
+        if (x.TimelinePenalty) return -3000;
+        return 0;
     }
 }

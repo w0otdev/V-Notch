@@ -8,8 +8,10 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
+#pragma warning disable S1075 // Public Weather and Geolocation API endpoints
 public sealed class WeatherService : IWeatherService
 {
+    private const string LogCategory = "WEATHER";
     private readonly HttpClient _http;
 
     public WeatherService() : this(CreateHttpClient()) { }
@@ -20,32 +22,10 @@ public sealed class WeatherService : IWeatherService
     {
         try
         {
-            double lat, lon;
-            string city;
+            var location = await ResolveLocationAsync(manualCity, cancellationToken).ConfigureAwait(false);
+            if (location is null) return null;
 
-            if (!string.IsNullOrWhiteSpace(manualCity))
-            {
-                // Use manual city — no IP lookup at all
-                var coords = await ResolveCityCoordinatesAsync(manualCity, cancellationToken).ConfigureAwait(false);
-                if (coords is null)
-                {
-                    RuntimeLog.Log("WEATHER", $"Could not resolve manual city: {manualCity}");
-                    return null;
-                }
-                (lat, lon, city) = coords.Value;
-            }
-            else
-            {
-                // Resolve location via IP (HTTPS only)
-                var location = await TryIpWhoIsAsync(cancellationToken).ConfigureAwait(false);
-                if (location is null)
-                {
-                    RuntimeLog.Log("WEATHER", "Could not resolve location. Weather unavailable.");
-                    return null;
-                }
-                (lat, lon, city) = location.Value;
-            }
-
+            var (lat, lon, city) = location.Value;
             string url =
                 "https://api.open-meteo.com/v1/forecast" +
                 $"?latitude={lat.ToString(CultureInfo.InvariantCulture)}" +
@@ -57,57 +37,93 @@ public sealed class WeatherService : IWeatherService
             using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                RuntimeLog.Log("WEATHER", $"Open-Meteo HTTP {(int)response.StatusCode}");
+                RuntimeLog.Log(LogCategory, $"Open-Meteo HTTP {(int)response.StatusCode}");
                 return null;
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty("current", out var current))
+            var info = ParseForecastJson(json, city);
+            if (info != null)
             {
-                RuntimeLog.Log("WEATHER", "Open-Meteo response missing 'current'.");
-                return null;
+                RuntimeLog.Log(LogCategory, $"{info.City} {info.Temperature}° {info.Condition} (H:{info.High} L:{info.Low})");
             }
-
-            double temp = current.GetProperty("temperature_2m").GetDouble();
-            int weatherCode = current.GetProperty("weather_code").GetInt32();
-            bool isDay = current.TryGetProperty("is_day", out var isDayProp) && isDayProp.GetInt32() == 1;
-
-            double high = temp, low = temp;
-            if (root.TryGetProperty("daily", out var daily))
-            {
-                if (daily.TryGetProperty("temperature_2m_max", out var maxArr) && maxArr.GetArrayLength() > 0)
-                    high = maxArr[0].GetDouble();
-                if (daily.TryGetProperty("temperature_2m_min", out var minArr) && minArr.GetArrayLength() > 0)
-                    low = minArr[0].GetDouble();
-            }
-
-            var info = new WeatherInfo
-            {
-                City = city,
-                Temperature = RoundTemperature(temp),
-                High = RoundTemperature(high),
-                Low = RoundTemperature(low),
-                WeatherCode = weatherCode,
-                Condition = DescribeWeatherCode(weatherCode),
-                IsDay = isDay
-            };
-
-            RuntimeLog.Log("WEATHER", $"{info.City} {info.Temperature}° {info.Condition} (H:{info.High} L:{info.Low})");
             return info;
         }
         catch (OperationCanceledException)
         {
-            RuntimeLog.Log("WEATHER", "Request timed out or was cancelled.");
+            RuntimeLog.Log(LogCategory, "Request timed out or was cancelled.");
             return null;
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("WEATHER", $"Error: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"Error: {ex.Message}");
             return null;
         }
+    }
+
+    private async Task<(double lat, double lon, string city)?> ResolveLocationAsync(string? manualCity, CancellationToken token)
+    {
+        if (!string.IsNullOrWhiteSpace(manualCity))
+        {
+            var coords = await ResolveCityCoordinatesAsync(manualCity, token).ConfigureAwait(false);
+            if (coords is null)
+            {
+                RuntimeLog.Log(LogCategory, $"Could not resolve manual city: {manualCity}");
+                return null;
+            }
+            return coords;
+        }
+
+        var location = await TryIpWhoIsAsync(token).ConfigureAwait(false);
+        if (location is null)
+        {
+            RuntimeLog.Log(LogCategory, "Could not resolve location. Weather unavailable.");
+            return null;
+        }
+        return location;
+    }
+
+    private static WeatherInfo? ParseForecastJson(string json, string city)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        if (!root.TryGetProperty("current", out var current))
+        {
+            RuntimeLog.Log(LogCategory, "Open-Meteo response missing 'current'.");
+            return null;
+        }
+
+        double temp = current.GetProperty("temperature_2m").GetDouble();
+        int weatherCode = current.GetProperty("weather_code").GetInt32();
+        bool isDay = current.TryGetProperty("is_day", out var isDayProp) && isDayProp.GetInt32() == 1;
+
+        var (high, low) = ExtractDailyTemperatures(root, temp);
+
+        return new WeatherInfo
+        {
+            City = city,
+            Temperature = RoundTemperature(temp),
+            High = RoundTemperature(high),
+            Low = RoundTemperature(low),
+            WeatherCode = weatherCode,
+            Condition = DescribeWeatherCode(weatherCode),
+            IsDay = isDay
+        };
+    }
+
+    private static (double high, double low) ExtractDailyTemperatures(JsonElement root, double fallbackTemp)
+    {
+        double high = fallbackTemp;
+        double low = fallbackTemp;
+        if (root.TryGetProperty("daily", out var daily))
+        {
+            if (daily.TryGetProperty("temperature_2m_max", out var maxArr) && maxArr.GetArrayLength() > 0)
+                high = maxArr[0].GetDouble();
+            if (daily.TryGetProperty("temperature_2m_min", out var minArr) && minArr.GetArrayLength() > 0)
+                low = minArr[0].GetDouble();
+        }
+        return (high, low);
     }
 
     private async Task<(double lat, double lon, string city)?> ResolveCityCoordinatesAsync(string city, CancellationToken token)
@@ -121,7 +137,7 @@ public sealed class WeatherService : IWeatherService
             using var response = await _http.GetAsync(url, token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                RuntimeLog.Log("WEATHER", $"Geocoding HTTP {(int)response.StatusCode}");
+                RuntimeLog.Log(LogCategory, $"Geocoding HTTP {(int)response.StatusCode}");
                 return null;
             }
 
@@ -131,7 +147,7 @@ public sealed class WeatherService : IWeatherService
 
             if (!root.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
             {
-                RuntimeLog.Log("WEATHER", $"Geocoding: no results for '{city}'");
+                RuntimeLog.Log(LogCategory, $"Geocoding: no results for '{city}'");
                 return null;
             }
 
@@ -146,7 +162,7 @@ public sealed class WeatherService : IWeatherService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("WEATHER", $"Geocoding failed: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"Geocoding failed: {ex.Message}");
             return null;
         }
     }
@@ -158,7 +174,7 @@ public sealed class WeatherService : IWeatherService
             using var response = await _http.GetAsync("https://ipwho.is/", token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                RuntimeLog.Log("WEATHER", $"ipwho.is HTTP {(int)response.StatusCode}");
+                RuntimeLog.Log(LogCategory, $"ipwho.is HTTP {(int)response.StatusCode}");
                 return null;
             }
 
@@ -172,7 +188,7 @@ public sealed class WeatherService : IWeatherService
                 string reason = root.TryGetProperty("message", out var msgProp)
                     ? msgProp.GetString() ?? "unknown"
                     : "unknown";
-                RuntimeLog.Log("WEATHER", $"ipwho.is error: {reason}");
+                RuntimeLog.Log(LogCategory, $"ipwho.is error: {reason}");
                 return null;
             }
 
@@ -190,7 +206,7 @@ public sealed class WeatherService : IWeatherService
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("WEATHER", $"ipwho.is failed: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"ipwho.is failed: {ex.Message}");
             return null;
         }
     }

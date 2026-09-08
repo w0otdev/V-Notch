@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace VNotch.Services;
@@ -83,9 +86,9 @@ internal static class SoundCloudMatching
             html,
             @"https?://(?:www\.)?soundcloud\.com/(?<user>[^/\s""'?#]+)/(?<slug>[^/\s""'?#]+)",
             RegexOptions.IgnoreCase);
-        foreach (Match match in absoluteMatches)
+        foreach (var groups in absoluteMatches.Select(match => match.Groups))
         {
-            AddCandidate(scoreMap, match.Groups["user"].Value, match.Groups["slug"].Value, normalizedTitle, normalizedArtist);
+            AddCandidate(scoreMap, groups["user"].Value, groups["slug"].Value, normalizedTitle, normalizedArtist);
         }
 
         var sorted = new List<KeyValuePair<string, int>>(scoreMap);
@@ -138,40 +141,51 @@ internal static class SoundCloudMatching
 
     public static int ScoreCandidate(string user, string slug, string normalizedTitle, string normalizedArtist)
     {
-        int score = 0;
         string normalizedSlug = PlatformDetector.NormalizeForLooseMatch(slug.ToLowerInvariant());
         string normalizedUser = PlatformDetector.NormalizeForLooseMatch(user.ToLowerInvariant());
 
-        if (!string.IsNullOrEmpty(normalizedTitle))
+        return ScoreTitleMatch(normalizedTitle, normalizedSlug) + ScoreArtistMatch(normalizedArtist, normalizedUser);
+    }
+
+    private static int ScoreTitleMatch(string normalizedTitle, string normalizedSlug)
+    {
+        if (string.IsNullOrEmpty(normalizedTitle)) return 0;
+
+        if (normalizedSlug.Contains(normalizedTitle, StringComparison.Ordinal) ||
+            normalizedTitle.Contains(normalizedSlug, StringComparison.Ordinal))
         {
-            if (normalizedSlug.Contains(normalizedTitle, StringComparison.Ordinal) || normalizedTitle.Contains(normalizedSlug, StringComparison.Ordinal))
-            {
-                score += 5;
-            }
-            else
-            {
-                var titleTokens = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                foreach (var token in titleTokens)
-                {
-                    if (token.Length >= 3 && normalizedSlug.Contains(token, StringComparison.Ordinal))
-                    {
-                        score += 1;
-                    }
-                }
-            }
+            return 5;
         }
 
-        if (!string.IsNullOrEmpty(normalizedArtist) &&
-            normalizedArtist != "soundcloud" &&
-            normalizedArtist != "browser")
+        int score = 0;
+        var titleTokens = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var token in titleTokens)
         {
-            if (normalizedUser.Contains(normalizedArtist, StringComparison.Ordinal) || normalizedArtist.Contains(normalizedUser, StringComparison.Ordinal))
+            if (token.Length >= 3 && normalizedSlug.Contains(token, StringComparison.Ordinal))
             {
-                score += 3;
+                score += 1;
             }
         }
 
         return score;
+    }
+
+    private static int ScoreArtistMatch(string normalizedArtist, string normalizedUser)
+    {
+        if (string.IsNullOrEmpty(normalizedArtist) ||
+            normalizedArtist == "soundcloud" ||
+            normalizedArtist == "browser")
+        {
+            return 0;
+        }
+
+        if (normalizedUser.Contains(normalizedArtist, StringComparison.Ordinal) ||
+            normalizedArtist.Contains(normalizedUser, StringComparison.Ordinal))
+        {
+            return 3;
+        }
+
+        return 0;
     }
 
     public static bool IsOEmbedMatch(string expectedTitle, string expectedArtist, string? candidateTitle, string? candidateAuthor, int candidateScore, bool strictMode = false)
@@ -182,24 +196,10 @@ internal static class SoundCloudMatching
         string normalizedCandidateAuthor = PlatformDetector.NormalizeForLooseMatch((candidateAuthor ?? "").ToLowerInvariant());
         int titleOverlap = CountTokenOverlap(normalizedExpectedTitle, normalizedCandidateTitle);
 
-        bool titleMatches = !string.IsNullOrEmpty(normalizedExpectedTitle) &&
-                            !string.IsNullOrEmpty(normalizedCandidateTitle) &&
-                            (normalizedCandidateTitle.Contains(normalizedExpectedTitle, StringComparison.Ordinal) ||
-                             normalizedExpectedTitle.Contains(normalizedCandidateTitle, StringComparison.Ordinal));
+        bool titleMatches = CheckTitleMatch(normalizedExpectedTitle, normalizedCandidateTitle);
+        bool artistMatches = CheckArtistMatch(normalizedExpectedArtist, normalizedCandidateAuthor);
 
-        bool artistMatches = string.IsNullOrEmpty(normalizedExpectedArtist) ||
-                             normalizedExpectedArtist == "soundcloud" ||
-                             normalizedExpectedArtist == "browser" ||
-                             (!string.IsNullOrEmpty(normalizedCandidateAuthor) &&
-                              (normalizedCandidateAuthor.Contains(normalizedExpectedArtist, StringComparison.Ordinal) ||
-                               normalizedExpectedArtist.Contains(normalizedCandidateAuthor, StringComparison.Ordinal)));
-
-        if (titleMatches && artistMatches)
-        {
-            return true;
-        }
-
-        if (titleMatches && titleOverlap >= 1)
+        if (titleMatches && (artistMatches || titleOverlap >= 1))
         {
             return true;
         }
@@ -215,6 +215,24 @@ internal static class SoundCloudMatching
         }
 
         return candidateScore >= 3 && titleOverlap >= 1;
+    }
+
+    private static bool CheckTitleMatch(string expectedTitle, string candidateTitle)
+    {
+        return !string.IsNullOrEmpty(expectedTitle) &&
+               !string.IsNullOrEmpty(candidateTitle) &&
+               (candidateTitle.Contains(expectedTitle, StringComparison.Ordinal) ||
+                expectedTitle.Contains(candidateTitle, StringComparison.Ordinal));
+    }
+
+    private static bool CheckArtistMatch(string expectedArtist, string candidateAuthor)
+    {
+        return string.IsNullOrEmpty(expectedArtist) ||
+               expectedArtist == "soundcloud" ||
+               expectedArtist == "browser" ||
+               (!string.IsNullOrEmpty(candidateAuthor) &&
+                (candidateAuthor.Contains(expectedArtist, StringComparison.Ordinal) ||
+                 expectedArtist.Contains(candidateAuthor, StringComparison.Ordinal)));
     }
 
     public static int CountTokenOverlap(string left, string right)

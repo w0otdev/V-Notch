@@ -18,6 +18,10 @@ public interface IWindowTitleScanner
 
 public sealed class WindowTitleScanner : IWindowTitleScanner
 {
+    private const string HttpPrefix = "http://";
+    private const string HttpsPrefix = "https://";
+    private const string SpotifyWebPlayerHost = "open.spotify.com";
+
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -54,7 +58,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         lock (_cacheLock)
         {
             int cacheDurationMs = isThrottled ? 300 : 700;
-            if ((DateTime.Now - _lastWindowEnumTime).TotalMilliseconds < cacheDurationMs)
+            if ((DateTime.UtcNow - _lastWindowEnumTime).TotalMilliseconds < cacheDurationMs)
             {
                 return _cachedWindowTitles;
             }
@@ -84,20 +88,16 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                 }
 
                 string lowerTitle = title.ToLowerInvariant();
-                foreach (var keyword in _platformKeywords)
+                if (_platformKeywords.Any(k => lowerTitle.Contains(k, StringComparison.Ordinal)))
                 {
-                    if (lowerTitle.Contains(keyword, StringComparison.Ordinal))
-                    {
-                        titles.Add(title);
-                        break;
-                    }
+                    titles.Add(title);
                 }
 
                 return true;
             }, IntPtr.Zero);
 
             _cachedWindowTitles = titles;
-            _lastWindowEnumTime = DateTime.Now;
+            _lastWindowEnumTime = DateTime.UtcNow;
             return titles;
         }
     }
@@ -132,8 +132,9 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             if (root.TryGetProperty(nameof(Models.NotchSettings.EnableBrowserUrlInspection), out var urlInspection) && !urlInspection.GetBoolean())
                 return false;
         }
-        catch
+        catch (Exception)
         {
+            // Settings file may be missing, locked, or malformed; default to inspection allowed
         }
 
         return true;
@@ -146,11 +147,11 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
 
         lock (_cacheLock)
         {
-            if ((DateTime.Now - _lastBrowserUrlTime).TotalMilliseconds < 1000)
+            if ((DateTime.UtcNow - _lastBrowserUrlTime).TotalMilliseconds < 1000)
                 return _cachedBrowserUrl;
 
             _cachedBrowserUrl = ExtractBrowserUrlCore();
-            _lastBrowserUrlTime = DateTime.Now;
+            _lastBrowserUrlTime = DateTime.UtcNow;
             return _cachedBrowserUrl;
         }
     }
@@ -163,11 +164,11 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         lock (_cacheLock)
         {
             int ttlMs = !string.IsNullOrEmpty(_cachedAnyBrowserMediaUrl) ? 1500 : 400;
-            if ((DateTime.Now - _lastAnyBrowserMediaUrlTime).TotalMilliseconds < ttlMs)
+            if ((DateTime.UtcNow - _lastAnyBrowserMediaUrlTime).TotalMilliseconds < ttlMs)
                 return _cachedAnyBrowserMediaUrl;
 
             _cachedAnyBrowserMediaUrl = ExtractMediaUrlFromAllBrowserWindows();
-            _lastAnyBrowserMediaUrlTime = DateTime.Now;
+            _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
             return _cachedAnyBrowserMediaUrl;
         }
     }
@@ -190,16 +191,16 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         lock (_cacheLock)
         {
             int ttlMs = _cachedSpotifyWebPlayerOpen ? 3000 : 1000;
-            if ((DateTime.Now - _lastSpotifyWebPlayerTime).TotalMilliseconds < ttlMs)
+            if ((DateTime.UtcNow - _lastSpotifyWebPlayerTime).TotalMilliseconds < ttlMs)
                 return _cachedSpotifyWebPlayerOpen;
 
             _cachedSpotifyWebPlayerOpen = DetectSpotifyWebPlayer();
-            _lastSpotifyWebPlayerTime = DateTime.Now;
+            _lastSpotifyWebPlayerTime = DateTime.UtcNow;
             return _cachedSpotifyWebPlayerOpen;
         }
     }
 
-    private string? ExtractMediaUrlFromAllBrowserWindows()
+    private static string? ExtractMediaUrlFromAllBrowserWindows()
     {
         var foregroundUrl = ExtractBrowserUrlCore();
         if (!string.IsNullOrEmpty(foregroundUrl) && IsMediaUrl(foregroundUrl))
@@ -209,35 +210,8 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
 
         EnumWindows((hWnd, _) =>
         {
-            if (!IsWindowVisible(hWnd)) return true;
-
-            int length = GetWindowTextLength(hWnd);
-            if (length == 0) return true;
-
-            GetWindowThreadProcessId(hWnd, out uint pid);
-            if (pid == 0) return true;
-
-            string? processName = null;
-            try
-            {
-                var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                processName = proc.ProcessName.ToLowerInvariant();
-            }
-            catch { return true; }
-
-            bool isBrowser = false;
-            foreach (var name in _browserProcessNames)
-            {
-                if (processName.Contains(name))
-                {
-                    isBrowser = true;
-                    break;
-                }
-            }
-            if (!isBrowser) return true;
-
-            var url = ExtractUrlFromWindowHandle(hWnd, processName);
-            if (!string.IsNullOrEmpty(url) && IsMediaUrl(url))
+            var url = TryGetBrowserWindowMediaUrl(hWnd);
+            if (url != null)
             {
                 foundUrl = url;
                 return false;
@@ -249,6 +223,37 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         return foundUrl;
     }
 
+    private static string? TryGetBrowserWindowMediaUrl(IntPtr hWnd)
+    {
+        if (!IsWindowVisible(hWnd) || GetWindowTextLength(hWnd) == 0) return null;
+
+        GetWindowThreadProcessId(hWnd, out uint pid);
+        if (pid == 0) return null;
+
+        string? processName = TryGetProcessName((int)pid);
+        if (processName == null || !IsBrowserProcess(processName)) return null;
+
+        var url = ExtractUrlFromWindowHandle(hWnd, processName);
+        return (!string.IsNullOrEmpty(url) && IsMediaUrl(url)) ? url : null;
+    }
+
+    private static string? TryGetProcessName(int pid)
+    {
+        try
+        {
+            var proc = System.Diagnostics.Process.GetProcessById(pid);
+            return proc.ProcessName.ToLowerInvariant();
+        }
+        catch (Exception)
+        {
+            // Process may have exited before query; skip window
+            return null;
+        }
+    }
+
+    private static bool IsBrowserProcess(string processName) =>
+        _browserProcessNames.Any(name => processName.Contains(name, StringComparison.Ordinal));
+
     private static string? ExtractUrlFromWindowHandle(IntPtr hwnd, string processName)
     {
         try
@@ -256,40 +261,9 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             var element = AutomationElement.FromHandle(hwnd);
             if (element == null) return null;
 
-            AutomationElement? addressBar = null;
-
-            if (processName.Contains("firefox"))
-            {
-                addressBar = element.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar-input"));
-            }
-            else
-            {
-                var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
-                var edits = element.FindAll(TreeScope.Descendants, editCondition);
-
-                foreach (AutomationElement edit in edits)
-                {
-                    try
-                    {
-                        if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
-                        {
-                            var valuePattern = (ValuePattern)pattern;
-                            string val = valuePattern.Current.Value ?? "";
-
-                            if (val.Contains("youtube.com/watch") || val.Contains("youtu.be/") ||
-                                val.Contains("soundcloud.com/") ||
-                                val.StartsWith("http://") || val.StartsWith("https://") ||
-                                val.Contains(".com/") || val.Contains(".org/"))
-                            {
-                                addressBar = edit;
-                                break;
-                            }
-                        }
-                    }
-                    catch { continue; }
-                }
-            }
+            AutomationElement? addressBar = processName.Contains("firefox", StringComparison.OrdinalIgnoreCase)
+                ? element.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar-input"))
+                : FindChromiumAddressBar(element);
 
             if (addressBar != null &&
                 addressBar.TryGetCurrentPattern(ValuePattern.Pattern, out object? urlPattern))
@@ -297,8 +271,8 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                 var vp = (ValuePattern)urlPattern;
                 string url = vp.Current.Value ?? "";
 
-                if (!url.StartsWith("http") && url.Contains("."))
-                    url = "https://" + url;
+                if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && url.Contains('.'))
+                    url = HttpsPrefix + url;
 
                 if (!string.IsNullOrWhiteSpace(url))
                     return url;
@@ -308,10 +282,51 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             if (!string.IsNullOrEmpty(tabUrl))
                 return tabUrl;
         }
-        catch { }
+        catch (Exception)
+        {
+            // UI Automation can throw COM/ElementNotAvailable exceptions during window enumeration
+        }
 
         return null;
     }
+
+    private static AutomationElement? FindChromiumAddressBar(AutomationElement element)
+    {
+        var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
+        var edits = element.FindAll(TreeScope.Descendants, editCondition);
+
+        foreach (AutomationElement edit in edits)
+        {
+            try
+            {
+                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
+                {
+                    var valuePattern = (ValuePattern)pattern;
+                    string val = valuePattern.Current.Value ?? "";
+
+                    if (IsAddressBarValue(val))
+                    {
+                        return edit;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // ValuePattern may throw if element state changed during UI automation traversal
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsAddressBarValue(string val) =>
+        val.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
+        val.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
+        val.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
+        val.StartsWith(HttpPrefix, StringComparison.OrdinalIgnoreCase) ||
+        val.StartsWith(HttpsPrefix, StringComparison.OrdinalIgnoreCase) ||
+        val.Contains(".com/", StringComparison.OrdinalIgnoreCase) ||
+        val.Contains(".org/", StringComparison.OrdinalIgnoreCase);
 
     private static string? TryFindMediaUrlInTabs(AutomationElement root)
     {
@@ -330,7 +345,10 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                 }
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            // UI Automation can throw when reading tabs from tearing-down browsers
+        }
         return null;
     }
 
@@ -362,21 +380,24 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                 }
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            // UI Automation element properties may throw if child is destroyed
+        }
         return null;
     }
 
     private static bool LooksLikeUrl(string s)
     {
         if (string.IsNullOrWhiteSpace(s)) return false;
-        return s.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-               s.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+        return s.StartsWith(HttpPrefix, StringComparison.OrdinalIgnoreCase) ||
+               s.StartsWith(HttpsPrefix, StringComparison.OrdinalIgnoreCase) ||
                s.Contains("youtube.com/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("twitch.tv/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("discord.com/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("open.spotify.com/", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains(SpotifyWebPlayerHost + "/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("music.apple.com/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("tidal.com/", StringComparison.OrdinalIgnoreCase) ||
                s.Contains("deezer.com/", StringComparison.OrdinalIgnoreCase) ||
@@ -392,7 +413,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         s = s.Trim();
         if (!s.StartsWith("http", StringComparison.OrdinalIgnoreCase) && s.Contains('.'))
         {
-            s = "https://" + s;
+            s = HttpsPrefix + s;
         }
         return s;
     }
@@ -406,7 +427,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                url.Contains("discord.com/channels/", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("discord.com/app", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("open.spotify.com/", StringComparison.OrdinalIgnoreCase) ||
+               url.Contains(SpotifyWebPlayerHost + "/", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("music.apple.com/", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("listen.tidal.com/", StringComparison.OrdinalIgnoreCase) ||
                url.Contains("deezer.com/", StringComparison.OrdinalIgnoreCase) ||
@@ -417,9 +438,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                url.Contains("crunchyroll.com/watch", StringComparison.OrdinalIgnoreCase);
     }
 
-    private const string SpotifyWebPlayerHost = "open.spotify.com";
-
-    private bool DetectSpotifyWebPlayer()
+    private static bool DetectSpotifyWebPlayer()
     {
         bool found = false;
 
@@ -427,32 +446,13 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         {
             EnumWindows((hWnd, _) =>
             {
-                if (!IsWindowVisible(hWnd)) return true;
-
-                int length = GetWindowTextLength(hWnd);
-                if (length == 0) return true;
+                if (!IsWindowVisible(hWnd) || GetWindowTextLength(hWnd) == 0) return true;
 
                 GetWindowThreadProcessId(hWnd, out uint pid);
                 if (pid == 0) return true;
 
-                string? processName = null;
-                try
-                {
-                    var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                    processName = proc.ProcessName.ToLowerInvariant();
-                }
-                catch { return true; }
-
-                bool isBrowser = false;
-                foreach (var name in _browserProcessNames)
-                {
-                    if (processName.Contains(name))
-                    {
-                        isBrowser = true;
-                        break;
-                    }
-                }
-                if (!isBrowser) return true;
+                string? processName = TryGetProcessName((int)pid);
+                if (processName == null || !IsBrowserProcess(processName)) return true;
 
                 if (WindowHasSpotifyWebPlayer(hWnd, processName))
                 {
@@ -463,7 +463,10 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                 return true;
             }, IntPtr.Zero);
         }
-        catch { }
+        catch (Exception)
+        {
+            // Window enumeration or UI Automation exceptions safely ignored
+        }
 
         return found;
     }
@@ -475,50 +478,73 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             var element = AutomationElement.FromHandle(hwnd);
             if (element == null) return false;
 
-            if (processName.Contains("firefox"))
+            if (processName.Contains("firefox", StringComparison.OrdinalIgnoreCase))
             {
-                var urlBar = element.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar-input"));
-                if (urlBar != null &&
-                    urlBar.TryGetCurrentPattern(ValuePattern.Pattern, out object? fp))
+                if (FirefoxAddressBarHasSpotify(element)) return true;
+            }
+            else if (ChromiumAddressBarHasSpotify(element))
+            {
+                return true;
+            }
+
+            return TabsContainSpotify(element);
+        }
+        catch (Exception)
+        {
+            // UI Automation tree inspection may throw if window closes
+        }
+
+        return false;
+    }
+
+    private static bool FirefoxAddressBarHasSpotify(AutomationElement element)
+    {
+        var urlBar = element.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar-input"));
+        if (urlBar != null &&
+            urlBar.TryGetCurrentPattern(ValuePattern.Pattern, out object? fp))
+        {
+            string val = ((ValuePattern)fp).Current.Value ?? "";
+            return val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
+    }
+
+    private static bool ChromiumAddressBarHasSpotify(AutomationElement element)
+    {
+        var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
+        var edits = element.FindAll(TreeScope.Descendants, editCondition);
+        foreach (AutomationElement edit in edits)
+        {
+            try
+            {
+                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
                 {
-                    string val = ((ValuePattern)fp).Current.Value ?? "";
+                    string val = ((ValuePattern)pattern).Current.Value ?? "";
                     if (val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase))
                         return true;
                 }
             }
-            else
+            catch (Exception)
             {
-                var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
-                var edits = element.FindAll(TreeScope.Descendants, editCondition);
-                foreach (AutomationElement edit in edits)
-                {
-                    try
-                    {
-                        if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
-                        {
-                            string val = ((ValuePattern)pattern).Current.Value ?? "";
-                            if (val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase))
-                                return true;
-                        }
-                    }
-                    catch { continue; }
-                }
-            }
-
-            var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
-            var tabs = element.FindAll(TreeScope.Descendants, tabCondition);
-            if (tabs != null)
-            {
-                foreach (AutomationElement tab in tabs)
-                {
-                    if (TabReferencesSpotifyWebPlayer(tab))
-                        return true;
-                }
+                // UI automation read failure on individual element
             }
         }
-        catch { }
+        return false;
+    }
 
+    private static bool TabsContainSpotify(AutomationElement element)
+    {
+        var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
+        var tabs = element.FindAll(TreeScope.Descendants, tabCondition);
+        if (tabs != null)
+        {
+            foreach (AutomationElement tab in tabs)
+            {
+                if (TabReferencesSpotifyWebPlayer(tab))
+                    return true;
+            }
+        }
         return false;
     }
 
@@ -549,12 +575,15 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
                 }
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            // Tab element inspection may throw if tab closes during query
+        }
 
         return false;
     }
 
-    private string? ExtractBrowserUrlCore()
+    private static string? ExtractBrowserUrlCore()
     {
         try
         {
@@ -564,25 +593,8 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             GetWindowThreadProcessId(hwnd, out uint pid);
             if (pid == 0) return null;
 
-            string? processName = null;
-            try
-            {
-                var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                processName = proc.ProcessName.ToLowerInvariant();
-            }
-            catch { return null; }
-
-            bool isBrowser = false;
-            foreach (var name in _browserProcessNames)
-            {
-                if (processName.Contains(name))
-                {
-                    isBrowser = true;
-                    break;
-                }
-            }
-
-            if (!isBrowser) return null;
+            string? processName = TryGetProcessName((int)pid);
+            if (processName == null || !IsBrowserProcess(processName)) return null;
 
             return ExtractUrlFromWindowHandle(hwnd, processName);
         }

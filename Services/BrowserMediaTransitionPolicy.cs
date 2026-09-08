@@ -5,6 +5,7 @@ internal static class BrowserMediaTransitionPolicy
     internal static readonly TimeSpan LikelyAdMaximumDuration = TimeSpan.FromMinutes(2);
     internal static readonly TimeSpan LikelyAdQuarantineWindow = TimeSpan.FromSeconds(45);
 
+#pragma warning disable S107 // Comprehensive state evaluation for browser ad transitions requires these domain parameters
     public static BrowserAdTransitionDecision EvaluateLikelyYouTubeAd(
         bool isBrowserSession,
         bool hasStableTrack,
@@ -64,6 +65,7 @@ internal static class BrowserMediaTransitionPolicy
             transitionStartedUtc,
             wasTransitionActive);
     }
+#pragma warning restore S107
 
     public static BrowserAdTransitionDecision EvaluateYouTubeJunkMetadata(
         bool isBrowserSession,

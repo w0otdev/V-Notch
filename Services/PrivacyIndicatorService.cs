@@ -23,9 +23,6 @@ public sealed class PrivacyIndicatorService : IDisposable
     internal static readonly TimeSpan MicrophoneSignalHoldDuration = TimeSpan.FromMilliseconds(1400);
     internal const float MicrophoneSignalThreshold = 0.0125f;
 
-    private const uint ProcessQueryLimitedInformation = 0x1000;
-    private const int ErrorInsufficientBuffer = 122;
-
     private static readonly string[] IgnoredMicrophoneProcessSuffixes =
     {
         "service", "services", "svc", "daemon"
@@ -39,16 +36,6 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private static readonly Lazy<IReadOnlySet<string>> ServiceExecutablePaths =
         new(LoadServiceExecutablePaths);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, uint processId);
-
-    [DllImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    [DllImport("kernel32.dll")]
-    private static extern int GetPackageFamilyName(IntPtr process, ref uint packageFamilyNameLength, IntPtr packageFamilyName);
 
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _microphoneFlowTimer;
@@ -267,22 +254,26 @@ public sealed class PrivacyIndicatorService : IDisposable
 
                 if (string.Equals(subKeyName, "NonPackaged", StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (var npName in subKey.GetSubKeyNames())
-                    {
-                        using var npKey = subKey.OpenSubKey(npName, writable: false);
-                        if (npKey == null) continue;
-                        if (TryDetectInUse(npKey, out lastStart))
-                        {
-                            consumers.Add(new CapabilityUsage(
-                                npName, NormalizeAppName(npName), lastStart));
-                        }
-                    }
+                    ScanNonPackagedKey(subKey, consumers);
                 }
             }
         }
         catch (Exception ex)
         {
             RuntimeLog.Error("PRIVACY", ex, $"Scan {capability} ({hive.Name}) failed");
+        }
+    }
+
+    private static void ScanNonPackagedKey(RegistryKey nonPackagedKey, List<CapabilityUsage> consumers)
+    {
+        foreach (var npName in nonPackagedKey.GetSubKeyNames())
+        {
+            using var npKey = nonPackagedKey.OpenSubKey(npName, writable: false);
+            if (npKey != null && TryDetectInUse(npKey, out long lastStart))
+            {
+                consumers.Add(new CapabilityUsage(
+                    npName, NormalizeAppName(npName), lastStart));
+            }
         }
     }
 
@@ -422,6 +413,19 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private sealed class ConsumerProcessProbe
     {
+        private const uint ProcessQueryLimitedInformation = 0x1000;
+        private const int ErrorInsufficientBuffer = 122;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, uint processId);
+
+        [DllImport("kernel32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll")]
+        private static extern int GetPackageFamilyName(IntPtr process, ref uint packageFamilyNameLength, IntPtr packageFamilyName);
+
         private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, bool> _processMatchCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -566,73 +570,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                 {
                     using (device)
                     {
-                        try
-                        {
-                            if (device.AudioEndpointVolume.Mute) continue;
-                        }
-                        catch
-                        {
-                            // Some virtual endpoints do not expose endpoint mute.
-                        }
-
-                        var sessions = device.AudioSessionManager.Sessions;
-                        if (sessions == null) continue;
-
-                        for (int i = 0; i < sessions.Count; i++)
-                        {
-                            var session = sessions[i];
-                            if (session == null) continue;
-
-                            try
-                            {
-                                if (session.State != AudioSessionState.AudioSessionStateActive)
-                                    continue;
-
-                                uint processId = session.GetProcessID;
-                                if (!candidates.Any(candidate =>
-                                        processProbe.MatchesProcess(candidate.RawName, processId)))
-                                    continue;
-
-                                using (var volume = session.SimpleAudioVolume)
-                                {
-                                    if (volume.Mute) continue;
-                                }
-
-                                hasActiveSession = true;
-
-                                float sessionPeak = 0;
-                                bool sessionPeakAvailable = false;
-                                try
-                                {
-                                    sessionPeak = session.AudioMeterInformation.MasterPeakValue;
-                                    sessionPeakAvailable = true;
-                                }
-                                catch
-                                {
-                                    // Fall back to the endpoint meter below.
-                                }
-
-                                float endpointPeak = 0;
-                                if (!sessionPeakAvailable)
-                                {
-                                    try
-                                    {
-                                        endpointPeak = device.AudioMeterInformation.MasterPeakValue;
-                                    }
-                                    catch
-                                    {
-                                        // A matched active session is still valid evidence,
-                                        // but silence must not turn the indicator on.
-                                    }
-                                }
-
-                                peakLevel = Math.Max(peakLevel, Math.Max(sessionPeak, endpointPeak));
-                            }
-                            finally
-                            {
-                                try { session.Dispose(); } catch { }
-                            }
-                        }
+                        ProcessDeviceCapture(device, candidates, processProbe, ref hasActiveSession, ref peakLevel);
                     }
                 }
             }
@@ -650,12 +588,114 @@ public sealed class PrivacyIndicatorService : IDisposable
                 Math.Clamp(peakLevel, 0, 1));
         }
 
+        private static void ProcessDeviceCapture(
+            MMDevice device,
+            IReadOnlyList<CapabilityUsage> candidates,
+            ConsumerProcessProbe processProbe,
+            ref bool hasActiveSession,
+            ref float peakLevel)
+        {
+            try
+            {
+                if (device.AudioEndpointVolume.Mute) return;
+            }
+            catch (Exception)
+            {
+                // Some virtual endpoints do not expose endpoint mute.
+            }
+
+            var sessions = device.AudioSessionManager.Sessions;
+            if (sessions == null) return;
+
+            for (int i = 0; i < sessions.Count; i++)
+            {
+                var session = sessions[i];
+                if (session == null) continue;
+
+                try
+                {
+                    ProcessAudioSession(device, session, candidates, processProbe, ref hasActiveSession, ref peakLevel);
+                }
+                finally
+                {
+                    try
+                    {
+                        session.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                        // Best-effort session disposal
+                    }
+                }
+            }
+        }
+
+        private static void ProcessAudioSession(
+            MMDevice device,
+            AudioSessionControl session,
+            IReadOnlyList<CapabilityUsage> candidates,
+            ConsumerProcessProbe processProbe,
+            ref bool hasActiveSession,
+            ref float peakLevel)
+        {
+            if (session.State != AudioSessionState.AudioSessionStateActive)
+                return;
+
+            uint processId = session.GetProcessID;
+            if (!candidates.Any(candidate => processProbe.MatchesProcess(candidate.RawName, processId)))
+                return;
+
+            using (var volume = session.SimpleAudioVolume)
+            {
+                if (volume.Mute) return;
+            }
+
+            hasActiveSession = true;
+            float sessionPeak = GetSessionPeak(session);
+            float endpointPeak = sessionPeak > 0 ? 0 : GetEndpointPeak(device);
+
+            peakLevel = Math.Max(peakLevel, Math.Max(sessionPeak, endpointPeak));
+        }
+
+        private static float GetSessionPeak(AudioSessionControl session)
+        {
+            try
+            {
+                return session.AudioMeterInformation.MasterPeakValue;
+            }
+            catch (Exception)
+            {
+                // Fall back to endpoint meter
+                return 0;
+            }
+        }
+
+        private static float GetEndpointPeak(MMDevice device)
+        {
+            try
+            {
+                return device.AudioMeterInformation.MasterPeakValue;
+            }
+            catch (Exception)
+            {
+                // Endpoint meter query failed
+                return 0;
+            }
+        }
+
         public void Dispose() => DisposeEnumerator();
 
         private void DisposeEnumerator()
         {
             if (_enumerator == null) return;
-            try { _enumerator.Dispose(); } catch { }
+            try
+            {
+                _enumerator.Dispose();
+            }
+            catch (Exception)
+            {
+                // Best-effort device enumerator cleanup
+            }
             _enumerator = null;
         }
     }

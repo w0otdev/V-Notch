@@ -133,8 +133,8 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         IsAvailable = true;
         return rows
             .Select(row => ToSearchItem(row.Name, row.Parent, row.IsFolder))
-            .Where(item => item != null)
-            .Select(item => item! with { Score = ScoreItem(item!, query) })
+            .OfType<SpotlightSearchItem>()
+            .Select(item => item with { Score = ScoreItem(item, query) })
             .OrderByDescending(item => item.Score)
             .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
             .Take(limit)
@@ -171,12 +171,30 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 
         string ext = Path.GetExtension(name);
         bool isExec = !isFolder && ExecutableExtensions.Contains(ext);
-        SpotlightResultKind kind = isFolder
-            ? SpotlightResultKind.Folder
-            : (isExec ? SpotlightResultKind.Application : SpotlightResultKind.File);
+
+        SpotlightResultKind kind;
+        if (isFolder)
+        {
+            kind = SpotlightResultKind.Folder;
+        }
+        else if (isExec)
+        {
+            kind = SpotlightResultKind.Application;
+        }
+        else
+        {
+            kind = SpotlightResultKind.File;
+        }
+
+        string typePrefix = kind switch
+        {
+            SpotlightResultKind.Folder => "folder",
+            SpotlightResultKind.Application => "app",
+            _ => "file"
+        };
 
         return new SpotlightSearchItem(
-            $"{(isFolder ? "folder" : (isExec ? "app" : "file"))}:{fullPath}",
+            $"{typePrefix}:{fullPath}",
             kind,
             name,
             fullPath,

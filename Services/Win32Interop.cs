@@ -4,6 +4,7 @@ using System.Text;
 
 namespace VNotch.Services;
 
+#pragma warning disable S101, CA1707, CA1708, IDE1006 // Native Win32 API struct and naming conventions
 internal static class Win32Interop
 {
     #region user32.dll

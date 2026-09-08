@@ -17,7 +17,6 @@ public sealed class CalendarPresenter : IDisposable
     private readonly CalendarModule _module;
     private readonly IDispatcherService _dispatcher;
     private readonly CalendarViewRefs _refs;
-    private readonly CalendarScrollMath _math = new();
 
     private bool _calendarInitialized;
     private readonly TextBlock[] _calendarDayNames = new TextBlock[CalendarScrollMath.TotalDays];
@@ -26,7 +25,7 @@ public sealed class CalendarPresenter : IDisposable
     private double _calendarScrollX = 0.0;
     private int _currentCalendarCenterIdx = 5;
     private double _calendarScrollAccumulator = 0;
-    private DateTime _lastCalendarScrollTime = DateTime.MinValue;
+    private DateTime _lastCalendarScrollTimeUtc = DateTime.MinValue;
     private DateTime _lastCalendarUpdate = DateTime.Now;
     private bool _isMonthAnimating;
     private string _pendingMonthText = string.Empty;
@@ -89,9 +88,9 @@ public sealed class CalendarPresenter : IDisposable
         }
 
         _currentCalendarCenterIdx = 5;
-        _calendarScrollX = _math.GetStripXForIndex(_currentCalendarCenterIdx);
+        _calendarScrollX = CalendarScrollMath.GetStripXForIndex(_currentCalendarCenterIdx);
         _refs.CalendarStripTranslate.X = _calendarScrollX;
-        _refs.CalendarHighlightTranslate.X = _math.GetHighlightXForIndex(_currentCalendarCenterIdx);
+        _refs.CalendarHighlightTranslate.X = CalendarScrollMath.GetHighlightXForIndex(_currentCalendarCenterIdx);
 
         _calendarInitialized = true;
     }
@@ -246,7 +245,7 @@ public sealed class CalendarPresenter : IDisposable
 
     private void AnimateCalendarHighlightToIndex(int centerIdx, Duration duration, IEasingFunction easing, bool pulse)
     {
-        double targetHighlightX = _math.GetHighlightXForIndex(centerIdx);
+        double targetHighlightX = CalendarScrollMath.GetHighlightXForIndex(centerIdx);
         double currentHighlightX = (double)_refs.CalendarHighlightTranslate.GetValue(TranslateTransform.XProperty);
 
         _refs.CalendarHighlightScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -295,7 +294,7 @@ public sealed class CalendarPresenter : IDisposable
         if (!_calendarInitialized) return;
 
         double currentX = (double)_refs.CalendarStripTranslate.GetValue(TranslateTransform.XProperty);
-        int centerIdx = _math.GetCenterIndexFromStripX(currentX);
+        int centerIdx = CalendarScrollMath.GetCenterIndexFromStripX(currentX);
         ApplyCalendarCenterVisualState(centerIdx);
 
         if (animate)
@@ -305,7 +304,7 @@ public sealed class CalendarPresenter : IDisposable
         else
         {
             _refs.CalendarHighlightTranslate.BeginAnimation(TranslateTransform.XProperty, null);
-            _refs.CalendarHighlightTranslate.X = _math.GetHighlightXForIndex(centerIdx);
+            _refs.CalendarHighlightTranslate.X = CalendarScrollMath.GetHighlightXForIndex(centerIdx);
             _refs.CalendarHighlightScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _refs.CalendarHighlightScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             _refs.CalendarHighlightScale.ScaleX = 1.0;
@@ -423,7 +422,7 @@ public sealed class CalendarPresenter : IDisposable
         if (_refs.IsNonCalendarWidgetMode()) return;
         if (!_calendarInitialized) return;
 
-        var step = _math.ComputeScrollStep(_calendarScrollAccumulator, e.Delta, _currentCalendarCenterIdx);
+        var step = CalendarScrollMath.ComputeScrollStep(_calendarScrollAccumulator, e.Delta, _currentCalendarCenterIdx);
         _calendarScrollAccumulator = step.ResultAccumulator;
 
         if (!step.HasStep)
@@ -432,12 +431,12 @@ public sealed class CalendarPresenter : IDisposable
             return;
         }
 
-        if ((DateTime.Now - _lastCalendarScrollTime).TotalMilliseconds < 70)
+        if ((DateTime.UtcNow - _lastCalendarScrollTimeUtc).TotalMilliseconds < 70)
         {
             e.Handled = true;
             return;
         }
-        _lastCalendarScrollTime = DateTime.Now;
+        _lastCalendarScrollTimeUtc = DateTime.UtcNow;
 
         if (!step.IndexChanged)
         {
@@ -446,7 +445,7 @@ public sealed class CalendarPresenter : IDisposable
         }
 
         _currentCalendarCenterIdx = step.NewCenterIdx;
-        double newX = _math.GetStripXForIndex(_currentCalendarCenterIdx);
+        double newX = CalendarScrollMath.GetStripXForIndex(_currentCalendarCenterIdx);
         _calendarScrollX = newX;
 
         double currentX = (double)_refs.CalendarStripTranslate.GetValue(TranslateTransform.XProperty);
@@ -476,7 +475,7 @@ public sealed class CalendarPresenter : IDisposable
         if (!_calendarInitialized) return;
 
         _currentCalendarCenterIdx = 5;
-        double targetX = _math.GetStripXForIndex(_currentCalendarCenterIdx);
+        double targetX = CalendarScrollMath.GetStripXForIndex(_currentCalendarCenterIdx);
 
         if (Math.Abs(_calendarScrollX - targetX) < 0.1) return;
 

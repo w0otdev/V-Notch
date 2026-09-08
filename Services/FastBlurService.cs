@@ -58,7 +58,7 @@ public static class FastBlurService
                     ArrayPool<byte>.Shared.Return(target);
                 }
             }
-            catch
+            catch (Exception)
             {
                 return null;
             }
@@ -75,7 +75,6 @@ public static class FastBlurService
         }
     }
 
-
     private static void BoxBlurHorizontal(byte[] source, byte[] target, int w, int h, int radius)
     {
         int window = 2 * radius + 1;
@@ -87,7 +86,7 @@ public static class FastBlurService
             int sumB = 0, sumG = 0, sumR = 0, sumA = 0;
             for (int dx = -radius; dx <= radius; dx++)
             {
-                int nx = dx < 0 ? 0 : (dx >= w ? w - 1 : dx);
+                int nx = Math.Clamp(dx, 0, w - 1);
                 int o = pBase + nx * 4;
                 sumB += source[o];
                 sumG += source[o + 1];
@@ -103,10 +102,8 @@ public static class FastBlurService
                 target[t + 2] = (byte)(sumR / window);
                 target[t + 3] = (byte)(sumA / window);
 
-                int outX = x - radius;
-                outX = outX < 0 ? 0 : (outX >= w ? w - 1 : outX);
-                int inX = x + 1 + radius;
-                inX = inX < 0 ? 0 : (inX >= w ? w - 1 : inX);
+                int outX = Math.Clamp(x - radius, 0, w - 1);
+                int inX = Math.Clamp(x + 1 + radius, 0, w - 1);
 
                 int oOut = pBase + outX * 4;
                 int oIn = pBase + inX * 4;
@@ -130,7 +127,7 @@ public static class FastBlurService
             int sumB = 0, sumG = 0, sumR = 0, sumA = 0;
             for (int dy = -radius; dy <= radius; dy++)
             {
-                int ny = dy < 0 ? 0 : (dy >= h ? h - 1 : dy);
+                int ny = Math.Clamp(dy, 0, h - 1);
                 int o = ny * rowStride + col;
                 sumB += source[o];
                 sumG += source[o + 1];
@@ -146,10 +143,8 @@ public static class FastBlurService
                 target[t + 2] = (byte)(sumR / window);
                 target[t + 3] = (byte)(sumA / window);
 
-                int outY = y - radius;
-                outY = outY < 0 ? 0 : (outY >= h ? h - 1 : outY);
-                int inY = y + 1 + radius;
-                inY = inY < 0 ? 0 : (inY >= h ? h - 1 : inY);
+                int outY = Math.Clamp(y - radius, 0, h - 1);
+                int inY = Math.Clamp(y + 1 + radius, 0, h - 1);
 
                 int oOut = outY * rowStride + col;
                 int oIn = inY * rowStride + col;

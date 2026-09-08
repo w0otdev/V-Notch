@@ -19,6 +19,10 @@ namespace VNotch.Services;
 /// </summary>
 internal sealed class SpotifyCanvasService : IDisposable
 {
+    private const string LogCategory = "SPOTIFY-CANVAS";
+    private const string JsonContentType = "application/json";
+    private const string SpotifyWebOrigin = "https://open.spotify.com";
+
     private static readonly Uri SecretsUri = new(
         "https://raw.githubusercontent.com/xyloflake/spot-secrets-go/refs/heads/main/secrets/secretDict.json");
     private static readonly Uri ServerTimeUri = new("https://open.spotify.com/api/server-time");
@@ -112,15 +116,15 @@ internal sealed class SpotifyCanvasService : IDisposable
 
         try
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Starting Spotify Canvas lookup");
+            RuntimeLog.Debug(LogCategory, "Starting Spotify Canvas lookup");
             string? accessToken = await GetAccessTokenAsync(sessionCookie, timeoutCts.Token).ConfigureAwait(false);
             if (string.IsNullOrEmpty(accessToken))
             {
-                RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify access token was unavailable");
+                RuntimeLog.Debug(LogCategory, "Spotify access token was unavailable");
                 return null;
             }
 
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify access token is ready");
+            RuntimeLog.Debug(LogCategory, "Spotify access token is ready");
 
             string? trackId = await ResolveTrackIdAsync(
                 trackName,
@@ -142,7 +146,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+            RuntimeLog.Debug(LogCategory, () =>
                 cancellationToken.IsCancellationRequested
                     ? "Canvas lookup was superseded by a media change"
                     : $"Canvas lookup timed out after {RequestTimeout.TotalSeconds:0} seconds");
@@ -150,7 +154,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Warn("SPOTIFY-CANVAS", $"Canvas lookup failed: {ex.GetType().Name}: {ex.Message}");
+            RuntimeLog.Warn(LogCategory, $"Canvas lookup failed: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -176,7 +180,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Spotify session validation failed: {ex.Message}");
+            RuntimeLog.Debug(LogCategory, () => $"Spotify session validation failed: {ex.Message}");
             return false;
         }
     }
@@ -202,7 +206,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         if (!string.IsNullOrEmpty(trackId))
             return trackId;
 
-        RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify catalog lookup did not resolve the track; trying Musixmatch metadata");
+        RuntimeLog.Debug(LogCategory, "Spotify catalog lookup did not resolve the track; trying Musixmatch metadata");
         return await ResolveTrackIdFromMusixmatchAsync(
             trackName,
             artistName,
@@ -238,7 +242,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         string? trackId = json == null
             ? null
             : ParsePathfinderTrackId(json, trackName, artistName);
-        RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+        RuntimeLog.Debug(LogCategory, () =>
             string.IsNullOrEmpty(trackId)
                 ? "Spotify catalog lookup returned no matching track ID"
                 : $"Resolved Spotify track ID from Spotify catalog: {trackId}");
@@ -264,14 +268,14 @@ internal sealed class SpotifyCanvasService : IDisposable
 
         using var request = new HttpRequestMessage(HttpMethod.Post, PathfinderUri)
         {
-            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            Content = new StringContent(payload, Encoding.UTF8, JsonContentType)
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(JsonContentType));
         request.Headers.UserAgent.ParseAdd(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
-        request.Headers.TryAddWithoutValidation("Origin", "https://open.spotify.com");
+        request.Headers.TryAddWithoutValidation("Origin", SpotifyWebOrigin);
         request.Headers.Referrer = SpotifyWebUri;
 
         using var response = await _http.SendAsync(
@@ -280,7 +284,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed;
         if (!response.IsSuccessStatusCode)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+            RuntimeLog.Debug(LogCategory, () =>
                 $"Spotify catalog returned HTTP {(int)response.StatusCode}; " +
                 $"retryAfter={response.Headers.RetryAfter?.ToString() ?? "none"}");
         }
@@ -318,12 +322,12 @@ internal sealed class SpotifyCanvasService : IDisposable
                 return null;
 
             _findTracksHash = hashMatch.Groups["hash"].Value;
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Refreshed Spotify catalog query metadata");
+            RuntimeLog.Debug(LogCategory, "Refreshed Spotify catalog query metadata");
             return _findTracksHash;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Unable to refresh Spotify catalog metadata: {ex.Message}");
+            RuntimeLog.Debug(LogCategory, () => $"Unable to refresh Spotify catalog metadata: {ex.Message}");
             return null;
         }
         finally
@@ -360,7 +364,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         string? trackId = json == null
             ? null
             : ParseTrackId(json, trackName, artistName, duration);
-        RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+        RuntimeLog.Debug(LogCategory, () =>
             string.IsNullOrEmpty(trackId)
                 ? "Musixmatch metadata did not contain a matching Spotify track ID"
                 : $"Resolved Spotify track ID from Musixmatch: {trackId}");
@@ -390,7 +394,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             string? json = await SendForStringAsync(request, token).ConfigureAwait(false);
             if (json == null)
             {
-                RuntimeLog.Debug("SPOTIFY-CANVAS", "Musixmatch token response was empty");
+                RuntimeLog.Debug(LogCategory, "Musixmatch token response was empty");
                 return null;
             }
 
@@ -399,7 +403,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             if (string.IsNullOrWhiteSpace(userToken))
             {
                 double? serviceStatus = FindNumberProperty(document.RootElement, "status_code", depth: 0);
-                RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+                RuntimeLog.Debug(LogCategory, () =>
                     $"Musixmatch did not issue a user token; serviceStatus={serviceStatus?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}, " +
                     $"root={document.RootElement.ValueKind}, responseLength={json.Length}");
                 return null;
@@ -407,7 +411,7 @@ internal sealed class SpotifyCanvasService : IDisposable
 
             _musixmatchToken = userToken;
             _musixmatchTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(9);
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Musixmatch metadata token is ready");
+            RuntimeLog.Debug(LogCategory, "Musixmatch metadata token is ready");
             return userToken;
         }
         finally
@@ -421,7 +425,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         request.Headers.UserAgent.ParseAdd("Mozilla/5.0");
         request.Headers.TryAddWithoutValidation("Cookie", "AWSELBCORS=0; AWSELB=0");
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(JsonContentType));
         return request;
     }
 
@@ -432,7 +436,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         if (pathfinder.IsAuthoritative)
             return pathfinder.CanvasUri;
 
-        RuntimeLog.Debug("SPOTIFY-CANVAS", "Spotify Canvas query unavailable; trying legacy Canvas endpoint");
+        RuntimeLog.Debug(LogCategory, "Spotify Canvas query unavailable; trying legacy Canvas endpoint");
         return await FetchLegacyCanvasUriAsync(trackId, accessToken, token).ConfigureAwait(false);
     }
 
@@ -464,7 +468,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             return new CanvasLookupResult(IsAuthoritative: false, CanvasUri: null);
         }
 
-        RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+        RuntimeLog.Debug(LogCategory, () =>
             canvasUri == null
                 ? "Spotify Canvas query confirmed that the track has no Canvas"
                 : $"Canvas video resolved from {canvasUri.Host}");
@@ -492,7 +496,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         request.Headers.TryAddWithoutValidation("app-platform", "WebPlayer");
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(JsonContentType));
 
         using var response = await _http.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
@@ -500,7 +504,7 @@ internal sealed class SpotifyCanvasService : IDisposable
             HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed;
         if (!response.IsSuccessStatusCode)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+            RuntimeLog.Debug(LogCategory, () =>
                 $"Spotify Canvas query returned HTTP {(int)response.StatusCode}; " +
                 $"retryAfter={response.Headers.RetryAfter?.ToString() ?? "none"}");
         }
@@ -539,12 +543,12 @@ internal sealed class SpotifyCanvasService : IDisposable
                 return null;
 
             _canvasHash = hashMatch.Groups["hash"].Value;
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Refreshed Spotify Canvas query metadata");
+            RuntimeLog.Debug(LogCategory, "Refreshed Spotify Canvas query metadata");
             return _canvasHash;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Unable to refresh Spotify Canvas metadata: {ex.Message}");
+            RuntimeLog.Debug(LogCategory, () => $"Unable to refresh Spotify Canvas metadata: {ex.Message}");
             return null;
         }
         finally
@@ -604,14 +608,14 @@ internal sealed class SpotifyCanvasService : IDisposable
             request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+            RuntimeLog.Debug(LogCategory, () =>
                 $"Canvas endpoint returned HTTP {(int)response.StatusCode}");
             return null;
         }
 
         byte[]? bytes = await ReadLimitedBytesAsync(response, token).ConfigureAwait(false);
         Uri? canvasUri = bytes == null ? null : ParseCanvasResponse(bytes);
-        RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+        RuntimeLog.Debug(LogCategory, () =>
             canvasUri == null
                 ? $"Legacy Canvas response contained no playable video ({bytes?.Length ?? 0} bytes)"
                 : $"Legacy Canvas video resolved from {canvasUri.Host}");
@@ -694,63 +698,73 @@ internal sealed class SpotifyCanvasService : IDisposable
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, SecretsUri);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(JsonContentType));
             string? json = await SendForStringAsync(request, token).ConfigureAwait(false);
             if (json == null)
                 return _totpConfig;
 
             using var document = JsonDocument.Parse(json);
-            int newestVersion = int.MinValue;
-            int[]? encryptedValues = null;
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
-                    version <= newestVersion ||
-                    property.Value.ValueKind != JsonValueKind.Array)
-                {
-                    continue;
-                }
-
-                var values = new List<int>();
-                bool valid = true;
-                foreach (var item in property.Value.EnumerateArray())
-                {
-                    if (!item.TryGetInt32(out int value))
-                    {
-                        valid = false;
-                        break;
-                    }
-                    values.Add(value);
-                }
-
-                if (valid && values.Count > 0)
-                {
-                    newestVersion = version;
-                    encryptedValues = values.ToArray();
-                }
-            }
-
-            if (encryptedValues == null)
+            TotpConfig? parsed = ParseTotpSecrets(document.RootElement);
+            if (parsed == null)
                 return _totpConfig;
 
-            var decoded = new StringBuilder(encryptedValues.Length * 2);
-            for (int i = 0; i < encryptedValues.Length; i++)
-            {
-                int value = encryptedValues[i] ^ ((i % 33) + 9);
-                decoded.Append(value.ToString(CultureInfo.InvariantCulture));
-            }
-
-            _totpConfig = new TotpConfig(
-                newestVersion.ToString(CultureInfo.InvariantCulture),
-                Encoding.UTF8.GetBytes(decoded.ToString()));
+            _totpConfig = parsed;
             _totpConfigExpiresAtUtc = DateTimeOffset.UtcNow + TotpSecretLifetime;
             return _totpConfig;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Unable to refresh Spotify token secret: {ex.Message}");
+            RuntimeLog.Debug(LogCategory, () => $"Unable to refresh Spotify token secret: {ex.Message}");
             return _totpConfig;
         }
+    }
+
+    private static TotpConfig? ParseTotpSecrets(JsonElement root)
+    {
+        int newestVersion = int.MinValue;
+        int[]? encryptedValues = null;
+        foreach (var property in root.EnumerateObject())
+        {
+            if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
+                version <= newestVersion ||
+                property.Value.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            int[]? values = ReadSecretIntArray(property.Value);
+            if (values != null && values.Length > 0)
+            {
+                newestVersion = version;
+                encryptedValues = values;
+            }
+        }
+
+        if (encryptedValues == null)
+            return null;
+
+        var decoded = new StringBuilder(encryptedValues.Length * 2);
+        for (int i = 0; i < encryptedValues.Length; i++)
+        {
+            int value = encryptedValues[i] ^ ((i % 33) + 9);
+            decoded.Append(value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return new TotpConfig(
+            newestVersion.ToString(CultureInfo.InvariantCulture),
+            Encoding.UTF8.GetBytes(decoded.ToString()));
+    }
+
+    private static int[]? ReadSecretIntArray(JsonElement arrayElement)
+    {
+        var values = new List<int>();
+        foreach (var item in arrayElement.EnumerateArray())
+        {
+            if (!item.TryGetInt32(out int value))
+                return null;
+            values.Add(value);
+        }
+        return values.ToArray();
     }
 
     private async Task<long> GetServerTimeMsAsync(
@@ -777,7 +791,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Spotify server time unavailable: {ex.Message}");
+            RuntimeLog.Debug(LogCategory, () => $"Spotify server time unavailable: {ex.Message}");
         }
 
         return fallbackTimeMs;
@@ -793,7 +807,7 @@ internal sealed class SpotifyCanvasService : IDisposable
         if (!response.IsSuccessStatusCode)
         {
             string retryAfter = response.Headers.RetryAfter?.ToString() ?? "none";
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+            RuntimeLog.Debug(LogCategory, () =>
                 $"Remote service returned HTTP {(int)response.StatusCode} for {request.RequestUri?.AbsolutePath}; " +
                 $"retryAfter={retryAfter}");
             return null;
@@ -821,8 +835,8 @@ internal sealed class SpotifyCanvasService : IDisposable
         request.Headers.UserAgent.ParseAdd(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
-        request.Headers.TryAddWithoutValidation("Origin", "https://open.spotify.com/");
-        request.Headers.Referrer = new Uri("https://open.spotify.com/");
+        request.Headers.TryAddWithoutValidation("Origin", SpotifyWebOrigin);
+        request.Headers.Referrer = SpotifyWebUri;
         request.Headers.TryAddWithoutValidation("Cookie", $"sp_dc={sessionCookie}");
     }
 
@@ -832,7 +846,9 @@ internal sealed class SpotifyCanvasService : IDisposable
         Span<byte> counterBytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(counterBytes, counter);
 
+#pragma warning disable S4790 // Spotify mobile-web-player token generation protocol specifically mandates RFC 6238 HMAC-SHA1
         using var hmac = new HMACSHA1(secret);
+#pragma warning restore S4790
         byte[] hash = hmac.ComputeHash(counterBytes.ToArray());
         int offset = hash[^1] & 0x0F;
         int binary = ((hash[offset] & 0x7F) << 24) |
@@ -1005,53 +1021,18 @@ internal sealed class SpotifyCanvasService : IDisposable
                     !TryGetProperty(result, "item", out var item) ||
                     item.ValueKind != JsonValueKind.Object ||
                     !TryGetProperty(item, "data", out var track) ||
-                    track.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                string? typeName = GetDirectString(track, "__typename");
-                if (!string.IsNullOrEmpty(typeName) &&
-                    !typeName.Equals("Track", StringComparison.OrdinalIgnoreCase))
+                    track.ValueKind != JsonValueKind.Object ||
+                    !IsTrackUnionType(track))
                 {
                     continue;
                 }
 
                 string? id = GetTrackId(track);
-                string? title = GetDirectString(track, "name");
-                int titleScore = MatchScore(title, expectedTrack, exact: 100, contains: 72);
-                if (id == null || titleScore < 72)
-                    continue;
-
-                int artistScore = 0;
-                if (!string.IsNullOrWhiteSpace(expectedArtist))
-                {
-                    IReadOnlyList<string> artists = GetPathfinderArtistNames(track);
-                    foreach (string artist in artists)
-                    {
-                        artistScore = Math.Max(
-                            artistScore,
-                            MatchScore(artist, expectedArtist, exact: 35, contains: 22));
-                    }
-
-                    if (artists.Count > 1)
-                    {
-                        artistScore = Math.Max(
-                            artistScore,
-                            MatchScore(string.Join(" ", artists), expectedArtist, exact: 35, contains: 22));
-                    }
-
-                    // Exact-title collisions are common. Do not return a different
-                    // artist merely because Spotify ranked it first.
-                    if (artistScore == 0)
-                        continue;
-                }
-
-                int score = titleScore + artistScore;
-                if (score > bestScore)
+                int? score = ScorePathfinderTrack(track, id, expectedTrack, expectedArtist);
+                if (score.HasValue && score.Value > bestScore)
                 {
                     bestId = id;
-                    bestScore = score;
+                    bestScore = score.Value;
                 }
             }
 
@@ -1061,6 +1042,53 @@ internal sealed class SpotifyCanvasService : IDisposable
         {
             return null;
         }
+    }
+
+    private static bool IsTrackUnionType(JsonElement track)
+    {
+        string? typeName = GetDirectString(track, "__typename");
+        return string.IsNullOrEmpty(typeName) || typeName.Equals("Track", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int? ScorePathfinderTrack(
+        JsonElement track,
+        string? id,
+        string expectedTrack,
+        string expectedArtist)
+    {
+        string? title = GetDirectString(track, "name");
+        int titleScore = MatchScore(title, expectedTrack, exact: 100, contains: 72);
+        if (id == null || titleScore < 72)
+            return null;
+
+        int artistScore = 0;
+        if (!string.IsNullOrWhiteSpace(expectedArtist))
+        {
+            artistScore = ScorePathfinderArtists(track, expectedArtist);
+            if (artistScore == 0)
+                return null;
+        }
+
+        return titleScore + artistScore;
+    }
+
+    private static int ScorePathfinderArtists(JsonElement track, string expectedArtist)
+    {
+        IReadOnlyList<string> artists = GetPathfinderArtistNames(track);
+        int artistScore = 0;
+        foreach (string artist in artists)
+        {
+            artistScore = Math.Max(artistScore, MatchScore(artist, expectedArtist, exact: 35, contains: 22));
+        }
+
+        if (artists.Count > 1)
+        {
+            artistScore = Math.Max(
+                artistScore,
+                MatchScore(string.Join(" ", artists), expectedArtist, exact: 35, contains: 22));
+        }
+
+        return artistScore;
     }
 
     private static IReadOnlyList<string> GetPathfinderArtistNames(JsonElement track)
@@ -1107,24 +1135,11 @@ internal sealed class SpotifyCanvasService : IDisposable
             int bestScore = int.MinValue;
             foreach (var candidate in candidates)
             {
-                int titleScore = MatchScore(candidate.Title, expectedTrack, exact: 100, contains: 72);
-                if (titleScore < 72)
-                    continue;
-
-                int score = titleScore;
-                if (!string.IsNullOrWhiteSpace(expectedArtist))
-                    score += MatchScore(candidate.Artist, expectedArtist, exact: 35, contains: 22);
-
-                if (candidate.Duration > TimeSpan.Zero && expectedDuration > TimeSpan.Zero)
-                {
-                    double delta = Math.Abs((candidate.Duration - expectedDuration).TotalSeconds);
-                    score += delta <= 4 ? 12 : delta <= 12 ? 5 : delta > 45 ? -15 : 0;
-                }
-
-                if (score > bestScore)
+                int? score = ScoreTrackCandidate(candidate, expectedTrack, expectedArtist, expectedDuration);
+                if (score.HasValue && score.Value > bestScore)
                 {
                     best = candidate;
-                    bestScore = score;
+                    bestScore = score.Value;
                 }
             }
 
@@ -1134,6 +1149,38 @@ internal sealed class SpotifyCanvasService : IDisposable
         {
             return null;
         }
+    }
+
+    private static int? ScoreTrackCandidate(
+        TrackCandidate candidate,
+        string expectedTrack,
+        string expectedArtist,
+        TimeSpan expectedDuration)
+    {
+        int titleScore = MatchScore(candidate.Title, expectedTrack, exact: 100, contains: 72);
+        if (titleScore < 72)
+            return null;
+
+        int score = titleScore;
+        if (!string.IsNullOrWhiteSpace(expectedArtist))
+            score += MatchScore(candidate.Artist, expectedArtist, exact: 35, contains: 22);
+
+        if (candidate.Duration > TimeSpan.Zero && expectedDuration > TimeSpan.Zero)
+            score += CalculateDurationScoreDelta(candidate.Duration, expectedDuration);
+
+        return score;
+    }
+
+    private static int CalculateDurationScoreDelta(TimeSpan candidateDuration, TimeSpan expectedDuration)
+    {
+        double delta = Math.Abs((candidateDuration - expectedDuration).TotalSeconds);
+        if (delta <= 4)
+            return 12;
+        if (delta <= 12)
+            return 5;
+        if (delta > 45)
+            return -15;
+        return 0;
     }
 
     private static void CollectTrackCandidates(JsonElement element, List<TrackCandidate> candidates, int depth)
@@ -1224,31 +1271,38 @@ internal sealed class SpotifyCanvasService : IDisposable
 
         if (TryGetProperty(element, "artist", out var artist))
         {
-            if (artist.ValueKind == JsonValueKind.String)
-                return artist.GetString();
-            if (artist.ValueKind == JsonValueKind.Object)
-                return GetDirectString(artist, "name", "artistName", "artist_name");
+            string? artistName = ExtractArtistNameFromProperty(artist);
+            if (!string.IsNullOrWhiteSpace(artistName))
+                return artistName;
         }
 
-        if (TryGetProperty(element, "artists", out var artists) && artists.ValueKind == JsonValueKind.Object)
-        {
-            string? nestedName = FindStringProperty(artists, "name", depth: 0);
-            if (!string.IsNullOrWhiteSpace(nestedName))
-                return nestedName;
-        }
+        if (TryGetProperty(element, "artists", out var artists))
+            return ExtractArtistNameFromArtistsProperty(artists);
+
+        return null;
+    }
+
+    private static string? ExtractArtistNameFromProperty(JsonElement artist)
+    {
+        if (artist.ValueKind == JsonValueKind.String)
+            return artist.GetString();
+        if (artist.ValueKind == JsonValueKind.Object)
+            return GetDirectString(artist, "name", "artistName", "artist_name");
+        return null;
+    }
+
+    private static string? ExtractArtistNameFromArtistsProperty(JsonElement artists)
+    {
+        if (artists.ValueKind == JsonValueKind.Object)
+            return FindStringProperty(artists, "name", depth: 0);
 
         if (artists.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in artists.EnumerateArray())
             {
-                if (item.ValueKind == JsonValueKind.String)
-                    return item.GetString();
-                if (item.ValueKind == JsonValueKind.Object)
-                {
-                    string? name = GetDirectString(item, "name", "artistName", "artist_name");
-                    if (!string.IsNullOrWhiteSpace(name))
-                        return name;
-                }
+                string? name = ExtractArtistNameFromProperty(item);
+                if (!string.IsNullOrWhiteSpace(name))
+                    return name;
             }
         }
 
@@ -1314,32 +1368,42 @@ internal sealed class SpotifyCanvasService : IDisposable
         if (depth > 16)
             return null;
 
-        if (element.ValueKind == JsonValueKind.Object)
+        return element.ValueKind switch
         {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
-                    property.Value.ValueKind == JsonValueKind.String)
-                {
-                    return property.Value.GetString();
-                }
-            }
+            JsonValueKind.Object => FindStringInObject(element, name, depth),
+            JsonValueKind.Array => FindStringInArray(element, name, depth),
+            _ => null
+        };
+    }
 
-            foreach (var property in element.EnumerateObject())
+    private static string? FindStringInObject(JsonElement element, string name, int depth)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                property.Value.ValueKind == JsonValueKind.String)
             {
-                string? nested = FindStringProperty(property.Value, name, depth + 1);
-                if (!string.IsNullOrWhiteSpace(nested))
-                    return nested;
+                return property.Value.GetString();
             }
         }
-        else if (element.ValueKind == JsonValueKind.Array)
+
+        foreach (var property in element.EnumerateObject())
         {
-            foreach (var item in element.EnumerateArray())
-            {
-                string? nested = FindStringProperty(item, name, depth + 1);
-                if (!string.IsNullOrWhiteSpace(nested))
-                    return nested;
-            }
+            string? nested = FindStringProperty(property.Value, name, depth + 1);
+            if (!string.IsNullOrWhiteSpace(nested))
+                return nested;
+        }
+
+        return null;
+    }
+
+    private static string? FindStringInArray(JsonElement element, string name, int depth)
+    {
+        foreach (var item in element.EnumerateArray())
+        {
+            string? nested = FindStringProperty(item, name, depth + 1);
+            if (!string.IsNullOrWhiteSpace(nested))
+                return nested;
         }
 
         return null;
@@ -1350,33 +1414,43 @@ internal sealed class SpotifyCanvasService : IDisposable
         if (depth > 16)
             return null;
 
-        if (element.ValueKind == JsonValueKind.Object)
+        return element.ValueKind switch
         {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
-                    property.Value.ValueKind == JsonValueKind.Number &&
-                    property.Value.TryGetDouble(out double value))
-                {
-                    return value;
-                }
-            }
+            JsonValueKind.Object => FindNumberInObject(element, name, depth),
+            JsonValueKind.Array => FindNumberInArray(element, name, depth),
+            _ => null
+        };
+    }
 
-            foreach (var property in element.EnumerateObject())
+    private static double? FindNumberInObject(JsonElement element, string name, int depth)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                property.Value.ValueKind == JsonValueKind.Number &&
+                property.Value.TryGetDouble(out double value))
             {
-                double? nested = FindNumberProperty(property.Value, name, depth + 1);
-                if (nested.HasValue)
-                    return nested;
+                return value;
             }
         }
-        else if (element.ValueKind == JsonValueKind.Array)
+
+        foreach (var property in element.EnumerateObject())
         {
-            foreach (var item in element.EnumerateArray())
-            {
-                double? nested = FindNumberProperty(item, name, depth + 1);
-                if (nested.HasValue)
-                    return nested;
-            }
+            double? nested = FindNumberProperty(property.Value, name, depth + 1);
+            if (nested.HasValue)
+                return nested;
+        }
+
+        return null;
+    }
+
+    private static double? FindNumberInArray(JsonElement element, string name, int depth)
+    {
+        foreach (var item in element.EnumerateArray())
+        {
+            double? nested = FindNumberProperty(item, name, depth + 1);
+            if (nested.HasValue)
+                return nested;
         }
 
         return null;
@@ -1386,8 +1460,10 @@ internal sealed class SpotifyCanvasService : IDisposable
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
-            foreach (var property in element.EnumerateObject())
+            var enumerator = element.EnumerateObject();
+            while (enumerator.MoveNext())
             {
+                var property = enumerator.Current;
                 if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
                 {
                     value = property.Value;

@@ -30,7 +30,9 @@ public static class GlassGrainBrush
         var wb = new WriteableBitmap(size, size, 96, 96, PixelFormats.Bgra32, null);
         int[] pixels = new int[size * size];
 
+#pragma warning disable S2245 // Pseudo-random generator is used solely for deterministic visual noise texture generation, not security or cryptography
         var rng = new Random(1337);
+#pragma warning restore S2245
         for (int i = 0; i < pixels.Length; i++)
         {
             // Monochromatic noise: fine micro-dots with subtle contrast

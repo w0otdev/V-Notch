@@ -7,6 +7,9 @@ namespace VNotch.Services;
 
 public sealed class BluetoothMonitorService : IDisposable
 {
+    private const string LogTag = "BLUETOOTH";
+    private static readonly char[] IdSeparators = { '#', '\\' };
+
     private DeviceWatcher? _watcher;
     private readonly ConcurrentDictionary<string, BluetoothDeviceInfo> _knownDevices = new();
     private readonly Debouncer _debouncer;
@@ -48,11 +51,11 @@ public sealed class BluetoothMonitorService : IDisposable
             _watcher.Stopped += Watcher_Stopped;
 
             _watcher.Start();
-            RuntimeLog.Log("BLUETOOTH", "DeviceWatcher started");
+            RuntimeLog.Log(LogTag, "DeviceWatcher started");
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("BLUETOOTH", ex, "Failed to start DeviceWatcher");
+            RuntimeLog.Error(LogTag, ex, "Failed to start DeviceWatcher");
         }
     }
 
@@ -70,7 +73,7 @@ public sealed class BluetoothMonitorService : IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("BLUETOOTH", ex, "Failed to stop DeviceWatcher");
+            RuntimeLog.Error(LogTag, ex, "Failed to stop DeviceWatcher");
         }
     }
 
@@ -80,7 +83,7 @@ public sealed class BluetoothMonitorService : IDisposable
         if (info == null) return;
 
         _knownDevices[device.Id] = info;
-        RuntimeLog.Log("BLUETOOTH", $"Device connected: {info.Name} ({info.DeviceType})");
+        RuntimeLog.Log(LogTag, $"Device connected: {info.Name} ({info.DeviceType})");
 
         if (_isInitialEnumerationComplete)
         {
@@ -98,7 +101,7 @@ public sealed class BluetoothMonitorService : IDisposable
                 if (!isConnected)
                 {
                     _knownDevices.TryRemove(update.Id, out _);
-                    RuntimeLog.Log("BLUETOOTH", $"Device disconnected (update): {existing.Name}");
+                    RuntimeLog.Log(LogTag, $"Device disconnected (update): {existing.Name}");
                     _debouncer.Debounce(() => DeviceDisconnected?.Invoke(this, existing));
                 }
             }
@@ -111,7 +114,7 @@ public sealed class BluetoothMonitorService : IDisposable
                     DeviceType = BluetoothDeviceType.Unknown
                 };
                 _knownDevices[update.Id] = info;
-                RuntimeLog.Log("BLUETOOTH", $"Device connected (update): {info.Name}");
+                RuntimeLog.Log(LogTag, $"Device connected (update): {info.Name}");
                 _debouncer.Debounce(() => DeviceConnected?.Invoke(this, info));
             }
         }
@@ -121,7 +124,7 @@ public sealed class BluetoothMonitorService : IDisposable
     {
         if (_knownDevices.TryRemove(update.Id, out var removed))
         {
-            RuntimeLog.Log("BLUETOOTH", $"Device removed: {removed.Name}");
+            RuntimeLog.Log(LogTag, $"Device removed: {removed.Name}");
             _debouncer.Debounce(() => DeviceDisconnected?.Invoke(this, removed));
         }
     }
@@ -129,12 +132,12 @@ public sealed class BluetoothMonitorService : IDisposable
     private void Watcher_EnumerationCompleted(DeviceWatcher sender, object args)
     {
         _isInitialEnumerationComplete = true;
-        RuntimeLog.Log("BLUETOOTH", $"Initial enumeration complete. {_knownDevices.Count} device(s) connected.");
+        RuntimeLog.Log(LogTag, $"Initial enumeration complete. {_knownDevices.Count} device(s) connected.");
     }
 
-    private void Watcher_Stopped(DeviceWatcher sender, object args)
+    private static void Watcher_Stopped(DeviceWatcher sender, object args)
     {
-        RuntimeLog.Log("BLUETOOTH", "DeviceWatcher stopped");
+        RuntimeLog.Log(LogTag, "DeviceWatcher stopped");
     }
 
     private static BluetoothDeviceInfo? CreateDeviceInfo(DeviceInformation device)
@@ -190,7 +193,7 @@ public sealed class BluetoothMonitorService : IDisposable
 
     private static string ExtractNameFromId(string id)
     {
-        var parts = id.Split('#', '\\');
+        var parts = id.Split(IdSeparators);
         return parts.Length > 1 ? parts[^1] : id;
     }
 
@@ -215,7 +218,7 @@ public sealed class BluetoothMonitorService : IDisposable
         _knownDevices.Clear();
     }
 }
-public class BluetoothDeviceInfo
+public sealed class BluetoothDeviceInfo
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;

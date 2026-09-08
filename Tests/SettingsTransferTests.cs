@@ -8,7 +8,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-public class SettingsTransferTests : IDisposable
+public sealed class SettingsTransferTests : IDisposable
 {
     private readonly string _tempFolder;
     private readonly SettingsService _settingsService;
@@ -28,7 +28,10 @@ public class SettingsTransferTests : IDisposable
             if (Directory.Exists(_tempFolder))
                 Directory.Delete(_tempFolder, true);
         }
-        catch { }
+        catch (Exception)
+        {
+            // Ignore cleanup failure for temporary test directory
+        }
     }
 
     [Fact]
@@ -98,7 +101,7 @@ public class SettingsTransferTests : IDisposable
 
         string exported = _settingsService.ExportSettingsToString(original);
 
-        var (imported, requiresRestart) = _settingsService.ImportSettingsFromString(exported, new NotchSettings());
+        var (imported, requiresRestart) = SettingsService.ImportSettingsFromString(exported, new NotchSettings());
 
         Assert.NotNull(imported);
         Assert.Equal(280, imported.Width);
@@ -125,7 +128,7 @@ public class SettingsTransferTests : IDisposable
             }
             """;
 
-        var (imported, requiresRestart) = _settingsService.ImportSettingsFromString(rawJson, new NotchSettings());
+        var (imported, requiresRestart) = SettingsService.ImportSettingsFromString(rawJson, new NotchSettings());
 
         Assert.NotNull(imported);
         Assert.Equal(260, imported.Width);
@@ -150,7 +153,7 @@ public class SettingsTransferTests : IDisposable
             }
             """;
 
-        var (imported, _) = _settingsService.ImportSettingsFromString(legacyEnvelope);
+        var (imported, _) = SettingsService.ImportSettingsFromString(legacyEnvelope);
 
         Assert.NotNull(imported);
         Assert.Equal(SettingsMigrator.CurrentVersion, imported.SettingsVersion);
@@ -223,12 +226,12 @@ public class SettingsTransferTests : IDisposable
     [Fact]
     public void ImportSettingsFromString_CorruptJson_ThrowsJsonException()
     {
-        Assert.ThrowsAny<JsonException>(() => _settingsService.ImportSettingsFromString("{ corrupt json ..."));
+        Assert.ThrowsAny<JsonException>(() => SettingsService.ImportSettingsFromString("{ corrupt json ..."));
     }
 
     [Fact]
     public void ImportSettingsFromString_EmptyString_ThrowsJsonException()
     {
-        Assert.ThrowsAny<JsonException>(() => _settingsService.ImportSettingsFromString(""));
+        Assert.ThrowsAny<JsonException>(() => SettingsService.ImportSettingsFromString(""));
     }
 }

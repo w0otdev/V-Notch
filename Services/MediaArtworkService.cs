@@ -19,6 +19,9 @@ public interface IMediaArtworkService
 
 public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 {
+    private const string ArtworkLogTag = "ARTWORK";
+    private const string CropPathLogTag = "CROP-PATH";
+
     private static readonly HttpClient _httpClient = new();
     private readonly SmartThumbnailCropService _smartCrop;
     private bool _smartCropAvailable;
@@ -86,7 +89,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("ARTWORK", $"DownloadImageAsync failed for {url}: {ex.Message}");
+            RuntimeLog.Log(ArtworkLogTag, $"DownloadImageAsync failed for {url}: {ex.Message}");
             return null;
         }
     }
@@ -98,13 +101,13 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             int width = source.PixelWidth;
             int height = source.PixelHeight;
 
-            VNotch.Services.RuntimeLog.Log("CROP-START",
+            RuntimeLog.Log("CROP-START",
                 $"src={width}x{height} aspect={(double)width / height:F2} mediaSource='{mediaSource}' forceCenterCrop={forceCenterCrop} smartEnabled={EnableSmartCrop} smartAvail={_smartCropAvailable}");
 
             double srcAspect = (double)width / height;
             if (Math.Abs(srcAspect - 1.0) < 0.02 && !forceCenterCrop)
             {
-                VNotch.Services.RuntimeLog.Log("CROP-PATH", $"already square ({width}x{height}) — skip crop");
+                RuntimeLog.Log(CropPathLogTag, $"already square ({width}x{height}) — skip crop");
                 return source;
             }
 
@@ -121,84 +124,78 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             }
 
             double aspect = (double)width / height;
-
             double zoom = aspect >= 0.9 && aspect <= 1.1 ? 1.0 : 0.97;
             int squareSize = (int)(Math.Min(width, height) * zoom);
 
-            Int32Rect rect;
-
-            if (EnableSmartCrop && _smartCropAvailable && aspect > 1.4 && !forceCenterCrop)
-            {
-                BitmapImage? workingBitmap = workingSource as BitmapImage;
-                if (workingBitmap == null)
-                {
-                    workingBitmap = ConvertToBitmapImage(workingSource);
-                }
-
-                if (workingBitmap != null)
-                {
-                    var smartRect = _smartCrop.GetSmartCropRect(workingBitmap, squareSize);
-                    if (smartRect.HasValue)
-                    {
-                        rect = smartRect.Value;
-                        VNotch.Services.RuntimeLog.Log("CROP-PATH", $"smart-crop OK rect=({rect.X},{rect.Y},{rect.Width}x{rect.Height})");
-                    }
-                    else
-                    {
-                        rect = GetFallbackCropRect(width, height, squareSize, mediaSource, aspect);
-                        VNotch.Services.RuntimeLog.Log("CROP-PATH", $"smart-crop returned null -> fallback rect=({rect.X},{rect.Y},{rect.Width}x{rect.Height})");
-                    }
-                }
-                else
-                {
-                    rect = GetFallbackCropRect(width, height, squareSize, mediaSource, aspect);
-                    VNotch.Services.RuntimeLog.Log("CROP-PATH", $"workingBitmap null -> fallback rect=({rect.X},{rect.Y},{rect.Width}x{rect.Height})");
-                }
-            }
-            else
-            {
-                if (forceCenterCrop)
-                {
-                    rect = new Int32Rect((width - squareSize) / 2, (height - squareSize) / 2, squareSize, squareSize);
-                    VNotch.Services.RuntimeLog.Log("CROP-PATH", $"force-center rect=({rect.X},{rect.Y},{rect.Width}x{rect.Height})");
-                }
-                else
-                {
-                    rect = GetFallbackCropRect(width, height, squareSize, mediaSource, aspect);
-                    VNotch.Services.RuntimeLog.Log("CROP-PATH", $"smart-disabled -> fallback rect=({rect.X},{rect.Y},{rect.Width}x{rect.Height})");
-                }
-            }
+            Int32Rect rect = DetermineCropRect(workingSource, width, height, squareSize, aspect, forceCenterCrop);
 
             if (ReferenceEquals(workingSource, source) && rect.X == 0 && rect.Y == 0 && rect.Width == width && rect.Height == height)
             {
                 return source;
             }
 
-            var cropped = new CroppedBitmap(workingSource, rect);
-            cropped.Freeze();
-
-            using var ms = new MemoryStream();
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(cropped));
-            encoder.Save(ms);
-            ms.Position = 0;
-
-            var bitmapImage = new BitmapImage();
-            bitmapImage.BeginInit();
-            bitmapImage.StreamSource = ms;
-            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-            bitmapImage.EndInit();
-            bitmapImage.Freeze();
-            return bitmapImage;
+            return EncodeCroppedBitmap(workingSource, rect);
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("ARTWORK", $"CropToSquare failed: {ex.Message}");
+            RuntimeLog.Log(ArtworkLogTag, $"CropToSquare failed: {ex.Message}");
             return null;
         }
     }
 
-    private static Int32Rect GetFallbackCropRect(int width, int height, int squareSize, string mediaSource, double aspect)
+    private Int32Rect DetermineCropRect(BitmapSource workingSource, int width, int height, int squareSize, double aspect, bool forceCenterCrop)
+    {
+        if (EnableSmartCrop && _smartCropAvailable && aspect > 1.4 && !forceCenterCrop)
+        {
+            BitmapImage? workingBitmap = workingSource as BitmapImage ?? ConvertToBitmapImage(workingSource);
+            if (workingBitmap != null)
+            {
+                var smartRect = _smartCrop.GetSmartCropRect(workingBitmap, squareSize);
+                if (smartRect.HasValue)
+                {
+                    RuntimeLog.Log(CropPathLogTag, $"smart-crop OK rect=({smartRect.Value.X},{smartRect.Value.Y},{smartRect.Value.Width}x{smartRect.Value.Height})");
+                    return smartRect.Value;
+                }
+                RuntimeLog.Log(CropPathLogTag, "smart-crop returned null -> fallback");
+            }
+            else
+            {
+                RuntimeLog.Log(CropPathLogTag, "workingBitmap null -> fallback");
+            }
+        }
+        else if (forceCenterCrop)
+        {
+            var centerRect = new Int32Rect((width - squareSize) / 2, (height - squareSize) / 2, squareSize, squareSize);
+            RuntimeLog.Log(CropPathLogTag, $"force-center rect=({centerRect.X},{centerRect.Y},{centerRect.Width}x{centerRect.Height})");
+            return centerRect;
+        }
+
+        var fallbackRect = GetFallbackCropRect(width, height, squareSize);
+        RuntimeLog.Log(CropPathLogTag, $"fallback rect=({fallbackRect.X},{fallbackRect.Y},{fallbackRect.Width}x{fallbackRect.Height})");
+        return fallbackRect;
+    }
+
+    private static BitmapImage EncodeCroppedBitmap(BitmapSource workingSource, Int32Rect rect)
+    {
+        var cropped = new CroppedBitmap(workingSource, rect);
+        cropped.Freeze();
+
+        using var ms = new MemoryStream();
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(cropped));
+        encoder.Save(ms);
+        ms.Position = 0;
+
+        var bitmapImage = new BitmapImage();
+        bitmapImage.BeginInit();
+        bitmapImage.StreamSource = ms;
+        bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+        bitmapImage.EndInit();
+        bitmapImage.Freeze();
+        return bitmapImage;
+    }
+
+    private static Int32Rect GetFallbackCropRect(int width, int height, int squareSize)
     {
         int offsetX = (width - squareSize) / 2;
         int offsetY = (height - squareSize) / 2;
@@ -240,7 +237,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("ARTWORK", $"ConvertToWpfBitmapAsync failed: {ex.Message}");
+            RuntimeLog.Log(ArtworkLogTag, $"ConvertToWpfBitmapAsync failed: {ex.Message}");
             return null;
         }
     }
@@ -261,7 +258,6 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(sh * stride);
         try
         {
-
             BitmapSource src = small;
             if (small.Format != System.Windows.Media.PixelFormats.Bgra32)
             {
@@ -273,73 +269,10 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
             const int blackThreshold = 25;
 
-            int topBar = 0;
-            for (int y = 0; y < sh / 3; y++)
-            {
-                int darkPixels = 0, total = 0;
-                for (int x = sw / 4; x < sw * 3 / 4; x++)
-                {
-                    int i = y * stride + x * 4;
-                    if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
-                        darkPixels++;
-                    total++;
-                }
-                if (total > 0 && (double)darkPixels / total > 0.85)
-                    topBar = y + 1;
-                else
-                    break;
-            }
-
-            int bottomBar = 0;
-            for (int y = sh - 1; y >= sh * 2 / 3; y--)
-            {
-                int darkPixels = 0, total = 0;
-                for (int x = sw / 4; x < sw * 3 / 4; x++)
-                {
-                    int i = y * stride + x * 4;
-                    if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
-                        darkPixels++;
-                    total++;
-                }
-                if (total > 0 && (double)darkPixels / total > 0.85)
-                    bottomBar++;
-                else
-                    break;
-            }
-
-            int leftBar = 0;
-            for (int x = 0; x < sw / 3; x++)
-            {
-                int darkPixels = 0, total = 0;
-                for (int y = sh / 4; y < sh * 3 / 4; y++)
-                {
-                    int i = y * stride + x * 4;
-                    if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
-                        darkPixels++;
-                    total++;
-                }
-                if (total > 0 && (double)darkPixels / total > 0.85)
-                    leftBar = x + 1;
-                else
-                    break;
-            }
-
-            int rightBar = 0;
-            for (int x = sw - 1; x >= sw * 2 / 3; x--)
-            {
-                int darkPixels = 0, total = 0;
-                for (int y = sh / 4; y < sh * 3 / 4; y++)
-                {
-                    int i = y * stride + x * 4;
-                    if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
-                        darkPixels++;
-                    total++;
-                }
-                if (total > 0 && (double)darkPixels / total > 0.85)
-                    rightBar++;
-                else
-                    break;
-            }
+            int topBar = DetectTopDarkBar(pixels, stride, sw, sh, blackThreshold);
+            int bottomBar = DetectBottomDarkBar(pixels, stride, sw, sh, blackThreshold);
+            int leftBar = DetectLeftDarkBar(pixels, stride, sw, sh, blackThreshold);
+            int rightBar = DetectRightDarkBar(pixels, stride, sw, sh, blackThreshold);
 
             int contentX = (int)(leftBar / scaleX);
             int contentY = (int)(topBar / scaleY);
@@ -350,12 +283,93 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 return new Int32Rect(0, 0, width, height);
 
             return new Int32Rect(contentX, contentY, contentW, contentH);
-
         }
         finally
         {
             System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
         }
+    }
+
+    private static int DetectTopDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
+    {
+        int topBar = 0;
+        for (int y = 0; y < sh / 3; y++)
+        {
+            if (IsRowDark(pixels, y * stride, sw / 4, sw * 3 / 4, blackThreshold))
+                topBar = y + 1;
+            else
+                break;
+        }
+        return topBar;
+    }
+
+    private static int DetectBottomDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
+    {
+        int bottomBar = 0;
+        for (int y = sh - 1; y >= sh * 2 / 3; y--)
+        {
+            if (IsRowDark(pixels, y * stride, sw / 4, sw * 3 / 4, blackThreshold))
+                bottomBar++;
+            else
+                break;
+        }
+        return bottomBar;
+    }
+
+    private static int DetectLeftDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
+    {
+        int leftBar = 0;
+        for (int x = 0; x < sw / 3; x++)
+        {
+            if (IsColumnDark(pixels, x, stride, sh / 4, sh * 3 / 4, blackThreshold))
+                leftBar = x + 1;
+            else
+                break;
+        }
+        return leftBar;
+    }
+
+    private static int DetectRightDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
+    {
+        int rightBar = 0;
+        for (int x = sw - 1; x >= sw * 2 / 3; x--)
+        {
+            if (IsColumnDark(pixels, x, stride, sh / 4, sh * 3 / 4, blackThreshold))
+                rightBar++;
+            else
+                break;
+        }
+        return rightBar;
+    }
+
+    private static bool IsRowDark(byte[] pixels, int rowOffset, int startX, int endX, int blackThreshold)
+    {
+        int darkPixels = 0;
+        int total = endX - startX;
+        if (total <= 0) return false;
+
+        for (int x = startX; x < endX; x++)
+        {
+            int i = rowOffset + x * 4;
+            if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
+                darkPixels++;
+        }
+        return (double)darkPixels / total > 0.85;
+    }
+
+    private static bool IsColumnDark(byte[] pixels, int colX, int stride, int startY, int endY, int blackThreshold)
+    {
+        int darkPixels = 0;
+        int total = endY - startY;
+        if (total <= 0) return false;
+
+        for (int y = startY; y < endY; y++)
+        {
+            int i = y * stride + colX * 4;
+            if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
+                darkPixels++;
+        }
+        return (double)darkPixels / total > 0.85;
     }
 
     private static BitmapImage? ConvertToBitmapImage(BitmapSource source)
@@ -378,7 +392,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("ARTWORK", $"ConvertToBitmapImage failed: {ex.Message}");
+            RuntimeLog.Log(ArtworkLogTag, $"ConvertToBitmapImage failed: {ex.Message}");
             return null;
         }
     }

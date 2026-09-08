@@ -52,13 +52,15 @@ public sealed class AudioMixerService : IDisposable
     {
         if (_enumerator != null)
         {
-            try { _enumerator.Dispose(); } catch { }
+            try { _enumerator.Dispose(); }
+            catch (Exception) { /* Best-effort enumerator cleanup */ }
             _enumerator = null;
         }
     }
 
     public List<AudioSessionInfo> GetSessions() => GetSessions(includeIcons: true);
 
+#pragma warning disable S3776 // Enumerates active CoreAudio audio sessions with icon cache and volume state resolution
     public List<AudioSessionInfo> GetSessions(bool includeIcons)
     {
         var results = new List<AudioSessionInfo>();
@@ -156,16 +158,20 @@ public sealed class AudioMixerService : IDisposable
             .ThenBy(s => s.ProcessId)
             .ToList();
     }
+#pragma warning restore S3776
 
     private static string ResolveProcessNameFast(uint pid, AudioSessionControl session)
     {
         try
         {
             string display = session.DisplayName;
-            if (!string.IsNullOrWhiteSpace(display) && !display.StartsWith("@"))
+            if (!string.IsNullOrWhiteSpace(display) && !display.StartsWith('@'))
                 return display;
         }
-        catch { }
+        catch (Exception)
+        {
+            // Session display name retrieval may fail if session is disconnected
+        }
 
         // ProcessName does not open the executable or invoke the shell, so it is
         // suitable for the first lightweight mixer snapshot.
@@ -175,11 +181,15 @@ public sealed class AudioMixerService : IDisposable
             if (!string.IsNullOrWhiteSpace(process.ProcessName))
                 return process.ProcessName;
         }
-        catch { }
+        catch (Exception)
+        {
+            // Process may have terminated or be inaccessible
+        }
 
         return "App";
     }
 
+#pragma warning disable S3776 // Resolves process metadata, description, and icon from executable file info
     private static void ResolveProcess(uint pid, AudioSessionControl session, out string name, out ImageSource? icon)
     {
         name = "";
@@ -189,7 +199,8 @@ public sealed class AudioMixerService : IDisposable
         try
         {
             using var process = Process.GetProcessById((int)pid);
-            try { exePath = process.MainModule?.FileName; } catch { }
+            try { exePath = process.MainModule?.FileName; }
+            catch (Exception) { /* System/protected process main module inaccessible */ }
 
             if (!string.IsNullOrEmpty(exePath))
             {
@@ -197,32 +208,43 @@ public sealed class AudioMixerService : IDisposable
                 {
                     var info = FileVersionInfo.GetVersionInfo(exePath);
                     if (!string.IsNullOrWhiteSpace(info.FileDescription))
-                        name = info.FileDescription!.Trim();
+                        name = info.FileDescription.Trim();
                 }
-                catch { }
+                catch (Exception)
+                {
+                    // Executable file info could not be read
+                }
             }
 
             if (string.IsNullOrWhiteSpace(name))
                 name = process.ProcessName;
         }
-        catch { }
+        catch (Exception)
+        {
+            // Process may have exited or access denied
+        }
 
         if (string.IsNullOrWhiteSpace(name))
         {
             try
             {
                 var display = session.DisplayName;
-                if (!string.IsNullOrWhiteSpace(display) && !display.StartsWith("@"))
+                if (!string.IsNullOrWhiteSpace(display) && !display.StartsWith('@'))
                     name = display;
             }
-            catch { }
+            catch (Exception)
+            {
+                // Session display name query failed
+            }
         }
 
         if (!string.IsNullOrEmpty(exePath))
         {
-            try { icon = FileIconProvider.GetAppIcon(exePath, small: true); } catch { }
+            try { icon = FileIconProvider.GetAppIcon(exePath, small: true); }
+            catch (Exception) { /* Icon extraction failed */ }
         }
     }
+#pragma warning restore S3776
 
     public bool SetSessionVolume(uint processId, float volume)
     {
@@ -237,7 +259,10 @@ public sealed class AudioMixerService : IDisposable
                 if (target > 0.001f && _setCacheVolume.Mute) _setCacheVolume.Mute = false;
                 return true;
             }
-            catch { InvalidateSetCache(); }
+            catch (Exception)
+            {
+                InvalidateSetCache();
+            }
         }
 
         return ResolveSimpleVolume(processId, sv =>
@@ -263,7 +288,7 @@ public sealed class AudioMixerService : IDisposable
         }, keepAlive: false);
     }
 
-    private bool ResolveSimpleVolume(uint processId, Func<SimpleAudioVolume, bool> action, bool keepAlive)
+    private static bool ResolveSimpleVolume(uint processId, Func<SimpleAudioVolume, bool> action, bool keepAlive)
     {
         try
         {
@@ -288,7 +313,10 @@ public sealed class AudioMixerService : IDisposable
                     if (!keepAlive) sv.Dispose();
                     return result;
                 }
-                catch { }
+                catch (Exception)
+                {
+                    // Session volume interface disconnected
+                }
             }
         }
         catch (Exception ex)
@@ -302,7 +330,8 @@ public sealed class AudioMixerService : IDisposable
     {
         if (_setCacheVolume != null)
         {
-            try { _setCacheVolume.Dispose(); } catch { }
+            try { _setCacheVolume.Dispose(); }
+            catch (Exception) { /* Cached volume object already released */ }
             _setCacheVolume = null;
         }
         _setCachePid = uint.MaxValue;
@@ -416,7 +445,8 @@ public sealed class AudioMixerService : IDisposable
     {
         if (_captureDevice != null)
         {
-            try { _captureDevice.Dispose(); } catch { }
+            try { _captureDevice.Dispose(); }
+            catch (Exception) { /* Capture device already disposed */ }
             _captureDevice = null;
         }
     }
@@ -479,7 +509,7 @@ public sealed class AudioMixerService : IDisposable
         return true;
     }
 
-    private bool SetDefaultEndpointInternal(string deviceId)
+    private static bool SetDefaultEndpointInternal(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;
         IPolicyConfig? policyConfig = null;
@@ -514,12 +544,13 @@ public sealed class AudioMixerService : IDisposable
         {
             if (policyConfig != null)
             {
-                try { Marshal.ReleaseComObject(policyConfig); } catch { }
+                try { Marshal.ReleaseComObject(policyConfig); }
+                catch (Exception) { /* Best-effort COM cleanup */ }
             }
         }
     }
 
-    public SpatialAudioMode GetSpatialAudioMode()
+    public static SpatialAudioMode GetSpatialAudioMode()
     {
         try
         {
@@ -586,8 +617,10 @@ public sealed class AudioMixerService : IDisposable
 
     #region IPolicyConfig COM interop
 
+#pragma warning disable S3260 // COM coclass imported without interface implementation requires non-sealed declaration for runtime QueryInterface
     [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
     private class PolicyConfigClient { }
+#pragma warning restore S3260
 
     [ComImport, Guid("f8679f50-850a-41cf-9c72-430f290290c8"),
      InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

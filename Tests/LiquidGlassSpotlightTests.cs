@@ -142,7 +142,7 @@ public sealed class LiquidGlassSpotlightTests
             // Trigger window creation via hotkey toggle
             controller.ToggleSpotlight();
             Assert.NotNull(windowInstance);
-            Assert.False(windowInstance!.IsLiquidGlassEnabled);
+            Assert.False(windowInstance.IsLiquidGlassEnabled);
 
             // Update controller with Liquid Glass settings
             var newSettings = new NotchSettings { EnableSpotlight = true, NotchStyle = "liquidglass" };
@@ -173,7 +173,7 @@ public sealed class LiquidGlassSpotlightTests
 
             var clip = window.GlassMaterialClipHost.Clip as StreamGeometry;
             Assert.NotNull(clip);
-            Rect bounds = clip!.Bounds;
+            Rect bounds = clip.Bounds;
             Assert.True(bounds.Width > 0);
             Assert.True(bounds.Height > 0);
             window.Shutdown();
@@ -248,7 +248,6 @@ public sealed class LiquidGlassSpotlightTests
             string settingsDirectory = Path.Combine(
                 Path.GetTempPath(), $"vnotch-main-glass-test-{Guid.NewGuid():N}");
             string settingsPath = Path.Combine(settingsDirectory, "settings.json");
-            Application? application = null;
             ServiceProvider? provider = null;
             MainWindow? host = null;
             Window? backdrop = null;
@@ -257,18 +256,18 @@ public sealed class LiquidGlassSpotlightTests
 
             try
             {
-                application = CreateApplicationResources();
+                _ = CreateApplicationResources();
                 var settingsService = new SettingsService(settingsPath, _ => { });
                 settingsService.Save(CreateMainWindowLiquidGlassSettings());
 
                 var services = new ServiceCollection();
                 var configureServices = typeof(App).GetMethod(
                     "ConfigureServices",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
+                    BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic);
                 Assert.NotNull(configureServices);
                 var appConfigurationHost =
                     (App)RuntimeHelpers.GetUninitializedObject(typeof(App));
-                configureServices!.Invoke(appConfigurationHost, [services]);
+                configureServices.Invoke(configureServices.IsStatic ? null : appConfigurationHost, [services]);
                 services.AddSingleton<ISettingsService>(settingsService);
                 provider = services.BuildServiceProvider();
 
@@ -299,7 +298,7 @@ public sealed class LiquidGlassSpotlightTests
                 var setDebugViewState = typeof(MainWindow).GetMethod(
                     "SetDebugViewState", BindingFlags.Instance | BindingFlags.NonPublic);
                 Assert.NotNull(setDebugViewState);
-                setDebugViewState!.Invoke(host, ["MediaExpanded"]);
+                setDebugViewState.Invoke(host, ["MediaExpanded"]);
 
                 var controllerField = typeof(MainWindow).GetField(
                     "_liquidGlass", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -399,32 +398,7 @@ public sealed class LiquidGlassSpotlightTests
                 PumpFor(TimeSpan.FromMilliseconds(120));
                 capture = MagnifierCaptureSource.AcquireShared(IntPtr.Zero);
                 Assert.True(capture.IsReady, "Desktop integration requires Magnifier capture.");
-                var origin = background.PointToScreen(new Point(80, 80));
-                bool captured = false;
-                int pixel = 0;
-                uint gdiPixel = 0;
-                for (int attempt = 0; attempt < 30; attempt++)
-                {
-                    if (capture.CaptureInto((int)origin.X, (int)origin.Y, 40, 40, pixels,
-                        out int actualX, out int actualY))
-                    {
-                        Assert.Equal((int)origin.X, actualX);
-                        Assert.Equal((int)origin.Y, actualY);
-                        pixel = Marshal.ReadInt32(pixels, (20 * 40 + 20) * 4);
-                        gdiPixel = GetScreenPixel((int)origin.X + 20, (int)origin.Y + 20);
-                        int g = (pixel >> 8) & 255;
-                        if (g >= 175 && g <= 205)
-                        {
-                            captured = true;
-                            break;
-                        }
-                    }
-                    PumpFor(TimeSpan.FromMilliseconds(40));
-                }
-                Assert.True(captured, $"Expected green backdrop pixel, got 0x{pixel:X8}, gdi=0x{gdiPixel:X8} at {(int)origin.X+20},{(int)origin.Y+20}.");
-                Assert.InRange((pixel >> 8) & 255, 175, 205);
-                Assert.InRange((pixel >> 16) & 255, 20, 45);
-                Assert.InRange(pixel & 255, 110, 145);
+                VerifyLiveDesktopBackdropCapture(capture, background, pixels);
 
                 AnimationConfig.SetReduceMotion(false);
                 window = CreateTestSpotlightWindow(new NotchSettings { NotchStyle = "liquidglass" });
@@ -436,58 +410,11 @@ public sealed class LiquidGlassSpotlightTests
                     window.ShowSpotlight();
                     var controller = (LiquidGlassController)controllerField.GetValue(window)!;
                     PumpUntil(() => controller.HasPresentedFrame, TimeSpan.FromSeconds(4));
-                    var surface = window.GlassBackdropImage.Source;
-                    Assert.IsType<D3DImage>(surface);
-                    for (int frame = 0; frame < 20; frame++)
-                    {
-                        PumpFor(TimeSpan.FromMilliseconds(20));
-                        Assert.Same(surface, window.GlassBackdropImage.Source);
-Assert.True(controller.HasPresentedFrame);
-                        var effect = Assert.IsType<LiquidGlassRefractionEffect>(window.GlassBackdropImage.Effect);
-                        double dpi = VisualTreeHelper.GetDpi(window).DpiScaleX;
-                        Assert.True(effect.SrcW >= window.GlassBackdropHost.ActualWidth * dpi);
-                        Assert.True(effect.SrcH >= window.GlassBackdropHost.ActualHeight * dpi);
-                        var copy = (BitmapSource?)typeof(D3DImage).GetMethod("CopyBackBuffer",
-                            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(surface, null);
-                        Assert.NotNull(copy);
-                        int sx = Math.Clamp((int)(effect.OffX + effect.NotchW / 2), 0, copy!.PixelWidth - 1);
-                        int sy = Math.Clamp((int)(effect.OffY + effect.NotchH / 2), 0, copy.PixelHeight - 1);
-                        var sample = new byte[4];
-                        copy.CopyPixels(new Int32Rect(sx, sy, 1, 1), sample, 4, 0);
-                        if (sample[1] < 175 || sample[1] > 205)
-                        {
-                            var encoder = new PngBitmapEncoder();
-                            encoder.Frames.Add(BitmapFrame.Create(copy));
-                            using var file = File.Create(Path.Combine(Path.GetTempPath(), "vnotch-glass-failed-frame.png"));
-                            encoder.Save(file);
-                        }
-                        Assert.True(sample[1] >= 175 && sample[1] <= 205,
-                            $"cycle={cycle} frame={frame} pixel={sample[2]},{sample[1]},{sample[0]} " +
-                            $"screen={controller.LastPresentedCaptureOriginX + sx},{controller.LastPresentedCaptureOriginY + sy} " +
-                            $"source={copy.PixelWidth}x{copy.PixelHeight} offset={effect.OffX},{effect.OffY}");
-                        Assert.InRange(sample[2], (byte)20, (byte)45);
-                        if (frame == 8) window.HideSpotlight();
-                        if (frame == 11) window.ToggleFromHotkey();
-                    }
+                    VerifySpotlightSurfaceFrames(window, controller, cycle);
+
                     if (cycle == 0)
                     {
-                        PumpUntil(() => double.IsNaN(window.Shell.Height), TimeSpan.FromSeconds(3));
-                        var effect = Assert.IsType<LiquidGlassRefractionEffect>(window.GlassBackdropImage.Effect);
-                        int physicalX = controller.LastPresentedCaptureOriginX + (int)(effect.OffX + effect.NotchW / 2);
-                        int physicalY = controller.LastPresentedCaptureOriginY + (int)(effect.OffY + effect.NotchH / 2);
-                        var panel = new Canvas();
-                        var marker = new Border { Width = 4, Height = 4, Background = Brushes.Red };
-                        var bgOrigin = background.PointToScreen(new Point());
-                        double dpi = VisualTreeHelper.GetDpi(background).DpiScaleX;
-                        Canvas.SetLeft(marker, (physicalX - bgOrigin.X) / dpi - 1);
-                        Canvas.SetTop(marker, (physicalY - bgOrigin.Y) / dpi - 1);
-                        panel.Children.Add(marker);
-                        background.Content = panel;
-                        // Tiny desktop updates must not wait for the 500ms sampled
-                        // hash refresh used for otherwise static notch surfaces.
-                        PumpUntil(() => ReadCenterPixel(window)[2] > 220, TimeSpan.FromMilliseconds(400));
-                        background.Content = null;
-                        PumpUntil(() => ReadCenterPixel(window)[1] > 175, TimeSpan.FromMilliseconds(400));
+                        VerifyLiveDesktopDynamicUpdate(window, background, controller);
                     }
                     if (cycle == 1)
                     {
@@ -519,6 +446,92 @@ Assert.True(controller.HasPresentedFrame);
                 PumpFor(TimeSpan.FromMilliseconds(100));
             }
         });
+    }
+
+    private static void VerifyLiveDesktopBackdropCapture(MagnifierCaptureSource capture, Window background, IntPtr pixels)
+    {
+        var origin = background.PointToScreen(new Point(80, 80));
+        bool captured = false;
+        int pixel = 0;
+        uint gdiPixel = 0;
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            if (capture.CaptureInto((int)origin.X, (int)origin.Y, 40, 40, pixels,
+                out int actualX, out int actualY))
+            {
+                Assert.Equal((int)origin.X, actualX);
+                Assert.Equal((int)origin.Y, actualY);
+                pixel = Marshal.ReadInt32(pixels, (20 * 40 + 20) * 4);
+                gdiPixel = GetScreenPixel((int)origin.X + 20, (int)origin.Y + 20);
+                int g = (pixel >> 8) & 255;
+                if (g >= 175 && g <= 205)
+                {
+                    captured = true;
+                    break;
+                }
+            }
+            PumpFor(TimeSpan.FromMilliseconds(40));
+        }
+        Assert.True(captured, $"Expected green backdrop pixel, got 0x{pixel:X8}, gdi=0x{gdiPixel:X8} at {(int)origin.X+20},{(int)origin.Y+20}.");
+        Assert.InRange((pixel >> 8) & 255, 175, 205);
+        Assert.InRange((pixel >> 16) & 255, 20, 45);
+        Assert.InRange(pixel & 255, 110, 145);
+    }
+
+    private static void VerifySpotlightSurfaceFrames(SpotlightWindow window, LiquidGlassController controller, int cycle)
+    {
+        var surface = window.GlassBackdropImage.Source;
+        Assert.IsType<D3DImage>(surface);
+        for (int frame = 0; frame < 20; frame++)
+        {
+            PumpFor(TimeSpan.FromMilliseconds(20));
+            Assert.Same(surface, window.GlassBackdropImage.Source);
+            Assert.True(controller.HasPresentedFrame);
+            var effect = Assert.IsType<LiquidGlassRefractionEffect>(window.GlassBackdropImage.Effect);
+            double dpi = VisualTreeHelper.GetDpi(window).DpiScaleX;
+            Assert.True(effect.SrcW >= window.GlassBackdropHost.ActualWidth * dpi);
+            Assert.True(effect.SrcH >= window.GlassBackdropHost.ActualHeight * dpi);
+            var copy = (BitmapSource?)typeof(D3DImage).GetMethod("CopyBackBuffer",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(surface, null);
+            Assert.NotNull(copy);
+            int sx = Math.Clamp((int)(effect.OffX + effect.NotchW / 2), 0, copy.PixelWidth - 1);
+            int sy = Math.Clamp((int)(effect.OffY + effect.NotchH / 2), 0, copy.PixelHeight - 1);
+            var sample = new byte[4];
+            copy.CopyPixels(new Int32Rect(sx, sy, 1, 1), sample, 4, 0);
+            if (sample[1] < 175 || sample[1] > 205)
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(copy));
+                using var file = File.Create(Path.Combine(Path.GetTempPath(), "vnotch-glass-failed-frame.png"));
+                encoder.Save(file);
+            }
+            Assert.True(sample[1] >= 175 && sample[1] <= 205,
+                $"cycle={cycle} frame={frame} pixel={sample[2]},{sample[1]},{sample[0]} " +
+                $"screen={controller.LastPresentedCaptureOriginX + sx},{controller.LastPresentedCaptureOriginY + sy} " +
+                $"source={copy.PixelWidth}x{copy.PixelHeight} offset={effect.OffX},{effect.OffY}");
+            Assert.InRange(sample[2], (byte)20, (byte)45);
+            if (frame == 8) window.HideSpotlight();
+            if (frame == 11) window.ToggleFromHotkey();
+        }
+    }
+
+    private static void VerifyLiveDesktopDynamicUpdate(SpotlightWindow window, Window background, LiquidGlassController controller)
+    {
+        PumpUntil(() => double.IsNaN(window.Shell.Height), TimeSpan.FromSeconds(3));
+        var effect = Assert.IsType<LiquidGlassRefractionEffect>(window.GlassBackdropImage.Effect);
+        int physicalX = controller.LastPresentedCaptureOriginX + (int)(effect.OffX + effect.NotchW / 2);
+        int physicalY = controller.LastPresentedCaptureOriginY + (int)(effect.OffY + effect.NotchH / 2);
+        var panel = new Canvas();
+        var marker = new Border { Width = 4, Height = 4, Background = Brushes.Red };
+        var bgOrigin = background.PointToScreen(new Point());
+        double dpi = VisualTreeHelper.GetDpi(background).DpiScaleX;
+        Canvas.SetLeft(marker, (physicalX - bgOrigin.X) / dpi - 1);
+        Canvas.SetTop(marker, (physicalY - bgOrigin.Y) / dpi - 1);
+        panel.Children.Add(marker);
+        background.Content = panel;
+        PumpUntil(() => ReadCenterPixel(window)[2] > 220, TimeSpan.FromMilliseconds(400));
+        background.Content = null;
+        PumpUntil(() => ReadCenterPixel(window)[1] > 175, TimeSpan.FromMilliseconds(400));
     }
 
     [Theory]

@@ -71,13 +71,15 @@ internal static class AnimationConfig
         try
         {
             var dm = new Win32Interop.DEVMODE { dmSize = (ushort)Marshal.SizeOf<Win32Interop.DEVMODE>() };
-            if (Win32Interop.EnumDisplaySettings(deviceName, Win32Interop.ENUM_CURRENT_SETTINGS, ref dm))
+            if (Win32Interop.EnumDisplaySettings(deviceName, Win32Interop.ENUM_CURRENT_SETTINGS, ref dm) &&
+                dm.dmDisplayFrequency > 1)
             {
-                if (dm.dmDisplayFrequency > 1) return (int)dm.dmDisplayFrequency;
+                return (int)dm.dmDisplayFrequency;
             }
         }
-        catch
+        catch (Exception)
         {
+            // Fall back to default refresh rate if display settings cannot be enumerated
         }
 
         return null;

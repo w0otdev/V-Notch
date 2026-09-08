@@ -6,10 +6,10 @@ namespace VNotch.Services;
 public static class BatteryService
 {
     [DllImport("kernel32.dll")]
-    private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
+    private static extern bool GetSystemPowerStatus(out SystemPowerStatus lpSystemPowerStatus);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SYSTEM_POWER_STATUS
+    private struct SystemPowerStatus
     {
         public byte ACLineStatus;
         public byte BatteryFlag;
@@ -25,7 +25,7 @@ public static class BatteryService
 
         try
         {
-            if (GetSystemPowerStatus(out SYSTEM_POWER_STATUS status))
+            if (GetSystemPowerStatus(out SystemPowerStatus status))
             {
                 info.Percentage = status.BatteryLifePercent == 255 ? 100 : status.BatteryLifePercent;
                 info.IsCharging = status.ACLineStatus == 1;
@@ -45,8 +45,9 @@ public static class BatteryService
                 }
             }
         }
-        catch
+        catch (Exception)
         {
+            // Fallback defaults when power status cannot be queried
             info.Percentage = 100;
             info.HasBattery = false;
         }

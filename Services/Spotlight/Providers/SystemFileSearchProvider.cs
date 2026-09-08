@@ -61,49 +61,54 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
 
         foreach (string rawRoot in _roots)
         {
-            string root;
-            try
-            {
-                root = Path.GetFullPath(rawRoot);
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (!Directory.Exists(root)) continue;
-
-            try
-            {
-                foreach (string path in Directory.EnumerateFiles(root, "*", new EnumerationOptions
-                {
-                    RecurseSubdirectories = false,
-                    IgnoreInaccessible = true,
-                    ReturnSpecialDirectories = false
-                }))
-                {
-                    string extension = Path.GetExtension(path);
-                    if (!LaunchableExtensions.Contains(extension)) continue;
-
-                    string title = Path.GetFileName(path);
-                    if (title.Length == 0 || files.ContainsKey(title)) continue;
-
-                    files[title] = new SpotlightSearchItem(
-                        $"system:{path}",
-                        SpotlightResultKind.Application,
-                        title,
-                        root,
-                        path,
-                        path);
-                }
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Error("SPOTLIGHT-SYSTEM-INDEX", ex, $"Failed to read system directory: {root}");
-            }
+            IndexDirectory(rawRoot, files);
         }
 
         return files.Values.ToArray();
+    }
+
+    private static void IndexDirectory(string rawRoot, IDictionary<string, SpotlightSearchItem> files)
+    {
+        string root;
+        try
+        {
+            root = Path.GetFullPath(rawRoot);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (!Directory.Exists(root)) return;
+
+        try
+        {
+            foreach (string path in Directory.EnumerateFiles(root, "*", new EnumerationOptions
+            {
+                RecurseSubdirectories = false,
+                IgnoreInaccessible = true,
+                ReturnSpecialDirectories = false
+            }))
+            {
+                string extension = Path.GetExtension(path);
+                if (!LaunchableExtensions.Contains(extension)) continue;
+
+                string title = Path.GetFileName(path);
+                if (title.Length == 0 || files.ContainsKey(title)) continue;
+
+                files[title] = new SpotlightSearchItem(
+                    $"system:{path}",
+                    SpotlightResultKind.Application,
+                    title,
+                    root,
+                    path,
+                    path);
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-SYSTEM-INDEX", ex, $"Failed to read system directory: {root}");
+        }
     }
 
     private static IEnumerable<string> GetDefaultRoots()

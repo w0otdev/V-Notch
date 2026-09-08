@@ -2,6 +2,7 @@ namespace VNotch.Services;
 
 public static class TaskExtensions
 {
+#pragma warning disable S3168 // "async void" is intentional for top-level fire-and-forget task execution
     public static async void SafeFireAndForget(this Task task, string category = "FIRE-FORGET")
     {
         try
@@ -10,6 +11,7 @@ public static class TaskExtensions
         }
         catch (OperationCanceledException)
         {
+            // Expected when the underlying task is cancelled; swallow safely.
         }
         catch (Exception ex)
         {
@@ -19,6 +21,7 @@ public static class TaskExtensions
 #endif
         }
     }
+
     public static async void SafeFireAndForget(this Task task, Action<Exception> onError)
     {
         try
@@ -27,10 +30,12 @@ public static class TaskExtensions
         }
         catch (OperationCanceledException)
         {
+            // Expected when the underlying task is cancelled; swallow safely.
         }
         catch (Exception ex)
         {
             onError(ex);
         }
     }
+#pragma warning restore S3168
 }

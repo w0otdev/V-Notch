@@ -5,14 +5,12 @@ namespace VNotch.Tests;
 
 public class CalendarScrollMathTests
 {
-    private readonly CalendarScrollMath _math = new();
-
     #region Index <-> position round trips
 
     [Fact]
     public void GetStripXForIndex_DefaultCenter_MatchesLegacyFormula()
     {
-        Assert.Equal(30.0 - (5 * 30.0), _math.GetStripXForIndex(5));
+        Assert.Equal(30.0 - (5 * 30.0), CalendarScrollMath.GetStripXForIndex(5));
     }
 
     [Fact]
@@ -20,28 +18,28 @@ public class CalendarScrollMathTests
     {
         for (int idx = 0; idx < CalendarScrollMath.TotalDays; idx++)
         {
-            double stripX = _math.GetStripXForIndex(idx);
-            Assert.Equal(idx, _math.GetCenterIndexFromStripX(stripX));
+            double stripX = CalendarScrollMath.GetStripXForIndex(idx);
+            Assert.Equal(idx, CalendarScrollMath.GetCenterIndexFromStripX(stripX));
         }
     }
 
     [Fact]
     public void GetCenterIndexFromStripX_ClampsBelowZero()
     {
-        Assert.Equal(0, _math.GetCenterIndexFromStripX(10_000));
+        Assert.Equal(0, CalendarScrollMath.GetCenterIndexFromStripX(10_000));
     }
 
     [Fact]
     public void GetCenterIndexFromStripX_ClampsAboveMax()
     {
-        Assert.Equal(CalendarScrollMath.TotalDays - 1, _math.GetCenterIndexFromStripX(-10_000));
+        Assert.Equal(CalendarScrollMath.TotalDays - 1, CalendarScrollMath.GetCenterIndexFromStripX(-10_000));
     }
 
     [Fact]
     public void GetHighlightXForIndex_MatchesLegacyFormula()
     {
-        Assert.Equal(5 * 30.0 + (30.0 - 24.0) / 2.0, _math.GetHighlightXForIndex(5));
-        Assert.Equal(3.0, _math.GetHighlightXForIndex(0));
+        Assert.Equal(5 * 30.0 + (30.0 - 24.0) / 2.0, CalendarScrollMath.GetHighlightXForIndex(5));
+        Assert.Equal(3.0, CalendarScrollMath.GetHighlightXForIndex(0));
     }
 
     #endregion
@@ -57,7 +55,7 @@ public class CalendarScrollMathTests
     [InlineData(99, 10)]
     public void ClampIndex_BoundsToValidRange(int input, int expected)
     {
-        Assert.Equal(expected, _math.ClampIndex(input));
+        Assert.Equal(expected, CalendarScrollMath.ClampIndex(input));
     }
 
     #endregion
@@ -67,7 +65,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_BelowThreshold_NoStep_AccumulatorRetainsDelta()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: 60, currentCenterIdx: 5);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 60, currentCenterIdx: 5);
 
         Assert.False(r.HasStep);
         Assert.Equal(0, r.StepCount);
@@ -79,7 +77,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_AtSoftThreshold72_AdvancesOneStepUp()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: 72, currentCenterIdx: 5);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 72, currentCenterIdx: 5);
 
         Assert.True(r.HasStep);
         Assert.Equal(1, r.StepCount);
@@ -91,7 +89,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_PositiveDelta120_MovesCenterDown_DrainsAccumulator()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: 120, currentCenterIdx: 5);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 120, currentCenterIdx: 5);
 
         Assert.Equal(1, r.StepCount);
         Assert.Equal(4, r.NewCenterIdx);
@@ -101,7 +99,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_NegativeDelta120_MovesCenterUp_DrainsAccumulator()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: -120, currentCenterIdx: 5);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: -120, currentCenterIdx: 5);
 
         Assert.Equal(1, r.StepCount);
         Assert.Equal(6, r.NewCenterIdx);
@@ -111,7 +109,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_MultiStepDelta_AdvancesMultipleCells()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: 240, currentCenterIdx: 5);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 240, currentCenterIdx: 5);
 
         Assert.Equal(2, r.StepCount);
         Assert.Equal(3, r.NewCenterIdx);
@@ -122,11 +120,11 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_AccumulatorCarriesLeftoverAcrossEvents()
     {
-        var first = _math.ComputeScrollStep(accumulator: 0, delta: 60, currentCenterIdx: 5);
+        var first = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 60, currentCenterIdx: 5);
         Assert.False(first.HasStep);
         Assert.Equal(60, first.ResultAccumulator);
 
-        var second = _math.ComputeScrollStep(first.ResultAccumulator, delta: 30, currentCenterIdx: 5);
+        var second = CalendarScrollMath.ComputeScrollStep(first.ResultAccumulator, delta: 30, currentCenterIdx: 5);
         Assert.True(second.HasStep);
         Assert.Equal(1, second.StepCount);
         Assert.Equal(4, second.NewCenterIdx);
@@ -136,7 +134,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_AtLowerBound_DoesNotMovePastZero()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: 120, currentCenterIdx: 0);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 120, currentCenterIdx: 0);
 
         Assert.True(r.HasStep);
         Assert.Equal(0, r.NewCenterIdx);
@@ -148,7 +146,7 @@ public class CalendarScrollMathTests
     public void ComputeScrollStep_AtUpperBound_DoesNotMovePastMax()
     {
         int max = CalendarScrollMath.TotalDays - 1;
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: -120, currentCenterIdx: max);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: -120, currentCenterIdx: max);
 
         Assert.True(r.HasStep);
         Assert.Equal(max, r.NewCenterIdx);
@@ -158,7 +156,7 @@ public class CalendarScrollMathTests
     [Fact]
     public void ComputeScrollStep_LargeMultiStep_ClampsAndReportsMovedCells()
     {
-        var r = _math.ComputeScrollStep(accumulator: 0, delta: 600, currentCenterIdx: 5);
+        var r = CalendarScrollMath.ComputeScrollStep(accumulator: 0, delta: 600, currentCenterIdx: 5);
 
         Assert.Equal(5, r.StepCount);
         Assert.Equal(0, r.NewCenterIdx);

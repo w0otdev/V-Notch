@@ -2,7 +2,7 @@ using System;
 
 namespace VNotch.Presenters;
 
-public sealed class CalendarScrollMath
+public static class CalendarScrollMath
 {
     public const int TotalDays = 11;
     public const int VisibleDays = 3;
@@ -10,25 +10,25 @@ public sealed class CalendarScrollMath
 
     private const double HighlightDiameter = 24.0;
 
-    public int ClampIndex(int idx) => Math.Max(0, Math.Min(TotalDays - 1, idx));
+    public static int ClampIndex(int idx) => Math.Max(0, Math.Min(TotalDays - 1, idx));
 
-    public int GetCenterIndexFromStripX(double stripX)
+    public static int GetCenterIndexFromStripX(double stripX)
     {
         int centerIdx = (int)Math.Round((30.0 - stripX) / CellWidth);
         return ClampIndex(centerIdx);
     }
 
-    public double GetHighlightXForIndex(int centerIdx)
+    public static double GetHighlightXForIndex(int centerIdx)
     {
         return centerIdx * CellWidth + (CellWidth - HighlightDiameter) / 2.0;
     }
 
-    public double GetStripXForIndex(int centerIdx)
+    public static double GetStripXForIndex(int centerIdx)
     {
         return (1 * CellWidth) - (centerIdx * CellWidth);
     }
 
-    public ScrollStepResult ComputeScrollStep(double accumulator, int delta, int currentCenterIdx)
+    public static ScrollStepResult ComputeScrollStep(double accumulator, int delta, int currentCenterIdx)
     {
         double acc = accumulator + delta;
         int direction = acc > 0 ? -1 : 1;

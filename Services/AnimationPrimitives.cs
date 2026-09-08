@@ -172,6 +172,7 @@ internal static class AnimationPrimitives
     {
         foreach (TriggerBase trigger in triggers)
         {
+#pragma warning disable S1871 // Trigger types share identical EnterActions/ExitActions patterns without a common WPF interface
             switch (trigger)
             {
                 case Trigger t:
@@ -194,6 +195,7 @@ internal static class AnimationPrimitives
                     ApplyFpsToActions(t.Actions);
                     break;
             }
+#pragma warning restore S1871
         }
     }
 
@@ -266,7 +268,7 @@ internal sealed class CubicBezierEase : EasingFunctionBase
 
     protected override double EaseInCore(double normalizedTime)
     {
-        double x = normalizedTime <= 0 ? 0 : (normalizedTime >= 1 ? 1 : normalizedTime);
+        double x = Math.Clamp(normalizedTime, 0.0, 1.0);
         double t = SolveForT(x);
         return Sample(t, Y1, Y2);
     }
@@ -282,7 +284,7 @@ internal sealed class CubicBezierEase : EasingFunctionBase
             if (slope > -1e-6 && slope < 1e-6) break;
             t -= error / slope;
         }
-        return t < 0 ? 0 : (t > 1 ? 1 : t);
+        return Math.Clamp(t, 0.0, 1.0);
     }
 
     private static double Sample(double t, double p1, double p2)

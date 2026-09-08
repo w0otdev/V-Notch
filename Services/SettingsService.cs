@@ -9,6 +9,9 @@ namespace VNotch.Services;
 
 public class SettingsService : ISettingsService
 {
+    private const string LogCategoryLoad = "SETTINGS-LOAD";
+    private const string LogCategorySave = "SETTINGS-SAVE";
+
     private readonly string _settingsPath;
     private readonly string _appFolder;
     private readonly Action<string> _apiKeySaveWarning;
@@ -55,7 +58,7 @@ public class SettingsService : ISettingsService
         catch (Exception ex)
         {
 
-            RuntimeLog.Log("SETTINGS-LOAD", $"Failed to read {_settingsPath}: {ex}");
+            RuntimeLog.Log(LogCategoryLoad, $"Failed to read {_settingsPath}: {ex}");
             return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
         }
 
@@ -67,7 +70,7 @@ public class SettingsService : ISettingsService
             if (migrated || normalized)
             {
                 RuntimeLog.Log(
-                    "SETTINGS-LOAD",
+                    LogCategoryLoad,
                     $"Migrated/normalized settings to version {SettingsMigrator.CurrentVersion}");
                 Save(settings, keepExistingBackup: !migrated);
                 if (migrated)
@@ -80,7 +83,7 @@ public class SettingsService : ISettingsService
         {
             var backupPath = QuarantineCorruptFile(raw, ex);
             RuntimeLog.Log(
-                "SETTINGS-LOAD",
+                LogCategoryLoad,
                 $"Corrupt settings file detected. Backed up to '{backupPath}'. Falling back to defaults. Error: {ex.Message}");
 
             var defaults = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
@@ -90,14 +93,14 @@ public class SettingsService : ISettingsService
         catch (System.Security.Cryptography.CryptographicException)
         {
             // A legacy key could not be protected. Do not touch the existing file.
-            RuntimeLog.Error("SETTINGS-LOAD", "DPAPI encryption failed; legacy settings were left unchanged.");
+            RuntimeLog.Error(LogCategoryLoad, "DPAPI encryption failed; legacy settings were left unchanged.");
             _apiKeySaveWarning("Your API key was not saved because Windows DPAPI could not encrypt it. Your existing settings file was left unchanged.");
             return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
         }
         catch (Exception ex)
         {
 
-            RuntimeLog.Log("SETTINGS-LOAD", $"Unexpected error while loading settings: {ex}");
+            RuntimeLog.Log(LogCategoryLoad, $"Unexpected error while loading settings: {ex}");
             return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
         }
     }
@@ -139,12 +142,12 @@ public class SettingsService : ISettingsService
             // DPAPI encryption failed — do NOT overwrite the existing settings file.
             // The old file remains intact. Notify the user so they know the API keys
             // was not saved.
-            RuntimeLog.Error("SETTINGS-SAVE", "DPAPI encryption failed — settings were not saved.");
+            RuntimeLog.Error(LogCategorySave, "DPAPI encryption failed — settings were not saved.");
             _apiKeySaveWarning(Loc.Get("error.apiKeyEncrypt"));
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("SETTINGS-SAVE", ex.ToString());
+            RuntimeLog.Error(LogCategorySave, ex.ToString());
             System.Windows.MessageBox.Show(Loc.Get("error.settingsSave", ex.Message), Loc.Get("error.title"),
                 System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
@@ -153,7 +156,14 @@ public class SettingsService : ISettingsService
             // Serialization happens before writing this file, but remove any stale
             // temporary output so an interrupted/failed save can never be mistaken
             // for a settings file containing sensitive data.
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            try
+            {
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+            }
+            catch (Exception)
+            {
+                // Ignore cleanup failure for temporary save file
+            }
         }
     }
 
@@ -192,7 +202,7 @@ public class SettingsService : ISettingsService
             }
             catch (Exception ex)
             {
-                RuntimeLog.Warn("SETTINGS-LOAD", $"Unable to remove an unsafe legacy settings artifact: {ex.GetType().Name}");
+                RuntimeLog.Warn(LogCategoryLoad, $"Unable to remove an unsafe legacy settings artifact: {ex.GetType().Name}");
             }
         }
     }
@@ -222,7 +232,10 @@ public class SettingsService : ISettingsService
                     if (File.ReadAllText(existing[^1]) == current)
                         return; // unchanged since last backup
                 }
-                catch { /* unreadable backup — proceed to write a fresh one */ }
+                catch (Exception)
+                {
+                    // Unreadable backup — proceed to write a fresh one
+                }
             }
 
             var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
@@ -234,13 +247,20 @@ public class SettingsService : ISettingsService
                 Array.Sort(existing, StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < existing.Length - MaxSettingsBackups; i++)
                 {
-                    try { File.Delete(existing[i]); } catch { /* best effort */ }
+                    try
+                    {
+                        File.Delete(existing[i]);
+                    }
+                    catch (Exception)
+                    {
+                        // Best effort cleanup of old backups
+                    }
                 }
             }
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("SETTINGS-SAVE", $"Settings backup skipped: {ex.Message}");
+            RuntimeLog.Log(LogCategorySave, $"Settings backup skipped: {ex.Message}");
         }
     }
 
@@ -321,7 +341,7 @@ public class SettingsService : ISettingsService
         return ImportSettingsFromString(rawJson, currentSettings);
     }
 
-    public (NotchSettings Settings, bool RequiresRestart) ImportSettingsFromString(string rawJson, NotchSettings? currentSettings = null)
+    public static (NotchSettings Settings, bool RequiresRestart) ImportSettingsFromString(string rawJson, NotchSettings? currentSettings = null)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
             throw new JsonException("Settings file content is empty");
@@ -367,9 +387,14 @@ public class SettingsService : ISettingsService
     private static string GetAppVersion()
     {
         var v = Assembly.GetExecutingAssembly().GetName().Version;
-        return v != null
-            ? (v.Revision > 0 ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}" : $"{v.Major}.{v.Minor}.{v.Build}")
-            : "1.9.1";
+        if (v == null)
+        {
+            return "1.9.1";
+        }
+
+        return v.Revision > 0
+            ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}"
+            : $"{v.Major}.{v.Minor}.{v.Build}";
     }
 
     private string QuarantineCorruptFile(string rawContents, Exception reason)
@@ -384,7 +409,7 @@ public class SettingsService : ISettingsService
         catch (Exception ex)
         {
             RuntimeLog.Log(
-                "SETTINGS-LOAD",
+                LogCategoryLoad,
                 $"Failed to write corrupt-settings backup (original error: {reason.Message}): {ex}");
             return "<backup-failed>";
         }

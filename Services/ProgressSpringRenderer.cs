@@ -34,12 +34,6 @@ internal sealed class ProgressSpringRenderer
     private bool _active;
     private DateTime _startTimeUtc = DateTime.MinValue;
 
-    private double _displayRatio;
-    private double _targetRatio;
-    private double _springTargetRatio;
-    private double _velocity;
-    private int _settleFrames;
-
     #endregion
 
     public ProgressSpringRenderer(
@@ -58,35 +52,15 @@ internal sealed class ProgressSpringRenderer
 
     public bool IsHooked => _hooked;
 
-    public double DisplayRatio
-    {
-        get => _displayRatio;
-        set => _displayRatio = value;
-    }
+    public double DisplayRatio { get; set; }
 
-    public double TargetRatio
-    {
-        get => _targetRatio;
-        set => _targetRatio = value;
-    }
+    public double TargetRatio { get; set; }
 
-    public double SpringTargetRatio
-    {
-        get => _springTargetRatio;
-        set => _springTargetRatio = value;
-    }
+    public double SpringTargetRatio { get; set; }
 
-    public double Velocity
-    {
-        get => _velocity;
-        set => _velocity = value;
-    }
+    public double Velocity { get; set; }
 
-    public int SettleFrames
-    {
-        get => _settleFrames;
-        set => _settleFrames = value;
-    }
+    public int SettleFrames { get; set; }
 
     #endregion
 
@@ -100,8 +74,8 @@ internal sealed class ProgressSpringRenderer
     public void Stop()
     {
         _active = false;
-        _settleFrames = 0;
-        _velocity = 0;
+        SettleFrames = 0;
+        Velocity = 0;
         Unhook();
     }
     public void Hook()
@@ -169,59 +143,59 @@ internal sealed class ProgressSpringRenderer
         double scaledDt = dt * rate;
 
         double targetFollow = 1.0 - Math.Exp(-SpringTargetFollowSpeed * scaledDt);
-        _springTargetRatio += (_targetRatio - _springTargetRatio) * targetFollow;
+        SpringTargetRatio += (TargetRatio - SpringTargetRatio) * targetFollow;
 
-        double error = _springTargetRatio - _displayRatio;
+        double error = SpringTargetRatio - DisplayRatio;
 
-        double springForce = SpringStiffness * error - SpringDamping * _velocity;
-        _velocity += springForce * scaledDt;
-        _velocity = Math.Clamp(_velocity, -SpringMaxVelocity, SpringMaxVelocity);
+        double springForce = SpringStiffness * error - SpringDamping * Velocity;
+        Velocity += springForce * scaledDt;
+        Velocity = Math.Clamp(Velocity, -SpringMaxVelocity, SpringMaxVelocity);
 
-        double prevDisplay = _displayRatio;
-        _displayRatio += _velocity * scaledDt;
+        double prevDisplay = DisplayRatio;
+        DisplayRatio += Velocity * scaledDt;
 
-        double step = _displayRatio - prevDisplay;
+        double step = DisplayRatio - prevDisplay;
         if (Math.Abs(step) > SpringMaxStepPerFrame)
         {
-            _displayRatio = prevDisplay + Math.Sign(step) * SpringMaxStepPerFrame;
+            DisplayRatio = prevDisplay + Math.Sign(step) * SpringMaxStepPerFrame;
         }
 
-        if ((prevDisplay - _springTargetRatio) * (_displayRatio - _springTargetRatio) < 0)
+        if ((prevDisplay - SpringTargetRatio) * (DisplayRatio - SpringTargetRatio) < 0)
         {
-            _displayRatio = _springTargetRatio;
-            _velocity = 0;
+            DisplayRatio = SpringTargetRatio;
+            Velocity = 0;
         }
 
-        if (Math.Abs(_targetRatio - _displayRatio) < SpringSettleThreshold &&
-            Math.Abs(_velocity) < 0.004)
+        if (Math.Abs(TargetRatio - DisplayRatio) < SpringSettleThreshold &&
+            Math.Abs(Velocity) < 0.004)
         {
-            _settleFrames++;
+            SettleFrames++;
         }
         else
         {
-            _settleFrames = 0;
+            SettleFrames = 0;
         }
 
-        if (_settleFrames >= SpringSettleFramesRequired)
+        if (SettleFrames >= SpringSettleFramesRequired)
         {
-            _displayRatio = _targetRatio;
-            _velocity = 0;
-            _settleFrames = 0;
+            DisplayRatio = TargetRatio;
+            Velocity = 0;
+            SettleFrames = 0;
             _active = false;
             Unhook();
         }
 
         if ((DateTime.UtcNow - _startTimeUtc).TotalMilliseconds > SpringTimeoutMs)
         {
-            _displayRatio = _targetRatio;
-            _velocity = 0;
-            _settleFrames = 0;
+            DisplayRatio = TargetRatio;
+            Velocity = 0;
+            SettleFrames = 0;
             _active = false;
             Unhook();
         }
 
-        _displayRatio = Math.Clamp(_displayRatio, 0, 1);
-        _applyRatio(_displayRatio);
+        DisplayRatio = Math.Clamp(DisplayRatio, 0, 1);
+        _applyRatio(DisplayRatio);
     }
 
     #endregion

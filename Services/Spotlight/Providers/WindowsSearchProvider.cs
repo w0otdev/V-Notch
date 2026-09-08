@@ -101,6 +101,11 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         }
     }
 
+    private static readonly HashSet<string> ExecutableExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".lnk"
+    };
+
     private static List<SpotlightSearchItem> ExecuteQuery(
         string sanitizedQuery,
         int limit,
@@ -124,37 +129,59 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         while (results.Count < fetch && reader.Read())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (reader.IsDBNull(0) || reader.IsDBNull(1)) continue;
-
-            string name = reader.GetString(0);
-            string path = reader.GetString(1);
-            if (name.Length == 0 || path.Length == 0) continue;
-
-            bool isFolder = !reader.IsDBNull(2) &&
-                string.Equals(reader.GetString(2), "Directory", StringComparison.OrdinalIgnoreCase);
-            string ext = Path.GetExtension(path);
-            bool isExec = !isFolder && (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".cmd", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".msc", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".cpl", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".com", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase) ||
-                                       ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase));
-            SpotlightResultKind kind = isFolder
-                ? SpotlightResultKind.Folder
-                : (isExec ? SpotlightResultKind.Application : SpotlightResultKind.File);
-
-            results.Add(new SpotlightSearchItem(
-                $"{(isFolder ? "folder" : (isExec ? "app" : "file"))}:{path}",
-                kind,
-                Path.GetFileName(path) is { Length: > 0 } fileName ? fileName : name,
-                path,
-                path,
-                path));
+            var item = ReadSearchItem(reader);
+            if (item != null)
+            {
+                results.Add(item);
+            }
         }
 
         return results;
+    }
+
+    private static SpotlightSearchItem? ReadSearchItem(OleDbDataReader reader)
+    {
+        if (reader.IsDBNull(0) || reader.IsDBNull(1)) return null;
+
+        string name = reader.GetString(0);
+        string path = reader.GetString(1);
+        if (name.Length == 0 || path.Length == 0) return null;
+
+        bool isFolder = !reader.IsDBNull(2) &&
+            string.Equals(reader.GetString(2), "Directory", StringComparison.OrdinalIgnoreCase);
+        string ext = Path.GetExtension(path);
+        bool isExec = !isFolder && ExecutableExtensions.Contains(ext);
+
+        SpotlightResultKind kind;
+        if (isFolder)
+        {
+            kind = SpotlightResultKind.Folder;
+        }
+        else if (isExec)
+        {
+            kind = SpotlightResultKind.Application;
+        }
+        else
+        {
+            kind = SpotlightResultKind.File;
+        }
+
+        string typePrefix = kind switch
+        {
+            SpotlightResultKind.Folder => "folder",
+            SpotlightResultKind.Application => "app",
+            _ => "file"
+        };
+
+        string title = Path.GetFileName(path) is { Length: > 0 } fileName ? fileName : name;
+
+        return new SpotlightSearchItem(
+            $"{typePrefix}:{path}",
+            kind,
+            title,
+            path,
+            path,
+            path);
     }
 
     /// <summary>

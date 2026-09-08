@@ -9,6 +9,8 @@ namespace VNotch.Services;
 
 internal static class ServicePrewarmer
 {
+    private const string LogCategory = "PREWARM";
+
     public static void Prewarm(IServiceProvider provider)
     {
         if (provider == null) throw new ArgumentNullException(nameof(provider));
@@ -19,7 +21,7 @@ internal static class ServicePrewarmer
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Service resolution failed");
+            RuntimeLog.Error(LogCategory, ex, "Service resolution failed");
         }
 
         Task.Run(async () =>
@@ -32,7 +34,7 @@ internal static class ServicePrewarmer
             }
             catch (Exception ex)
             {
-                RuntimeLog.Error("PREWARM", ex, "Background warmup loop failed");
+                RuntimeLog.Error(LogCategory, ex, "Background warmup loop failed");
             }
         });
     }
@@ -67,14 +69,27 @@ internal static class ServicePrewarmer
 
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
-        NotchSettings? settings = null;
+        var settings = WarmupSettings(provider);
+        WarmupSpotlight(provider, settings);
+        WarmupBattery(provider);
+        WarmupVolume(provider);
+        WarmupWindowTitleScanner(provider);
+        WarmupBluetooth(provider);
+        WarmupAudioMixer(provider);
+        WarmupPrivacyIndicator(provider);
 
+        RuntimeLog.Log(LogCategory, "background warmup complete");
+        MemoryOptimizerService.Instance.SchedulePostStartupTrim(1800, 4500);
+    }
+
+    private static NotchSettings? WarmupSettings(IServiceProvider provider)
+    {
         try
         {
-            settings = provider.GetService<ISettingsService>()?.Load();
+            var settings = provider.GetService<ISettingsService>()?.Load();
             if (settings != null)
             {
-                RuntimeLog.Log("PREWARM", $"settings loaded (lang={settings.Language})");
+                RuntimeLog.Log(LogCategory, $"settings loaded (lang={settings.Language})");
 
                 if (settings.EnableSmartCrop)
                 {
@@ -82,12 +97,17 @@ internal static class ServicePrewarmer
                     artwork?.ConfigureSmartCrop(true);
                 }
             }
+            return settings;
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Settings warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "Settings warmup failed");
+            return null;
         }
+    }
 
+    private static void WarmupSpotlight(IServiceProvider provider, NotchSettings? settings)
+    {
         // Building the app index walks both Start Menu trees and shell:AppsFolder.
         // Skip it entirely when Spotlight is switched off, otherwise every launch
         // pays for a feature the user cannot reach.
@@ -99,14 +119,17 @@ internal static class ServicePrewarmer
             }
             catch (Exception ex)
             {
-                RuntimeLog.Error("PREWARM", ex, "Spotlight app index warmup failed");
+                RuntimeLog.Error(LogCategory, ex, "Spotlight app index warmup failed");
             }
         }
         else
         {
-            RuntimeLog.Log("PREWARM", "Spotlight disabled; app index warmup skipped");
+            RuntimeLog.Log(LogCategory, "Spotlight disabled; app index warmup skipped");
         }
+    }
 
+    private static void WarmupBattery(IServiceProvider provider)
+    {
         try
         {
             var battery = provider.GetService<IBatteryService>();
@@ -114,9 +137,12 @@ internal static class ServicePrewarmer
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Battery warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "Battery warmup failed");
         }
+    }
 
+    private static void WarmupVolume(IServiceProvider provider)
+    {
         try
         {
             var volume = provider.GetService<IVolumeService>();
@@ -128,9 +154,12 @@ internal static class ServicePrewarmer
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Volume warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "Volume warmup failed");
         }
+    }
 
+    private static void WarmupWindowTitleScanner(IServiceProvider provider)
+    {
         try
         {
             var scanner = provider.GetService<IWindowTitleScanner>();
@@ -138,18 +167,24 @@ internal static class ServicePrewarmer
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "WindowTitleScanner warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "WindowTitleScanner warmup failed");
         }
+    }
 
+    private static void WarmupBluetooth(IServiceProvider provider)
+    {
         try
         {
             provider.GetService<BluetoothMonitorService>()?.Start();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Bluetooth watcher warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "Bluetooth watcher warmup failed");
         }
+    }
 
+    private static void WarmupAudioMixer(IServiceProvider provider)
+    {
         try
         {
             var mixer = provider.GetService<AudioMixerService>();
@@ -162,32 +197,31 @@ internal static class ServicePrewarmer
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Audio mixer warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "Audio mixer warmup failed");
         }
+    }
 
+    private static void WarmupPrivacyIndicator(IServiceProvider provider)
+    {
         try
         {
             provider.GetService<PrivacyIndicatorService>()?.Start();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, "Privacy indicator warmup failed");
+            RuntimeLog.Error(LogCategory, ex, "Privacy indicator warmup failed");
         }
-
-        RuntimeLog.Log("PREWARM", "background warmup complete");
-        MemoryOptimizerService.Instance.SchedulePostStartupTrim(1800, 4500);
     }
 
-    private static T? SafeResolve<T>(IServiceProvider provider) where T : class
+    private static void SafeResolve<T>(IServiceProvider provider) where T : class
     {
         try
         {
-            return provider.GetService<T>();
+            _ = provider.GetService<T>();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("PREWARM", ex, $"Resolve<{typeof(T).Name}> failed");
-            return null;
+            RuntimeLog.Error(LogCategory, ex, $"Resolve<{typeof(T).Name}> failed");
         }
     }
 }

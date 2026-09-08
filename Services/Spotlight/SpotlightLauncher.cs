@@ -27,7 +27,8 @@ internal sealed class SpotlightLauncher
 
         try
         {
-            return Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.Target}\"")
+            string explorerPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+            return Process.Start(new ProcessStartInfo(explorerPath, $"/select,\"{item.Target}\"")
             {
                 UseShellExecute = true
             }) != null;
