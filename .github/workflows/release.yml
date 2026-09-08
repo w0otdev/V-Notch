@@ -72,6 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      workflows: write
     steps:
       # actions/download-artifact@v4.3.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -79,30 +80,27 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: Delete previous nightly release
-        if: ${{ !startsWith(github.event.workflow_run.head_branch, 'v') }}
+      - name: Publish release
         run: |
-          gh release delete nightly --cleanup-tag --yes || true
-          gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/nightly || true
-          sleep 2
+          if [ "${{ startsWith(github.event.workflow_run.head_branch, 'v') }}" = "true" ]; then
+            printf "Release %s from commit \`%s\`.\n\n- \`V-Notch-Setup.exe\` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- \`V-Notch-Setup-SelfContained.exe\` (runtime bundled)\n- SHA256 checksums are attached for verification.\n" "${{ github.event.workflow_run.head_branch }}" "${{ github.event.workflow_run.head_sha }}" > release-notes.md
+            gh release create "${{ github.event.workflow_run.head_branch }}" release-assets/* \
+              --title "V-Notch ${{ github.event.workflow_run.head_branch }}" \
+              --target "${{ github.event.workflow_run.head_sha }}" \
+              --latest \
+              --notes-file release-notes.md
+          else
+            gh release delete nightly --cleanup-tag --yes || true
+            gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/nightly || true
+            sleep 2
+            printf "Automated build from commit \`%s\` on branch \`%s\`.\n\n- \`V-Notch-Setup.exe\` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- \`V-Notch-Setup-SelfContained.exe\` (runtime bundled)\n- SHA256 checksums are attached for verification.\n" "${{ github.event.workflow_run.head_sha }}" "${{ github.event.workflow_run.head_branch }}" > release-notes.md
+            gh release create nightly release-assets/* \
+              --title "Nightly build (latest main)" \
+              --target "${{ github.event.workflow_run.head_sha }}" \
+              --prerelease \
+              --notes-file release-notes.md
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # softprops/action-gh-release@v2.2.2
-      - uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
-        with:
-          tag_name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || 'nightly' }}
-          target_commitish: ${{ github.event.workflow_run.head_sha }}
-          name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && format('V-Notch {0}', github.event.workflow_run.head_branch) || 'Nightly build (latest main)' }}
-          prerelease: ${{ !startsWith(github.event.workflow_run.head_branch, 'v') }}
-          make_latest: ${{ startsWith(github.event.workflow_run.head_branch, 'v') }}
-          body: |
-            Automated build from commit `${{ github.event.workflow_run.head_sha }}` on branch `${{ github.event.workflow_run.head_branch }}`.
-
-            - `V-Notch-Setup.exe` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))
-            - `V-Notch-Setup-SelfContained.exe` (runtime bundled)
-            - SHA256 checksums are attached for verification.
-          files: release-assets/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
