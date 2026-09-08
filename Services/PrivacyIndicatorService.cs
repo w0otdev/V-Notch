@@ -41,18 +41,22 @@ public sealed class PrivacyIndicatorService : IDisposable
         new(LoadServiceExecutablePaths);
 
     private readonly Dispatcher _dispatcher;
-    private readonly DispatcherTimer _microphoneFlowTimer;
     private readonly TimeSpan _activeInterval;
     private readonly MicrophoneActivityGate _microphoneActivityGate = new(
         MicrophoneSignalThreshold,
         MicrophoneSignalHoldDuration);
     private readonly MicrophoneFlowProbe _microphoneFlowProbe = new();
     private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly SemaphoreSlim _micFlowGate = new(1, 1);
     private readonly object _lifecycleLock = new();
 
     private CancellationTokenSource? _workerCts;
     private Task? _workerTask;
     private int _currentGeneration;
+
+    private CancellationTokenSource? _micFlowCts;
+    private Task? _micFlowTask;
+    private int _micFlowGeneration;
 
     private IReadOnlyList<CapabilityUsage> _microphoneCandidates = Array.Empty<CapabilityUsage>();
     private IReadOnlyList<string> _microphoneCandidateNames = Array.Empty<string>();
@@ -70,12 +74,6 @@ public sealed class PrivacyIndicatorService : IDisposable
     {
         _activeInterval = pollInterval ?? ActivePollInterval;
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
-
-        _microphoneFlowTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
-        {
-            Interval = MicrophoneFlowPollInterval
-        };
-        _microphoneFlowTimer.Tick += (_, _) => PollMicrophoneFlow();
     }
 
     public void Start()
@@ -106,14 +104,7 @@ public sealed class PrivacyIndicatorService : IDisposable
             _workerCts = null;
             _workerTask = null;
 
-            if (_dispatcher.CheckAccess())
-            {
-                _microphoneFlowTimer.Stop();
-            }
-            else
-            {
-                _dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _microphoneFlowTimer.Stop());
-            }
+            StopMicrophoneFlowWorkerLocked();
         }
 
         ctsToCancel?.Cancel();
@@ -130,6 +121,7 @@ public sealed class PrivacyIndicatorService : IDisposable
 
         Stop();
         _scanGate.Dispose();
+        _micFlowGate.Dispose();
         _microphoneFlowProbe.Dispose();
     }
 
@@ -253,32 +245,144 @@ public sealed class PrivacyIndicatorService : IDisposable
 
         if (_microphoneCandidates.Count > 0)
         {
-            if (!_microphoneFlowTimer.IsEnabled)
-                _microphoneFlowTimer.Start();
+            lock (_lifecycleLock)
+            {
+                StartMicrophoneFlowWorkerLocked();
+            }
         }
         else
         {
-            _microphoneFlowTimer.Stop();
+            lock (_lifecycleLock)
+            {
+                StopMicrophoneFlowWorkerLocked();
+            }
+            _microphoneActivityGate.Reset();
+            PublishState(microphoneInUse: false, MicrophoneFlowEvidence.Empty);
         }
-
-        PollMicrophoneFlow(result.UtcNow);
     }
 
-    private void PollMicrophoneFlow() => PollMicrophoneFlow(DateTime.UtcNow);
+    private void StartMicrophoneFlowWorkerLocked()
+    {
+        if (_micFlowTask != null && _micFlowCts != null && !_micFlowCts.IsCancellationRequested)
+            return;
 
-    private void PollMicrophoneFlow(DateTime utcNow)
+        if (_disposed || !_started) return;
+
+        _micFlowGeneration++;
+        int generation = _micFlowGeneration;
+        _micFlowCts = new CancellationTokenSource();
+        var token = _micFlowCts.Token;
+        _micFlowTask = Task.Run(() => MicrophoneFlowWorkerLoopAsync(generation, token), token);
+    }
+
+    private void StopMicrophoneFlowWorkerLocked()
+    {
+        _micFlowGeneration++;
+        var cts = _micFlowCts;
+        _micFlowCts = null;
+        _micFlowTask = null;
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+
+    private async Task MicrophoneFlowWorkerLoopAsync(int generation, CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await _micFlowGate.WaitAsync(token).ConfigureAwait(false);
+                try
+                {
+                    if (token.IsCancellationRequested || generation != _micFlowGeneration)
+                        break;
+
+                    var candidates = _microphoneCandidates;
+                    if (candidates.Count == 0)
+                        break;
+
+                    DateTime utcNow = DateTime.UtcNow;
+                    MicrophoneFlowEvidence evidence = _microphoneFlowProbe.Probe(candidates);
+
+                    bool microphoneInUse = _microphoneActivityGate.Evaluate(
+                        hasCandidate: candidates.Count > 0,
+                        hasActiveSession: evidence.HasActiveSession,
+                        peakLevel: evidence.PeakLevel,
+                        utcNow);
+
+                    PublishMicStateToUi(microphoneInUse, evidence, generation);
+                }
+                finally
+                {
+                    _micFlowGate.Release();
+                }
+
+                await Task.Delay(MicrophoneFlowPollInterval, token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("PRIVACY-MIC", ex, "Microphone flow worker loop error");
+                try
+                {
+                    await Task.Delay(MicrophoneFlowPollInterval, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    private void PublishMicStateToUi(bool microphoneInUse, MicrophoneFlowEvidence evidence, int generation)
+    {
+        lock (_lifecycleLock)
+        {
+            if (_disposed || !_started || generation != _micFlowGeneration)
+                return;
+        }
+
+        if (_dispatcher.HasShutdownStarted) return;
+
+        void Apply()
+        {
+            lock (_lifecycleLock)
+            {
+                if (_disposed || !_started || generation != _micFlowGeneration)
+                    return;
+
+                PublishState(microphoneInUse, evidence);
+            }
+        }
+
+        if (_dispatcher.CheckAccess())
+        {
+            Apply();
+        }
+        else
+        {
+            _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(Apply));
+        }
+    }
+
+    internal void PollMicrophoneFlow()
     {
         try
         {
-            MicrophoneFlowEvidence evidence = _microphoneCandidates.Count > 0
-                ? _microphoneFlowProbe.Probe(_microphoneCandidates)
+            var candidates = _microphoneCandidates;
+            MicrophoneFlowEvidence evidence = candidates.Count > 0
+                ? _microphoneFlowProbe.Probe(candidates)
                 : MicrophoneFlowEvidence.Empty;
 
             bool microphoneInUse = _microphoneActivityGate.Evaluate(
-                hasCandidate: _microphoneCandidates.Count > 0,
+                hasCandidate: candidates.Count > 0,
                 hasActiveSession: evidence.HasActiveSession,
                 peakLevel: evidence.PeakLevel,
-                utcNow);
+                DateTime.UtcNow);
 
             PublishState(microphoneInUse, evidence);
         }
@@ -676,112 +780,49 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
     }
 
-    private sealed class MicrophoneFlowProbe : IDisposable
+    private sealed class CachedSessionMeter : IDisposable
     {
-        private MMDeviceEnumerator? _enumerator;
+        public MMDevice Device { get; }
+        public AudioSessionControl Session { get; }
+        public uint ProcessId { get; }
 
-        public MicrophoneFlowEvidence Probe(IReadOnlyList<CapabilityUsage> candidates)
+        public CachedSessionMeter(MMDevice device, AudioSessionControl session, uint processId)
         {
-            if (candidates.Count == 0) return MicrophoneFlowEvidence.Empty;
-
-            bool hasActiveSession = false;
-            float peakLevel = 0;
-            var processProbe = new ConsumerProcessProbe();
-
-            try
-            {
-                _enumerator ??= new MMDeviceEnumerator();
-                var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-
-                foreach (var device in devices)
-                {
-                    using (device)
-                    {
-                        ProcessDeviceCapture(device, candidates, processProbe, ref hasActiveSession, ref peakLevel);
-                    }
-                }
-            }
-            catch
-            {
-                DisposeEnumerator();
-                throw;
-            }
-
-            if (!float.IsFinite(peakLevel) || peakLevel < 0)
-                peakLevel = 0;
-
-            return new MicrophoneFlowEvidence(
-                hasActiveSession,
-                Math.Clamp(peakLevel, 0, 1));
+            Device = device;
+            Session = session;
+            ProcessId = processId;
         }
 
-        private static void ProcessDeviceCapture(
-            MMDevice device,
-            IReadOnlyList<CapabilityUsage> candidates,
-            ConsumerProcessProbe processProbe,
-            ref bool hasActiveSession,
-            ref float peakLevel)
+        public (bool IsValid, float Peak) SamplePeak()
         {
             try
             {
-                if (device.AudioEndpointVolume.Mute) return;
-            }
-            catch (Exception)
-            {
-                // Some virtual endpoints do not expose endpoint mute.
-            }
+                if (Session.State != AudioSessionState.AudioSessionStateActive)
+                    return (false, 0f);
 
-            var sessions = device.AudioSessionManager.Sessions;
-            if (sessions == null) return;
-
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                var session = sessions[i];
-                if (session == null) continue;
+                using (var volume = Session.SimpleAudioVolume)
+                {
+                    if (volume.Mute) return (true, 0f);
+                }
 
                 try
                 {
-                    ProcessAudioSession(device, session, candidates, processProbe, ref hasActiveSession, ref peakLevel);
+                    if (Device.AudioEndpointVolume.Mute) return (true, 0f);
                 }
-                finally
+                catch
                 {
-                    try
-                    {
-                        session.Dispose();
-                    }
-                    catch (Exception)
-                    {
-                        // Best-effort session disposal
-                    }
+                    // Some virtual endpoints do not expose endpoint mute.
                 }
+
+                float sessionPeak = GetSessionPeak(Session);
+                float endpointPeak = sessionPeak > 0 ? 0 : GetEndpointPeak(Device);
+                return (true, Math.Max(sessionPeak, endpointPeak));
             }
-        }
-
-        private static void ProcessAudioSession(
-            MMDevice device,
-            AudioSessionControl session,
-            IReadOnlyList<CapabilityUsage> candidates,
-            ConsumerProcessProbe processProbe,
-            ref bool hasActiveSession,
-            ref float peakLevel)
-        {
-            if (session.State != AudioSessionState.AudioSessionStateActive)
-                return;
-
-            uint processId = session.GetProcessID;
-            if (!candidates.Any(candidate => processProbe.MatchesProcess(candidate.RawName, processId)))
-                return;
-
-            using (var volume = session.SimpleAudioVolume)
+            catch
             {
-                if (volume.Mute) return;
+                // COM error, session invalidated, or device disconnected
+                return (false, 0f);
             }
-
-            hasActiveSession = true;
-            float sessionPeak = GetSessionPeak(session);
-            float endpointPeak = sessionPeak > 0 ? 0 : GetEndpointPeak(device);
-
-            peakLevel = Math.Max(peakLevel, Math.Max(sessionPeak, endpointPeak));
         }
 
         private static float GetSessionPeak(AudioSessionControl session)
@@ -792,7 +833,6 @@ public sealed class PrivacyIndicatorService : IDisposable
             }
             catch (Exception)
             {
-                // Fall back to endpoint meter
                 return 0;
             }
         }
@@ -805,24 +845,276 @@ public sealed class PrivacyIndicatorService : IDisposable
             }
             catch (Exception)
             {
-                // Endpoint meter query failed
                 return 0;
             }
         }
 
-        public void Dispose() => DisposeEnumerator();
+        public void Dispose()
+        {
+            try { Session.Dispose(); } catch { }
+            try { Device.Dispose(); } catch { }
+        }
+    }
 
-        private void DisposeEnumerator()
+    private sealed class AudioNotificationClient : IMMNotificationClient
+    {
+        private readonly Action _onInvalidated;
+
+        public AudioNotificationClient(Action onInvalidated)
+        {
+            _onInvalidated = onInvalidated;
+        }
+
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => _onInvalidated();
+        public void OnDeviceAdded(string pwstrDeviceId) => _onInvalidated();
+        public void OnDeviceRemoved(string deviceId) => _onInvalidated();
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId) => _onInvalidated();
+        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
+    }
+
+    private sealed class MicrophoneFlowProbe : IDisposable
+    {
+        private MMDeviceEnumerator? _enumerator;
+        private AudioNotificationClient? _notificationClient;
+        private readonly List<CachedSessionMeter> _cachedMeters = new();
+        private string[] _cachedCandidateNames = Array.Empty<string>();
+        private bool _isTopologyValid;
+        private long _lastRebuildTicks;
+        private readonly object _probeLock = new();
+
+        public MicrophoneFlowEvidence Probe(IReadOnlyList<CapabilityUsage> candidates)
+        {
+            if (candidates.Count == 0)
+            {
+                lock (_probeLock)
+                {
+                    InvalidateCacheLocked();
+                }
+                return MicrophoneFlowEvidence.Empty;
+            }
+
+            lock (_probeLock)
+            {
+                EnsureTopologyLocked(candidates);
+
+                bool hasActiveSession = false;
+                float peakLevel = 0;
+
+                for (int i = _cachedMeters.Count - 1; i >= 0; i--)
+                {
+                    var meter = _cachedMeters[i];
+                    var (isValid, peak) = meter.SamplePeak();
+                    if (!isValid)
+                    {
+                        // Session expired, muted, or error -> invalidate topology to refresh
+                        _isTopologyValid = false;
+                        continue;
+                    }
+
+                    hasActiveSession = true;
+                    if (peak > peakLevel)
+                        peakLevel = peak;
+                }
+
+                // If topology became invalid during sampling and we had no active session,
+                // rebuild topology immediately if rate limit allows.
+                if (!_isTopologyValid && !hasActiveSession)
+                {
+                    long now = Stopwatch.GetTimestamp();
+                    double elapsedSec = (double)(now - _lastRebuildTicks) / Stopwatch.Frequency;
+                    if (elapsedSec >= 1.0)
+                    {
+                        RebuildTopologyLocked(candidates);
+                        for (int i = 0; i < _cachedMeters.Count; i++)
+                        {
+                            var (isValid, peak) = _cachedMeters[i].SamplePeak();
+                            if (isValid)
+                            {
+                                hasActiveSession = true;
+                                if (peak > peakLevel)
+                                    peakLevel = peak;
+                            }
+                        }
+                    }
+                }
+
+                if (!float.IsFinite(peakLevel) || peakLevel < 0)
+                    peakLevel = 0;
+
+                return new MicrophoneFlowEvidence(
+                    hasActiveSession,
+                    Math.Clamp(peakLevel, 0, 1));
+            }
+        }
+
+        private void EnsureTopologyLocked(IReadOnlyList<CapabilityUsage> candidates)
+        {
+            var currentNames = candidates.Select(c => c.RawName).ToArray();
+            if (!_cachedCandidateNames.SequenceEqual(currentNames, StringComparer.OrdinalIgnoreCase))
+            {
+                _cachedCandidateNames = currentNames;
+                _isTopologyValid = false;
+            }
+
+            if (_isTopologyValid && _cachedMeters.Count > 0)
+                return;
+
+            long now = Stopwatch.GetTimestamp();
+            double elapsedSec = (double)(now - _lastRebuildTicks) / Stopwatch.Frequency;
+
+            // If topology is invalid, or if we found 0 active sessions and at least 1s elapsed since last attempt:
+            if (!_isTopologyValid || (_cachedMeters.Count == 0 && elapsedSec >= 1.0))
+            {
+                RebuildTopologyLocked(candidates);
+            }
+        }
+
+        private void RebuildTopologyLocked(IReadOnlyList<CapabilityUsage> candidates)
+        {
+            _lastRebuildTicks = Stopwatch.GetTimestamp();
+            InvalidateCacheLocked();
+
+            var processProbe = new ConsumerProcessProbe();
+
+            try
+            {
+                EnsureEnumeratorLocked();
+                if (_enumerator == null) return;
+
+                var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+                foreach (var device in devices)
+                {
+                    bool deviceRetained = false;
+                    try
+                    {
+                        try
+                        {
+                            if (device.AudioEndpointVolume.Mute)
+                            {
+                                continue;
+                            }
+                        }
+                        catch
+                        {
+                            // Some virtual endpoints do not expose endpoint mute.
+                        }
+
+                        var sessions = device.AudioSessionManager.Sessions;
+                        if (sessions != null)
+                        {
+                            for (int i = 0; i < sessions.Count; i++)
+                            {
+                                var session = sessions[i];
+                                if (session == null) continue;
+
+                                bool sessionRetained = false;
+                                try
+                                {
+                                    if (session.State == AudioSessionState.AudioSessionStateActive)
+                                    {
+                                        uint processId = session.GetProcessID;
+                                        if (candidates.Any(candidate => processProbe.MatchesProcess(candidate.RawName, processId)))
+                                        {
+                                            using var volume = session.SimpleAudioVolume;
+                                            if (!volume.Mute)
+                                            {
+                                                _cachedMeters.Add(new CachedSessionMeter(device, session, processId));
+                                                deviceRetained = true;
+                                                sessionRetained = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                finally
+                                {
+                                    if (!sessionRetained)
+                                    {
+                                        try { session.Dispose(); } catch { }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (!deviceRetained)
+                        {
+                            try { device.Dispose(); } catch { }
+                        }
+                    }
+                }
+
+                _isTopologyValid = true;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Warn("PRIVACY-MIC", $"Topology rebuild failed: {ex.Message}");
+                InvalidateCacheLocked();
+                DisposeEnumeratorLocked();
+            }
+        }
+
+        private void EnsureEnumeratorLocked()
+        {
+            if (_enumerator != null) return;
+            try
+            {
+                _enumerator = new MMDeviceEnumerator();
+                _notificationClient = new AudioNotificationClient(OnDeviceNotification);
+                _enumerator.RegisterEndpointNotificationCallback(_notificationClient);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Warn("PRIVACY-MIC", $"Failed to register endpoint notification callback: {ex.Message}");
+                DisposeEnumeratorLocked();
+            }
+        }
+
+        private void OnDeviceNotification()
+        {
+            lock (_probeLock)
+            {
+                _isTopologyValid = false;
+            }
+        }
+
+        private void InvalidateCacheLocked()
+        {
+            _isTopologyValid = false;
+            for (int i = 0; i < _cachedMeters.Count; i++)
+            {
+                _cachedMeters[i].Dispose();
+            }
+            _cachedMeters.Clear();
+        }
+
+        public void Dispose()
+        {
+            lock (_probeLock)
+            {
+                InvalidateCacheLocked();
+                DisposeEnumeratorLocked();
+            }
+        }
+
+        private void DisposeEnumeratorLocked()
         {
             if (_enumerator == null) return;
             try
             {
+                if (_notificationClient != null)
+                {
+                    _enumerator.UnregisterEndpointNotificationCallback(_notificationClient);
+                }
+            }
+            catch { }
+            _notificationClient = null;
+
+            try
+            {
                 _enumerator.Dispose();
             }
-            catch (Exception)
-            {
-                // Best-effort device enumerator cleanup
-            }
+            catch { }
             _enumerator = null;
         }
     }

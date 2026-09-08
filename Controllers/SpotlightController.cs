@@ -61,36 +61,49 @@ internal sealed class SpotlightController : ISpotlightController
 
     public void ApplySettings(NotchSettings settings)
     {
+        bool spotlightChanged = _settings == null || _settings.EnableSpotlight != settings.EnableSpotlight;
+        bool glassChanged = _settings == null
+            || !string.Equals(_settings.NotchStyle, settings.NotchStyle, StringComparison.OrdinalIgnoreCase)
+            || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
+
         _settings = settings.Clone();
-        _window?.ApplySettings(_settings);
+        if (glassChanged)
+        {
+            _window?.ApplySettings(_settings);
+        }
+
         if (_hwnd == IntPtr.Zero) return;
-        DisableHotkey();
 
-        if (!settings.EnableSpotlight)
+        if (spotlightChanged || (!IsHotkeyRegistered && settings.EnableSpotlight))
         {
-            _window?.HideSpotlight();
-            return;
-        }
+            DisableHotkey();
 
-        _nativeRegistered = RegisterHotKey(_hwnd, HotkeyId, MOD_ALT | MOD_NOREPEAT, VK_SPACE);
-        if (_nativeRegistered)
-        {
-            RuntimeLog.Log(LogTag, "Alt+Space registered with Windows");
-            if (!EnsureKeyboardHook())
-                RuntimeLog.Warn(LogTag, "Global Escape shortcut is unavailable");
-            return;
-        }
+            if (!settings.EnableSpotlight)
+            {
+                _window?.HideSpotlight();
+                return;
+            }
 
-        int error = Marshal.GetLastWin32Error();
-        if (error == 1409 && EnsureKeyboardHook())
-        {
+            _nativeRegistered = RegisterHotKey(_hwnd, HotkeyId, MOD_ALT | MOD_NOREPEAT, VK_SPACE);
+            if (_nativeRegistered)
+            {
+                RuntimeLog.Log(LogTag, "Alt+Space registered with Windows");
+                if (!EnsureKeyboardHook())
+                    RuntimeLog.Warn(LogTag, "Global Escape shortcut is unavailable");
+                return;
+            }
+
+            int error = Marshal.GetLastWin32Error();
+            if (error == 1409 && EnsureKeyboardHook())
+            {
+                RuntimeLog.Warn(LogTag,
+                    "Alt+Space is owned by another app; keyboard fallback enabled");
+                return;
+            }
+
             RuntimeLog.Warn(LogTag,
-                "Alt+Space is owned by another app; keyboard fallback enabled");
-            return;
+                $"Could not enable Alt+Space (Win32={error})");
         }
-
-        RuntimeLog.Warn(LogTag,
-            $"Could not enable Alt+Space (Win32={error})");
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

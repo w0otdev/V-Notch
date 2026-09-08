@@ -72,6 +72,7 @@ public partial class SettingsWindow : Window
     private bool _isLoadingSettings = true;
     private DispatcherTimer? _livePreviewDebounce;
     private bool _isSpotlightHotkeyRegistered;
+    private int _lastAppliedFps;
 
     // Liquid Glass UI components
     private LiquidGlassController? _liquidGlass;
@@ -94,6 +95,7 @@ public partial class SettingsWindow : Window
         _originalSettings = settings.Clone();
         _settingsService = settingsService;
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
+        _lastAppliedFps = settings.AnimationFps;
         _updateService = new UpdateService();
 
         InitializeNavigation();
@@ -4164,9 +4166,18 @@ public partial class SettingsWindow : Window
         _settings.MediaBlurBrightnessBoost = BlurBrightnessSlider.Value / 100.0;
         _settings.MediaBlurDarkOverlay = BlurDarkOverlaySlider.Value / 100.0;
         _settings.SpotifyCanvasBrightness = SpotifyCanvasBrightnessSlider.Value / 100.0;
-        _settings.AnimationFps = (int)Math.Round(AnimationFpsSlider.Value);
-        VNotch.Services.AnimationConfig.Configure(_settings.AnimationFps);
-        AnimationPrimitives.ApplyFpsToTree(this);
+        int newFps = (int)Math.Round(AnimationFpsSlider.Value);
+        if (_lastAppliedFps != newFps)
+        {
+            _settings.AnimationFps = newFps;
+            _lastAppliedFps = newFps;
+            VNotch.Services.AnimationConfig.Configure(_settings.AnimationFps);
+            AnimationPrimitives.ApplyFpsToTree(this);
+        }
+        else
+        {
+            _settings.AnimationFps = newFps;
+        }
         _settings.EnableBlurEffects = EnableBlurEffectsCheck.IsChecked ?? true;
         _settings.ShowMediaArtBackground = MediaArtBackgroundCheck.IsChecked ?? true;
         SaveLiquidGlassUi();
@@ -5298,6 +5309,7 @@ public partial class SettingsWindow : Window
     private void ApplyLiquidGlassSkin()
     {
         if (GlassBackdropHost == null) return;
+        if (GlassBackdropHost.Visibility == Visibility.Collapsed && _liquidGlass == null) return;
 
         // Liquid Glass is a notch skin only. Keeping a second full-window
         MainShell.Background = (Brush)FindResource("WindowGlow");
