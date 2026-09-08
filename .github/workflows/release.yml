@@ -79,18 +79,30 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Delete previous nightly release
+        if: ${{ !startsWith(github.event.workflow_run.head_branch, 'v') }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/nightly || true
+          sleep 2
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # softprops/action-gh-release@v2.2.2
       - uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
         with:
           tag_name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.head_branch || 'nightly' }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
           name: ${{ startsWith(github.event.workflow_run.head_branch, 'v') && format('V-Notch {0}', github.event.workflow_run.head_branch) || 'Nightly build (latest main)' }}
           prerelease: ${{ !startsWith(github.event.workflow_run.head_branch, 'v') }}
           make_latest: ${{ startsWith(github.event.workflow_run.head_branch, 'v') }}
           body: |
-            Build from `${{ github.event.workflow_run.head_sha }}`.
+            Automated build from commit `${{ github.event.workflow_run.head_sha }}` on branch `${{ github.event.workflow_run.head_branch }}`.
 
-            - `V-Notch-Setup.exe` requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
-            - `V-Notch-Setup-SelfContained.exe` includes required runtime.
+            - `V-Notch-Setup.exe` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))
+            - `V-Notch-Setup-SelfContained.exe` (runtime bundled)
+            - SHA256 checksums are attached for verification.
           files: release-assets/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
