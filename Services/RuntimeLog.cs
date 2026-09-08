@@ -113,7 +113,14 @@ public static class RuntimeLog
 
     public static void Warn(string category, string message) => WriteEntry(LogLevel.Warn, category, message);
 
-    public static void Error(string category, string message) => WriteEntry(LogLevel.Error, category, message);
+    public static void Error(string category, string message)
+    {
+        WriteEntry(LogLevel.Error, category, message);
+        if (!_initialized && !category.StartsWith("CRASH", StringComparison.OrdinalIgnoreCase))
+        {
+            CrashReporter.LogCrash($"RuntimeLog.{category}", message);
+        }
+    }
 
     public static void Error(string category, Exception ex, string? context = null)
     {
@@ -121,6 +128,11 @@ public static class RuntimeLog
             ? $"{context}: {ex.GetType().Name}: {ex.Message}"
             : $"{ex.GetType().Name}: {ex.Message}";
         WriteEntry(LogLevel.Error, category, $"{msg}{Environment.NewLine}{ex}");
+
+        if (!_initialized && !category.StartsWith("CRASH", StringComparison.OrdinalIgnoreCase))
+        {
+            CrashReporter.LogCrash($"RuntimeLog.{category}", ex, context);
+        }
 
 #if DEBUG
         System.Diagnostics.Debug.WriteLine($"[{category}] {msg}");

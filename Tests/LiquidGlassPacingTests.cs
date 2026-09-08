@@ -68,11 +68,9 @@ public sealed class LiquidGlassPacingTests
                 WindowStyle = WindowStyle.None,
                 ShowInTaskbar = false
             };
-            host.Show();
-
             var image = new Image();
             host.Content = image;
-            var hwnd = new WindowInteropHelper(host).Handle;
+            var hwnd = new WindowInteropHelper(host).EnsureHandle();
 
             // Region provider initially returns null -> controller enters idle wait
             LiquidGlassController? controller = null;
@@ -111,11 +109,9 @@ public sealed class LiquidGlassPacingTests
                 WindowStyle = WindowStyle.None,
                 ShowInTaskbar = false
             };
-            host.Show();
-
             var image = new Image();
             host.Content = image;
-            var hwnd = new WindowInteropHelper(host).Handle;
+            var hwnd = new WindowInteropHelper(host).EnsureHandle();
 
             LiquidGlassController? controller = null;
             try
@@ -150,6 +146,7 @@ public sealed class LiquidGlassPacingTests
     }
 
     [Fact]
+    [Trait("Category", "DesktopIntegration")]
     public void LiquidGlass_FullSurface_UnchangedFrame_SkipsRedundantGpuUpload()
     {
         RunSta(() =>

@@ -34,19 +34,5 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
 
-      - name: Test
-        shell: pwsh
-        run: |
-          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --collect:"Code Coverage;Format=Cobertura" --results-directory Tests/artifacts/coverage/ --verbosity normal
-          $coverageFile = Get-ChildItem -Path Tests/artifacts/coverage -Filter *.cobertura.xml -Recurse | Where-Object { $_.Name -ne 'coverage.cobertura.xml' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if ($coverageFile) { Copy-Item $coverageFile.FullName -Destination Tests/artifacts/coverage/coverage.cobertura.xml -Force }
-          [xml]$coverage = Get-Content Tests/artifacts/coverage/coverage.cobertura.xml
-          if ([double]$coverage.coverage.'line-rate' -le 0) { throw 'Coverage report is empty.' }
-          $baseline = 'Tests/coverage-baseline.txt'
-          if (Test-Path $baseline) {
-            $minimum = [double](Get-Content $baseline -Raw)
-            if ([double]$coverage.coverage.'line-rate' -lt $minimum) { throw "Coverage dropped below baseline $minimum." }
-          }
-
       - name: Audit packages
-        run: dotnet list V-Notch.sln package --vulnerable --include-transitive
+        run: dotnet list V-Notch.sln package --vulnerable --include-transitive

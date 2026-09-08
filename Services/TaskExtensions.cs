@@ -15,7 +15,8 @@ public static class TaskExtensions
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log(category, $"Unhandled exception in fire-and-forget task: {ex}");
+            RuntimeLog.Error(category, ex, "Unhandled exception in fire-and-forget task");
+            CrashReporter.LogCrash($"FireAndForget.{category}", ex, "Unhandled exception in fire-and-forget task", isTerminating: false);
 #if DEBUG
             System.Diagnostics.Debug.WriteLine($"[{category}] Fire-and-forget exception: {ex.Message}");
 #endif
@@ -34,7 +35,15 @@ public static class TaskExtensions
         }
         catch (Exception ex)
         {
-            onError(ex);
+            try
+            {
+                onError(ex);
+            }
+            catch (Exception callbackEx)
+            {
+                RuntimeLog.Error("FIRE-FORGET-CALLBACK", callbackEx, "Exception in fire-and-forget error callback");
+                CrashReporter.LogCrash("FireAndForget.Callback", callbackEx, "Exception in fire-and-forget error callback", isTerminating: false);
+            }
         }
     }
 #pragma warning restore S3168

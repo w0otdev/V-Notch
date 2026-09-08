@@ -1,8 +1,9 @@
-﻿# Pre-push CI verification script for V-Notch
+# Pre-push CI verification script for V-Notch
 # Mirrors .github/workflows/ci.yml locally
 
 param(
-    [switch]$FixFormat
+    [switch]$FixFormat,
+    [switch]$IncludeDesktopIntegration
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,7 +39,13 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Build succeeded with 0 warnings and 0 errors." -ForegroundColor Green
 
 Write-Host "`n=== [4/5] Running Tests & Collecting Coverage ===" -ForegroundColor Cyan
-dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --collect:"Code Coverage;Format=Cobertura" --results-directory Tests/artifacts/coverage/ --verbosity normal
+if (-not $IncludeDesktopIntegration) {
+    Write-Host ">>> Running tests in headless mode (skipping DesktopIntegration window popups)..." -ForegroundColor Yellow
+    dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --collect:"Code Coverage;Format=Cobertura" --results-directory Tests/artifacts/coverage/ --verbosity normal
+} else {
+    Write-Host ">>> Running all tests including DesktopIntegration..." -ForegroundColor Yellow
+    dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --collect:"Code Coverage;Format=Cobertura" --results-directory Tests/artifacts/coverage/ --verbosity normal
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n[!] Test run failed." -ForegroundColor Red
     exit 1

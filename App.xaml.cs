@@ -16,6 +16,11 @@ public partial class App : Application
     private static int _fatalUiExceptionInProgress;
     private const string MutexName = "VNotch_SingleInstance_Mutex";
 
+    public App()
+    {
+        CrashReporter.Initialize();
+    }
+
     public static IServiceProvider Services { get; private set; } = null!;
 
     private static void SetServices(IServiceProvider services)
@@ -25,42 +30,63 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
-
-        var earlySettings = new SettingsService();
-        var loadedSettings = earlySettings.Load();
-        Loc.SetLanguage(loadedSettings.Language);
-        AnimationConfig.Configure(loadedSettings.AnimationFps);
-
-        if (HandleSetupOrUninstall(e))
+        try
         {
-            return;
+            CrashReporter.Initialize();
+            RegisterExceptionHandlers();
+
+            System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
+
+            var earlySettings = new SettingsService();
+            var loadedSettings = earlySettings.Load();
+            Loc.SetLanguage(loadedSettings.Language);
+            AnimationConfig.Configure(loadedSettings.AnimationFps);
+
+            if (HandleSetupOrUninstall(e))
+            {
+                return;
+            }
+
+            ApplyProcessPriority(loadedSettings.ProcessPriority);
+
+            if (!EnsureSingleInstance(e))
+            {
+                return;
+            }
+
+            RuntimeLog.InitializeNewSession("vnotch-debug.log");
+            RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
+
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+            SetServices(services.BuildServiceProvider());
+
+            ServicePrewarmer.Prewarm(Services);
+
+            var mainWindow = Services.GetRequiredService<MainWindow>();
+            mainWindow.Show();
+
+            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
+
+            base.OnStartup(e);
         }
-
-        ApplyProcessPriority(loadedSettings.ProcessPriority);
-
-        if (!EnsureSingleInstance(e))
+        catch (Exception ex)
         {
-            return;
+            CrashReporter.LogCrash("App.OnStartup", ex, "Fatal exception during application startup", isTerminating: true);
+            try
+            {
+                MessageBox.Show(
+                    $"V-Notch encountered a fatal error during startup and must close.\n\nCrash details saved to:\n{CrashReporter.CrashLogPath}\n\nError: {ex.Message}",
+                    "V-Notch Startup Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            catch
+            {
+                // Fallback if MessageBox fails
+            }
+            Shutdown(1);
         }
-
-        RuntimeLog.InitializeNewSession("vnotch-debug.log");
-        RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
-
-        RegisterExceptionHandlers();
-
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        SetServices(services.BuildServiceProvider());
-
-        ServicePrewarmer.Prewarm(Services);
-
-        var mainWindow = Services.GetRequiredService<MainWindow>();
-        mainWindow.Show();
-
-        CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
-
-        base.OnStartup(e);
     }
 
     private bool HandleSetupOrUninstall(StartupEventArgs e)
@@ -127,6 +153,8 @@ public partial class App : Application
 
         if (IsRecoverableException(args.Exception))
         {
+            CrashReporter.LogCrash("DispatcherUnhandledException (Recovered)", args.Exception,
+                "Recovered a known animation or media exception on the UI dispatcher", isTerminating: false);
             RuntimeLog.Error("UNHANDLED-UI-RECOVERED", args.Exception,
                 "Recovered a known animation or media exception on the UI dispatcher");
             args.Handled = true;
@@ -140,6 +168,8 @@ public partial class App : Application
         }
 
         args.Handled = true;
+        CrashReporter.LogCrash("DispatcherUnhandledException (Fatal)", args.Exception,
+            "Fatal UI dispatcher exception; shutting down to avoid continuing in an unknown state", isTerminating: true);
         RuntimeLog.Error("UNHANDLED-UI-FATAL", args.Exception,
             "Unexpected UI dispatcher exception; shutting down to avoid continuing in an unknown state");
         try
@@ -153,8 +183,9 @@ public partial class App : Application
 
         try
         {
+            string crashInfo = $"{RuntimeLog.LogPath}\nCrash Report: {CrashReporter.CrashLogPath}";
             MessageBox.Show(
-                Loc.Get("app.fatalClose", RuntimeLog.LogPath),
+                Loc.Get("app.fatalClose", crashInfo),
                 Loc.Get("error.title"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -167,28 +198,37 @@ public partial class App : Application
 
     private static void OnUnhandledDomainException(object? sender, UnhandledExceptionEventArgs args)
     {
+        CrashReporter.LogCrash("AppDomain.UnhandledException", args.ExceptionObject,
+            "Background thread crash", isTerminating: args.IsTerminating);
+
         if (args.ExceptionObject is Exception ex)
         {
             RuntimeLog.Error("UNHANDLED-BG", ex, "Background thread crash");
+        }
+        else if (args.ExceptionObject != null)
+        {
+            RuntimeLog.Error("UNHANDLED-BG", $"Background thread crash with non-CLS object: {args.ExceptionObject}");
+        }
 
-            // The process may terminate immediately after this callback, so
-            // synchronously preserve only this exceptional final batch.
-            if (args.IsTerminating)
+        // The process may terminate immediately after this callback, so
+        // synchronously preserve only this exceptional final batch.
+        if (args.IsTerminating)
+        {
+            try
             {
-                try
-                {
-                    RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1));
-                }
-                catch (Exception)
-                {
-                    // Best-effort flush before process termination; ignore flush failures
-                }
+                RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1));
+            }
+            catch (Exception)
+            {
+                // Best-effort flush before process termination; ignore flush failures
             }
         }
     }
 
     private static void OnUnobservedTaskException(object? sender, System.Threading.Tasks.UnobservedTaskExceptionEventArgs args)
     {
+        CrashReporter.LogCrash("TaskScheduler.UnobservedTaskException", args.Exception,
+            "Unobserved task exception", isTerminating: false);
         RuntimeLog.Error("UNOBSERVED-TASK", args.Exception?.InnerException ?? args.Exception!,
             "Unobserved task exception");
         args.SetObserved();
