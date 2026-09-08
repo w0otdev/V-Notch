@@ -4,6 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using NAudio.CoreAudioApi;
@@ -37,13 +40,20 @@ public sealed class PrivacyIndicatorService : IDisposable
     private static readonly Lazy<IReadOnlySet<string>> ServiceExecutablePaths =
         new(LoadServiceExecutablePaths);
 
-    private readonly DispatcherTimer _timer;
+    private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _microphoneFlowTimer;
     private readonly TimeSpan _activeInterval;
     private readonly MicrophoneActivityGate _microphoneActivityGate = new(
         MicrophoneSignalThreshold,
         MicrophoneSignalHoldDuration);
     private readonly MicrophoneFlowProbe _microphoneFlowProbe = new();
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly object _lifecycleLock = new();
+
+    private CancellationTokenSource? _workerCts;
+    private Task? _workerTask;
+    private int _currentGeneration;
+
     private IReadOnlyList<CapabilityUsage> _microphoneCandidates = Array.Empty<CapabilityUsage>();
     private IReadOnlyList<string> _microphoneCandidateNames = Array.Empty<string>();
     private IReadOnlyList<string> _cameraConsumers = Array.Empty<string>();
@@ -59,13 +69,9 @@ public sealed class PrivacyIndicatorService : IDisposable
     public PrivacyIndicatorService(TimeSpan? pollInterval = null)
     {
         _activeInterval = pollInterval ?? ActivePollInterval;
-        _timer = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = _activeInterval
-        };
-        _timer.Tick += (_, _) => Poll();
+        _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
 
-        _microphoneFlowTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _microphoneFlowTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
         {
             Interval = MicrophoneFlowPollInterval
         };
@@ -74,72 +80,188 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     public void Start()
     {
-        if (_disposed || _started) return;
-        _started = true;
+        lock (_lifecycleLock)
+        {
+            if (_disposed || _started) return;
+            _started = true;
+            _currentGeneration++;
+            int generation = _currentGeneration;
 
-        Poll();
-        _timer.Start();
+            _workerCts = new CancellationTokenSource();
+            var token = _workerCts.Token;
+
+            _workerTask = Task.Run(() => WorkerLoopAsync(generation, token), token);
+        }
     }
 
     public void Stop()
     {
-        if (!_started) return;
-        _started = false;
-        _timer.Stop();
-        _microphoneFlowTimer.Stop();
+        CancellationTokenSource? ctsToCancel;
+        lock (_lifecycleLock)
+        {
+            if (!_started) return;
+            _started = false;
+            _currentGeneration++;
+            ctsToCancel = _workerCts;
+            _workerCts = null;
+            _workerTask = null;
+
+            if (_dispatcher.CheckAccess())
+            {
+                _microphoneFlowTimer.Stop();
+            }
+            else
+            {
+                _dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _microphoneFlowTimer.Stop());
+            }
+        }
+
+        ctsToCancel?.Cancel();
+        ctsToCancel?.Dispose();
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_lifecycleLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
+
         Stop();
+        _scanGate.Dispose();
         _microphoneFlowProbe.Dispose();
     }
 
-    private void Poll()
+    private async Task WorkerLoopAsync(int generation, CancellationToken token)
     {
-        try
+        while (!token.IsCancellationRequested)
         {
-            DateTime utcNow = DateTime.UtcNow;
-            var micUsage = ScanCapability("microphone");
-            var camUsage = ScanCapability("webcam");
-            var programmaticCapture = ScanCapability("graphicsCaptureProgrammatic");
-            var borderlessCapture = ScanCapability("graphicsCaptureWithoutBorder");
-
-            var running = new ConsumerProcessProbe();
-            _microphoneCandidates = GetRelevantConsumerUsages(
-                micUsage,
-                running,
-                usage => !IsIgnoredMicrophoneConsumer(usage.RawName));
-            _microphoneCandidateNames = GetConsumerNames(_microphoneCandidates);
-
-            var cam = GetRelevantConsumerUsages(camUsage, running);
-            _cameraConsumers = GetConsumerNames(cam);
-            _cameraInUse = _cameraConsumers.Count > 0;
-            _screenRecordingActive = DetectScreenRecording(
-                programmaticCapture.Concat(borderlessCapture), running, utcNow);
-
-            if (_microphoneCandidates.Count > 0)
+            PrivacyScanResult? result = null;
+            try
             {
-                if (!_microphoneFlowTimer.IsEnabled)
-                    _microphoneFlowTimer.Start();
+                await _scanGate.WaitAsync(token).ConfigureAwait(false);
+                try
+                {
+                    if (token.IsCancellationRequested || generation != _currentGeneration)
+                        break;
+
+                    DateTime utcNow = DateTime.UtcNow;
+                    result = ExecuteBackgroundScan(utcNow);
+                }
+                finally
+                {
+                    _scanGate.Release();
+                }
             }
-            else
+            catch (OperationCanceledException)
             {
-                _microphoneFlowTimer.Stop();
+                break;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("PRIVACY", ex, "PrivacyIndicatorService background scan failed");
             }
 
-            PollMicrophoneFlow(utcNow);
+            if (token.IsCancellationRequested || generation != _currentGeneration)
+                break;
+
+            if (result != null)
+            {
+                PublishSnapshotToUi(result, generation);
+            }
+
+            TimeSpan delay = CurrentState.AnyInUse ? _activeInterval : IdlePollInterval;
+            try
+            {
+                await Task.Delay(delay, token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
-        catch (Exception ex)
+    }
+
+    private static PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow)
+    {
+        var micUsage = ScanCapability("microphone");
+        var camUsage = ScanCapability("webcam");
+        var programmaticCapture = ScanCapability("graphicsCaptureProgrammatic");
+        var borderlessCapture = ScanCapability("graphicsCaptureWithoutBorder");
+
+        var running = new ConsumerProcessProbe();
+        var microphoneCandidates = GetRelevantConsumerUsages(
+            micUsage,
+            running,
+            usage => !IsIgnoredMicrophoneConsumer(usage.RawName));
+        var microphoneCandidateNames = GetConsumerNames(microphoneCandidates);
+
+        var cam = GetRelevantConsumerUsages(camUsage, running);
+        var cameraConsumers = GetConsumerNames(cam);
+        bool cameraInUse = cameraConsumers.Count > 0;
+        bool screenRecordingActive = DetectScreenRecording(
+            programmaticCapture.Concat(borderlessCapture), running, utcNow);
+
+        return new PrivacyScanResult(
+            MicrophoneCandidates: microphoneCandidates,
+            MicrophoneCandidateNames: microphoneCandidateNames,
+            CameraConsumers: cameraConsumers,
+            CameraInUse: cameraInUse,
+            ScreenRecordingActive: screenRecordingActive,
+            UtcNow: utcNow);
+    }
+
+    private void PublishSnapshotToUi(PrivacyScanResult result, int generation)
+    {
+        lock (_lifecycleLock)
         {
-            RuntimeLog.Error("PRIVACY", ex, "PrivacyIndicatorService poll failed");
+            if (_disposed || !_started || generation != _currentGeneration)
+                return;
         }
-        finally
+
+        if (_dispatcher.HasShutdownStarted) return;
+
+        void Apply()
         {
-            AdaptInterval();
+            lock (_lifecycleLock)
+            {
+                if (_disposed || !_started || generation != _currentGeneration)
+                    return;
+
+                ApplyScanResult(result);
+            }
         }
+
+        if (_dispatcher.CheckAccess())
+        {
+            Apply();
+        }
+        else
+        {
+            _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(Apply));
+        }
+    }
+
+    private void ApplyScanResult(PrivacyScanResult result)
+    {
+        _microphoneCandidates = result.MicrophoneCandidates;
+        _microphoneCandidateNames = result.MicrophoneCandidateNames;
+        _cameraConsumers = result.CameraConsumers;
+        _cameraInUse = result.CameraInUse;
+        _screenRecordingActive = result.ScreenRecordingActive;
+
+        if (_microphoneCandidates.Count > 0)
+        {
+            if (!_microphoneFlowTimer.IsEnabled)
+                _microphoneFlowTimer.Start();
+        }
+        else
+        {
+            _microphoneFlowTimer.Stop();
+        }
+
+        PollMicrophoneFlow(result.UtcNow);
     }
 
     private void PollMicrophoneFlow() => PollMicrophoneFlow(DateTime.UtcNow);
@@ -194,11 +316,16 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private void AdaptInterval()
     {
-        if (!_started) return;
-        var desired = CurrentState.AnyInUse ? _activeInterval : IdlePollInterval;
-        if (_timer.Interval != desired)
-            _timer.Interval = desired;
+        // Poll intervals are dynamically resolved per worker cycle (1s when active, 2s when idle).
     }
+
+    private sealed record PrivacyScanResult(
+        IReadOnlyList<CapabilityUsage> MicrophoneCandidates,
+        IReadOnlyList<string> MicrophoneCandidateNames,
+        IReadOnlyList<string> CameraConsumers,
+        bool CameraInUse,
+        bool ScreenRecordingActive,
+        DateTime UtcNow);
 
     private static IReadOnlyList<CapabilityUsage> GetRelevantConsumerUsages(
         IEnumerable<CapabilityUsage> usages,

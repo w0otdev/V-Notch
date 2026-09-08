@@ -111,4 +111,41 @@ public sealed class PrivacyIndicatorServiceTests
         Assert.Null(PrivacyIndicatorService.TryDecodeDesktopConsumerPath(
             "Microsoft.WindowsCamera_8wekyb3d8bbwe"));
     }
+
+    [Fact]
+    public void Service_StartAndStop_TransitionsCleanly()
+    {
+        using var service = new PrivacyIndicatorService(TimeSpan.FromMilliseconds(500));
+        Assert.NotNull(service.CurrentState);
+
+        // Start should launch background worker
+        service.Start();
+
+        // Idempotent start
+        service.Start();
+
+        // Stop should cancel background worker and stop flow timers
+        service.Stop();
+
+        // Idempotent stop
+        service.Stop();
+
+        // Restarting after stop should work cleanly
+        service.Start();
+        service.Stop();
+    }
+
+    [Fact]
+    public void Service_Dispose_CleansUpProperly()
+    {
+        var service = new PrivacyIndicatorService(TimeSpan.FromMilliseconds(500));
+        service.Start();
+        service.Dispose();
+
+        // Double dispose should not throw
+        service.Dispose();
+
+        // Start after dispose should be a no-op
+        service.Start();
+    }
 }
