@@ -96,7 +96,7 @@ public static class SubjectAwareBlurService
             BoxBlurHorizontal(background, tmp, width, height, backgroundBlurRadius);
             BoxBlurVertical(tmp, background, width, height, backgroundBlurRadius);
         }
-        Darken(background, 0.78f);
+        Darken(background, bufLen, 0.78f);
     }
 
     private static void RenderSubjectLayer(
@@ -114,7 +114,7 @@ public static class SubjectAwareBlurService
             BoxBlurHorizontal(subjectLayer, tmp, width, height, subjectBlurRadius);
             BoxBlurVertical(tmp, subjectLayer, width, height, subjectBlurRadius);
         }
-        Brighten(subjectLayer, 1.04f);
+        Brighten(subjectLayer, bufLen, 1.04f);
     }
 
     private static void CompositeLayers(
@@ -169,9 +169,10 @@ public static class SubjectAwareBlurService
         return 1f - u * u * (3f - 2f * u);
     }
 
-    private static void Darken(byte[] pixels, float factor)
+    private static void Darken(byte[] pixels, int bufLen, float factor)
     {
-        for (int i = 0; i < pixels.Length; i += 4)
+        int limit = Math.Min(pixels.Length, bufLen);
+        for (int i = 0; i < limit; i += 4)
         {
             pixels[i] = (byte)(pixels[i] * factor);
             pixels[i + 1] = (byte)(pixels[i + 1] * factor);
@@ -179,9 +180,10 @@ public static class SubjectAwareBlurService
         }
     }
 
-    private static void Brighten(byte[] pixels, float factor)
+    private static void Brighten(byte[] pixels, int bufLen, float factor)
     {
-        for (int i = 0; i < pixels.Length; i += 4)
+        int limit = Math.Min(pixels.Length, bufLen);
+        for (int i = 0; i < limit; i += 4)
         {
             pixels[i] = (byte)Math.Min(255, pixels[i] * factor);
             pixels[i + 1] = (byte)Math.Min(255, pixels[i + 1] * factor);

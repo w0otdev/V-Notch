@@ -24,6 +24,12 @@ public sealed class SystemMonitorModule : NotchModuleBase
     private long _lastNetSentBytes = 0;
     private long _lastNetTicks = 0;
 
+    private int _isNetworkSampling = 0;
+    private double _latestDownBytesPerSec = 0;
+    private double _latestUpBytesPerSec = 0;
+    private NetworkInterface[]? _cachedInterfaces;
+    private readonly object _interfaceLock = new();
+
     private ulong _usablePhysicalBytes;
     private ulong _installedPhysicalBytes;
 
@@ -31,13 +37,55 @@ public sealed class SystemMonitorModule : NotchModuleBase
 
     protected override void OnInitialize()
     {
+        try
+        {
+            NetworkChange.NetworkAddressChanged += OnNetworkTopologyChanged;
+            NetworkChange.NetworkAvailabilityChanged += OnNetworkTopologyChanged;
+        }
+        catch { }
+
         _usablePhysicalBytes = ReadUsablePhysicalMemory();
         _installedPhysicalBytes = ReadInstalledPhysicalMemory();
         if (_installedPhysicalBytes == 0) _installedPhysicalBytes = _usablePhysicalBytes;
 
         // Initialize baselines
         SampleCpuUsage();
-        SampleNetworkUsage(out _, out _);
+        if (Interlocked.CompareExchange(ref _isNetworkSampling, 1, 0) == 0)
+        {
+            Task.Run(SampleNetworkUsageBackground);
+        }
+    }
+
+    private void OnNetworkTopologyChanged(object? sender, EventArgs e)
+    {
+        InvalidateNetworkInterfaces();
+    }
+
+    private void InvalidateNetworkInterfaces()
+    {
+        lock (_interfaceLock)
+        {
+            _cachedInterfaces = null;
+        }
+    }
+
+    private NetworkInterface[] GetOrRefreshNetworkInterfaces()
+    {
+        lock (_interfaceLock)
+        {
+            if (_cachedInterfaces == null)
+            {
+                try
+                {
+                    _cachedInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+                }
+                catch
+                {
+                    _cachedInterfaces = Array.Empty<NetworkInterface>();
+                }
+            }
+            return _cachedInterfaces;
+        }
     }
 
     protected override void OnTick()
@@ -56,7 +104,10 @@ public sealed class SystemMonitorModule : NotchModuleBase
             ramPercent = Math.Clamp(memStatus.dwMemoryLoad, 0, 100);
         }
 
-        SampleNetworkUsage(out double down, out double up);
+        if (Interlocked.CompareExchange(ref _isNetworkSampling, 1, 0) == 0)
+        {
+            Task.Run(SampleNetworkUsageBackground);
+        }
 
         StatsUpdated?.Invoke(this, new SystemMonitorInfo
         {
@@ -64,8 +115,8 @@ public sealed class SystemMonitorModule : NotchModuleBase
             RamUsedBytes = used,
             RamTotalBytes = _installedPhysicalBytes > 0 ? _installedPhysicalBytes : _usablePhysicalBytes,
             RamPercent = ramPercent,
-            NetDownBytesPerSec = down,
-            NetUpBytesPerSec = up
+            NetDownBytesPerSec = _latestDownBytesPerSec,
+            NetUpBytesPerSec = _latestUpBytesPerSec
         });
     }
 
@@ -105,51 +156,69 @@ public sealed class SystemMonitorModule : NotchModuleBase
         return Math.Clamp(_smoothedCpu, 0, 100);
     }
 
-    private void SampleNetworkUsage(out double downBytesPerSec, out double upBytesPerSec)
+    private void SampleNetworkUsageBackground()
     {
-        downBytesPerSec = 0;
-        upBytesPerSec = 0;
-        long nowTicks = Stopwatch.GetTimestamp();
-
-        long totalRecv = 0;
-        long totalSent = 0;
-
         try
         {
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+            long nowTicks = Stopwatch.GetTimestamp();
+            long totalRecv = 0;
+            long totalSent = 0;
+
+            var interfaces = GetOrRefreshNetworkInterfaces();
             foreach (var nic in interfaces)
             {
-                if (nic.OperationalStatus != OperationalStatus.Up ||
-                    nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                    nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
-                    continue;
+                try
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up ||
+                        nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                        nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
+                        continue;
 
-                var stats = nic.GetIPStatistics();
-                totalRecv += stats.BytesReceived;
-                totalSent += stats.BytesSent;
+                    var stats = nic.GetIPStatistics();
+                    totalRecv += stats.BytesReceived;
+                    totalSent += stats.BytesSent;
+                }
+                catch
+                {
+                    // Interface might have gone down during enumeration
+                }
             }
-        }
-        catch { }
 
-        if (_lastNetTicks > 0)
-        {
-            double elapsedSec = (double)(nowTicks - _lastNetTicks) / Stopwatch.Frequency;
-            if (elapsedSec > 0.1 && _lastNetRecvBytes > 0)
+            if (_lastNetTicks > 0)
             {
-                long deltaRecv = totalRecv > _lastNetRecvBytes ? totalRecv - _lastNetRecvBytes : 0;
-                long deltaSent = totalSent > _lastNetSentBytes ? totalSent - _lastNetSentBytes : 0;
-                downBytesPerSec = deltaRecv / elapsedSec;
-                upBytesPerSec = deltaSent / elapsedSec;
+                double elapsedSec = (double)(nowTicks - _lastNetTicks) / Stopwatch.Frequency;
+                if (elapsedSec > 0.1 && _lastNetRecvBytes > 0)
+                {
+                    long deltaRecv = totalRecv > _lastNetRecvBytes ? totalRecv - _lastNetRecvBytes : 0;
+                    long deltaSent = totalSent > _lastNetSentBytes ? totalSent - _lastNetSentBytes : 0;
+                    _latestDownBytesPerSec = deltaRecv / elapsedSec;
+                    _latestUpBytesPerSec = deltaSent / elapsedSec;
+                }
             }
-        }
 
-        _lastNetRecvBytes = totalRecv;
-        _lastNetSentBytes = totalSent;
-        _lastNetTicks = nowTicks;
+            _lastNetRecvBytes = totalRecv;
+            _lastNetSentBytes = totalSent;
+            _lastNetTicks = nowTicks;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log("SYSTEM-MONITOR-NET", ex.Message);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isNetworkSampling, 0);
+        }
     }
 
     protected override void OnDispose()
     {
+        try
+        {
+            NetworkChange.NetworkAddressChanged -= OnNetworkTopologyChanged;
+            NetworkChange.NetworkAvailabilityChanged -= OnNetworkTopologyChanged;
+        }
+        catch { }
+        InvalidateNetworkInterfaces();
     }
 
     #region Physical memory

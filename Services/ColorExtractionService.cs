@@ -87,10 +87,21 @@ public sealed class ColorExtractionService : IColorExtractionService
         }
     }
 
+    private struct ColorBucket
+    {
+        public int Count;
+        public long SumR;
+        public long SumG;
+        public long SumB;
+    }
+
     private static Color FindMostCommonColor(List<Color> colors)
     {
+        if (colors == null || colors.Count == 0)
+            return Color.FromRgb(255, 255, 255);
+
         const int tolerance = 50;
-        var colorGroups = new Dictionary<string, List<Color>>();
+        var colorGroups = new Dictionary<int, ColorBucket>();
 
         foreach (var color in colors)
         {
@@ -98,22 +109,46 @@ public sealed class ColorExtractionService : IColorExtractionService
             int gBucket = (color.G / tolerance) * tolerance;
             int bBucket = (color.B / tolerance) * tolerance;
 
-            string key = $"{rBucket},{gBucket},{bBucket}";
+            int key = (rBucket << 16) | (gBucket << 8) | bBucket;
 
-            if (!colorGroups.TryGetValue(key, out var group))
+            if (colorGroups.TryGetValue(key, out var bucket))
             {
-                group = new List<Color>();
-                colorGroups[key] = group;
+                bucket.Count++;
+                bucket.SumR += color.R;
+                bucket.SumG += color.G;
+                bucket.SumB += color.B;
+                colorGroups[key] = bucket;
             }
-
-            group.Add(color);
+            else
+            {
+                colorGroups[key] = new ColorBucket
+                {
+                    Count = 1,
+                    SumR = color.R,
+                    SumG = color.G,
+                    SumB = color.B
+                };
+            }
         }
 
-        var largestGroup = colorGroups.OrderByDescending(g => g.Value.Count).First().Value;
+        ColorBucket bestBucket = default;
+        int maxCount = -1;
 
-        int avgR = (int)largestGroup.Average(c => c.R);
-        int avgG = (int)largestGroup.Average(c => c.G);
-        int avgB = (int)largestGroup.Average(c => c.B);
+        foreach (var bucket in colorGroups.Values)
+        {
+            if (bucket.Count > maxCount)
+            {
+                maxCount = bucket.Count;
+                bestBucket = bucket;
+            }
+        }
+
+        if (bestBucket.Count <= 0)
+            return Color.FromRgb(255, 255, 255);
+
+        int avgR = (int)(bestBucket.SumR / bestBucket.Count);
+        int avgG = (int)(bestBucket.SumG / bestBucket.Count);
+        int avgB = (int)(bestBucket.SumB / bestBucket.Count);
 
         return Color.FromRgb((byte)avgR, (byte)avgG, (byte)avgB);
     }

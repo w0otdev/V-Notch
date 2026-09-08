@@ -11,6 +11,23 @@ public partial class MainWindow
 
     private DispatcherTimer? _dragWaitTimer;
     private DispatcherTimer? _dragCollapseTimer;
+    private DispatcherTimer? _dropProcessTimer;
+    private DispatcherTimer? _shelfReadyTimer;
+    private DispatcherTimer? _collapseWaitTimer;
+
+    internal void CancelDragDropTimers()
+    {
+        _dragWaitTimer?.Stop();
+        _dragWaitTimer = null;
+        _dragCollapseTimer?.Stop();
+        _dragCollapseTimer = null;
+        _dropProcessTimer?.Stop();
+        _dropProcessTimer = null;
+        _shelfReadyTimer?.Stop();
+        _shelfReadyTimer = null;
+        _collapseWaitTimer?.Stop();
+        _collapseWaitTimer = null;
+    }
 
     private void InitializeDragDropController()
     {
@@ -34,6 +51,7 @@ public partial class MainWindow
         e.Handled = true;
 
         _dragCollapseTimer?.Stop();
+        _dragCollapseTimer = null;
 
         bool wasExpanded = _isExpanded;
 
@@ -68,20 +86,24 @@ public partial class MainWindow
         _dragCollapseTimer.Tick += (s, args) =>
         {
             _dragCollapseTimer?.Stop();
+            _dragCollapseTimer = null;
             _dragDropController.AutoCollapseAfterDrag(_isExpanded, _isSecondaryView, _isAnimating);
 
             if (_isExpanded && !_isSecondaryView && _isAnimating)
             {
-                var collapseWait = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
-                collapseWait.Tick += (s2, args2) =>
+                _collapseWaitTimer?.Stop();
+                var collapseDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
+                _collapseWaitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+                _collapseWaitTimer.Tick += (s2, args2) =>
                 {
-                    if (!_isAnimating)
+                    if (!_isAnimating || DateTime.UtcNow >= collapseDeadlineUtc)
                     {
-                        collapseWait.Stop();
+                        _collapseWaitTimer?.Stop();
+                        _collapseWaitTimer = null;
                         _dragDropController.CollapseAfterViewSwitch(_isSecondaryView, _isAnimating);
                     }
                 };
-                collapseWait.Start();
+                _collapseWaitTimer.Start();
             }
         };
         _dragCollapseTimer.Start();
@@ -89,8 +111,7 @@ public partial class MainWindow
 
     private void NotchWrapper_DragDrop(object sender, DragEventArgs e)
     {
-        _dragWaitTimer?.Stop();
-        _dragCollapseTimer?.Stop();
+        CancelDragDropTimers();
 
         if (!e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -113,32 +134,37 @@ public partial class MainWindow
             ExpandNotch();
         }
 
-        var dropProcessTimer = new DispatcherTimer
+        var dropDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
+        _dropProcessTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(40)
         };
-        dropProcessTimer.Tick += (s, args) =>
+        _dropProcessTimer.Tick += (s, args) =>
         {
-            if (!_isAnimating)
+            if (!_isAnimating || DateTime.UtcNow >= dropDeadlineUtc)
             {
-                dropProcessTimer.Stop();
+                _dropProcessTimer?.Stop();
+                _dropProcessTimer = null;
 
                 if (!_isSecondaryView)
                 {
                     SwitchToSecondaryView();
-                    var shelfReadyTimer = new DispatcherTimer
+                    var shelfDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
+                    _shelfReadyTimer?.Stop();
+                    _shelfReadyTimer = new DispatcherTimer
                     {
                         Interval = TimeSpan.FromMilliseconds(40)
                     };
-                    shelfReadyTimer.Tick += (s2, args2) =>
+                    _shelfReadyTimer.Tick += (s2, args2) =>
                     {
-                        if (!_isAnimating)
+                        if (!_isAnimating || DateTime.UtcNow >= shelfDeadlineUtc)
                         {
-                            shelfReadyTimer.Stop();
+                            _shelfReadyTimer?.Stop();
+                            _shelfReadyTimer = null;
                             _dragDropController.HandleDrop(files);
                         }
                     };
-                    shelfReadyTimer.Start();
+                    _shelfReadyTimer.Start();
                 }
                 else
                 {
@@ -146,21 +172,23 @@ public partial class MainWindow
                 }
             }
         };
-        dropProcessTimer.Start();
+        _dropProcessTimer.Start();
     }
 
     private void StartDragWaitForShelf()
     {
         _dragWaitTimer?.Stop();
+        var waitDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
         _dragWaitTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(40)
         };
         _dragWaitTimer.Tick += (s, args) =>
         {
-            if (_isExpanded && !_isAnimating)
+            if ((_isExpanded && !_isAnimating) || DateTime.UtcNow >= waitDeadlineUtc)
             {
                 _dragWaitTimer?.Stop();
+                _dragWaitTimer = null;
                 _dragDropController.OnAnimationCompleted(_isExpanded, _isSecondaryView);
             }
         };

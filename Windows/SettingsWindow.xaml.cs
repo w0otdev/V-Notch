@@ -912,6 +912,7 @@ public partial class SettingsWindow : Window
     {
         if (_isLoadingSettings) return;
         _settings.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
+        VNotch.Services.WindowTitleScanner.UpdateInspectionAllowed(_settings.EnableBrowserUrlInspection);
         PushLivePreview();
     }
 
@@ -4226,6 +4227,7 @@ public partial class SettingsWindow : Window
         _settings.EnableOnlineLyrics = EnableOnlineLyricsCheck.IsChecked ?? true;
         _settings.EnablePrivacyIndicators = EnablePrivacyIndicatorsCheck.IsChecked ?? true;
         _settings.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
+        VNotch.Services.WindowTitleScanner.UpdateInspectionAllowed(_settings.EnableBrowserUrlInspection);
         _settings.EnableDiagnosticLogging = EnableDiagnosticLoggingCheck.IsChecked ?? true;
         _settings.EnableSpotlightHistory = EnableSpotlightHistoryCheck.IsChecked ?? true;
 

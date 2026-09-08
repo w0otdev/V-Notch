@@ -585,6 +585,7 @@ public partial class MainWindow : Window
         _timerManager?.Dispose();
         DisposeGestureController();
         DisposeAllShelfWatchers();
+        CancelDragDropTimers();
     }
 
     // The ViewModel is the single production subscriber to media state.  This window

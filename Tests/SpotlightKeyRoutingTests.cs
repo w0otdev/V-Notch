@@ -14,6 +14,7 @@ namespace VNotch.Tests;
 /// bubbling KeyDown, so navigation wired to the search box's KeyDown never
 /// fires; it must live on the window's tunneling PreviewKeyDown instead.
 /// </summary>
+[Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class SpotlightKeyRoutingTests
 {
     [Theory]

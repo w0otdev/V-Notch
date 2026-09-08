@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Automation;
 
 namespace VNotch.Services;
@@ -18,7 +19,7 @@ public interface IWindowTitleScanner
     void InvalidateUrlCaches();
 }
 
-public sealed class WindowTitleScanner : IWindowTitleScanner
+public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 {
     private const string HttpPrefix = "http://";
     private const string HttpsPrefix = "https://";
@@ -122,27 +123,121 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
     private bool _cachedSpotifyWebPlayerOpen;
     private DateTime _lastSpotifyWebPlayerTime = DateTime.MinValue;
 
-    public static bool IsBrowserUrlInspectionAllowed()
+    private static volatile int _cachedInspectionAllowed = -1;
+    private static FileSystemWatcher? _settingsWatcher;
+    private static readonly object _inspectionLock = new();
+
+    static WindowTitleScanner()
     {
         try
         {
             var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
-            if (!File.Exists(settingsPath)) return true;
-
-            string json = File.ReadAllText(settingsPath);
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty(nameof(Models.NotchSettings.EnableBrowserUrlInspection), out var urlInspection) && !urlInspection.GetBoolean())
-                return false;
+            string dir = Path.Combine(appDataPath, "V-Notch");
+            if (Directory.Exists(dir))
+            {
+                _settingsWatcher = new FileSystemWatcher(dir, "settings.json")
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+                    EnableRaisingEvents = true
+                };
+                _settingsWatcher.Changed += (_, _) => InvalidateInspectionAllowed();
+                _settingsWatcher.Created += (_, _) => InvalidateInspectionAllowed();
+                _settingsWatcher.Renamed += (_, _) => InvalidateInspectionAllowed();
+            }
         }
-        catch (Exception)
+        catch
         {
-            // Settings file may be missing, locked, or malformed; default to inspection allowed
+            // Ignore file watcher initialization issues
         }
+    }
 
-        return true;
+    public static void UpdateInspectionAllowed(bool allowed)
+    {
+        _cachedInspectionAllowed = allowed ? 1 : 0;
+    }
+
+    public static void InvalidateInspectionAllowed()
+    {
+        _cachedInspectionAllowed = -1;
+    }
+
+    public static bool IsBrowserUrlInspectionAllowed()
+    {
+        int cached = _cachedInspectionAllowed;
+        if (cached != -1)
+            return cached == 1;
+
+        lock (_inspectionLock)
+        {
+            if (_cachedInspectionAllowed != -1)
+                return _cachedInspectionAllowed == 1;
+
+            bool allowed = true;
+            try
+            {
+                var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
+                if (File.Exists(settingsPath))
+                {
+                    string json = File.ReadAllText(settingsPath);
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+
+                    if (root.TryGetProperty(nameof(Models.NotchSettings.EnableBrowserUrlInspection), out var urlInspection) && !urlInspection.GetBoolean())
+                        allowed = false;
+                }
+            }
+            catch (Exception)
+            {
+                // Settings file may be missing, locked, or malformed; default to inspection allowed
+            }
+
+            _cachedInspectionAllowed = allowed ? 1 : 0;
+            return allowed;
+        }
+    }
+
+    private int _generation;
+    private readonly AutoResetEvent _wakeWorkerEvent = new(false);
+    private readonly Thread _workerThread;
+    private volatile bool _disposed;
+
+    private bool _browserUrlScanActive;
+    private int _browserUrlScanGen;
+    private bool _pendingBrowserUrlScan;
+
+    private bool _anyBrowserScanActive;
+    private int _anyBrowserScanGen;
+    private bool _pendingAnyBrowserScan;
+
+    private bool _spotifyScanActive;
+    private int _spotifyScanGen;
+    private bool _pendingSpotifyScan;
+
+    internal Func<string?> BrowserUrlExtractor { get; set; } = ExtractBrowserUrlCore;
+    internal Func<string?> AnyBrowserMediaUrlExtractor { get; set; } = ExtractMediaUrlFromAllBrowserWindows;
+    internal Func<bool> SpotifyWebPlayerDetector { get; set; } = DetectSpotifyWebPlayer;
+
+    public WindowTitleScanner()
+    {
+        _workerThread = new Thread(WorkerLoop)
+        {
+            IsBackground = true,
+            Name = "VNotch.WindowTitleScanner.Worker",
+            Priority = ThreadPriority.BelowNormal
+        };
+        _workerThread.Start();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        try
+        {
+            _wakeWorkerEvent.Set();
+        }
+        catch (ObjectDisposedException) { }
     }
 
     public string? TryGetBrowserUrl()
@@ -155,8 +250,20 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             if ((DateTime.UtcNow - _lastBrowserUrlTime).TotalMilliseconds < 1000)
                 return _cachedBrowserUrl;
 
-            _cachedBrowserUrl = ExtractBrowserUrlCore();
-            _lastBrowserUrlTime = DateTime.UtcNow;
+            if (!_browserUrlScanActive)
+            {
+                _browserUrlScanActive = true;
+                _browserUrlScanGen = _generation;
+                _pendingBrowserUrlScan = true;
+                _wakeWorkerEvent.Set();
+            }
+            else if (_browserUrlScanGen != _generation)
+            {
+                _browserUrlScanGen = _generation;
+                _pendingBrowserUrlScan = true;
+                _wakeWorkerEvent.Set();
+            }
+
             return _cachedBrowserUrl;
         }
     }
@@ -172,8 +279,20 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             if ((DateTime.UtcNow - _lastAnyBrowserMediaUrlTime).TotalMilliseconds < ttlMs)
                 return _cachedAnyBrowserMediaUrl;
 
-            _cachedAnyBrowserMediaUrl = ExtractMediaUrlFromAllBrowserWindows();
-            _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
+            if (!_anyBrowserScanActive)
+            {
+                _anyBrowserScanActive = true;
+                _anyBrowserScanGen = _generation;
+                _pendingAnyBrowserScan = true;
+                _wakeWorkerEvent.Set();
+            }
+            else if (_anyBrowserScanGen != _generation)
+            {
+                _anyBrowserScanGen = _generation;
+                _pendingAnyBrowserScan = true;
+                _wakeWorkerEvent.Set();
+            }
+
             return _cachedAnyBrowserMediaUrl;
         }
     }
@@ -188,6 +307,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
     {
         lock (_cacheLock)
         {
+            _generation++;
             _cachedBrowserUrl = null;
             _lastBrowserUrlTime = DateTime.MinValue;
             _cachedAnyBrowserMediaUrl = null;
@@ -244,9 +364,164 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             if ((DateTime.UtcNow - _lastSpotifyWebPlayerTime).TotalMilliseconds < ttlMs)
                 return _cachedSpotifyWebPlayerOpen;
 
-            _cachedSpotifyWebPlayerOpen = DetectSpotifyWebPlayer();
-            _lastSpotifyWebPlayerTime = DateTime.UtcNow;
+            if (!_spotifyScanActive)
+            {
+                _spotifyScanActive = true;
+                _spotifyScanGen = _generation;
+                _pendingSpotifyScan = true;
+                _wakeWorkerEvent.Set();
+            }
+            else if (_spotifyScanGen != _generation)
+            {
+                _spotifyScanGen = _generation;
+                _pendingSpotifyScan = true;
+                _wakeWorkerEvent.Set();
+            }
+
             return _cachedSpotifyWebPlayerOpen;
+        }
+    }
+
+    private enum ScanType
+    {
+        None,
+        BrowserUrl,
+        AnyBrowserMediaUrl,
+        Spotify
+    }
+
+    private void WorkerLoop()
+    {
+        while (!_disposed)
+        {
+            try
+            {
+                _wakeWorkerEvent.WaitOne();
+            }
+            catch (ThreadAbortException)
+            {
+                break;
+            }
+            catch (Exception)
+            {
+                if (_disposed) break;
+            }
+
+            if (_disposed) break;
+
+            while (!_disposed)
+            {
+                ScanType nextScan = ScanType.None;
+                int capturedGen = 0;
+
+                lock (_cacheLock)
+                {
+                    capturedGen = _generation;
+
+                    if (_pendingBrowserUrlScan)
+                    {
+                        nextScan = ScanType.BrowserUrl;
+                        _pendingBrowserUrlScan = false;
+                    }
+                    else if (_pendingAnyBrowserScan)
+                    {
+                        nextScan = ScanType.AnyBrowserMediaUrl;
+                        _pendingAnyBrowserScan = false;
+                    }
+                    else if (_pendingSpotifyScan)
+                    {
+                        nextScan = ScanType.Spotify;
+                        _pendingSpotifyScan = false;
+                    }
+                }
+
+                if (nextScan == ScanType.None)
+                    break;
+
+                switch (nextScan)
+                {
+                    case ScanType.BrowserUrl:
+                    {
+                        string? url = null;
+                        try
+                        {
+                            url = BrowserUrlExtractor();
+                        }
+                        catch (Exception ex)
+                        {
+                            RuntimeLog.Debug("UIA-SCANNER", () => $"BrowserUrl scan failed: {ex.Message}");
+                        }
+
+                        lock (_cacheLock)
+                        {
+                            if (_browserUrlScanGen == capturedGen)
+                            {
+                                _browserUrlScanActive = false;
+                            }
+                            if (_generation == capturedGen)
+                            {
+                                _cachedBrowserUrl = url;
+                                _lastBrowserUrlTime = DateTime.UtcNow;
+                            }
+                        }
+                        break;
+                    }
+
+                    case ScanType.AnyBrowserMediaUrl:
+                    {
+                        string? url = null;
+                        try
+                        {
+                            url = AnyBrowserMediaUrlExtractor();
+                        }
+                        catch (Exception ex)
+                        {
+                            RuntimeLog.Debug("UIA-SCANNER", () => $"AnyBrowserMediaUrl scan failed: {ex.Message}");
+                        }
+
+                        lock (_cacheLock)
+                        {
+                            if (_anyBrowserScanGen == capturedGen)
+                            {
+                                _anyBrowserScanActive = false;
+                            }
+                            if (_generation == capturedGen)
+                            {
+                                _cachedAnyBrowserMediaUrl = url;
+                                _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
+                            }
+                        }
+                        break;
+                    }
+
+                    case ScanType.Spotify:
+                    {
+                        bool isSpotify = false;
+                        try
+                        {
+                            isSpotify = SpotifyWebPlayerDetector();
+                        }
+                        catch (Exception ex)
+                        {
+                            RuntimeLog.Debug("UIA-SCANNER", () => $"Spotify scan failed: {ex.Message}");
+                        }
+
+                        lock (_cacheLock)
+                        {
+                            if (_spotifyScanGen == capturedGen)
+                            {
+                                _spotifyScanActive = false;
+                            }
+                            if (_generation == capturedGen)
+                            {
+                                _cachedSpotifyWebPlayerOpen = isSpotify;
+                                _lastSpotifyWebPlayerTime = DateTime.UtcNow;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
         }
     }
 

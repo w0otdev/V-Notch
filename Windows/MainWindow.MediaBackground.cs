@@ -533,6 +533,11 @@ public partial class MainWindow
     private DispatcherTimer? _blurDissolveDebounce;
     private BitmapSource? _pendingBlurResult;
 
+    private sealed record BlurRequest(BitmapImage Thumbnail, bool AllowInterimThumbnail, int Version);
+    private BlurRequest? _pendingBlurRequest;
+    private bool _isBlurWorkerRunning = false;
+    private readonly object _blurWorkerLock = new();
+
     private async Task UpdateBlurredBackgroundAsync(BitmapImage thumbnail, bool allowInterimThumbnail = false)
     {
         try
@@ -558,64 +563,125 @@ public partial class MainWindow
 
             int taskVersion = ++_blurTaskVersion;
 
-            RuntimeLog.Log(BlurCrossfadeLogTag, $"START taskVer={taskVersion} thumb={thumbnail.PixelWidth}x{thumbnail.PixelHeight} subjectBlur={_settings.EnableSubjectBlur}");
-
-            BitmapSource? blurredImage;
-
-            if (_settings.EnableSubjectBlur)
+            lock (_blurWorkerLock)
             {
-                SubjectBounds? subject = null;
-                try
+                _pendingBlurRequest = new BlurRequest(thumbnail, allowInterimThumbnail, taskVersion);
+                if (_isBlurWorkerRunning)
                 {
-                    subject = await Task.Run(() => _mediaService.ArtworkService.GetDominantSubjectBounds(thumbnail), CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    RuntimeLog.Error("MEDIA-BG-SUBJECT", ex.ToString());
-                }
-
-                if (taskVersion != _blurTaskVersion)
-                {
-                    RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after subject) taskVer={taskVersion} current={_blurTaskVersion}");
                     return;
                 }
-
-                RuntimeLog.Log(BlurCrossfadeLogTag, $"subject={subject?.CenterX:F2},{subject?.CenterY:F2} w={subject?.Width:F2} h={subject?.Height:F2}");
-
-                blurredImage = await SubjectAwareBlurService.GetSubjectBlurredAsync(thumbnail, subject);
-            }
-            else
-            {
-                blurredImage = await FastBlurService.GetBlurredImageAsync(thumbnail);
+                _isBlurWorkerRunning = true;
             }
 
-            if (taskVersion != _blurTaskVersion)
-            {
-                RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after blur) taskVer={taskVersion} current={_blurTaskVersion}");
-                return;
-            }
-
-            if (blurredImage == null) return;
-
-            RuntimeLog.Log(BlurCrossfadeLogTag, $"RESULT taskVer={taskVersion} blurSize={blurredImage.PixelWidth}x{blurredImage.PixelHeight} suppress={_suppressNextBlurDissolve} frontNull={MediaBackgroundImage.Source == null} backNull={MediaBackgroundImageBack.Source == null}");
-
-            if (_suppressNextBlurDissolve || (MediaBackgroundImage.Source == null && MediaBackgroundImageBack.Source == null))
-            {
-                _suppressNextBlurDissolve = false;
-                _pendingBlurResult = null;
-                _blurDissolveDebounce?.Stop();
-                RuntimeLog.Log(BlurCrossfadeLogTag, $"APPLY-IMMEDIATE taskVer={taskVersion}");
-                ApplyBlurredBackgroundImmediate(blurredImage);
-                return;
-            }
-
-            RuntimeLog.Log(BlurCrossfadeLogTag, $"SCHEDULE-DISSOLVE taskVer={taskVersion}");
-            ScheduleBlurredBackgroundDissolve(blurredImage);
+            await RunBlurWorkerLoopAsync();
         }
         catch (Exception ex)
         {
             RuntimeLog.Error("MEDIA-BG-BLUR", ex.ToString());
         }
+    }
+
+    private async Task RunBlurWorkerLoopAsync()
+    {
+        while (true)
+        {
+            BlurRequest? req;
+            lock (_blurWorkerLock)
+            {
+                req = _pendingBlurRequest;
+                _pendingBlurRequest = null;
+            }
+
+            if (req == null)
+            {
+                lock (_blurWorkerLock)
+                {
+                    if (_pendingBlurRequest == null)
+                    {
+                        _isBlurWorkerRunning = false;
+                        break;
+                    }
+                    continue;
+                }
+            }
+
+            if (req.Version != _blurTaskVersion)
+            {
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale before start) taskVer={req.Version} current={_blurTaskVersion}");
+                continue;
+            }
+
+            await ProcessBlurRequestAsync(req);
+        }
+    }
+
+    private async Task ProcessBlurRequestAsync(BlurRequest req)
+    {
+        RuntimeLog.Log(BlurCrossfadeLogTag, $"START taskVer={req.Version} thumb={req.Thumbnail.PixelWidth}x{req.Thumbnail.PixelHeight} subjectBlur={_settings.EnableSubjectBlur}");
+
+        BitmapSource? blurredImage = null;
+
+        if (_settings.EnableSubjectBlur)
+        {
+            if (req.Version != _blurTaskVersion)
+            {
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale before inference) taskVer={req.Version} current={_blurTaskVersion}");
+                return;
+            }
+
+            SubjectBounds? subject = null;
+            try
+            {
+                subject = await Task.Run(() => _mediaService.ArtworkService.GetDominantSubjectBounds(req.Thumbnail), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("MEDIA-BG-SUBJECT", ex.ToString());
+            }
+
+            if (req.Version != _blurTaskVersion)
+            {
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after subject / before blur) taskVer={req.Version} current={_blurTaskVersion}");
+                return;
+            }
+
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"subject={subject?.CenterX:F2},{subject?.CenterY:F2} w={subject?.Width:F2} h={subject?.Height:F2}");
+
+            blurredImage = await SubjectAwareBlurService.GetSubjectBlurredAsync(req.Thumbnail, subject);
+        }
+        else
+        {
+            if (req.Version != _blurTaskVersion)
+            {
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale before blur) taskVer={req.Version} current={_blurTaskVersion}");
+                return;
+            }
+
+            blurredImage = await FastBlurService.GetBlurredImageAsync(req.Thumbnail);
+        }
+
+        if (req.Version != _blurTaskVersion)
+        {
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after blur) taskVer={req.Version} current={_blurTaskVersion}");
+            return;
+        }
+
+        if (blurredImage == null) return;
+
+        RuntimeLog.Log(BlurCrossfadeLogTag, $"RESULT taskVer={req.Version} blurSize={blurredImage.PixelWidth}x{blurredImage.PixelHeight} suppress={_suppressNextBlurDissolve} frontNull={MediaBackgroundImage.Source == null} backNull={MediaBackgroundImageBack.Source == null}");
+
+        if (_suppressNextBlurDissolve || (MediaBackgroundImage.Source == null && MediaBackgroundImageBack.Source == null))
+        {
+            _suppressNextBlurDissolve = false;
+            _pendingBlurResult = null;
+            _blurDissolveDebounce?.Stop();
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"APPLY-IMMEDIATE taskVer={req.Version}");
+            ApplyBlurredBackgroundImmediate(blurredImage);
+            return;
+        }
+
+        RuntimeLog.Log(BlurCrossfadeLogTag, $"SCHEDULE-DISSOLVE taskVer={req.Version}");
+        ScheduleBlurredBackgroundDissolve(blurredImage);
     }
 
     private void ApplyBlurredBackgroundImmediate(BitmapSource blurred)

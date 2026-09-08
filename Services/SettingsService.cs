@@ -3,6 +3,8 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using VNotch.Models;
 
 namespace VNotch.Services;
@@ -16,6 +18,37 @@ public class SettingsService : ISettingsService
     private readonly string _appFolder;
     private readonly Action<string> _apiKeySaveWarning;
 
+    private sealed record SaveOperation(NotchSettings Snapshot, bool KeepExistingBackup, TaskCompletionSource Tcs);
+
+    private readonly Channel<SaveOperation> _saveChannel = Channel.CreateUnbounded<SaveOperation>(new UnboundedChannelOptions
+    {
+        SingleReader = true,
+        SingleWriter = false
+    });
+
+    private void StartWorker()
+    {
+        Task.Run(async () =>
+        {
+            var reader = _saveChannel.Reader;
+            while (await reader.WaitToReadAsync().ConfigureAwait(false))
+            {
+                while (reader.TryRead(out var op))
+                {
+                    try
+                    {
+                        ExecuteSave(op.Snapshot, op.KeepExistingBackup);
+                        op.Tcs.TrySetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        op.Tcs.TrySetException(ex);
+                    }
+                }
+            }
+        });
+    }
+
     public SettingsService()
     {
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -28,6 +61,7 @@ public class SettingsService : ISettingsService
 
         _settingsPath = Path.Combine(_appFolder, "settings.json");
         _apiKeySaveWarning = ShowApiKeySaveWarning;
+        StartWorker();
     }
 
     // Test seam: production callers always use the APPDATA location and WPF notice.
@@ -38,6 +72,7 @@ public class SettingsService : ISettingsService
             ?? throw new ArgumentException("The settings path must include a directory.", nameof(settingsPath));
         Directory.CreateDirectory(_appFolder);
         _apiKeySaveWarning = apiKeySaveWarning ?? ShowApiKeySaveWarning;
+        StartWorker();
     }
 
     public NotchSettings Load()
@@ -77,6 +112,7 @@ public class SettingsService : ISettingsService
                     RemovePlaintextKeySettingsFiles();
             }
 
+            WindowTitleScanner.UpdateInspectionAllowed(settings.EnableBrowserUrlInspection);
             return settings;
         }
         catch (JsonException ex)
@@ -110,9 +146,22 @@ public class SettingsService : ISettingsService
         Save(settings, keepExistingBackup: true);
     }
 
-    private void Save(NotchSettings settings, bool keepExistingBackup)
+    public Task SaveAsync(NotchSettings settings, bool keepExistingBackup = true)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
+        var snapshot = settings.Clone();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _saveChannel.Writer.TryWrite(new SaveOperation(snapshot, keepExistingBackup, tcs));
+        return tcs.Task;
+    }
+
+    private void Save(NotchSettings settings, bool keepExistingBackup)
+    {
+        SaveAsync(settings, keepExistingBackup).GetAwaiter().GetResult();
+    }
+
+    private void ExecuteSave(NotchSettings settings, bool keepExistingBackup)
+    {
         var tempPath = _settingsPath + ".tmp";
 
         try
@@ -136,6 +185,8 @@ public class SettingsService : ISettingsService
             {
                 File.Move(tempPath, _settingsPath);
             }
+
+            WindowTitleScanner.UpdateInspectionAllowed(settings.EnableBrowserUrlInspection);
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
@@ -143,13 +194,12 @@ public class SettingsService : ISettingsService
             // The old file remains intact. Notify the user so they know the API keys
             // was not saved.
             RuntimeLog.Error(LogCategorySave, "DPAPI encryption failed — settings were not saved.");
-            _apiKeySaveWarning(Loc.Get("error.apiKeyEncrypt"));
+            DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategorySave, ex.ToString());
-            System.Windows.MessageBox.Show(Loc.Get("error.settingsSave", ex.Message), Loc.Get("error.title"),
-                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            DispatchSaveError(Loc.Get("error.settingsSave", ex.Message), Loc.Get("error.title"));
         }
         finally
         {
@@ -164,6 +214,31 @@ public class SettingsService : ISettingsService
             {
                 // Ignore cleanup failure for temporary save file
             }
+        }
+    }
+
+    private void DispatchSaveWarning(string message)
+    {
+        if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        {
+            System.Windows.Application.Current.Dispatcher.BeginInvoke(() => _apiKeySaveWarning(message));
+        }
+        else
+        {
+            _apiKeySaveWarning(message);
+        }
+    }
+
+    private static void DispatchSaveError(string message, string title)
+    {
+        if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        {
+            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+                System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error));
+        }
+        else
+        {
+            System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 

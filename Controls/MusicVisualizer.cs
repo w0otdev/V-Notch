@@ -723,6 +723,17 @@ namespace VNotch.Controls
         private static readonly float[] _fftInputBuffer = new float[FftLength];
         private static int _fftInputPos = 0;
         private static readonly Complex[] _fftData = new Complex[FftLength];
+        private static readonly double[] _hammingWindow = CreateHammingWindow(FftLength);
+
+        private static double[] CreateHammingWindow(int length)
+        {
+            var window = new double[length];
+            for (int i = 0; i < length; i++)
+            {
+                window[i] = 0.54 - 0.46 * Math.Cos((2 * Math.PI * i) / (length - 1));
+            }
+            return window;
+        }
         private static readonly float[] _displayTargets = new float[BarCount];
         private static readonly double[] _rolePeaks = { 0.38, 0.36, 0.40, 0.34, 0.32 };
         private static double _rmsSumSquares;
@@ -951,8 +962,7 @@ namespace VNotch.Controls
         {
             for (int i = 0; i < FftLength; i++)
             {
-                double window = 0.54 - 0.46 * Math.Cos((2 * Math.PI * i) / (FftLength - 1));
-                _fftData[i].X = (float)(_fftInputBuffer[i] * window);
+                _fftData[i].X = (float)(_fftInputBuffer[i] * _hammingWindow[i]);
                 _fftData[i].Y = 0;
             }
 

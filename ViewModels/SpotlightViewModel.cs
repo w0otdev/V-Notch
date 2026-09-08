@@ -1,6 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Spotlight;
 
 namespace VNotch.ViewModels;
@@ -13,10 +17,13 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     // providers and the Everything IPC provider run on every keystroke so the
     // first paint is instant.
     private const int DeferredSearchDebounceMs = 75;
+    private const int MaxIconConcurrency = 2;
 
     private readonly SpotlightSearchService _search;
     private readonly SpotlightUsageStore _usage;
+    private readonly Dispatcher _dispatcher;
     private CancellationTokenSource? _searchCts;
+    private long _queryGeneration;
 
     public ObservableCollection<SpotlightSearchItem> Results { get; } = new();
 
@@ -29,19 +36,24 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hasNoResults;
     [ObservableProperty] private bool _isWindowsSearchUnavailable;
 
-    public SpotlightViewModel(SpotlightSearchService search, SpotlightUsageStore usage)
+    public SpotlightViewModel(
+        SpotlightSearchService search,
+        SpotlightUsageStore usage,
+        Dispatcher? dispatcher = null)
     {
         _search = search;
         _usage = usage;
+        _dispatcher = dispatcher ?? Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
     }
 
     public async Task SearchAsync(string query)
     {
         Query = query;
-        _searchCts?.Cancel();
-        _searchCts?.Dispose();
+        CancelPendingSearch();
         _searchCts = new CancellationTokenSource();
         CancellationToken cancellationToken = _searchCts.Token;
+
+        long generation = Interlocked.Increment(ref _queryGeneration);
 
         if (string.IsNullOrWhiteSpace(query))
         {
@@ -61,11 +73,14 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
             var instantResults = await _search.SearchInstantAsync(query, ResultLimit, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             Publish(instantResults);
+            StartIconHydration(instantResults, generation, cancellationToken);
 
             await Task.Delay(DeferredSearchDebounceMs, cancellationToken);
             var deferredResults = await _search.SearchDeferredAsync(query, ResultLimit, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            Publish(SpotlightSearchService.Merge([instantResults, deferredResults], ResultLimit));
+            var merged = SpotlightSearchService.Merge([instantResults, deferredResults], ResultLimit);
+            Publish(merged);
+            StartIconHydration(merged, generation, cancellationToken);
             IsWindowsSearchUnavailable = !_search.IsWindowsSearchAvailable;
         }
         catch (OperationCanceledException)
@@ -153,6 +168,11 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
                 continue;
             }
 
+            if (incoming.Icon == null && Results[existing].Icon != null && string.Equals(incoming.IconPath, Results[existing].IconPath, StringComparison.OrdinalIgnoreCase))
+            {
+                incoming.Icon = Results[existing].Icon;
+            }
+
             if (existing != target) Results.Move(existing, target);
             // Keep the old instance (and its container) when the row would look
             // the same; Score changes alone are invisible.
@@ -191,6 +211,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     public void CancelPendingSearch()
     {
+        Interlocked.Increment(ref _queryGeneration);
         var cts = Interlocked.Exchange(ref _searchCts, null);
         if (cts != null)
         {
@@ -198,6 +219,79 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
             cts.Dispose();
         }
         IsSearching = false;
+    }
+
+    private void StartIconHydration(
+        IReadOnlyList<SpotlightSearchItem> items,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        var toHydrate = items
+            .Where(item => item.Icon == null && !string.IsNullOrEmpty(item.IconPath))
+            .ToList();
+
+        if (toHydrate.Count == 0) return;
+
+        Task.Run(async () =>
+        {
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = MaxIconConcurrency,
+                CancellationToken = cancellationToken
+            };
+
+            try
+            {
+                await Parallel.ForEachAsync(toHydrate, parallelOptions, async (item, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (Interlocked.Read(ref _queryGeneration) != generation) return;
+
+                    if (item.Icon != null) return;
+
+                    var icon = FileIconProvider.GetFileIcon(item.IconPath!);
+                    if (icon == null) return;
+
+                    if (icon.CanFreeze && !icon.IsFrozen)
+                    {
+                        icon.Freeze();
+                    }
+
+                    if (Interlocked.Read(ref _queryGeneration) != generation || ct.IsCancellationRequested) return;
+
+                    if (_dispatcher.CheckAccess())
+                    {
+                        ApplyLoadedIcon(item, icon, generation);
+                    }
+                    else
+                    {
+                        await _dispatcher.InvokeAsync(
+                            () => ApplyLoadedIcon(item, icon, generation),
+                            DispatcherPriority.Background,
+                            ct);
+                    }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Warn("SPOTLIGHT-ICON", $"Icon hydration error: {ex.Message}");
+            }
+        }, cancellationToken);
+    }
+
+    private void ApplyLoadedIcon(SpotlightSearchItem item, ImageSource icon, long generation)
+    {
+        if (Interlocked.Read(ref _queryGeneration) != generation) return;
+
+        var matching = Results.FirstOrDefault(r => r.Id == item.Id);
+        if (matching != null)
+        {
+            matching.Icon = icon;
+        }
+        item.Icon = icon;
     }
 
     public void Dispose()

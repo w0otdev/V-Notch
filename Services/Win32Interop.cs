@@ -78,6 +78,10 @@ internal static class Win32Interop
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -351,22 +355,84 @@ internal static class Win32Interop
 
     #endregion
 
+    private static IntPtr _cachedDesktopHost = IntPtr.Zero;
+    private static readonly object _desktopHostLock = new();
+
+    static Win32Interop()
+    {
+        try
+        {
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => InvalidateDesktopHostCache();
+        }
+        catch
+        {
+            // SystemEvents may be unavailable in some hosting environments
+        }
+    }
+
+    public static void InvalidateDesktopHostCache()
+    {
+        lock (_desktopHostLock)
+        {
+            _cachedDesktopHost = IntPtr.Zero;
+        }
+    }
+
+    public static IntPtr GetCachedDesktopHost()
+    {
+        lock (_desktopHostLock)
+        {
+            if (_cachedDesktopHost != IntPtr.Zero && IsWindow(_cachedDesktopHost))
+            {
+                if (FindWindowEx(_cachedDesktopHost, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
+                {
+                    return _cachedDesktopHost;
+                }
+            }
+
+            IntPtr found = IntPtr.Zero;
+            EnumWindows((topLevel, _) =>
+            {
+                if (FindWindowEx(topLevel, IntPtr.Zero, "SHELLDLL_DefView", null) == IntPtr.Zero)
+                    return true;
+
+                found = topLevel;
+                return false;
+            }, IntPtr.Zero);
+
+            _cachedDesktopHost = found;
+            return found;
+        }
+    }
+
+    /// <summary>
+    /// Checks if the given window is already positioned directly above the desktop host.
+    /// </summary>
+    public static bool IsWindowDirectlyAboveDesktop(IntPtr window, out IntPtr requiredAnchor)
+    {
+        requiredAnchor = HWND_NOTOPMOST;
+        var desktopHost = GetCachedDesktopHost();
+        if (desktopHost == IntPtr.Zero)
+            return false;
+
+        IntPtr anchor = GetWindow(desktopHost, GW_HWNDPREV);
+        if (anchor == window)
+        {
+            requiredAnchor = window;
+            return true;
+        }
+
+        requiredAnchor = anchor != IntPtr.Zero ? anchor : HWND_NOTOPMOST;
+        return false;
+    }
+
     /// <summary>
     /// Returns a z-order anchor that places an unowned window immediately above
     /// the desktop icon host, but below all ordinary application windows.
     /// </summary>
     public static IntPtr GetDesktopLayerInsertAfter(IntPtr window)
     {
-        IntPtr desktopHost = IntPtr.Zero;
-
-        EnumWindows((topLevel, _) =>
-        {
-            if (FindWindowEx(topLevel, IntPtr.Zero, "SHELLDLL_DefView", null) == IntPtr.Zero)
-                return true;
-
-            desktopHost = topLevel;
-            return false;
-        }, IntPtr.Zero);
+        var desktopHost = GetCachedDesktopHost();
 
         // Explorer can briefly rebuild its WorkerW/Progman hierarchy (notably
         // during Win+D and display changes). Falling back to NOTOPMOST is much

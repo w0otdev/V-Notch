@@ -28,7 +28,7 @@ public sealed class WebcamCaptureController : IDisposable
     private int _fadeToken;
 
     private long _lastFrameTimestamp;
-    private const long FrameIntervalTicks = 333_333;
+    private static readonly long FrameIntervalTicks = Stopwatch.Frequency / 30;
 
     // Pinned so the GC never moves it; never shrunk once allocated to avoid LOH churn
     // during the brief resolution-negotiation phase at camera startup.
@@ -208,7 +208,36 @@ public sealed class WebcamCaptureController : IDisposable
                         return ((MediaCapture?)null, (MediaFrameReader?)null, "Cannot detect color source");
                     }
 
-                    var reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
+                    const uint MaxPreviewWidth = 640;
+                    const uint MaxPreviewHeight = 480;
+
+                    MediaFrameReader reader;
+                    try
+                    {
+                        var currentFormat = colorSource.CurrentFormat?.VideoFormat;
+                        if (currentFormat != null && (currentFormat.Width > MaxPreviewWidth || currentFormat.Height > MaxPreviewHeight))
+                        {
+                            double scale = Math.Min((double)MaxPreviewWidth / currentFormat.Width, (double)MaxPreviewHeight / currentFormat.Height);
+                            uint targetWidth = Math.Max(1, (uint)Math.Round(currentFormat.Width * scale));
+                            uint targetHeight = Math.Max(1, (uint)Math.Round(currentFormat.Height * scale));
+                            // Ensure even dimensions
+                            targetWidth = (targetWidth + 1) & ~1u;
+                            targetHeight = (targetHeight + 1) & ~1u;
+
+                            var targetSize = new BitmapSize { Width = targetWidth, Height = targetHeight };
+                            reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8, targetSize);
+                        }
+                        else
+                        {
+                            reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        RuntimeLog.Warn("CAMERA", $"CreateFrameReaderAsync with preview size failed, falling back to default: {ex.Message}");
+                        reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
+                    }
+
                     lock (_lifecycleLock)
                     {
                         if (ReferenceEquals(_initializingMediaCapture, capture))

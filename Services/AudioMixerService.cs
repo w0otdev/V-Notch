@@ -44,7 +44,93 @@ public sealed class AudioMixerService : IDisposable
     private MMDeviceEnumerator? _enumerator;
     private readonly object _enumLock = new();
 
-    private readonly Dictionary<uint, (string Name, ImageSource? Icon)> _iconCache = new();
+    private readonly Dictionary<uint, CachedProcessMetadata> _iconCache = new();
+    private const int MaxIconCacheSize = 48;
+
+    private sealed class CachedProcessMetadata
+    {
+        public required string Name { get; init; }
+        public ImageSource? Icon { get; init; }
+        public string? ProcessName { get; init; }
+        public DateTime? ProcessStartTimeUtc { get; init; }
+        public string? ExePath { get; init; }
+        public DateTime LastAccessedUtc { get; set; }
+    }
+
+    private void SetCacheEntry(uint pid, CachedProcessMetadata entry)
+    {
+        if (_iconCache.Count >= MaxIconCacheSize && !_iconCache.ContainsKey(pid))
+        {
+            uint oldestKey = 0;
+            DateTime oldestTime = DateTime.MaxValue;
+            foreach (var kvp in _iconCache)
+            {
+                if (kvp.Value.LastAccessedUtc < oldestTime)
+                {
+                    oldestTime = kvp.Value.LastAccessedUtc;
+                    oldestKey = kvp.Key;
+                }
+            }
+            if (oldestKey != 0)
+            {
+                _iconCache.Remove(oldestKey);
+            }
+        }
+        _iconCache[pid] = entry;
+    }
+
+    private void PruneCacheExcept(HashSet<uint> activePids)
+    {
+        if (_iconCache.Count == 0) return;
+        var toRemove = new List<uint>();
+        foreach (var pid in _iconCache.Keys)
+        {
+            if (!activePids.Contains(pid))
+            {
+                toRemove.Add(pid);
+            }
+        }
+        foreach (var pid in toRemove)
+        {
+            _iconCache.Remove(pid);
+        }
+    }
+
+    private static bool IsCachedProcessValid(uint pid, CachedProcessMetadata cached)
+    {
+        try
+        {
+            using var proc = Process.GetProcessById((int)pid);
+            if (proc.HasExited) return false;
+
+            if (cached.ProcessStartTimeUtc.HasValue)
+            {
+                try
+                {
+                    if (Math.Abs((proc.StartTime.ToUniversalTime() - cached.ProcessStartTimeUtc.Value).TotalSeconds) > 1.0)
+                        return false;
+                }
+                catch
+                {
+                    if (!string.IsNullOrWhiteSpace(cached.ProcessName) &&
+                        !string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(cached.ProcessName))
+            {
+                if (!string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private MMDeviceEnumerator GetEnumeratorLocked() => _enumerator ??= new MMDeviceEnumerator();
 
@@ -110,16 +196,27 @@ public sealed class AudioMixerService : IDisposable
                         }
                         else if (includeIcons)
                         {
-                            if (_iconCache.TryGetValue(pid, out var cached))
+                            if (_iconCache.TryGetValue(pid, out var cached) && IsCachedProcessValid(pid, cached))
                             {
+                                cached.LastAccessedUtc = DateTime.UtcNow;
                                 name = cached.Name;
                                 icon = cached.Icon;
                             }
                             else
                             {
-                                ResolveProcess(pid, session, out name, out icon);
+                                ResolveProcess(pid, session, out name, out icon, out var procName, out var startTime, out var exePath);
                                 if (!string.IsNullOrWhiteSpace(name))
-                                    _iconCache[pid] = (name, icon);
+                                {
+                                    SetCacheEntry(pid, new CachedProcessMetadata
+                                    {
+                                        Name = name,
+                                        Icon = icon,
+                                        ProcessName = procName,
+                                        ProcessStartTimeUtc = startTime,
+                                        ExePath = exePath,
+                                        LastAccessedUtc = DateTime.UtcNow
+                                    });
+                                }
                             }
                         }
                         else
@@ -145,6 +242,8 @@ public sealed class AudioMixerService : IDisposable
                         RuntimeLog.Log("AUDIOMIXER-SESSION", ex.Message);
                     }
                 }
+
+                PruneCacheExcept(seenProcessIds);
             }
             catch (Exception ex)
             {
@@ -190,17 +289,31 @@ public sealed class AudioMixerService : IDisposable
     }
 
 #pragma warning disable S3776 // Resolves process metadata, description, and icon from executable file info
-    private static void ResolveProcess(uint pid, AudioSessionControl session, out string name, out ImageSource? icon)
+    private static void ResolveProcess(
+        uint pid,
+        AudioSessionControl session,
+        out string name,
+        out ImageSource? icon,
+        out string? processName,
+        out DateTime? startTimeUtc,
+        out string? resolvedExePath)
     {
         name = "";
         icon = null;
+        processName = null;
+        startTimeUtc = null;
+        resolvedExePath = null;
 
         string? exePath = null;
         try
         {
             using var process = Process.GetProcessById((int)pid);
+            processName = process.ProcessName;
+            try { startTimeUtc = process.StartTime.ToUniversalTime(); } catch { /* Inaccessible for some system processes */ }
             try { exePath = process.MainModule?.FileName; }
             catch (Exception) { /* System/protected process main module inaccessible */ }
+
+            resolvedExePath = exePath;
 
             if (!string.IsNullOrEmpty(exePath))
             {

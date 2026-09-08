@@ -41,28 +41,50 @@ public sealed class GpuMonitorService : IDisposable
 
     private Thread? _gpuSamplerThread;
     private volatile bool _isRunning = false;
+    private int _consumerCount = 0;
+    private readonly AutoResetEvent _wakeSamplerEvent = new(false);
     private readonly object _samplerLock = new();
 
     public GpuMonitorService()
     {
     }
 
-    public void EnsureSamplerRunning()
+    public void Start()
     {
-        if (_isRunning) return;
         lock (_samplerLock)
         {
-            if (_isRunning) return;
-            _isRunning = true;
-            _gpuSamplerThread = new Thread(GpuSamplingWorker)
+            _consumerCount++;
+            if (_consumerCount == 1 && !_isRunning)
             {
-                IsBackground = true,
-                Name = "VNotch-GpuPerformanceWorker",
-                Priority = ThreadPriority.Lowest
-            };
-            _gpuSamplerThread.Start();
+                _isRunning = true;
+                _gpuSamplerThread = new Thread(GpuSamplingWorker)
+                {
+                    IsBackground = true,
+                    Name = "VNotch-GpuPerformanceWorker",
+                    Priority = ThreadPriority.Lowest
+                };
+                _gpuSamplerThread.Start();
+            }
         }
     }
+
+    public void Stop()
+    {
+        lock (_samplerLock)
+        {
+            if (_consumerCount > 0)
+                _consumerCount--;
+
+            if (_consumerCount == 0 && _isRunning)
+            {
+                _isRunning = false;
+                _wakeSamplerEvent.Set();
+                _gpuSamplerThread = null;
+            }
+        }
+    }
+
+    public void EnsureSamplerRunning() => Start();
 
     public (float ProcessGpuPercent, float GlobalGpuPercent) GetGpuUsage()
     {
@@ -305,53 +327,84 @@ public sealed class GpuMonitorService : IDisposable
         return (0, 0, 0);
     }
 
+    private readonly struct GpuCounterItem
+    {
+        public readonly PerformanceCounter Counter;
+        public readonly bool IsCurrentProcess;
+
+        public GpuCounterItem(PerformanceCounter counter, bool isCurrentProcess)
+        {
+            Counter = counter;
+            IsCurrentProcess = isCurrentProcess;
+        }
+    }
+
     private void GpuSamplingWorker()
     {
-        List<PerformanceCounter>? procCounters = null;
-        List<PerformanceCounter>? globalCounters = null;
+        List<GpuCounterItem>? counters = null;
         long lastRefresh = 0;
         string pidPrefix = $"pid_{_currentPid}_";
 
-        while (_isRunning)
+        try
         {
-            try
+            while (_isRunning)
             {
-                long now = Stopwatch.GetTimestamp();
-                double secSinceRefresh = (double)(now - lastRefresh) / Stopwatch.Frequency;
-
-                // Refresh GPU Engine instance counters every 60 seconds (or on first run)
-                if (procCounters == null || globalCounters == null || secSinceRefresh > 60.0)
+                try
                 {
-                    RefreshGpuCounters(ref procCounters, ref globalCounters, pidPrefix);
-                    lastRefresh = now;
+                    long now = Stopwatch.GetTimestamp();
+                    double secSinceRefresh = (double)(now - lastRefresh) / Stopwatch.Frequency;
+
+                    // Refresh GPU Engine instance counters every 60 seconds (or on first run)
+                    if (counters == null || secSinceRefresh > 60.0)
+                    {
+                        RefreshGpuCounters(ref counters, pidPrefix);
+                        lastRefresh = now;
+                    }
+
+                    double procTotal = 0;
+                    double globalTotal = 0;
+                    if (counters != null)
+                    {
+                        foreach (var item in counters)
+                        {
+                            try
+                            {
+                                double val = item.Counter.NextValue();
+                                globalTotal += val;
+                                if (item.IsCurrentProcess)
+                                {
+                                    procTotal += val;
+                                }
+                            }
+                            catch
+                            {
+                                // Counter reading failed
+                            }
+                        }
+                    }
+
+                    _cachedProcessGpu = (float)Math.Clamp(procTotal, 0, 100);
+                    _cachedGlobalGpu = (float)Math.Clamp(globalTotal, 0, 100);
+                }
+                catch (Exception)
+                {
+                    // GPU sampling cycle error
                 }
 
-                double procTotal = SumCounterValues(procCounters);
-                double globalTotal = SumCounterValues(globalCounters);
-
-                _cachedProcessGpu = (float)Math.Clamp(procTotal, 0, 100);
-                _cachedGlobalGpu = (float)Math.Clamp(globalTotal, 0, 100);
+                _wakeSamplerEvent.WaitOne(1000);
             }
-            catch (Exception)
-            {
-                // GPU sampling cycle error
-            }
-
-            // Sample every 1000ms (1 second) to prevent registry/PDH lock contention and memory surges
-            Thread.Sleep(1000);
         }
-
-        DisposeCounterList(procCounters);
-        DisposeCounterList(globalCounters);
+        finally
+        {
+            DisposeCounterList(counters);
+            counters = null;
+        }
     }
 
-    private static void RefreshGpuCounters(ref List<PerformanceCounter>? procCounters, ref List<PerformanceCounter>? globalCounters, string pidPrefix)
+    private static void RefreshGpuCounters(ref List<GpuCounterItem>? counters, string pidPrefix)
     {
-        DisposeCounterList(procCounters);
-        DisposeCounterList(globalCounters);
-
-        procCounters = new List<PerformanceCounter>();
-        globalCounters = new List<PerformanceCounter>();
+        DisposeCounterList(counters);
+        counters = new List<GpuCounterItem>();
 
         try
         {
@@ -368,11 +421,8 @@ public sealed class GpuMonitorService : IDisposable
                 {
                     var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
                     counter.NextValue();
-                    globalCounters.Add(counter);
-                    if (inst.StartsWith(pidPrefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        procCounters.Add(counter);
-                    }
+                    bool isCurrentProcess = inst.StartsWith(pidPrefix, StringComparison.OrdinalIgnoreCase);
+                    counters.Add(new GpuCounterItem(counter, isCurrentProcess));
                 }
                 catch (Exception)
                 {
@@ -386,32 +436,14 @@ public sealed class GpuMonitorService : IDisposable
         }
     }
 
-    private static double SumCounterValues(List<PerformanceCounter>? counters)
-    {
-        if (counters == null || counters.Count == 0) return 0;
-        double total = 0;
-        foreach (var c in counters)
-        {
-            try
-            {
-                total += c.NextValue();
-            }
-            catch (Exception)
-            {
-                // Counter reading failed
-            }
-        }
-        return total;
-    }
-
-    private static void DisposeCounterList(List<PerformanceCounter>? list)
+    private static void DisposeCounterList(List<GpuCounterItem>? list)
     {
         if (list == null) return;
         foreach (var c in list)
         {
             try
             {
-                c.Dispose();
+                c.Counter.Dispose();
             }
             catch (Exception)
             {
@@ -423,7 +455,13 @@ public sealed class GpuMonitorService : IDisposable
 
     public void Dispose()
     {
-        _isRunning = false;
+        lock (_samplerLock)
+        {
+            _isRunning = false;
+            _consumerCount = 0;
+            _wakeSamplerEvent.Set();
+            _gpuSamplerThread = null;
+        }
     }
 }
 

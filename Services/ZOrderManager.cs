@@ -80,6 +80,9 @@ public sealed class ZOrderManager : IDisposable
         // whenever the desktop is exposed.
         if (_stayBehindWindows())
         {
+            if (!force && IsWindowDirectlyAboveDesktop(hwnd, out _))
+                return;
+
             SetWindowPos(hwnd, GetDesktopLayerInsertAfter(hwnd), 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             return;
@@ -121,9 +124,10 @@ public sealed class ZOrderManager : IDisposable
         // Explorer may move its desktop host during Win+D, virtual-desktop, and
         // display transitions. Reassert desktop mode so the notch is visible as
         // soon as the desktop appears, without requiring an icon/file click.
+        var burstActive = DateTime.UtcNow <= _burstUntilUtc;
         if (_stayBehindWindows())
         {
-            EnsureTopmost(force: true);
+            EnsureTopmost(force: burstActive);
             return;
         }
         if (_isSuspended()) return;
@@ -131,7 +135,6 @@ public sealed class ZOrderManager : IDisposable
         var hwnd = _getHwnd();
         if (hwnd == IntPtr.Zero || !_isEffectivelyVisible()) return;
 
-        var burstActive = DateTime.UtcNow <= _burstUntilUtc;
         var hasWindowAbove = Win32Interop.GetWindow(hwnd, GW_HWNDPREV) != IntPtr.Zero;
 
         if (burstActive || hasWindowAbove)

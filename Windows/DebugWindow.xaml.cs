@@ -643,9 +643,7 @@ public partial class DebugWindow : Window
 
     private void PopulateServiceLogs(IReadOnlyList<DiagnosticLogEntry> rawLogs, string filter, bool filterChanged, int previousRawCount)
     {
-        bool hasFilter = !string.IsNullOrEmpty(filter) && filter != "All Categories";
-
-        if (filterChanged || hasFilter || previousRawCount <= 0 || rawLogs.Count < previousRawCount)
+        if (filterChanged || previousRawCount <= 0 || rawLogs.Count < previousRawCount)
         {
             _serviceLogs.Clear();
             foreach (var log in FilterServiceLogs(rawLogs, filter))
@@ -655,9 +653,14 @@ public partial class DebugWindow : Window
         }
         else if (rawLogs.Count > previousRawCount)
         {
+            bool hasFilter = !string.IsNullOrEmpty(filter) && filter != "All Categories";
             for (int i = previousRawCount; i < rawLogs.Count; i++)
             {
-                _serviceLogs.Add(MapToViewModel(rawLogs[i], isService: true));
+                var entry = rawLogs[i];
+                if (!hasFilter || MatchesServiceFilter(entry, filter))
+                {
+                    _serviceLogs.Add(MapToViewModel(entry, isService: true));
+                }
             }
         }
     }
@@ -680,20 +683,23 @@ public partial class DebugWindow : Window
         }
     }
 
-    private static IEnumerable<DiagnosticLogEntry> FilterServiceLogs(IReadOnlyList<DiagnosticLogEntry> rawLogs, string filter) => filter switch
+    private static bool MatchesServiceFilter(DiagnosticLogEntry log, string filter) => filter switch
     {
-        "Media (Playback & Track)" => rawLogs.Where(l => l.Category.StartsWith("MEDIA", StringComparison.OrdinalIgnoreCase)),
-        "Audio Mixer" => rawLogs.Where(l => l.Category.StartsWith("AUDIO", StringComparison.OrdinalIgnoreCase)),
-        "Battery & Power" => rawLogs.Where(l => l.Category.StartsWith("BATTERY", StringComparison.OrdinalIgnoreCase)),
-        "Bluetooth" => rawLogs.Where(l => l.Category.StartsWith("BLUETOOTH", StringComparison.OrdinalIgnoreCase)),
-        "Spotify" => rawLogs.Where(l => l.Category.StartsWith("SPOTIFY", StringComparison.OrdinalIgnoreCase)),
-        "Weather" => rawLogs.Where(l => l.Category.StartsWith("WEATHER", StringComparison.OrdinalIgnoreCase)),
-        "Spotlight Search" => rawLogs.Where(l => l.Category.StartsWith("SPOTLIGHT", StringComparison.OrdinalIgnoreCase)),
-        "Subtitles & Lyrics" => rawLogs.Where(l => l.Category.StartsWith("SUBTITLE", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("LYRICS", StringComparison.OrdinalIgnoreCase)),
-        "Liquid Glass" => rawLogs.Where(l => l.Category.StartsWith("LIQUIDGLASS", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GLASS", StringComparison.OrdinalIgnoreCase)),
-        "Memory & GC" => rawLogs.Where(l => l.Category.StartsWith("MEMORY", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GC", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("CROP", StringComparison.OrdinalIgnoreCase)),
-        _ => rawLogs
+        "Media (Playback & Track)" => log.Category.StartsWith("MEDIA", StringComparison.OrdinalIgnoreCase),
+        "Audio Mixer" => log.Category.StartsWith("AUDIO", StringComparison.OrdinalIgnoreCase),
+        "Battery & Power" => log.Category.StartsWith("BATTERY", StringComparison.OrdinalIgnoreCase),
+        "Bluetooth" => log.Category.StartsWith("BLUETOOTH", StringComparison.OrdinalIgnoreCase),
+        "Spotify" => log.Category.StartsWith("SPOTIFY", StringComparison.OrdinalIgnoreCase),
+        "Weather" => log.Category.StartsWith("WEATHER", StringComparison.OrdinalIgnoreCase),
+        "Spotlight Search" => log.Category.StartsWith("SPOTLIGHT", StringComparison.OrdinalIgnoreCase),
+        "Subtitles & Lyrics" => log.Category.StartsWith("SUBTITLE", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("LYRICS", StringComparison.OrdinalIgnoreCase),
+        "Liquid Glass" => log.Category.StartsWith("LIQUIDGLASS", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("GLASS", StringComparison.OrdinalIgnoreCase),
+        "Memory & GC" => log.Category.StartsWith("MEMORY", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("GC", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("CROP", StringComparison.OrdinalIgnoreCase),
+        _ => true
     };
+
+    private static IEnumerable<DiagnosticLogEntry> FilterServiceLogs(IReadOnlyList<DiagnosticLogEntry> rawLogs, string filter) =>
+        rawLogs.Where(l => MatchesServiceFilter(l, filter));
 
     private void ServiceCategoryFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

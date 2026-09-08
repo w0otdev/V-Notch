@@ -44,6 +44,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private int _lastDirtyHeight;
     private bool _pendingFrame;
     private bool _presentQueued;
+    private int _retryScheduled;
     private bool _disposed;
     private bool _failed;
 
@@ -250,13 +251,20 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_disposed || _failed)
             return;
 
+        _presentQueued = false;
+
         try
         {
             bool presented = false;
-            lock (_surfaceSync)
+            bool acquiredSync = Monitor.TryEnter(_surfaceSync, 20);
+            if (!acquiredSync)
             {
-                _presentQueued = false;
+                ScheduleRetry();
+                return;
+            }
 
+            try
+            {
                 if (!_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
                     return;
 
@@ -268,7 +276,12 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 if (_renderSurface == null || _uploadSurface == null)
                     return;
 
-                _image.Lock();
+                if (!_image.TryLock(new Duration(TimeSpan.FromMilliseconds(20))))
+                {
+                    ScheduleRetry();
+                    return;
+                }
+
                 try
                 {
                     var frameRect = new Vortice.Direct3D9.Rect(
@@ -288,13 +301,12 @@ internal sealed class D3DImageFramePresenter : IDisposable
                         _attachedSurface = _renderSurface;
                     }
 
-                    int dirtyW = Math.Min(
-                        Math.Max(frameWidth, _lastDirtyWidth), _surfaceWidth);
-                    int dirtyH = Math.Min(
-                        Math.Max(frameHeight, _lastDirtyHeight), _surfaceHeight);
-                    _image.AddDirtyRect(new Int32Rect(0, 0, dirtyW, dirtyH));
+                    int dirtyWidth = Math.Max(frameWidth, _lastDirtyWidth);
+                    int dirtyHeight = Math.Max(frameHeight, _lastDirtyHeight);
+                    _image.AddDirtyRect(new Int32Rect(0, 0, dirtyWidth, dirtyHeight));
                     _lastDirtyWidth = frameWidth;
                     _lastDirtyHeight = frameHeight;
+
                     _pendingFrame = false;
                     _presentedTag = _uploadTag;
                     presented = true;
@@ -304,6 +316,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
                     _image.Unlock();
                 }
             }
+            finally
+            {
+                Monitor.Exit(_surfaceSync);
+            }
 
             if (presented)
                 FramePresented?.Invoke(_presentedTag);
@@ -312,6 +328,25 @@ internal sealed class D3DImageFramePresenter : IDisposable
         {
             ReportFailure(ex);
         }
+    }
+
+    private void ScheduleRetry()
+    {
+        if (_disposed || _failed || Interlocked.CompareExchange(ref _retryScheduled, 1, 0) != 0)
+            return;
+
+        _ = System.Threading.Tasks.Task.Delay(16).ContinueWith(_ =>
+        {
+            if (_disposed || _failed) return;
+            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
+            {
+                Interlocked.Exchange(ref _retryScheduled, 0);
+                if (_pendingFrame && !_disposed && !_failed)
+                {
+                    PresentPendingFrame();
+                }
+            }));
+        }, System.Threading.Tasks.TaskScheduler.Default);
     }
 
     private void OnFrontBufferAvailableChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -345,7 +380,9 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_attachedSurface == null || !_image.IsFrontBufferAvailable)
             return;
 
-        _image.Lock();
+        if (!_image.TryLock(new Duration(TimeSpan.FromMilliseconds(5))))
+            return;
+
         try
         {
             _image.SetBackBuffer(

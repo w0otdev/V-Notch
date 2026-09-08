@@ -92,6 +92,8 @@ public sealed class LiquidGlassController
     private double _activeIntervalMs;
     private volatile bool _animating;
     private volatile bool _presentationPaused;
+    private readonly AutoResetEvent _idleWakeEvent = new(false);
+    private volatile bool _forceRefreshNeeded;
 
     private readonly object _sync = new();
     private GlassParams _params = GlassParams.Default;
@@ -230,6 +232,7 @@ public sealed class LiquidGlassController
 
     // Unchanged-frame suppression. Re-presenting an identical backdrop is a pure
     private const int UnchangedRepresentIntervalMs = 500;
+    internal Action? OnGpuFrameUploaded { get; set; }
     private ulong _lastCaptureHash;
     private long _lastPresentTicks;
     private bool _hasUploadedGpuFrame;
@@ -355,6 +358,7 @@ public sealed class LiquidGlassController
         _hasUploadedGpuFrame = false;
         _hasPresentedCpuFrame = false;
         _hasVisibleFrame = false;
+        _forceRefreshNeeded = true;
     }
 
     private void OnD3DFramePresented(object? tag)
@@ -484,7 +488,15 @@ public sealed class LiquidGlassController
         {
             // The held frame used the pre-hover capture rectangle. Force the next
             Volatile.Write(ref _lastRegionFetchMs, double.NegativeInfinity);
+            _forceRefreshNeeded = true;
+            _idleWakeEvent.Set();
         }
+    }
+
+    public void ForceRefresh()
+    {
+        _forceRefreshNeeded = true;
+        _idleWakeEvent.Set();
     }
 
     public void SetParams(GlassParams p)
@@ -544,6 +556,8 @@ public sealed class LiquidGlassController
         _presentInFlight = false;
         _hasUploadedGpuFrame = false;
         _hasPresentedCpuFrame = false;
+        _forceRefreshNeeded = true;
+        _idleWakeEvent.Set();
         RequestRenderTimerPeriod();
 
         if (_mag == null)
@@ -593,6 +607,7 @@ public sealed class LiquidGlassController
         ClearLiveRegion();
         _presentationPaused = false;
         _exactBitBltCapture = false;
+        _idleWakeEvent.Set();
         ReleaseRenderTimerPeriod();
 
         // Safety: clear any display affinity a previous build may have set.
@@ -703,7 +718,8 @@ public sealed class LiquidGlassController
 
         if (region == null)
         {
-            SleepWithCapturePolling(200);
+            WaitForIdleOrEvent(200);
+            nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
             return true;
         }
 
@@ -719,13 +735,13 @@ public sealed class LiquidGlassController
     {
         if (!_gpuMode && _presentInFlight)
         {
-            SleepWithCapturePolling(frameIntervalMs);
+            WaitForIdleOrEvent((int)Math.Max(1, frameIntervalMs));
             return true;
         }
 
         if (_presentationPaused)
         {
-            SleepWithCapturePolling(frameIntervalMs);
+            WaitForIdleOrEvent((int)Math.Max(16, frameIntervalMs));
             nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
             return true;
         }
@@ -829,7 +845,7 @@ public sealed class LiquidGlassController
         }
         if (nextFrameAtMs > nowMs)
         {
-            SleepWithCapturePolling(nextFrameAtMs - nowMs);
+            SleepUntilRenderDeadline(nextFrameAtMs - nowMs);
         }
         return nextFrameAtMs;
     }
@@ -850,6 +866,7 @@ public sealed class LiquidGlassController
             _liveRegion = region;
             _hasLiveRegion = true;
         }
+        _idleWakeEvent.Set();
     }
 
     public void ClearLiveRegion()
@@ -911,27 +928,63 @@ public sealed class LiquidGlassController
         return true;
     }
 
-    private void SleepWithCapturePolling(double milliseconds)
+    private void WaitForIdleOrEvent(int timeoutMs)
     {
-        long wakeAt = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.1, milliseconds));
+        if (!_isActive) return;
+        try
+        {
+            _idleWakeEvent.WaitOne(Math.Max(1, timeoutMs));
+        }
+        catch (ThreadAbortException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Best effort wait; ignore interruption
+        }
+    }
+
+    private void SleepUntilRenderDeadline(double milliseconds)
+    {
+        long targetTicks = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.1, milliseconds));
+
+        if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+        {
+            _exactBitBltCapture = false;
+            SetWindowDisplayAffinitySafe(WDA_NONE);
+            return;
+        }
+
         while (_isActive)
         {
-            long remainingTicks = wakeAt - Stopwatch.GetTimestamp();
+            long remainingTicks = targetTicks - Stopwatch.GetTimestamp();
             if (remainingTicks <= 0) return;
 
             double remainingMs = remainingTicks * 1000.0 / Stopwatch.Frequency;
-            if (remainingMs >= 2.0)
-                Thread.Sleep(1);
-            else if (remainingMs >= 0.25)
-                Thread.Sleep(0);
-            else
-                Thread.SpinWait(16);
-
-            if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+            if (remainingMs > 2.0)
             {
-                _exactBitBltCapture = false;
-                SetWindowDisplayAffinitySafe(WDA_NONE);
-                return;
+                int sleepMs = (int)Math.Floor(remainingMs - 1.5);
+                if (sleepMs >= 1)
+                {
+                    Thread.Sleep(sleepMs);
+                    if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+                    {
+                        _exactBitBltCapture = false;
+                        SetWindowDisplayAffinitySafe(WDA_NONE);
+                        return;
+                    }
+                    continue;
+                }
+            }
+
+            if (remainingMs >= 0.25)
+            {
+                Thread.Sleep(0);
+            }
+            else
+            {
+                Thread.SpinWait(8);
             }
         }
     }
@@ -1368,14 +1421,16 @@ public sealed class LiquidGlassController
         ulong sourceHash = ComputeSourceHash(dims.SrcW, dims.SrcH);
         long nowTicks = Environment.TickCount64;
         bool unchanged = _hasUploadedGpuFrame &&
+            !_forceRefreshNeeded &&
             sourceHash == _lastCaptureHash &&
             _lastUploadedGpuGeometry.Equals(geom);
-        if (!CaptureFullSurface && unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+        if (unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
             return false;
 
         if (PresentRawGpu(dims.SrcW, dims.SrcH, geom, generation))
         {
             _hasUploadedGpuFrame = true;
+            _forceRefreshNeeded = false;
             _lastCaptureHash = sourceHash;
             _lastUploadedGpuGeometry = geom;
             _lastPresentTicks = nowTicks;
@@ -1388,7 +1443,7 @@ public sealed class LiquidGlassController
     {
         ulong cpuSourceHash = ComputeSourceHash(srcW, srcH);
         long cpuNowTicks = Environment.TickCount64;
-        bool cpuUnchanged = _hasPresentedCpuFrame && !mapsChanged &&
+        bool cpuUnchanged = _hasPresentedCpuFrame && !_forceRefreshNeeded && !mapsChanged &&
             cpuSourceHash == _lastCaptureHash &&
             Math.Abs(_presentSubX - _lastPresentedSubX) < 0.001 &&
             Math.Abs(_presentSubY - _lastPresentedSubY) < 0.001 &&
@@ -1403,6 +1458,7 @@ public sealed class LiquidGlassController
         Refract(p, blurredSource);
 
         _hasPresentedCpuFrame = true;
+        _forceRefreshNeeded = false;
         _lastCaptureHash = cpuSourceHash;
         _lastPresentedSubX = _presentSubX;
         _lastPresentedSubY = _presentSubY;
@@ -1593,6 +1649,7 @@ public sealed class LiquidGlassController
                 OnD3DPresenterFailed(new InvalidOperationException("GPU frame upload failed."));
             return false;
         }
+        OnGpuFrameUploaded?.Invoke();
         return true;
     }
 

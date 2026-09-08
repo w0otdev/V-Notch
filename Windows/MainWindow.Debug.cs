@@ -108,6 +108,8 @@ public partial class MainWindow
 
             UpdateRefreshRate();
 
+            GpuMonitorService.Instance.Start();
+
             if (!_systemMonitorModule.IsRunning)
             {
                 _systemMonitorModule.Start();
@@ -123,6 +125,8 @@ public partial class MainWindow
             _isDebugDraggable = false;
             _debugWindow?.Hide();
             CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
+
+            GpuMonitorService.Instance.Stop();
 
             if (!IsSystemMonitorWidgetMode && _systemMonitorModule.IsRunning)
             {

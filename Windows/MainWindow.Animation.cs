@@ -92,7 +92,6 @@ public partial class MainWindow
     {
         if (ExpandedContent == null) return;
 
-        ExpandedContent.UpdateLayout();
         UpdateProgressSectionLayout();
         RefreshMediaMarquee();
         ExpandedContent.UpdateLayout();
@@ -327,6 +326,9 @@ public partial class MainWindow
     }
 
     private (double X, double Y)? _cachedThumbnailExpandTarget;
+    private double _lastMeasuredTargetExpandedWidth;
+    private double _lastMeasuredTargetExpandedHeight;
+    private double _lastMeasuredTargetDpi;
 
     private DoubleAnimation? _cachedThumbWidthExpand;
     private DoubleAnimation? _cachedThumbHeightExpand;
@@ -481,7 +483,11 @@ public partial class MainWindow
 
     private (double X, double Y)? EnsureCachedThumbnailExpandTarget()
     {
-        if (_cachedThumbnailExpandTarget.HasValue)
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        if (_cachedThumbnailExpandTarget.HasValue &&
+            Math.Abs(_lastMeasuredTargetExpandedWidth - _expandedWidth) < 0.1 &&
+            Math.Abs(_lastMeasuredTargetExpandedHeight - _expandedHeight) < 0.1 &&
+            Math.Abs(_lastMeasuredTargetDpi - dpi) < 0.001)
         {
             return _cachedThumbnailExpandTarget;
         }
@@ -496,13 +502,16 @@ public partial class MainWindow
         ExpandedContent.Width = _expandedWidth - 16;
         ExpandedContent.Height = _expandedHeight - 10;
 
-        UpdateLayout();
+        // Coalesce mutations before a single measurement layout pass
         PrepareExpandedContentLayoutForReveal();
         UpdateLayout();
 
         if (TryComputeThumbnailExpandTarget(out var computedTarget))
         {
             _cachedThumbnailExpandTarget = computedTarget;
+            _lastMeasuredTargetExpandedWidth = _expandedWidth;
+            _lastMeasuredTargetExpandedHeight = _expandedHeight;
+            _lastMeasuredTargetDpi = dpi;
         }
 
         NotchBorder.Width = prevNotchWidth;
