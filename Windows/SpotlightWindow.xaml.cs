@@ -122,7 +122,6 @@ public partial class SpotlightWindow : Window
             if (args.NewValue is false)
             {
                 ReleaseMorphSession();
-                MemoryOptimizerService.Instance.TrimWorkingSet();
             }
         };
 

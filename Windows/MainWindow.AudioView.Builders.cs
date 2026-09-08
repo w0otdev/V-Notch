@@ -323,7 +323,6 @@ public partial class MainWindow
         _lastAudioSnapshot = snap;
         SetAudioLoadingState(false);
         afterBuild?.Invoke();
-        MemoryOptimizerService.Instance.ScheduleTrim(1200);
     }
 
     private void RefreshAudioLocalization()

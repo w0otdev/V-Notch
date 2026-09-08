@@ -1115,7 +1115,6 @@ public partial class MainWindow : Window
         settingsWindow.Closed += (s, e) =>
         {
             PlayNotchReturnBounce();
-            MemoryOptimizerService.Instance.ScheduleTrim(600);
         };
 
         settingsWindow.ShowDialog();

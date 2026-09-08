@@ -37,8 +37,8 @@ public sealed class PerformanceDiagnosticService
     private long _lastAllocatedBytes;
     private long _lastAllocSampleTicks;
     private double _smoothedAllocBytesPerSec;
-    private ulong _lastWorkingSetBytes;
-    private long _lastWorkingSetTicks;
+    private ulong _lastPrivateBytes;
+    private long _lastMemSampleTicks;
     private int _lastGen2;
 
     // Dispatcher latency
@@ -132,6 +132,7 @@ public sealed class PerformanceDiagnosticService
             GlobalCpu = globalCpu,
             ThreadCount = threadCount,
             ProcWorkingSet = procWorkingSet,
+            ProcPrivateBytes = procPrivateBytes,
             ManagedHeapBytes = managedHeapBytes,
             Gen2 = gen2,
             GlobalRamPercent = globalRamPercent,
@@ -425,35 +426,36 @@ public sealed class PerformanceDiagnosticService
 
     private bool CheckMemorySurge(in AnomalyMetrics m, double processAgeSec, DateTime now)
     {
-        if (_lastWorkingSetTicks > 0)
+        if (_lastMemSampleTicks > 0)
         {
-            double wsDeltaSec = (double)(Stopwatch.GetTimestamp() - _lastWorkingSetTicks) / Stopwatch.Frequency;
-            if (wsDeltaSec >= 1.5)
+            double deltaSec = (double)(Stopwatch.GetTimestamp() - _lastMemSampleTicks) / Stopwatch.Frequency;
+            if (deltaSec >= 1.5)
             {
-                long wsDelta = (long)m.ProcWorkingSet - (long)_lastWorkingSetBytes;
-                double deltaMb = wsDelta / 1024.0 / 1024.0;
-                double currentMb = m.ProcWorkingSet / 1024.0 / 1024.0;
-                double mbPerSec = wsDeltaSec > 0 ? deltaMb / wsDeltaSec : 0;
-                if (processAgeSec >= 10.0 && mbPerSec > 25.0 && deltaMb > 30.0 && currentMb > 180.0 && (now - _lastMemSurgeAlert).TotalSeconds > 4.0)
+                long privDelta = (long)m.ProcPrivateBytes - (long)_lastPrivateBytes;
+                double deltaMb = privDelta / 1024.0 / 1024.0;
+                double currentPrivMb = m.ProcPrivateBytes / 1024.0 / 1024.0;
+                double currentWsMb = m.ProcWorkingSet / 1024.0 / 1024.0;
+                double mbPerSec = deltaSec > 0 ? deltaMb / deltaSec : 0;
+                if (processAgeSec >= 10.0 && mbPerSec > 25.0 && deltaMb > 30.0 && currentPrivMb > 180.0 && (now - _lastMemSurgeAlert).TotalSeconds > 4.0)
                 {
                     _lastMemSurgeAlert = now;
                     _currentHealthLevel = PerformanceHealthLevel.Warning;
-                    _currentHealthSummary = $"Memory Surge: +{mbPerSec:0.0} MB/s (Total: {currentMb:0} MB)";
+                    _currentHealthSummary = $"Memory Surge: +{mbPerSec:0.0} MB/s (Private: {currentPrivMb:0} MB, WS: {currentWsMb:0} MB)";
                     AddLog(PerformanceHealthLevel.Warning, "BOTTLENECK-RAM",
-                        $"Rapid memory allocation surge (+{deltaMb:0.0} MB within {wsDeltaSec:0.1}s, +{mbPerSec:0.1} MB/s, total {currentMb:0.0} MB). Cause: Heavy visual tree instantiation, shell icon extraction, or media artwork cache.");
-                    MemoryOptimizerService.Instance.ScheduleTrim(1000);
-                    _lastWorkingSetBytes = m.ProcWorkingSet;
-                    _lastWorkingSetTicks = Stopwatch.GetTimestamp();
+                        $"Rapid memory allocation surge (+{deltaMb:0.0} MB private commit within {deltaSec:0.1}s, +{mbPerSec:0.1} MB/s, total private {currentPrivMb:0.0} MB, working set {currentWsMb:0.0} MB). Cause: Heavy visual tree instantiation, shell icon extraction, or media artwork cache.");
+                    // Note: Do NOT trigger working-set trim or forced GC here, as that creates a destructive page-fault thrashing cycle.
+                    _lastPrivateBytes = m.ProcPrivateBytes;
+                    _lastMemSampleTicks = Stopwatch.GetTimestamp();
                     return true;
                 }
-                _lastWorkingSetBytes = m.ProcWorkingSet;
-                _lastWorkingSetTicks = Stopwatch.GetTimestamp();
+                _lastPrivateBytes = m.ProcPrivateBytes;
+                _lastMemSampleTicks = Stopwatch.GetTimestamp();
             }
         }
         else
         {
-            _lastWorkingSetBytes = m.ProcWorkingSet;
-            _lastWorkingSetTicks = Stopwatch.GetTimestamp();
+            _lastPrivateBytes = m.ProcPrivateBytes;
+            _lastMemSampleTicks = Stopwatch.GetTimestamp();
         }
 
         return false;
@@ -570,6 +572,7 @@ public sealed class PerformanceDiagnosticService
         public double GlobalCpu { get; init; }
         public int ThreadCount { get; init; }
         public ulong ProcWorkingSet { get; init; }
+        public ulong ProcPrivateBytes { get; init; }
         public long ManagedHeapBytes { get; init; }
         public int Gen2 { get; init; }
         public double GlobalRamPercent { get; init; }

@@ -5456,7 +5456,6 @@ public partial class SettingsWindow : Window
         _liquidGlass?.Stop();
         DetachGpuRefraction();
         _liquidGlass = null;
-        MemoryOptimizerService.Instance.ScheduleTrim(200, aggressive: true);
     }
 
     #endregion

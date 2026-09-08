@@ -1194,8 +1194,6 @@ public partial class MainWindow
 
         FinalizeCompactModeAfterCollapse(contentToShow, suppressCompactThumbnailMotion);
         FinalizeCompactThumbnailAndVisualizerAfterCollapse(suppressCompactThumbnailMotion);
-
-        MemoryOptimizerService.Instance.ScheduleTrim(1200);
     }
 
     private bool CanStartCollapse() =>
