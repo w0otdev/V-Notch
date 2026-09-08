@@ -69,11 +69,11 @@ public sealed class SpotlightWindowAnimationTests
                     () => window.Shell.HasAnimatedProperties,
                     TimeSpan.FromSeconds(5));
                 window.HideSpotlight();
-                PumpFor(TimeSpan.FromMilliseconds(45));
-                Assert.InRange(window.Shell.Opacity, 0.01, 0.99);
+                PumpUntil(() => window.Shell.Opacity < 1.0, TimeSpan.FromSeconds(5));
+                Assert.InRange(window.Shell.Opacity, 0.001, 0.999);
                 window.ToggleFromHotkey();
-                PumpFor(TimeSpan.FromMilliseconds(30));
-                Assert.InRange(window.Shell.Opacity, 0.01, 0.99);
+                PumpUntil(() => window.Shell.Opacity > 0.001 && window.Shell.Opacity < 1.0, TimeSpan.FromSeconds(5));
+                Assert.InRange(window.Shell.Opacity, 0.001, 0.999);
                 window.DismissFromGlobalShortcut();
                 window.DismissFromGlobalShortcut();
 

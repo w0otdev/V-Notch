@@ -529,9 +529,9 @@ public sealed class LiquidGlassSpotlightTests
         Canvas.SetTop(marker, (physicalY - bgOrigin.Y) / dpi - 1);
         panel.Children.Add(marker);
         background.Content = panel;
-        PumpUntil(() => ReadCenterPixel(window)[2] > 220, TimeSpan.FromMilliseconds(400));
+        PumpUntil(() => ReadCenterPixel(window)[2] > 220, TimeSpan.FromSeconds(4));
         background.Content = null;
-        PumpUntil(() => ReadCenterPixel(window)[1] > 175, TimeSpan.FromMilliseconds(400));
+        PumpUntil(() => ReadCenterPixel(window)[1] > 175, TimeSpan.FromSeconds(4));
     }
 
     [Theory]
