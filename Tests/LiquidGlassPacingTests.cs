@@ -87,7 +87,7 @@ public sealed class LiquidGlassPacingTests
                 var sw = Stopwatch.StartNew();
                 // Providing a live region should immediately wake the worker
                 controller.SetLiveRegion(new LiquidGlassController.CaptureRegion(10, 10, 100, 50, 0, 0));
-                
+
                 // Ensure worker is active and not stuck
                 Assert.True(sw.ElapsedMilliseconds < 100, $"SetLiveRegion took too long: {sw.ElapsedMilliseconds} ms");
             }

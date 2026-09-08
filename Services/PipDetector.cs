@@ -59,6 +59,7 @@ public static class PipDetector
     /// <summary>
     /// Checks whether a window title represents a Picture-in-Picture window.
     /// </summary>
+#pragma warning disable S3267 // Keyword lookup does not iterate loops
     public static bool IsPipTitle(string? title)
     {
         if (string.IsNullOrWhiteSpace(title))
@@ -75,6 +76,7 @@ public static class PipDetector
 
         return false;
     }
+#pragma warning restore S3267
 
     /// <summary>
     /// Checks whether the given process name belongs to a known browser capable of PiP.
@@ -135,16 +137,11 @@ public static class PipDetector
         string className = GetWindowClassName(hWnd);
         if (PipWindowClasses.Contains(className) &&
             !string.IsNullOrWhiteSpace(title) &&
-            GetWindowRect(hWnd, out RECT rect))
+            GetWindowRect(hWnd, out RECT rect) &&
+            rect.Right - rect.Left is >= 100 and <= 1600 &&
+            rect.Bottom - rect.Top is >= 60 and <= 1200)
         {
-            int width = rect.Right - rect.Left;
-            int height = rect.Bottom - rect.Top;
-
-            // Floating video PiP windows typically have dimensions between 100x60 and 1600x1200
-            if (width is >= 100 and <= 1600 && height is >= 60 and <= 1200)
-            {
-                return true;
-            }
+            return true;
         }
 
         return false;

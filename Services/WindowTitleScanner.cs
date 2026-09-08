@@ -441,85 +441,85 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                 switch (nextScan)
                 {
                     case ScanType.BrowserUrl:
-                    {
-                        string? url = null;
-                        try
                         {
-                            url = BrowserUrlExtractor();
-                        }
-                        catch (Exception ex)
-                        {
-                            RuntimeLog.Debug("UIA-SCANNER", () => $"BrowserUrl scan failed: {ex.Message}");
-                        }
+                            string? url = null;
+                            try
+                            {
+                                url = BrowserUrlExtractor();
+                            }
+                            catch (Exception ex)
+                            {
+                                RuntimeLog.Debug("UIA-SCANNER", () => $"BrowserUrl scan failed: {ex.Message}");
+                            }
 
-                        lock (_cacheLock)
-                        {
-                            if (_browserUrlScanGen == capturedGen)
+                            lock (_cacheLock)
                             {
-                                _browserUrlScanActive = false;
+                                if (_browserUrlScanGen == capturedGen)
+                                {
+                                    _browserUrlScanActive = false;
+                                }
+                                if (_generation == capturedGen)
+                                {
+                                    _cachedBrowserUrl = url;
+                                    _lastBrowserUrlTime = DateTime.UtcNow;
+                                }
                             }
-                            if (_generation == capturedGen)
-                            {
-                                _cachedBrowserUrl = url;
-                                _lastBrowserUrlTime = DateTime.UtcNow;
-                            }
+                            break;
                         }
-                        break;
-                    }
 
                     case ScanType.AnyBrowserMediaUrl:
-                    {
-                        string? url = null;
-                        try
                         {
-                            url = AnyBrowserMediaUrlExtractor();
-                        }
-                        catch (Exception ex)
-                        {
-                            RuntimeLog.Debug("UIA-SCANNER", () => $"AnyBrowserMediaUrl scan failed: {ex.Message}");
-                        }
+                            string? url = null;
+                            try
+                            {
+                                url = AnyBrowserMediaUrlExtractor();
+                            }
+                            catch (Exception ex)
+                            {
+                                RuntimeLog.Debug("UIA-SCANNER", () => $"AnyBrowserMediaUrl scan failed: {ex.Message}");
+                            }
 
-                        lock (_cacheLock)
-                        {
-                            if (_anyBrowserScanGen == capturedGen)
+                            lock (_cacheLock)
                             {
-                                _anyBrowserScanActive = false;
+                                if (_anyBrowserScanGen == capturedGen)
+                                {
+                                    _anyBrowserScanActive = false;
+                                }
+                                if (_generation == capturedGen)
+                                {
+                                    _cachedAnyBrowserMediaUrl = url;
+                                    _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
+                                }
                             }
-                            if (_generation == capturedGen)
-                            {
-                                _cachedAnyBrowserMediaUrl = url;
-                                _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
-                            }
+                            break;
                         }
-                        break;
-                    }
 
                     case ScanType.Spotify:
-                    {
-                        bool isSpotify = false;
-                        try
                         {
-                            isSpotify = SpotifyWebPlayerDetector();
-                        }
-                        catch (Exception ex)
-                        {
-                            RuntimeLog.Debug("UIA-SCANNER", () => $"Spotify scan failed: {ex.Message}");
-                        }
+                            bool isSpotify = false;
+                            try
+                            {
+                                isSpotify = SpotifyWebPlayerDetector();
+                            }
+                            catch (Exception ex)
+                            {
+                                RuntimeLog.Debug("UIA-SCANNER", () => $"Spotify scan failed: {ex.Message}");
+                            }
 
-                        lock (_cacheLock)
-                        {
-                            if (_spotifyScanGen == capturedGen)
+                            lock (_cacheLock)
                             {
-                                _spotifyScanActive = false;
+                                if (_spotifyScanGen == capturedGen)
+                                {
+                                    _spotifyScanActive = false;
+                                }
+                                if (_generation == capturedGen)
+                                {
+                                    _cachedSpotifyWebPlayerOpen = isSpotify;
+                                    _lastSpotifyWebPlayerTime = DateTime.UtcNow;
+                                }
                             }
-                            if (_generation == capturedGen)
-                            {
-                                _cachedSpotifyWebPlayerOpen = isSpotify;
-                                _lastSpotifyWebPlayerTime = DateTime.UtcNow;
-                            }
+                            break;
                         }
-                        break;
-                    }
                 }
             }
         }

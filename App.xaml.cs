@@ -389,7 +389,7 @@ public partial class App : Application
         return null;
     }
 
-    private static void ApplyProcessPriority(string priority)
+    internal static void ApplyProcessPriority(string priority)
     {
         try
         {

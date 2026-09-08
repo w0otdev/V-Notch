@@ -73,6 +73,12 @@ public sealed class FakeSettingsService : ISettingsService
         LastSaved = settings;
     }
 
+    public Task SaveAsync(NotchSettings settings)
+    {
+        Save(settings);
+        return Task.CompletedTask;
+    }
+
     public void ExportSettingsToFile(string filePath, NotchSettings settings)
     {
         _settings = settings;

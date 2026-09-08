@@ -79,7 +79,6 @@ internal static class ServicePrewarmer
         WarmupPrivacyIndicator(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
-        MemoryOptimizerService.Instance.SchedulePostStartupTrim(1800, 4500);
     }
 
     private static NotchSettings? WarmupSettings(IServiceProvider provider)

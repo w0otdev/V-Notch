@@ -146,7 +146,12 @@ public class SettingsService : ISettingsService
         Save(settings, keepExistingBackup: true);
     }
 
-    public Task SaveAsync(NotchSettings settings, bool keepExistingBackup = true)
+    public Task SaveAsync(NotchSettings settings)
+    {
+        return SaveAsync(settings, keepExistingBackup: true);
+    }
+
+    public Task SaveAsync(NotchSettings settings, bool keepExistingBackup)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
         var snapshot = settings.Clone();

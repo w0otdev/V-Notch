@@ -74,15 +74,12 @@ public sealed class MemoryOptimizerService : IDisposable
     }
 
     /// <summary>
-    /// Schedules a post-startup working set trim after application startup has settled.
+    /// Post-startup forced trims cause unnecessary page-fault thrashing and full GC pauses.
+    /// This method is retained as a no-op to preserve smoothness.
     /// </summary>
     public void SchedulePostStartupTrim(int firstDelayMs = 1800, int secondDelayMs = 4500)
     {
-        ScheduleTrim(firstDelayMs, aggressive: true);
-        Task.Delay(secondDelayMs, CancellationToken.None).ContinueWith(_ =>
-        {
-            TrimWorkingSet(aggressive: true);
-        }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        // No-op: automatic GC is preferred to prevent startup stutter
     }
 
     /// <summary>

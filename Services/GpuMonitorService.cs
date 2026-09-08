@@ -45,6 +45,19 @@ public sealed class GpuMonitorService : IDisposable
     private readonly AutoResetEvent _wakeSamplerEvent = new(false);
     private readonly object _samplerLock = new();
 
+    public bool IsRunning => _isRunning;
+
+    public int ConsumerCount
+    {
+        get
+        {
+            lock (_samplerLock)
+            {
+                return _consumerCount;
+            }
+        }
+    }
+
     public GpuMonitorService()
     {
     }
@@ -84,11 +97,29 @@ public sealed class GpuMonitorService : IDisposable
         }
     }
 
-    public void EnsureSamplerRunning() => Start();
+    public void EnsureSamplerRunning()
+    {
+        lock (_samplerLock)
+        {
+            if (_consumerCount == 0)
+                _consumerCount = 1;
+
+            if (!_isRunning)
+            {
+                _isRunning = true;
+                _gpuSamplerThread = new Thread(GpuSamplingWorker)
+                {
+                    IsBackground = true,
+                    Name = "VNotch-GpuPerformanceWorker",
+                    Priority = ThreadPriority.Lowest
+                };
+                _gpuSamplerThread.Start();
+            }
+        }
+    }
 
     public (float ProcessGpuPercent, float GlobalGpuPercent) GetGpuUsage()
     {
-        EnsureSamplerRunning();
         return (_cachedProcessGpu, _cachedGlobalGpu);
     }
 
@@ -168,8 +199,6 @@ public sealed class GpuMonitorService : IDisposable
     /// </summary>
     public PerformanceDebugSnapshot SampleFastMetrics(double fps, int hz, double netDown = 0, double netUp = 0)
     {
-        EnsureSamplerRunning();
-
         long nowTicks = Stopwatch.GetTimestamp();
         double procCpu = SampleProcessCpu(nowTicks);
         ulong procRam = SampleProcessRam();
@@ -397,7 +426,6 @@ public sealed class GpuMonitorService : IDisposable
         finally
         {
             DisposeCounterList(counters);
-            counters = null;
         }
     }
 

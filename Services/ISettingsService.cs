@@ -8,11 +8,7 @@ public interface ISettingsService
 
     void Save(NotchSettings settings);
 
-    Task SaveAsync(NotchSettings settings)
-    {
-        Save(settings);
-        return Task.CompletedTask;
-    }
+    Task SaveAsync(NotchSettings settings);
 
     void ExportSettingsToFile(string filePath, NotchSettings settings);
 

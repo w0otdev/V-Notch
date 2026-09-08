@@ -96,27 +96,21 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
     private readonly struct CropCacheKey : IEquatable<CropCacheKey>
     {
-        public readonly int Width;
-        public readonly int Height;
-        public readonly int PixelHash;
+        public readonly ArtworkFingerprint Fingerprint;
         public readonly Int32Rect Rect;
         public readonly bool ForceCenterCrop;
         public readonly bool SmartCropEnabled;
 
-        public CropCacheKey(int width, int height, int pixelHash, Int32Rect rect, bool forceCenterCrop, bool smartCropEnabled)
+        public CropCacheKey(ArtworkFingerprint fingerprint, Int32Rect rect, bool forceCenterCrop, bool smartCropEnabled)
         {
-            Width = width;
-            Height = height;
-            PixelHash = pixelHash;
+            Fingerprint = fingerprint;
             Rect = rect;
             ForceCenterCrop = forceCenterCrop;
             SmartCropEnabled = smartCropEnabled;
         }
 
         public bool Equals(CropCacheKey other) =>
-            Width == other.Width &&
-            Height == other.Height &&
-            PixelHash == other.PixelHash &&
+            Fingerprint.Equals(other.Fingerprint) &&
             Rect.Equals(other.Rect) &&
             ForceCenterCrop == other.ForceCenterCrop &&
             SmartCropEnabled == other.SmartCropEnabled;
@@ -124,42 +118,12 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         public override bool Equals(object? obj) => obj is CropCacheKey other && Equals(other);
 
         public override int GetHashCode() =>
-            HashCode.Combine(Width, Height, PixelHash, Rect, ForceCenterCrop, SmartCropEnabled);
+            HashCode.Combine(Fingerprint, Rect, ForceCenterCrop, SmartCropEnabled);
     }
 
     private static readonly Dictionary<CropCacheKey, (BitmapImage Image, DateTime LastAccessedUtc)> _cropCache = new();
     private static readonly object _cropCacheLock = new();
     private const int MaxCropCacheSize = 24;
-
-    private static int ComputeImageFingerprint(BitmapSource source)
-    {
-        int w = source.PixelWidth;
-        int h = source.PixelHeight;
-        if (w <= 0 || h <= 0) return 0;
-
-        int hash = HashCode.Combine(w, h, source.Format.BitsPerPixel);
-
-        try
-        {
-            byte[] pixel = new byte[4];
-            int[] xs = { 0, w / 4, w / 2, 3 * w / 4, w - 1 };
-            int[] ys = { 0, h / 4, h / 2, 3 * h / 4, h - 1 };
-            foreach (int y in ys)
-            {
-                foreach (int x in xs)
-                {
-                    source.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
-                    hash = HashCode.Combine(hash, pixel[0], pixel[1], pixel[2], pixel[3]);
-                }
-            }
-        }
-        catch
-        {
-            hash = HashCode.Combine(hash, source.GetHashCode());
-        }
-
-        return hash;
-    }
 
     public BitmapImage? CropToSquare(BitmapImage source, string mediaSource, bool forceCenterCrop = false)
     {
@@ -201,8 +165,8 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 return source;
             }
 
-            int fingerprint = ComputeImageFingerprint(source);
-            var cacheKey = new CropCacheKey(width, height, fingerprint, rect, forceCenterCrop, EnableSmartCrop);
+            var fingerprint = ArtworkFingerprint.Create(source);
+            var cacheKey = new CropCacheKey(fingerprint, rect, forceCenterCrop, EnableSmartCrop);
 
             lock (_cropCacheLock)
             {

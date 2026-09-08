@@ -1181,9 +1181,14 @@ public partial class MainWindow : Window
             VNotch.Controls.MusicVisualizer.ConfigureAudioDevice(_settings.VisualizerAudioDeviceId);
         }
 
-        if (oldSettings == null || !string.Equals(oldSettings.ProcessPriority, _settings.ProcessPriority, StringComparison.Ordinal) || oldSettings.GpuPreference != _settings.GpuPreference)
+        if (oldSettings == null || oldSettings.EnableBlurEffects != _settings.EnableBlurEffects)
         {
             ApplyPerformanceSettings();
+        }
+
+        if (oldSettings == null || !string.Equals(oldSettings.ProcessPriority, _settings.ProcessPriority, StringComparison.Ordinal))
+        {
+            App.ApplyProcessPriority(_settings.ProcessPriority);
         }
 
         if (oldSettings == null || oldSettings.StayBehindWindows != _settings.StayBehindWindows)
@@ -1504,12 +1509,16 @@ public partial class MainWindow : Window
 
     private void ApplyPerformanceSettings()
     {
-        if (_settings.EnableBlurEffects)
+        if (!_settings.EnableBlurEffects)
         {
+            DisableBlurEffectsImmediate();
             return;
         }
 
-        DisableBlurEffectsImmediate();
+        if (_currentMediaInfo != null && _settings.ShowMediaArtBackground)
+        {
+            UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
+        }
     }
 
     private void DisableBlurEffectsImmediate()
