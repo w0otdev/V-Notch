@@ -1,13 +1,14 @@
 # Build V-Notch Installer
 # This script builds the Release version and creates the NSIS installer
 #
-# By default it produces a framework-dependent build (needs .NET 10 Desktop Runtime).
+# By default it produces a framework-dependent build (needs .NET 8 Desktop Runtime).
 # Use -SelfContained to bundle the runtime so the app runs on a clean machine
 # without installing .NET separately (larger installer).
 param(
     [switch]$SelfContained,
     # Optional code-signing certificate. In CI, pass these from protected secrets.
     [string]$CertificatePath = '',
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '')]
     [string]$CertificatePassword = ''
 )
 
@@ -44,10 +45,10 @@ if (Test-Path $publishDir) {
 # Step 2: Publish to release folder. `dotnet publish` already builds the app.
 Write-Host "[2/3] Publishing to $publishDir..." -ForegroundColor Yellow
 if ($SelfContained) {
-    # Self-contained: bundles the .NET runtime, runs without installing .NET 10.
+    # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
     dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir
 } else {
-    # Framework-dependent single file - requires .NET 10 runtime.
+    # Framework-dependent single file - requires .NET 8 runtime.
     dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir
 }
 if ($LASTEXITCODE -ne 0) {

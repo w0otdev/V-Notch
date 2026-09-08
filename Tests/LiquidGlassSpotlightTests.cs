@@ -3,18 +3,18 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Windows.Interop;
-using System.Windows.Media.Imaging;
-using System.Windows.Controls;
-using Microsoft.Extensions.DependencyInjection;
-using VNotch;
-using VNotch.Services;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using VNotch;
 using VNotch.Controllers;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Spotlight;
 using VNotch.Services.Spotlight.Providers;
 using VNotch.ViewModels;
@@ -472,7 +472,7 @@ public sealed class LiquidGlassSpotlightTests
             }
             PumpFor(TimeSpan.FromMilliseconds(40));
         }
-        Assert.True(captured, $"Expected green backdrop pixel, got 0x{pixel:X8}, gdi=0x{gdiPixel:X8} at {(int)origin.X+20},{(int)origin.Y+20}.");
+        Assert.True(captured, $"Expected green backdrop pixel, got 0x{pixel:X8}, gdi=0x{gdiPixel:X8} at {(int)origin.X + 20},{(int)origin.Y + 20}.");
         Assert.InRange((pixel >> 8) & 255, 175, 205);
         Assert.InRange((pixel >> 16) & 255, 20, 45);
         Assert.InRange(pixel & 255, 110, 145);
@@ -542,14 +542,34 @@ public sealed class LiquidGlassSpotlightTests
     {
         RunSta(() =>
         {
-            var backdrop = new Window { Left = 40, Top = 70, Width = 600, Height = 350,
-                WindowStyle = WindowStyle.None, ShowActivated = false, ShowInTaskbar = false,
-                Topmost = true, Background = new SolidColorBrush(Color.FromRgb(32, 192, 128)) };
+            var backdrop = new Window
+            {
+                Left = 40,
+                Top = 70,
+                Width = 600,
+                Height = 350,
+                WindowStyle = WindowStyle.None,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                Topmost = true,
+                Background = new SolidColorBrush(Color.FromRgb(32, 192, 128))
+            };
             var image = new System.Windows.Controls.Image();
             var clip = new Border { Width = 320, Height = 50, ClipToBounds = true, Child = image };
-            var host = new Window { Left = 160, Top = 190, Width = 320, Height = 50,
-                WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent,
-                ShowActivated = false, ShowInTaskbar = false, Topmost = true, Content = clip };
+            var host = new Window
+            {
+                Left = 160,
+                Top = 190,
+                Width = 320,
+                Height = 50,
+                WindowStyle = WindowStyle.None,
+                AllowsTransparency = true,
+                Background = Brushes.Transparent,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                Topmost = true,
+                Content = clip
+            };
             LiquidGlassController? controller = null;
             try
             {

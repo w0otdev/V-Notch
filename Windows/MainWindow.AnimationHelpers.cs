@@ -52,15 +52,22 @@ public partial class MainWindow
         }
 
         bool islandMode = _settings.EnableDynamicIslandMode;
-        double thumbScale = isHovered
-            ? (islandMode ? 1.28 : 1.5)
-            : 1.0;
-        double notchWidth = isHovered
-            ? _collapsedWidth + (islandMode ? 24 : 32)
-            : _collapsedWidth;
-        double notchHeight = isHovered
-            ? _collapsedHeight + (islandMode ? 22 : 36)
-            : _collapsedHeight;
+        double thumbScale;
+        double notchWidth;
+        double notchHeight;
+
+        if (isHovered)
+        {
+            thumbScale = islandMode ? 1.28 : 1.5;
+            notchWidth = _collapsedWidth + (islandMode ? 24 : 32);
+            notchHeight = _collapsedHeight + (islandMode ? 22 : 36);
+        }
+        else
+        {
+            thumbScale = 1.0;
+            notchWidth = _collapsedWidth;
+            notchHeight = _collapsedHeight;
+        }
         double infoOpacity = isHovered ? 1 : 0;
 
         var duration = isHovered ? _dur500 : _dur350;
@@ -114,9 +121,15 @@ public partial class MainWindow
         }
         CompactHoverInfo.BeginAnimation(OpacityProperty, fadeAnim);
 
-        double radius = isHovered
-            ? (_settings.EnableDynamicIslandMode ? notchHeight / 2.0 : 24)
-            : _cornerRadiusCollapsed;
+        double radius;
+        if (isHovered)
+        {
+            radius = islandMode ? notchHeight / 2.0 : 24;
+        }
+        else
+        {
+            radius = _cornerRadiusCollapsed;
+        }
         AnimateCornerRadius(radius, duration.TimeSpan);
 
         double thumbRadius = isHovered && islandMode ? 8 : 6;
@@ -228,7 +241,7 @@ public partial class MainWindow
 
     #region Animation Helpers
 
-    private void FadeSwitch(FrameworkElement from, FrameworkElement to)
+    private static void FadeSwitch(FrameworkElement from, FrameworkElement to)
     {
 
         from.BeginAnimation(OpacityProperty, null);
@@ -347,10 +360,10 @@ public partial class MainWindow
 
     private void PlayNextSkipAnimation()
     {
-        PlayNextSkipAnimation(NextArrow0, NextArrow1, NextArrow2);
+        PlayNextSkipAnimation(NextArrow0, NextArrow1);
     }
 
-    private void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1, System.Windows.Shapes.Path arrow2)
+    private void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1)
     {
         const double slideDistance = 220;
 
@@ -391,10 +404,10 @@ public partial class MainWindow
 
     private void PlayPrevSkipAnimation()
     {
-        PlayPrevSkipAnimation(PrevArrow0, PrevArrow1, PrevArrow2);
+        PlayPrevSkipAnimation(PrevArrow0, PrevArrow2);
     }
 
-    private void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1, System.Windows.Shapes.Path arrow2)
+    private void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow2)
     {
         const double slideDistance = 220;
 

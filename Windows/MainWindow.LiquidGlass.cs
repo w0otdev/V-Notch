@@ -688,9 +688,8 @@ public partial class MainWindow
     private static readonly SolidColorBrush _glassDashStroke = Frozen(0x40, 255, 255, 255);
     private static readonly SolidColorBrush _defaultPanelBg = Frozen(0xFF, 0x1A, 0x1A, 0x1A);
     private static readonly SolidColorBrush _defaultDashStroke = Frozen(0xFF, 0x33, 0x33, 0x33);
-    // The idle camera box should read the same as the file tray (both #1A1A1A);
+    // The idle camera box should read the same as the file tray (both #1A1A1A)
     private static readonly SolidColorBrush _cameraOverlayDefault = Frozen(0x00, 0, 0, 0);
-    private static readonly SolidColorBrush _defaultAnimThumbnailBorder = Frozen(0xFF, 0x33, 0x33, 0x33);
 
     private static SolidColorBrush Frozen(byte a, byte r, byte g, byte b)
     {
@@ -835,7 +834,10 @@ public partial class MainWindow
         return scale > 0 ? scale : 1.0;
     }
 
-    private void InvalidateGlassDpiScale() { }
+    private void InvalidateGlassDpiScale()
+    {
+        // VisualTreeHelper.GetDpi queries current window DPI dynamically, no caching needed
+    }
 
     // Hover applies a transient scale to the collapsed notch without flipping the
     private bool _glassHoverMotion;
@@ -1169,14 +1171,7 @@ public partial class MainWindow
 
     public void ClearGlassMediaTint()
     {
-    }
-
-    private void ApplyDynamicGlassTint()
-    {
-        if (GlassTintOverlay != null)
-        {
-            GlassTintOverlay.Background = System.Windows.Media.Brushes.Transparent;
-        }
+        // Feature disabled: Do not tint liquid glass based on media thumbnail.
     }
 
     private double _lastActualHeight = -1;
@@ -1200,7 +1195,7 @@ public partial class MainWindow
         }
 
         UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
-        UpdateDynamicGlassTint(_liquidGlass.AverageBackgroundBrightness);
+        UpdateDynamicGlassTint();
         UpdateShaderGeometryPerFrame();
     }
 
@@ -1267,7 +1262,7 @@ public partial class MainWindow
         });
     }
 
-    private void UpdateDynamicGlassTint(double bgBrightness)
+    private void UpdateDynamicGlassTint()
     {
         if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
 

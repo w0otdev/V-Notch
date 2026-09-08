@@ -50,28 +50,31 @@ public partial class MainWindow
         var activeTabs = GetActiveTabSequence();
         if (activeTabs.Count <= 1) return;
 
-        NotchView currentView = _isAudioView ? NotchView.AudioMixer
-                              : _isTimerView ? NotchView.Timer
-                              : _isSecondaryView ? NotchView.Secondary
-                              : NotchView.Media;
+        NotchView currentView = NotchView.Media;
+        if (_isAudioView)
+        {
+            currentView = NotchView.AudioMixer;
+        }
+        else if (_isTimerView)
+        {
+            currentView = NotchView.Timer;
+        }
+        else if (_isSecondaryView)
+        {
+            currentView = NotchView.Secondary;
+        }
 
         int currentIndex = activeTabs.IndexOf(currentView);
         if (currentIndex < 0) currentIndex = 0;
 
         int targetIndex = currentIndex;
-        if (e.Delta < 0)
+        if (e.Delta < 0 && currentIndex < activeTabs.Count - 1)
         {
-            if (currentIndex < activeTabs.Count - 1)
-            {
-                targetIndex = currentIndex + 1;
-            }
+            targetIndex = currentIndex + 1;
         }
-        else if (e.Delta > 0)
+        else if (e.Delta > 0 && currentIndex > 0)
         {
-            if (currentIndex > 0)
-            {
-                targetIndex = currentIndex - 1;
-            }
+            targetIndex = currentIndex - 1;
         }
 
         if (targetIndex != currentIndex)
@@ -414,47 +417,64 @@ public partial class MainWindow
         primaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
     }
 
-    private void UpdateNavIconsActiveState()
+    private void AnimateNavIconOpacity(FrameworkElement? icon, double targetOpacity, bool animate)
+    {
+        if (icon == null) return;
+
+        if (!animate)
+        {
+            icon.BeginAnimation(UIElement.OpacityProperty, null);
+            icon.Opacity = targetOpacity;
+            return;
+        }
+
+        if (Math.Abs(icon.Opacity - targetOpacity) < 0.01)
+            return;
+
+        var anim = new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+            EasingFunction = _easeAppleOut
+        };
+        Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+        icon.BeginAnimation(UIElement.OpacityProperty, anim);
+    }
+
+    private void UpdateNavIconsActiveState(bool animate = true)
     {
         if (HomeIconButton == null || FileShelfIconButton == null || TimerIconButton == null || AudioIconButton == null)
             return;
 
-        HomeIconButton.BeginAnimation(UIElement.OpacityProperty, null);
-        FileShelfIconButton.BeginAnimation(UIElement.OpacityProperty, null);
-        TimerIconButton.BeginAnimation(UIElement.OpacityProperty, null);
-        AudioIconButton.BeginAnimation(UIElement.OpacityProperty, null);
-
         var showShelfCountBadge = false;
+        double homeTarget = 0.4;
+        double shelfTarget = 0.4;
+        double timerTarget = 0.4;
+        double audioTarget = 0.4;
 
         if (_isAudioView)
         {
-            HomeIconButton.Opacity = 0.4;
-            FileShelfIconButton.Opacity = 0.4;
-            TimerIconButton.Opacity = 0.4;
-            AudioIconButton.Opacity = 1.0;
+            audioTarget = 1.0;
         }
         else if (_isTimerView)
         {
-            HomeIconButton.Opacity = 0.4;
-            FileShelfIconButton.Opacity = 0.4;
-            TimerIconButton.Opacity = 1.0;
-            AudioIconButton.Opacity = 0.4;
+            timerTarget = 1.0;
         }
         else if (_isSecondaryView)
         {
-            HomeIconButton.Opacity = 0.4;
-            FileShelfIconButton.Opacity = 1.0;
-            TimerIconButton.Opacity = 0.4;
-            AudioIconButton.Opacity = 0.4;
+            shelfTarget = 1.0;
             showShelfCountBadge = ShelfUnlockBanner?.Visibility != Visibility.Visible;
         }
         else
         {
-            HomeIconButton.Opacity = 1.0;
-            FileShelfIconButton.Opacity = 0.4;
-            TimerIconButton.Opacity = 0.4;
-            AudioIconButton.Opacity = 0.4;
+            homeTarget = 1.0;
         }
+
+        // Only update opacity on items not currently being dragged by the user
+        if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, homeTarget, animate);
+        if (_navDragItem != FileShelfIconButton) AnimateNavIconOpacity(FileShelfIconButton, shelfTarget, animate);
+        if (_navDragItem != TimerIconButton) AnimateNavIconOpacity(TimerIconButton, timerTarget, animate);
+        if (_navDragItem != AudioIconButton) AnimateNavIconOpacity(AudioIconButton, audioTarget, animate);
 
         if (!_isAnimating)
         {
@@ -463,5 +483,4 @@ public partial class MainWindow
                 : Visibility.Collapsed;
         }
     }
-
 }

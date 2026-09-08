@@ -53,6 +53,14 @@ internal static class MediaWindowActivator
 
     public static bool TryActivateForMedia(MediaInfo info)
     {
+        if (info.IsPictureInPicture || info.IsVideoSource)
+        {
+            if (TryActivatePipWindow(info))
+            {
+                return true;
+            }
+        }
+
         var candidates = GetProcessCandidates(info).ToList();
         var processNames = new HashSet<string>(candidates, StringComparer.OrdinalIgnoreCase);
 
@@ -149,6 +157,24 @@ internal static class MediaWindowActivator
             bool activated = TryActivateWindow(bestHwnd);
             bool tabSelected = TrySelectTab(bestTabItem);
             return activated || tabSelected;
+        }
+
+        return false;
+    }
+
+    private static bool TryActivatePipWindow(MediaInfo info)
+    {
+        string? targetProc = null;
+        if (!string.IsNullOrEmpty(info.SourceAppId))
+        {
+            var match = Regex.Match(info.SourceAppId, @"([A-Za-z0-9_\-]+)\.exe", RegexOptions.IgnoreCase);
+            if (match.Success) targetProc = match.Groups[1].Value;
+        }
+
+        if (PipDetector.TryFindPipWindow(out IntPtr pipHwnd, out _, targetProc, info.CurrentTrack))
+        {
+            BringWindowToTop(pipHwnd);
+            return TryActivateWindow(pipHwnd);
         }
 
         return false;
@@ -430,6 +456,8 @@ internal static class MediaWindowActivator
         if (!string.IsNullOrWhiteSpace(source) && title.Contains(source, StringComparison.OrdinalIgnoreCase)) score += 80;
         if (!string.IsNullOrWhiteSpace(track) && window.Contains(track, StringComparison.OrdinalIgnoreCase)) score += 140;
         if (!string.IsNullOrWhiteSpace(artist) && artist is not YouTubeToken and not BrowserToken && window.Contains(artist, StringComparison.OrdinalIgnoreCase)) score += 70;
+
+        if (PipDetector.IsPipTitle(title)) score += 220;
 
         score += ScoreWindowPlatform(title, info.Platform);
 

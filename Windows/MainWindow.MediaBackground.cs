@@ -18,11 +18,8 @@ public partial class MainWindow
     #region Media Background & Color Extraction
 
     private Color _lastDominantColor = Colors.Transparent;
-    private Color _lastSubColor = Colors.White;
-    private Color _progressBarVibrantColor = Colors.White;
     private string? _lastTrackId = null;
     private bool _isFadingTrack = false;
-    private Color _currentVibrantColor = Colors.White;
     private int _mediaBackgroundAnimationVersion = 0;
     private int _mediaBackgroundRecoveryVersion = 0;
     private DateTime _lastMediaBackgroundFadeStartUtc = DateTime.MinValue;
@@ -97,21 +94,10 @@ public partial class MainWindow
         }
 
         _lastDominantColor = dominantColor;
-        _lastSubColor = subColor;
 
-        var liftedDominant = LiftDarkColor(dominantColor);
         var liftedSub = LiftDarkColor(subColor);
-
-        var targetColor = Color.FromRgb(liftedDominant.R, liftedDominant.G, liftedDominant.B);
         var vibrantTargetColor = Color.FromRgb(liftedSub.R, liftedSub.G, liftedSub.B);
         double dominantLuminance = (0.2126 * dominantColor.R + 0.7152 * dominantColor.G + 0.0722 * dominantColor.B) / 255.0;
-
-        var colorAnim = new ColorAnimation
-        {
-            To = targetColor,
-            Duration = TimeSpan.FromMilliseconds(500),
-            EasingFunction = _easeQuadOut
-        };
 
         var uiColorAnim = new ColorAnimation
         {
@@ -120,11 +106,11 @@ public partial class MainWindow
             EasingFunction = _easeQuadOut
         };
 
-        double targetOpacity = suppressBackdrop
-            ? 0
-            : ((_isExpanded && (!_isAnimating || forceRefresh))
-                ? DynamicIslandColorExtractor.GetAdaptiveBlurOpacity(dominantLuminance, _settings.MediaBlurBrightnessBoost)
-                : 0);
+        double targetOpacity = 0;
+        if (!suppressBackdrop && _isExpanded && (!_isAnimating || forceRefresh))
+        {
+            targetOpacity = DynamicIslandColorExtractor.GetAdaptiveBlurOpacity(dominantLuminance, _settings.MediaBlurBrightnessBoost);
+        }
         if (targetOpacity > 0 && dominantLuminance < 0.25)
         {
             double darknessBoost = 1.0 + (0.25 - dominantLuminance) * 1.4;
@@ -169,7 +155,6 @@ public partial class MainWindow
         EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(136, 136, 136)));
         EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? Colors.White));
 
-        _progressBarVibrantColor = vibrantTargetColor;
         var progressDarkColor = Color.FromArgb(
             vibrantTargetColor.A,
             (byte)(vibrantTargetColor.R * 0.65),
@@ -283,10 +268,7 @@ public partial class MainWindow
     private static Color LiftDarkColor(Color c)
     {
         double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
-        double max = Math.Max(r, Math.Max(g, b));
-        double min = Math.Min(r, Math.Min(g, b));
-        double v = max;
-        double s = max > 0 ? (max - min) / max : 0;
+        double v = Math.Max(r, Math.Max(g, b));
 
         if (v >= 0.55) return c;
 
@@ -543,6 +525,7 @@ public partial class MainWindow
         UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
     }
 
+    private const string BlurCrossfadeLogTag = "BLUR-CROSSFADE";
     private int _blurCrossfadeVersion = 0;
     private int _blurTaskVersion = 0;
     private BitmapImage? _lastBlurThumbnailRef;
@@ -567,7 +550,7 @@ public partial class MainWindow
             bool hasExistingBlur = MediaBackgroundImage.Source != null || MediaBackgroundImageBack.Source != null;
             if (!allowInterimThumbnail && hasExistingBlur && thumbnail.PixelWidth < 200 && thumbnail.PixelHeight < 200)
             {
-                RuntimeLog.Log("BLUR-CROSSFADE", $"SKIP-SMALL thumb={thumbnail.PixelWidth}x{thumbnail.PixelHeight} (waiting for better)");
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"SKIP-SMALL thumb={thumbnail.PixelWidth}x{thumbnail.PixelHeight} (waiting for better)");
                 return;
             }
 
@@ -575,7 +558,7 @@ public partial class MainWindow
 
             int taskVersion = ++_blurTaskVersion;
 
-            RuntimeLog.Log("BLUR-CROSSFADE", $"START taskVer={taskVersion} thumb={thumbnail.PixelWidth}x{thumbnail.PixelHeight} subjectBlur={_settings.EnableSubjectBlur}");
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"START taskVer={taskVersion} thumb={thumbnail.PixelWidth}x{thumbnail.PixelHeight} subjectBlur={_settings.EnableSubjectBlur}");
 
             BitmapSource? blurredImage;
 
@@ -584,7 +567,7 @@ public partial class MainWindow
                 SubjectBounds? subject = null;
                 try
                 {
-                    subject = await Task.Run(() => _mediaService.ArtworkService.GetDominantSubjectBounds(thumbnail));
+                    subject = await Task.Run(() => _mediaService.ArtworkService.GetDominantSubjectBounds(thumbnail), CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
@@ -593,11 +576,11 @@ public partial class MainWindow
 
                 if (taskVersion != _blurTaskVersion)
                 {
-                    RuntimeLog.Log("BLUR-CROSSFADE", $"DISCARDED (stale after subject) taskVer={taskVersion} current={_blurTaskVersion}");
+                    RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after subject) taskVer={taskVersion} current={_blurTaskVersion}");
                     return;
                 }
 
-                RuntimeLog.Log("BLUR-CROSSFADE", $"subject={subject?.CenterX:F2},{subject?.CenterY:F2} w={subject?.Width:F2} h={subject?.Height:F2}");
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"subject={subject?.CenterX:F2},{subject?.CenterY:F2} w={subject?.Width:F2} h={subject?.Height:F2}");
 
                 blurredImage = await SubjectAwareBlurService.GetSubjectBlurredAsync(thumbnail, subject);
             }
@@ -608,25 +591,25 @@ public partial class MainWindow
 
             if (taskVersion != _blurTaskVersion)
             {
-                RuntimeLog.Log("BLUR-CROSSFADE", $"DISCARDED (stale after blur) taskVer={taskVersion} current={_blurTaskVersion}");
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after blur) taskVer={taskVersion} current={_blurTaskVersion}");
                 return;
             }
 
             if (blurredImage == null) return;
 
-            RuntimeLog.Log("BLUR-CROSSFADE", $"RESULT taskVer={taskVersion} blurSize={blurredImage.PixelWidth}x{blurredImage.PixelHeight} suppress={_suppressNextBlurDissolve} frontNull={MediaBackgroundImage.Source == null} backNull={MediaBackgroundImageBack.Source == null}");
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"RESULT taskVer={taskVersion} blurSize={blurredImage.PixelWidth}x{blurredImage.PixelHeight} suppress={_suppressNextBlurDissolve} frontNull={MediaBackgroundImage.Source == null} backNull={MediaBackgroundImageBack.Source == null}");
 
             if (_suppressNextBlurDissolve || (MediaBackgroundImage.Source == null && MediaBackgroundImageBack.Source == null))
             {
                 _suppressNextBlurDissolve = false;
                 _pendingBlurResult = null;
                 _blurDissolveDebounce?.Stop();
-                RuntimeLog.Log("BLUR-CROSSFADE", $"APPLY-IMMEDIATE taskVer={taskVersion}");
+                RuntimeLog.Log(BlurCrossfadeLogTag, $"APPLY-IMMEDIATE taskVer={taskVersion}");
                 ApplyBlurredBackgroundImmediate(blurredImage);
                 return;
             }
 
-            RuntimeLog.Log("BLUR-CROSSFADE", $"SCHEDULE-DISSOLVE taskVer={taskVersion}");
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"SCHEDULE-DISSOLVE taskVer={taskVersion}");
             ScheduleBlurredBackgroundDissolve(blurredImage);
         }
         catch (Exception ex)
@@ -663,7 +646,7 @@ public partial class MainWindow
         {
             _pendingBlurResult = null;
             _blurDissolveDebounce?.Stop();
-            RuntimeLog.Log("BLUR-CROSSFADE", $"CROSSFADE-START (immediate, old gone) blurSize={blurred.PixelWidth}x{blurred.PixelHeight} backIsActive={_blurBackIsActive}");
+            RuntimeLog.Log(BlurCrossfadeLogTag, $"CROSSFADE-START (immediate, old gone) blurSize={blurred.PixelWidth}x{blurred.PixelHeight} backIsActive={_blurBackIsActive}");
             CrossfadeBlurredBackground(blurred);
             return;
         }
@@ -673,12 +656,12 @@ public partial class MainWindow
             _blurDissolveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
             _blurDissolveDebounce.Tick += (_, _) =>
             {
-                _blurDissolveDebounce!.Stop();
+                _blurDissolveDebounce.Stop();
                 var pending = _pendingBlurResult;
                 _pendingBlurResult = null;
                 if (pending != null)
                 {
-                    RuntimeLog.Log("BLUR-CROSSFADE", $"CROSSFADE-START blurSize={pending.PixelWidth}x{pending.PixelHeight} backIsActive={_blurBackIsActive}");
+                    RuntimeLog.Log(BlurCrossfadeLogTag, $"CROSSFADE-START blurSize={pending.PixelWidth}x{pending.PixelHeight} backIsActive={_blurBackIsActive}");
                     CrossfadeBlurredBackground(pending);
                 }
             };
@@ -756,8 +739,6 @@ public partial class MainWindow
 
     private void AnimateTitleGradient(Color vibrantColor)
     {
-        _currentVibrantColor = vibrantColor;
-
         const double tintStrength = 0.15;
         var tintedWhite = Color.FromRgb(
             (byte)(255 - (255 - vibrantColor.R) * tintStrength),
@@ -889,7 +870,6 @@ public partial class MainWindow
     private void ResetTitleGradientToWhite()
     {
         StopTitleGradientShift();
-        _currentVibrantColor = Colors.White;
 
         var whiteAnim = new ColorAnimation
         {

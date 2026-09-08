@@ -13,6 +13,12 @@ namespace VNotch;
 
 public partial class SpotifyLoginWindow : Window
 {
+    private const string LogCategory = "SPOTIFY-LOGIN";
+#pragma warning disable S1075 // Spotify login and cookie endpoints
+    private const string SpotifyLoginUrl = "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F";
+    private const string SpotifyCookieUrl = "https://open.spotify.com/";
+#pragma warning restore S1075
+
     private const double ShellMarginDip = 18;
     private const double ShellCornerRadiusDip = 24;
 
@@ -133,14 +139,13 @@ public partial class SpotifyLoginWindow : Window
             SpotifyWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             SpotifyWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
-            SpotifyWebView.CoreWebView2.Navigate(
-                "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F");
+            SpotifyWebView.CoreWebView2.Navigate(SpotifyLoginUrl);
             _cookieTimer.Start();
             await CheckForSpotifySessionAsync();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Warn("SPOTIFY-LOGIN", $"Unable to initialize Spotify login: {ex.Message}");
+            RuntimeLog.Warn(LogCategory, $"Unable to initialize Spotify login: {ex.Message}");
             StatusText.Text = Loc.Get("spotifyLogin.failed");
             StatusText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113));
         }
@@ -167,7 +172,7 @@ public partial class SpotifyLoginWindow : Window
         try
         {
             IReadOnlyList<CoreWebView2Cookie> cookies =
-                await SpotifyWebView.CoreWebView2.CookieManager.GetCookiesAsync("https://open.spotify.com/");
+                await SpotifyWebView.CoreWebView2.CookieManager.GetCookiesAsync(SpotifyCookieUrl);
             CoreWebView2Cookie? session = cookies.FirstOrDefault(cookie =>
                 cookie.Name.Equals("sp_dc", StringComparison.Ordinal) &&
                 !string.IsNullOrWhiteSpace(cookie.Value));
@@ -181,7 +186,7 @@ public partial class SpotifyLoginWindow : Window
         }
         catch (Exception ex)
         {
-            RuntimeLog.Debug("SPOTIFY-LOGIN", () => $"Spotify cookie check failed: {ex.Message}");
+            RuntimeLog.Debug(LogCategory, () => $"Spotify cookie check failed: {ex.Message}");
         }
         finally
         {
@@ -208,14 +213,14 @@ public partial class SpotifyLoginWindow : Window
                 }
                 catch (Exception ex)
                 {
-                    RuntimeLog.Debug("SPOTIFY-LOGIN", () => $"Failed to delete cookies: {ex.Message}");
+                    RuntimeLog.Debug(LogCategory, () => $"Failed to delete cookies: {ex.Message}");
                 }
             }
             SpotifyWebView.Dispose();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Warn("SPOTIFY-LOGIN", $"Error during WebView2 disposal: {ex.Message}");
+            RuntimeLog.Warn(LogCategory, $"Error during WebView2 disposal: {ex.Message}");
         }
 
         if (_userDataFolder != null)
@@ -285,7 +290,6 @@ public partial class SpotifyLoginWindow : Window
 
     private bool _isClosing;
     private bool? _dialogResultToSet;
-    private DoubleAnimation? _activeCloseAnimation;
 
     private void PlayEntranceAnimation()
     {
@@ -322,11 +326,10 @@ public partial class SpotifyLoginWindow : Window
 
         var fade = new DoubleAnimation(MainShell.Opacity, 0.0, duration) { EasingFunction = easeIn };
         Timeline.SetDesiredFrameRate(fade, fps);
-        _activeCloseAnimation = fade;
 
         fade.Completed += (s, e) =>
         {
-            RuntimeLog.Debug("SPOTIFY-LOGIN", () => "Exit animation completed. Setting DialogResult.");
+            RuntimeLog.Debug(LogCategory, () => "Exit animation completed. Setting DialogResult.");
             try
             {
                 if (_dialogResultToSet == true)
@@ -344,12 +347,8 @@ public partial class SpotifyLoginWindow : Window
             }
             catch (Exception ex)
             {
-                RuntimeLog.Warn("SPOTIFY-LOGIN", $"Error during animated close: {ex.Message}");
+                RuntimeLog.Warn(LogCategory, $"Error during animated close: {ex.Message}");
                 Close();
-            }
-            finally
-            {
-                _activeCloseAnimation = null;
             }
         };
 

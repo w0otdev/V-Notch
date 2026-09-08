@@ -24,9 +24,15 @@ internal interface ISetupAnimatedPage
     IReadOnlyList<UIElement> GetAnimatedElements();
 }
 
+internal static class SetupFonts
+{
+    public const string SfProDisplay = "pack://application:,,,/Fonts/#SF Pro Display";
+}
+
 public partial class SetupWindow : Window
 {
     private const int SwShow = 5;
+    private const string LocKeyWindowTitle = "setup.windowTitle";
 
     private enum NavigationDirection
     {
@@ -112,7 +118,7 @@ public partial class SetupWindow : Window
     private void ApplyLocalizationToSetupUi()
     {
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
-        Title = Loc.Get("setup.windowTitle");
+        Title = Loc.Get(LocKeyWindowTitle);
         SetupAssistantText.Text = Loc.Get("setup.assistant");
         SetupTaglineText.Text = Loc.Get("setup.tagline");
         TooltipHelper.SetLocalizedTooltip(CloseSetupButton, "tooltip.close");
@@ -180,7 +186,7 @@ public partial class SetupWindow : Window
         {
             MessageBox.Show(
                 Loc.Get("setup.install.inProgress"),
-                Loc.Get("setup.windowTitle"),
+                Loc.Get(LocKeyWindowTitle),
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -298,7 +304,7 @@ public partial class SetupWindow : Window
                 CompleteTransition();
                 MessageBox.Show(
                     Loc.Get("setup.pageLoadFailed", ex.Message),
-                    Loc.Get("setup.windowTitle"),
+                    Loc.Get(LocKeyWindowTitle),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }
@@ -344,7 +350,7 @@ public partial class SetupWindow : Window
 
             if (index == _pageFactories.Length - 2)
             {
-                BeginInstallationAsync();
+                _ = BeginInstallationAsync();
             }
         });
     }
@@ -798,7 +804,7 @@ public partial class SetupWindow : Window
         ButtonTranslate.Y = 8;
     }
 
-    private TranslateTransform EnsureTranslateTransform(UIElement element)
+    private static TranslateTransform EnsureTranslateTransform(UIElement element)
     {
         if (element.RenderTransform is TranslateTransform translateTransform)
         {
@@ -935,7 +941,7 @@ public partial class SetupWindow : Window
         {
             MessageBox.Show(
                 Loc.Get("setup.directory.required"),
-                Loc.Get("setup.windowTitle"),
+                Loc.Get(LocKeyWindowTitle),
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return false;
@@ -950,7 +956,7 @@ public partial class SetupWindow : Window
             {
                 MessageBox.Show(
                     Loc.Get("setup.directory.adminRequired"),
-                    Loc.Get("setup.windowTitle"),
+                    Loc.Get(LocKeyWindowTitle),
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return false;
@@ -962,14 +968,14 @@ public partial class SetupWindow : Window
         {
             MessageBox.Show(
                 Loc.Get("setup.directory.invalid", ex.Message),
-                Loc.Get("setup.windowTitle"),
+                Loc.Get(LocKeyWindowTitle),
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return false;
         }
     }
 
-    private async void BeginInstallationAsync()
+    private async Task BeginInstallationAsync()
     {
         if (_isInstalling || _installationSucceeded)
         {
@@ -1055,7 +1061,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = Brushes.White,
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1068,7 +1074,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 14,
             LineHeight = 21,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 18),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1110,7 +1116,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 11.5,
             FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(Color.FromArgb(224, 255, 255, 255)),
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display")
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay)
         };
         return new Border
         {
@@ -1134,7 +1140,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Foreground = Brushes.White,
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 7)
         };
         stack.Children.Add(titleBlock);
@@ -1146,7 +1152,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             LineHeight = 20,
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromArgb(196, 255, 255, 255)),
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display")
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay)
         };
         stack.Children.Add(bodyBlock);
 
@@ -1165,7 +1171,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
 
 public class DirectoryPage : UserControl, ISetupAnimatedPage
 {
-    private TextBox? _pathBox;
+    private readonly TextBox _pathBox;
     private readonly TextBlock _headline;
     private readonly TextBlock _description;
     private readonly Border _container;
@@ -1185,7 +1191,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1196,7 +1202,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.directory.description"),
             FontSize = 14,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 24)
         };
         Grid.SetRow(_description, 1);
@@ -1232,7 +1238,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
         {
             Text = initialInstallPath,
             FontSize = 13,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Background = System.Windows.Media.Brushes.Transparent,
             Foreground = System.Windows.Media.Brushes.White,
             BorderThickness = new Thickness(0),
@@ -1249,7 +1255,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             Margin = new Thickness(12, 0, 0, 0),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 10, 122, 255)),
             Foreground = System.Windows.Media.Brushes.White,
             BorderThickness = new Thickness(0),
@@ -1316,25 +1322,22 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             CheckPathExists = false
         };
 
-        if (dialog.ShowDialog() == true)
+        if (dialog.ShowDialog() == true && _pathBox != null)
         {
-            if (_pathBox != null)
+            var selectedPath = System.IO.Path.GetDirectoryName(dialog.FileName);
+            if (string.IsNullOrEmpty(selectedPath))
             {
-                var selectedPath = System.IO.Path.GetDirectoryName(dialog.FileName);
-                if (string.IsNullOrEmpty(selectedPath))
-                {
-                    selectedPath = System.IO.Path.GetPathRoot(dialog.FileName);
-                }
+                selectedPath = System.IO.Path.GetPathRoot(dialog.FileName);
+            }
 
-                if (!string.IsNullOrEmpty(selectedPath))
+            if (!string.IsNullOrEmpty(selectedPath))
+            {
+                var folderName = System.IO.Path.GetFileName(selectedPath.TrimEnd('\\', '/'));
+                if (!string.Equals(folderName, "V-Notch", StringComparison.OrdinalIgnoreCase))
                 {
-                    var folderName = System.IO.Path.GetFileName(selectedPath.TrimEnd('\\', '/'));
-                    if (!string.Equals(folderName, "V-Notch", StringComparison.OrdinalIgnoreCase))
-                    {
-                        selectedPath = System.IO.Path.Combine(selectedPath, "V-Notch");
-                    }
-                    _pathBox.Text = selectedPath;
+                    selectedPath = System.IO.Path.Combine(selectedPath, "V-Notch");
                 }
+                _pathBox.Text = selectedPath;
             }
         }
     }
@@ -1360,7 +1363,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1371,7 +1374,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.startup.description"),
             FontSize = 14,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 32)
         };
         Grid.SetRow(_description, 1);
@@ -1383,7 +1386,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             IsChecked = startWithWindows,
             FontSize = 14,
             Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display")
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
         };
         Grid.SetRow(_checkbox, 2);
         grid.Children.Add(_checkbox);
@@ -1428,7 +1431,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = Brushes.White,
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1440,7 +1443,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontSize = 14,
             LineHeight = 22,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 24),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1475,7 +1478,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Foreground = Brushes.White,
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 6),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1487,7 +1490,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontSize = 13,
             LineHeight = 20,
             Foreground = new SolidColorBrush(Color.FromArgb(196, 255, 255, 255)),
-            FontFamily = new FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             TextWrapping = TextWrapping.Wrap
         };
         stack.Children.Add(bodyBlock);
@@ -1524,7 +1527,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1537,7 +1540,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 21,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             MaxWidth = 430,
             Margin = new Thickness(0, 0, 0, 32)
         };
@@ -1700,7 +1703,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 1);
@@ -1711,7 +1714,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             Text = Loc.Get("setup.finish.description"),
             FontSize = 14,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display"),
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             LineHeight = 22,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 24)
@@ -1725,7 +1728,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             IsChecked = launchAfterInstall,
             FontSize = 14,
             Foreground = System.Windows.Media.Brushes.White,
-            FontFamily = new System.Windows.Media.FontFamily("pack://application:,,,/Fonts/#SF Pro Display")
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
         };
         Grid.SetRow(_checkbox, 3);
         grid.Children.Add(_checkbox);

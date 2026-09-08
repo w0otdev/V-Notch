@@ -37,6 +37,9 @@ public partial class MediaViewModel : ObservableObject
     [ObservableProperty]
     private MediaInfo? _currentInfo;
 
+    [ObservableProperty]
+    private bool _isPictureInPicture;
+
     public event EventHandler<MediaInfo>? NewTrackDetected;
     public event EventHandler<bool>? PlayPauseToggled;
     public event EventHandler? NextTrackTriggered;
@@ -51,6 +54,7 @@ public partial class MediaViewModel : ObservableObject
     public void Update(MediaInfo info)
     {
         CurrentInfo = info;
+        IsPictureInPicture = info.IsPictureInPicture;
         bool hasTrack = !string.IsNullOrEmpty(info.CurrentTrack);
         SourceIcon = hasTrack ? info.MediaSource ?? "" : "";
         if (hasTrack)

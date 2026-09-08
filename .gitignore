@@ -56,3 +56,5 @@ out.xml
 /attached_assets
 .replit
 replit.md
+update_loc.py
+update_settings.ps1

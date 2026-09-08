@@ -4,6 +4,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,27 +28,27 @@ public sealed class LiquidGlassController
 
     public struct GlassParams
     {
-        public double PowerFactor { get; set; }
-        public double RefractionA { get; set; }
-        public double RefractionB { get; set; }
-        public double RefractionC { get; set; }
-        public double RefractionD { get; set; }
-        public double FPower { get; set; }
-        public double Noise { get; set; }
-        public double GlowWeight { get; set; }
-        public double GlowBias { get; set; }
-        public double GlowEdge0 { get; set; }
-        public double GlowEdge1 { get; set; }
-        public double Refraction { get; set; }
-        public double EdgeBend { get; set; }
-        public double ChromaticAberration { get; set; }
-        public double Distortion { get; set; }
-        public double ZRadius { get; set; }
-        public double Saturation { get; set; }
-        public double Brightness { get; set; }
-        public int BevelMode { get; set; }
-        public double TopCornerRadius { get; set; }
-        public double BottomCornerRadius { get; set; }
+        public double PowerFactor;
+        public double RefractionA;
+        public double RefractionB;
+        public double RefractionC;
+        public double RefractionD;
+        public double FPower;
+        public double Noise;
+        public double GlowWeight;
+        public double GlowBias;
+        public double GlowEdge0;
+        public double GlowEdge1;
+        public double Refraction;
+        public double EdgeBend;
+        public double ChromaticAberration;
+        public double Distortion;
+        public double ZRadius;
+        public double Saturation;
+        public double Brightness;
+        public int BevelMode;
+        public double TopCornerRadius;
+        public double BottomCornerRadius;
 
         public static GlassParams Default => new()
         {
@@ -1287,19 +1288,33 @@ public sealed class LiquidGlassController
         }
         else
         {
-            IntPtr screenDc = cp.ScreenDc == IntPtr.Zero ? GetDC(IntPtr.Zero) : cp.ScreenDc;
-            if (EnsureStagingResources(cp.PhysSrcW, cp.PhysSrcH, screenDc) &&
-                mag.CaptureInto(cp.SrcX, cp.SrcY, cp.PhysSrcW, cp.PhysSrcH, _stagingBits, out _, out _) &&
-                StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, _stagingDc, 0, 0, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
+            IntPtr screenDc = cp.ScreenDc;
+            bool release = false;
+            if (screenDc == IntPtr.Zero)
             {
-                GdiFlush();
-                captured = true;
-                _magFailStreak = 0;
+                screenDc = GetDC(IntPtr.Zero);
+                release = true;
             }
-            else if (++_magFailStreak >= 60)
+            try
             {
-                _magReady = false;
-                RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
+                if (EnsureStagingResources(cp.PhysSrcW, cp.PhysSrcH, screenDc) &&
+                    mag.CaptureInto(cp.SrcX, cp.SrcY, cp.PhysSrcW, cp.PhysSrcH, _stagingBits, out _, out _) &&
+                    StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, _stagingDc, 0, 0, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
+                {
+                    GdiFlush();
+                    captured = true;
+                    _magFailStreak = 0;
+                }
+                else if (++_magFailStreak >= 60)
+                {
+                    _magReady = false;
+                    RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
+                }
+            }
+            finally
+            {
+                if (release && screenDc != IntPtr.Zero)
+                    ReleaseDC(IntPtr.Zero, screenDc);
             }
         }
         return captured;
@@ -1307,12 +1322,26 @@ public sealed class LiquidGlassController
 
     private bool BitBltCapture(BackdropCaptureParams cp)
     {
-        IntPtr screenDc = cp.ScreenDc == IntPtr.Zero ? GetDC(IntPtr.Zero) : cp.ScreenDc;
-        int bltSrcY = _exactBitBltCapture ? cp.SrcY : ComputeFallbackSourceY(cp.RegionY, cp.DisplayH);
-        if (!StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
-            return false;
-        GdiFlush();
-        return true;
+        IntPtr screenDc = cp.ScreenDc;
+        bool release = false;
+        if (screenDc == IntPtr.Zero)
+        {
+            screenDc = GetDC(IntPtr.Zero);
+            release = true;
+        }
+        try
+        {
+            int bltSrcY = _exactBitBltCapture ? cp.SrcY : ComputeFallbackSourceY(cp.RegionY, cp.DisplayH);
+            if (!StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
+                return false;
+            GdiFlush();
+            return true;
+        }
+        finally
+        {
+            if (release && screenDc != IntPtr.Zero)
+                ReleaseDC(IntPtr.Zero, screenDc);
+        }
     }
 
     private bool ProcessGpuFrame(GlassParams p, FrameDimensions dims, int generation)
@@ -1925,6 +1954,7 @@ public sealed class LiquidGlassController
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe int Bilerp(byte* src, int idx, int aux, int stride, int chan)
     {
         int stepX = (aux & 1) != 0 ? 4 : 0;
@@ -1943,6 +1973,7 @@ public sealed class LiquidGlassController
         return (top * (256 - wy) + bot * wy) >> 16;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ClampByte(double v)
     {
         if (v <= 0) return 0;
@@ -2109,9 +2140,12 @@ public sealed class LiquidGlassController
         {
             for (int y = y0; y < y1; y++)
             {
+                double ly = y - geom.Cy;
+                double baseY = y + d.Margin - d.CaptureShiftY;
+                int rowOffset = y * d.OutW;
                 for (int x = 0; x < d.OutW; x++)
                 {
-                    ComputeRefractionSample(x, y, p, d, geom, bounds);
+                    ComputeRefractionSample(x, rowOffset + x, ly, baseY, in p, in d, in geom, in bounds);
                 }
             }
         }
@@ -2187,14 +2221,13 @@ public sealed class LiquidGlassController
         return new MapGeometry(halfX, halfY, cx, cy, minHalf, topR, bottomR, uChroma, distort, verticalBalance);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void ComputeRefractionSample(
-        int x, int y, GlassParams p, MapDimensions d, MapGeometry geom, SampleBounds bounds)
+        int x, int idx, double ly, double baseY,
+        in GlassParams p, in MapDimensions d, in MapGeometry geom, in SampleBounds bounds)
     {
-        int idx = y * d.OutW + x;
         double lx = x - geom.Cx;
-        double ly = y - geom.Cy;
         double baseX = x + d.Margin - d.CaptureShiftX;
-        double baseY = y + d.Margin - d.CaptureShiftY;
 
         double inside = -RoundedRectSdf(lx, ly, geom.HalfX, geom.HalfY, geom.TopR, geom.BottomR);
         if (inside <= 0.0)
@@ -2242,6 +2275,7 @@ public sealed class LiquidGlassController
         SetSample(baseX - caX, baseY - caY, bounds, _idxB, _auxB, idx);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double RoundedRectSdf(double px, double py, double bx, double by,
         double topRadius, double bottomRadius)
     {
@@ -2254,18 +2288,21 @@ public sealed class LiquidGlassController
         return Math.Max(qx - r, qy - r);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double Smoother01(double x)
     {
         double t = Math.Clamp(x, 0.0, 1.0);
         return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double Hash(double px, double py)
     {
         double s = Math.Sin(px * 127.1 + py * 311.7) * 43758.5453;
         return s - Math.Floor(s);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double ValueNoise(double px, double py)
     {
         double ix = Math.Floor(px), iy = Math.Floor(py);
@@ -2275,6 +2312,7 @@ public sealed class LiquidGlassController
         return top + (bottom - top) * fy;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void SetSample(double sx, double sy, in SampleBounds bounds,
         int[] idxArr, int[] auxArr, int i)
     {
@@ -2300,6 +2338,8 @@ public sealed class LiquidGlassController
         idxArr[i] = (iy * bounds.SrcW + ix) << 2;
         auxArr[i] = flags | (wx << 2) | (wy << 12);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static double ExponentialRefract(double x, double a, double b, double c, double d)
     {
         double exponent = -d * x - a;

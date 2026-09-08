@@ -14,6 +14,19 @@ using VNotch.Services;
 
 namespace VNotch;
 
+public sealed class DebugWindowOptions
+{
+    public double? InitialX { get; init; }
+    public double? InitialY { get; init; }
+    public Action? OnClose { get; init; }
+    public Action<double, double>? OnPositionChanged { get; init; }
+    public Func<(double Fps, int Hz, double FrameTimeMs, double NetDown, double NetUp)>? LiveMetricsProvider { get; init; }
+    public Action<bool>? OnLockViewChanged { get; init; }
+    public Action<bool>? OnDragNotchChanged { get; init; }
+    public Action<string>? OnViewStateChanged { get; init; }
+    public Action? OnResetPosition { get; init; }
+}
+
 public sealed class DiagnosticLogViewModel
 {
     public string FormattedTime { get; init; } = "";
@@ -85,26 +98,17 @@ public partial class DebugWindow : Window
     private string _prevHealthSummary = "";
     private PerformanceHealthLevel _prevHealthLevel = PerformanceHealthLevel.Nominal;
 
-    public DebugWindow(
-        double? initialX = null,
-        double? initialY = null,
-        Action? onClose = null,
-        Action<double, double>? onPositionChanged = null,
-        Func<(double Fps, int Hz, double FrameTimeMs, double NetDown, double NetUp)>? liveMetricsProvider = null,
-        Action<bool>? onLockViewChanged = null,
-        Action<bool>? onDragNotchChanged = null,
-        Action<string>? onViewStateChanged = null,
-        Action? onResetPosition = null)
+    public DebugWindow(DebugWindowOptions? options = null)
     {
-        _initialX = initialX;
-        _initialY = initialY;
-        _onClose = onClose;
-        _onPositionChanged = onPositionChanged;
-        _liveMetricsProvider = liveMetricsProvider;
-        _onLockViewChanged = onLockViewChanged;
-        _onDragNotchChanged = onDragNotchChanged;
-        _onViewStateChanged = onViewStateChanged;
-        _onResetPosition = onResetPosition;
+        _initialX = options?.InitialX;
+        _initialY = options?.InitialY;
+        _onClose = options?.OnClose;
+        _onPositionChanged = options?.OnPositionChanged;
+        _liveMetricsProvider = options?.LiveMetricsProvider;
+        _onLockViewChanged = options?.OnLockViewChanged;
+        _onDragNotchChanged = options?.OnDragNotchChanged;
+        _onViewStateChanged = options?.OnViewStateChanged;
+        _onResetPosition = options?.OnResetPosition;
 
         InitializeComponent();
         Loaded += DebugWindow_Loaded;
@@ -185,7 +189,11 @@ public partial class DebugWindow : Window
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Telemetry tick errors are logged and safely caught to prevent debug overlay disruption
+            RuntimeLog.Log("DEBUG-WINDOW", $"Telemetry update tick error: {ex.Message}");
+        }
     }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -215,7 +223,10 @@ public partial class DebugWindow : Window
                 DragMove();
                 _onPositionChanged?.Invoke(Left, Top);
             }
-            catch { }
+            catch (Exception)
+            {
+                // DragMove can throw InvalidOperationException if mouse button is released early
+            }
         }
     }
 
@@ -243,37 +254,50 @@ public partial class DebugWindow : Window
     {
         if (snapshot == null) return;
 
-        // 1. Health Status Banner
-        if (snapshot.HealthLevel != _prevHealthLevel || snapshot.HealthStatusSummary != _prevHealthSummary)
+        UpdateHealthBanner(snapshot);
+        UpdateVNotchCpuSection(snapshot);
+        UpdateVNotchRamSection(snapshot);
+        UpdateManagedGcSection(snapshot);
+        UpdateVNotchGpuSection(snapshot);
+        UpdateGlobalUsageSection(snapshot);
+        UpdateNetworkSection(snapshot);
+        UpdateFooterSummary(snapshot);
+    }
+
+    private void UpdateHealthBanner(PerformanceDebugSnapshot snapshot)
+    {
+        if (snapshot.HealthLevel == _prevHealthLevel && snapshot.HealthStatusSummary == _prevHealthSummary)
+            return;
+
+        _prevHealthLevel = snapshot.HealthLevel;
+        _prevHealthSummary = snapshot.HealthStatusSummary;
+
+        switch (snapshot.HealthLevel)
         {
-            _prevHealthLevel = snapshot.HealthLevel;
-            _prevHealthSummary = snapshot.HealthStatusSummary;
-
-            switch (snapshot.HealthLevel)
-            {
-                case PerformanceHealthLevel.Critical:
-                    HealthBanner.Background = CriticalBg;
-                    HealthBanner.BorderBrush = CriticalBorder;
-                    HealthBadgeBorder.Background = CriticalBorder;
-                    HealthBadgeText.Text = "CRITICAL";
-                    break;
-                case PerformanceHealthLevel.Warning:
-                    HealthBanner.Background = WarningBg;
-                    HealthBanner.BorderBrush = WarningBorder;
-                    HealthBadgeBorder.Background = WarningBorder;
-                    HealthBadgeText.Text = "WARNING";
-                    break;
-                default:
-                    HealthBanner.Background = NominalBg;
-                    HealthBanner.BorderBrush = NominalBorder;
-                    HealthBadgeBorder.Background = NominalBorder;
-                    HealthBadgeText.Text = "NOMINAL";
-                    break;
-            }
-            HealthSummaryText.Text = snapshot.HealthStatusSummary;
+            case PerformanceHealthLevel.Critical:
+                HealthBanner.Background = CriticalBg;
+                HealthBanner.BorderBrush = CriticalBorder;
+                HealthBadgeBorder.Background = CriticalBorder;
+                HealthBadgeText.Text = "CRITICAL";
+                break;
+            case PerformanceHealthLevel.Warning:
+                HealthBanner.Background = WarningBg;
+                HealthBanner.BorderBrush = WarningBorder;
+                HealthBadgeBorder.Background = WarningBorder;
+                HealthBadgeText.Text = "WARNING";
+                break;
+            default:
+                HealthBanner.Background = NominalBg;
+                HealthBanner.BorderBrush = NominalBorder;
+                HealthBadgeBorder.Background = NominalBorder;
+                HealthBadgeText.Text = "NOMINAL";
+                break;
         }
+        HealthSummaryText.Text = snapshot.HealthStatusSummary;
+    }
 
-        // 2. V-Notch CPU & Threads
+    private void UpdateVNotchCpuSection(PerformanceDebugSnapshot snapshot)
+    {
         string vCpuStr = $"{snapshot.ProcessCpuPercent:0.0}%";
         if (VNotchCpuText != null && _prevVNotchCpu != vCpuStr)
         {
@@ -288,8 +312,10 @@ public partial class DebugWindow : Window
             _prevVNotchCpuThreads = vCpuThStr;
             VNotchCpuThreadsText.Text = vCpuThStr;
         }
+    }
 
-        // 3. V-Notch RAM (Working Set & Private)
+    private void UpdateVNotchRamSection(PerformanceDebugSnapshot snapshot)
+    {
         string vRamStr = $"{FormatMb(snapshot.ProcessWorkingSetBytes)} MB";
         if (VNotchRamText != null && _prevVNotchRam != vRamStr)
         {
@@ -305,8 +331,10 @@ public partial class DebugWindow : Window
             _prevVNotchPrivateRam = vPrivStr;
             VNotchPrivateRamText.Text = vPrivStr;
         }
+    }
 
-        // 4. Managed GC Heap & Alloc Rate
+    private void UpdateManagedGcSection(PerformanceDebugSnapshot snapshot)
+    {
         string heapStr = $"Heap {FormatMb((ulong)snapshot.ManagedHeapBytes)} MB";
         if (GcHeapText != null && _prevGcHeap != heapStr)
         {
@@ -327,8 +355,10 @@ public partial class DebugWindow : Window
             _prevGcGen = gcGenStr;
             GcGenText.Text = gcGenStr;
         }
+    }
 
-        // 5. V-Notch GPU & Latency
+    private void UpdateVNotchGpuSection(PerformanceDebugSnapshot snapshot)
+    {
         string vGpuStr = $"{snapshot.ProcessGpuPercent:0.0}%";
         if (VNotchGpuText != null && _prevVNotchGpu != vGpuStr)
         {
@@ -343,8 +373,10 @@ public partial class DebugWindow : Window
             _prevRenderLatency = renderLatStr;
             RenderLatencyText.Text = renderLatStr;
         }
+    }
 
-        // 6. Global CPU
+    private void UpdateGlobalUsageSection(PerformanceDebugSnapshot snapshot)
+    {
         string gCpuStr = $"{Math.Round(snapshot.GlobalCpuPercent)}%";
         if (GlobalCpuText != null && _prevGlobalCpu != gCpuStr)
         {
@@ -353,7 +385,6 @@ public partial class DebugWindow : Window
         }
         SetBarPercent(GlobalCpuScale, snapshot.GlobalCpuPercent);
 
-        // 7. Global RAM
         string gRamStr = snapshot.GlobalRamTotalBytes > 0
             ? $"{FormatGb(snapshot.GlobalRamUsedBytes)} GB ({Math.Round(snapshot.GlobalRamPercent)}%)"
             : "—";
@@ -371,7 +402,6 @@ public partial class DebugWindow : Window
             GlobalRamAvailText.Text = gAvailStr;
         }
 
-        // 8. Global GPU & VRAM
         string gGpuStr = $"{Math.Round(snapshot.GlobalGpuPercent)}%";
         if (GlobalGpuText != null && _prevGlobalGpu != gGpuStr)
         {
@@ -388,8 +418,10 @@ public partial class DebugWindow : Window
             _prevGpuName = gpuNameVram;
             GpuNameText.Text = gpuNameVram;
         }
+    }
 
-        // 9. Network
+    private void UpdateNetworkSection(PerformanceDebugSnapshot snapshot)
+    {
         string downStr = FormatRate(snapshot.NetDownBytesPerSec);
         if (NetDownText != null && _prevNetDown != downStr)
         {
@@ -403,8 +435,10 @@ public partial class DebugWindow : Window
             _prevNetUp = upStr;
             NetUpText.Text = upStr;
         }
+    }
 
-        // 10. Footer FPS & Hz
+    private void UpdateFooterSummary(PerformanceDebugSnapshot snapshot)
+    {
         if (snapshot.Fps > 0)
         {
             string fpsStr = $"{Math.Round(snapshot.Fps)} FPS";
@@ -494,19 +528,7 @@ public partial class DebugWindow : Window
     private static DiagnosticLogViewModel MapToViewModel(DiagnosticLogEntry l, bool isService = false)
     {
         bool isMemory = l.Category is "MEMORY" or "GC" or "SMART-CROP" or "CROP";
-        SolidColorBrush bg = l.Severity switch
-        {
-            PerformanceHealthLevel.Critical => TagCriticalBg,
-            PerformanceHealthLevel.Warning => TagWarningBg,
-            _ => isService ? (isMemory ? TagMemoryBg : TagServiceBg) : TagNominalBg
-        };
-
-        SolidColorBrush fg = l.Severity switch
-        {
-            PerformanceHealthLevel.Critical => TagCriticalFg,
-            PerformanceHealthLevel.Warning => TagWarningFg,
-            _ => isService ? (isMemory ? TagMemoryFg : TagServiceFg) : TagNominalFg
-        };
+        var (bg, fg) = GetSeverityBrushes(l.Severity, isService, isMemory);
 
         return new DiagnosticLogViewModel
         {
@@ -516,6 +538,23 @@ public partial class DebugWindow : Window
             SeverityBackground = bg,
             SeverityForeground = fg
         };
+    }
+
+    private static (SolidColorBrush Background, SolidColorBrush Foreground) GetSeverityBrushes(
+        PerformanceHealthLevel severity,
+        bool isService,
+        bool isMemory)
+    {
+        if (severity == PerformanceHealthLevel.Critical)
+            return (TagCriticalBg, TagCriticalFg);
+        if (severity == PerformanceHealthLevel.Warning)
+            return (TagWarningBg, TagWarningFg);
+        if (!isService)
+            return (TagNominalBg, TagNominalFg);
+
+        return isMemory
+            ? (TagMemoryBg, TagMemoryFg)
+            : (TagServiceBg, TagServiceFg);
     }
 
     private void RefreshDiagnosticLogs()
@@ -560,7 +599,10 @@ public partial class DebugWindow : Window
                 DiagnosticLogsListBox.ScrollIntoView(_diagnosticLogs[^1]);
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            // Diagnostic log collection retrieval or UI binding update errors are safely ignored
+        }
     }
 
     private void RefreshServiceLogs()
@@ -570,74 +612,88 @@ public partial class DebugWindow : Window
         try
         {
             var rawLogs = PerformanceDiagnosticService.Instance.GetRecentServiceLogs();
-            string filter = "";
-            if (ServiceCategoryFilterComboBox?.SelectedItem is ComboBoxItem cbi && cbi.Content is string text)
-            {
-                filter = text;
-            }
+            string filter = ServiceCategoryFilterComboBox?.SelectedItem is ComboBoxItem cbi && cbi.Content is string text ? text : "";
 
             bool filterChanged = filter != _lastActiveFilter;
             _lastActiveFilter = filter;
 
-            if (!filterChanged && rawLogs.Count == _lastServiceLogCount && rawLogs.Count > 0 && rawLogs[^1].Timestamp == _lastServiceLogTimestamp)
-            {
+            if (IsServiceLogsUpToDate(rawLogs, filterChanged))
                 return;
-            }
 
             int previousRawCount = _lastServiceLogCount;
             _lastServiceLogCount = rawLogs.Count;
             _lastServiceLogTimestamp = rawLogs.Count > 0 ? rawLogs[^1].Timestamp : DateTime.MinValue;
 
-            bool hasFilter = !string.IsNullOrEmpty(filter) && filter != "All Categories";
+            PopulateServiceLogs(rawLogs, filter, filterChanged, previousRawCount);
+            TrimAndScrollServiceLogs();
+        }
+        catch (Exception)
+        {
+            // Service log collection or binding update errors are safely ignored
+        }
+    }
 
-            if (filterChanged || hasFilter || previousRawCount <= 0 || rawLogs.Count < previousRawCount)
-            {
-                IEnumerable<DiagnosticLogEntry> filtered = filter switch
-                {
-                    "Media (Playback & Track)" => rawLogs.Where(l => l.Category.StartsWith("MEDIA", StringComparison.OrdinalIgnoreCase)),
-                    "Audio Mixer" => rawLogs.Where(l => l.Category.StartsWith("AUDIO", StringComparison.OrdinalIgnoreCase)),
-                    "Battery & Power" => rawLogs.Where(l => l.Category.StartsWith("BATTERY", StringComparison.OrdinalIgnoreCase)),
-                    "Bluetooth" => rawLogs.Where(l => l.Category.StartsWith("BLUETOOTH", StringComparison.OrdinalIgnoreCase)),
-                    "Spotify" => rawLogs.Where(l => l.Category.StartsWith("SPOTIFY", StringComparison.OrdinalIgnoreCase)),
-                    "Weather" => rawLogs.Where(l => l.Category.StartsWith("WEATHER", StringComparison.OrdinalIgnoreCase)),
-                    "Spotlight Search" => rawLogs.Where(l => l.Category.StartsWith("SPOTLIGHT", StringComparison.OrdinalIgnoreCase)),
-                    "Subtitles & Lyrics" => rawLogs.Where(l => l.Category.StartsWith("SUBTITLE", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("LYRICS", StringComparison.OrdinalIgnoreCase)),
-                    "Liquid Glass" => rawLogs.Where(l => l.Category.StartsWith("LIQUIDGLASS", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GLASS", StringComparison.OrdinalIgnoreCase)),
-                    "Memory & GC" => rawLogs.Where(l => l.Category.StartsWith("MEMORY", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GC", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("CROP", StringComparison.OrdinalIgnoreCase)),
-                    _ => rawLogs
-                };
+    private bool IsServiceLogsUpToDate(IReadOnlyList<DiagnosticLogEntry> rawLogs, bool filterChanged)
+    {
+        return !filterChanged &&
+               rawLogs.Count == _lastServiceLogCount &&
+               rawLogs.Count > 0 &&
+               rawLogs[^1].Timestamp == _lastServiceLogTimestamp;
+    }
 
-                _serviceLogs.Clear();
-                foreach (var log in filtered)
-                {
-                    _serviceLogs.Add(MapToViewModel(log, isService: true));
-                }
-            }
-            else if (rawLogs.Count > previousRawCount)
-            {
-                for (int i = previousRawCount; i < rawLogs.Count; i++)
-                {
-                    _serviceLogs.Add(MapToViewModel(rawLogs[i], isService: true));
-                }
-            }
+    private void PopulateServiceLogs(IReadOnlyList<DiagnosticLogEntry> rawLogs, string filter, bool filterChanged, int previousRawCount)
+    {
+        bool hasFilter = !string.IsNullOrEmpty(filter) && filter != "All Categories";
 
-            while (_serviceLogs.Count > 500)
+        if (filterChanged || hasFilter || previousRawCount <= 0 || rawLogs.Count < previousRawCount)
+        {
+            _serviceLogs.Clear();
+            foreach (var log in FilterServiceLogs(rawLogs, filter))
             {
-                _serviceLogs.RemoveAt(0);
-            }
-
-            if (ServiceLogCountText != null)
-            {
-                ServiceLogCountText.Text = $"{_serviceLogs.Count} service events logged";
-            }
-
-            if (_serviceLogs.Count > 0)
-            {
-                ServiceLogsListBox.ScrollIntoView(_serviceLogs[^1]);
+                _serviceLogs.Add(MapToViewModel(log, isService: true));
             }
         }
-        catch { }
+        else if (rawLogs.Count > previousRawCount)
+        {
+            for (int i = previousRawCount; i < rawLogs.Count; i++)
+            {
+                _serviceLogs.Add(MapToViewModel(rawLogs[i], isService: true));
+            }
+        }
     }
+
+    private void TrimAndScrollServiceLogs()
+    {
+        while (_serviceLogs.Count > 500)
+        {
+            _serviceLogs.RemoveAt(0);
+        }
+
+        if (ServiceLogCountText != null)
+        {
+            ServiceLogCountText.Text = $"{_serviceLogs.Count} service events logged";
+        }
+
+        if (_serviceLogs.Count > 0)
+        {
+            ServiceLogsListBox.ScrollIntoView(_serviceLogs[^1]);
+        }
+    }
+
+    private static IEnumerable<DiagnosticLogEntry> FilterServiceLogs(IReadOnlyList<DiagnosticLogEntry> rawLogs, string filter) => filter switch
+    {
+        "Media (Playback & Track)" => rawLogs.Where(l => l.Category.StartsWith("MEDIA", StringComparison.OrdinalIgnoreCase)),
+        "Audio Mixer" => rawLogs.Where(l => l.Category.StartsWith("AUDIO", StringComparison.OrdinalIgnoreCase)),
+        "Battery & Power" => rawLogs.Where(l => l.Category.StartsWith("BATTERY", StringComparison.OrdinalIgnoreCase)),
+        "Bluetooth" => rawLogs.Where(l => l.Category.StartsWith("BLUETOOTH", StringComparison.OrdinalIgnoreCase)),
+        "Spotify" => rawLogs.Where(l => l.Category.StartsWith("SPOTIFY", StringComparison.OrdinalIgnoreCase)),
+        "Weather" => rawLogs.Where(l => l.Category.StartsWith("WEATHER", StringComparison.OrdinalIgnoreCase)),
+        "Spotlight Search" => rawLogs.Where(l => l.Category.StartsWith("SPOTLIGHT", StringComparison.OrdinalIgnoreCase)),
+        "Subtitles & Lyrics" => rawLogs.Where(l => l.Category.StartsWith("SUBTITLE", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("LYRICS", StringComparison.OrdinalIgnoreCase)),
+        "Liquid Glass" => rawLogs.Where(l => l.Category.StartsWith("LIQUIDGLASS", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GLASS", StringComparison.OrdinalIgnoreCase)),
+        "Memory & GC" => rawLogs.Where(l => l.Category.StartsWith("MEMORY", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("GC", StringComparison.OrdinalIgnoreCase) || l.Category.StartsWith("CROP", StringComparison.OrdinalIgnoreCase)),
+        _ => rawLogs
+    };
 
     private void ServiceCategoryFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -729,7 +785,7 @@ public partial class DebugWindow : Window
         (bytes / 1024.0 / 1024.0).ToString("0.0");
 
     private static string FormatGb(ulong bytes) =>
-        (bytes / 1024.0 / 1024.0 / 1024.0).ToString("0.0");
+        (bytes / 1024.0 / 1024.0).ToString("0.0");
 
     private static string FormatRate(double bytesPerSec)
     {
@@ -773,15 +829,11 @@ public partial class DebugWindow : Window
     private void ViewStateComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (ViewStateComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem item &&
-            item.Tag is string tag && !string.IsNullOrEmpty(tag))
+            item.Tag is string tag && !string.IsNullOrEmpty(tag) &&
+            tag != "Current" &&
+            LockStateCheckBox is { IsChecked: not true })
         {
-            if (tag != "Current")
-            {
-                if (LockStateCheckBox != null && LockStateCheckBox.IsChecked != true)
-                {
-                    LockStateCheckBox.IsChecked = true;
-                }
-            }
+            LockStateCheckBox.IsChecked = true;
         }
 
         _onViewStateChanged?.Invoke((ViewStateComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "Current");

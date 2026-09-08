@@ -31,8 +31,7 @@ public partial class MainWindow
     private double CountdownCompleteViewWidth => Math.Max(_collapsedWidth, _expandedWidth - _countdownCompleteWidthInset);
 
     // ponytail: aliases keep animation code stable; TimerViewModel owns countdown state.
-    private TimeSpan _countdownDuration { get => _viewModel.Timer.Duration; set => _viewModel.Timer.Duration = value; }
-    private TimeSpan _countdownRemaining { get => _viewModel.Timer.Remaining; set => _viewModel.Timer.Remaining = value; }
+    private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
     private bool _isCountdownRunning { get => _viewModel.Timer.IsRunning; set => _viewModel.Timer.IsRunning = value; }
     private DispatcherTimer? _countdownTimer;
 
@@ -325,16 +324,6 @@ public partial class MainWindow
         barTranslate.BeginAnimation(TranslateTransform.YProperty, barRise);
         barScale.BeginAnimation(ScaleTransform.ScaleXProperty, barGrow);
         barScale.BeginAnimation(ScaleTransform.ScaleYProperty, barGrow);
-    }
-
-    private void ResetClockViewChildVisuals()
-    {
-        foreach (var el in new FrameworkElement[] { ClockViewHeader, ClockViewClock, TimerControlBar })
-        {
-            el.BeginAnimation(OpacityProperty, null);
-            el.Opacity = 1;
-            el.RenderTransform = null;
-        }
     }
 
     private void SwitchFromSecondaryToTimerView()
@@ -720,7 +709,7 @@ public partial class MainWindow
         }
     }
 
-    private void AnimateTimerButtonScale(Border button, double targetScale)
+    private static void AnimateTimerButtonScale(Border button, double targetScale)
     {
         var scale = button.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
         button.RenderTransform = scale;
@@ -812,11 +801,16 @@ public partial class MainWindow
         CountdownPanelBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, flash);
     }
 
-    private Border? GetStepHighlight(object sender) =>
-        ReferenceEquals(sender, CountdownPlusBtn) ? CountdownPlusHighlight :
-        ReferenceEquals(sender, CountdownMinusBtn) ? CountdownMinusHighlight : null;
+    private Border? GetStepHighlight(object sender)
+    {
+        if (ReferenceEquals(sender, CountdownPlusBtn))
+            return CountdownPlusHighlight;
+        if (ReferenceEquals(sender, CountdownMinusBtn))
+            return CountdownMinusHighlight;
+        return null;
+    }
 
-    private void AnimateStepHighlightOpacity(Border highlight, double to, int durationMs)
+    private static void AnimateStepHighlightOpacity(Border highlight, double to, int durationMs)
     {
         var anim = MakeAnim(to, new Duration(TimeSpan.FromMilliseconds(durationMs)), _easeQuadOut);
         highlight.BeginAnimation(OpacityProperty, anim);
@@ -936,12 +930,12 @@ public partial class MainWindow
             return;
         }
 
-        if (state == NotchState.Expanding ||
-            state == NotchState.SecondaryView ||
-            state == NotchState.CameraExpanded)
+        if ((state == NotchState.Expanding ||
+             state == NotchState.SecondaryView ||
+             state == NotchState.CameraExpanded) &&
+            _notchState.TryTransitionTo(NotchState.Expanded))
         {
-            if (_notchState.TryTransitionTo(NotchState.Expanded))
-                return;
+            return;
         }
 
         _notchState.ForceState(NotchState.Expanded);
@@ -974,10 +968,10 @@ public partial class MainWindow
         if (state == NotchState.Collapsed)
             return;
 
-        if (state == NotchState.Collapsing || state == NotchState.MusicCollapsing)
+        if ((state == NotchState.Collapsing || state == NotchState.MusicCollapsing) &&
+            _notchState.TryTransitionTo(NotchState.Collapsed))
         {
-            if (_notchState.TryTransitionTo(NotchState.Collapsed))
-                return;
+            return;
         }
 
         _notchState.ForceState(NotchState.Collapsed);
@@ -1049,7 +1043,7 @@ public partial class MainWindow
         NotchBorder.BeginAnimation(HeightProperty, heightAnim, HandoffBehavior.SnapshotAndReplace);
     }
 
-    private void AnimateCountdownCompletionContentOut(FrameworkElement element, Duration duration)
+    private static void AnimateCountdownCompletionContentOut(FrameworkElement element, Duration duration)
     {
         if (element.Visibility != Visibility.Visible || element.Opacity <= 0.01) return;
 
@@ -1168,7 +1162,7 @@ public partial class MainWindow
         AnimateCountdownCompleteElement(CountdownDismissHost, CountdownDismissTranslate, TimeSpan.FromMilliseconds(80));
     }
 
-    private void PrepareCountdownCompleteElement(FrameworkElement element, TranslateTransform translate)
+    private static void PrepareCountdownCompleteElement(FrameworkElement element, TranslateTransform translate)
     {
         element.BeginAnimation(OpacityProperty, null);
         translate.BeginAnimation(TranslateTransform.YProperty, null);
@@ -1250,7 +1244,7 @@ public partial class MainWindow
         e.Handled = true;
         if (_isAnimating) return;
 
-        _countdownRemaining = _countdownDuration;
+        _viewModel.Timer.Remaining = _countdownDuration;
         _isCountdownRunning = true;
         if (_countdownTimer == null) InitializeCountdownTimer();
         _countdownTimer?.Start();
@@ -1396,7 +1390,7 @@ public partial class MainWindow
         if (_isAnimating) return;
 
         AnimateCountdownCompleteOverlayOut();
-        _countdownRemaining = _countdownDuration;
+        _viewModel.Timer.Remaining = _countdownDuration;
         _isTimerView = false;
         _isSecondaryView = false;
         BeginCountdownManualCollapseState();
@@ -1564,7 +1558,7 @@ public partial class MainWindow
         }
     }
 
-    private void AnimateCountdownCollapsedContentIn(FrameworkElement content)
+    private static void AnimateCountdownCollapsedContentIn(FrameworkElement content)
     {
         var group = new TransformGroup();
         var scale = new ScaleTransform(0.88, 0.88);

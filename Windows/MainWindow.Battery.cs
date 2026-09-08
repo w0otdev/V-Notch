@@ -304,8 +304,12 @@ public partial class MainWindow
 
     private static void AnimateBrushTransition(FrameworkElement element, SolidColorBrush targetBrush)
     {
-        var currentBrush = element is TextBlock tb ? tb.Foreground as SolidColorBrush :
-                           element is Border border ? border.Background as SolidColorBrush : null;
+        SolidColorBrush? currentBrush = element switch
+        {
+            TextBlock tb => tb.Foreground as SolidColorBrush,
+            Border border => border.Background as SolidColorBrush,
+            _ => null
+        };
 
         if (currentBrush == null || currentBrush.Color == targetBrush.Color)
         {
@@ -378,7 +382,7 @@ public partial class MainWindow
         };
 
         Storyboard.SetTarget(pulseAnimation, BatteryFill);
-        Storyboard.SetTargetProperty(pulseAnimation, new PropertyPath("Opacity"));
+        Storyboard.SetTargetProperty(pulseAnimation, new PropertyPath("Opacity", Array.Empty<object>()));
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(pulseAnimation, VNotch.Services.AnimationConfig.TargetFps);
         _chargingPulseStoryboard.Children.Add(pulseAnimation);
 

@@ -100,7 +100,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return null;
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaDataApiAsync(string query, string originalTitle, string apiKey, CancellationToken ct)
     {
         try
@@ -192,7 +192,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return null;
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaPipedAsync(string query, string originalTitle, CancellationToken ct)
     {
         string[] pipedInstances = { "pipedapi.kavin.rocks", "pipedapi.adminforge.de", "pipedapi.in.projectsegfault.com" };
@@ -392,7 +392,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return null;
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaYouTubeScrapeAsync(string query, string originalTitle, CancellationToken ct)
     {
         try
@@ -657,7 +657,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TryGetVideoFromDataApiAsync(string videoId, string apiKey, CancellationToken ct)
     {
         if (IsQuotaCooldownActive())
@@ -905,7 +905,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return true;
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     public async Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default)
     {
         if (!IsOnlineArtworkAllowed())

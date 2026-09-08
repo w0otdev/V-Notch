@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -73,7 +75,11 @@ public partial class SpotlightWindow : Window
         {
             _hwnd = new WindowInteropHelper(this).EnsureHandle();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Handle creation may fail if called before initialization or during window destruction.
+            System.Diagnostics.Debug.WriteLine($"[Spotlight] EnsureHandle failed: {ex.Message}");
+        }
         return _hwnd;
     }
 
@@ -211,8 +217,8 @@ public partial class SpotlightWindow : Window
     [System.Runtime.InteropServices.DllImport("winmm.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
     private static extern int mciSendString(string command, System.Text.StringBuilder? returnString, int returnLength, IntPtr hwndCallback);
 
-    private static bool _sfxMciOpened;
-    private static string? _sfxMciPath;
+    private bool _sfxMciOpened;
+    private string? _sfxMciPath;
 
     private void PlaySpotlightClickSfx()
     {
@@ -584,7 +590,10 @@ public partial class SpotlightWindow : Window
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
 
-        _searchDebounceCts?.Cancel();
+        if (_searchDebounceCts != null)
+        {
+            await _searchDebounceCts.CancelAsync();
+        }
 
         string currentText = SearchBox.Text;
 
@@ -882,7 +891,7 @@ public partial class SpotlightWindow : Window
         try
         {
             // ShellExecute can block for hundreds of ms on cold starts; keep
-            bool launched = await Task.Run(() => _launcher.TryLaunch(selected));
+            bool launched = await Task.Run(() => _launcher.TryLaunch(selected), CancellationToken.None);
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
             {
@@ -916,7 +925,7 @@ public partial class SpotlightWindow : Window
         _launchInFlight = true;
         try
         {
-            bool launched = await Task.Run(() => _launcher.TryLaunchElevated(selected));
+            bool launched = await Task.Run(() => _launcher.TryLaunchElevated(selected), CancellationToken.None);
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
             {
@@ -944,7 +953,7 @@ public partial class SpotlightWindow : Window
         _launchInFlight = true;
         try
         {
-            bool revealed = await Task.Run(() => _launcher.TryRevealInExplorer(selected));
+            bool revealed = await Task.Run(() => _launcher.TryRevealInExplorer(selected), CancellationToken.None);
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (revealed) HideSpotlight();
             else ShowLaunchFailure(selected);
@@ -1232,11 +1241,20 @@ public partial class SpotlightWindow : Window
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
         if (showStatus)
         {
-            string status = _viewModel.IsSearching
-                ? "searching"
-                : _viewModel.IsWindowsSearchUnavailable
-                    ? "unavailable"
-                    : "noResults";
+            string status;
+            if (_viewModel.IsSearching)
+            {
+                status = "searching";
+            }
+            else if (_viewModel.IsWindowsSearchUnavailable)
+            {
+                status = "unavailable";
+            }
+            else
+            {
+                status = "noResults";
+            }
+
             StatusGlyph.Text = status switch
             {
                 "searching" => "\uE895",
@@ -1747,8 +1765,8 @@ public partial class SpotlightWindow : Window
 
         var contentFade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(300), contentEase);
         // The captured notch covers the short content delay. If capture is not
-        contentFade.BeginTime = TimeSpan.FromMilliseconds(
-            morphsFromNotch && hasNotchSnapshot ? 60 : morphsFromNotch ? 0 : 60);
+        double contentDelayMs = morphsFromNotch && !hasNotchSnapshot ? 0 : 60;
+        contentFade.BeginTime = TimeSpan.FromMilliseconds(contentDelayMs);
         var contentSlide = CreateAnimation(8, 0, TimeSpan.FromMilliseconds(340), contentEase);
         contentSlide.BeginTime = contentFade.BeginTime;
         var blurOut = CreateAnimation(10, 0, TimeSpan.FromMilliseconds(340), contentEase);

@@ -29,17 +29,30 @@ public partial class ConfirmationDialog : Window
     public bool Confirmed { get; private set; }
     private bool _isClosing = false;
 
+    private const string DefaultTitleKey = "dialog.confirm.title";
+    private const string ConfirmKey = "dialog.confirm";
+    private const string CancelKey = "dialog.cancel";
+    private const string LogCategory = "CONFIRM-DIALOG";
+
     private const string TrashIconPathData = "M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z";
     private const string WarningFilledPathData = "M12,1.67 C12.955,1.67 13.845,2.137 14.39,2.917 L14.495,3.077 L22.609,16.625 C23.63,18.33 22.4,20.99 20.302,21 L4.077,21 C1.979,20.99 0.749,18.33 1.77,16.625 L9.88,3.087 C10.425,2.137 11.315,1.67 12,1.67 Z M12.01,15 L11.883,15.007 A1,1 0 0,0 12.01,17 A1,1 0 0,0 12.01,15 Z M12,8 A1,1 0 0,0 11.007,8.883 L11,9 L11,13 A1,1 0 0,0 13,13 L13,9 A1,1 0 0,0 12,8 Z";
+
+    public readonly record struct DialogOptions(
+        string Title = "",
+        string ConfirmText = "",
+        string CancelText = "",
+        DialogIcon Icon = DialogIcon.Warning,
+        DialogStyle Style = DialogStyle.Normal,
+        string? DetailText = null);
 
     public ConfirmationDialog()
     {
         InitializeComponent();
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
-        Title = Loc.Get("dialog.confirm.title");
-        TitleText.Text = Loc.Get("dialog.confirm.title");
-        ConfirmButton.Content = Loc.Get("dialog.confirm");
-        CancelButton.Content = Loc.Get("dialog.cancel");
+        Title = Loc.Get(DefaultTitleKey);
+        TitleText.Text = Loc.Get(DefaultTitleKey);
+        ConfirmButton.Content = Loc.Get(ConfirmKey);
+        CancelButton.Content = Loc.Get(CancelKey);
     }
 
     /// <summary>
@@ -52,8 +65,18 @@ public partial class ConfirmationDialog : Window
         string confirmText = "",
         string cancelText = "",
         DialogIcon icon = DialogIcon.Warning,
-        DialogStyle style = DialogStyle.Normal,
-        string? detailText = null)
+        DialogStyle style = DialogStyle.Normal)
+    {
+        return Show(owner, message, new DialogOptions(title, confirmText, cancelText, icon, style, null));
+    }
+
+    /// <summary>
+    /// Show a confirmation dialog with structured options matching native V-Notch Settings design
+    /// </summary>
+    public static bool Show(
+        Window? owner,
+        string message,
+        DialogOptions options)
     {
         try
         {
@@ -65,40 +88,40 @@ public partial class ConfirmationDialog : Window
             }
 
             // Set title
-            dialog.TitleText.Text = string.IsNullOrEmpty(title) ? Loc.Get("dialog.confirm.title") : title;
+            dialog.TitleText.Text = string.IsNullOrEmpty(options.Title) ? Loc.Get(DefaultTitleKey) : options.Title;
 
             // Set message
             dialog.MessageText.Text = message;
 
             // Set detail text in card if provided
-            if (!string.IsNullOrEmpty(detailText))
+            if (!string.IsNullOrEmpty(options.DetailText))
             {
-                dialog.DetailText.Text = detailText;
+                dialog.DetailText.Text = options.DetailText;
                 dialog.DetailCard.Visibility = Visibility.Visible;
             }
 
             // Set button text
-            dialog.ConfirmButton.Content = string.IsNullOrEmpty(confirmText) ? Loc.Get("dialog.confirm") : confirmText;
-            dialog.CancelButton.Content = string.IsNullOrEmpty(cancelText) ? Loc.Get("dialog.cancel") : cancelText;
+            dialog.ConfirmButton.Content = string.IsNullOrEmpty(options.ConfirmText) ? Loc.Get(ConfirmKey) : options.ConfirmText;
+            dialog.CancelButton.Content = string.IsNullOrEmpty(options.CancelText) ? Loc.Get(CancelKey) : options.CancelText;
 
             // Set button style
-            if (style == DialogStyle.Danger)
+            if (options.Style == DialogStyle.Danger)
             {
                 dialog.ConfirmButton.Style = (Style)dialog.FindResource("DangerButton");
             }
 
             // Set icon
-            dialog.SetIcon(icon);
+            dialog.SetIcon(options.Icon);
 
             dialog.ShowDialog();
             return dialog.Confirmed;
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("CONFIRM-DIALOG", ex, "ConfirmationDialog.Show failed, falling back to MessageBox");
-            var combinedMessage = string.IsNullOrEmpty(detailText) ? message : $"{message}\n\n{detailText}";
-            var dlgTitle = string.IsNullOrEmpty(title) ? Loc.Get("dialog.confirm.title") : title;
-            var msgBoxIcon = icon switch
+            RuntimeLog.Error(LogCategory, ex, "ConfirmationDialog.Show failed, falling back to MessageBox");
+            var combinedMessage = string.IsNullOrEmpty(options.DetailText) ? message : $"{message}\n\n{options.DetailText}";
+            var dlgTitle = string.IsNullOrEmpty(options.Title) ? Loc.Get(DefaultTitleKey) : options.Title;
+            var msgBoxIcon = options.Icon switch
             {
                 DialogIcon.Error => MessageBoxImage.Error,
                 DialogIcon.Question => MessageBoxImage.Question,
@@ -140,7 +163,6 @@ public partial class ConfirmationDialog : Window
                 DialogIconPath.Data = Geometry.Parse("M12,2 C6.48,2 2,6.48 2,12 C2,17.52 6.48,22 12,22 C17.52,22 22,17.52 22,12 C22,6.48 17.52,2 12,2 Z M15,9 L9,15 M9,9 L15,15");
                 break;
 
-            case DialogIcon.Info:
             default:
                 DialogIconPath.Fill = null;
                 DialogIconPath.Stroke = Brushes.White;

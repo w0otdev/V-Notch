@@ -25,6 +25,7 @@ public partial class MainWindow
 {
     #region Camera Logic
 
+    private const string CameraLogTag = "CAMERA";
     private readonly WebcamCaptureController _camera = new();
 
     private bool _cameraPreviewMorphPending = false;
@@ -95,7 +96,7 @@ public partial class MainWindow
         CameraOverlay.BeginAnimation(OpacityProperty, overlayFadeOut, HandoffBehavior.SnapshotAndReplace);
     }
 
-    private double ComputeCameraCornerRadius(bool expandedToShelf)
+    private static double ComputeCameraCornerRadius(bool expandedToShelf)
     {
         return expandedToShelf ? 16.0 : 12.0;
     }
@@ -244,18 +245,28 @@ public partial class MainWindow
         double currentWidth = CameraSection.ActualWidth;
         if (currentWidth <= 1)
         {
-            currentWidth = (double.IsNaN(CameraSection.Width) || CameraSection.Width <= 1)
-                ? (_cameraSectionCompactWidth > 1 ? _cameraSectionCompactWidth : 120)
-                : CameraSection.Width;
+            if (!double.IsNaN(CameraSection.Width) && CameraSection.Width > 1)
+            {
+                currentWidth = CameraSection.Width;
+            }
+            else
+            {
+                currentWidth = _cameraSectionCompactWidth > 1 ? _cameraSectionCompactWidth : 120;
+            }
         }
         double collapsedWidth = _cameraSectionCompactWidth > 1 ? _cameraSectionCompactWidth : currentWidth;
 
         double currentHeight = CameraSection.ActualHeight;
         if (currentHeight <= 1)
         {
-            currentHeight = (double.IsNaN(CameraSection.Height) || CameraSection.Height <= 1)
-                ? (_cameraSectionCompactHeight > 1 ? _cameraSectionCompactHeight : 100)
-                : CameraSection.Height;
+            if (!double.IsNaN(CameraSection.Height) && CameraSection.Height > 1)
+            {
+                currentHeight = CameraSection.Height;
+            }
+            else
+            {
+                currentHeight = _cameraSectionCompactHeight > 1 ? _cameraSectionCompactHeight : 100;
+            }
         }
         double collapsedHeight = _cameraSectionCompactHeight > 1 ? _cameraSectionCompactHeight : currentHeight;
 
@@ -415,7 +426,7 @@ public partial class MainWindow
             string? error = await _camera.StartAsync(_settings.CameraDeviceId, () => _isSecondaryView);
             if (error != null)
             {
-                throw new Exception(error);
+                throw new InvalidOperationException(error);
             }
         }
         catch (Exception ex)
@@ -429,7 +440,7 @@ public partial class MainWindow
             {
                 CameraErrorOverlay.Visibility = Visibility.Collapsed;
             }
-            RuntimeLog.Error("CAMERA", ex, "Camera initialization failed");
+            RuntimeLog.Error(CameraLogTag, ex, "Camera initialization failed");
         }
     }
 
@@ -516,7 +527,7 @@ public partial class MainWindow
                 }
                 catch (Exception ex)
                 {
-                    RuntimeLog.Error("CAMERA", ex, "Frame update failed");
+                    RuntimeLog.Error(CameraLogTag, ex, "Frame update failed");
                 }
                 finally
                 {
@@ -529,7 +540,7 @@ public partial class MainWindow
         {
             _cameraFrameDispatchPending = false;
             _camera.ReleaseFrameBuffer();
-            RuntimeLog.Error("CAMERA", ex, "Frame dispatch failed");
+            RuntimeLog.Error(CameraLogTag, ex, "Frame dispatch failed");
         }
     }
 
@@ -643,12 +654,15 @@ public partial class MainWindow
                     }
                     capture?.Dispose();
                 }
-                catch { }
-            });
+                catch
+                {
+                    // Ignore disposal errors when releasing hardware camera resources
+                }
+            }, System.Threading.CancellationToken.None);
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("CAMERA", ex, "StopCameraPreview failed");
+            RuntimeLog.Error(CameraLogTag, ex, "StopCameraPreview failed");
             StopCameraPreviewSafe();
         }
         finally

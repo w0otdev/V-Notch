@@ -1801,6 +1801,23 @@
                                                 </Canvas>
                                             </Viewbox>
 
+                                            <Border x:Name="ThumbnailPipBadge"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Bottom"
+                                                    Margin="0,0,6,6"
+                                                    Background="#B3000000"
+                                                    BorderBrush="#40FFFFFF"
+                                                    BorderThickness="0.8"
+                                                    CornerRadius="4"
+                                                    Padding="4,1.5"
+                                                    Visibility="Collapsed"
+                                                    Opacity="0"
+                                                    IsHitTestVisible="False">
+                                                <TextBlock Text="PiP"
+                                                           FontSize="9"
+                                                           FontWeight="Bold"
+                                                           Foreground="#F2FFFFFF"/>
+                                            </Border>
                                         </Grid>
                                     </Border>
 

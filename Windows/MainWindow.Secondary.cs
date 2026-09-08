@@ -51,7 +51,6 @@ public partial class MainWindow
     private Point _dragStartPoint;
     private bool _didDragOutFromShelf = false;
     private bool _isSweepSelecting = false;
-    private string? _sweepStartFile = null;
     private bool _wasSelectedOnMouseDown = false;
     private HashSet<string> _selectionInitialState = new();
 
@@ -199,13 +198,8 @@ public partial class MainWindow
         _shelfPinDirty = true;
     }
 
-    private string? _lastToggledPinPath = null;
-
     private void AnimatedPinReorder()
     {
-        string? toggledPath = _lastToggledPinPath;
-        _lastToggledPinPath = null;
-
         var oldPositions = new Dictionary<string, Point>(StringComparer.OrdinalIgnoreCase);
         foreach (var child in ShelfItemsContainer.Children)
         {
@@ -667,7 +661,7 @@ public partial class MainWindow
         // and would otherwise spike memory by calling SHCreateItemFromParsingName /
         // SHGetFileInfo synchronously for every file in a single burst.
         var capturedPath = filePath;
-        System.Threading.Tasks.Task.Run(() => GetFileIcon(capturedPath))
+        System.Threading.Tasks.Task.Run(() => GetFileIcon(capturedPath), System.Threading.CancellationToken.None)
             .ContinueWith(t =>
             {
                 var icon = t.Result;
@@ -750,7 +744,6 @@ public partial class MainWindow
 
         border.MouseRightButtonUp += (s, e) =>
         {
-            _lastToggledPinPath = filePath;
             _fileShelf.TogglePin(filePath);
             e.Handled = true;
         };
@@ -761,7 +754,6 @@ public partial class MainWindow
             _selectionStart = e.GetPosition(FileShelfGrid);
             _didDragOutFromShelf = false;
             _isSweepSelecting = false;
-            _sweepStartFile = filePath;
 
             _wasSelectedOnMouseDown = _fileShelf.IsSelected(filePath);
 
@@ -798,7 +790,6 @@ public partial class MainWindow
             {
                 _isSelecting = false;
                 _isSweepSelecting = false;
-                _sweepStartFile = null;
                 SelectionCanvas.Visibility = Visibility.Collapsed;
 
                 if (border.IsMouseCaptured) border.ReleaseMouseCapture();
@@ -811,7 +802,6 @@ public partial class MainWindow
                 return;
             }
 
-            _sweepStartFile = null;
             bool isCtrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
             if (!isCtrl && _fileShelf.SelectedFiles.Count > 1 && _wasSelectedOnMouseDown)
@@ -1006,7 +996,7 @@ public partial class MainWindow
         }
     }
 
-    private void UpdateShelfItemVisualState(Border item, bool isSelected)
+    private static void UpdateShelfItemVisualState(Border item, bool isSelected)
     {
         var targetBg = isSelected ? _brushShelfSelectedBg : _brushShelfItemBg;
         var targetBorder = isSelected ? _brushShelfSelectedBorder : _brushShelfItemBorder;
@@ -1020,7 +1010,6 @@ public partial class MainWindow
         if (_isSweepSelecting)
         {
             _isSweepSelecting = false;
-            _sweepStartFile = null;
 
             foreach (var child in ShelfItemsContainer.Children)
             {
@@ -1028,7 +1017,6 @@ public partial class MainWindow
                     AnimateButtonScale((ScaleTransform)b.RenderTransform!, 1.0);
             }
         }
-        _sweepStartFile = null;
 
         _isSelecting = false;
         SelectionCanvas.Visibility = Visibility.Collapsed;
@@ -1400,20 +1388,7 @@ public partial class MainWindow
 
     #region Single File Remove
 
-    private void RemoveFileFromShelf(string filePath, Border item)
-    {
-        if (_isAnimating) return;
-        _isAnimating = true;
-
-        AnimateFileDeletion(new[] { filePath }, () =>
-        {
-            _fileShelf.RemoveFile(filePath);
-            RefreshShelfLayout();
-            _isAnimating = false;
-        });
-    }
-
-    private ImageSource? GetFileIcon(string filePath) => FileIconProvider.GetFileIcon(filePath);
+    private static ImageSource? GetFileIcon(string filePath) => FileIconProvider.GetFileIcon(filePath);
 
     #endregion
 

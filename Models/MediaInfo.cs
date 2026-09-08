@@ -25,6 +25,8 @@ public class MediaInfo
 
     public bool IsAnyMediaPlaying { get; set; }
     public bool IsPlaying { get; set; }
+    public bool IsPictureInPicture { get; set; }
+    public bool IsPip => IsPictureInPicture;
     public double PlaybackRate { get; set; } = 1.0;
 
     public string CurrentTrack { get; set; } = "";
@@ -50,7 +52,7 @@ public class MediaInfo
 
     public MediaPlatform Platform => MediaPlatformExtensions.ParsePlatform(MediaSource);
 
-    public bool IsVideoSource => Platform is MediaPlatform.YouTube or MediaPlatform.Browser
+    public bool IsVideoSource => IsPictureInPicture || Platform is MediaPlatform.YouTube or MediaPlatform.Browser
         or MediaPlatform.Facebook or MediaPlatform.TikTok or MediaPlatform.Instagram or MediaPlatform.Twitter
         or MediaPlatform.Twitch or MediaPlatform.Discord or MediaPlatform.Netflix or MediaPlatform.Bilibili or MediaPlatform.Vimeo;
 

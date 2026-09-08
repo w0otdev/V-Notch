@@ -60,6 +60,8 @@ public partial class MainWindow
             if (movedPastThreshold || heldPastThreshold)
             {
                 _isNavDragging = true;
+                _navDragStartPoint = current;
+                deltaX = 0;
                 _hasCapturedNavMouse = _navDragItem.CaptureMouse();
                 Panel.SetZIndex(_navDragItem, 1000);
                 AnimateNavDragLift(_navDragItem, true);
@@ -135,21 +137,15 @@ public partial class MainWindow
 
             double desiredOffset = 0.0;
 
-            if (targetSlot < initialSlot)
+            if (targetSlot < initialSlot && i >= targetSlot && i < initialSlot)
             {
                 // Dragged to the left: items between targetSlot and initialSlot-1 shift right (+NavTabSlotWidth)
-                if (i >= targetSlot && i < initialSlot)
-                {
-                    desiredOffset = NavTabSlotWidth;
-                }
+                desiredOffset = NavTabSlotWidth;
             }
-            else if (targetSlot > initialSlot)
+            else if (targetSlot > initialSlot && i > initialSlot && i <= targetSlot)
             {
                 // Dragged to the right: items between initialSlot+1 and targetSlot shift left (-NavTabSlotWidth)
-                if (i > initialSlot && i <= targetSlot)
-                {
-                    desiredOffset = -NavTabSlotWidth;
-                }
+                desiredOffset = -NavTabSlotWidth;
             }
 
             AnimateElementToX(child, desiredOffset);
@@ -191,8 +187,8 @@ public partial class MainWindow
         var anim = new DoubleAnimation
         {
             To = targetX,
-            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            Duration = new Duration(TimeSpan.FromMilliseconds(240)),
+            EasingFunction = _easeAppleOut
         };
         Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
         translate.BeginAnimation(TranslateTransform.XProperty, anim);
@@ -206,12 +202,9 @@ public partial class MainWindow
 
         EndNavDrag(saveOrder: wasDragging);
 
-        if (!wasDragging && clickedItem != null && clickedItem.Tag is string tagStr)
+        if (!wasDragging && clickedItem != null && clickedItem.Tag is string tagStr && Enum.TryParse<NotchView>(tagStr, true, out var targetView))
         {
-            if (Enum.TryParse<NotchView>(tagStr, true, out var targetView))
-            {
-                NavigateToNotchView(targetView);
-            }
+            NavigateToNotchView(targetView);
         }
     }
 
@@ -249,7 +242,10 @@ public partial class MainWindow
                     {
                         item.ReleaseMouseCapture();
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        // Ignore exceptions if mouse capture was already released
+                    }
                 }
 
                 Mouse.OverrideCursor = null;
@@ -296,7 +292,7 @@ public partial class MainWindow
         if (NavTabsStackPanel == null || _dragInitialSlot < 0 || _dragTargetSlot < 0 || _dragInitialSlot == _dragTargetSlot)
         {
             ResetAllNavTabTransforms();
-            UpdateNavIconsActiveState();
+            UpdateNavIconsActiveState(animate: false);
             return;
         }
 
@@ -308,28 +304,20 @@ public partial class MainWindow
         if (_dragInitialSlot < visibleChildren.Count && _dragTargetSlot < visibleChildren.Count)
         {
             var dragged = visibleChildren[_dragInitialSlot];
-            visibleChildren.RemoveAt(_dragInitialSlot);
-            visibleChildren.Insert(_dragTargetSlot, dragged);
+            var targetChild = visibleChildren[_dragTargetSlot];
 
-            var allChildren = NavTabsStackPanel.Children.OfType<FrameworkElement>().ToList();
-            NavTabsStackPanel.Children.Clear();
+            int fromIndex = NavTabsStackPanel.Children.IndexOf(dragged);
+            int toIndex = NavTabsStackPanel.Children.IndexOf(targetChild);
 
-            foreach (var child in visibleChildren)
+            if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex)
             {
-                NavTabsStackPanel.Children.Add(child);
-            }
-
-            foreach (var child in allChildren)
-            {
-                if (child.Visibility != Visibility.Visible)
-                {
-                    NavTabsStackPanel.Children.Add(child);
-                }
+                NavTabsStackPanel.Children.RemoveAt(fromIndex);
+                NavTabsStackPanel.Children.Insert(toIndex, dragged);
             }
         }
 
         ResetAllNavTabTransforms();
-        UpdateNavIconsActiveState();
+        UpdateNavIconsActiveState(animate: false);
     }
 
     private void AnimateNavDragLift(FrameworkElement? item, bool lifted)
@@ -342,37 +330,57 @@ public partial class MainWindow
 
         if (lifted)
         {
-            // Scale up slightly to 1.18x
+            var liftDuration = new Duration(TimeSpan.FromMilliseconds(200));
+
+            // Scale up smoothly to 1.14x
             if (scale != null)
             {
-                var animScale = new DoubleAnimation(1.18, new Duration(TimeSpan.FromMilliseconds(160)))
+                var animScale = new DoubleAnimation(1.14, liftDuration)
                 {
-                    EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 }
+                    EasingFunction = _easeAppleOut
                 };
+                Timeline.SetDesiredFrameRate(animScale, VNotch.Services.AnimationConfig.TargetFps);
                 scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
                 scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
             }
 
-            // Lift upward slightly (-2px)
+            // Lift upward slightly (-2.5px)
             if (translate != null)
             {
-                var animY = new DoubleAnimation(-2.0, new Duration(TimeSpan.FromMilliseconds(160)))
+                var animY = new DoubleAnimation(-2.5, liftDuration)
                 {
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    EasingFunction = _easeAppleOut
                 };
+                Timeline.SetDesiredFrameRate(animY, VNotch.Services.AnimationConfig.TargetFps);
                 translate.BeginAnimation(TranslateTransform.YProperty, animY);
             }
 
-            // Ensure dragged item is clearly visible
-            item.BeginAnimation(UIElement.OpacityProperty, null);
-            item.Opacity = 1.0;
-
-            if (shadow != null && !shadow.IsFrozen)
+            // Smoothly brighten dragged item to full opacity
+            var animOpacity = new DoubleAnimation(1.0, new Duration(TimeSpan.FromMilliseconds(180)))
             {
-                shadow.Color = Colors.Black;
-                shadow.BlurRadius = 12;
-                shadow.ShadowDepth = 2;
-                shadow.Opacity = 0.95;
+                EasingFunction = _easeAppleOut
+            };
+            Timeline.SetDesiredFrameRate(animOpacity, VNotch.Services.AnimationConfig.TargetFps);
+            item.BeginAnimation(UIElement.OpacityProperty, animOpacity);
+
+            // Elevate drop shadow smoothly for physical lift-off feel
+            if (shadow != null)
+            {
+                if (shadow.IsFrozen)
+                {
+                    shadow = shadow.Clone();
+                    item.Effect = shadow;
+                }
+                var animBlur = new DoubleAnimation(14.0, liftDuration) { EasingFunction = _easeAppleOut };
+                var animDepth = new DoubleAnimation(2.5, liftDuration) { EasingFunction = _easeAppleOut };
+                var animShadowOpacity = new DoubleAnimation(0.95, liftDuration) { EasingFunction = _easeAppleOut };
+                Timeline.SetDesiredFrameRate(animBlur, VNotch.Services.AnimationConfig.TargetFps);
+                Timeline.SetDesiredFrameRate(animDepth, VNotch.Services.AnimationConfig.TargetFps);
+                Timeline.SetDesiredFrameRate(animShadowOpacity, VNotch.Services.AnimationConfig.TargetFps);
+
+                shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, animBlur);
+                shadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, animDepth);
+                shadow.BeginAnimation(DropShadowEffect.OpacityProperty, animShadowOpacity);
             }
         }
     }
@@ -392,24 +400,51 @@ public partial class MainWindow
         var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
         var shadow = item.Effect as DropShadowEffect;
 
-        if (shadow != null && !shadow.IsFrozen)
+        const int settleDurationMs = 220;
+        var settleDuration = new Duration(TimeSpan.FromMilliseconds(settleDurationMs));
+
+        if (shadow != null)
         {
-            shadow.Color = Colors.Black;
-            shadow.BlurRadius = 8;
-            shadow.ShadowDepth = 0;
-            shadow.Opacity = 0.9;
+            if (shadow.IsFrozen)
+            {
+                shadow = shadow.Clone();
+                item.Effect = shadow;
+            }
+            var animBlur = new DoubleAnimation(8.0, settleDuration) { EasingFunction = _easeAppleOut };
+            var animDepth = new DoubleAnimation(0.0, settleDuration) { EasingFunction = _easeAppleOut };
+            var animShadowOpacity = new DoubleAnimation(0.9, settleDuration) { EasingFunction = _easeAppleOut };
+            Timeline.SetDesiredFrameRate(animBlur, VNotch.Services.AnimationConfig.TargetFps);
+            Timeline.SetDesiredFrameRate(animDepth, VNotch.Services.AnimationConfig.TargetFps);
+            Timeline.SetDesiredFrameRate(animShadowOpacity, VNotch.Services.AnimationConfig.TargetFps);
+
+            shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, animBlur);
+            shadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, animDepth);
+            shadow.BeginAnimation(DropShadowEffect.OpacityProperty, animShadowOpacity);
         }
 
-        item.BeginAnimation(UIElement.OpacityProperty, null);
+        // Determine target resting opacity for the dropped item based on active view state
+        double targetOpacity = 0.4;
+        if ((_isAudioView && item == AudioIconButton) ||
+            (_isTimerView && item == TimerIconButton) ||
+            (_isSecondaryView && item == FileShelfIconButton) ||
+            (!_isAudioView && !_isTimerView && !_isSecondaryView && item == HomeIconButton))
+        {
+            targetOpacity = 1.0;
+        }
+
+        if (Math.Abs(item.Opacity - targetOpacity) > 0.01)
+        {
+            var animOpacity = new DoubleAnimation(targetOpacity, settleDuration) { EasingFunction = _easeAppleOut };
+            Timeline.SetDesiredFrameRate(animOpacity, VNotch.Services.AnimationConfig.TargetFps);
+            item.BeginAnimation(UIElement.OpacityProperty, animOpacity);
+        }
 
         // Settle scale back to 1.0
         if (scale != null)
         {
-            var animScale = new DoubleAnimation
+            var animScale = new DoubleAnimation(1.0, settleDuration)
             {
-                To = 1.0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                EasingFunction = _easeAppleOut
             };
             Timeline.SetDesiredFrameRate(animScale, VNotch.Services.AnimationConfig.TargetFps);
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
@@ -419,21 +454,17 @@ public partial class MainWindow
         // Settle Y back to 0
         if (translate != null)
         {
-            var animY = new DoubleAnimation
+            var animY = new DoubleAnimation(0.0, settleDuration)
             {
-                To = 0.0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                EasingFunction = _easeAppleOut
             };
             Timeline.SetDesiredFrameRate(animY, VNotch.Services.AnimationConfig.TargetFps);
             translate.BeginAnimation(TranslateTransform.YProperty, animY);
 
             // Settle X into slot
-            var animX = new DoubleAnimation
+            var animX = new DoubleAnimation(targetX, settleDuration)
             {
-                To = targetX,
-                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                EasingFunction = _easeAppleOut
             };
             Timeline.SetDesiredFrameRate(animX, VNotch.Services.AnimationConfig.TargetFps);
             animX.Completed += (s, e) =>
@@ -479,11 +510,13 @@ public partial class MainWindow
                 }
             }
 
-            child.BeginAnimation(UIElement.OpacityProperty, null);
             Panel.SetZIndex(child, 0);
 
             if (child.Effect is DropShadowEffect shadow && !shadow.IsFrozen)
             {
+                shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
+                shadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
+                shadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
                 shadow.Color = Colors.Black;
                 shadow.BlurRadius = 8;
                 shadow.ShadowDepth = 0;
@@ -538,12 +571,9 @@ public partial class MainWindow
             .ToList();
 
         // Ensure all known elements are included
-        foreach (var key in elementsByTag.Keys)
+        foreach (var key in elementsByTag.Keys.Where(key => !orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase)))
         {
-            if (!orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase))
-            {
-                orderTokens.Add(key);
-            }
+            orderTokens.Add(key);
         }
 
         // Reorder children in NavTabsStackPanel only if the order actually changed
@@ -583,15 +613,9 @@ public partial class MainWindow
         }
 
         // If the active view's tab was just disabled, return gracefully to Home
-        if (_isAudioView && !visibleTokens.Contains("AudioMixer"))
-        {
-            NavigateToNotchView(NotchView.Media);
-        }
-        else if (_isTimerView && !visibleTokens.Contains("Timer"))
-        {
-            NavigateToNotchView(NotchView.Media);
-        }
-        else if (_isSecondaryView && !visibleTokens.Contains("Secondary"))
+        if ((_isAudioView && !visibleTokens.Contains("AudioMixer")) ||
+            (_isTimerView && !visibleTokens.Contains("Timer")) ||
+            (_isSecondaryView && !visibleTokens.Contains("Secondary")))
         {
             NavigateToNotchView(NotchView.Media);
         }
@@ -611,12 +635,9 @@ public partial class MainWindow
 
         foreach (UIElement child in NavTabsStackPanel.Children)
         {
-            if (child is FrameworkElement fe && fe.Visibility == Visibility.Visible && fe.Tag is string tagStr)
+            if (child is FrameworkElement fe && fe.Visibility == Visibility.Visible && fe.Tag is string tagStr && Enum.TryParse<NotchView>(tagStr, true, out var view))
             {
-                if (Enum.TryParse<NotchView>(tagStr, true, out var view))
-                {
-                    sequence.Add(view);
-                }
+                sequence.Add(view);
             }
         }
 
@@ -632,10 +653,19 @@ public partial class MainWindow
     {
         if (_isAnimating) return;
 
-        NotchView currentView = _isAudioView ? NotchView.AudioMixer
-                              : _isTimerView ? NotchView.Timer
-                              : _isSecondaryView ? NotchView.Secondary
-                              : NotchView.Media;
+        NotchView currentView = NotchView.Media;
+        if (_isAudioView)
+        {
+            currentView = NotchView.AudioMixer;
+        }
+        else if (_isTimerView)
+        {
+            currentView = NotchView.Timer;
+        }
+        else if (_isSecondaryView)
+        {
+            currentView = NotchView.Secondary;
+        }
 
         if (currentView == targetView) return;
 

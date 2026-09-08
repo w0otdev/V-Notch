@@ -73,9 +73,9 @@ public partial class MainWindow
             if (ShelfSysMonCpuText != null) ShelfSysMonCpuText.Text = $"{Math.Round(stats.CpuPercent)}%";
             SetUsageBar(ShelfSysMonCpuBar, stats.CpuPercent);
 
-            if (stats.RamTotalBytes > 0)
+            if (stats.RamTotalBytes > 0 && ShelfSysMonRamText != null)
             {
-                if (ShelfSysMonRamText != null) ShelfSysMonRamText.Text = $"{FormatGb(stats.RamUsedBytes)} GB";
+                ShelfSysMonRamText.Text = $"{FormatGb(stats.RamUsedBytes)} GB";
             }
             SetUsageBar(ShelfSysMonRamBar, stats.RamPercent);
 

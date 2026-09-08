@@ -80,6 +80,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
 
     private string _lastSource = "";
     private bool _lastIsPlaying = false;
+    private bool _lastIsPictureInPicture = false;
     private bool _lastIsThrottled = false;
     private bool _lastSeekEnabled = false;
     private TimeSpan _lastPosition = TimeSpan.Zero;
@@ -464,6 +465,8 @@ public sealed class MediaDetectionService : IMediaDetectionService
             ApplyWindowTitleFallback(info, ref windowTitles);
             ApplyVideoTimelineRecovery(info, ref windowTitles);
 
+            DetectPictureInPictureState(info);
+
             TrackNameChangeBookkeeping(info);
             PreserveSoundCloudSourceIfNeeded(info, ref windowTitles);
 
@@ -561,6 +564,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         bool playbackChanged = info.IsPlaying != _lastIsPlaying;
         bool sourceChanged = info.MediaSource != _lastSource;
         bool seekCapabilityChanged = info.IsSeekEnabled != _lastSeekEnabled;
+        bool pipChanged = info.IsPictureInPicture != _lastIsPictureInPicture;
         bool significantJump = Math.Abs((info.Position - _lastPosition).TotalSeconds) >= (info.IsThrottled ? 5.0 : 1.5);
         bool throttleChanged = info.IsThrottled != _lastIsThrottled;
         bool inStartupSyncWindow = DateTime.UtcNow <= _startupProgressSyncUntilUtc;
@@ -569,7 +573,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
                                    (info.Duration.TotalSeconds > 0 || info.Position.TotalSeconds > 0) &&
                                    Math.Abs((info.Position - _lastPosition).TotalSeconds) >= 0.2;
 
-        if (!(forceRefresh || metadataChanged || playbackChanged || sourceChanged || (significantJump && !info.IsThrottled) || seekCapabilityChanged || throttleChanged || startupTimelineSync))
+        if (!(forceRefresh || metadataChanged || playbackChanged || sourceChanged || pipChanged || (significantJump && !info.IsThrottled) || seekCapabilityChanged || throttleChanged || startupTimelineSync))
         {
             return true;
         }
@@ -615,6 +619,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         _lastPublishedSignature = currentSignature;
         _lastTrackSignature = currentSignature;
         _lastIsPlaying = info.IsPlaying;
+        _lastIsPictureInPicture = info.IsPictureInPicture;
         _lastSource = info.MediaSource;
         _lastPosition = info.Position;
         _lastSeekEnabled = info.IsSeekEnabled;
@@ -625,7 +630,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         _lastPublishedSessionInstanceKey = info.SessionInstanceKey ?? "";
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private void SuppressIntermediateYouTubeThumbnail(MediaInfo info, bool isNewTrackForThumbnail)
     {
         bool willFetchYouTubeThumbnail = (info.Platform == MediaPlatform.YouTube || (info.Platform == MediaPlatform.Browser && IsLikelyYouTube(info)))
@@ -701,7 +706,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private void ApplyWindowTitleFallback(MediaInfo info, ref List<string>? windowTitles)
     {
         bool needsFallback = !info.IsAnyMediaPlaying || (string.IsNullOrEmpty(info.CurrentTrack) && info.Platform == MediaPlatform.Browser) || info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource);
@@ -804,7 +809,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private void ApplyVideoTimelineRecovery(MediaInfo info, ref List<string>? windowTitles)
     {
         bool isVideoSource = info.Platform == MediaPlatform.YouTube ||
@@ -945,7 +950,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private void StartThumbnailFetchIfNeeded(MediaInfo info, bool isNewTrackForThumbnail)
     {
         bool hasSoundCloudSessionOverride = !string.IsNullOrEmpty(info.SourceAppId) &&
@@ -1137,7 +1142,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         }
     }
 
-    #pragma warning disable S107, S3776
+#pragma warning disable S107, S3776
     private async Task FetchYouTubeThumbnailAsync(
         MediaInfo info,
         CancellationToken token,
@@ -1633,7 +1638,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         }
     }
 
-    #pragma warning disable S107, S3776
+#pragma warning disable S107, S3776
     private async Task FetchSoundCloudThumbnailAsync(MediaInfo info, CancellationToken token, string trackDuringFetch, string artistDuringFetch, string sourceAppDuringFetch, string sessionKeyDuringFetch, int thumbGenAtStart, int fetchGeneration, bool requireStrongMatch)
     {
         try
@@ -1844,6 +1849,34 @@ public sealed class MediaDetectionService : IMediaDetectionService
     private static bool IsBrowserSourceApp(string sourceAppId)
     {
         return PlatformDetector.IsBrowserApp(sourceAppId);
+    }
+
+    private static string? ExtractProcessNameFromSourceApp(string sourceAppId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceAppId)) return null;
+        var match = System.Text.RegularExpressions.Regex.Match(sourceAppId, @"([A-Za-z0-9_\-]+)\.exe", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+        return null;
+    }
+
+    private void DetectPictureInPictureState(MediaInfo info)
+    {
+        if (!info.IsAnyMediaPlaying && string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            info.IsPictureInPicture = false;
+            return;
+        }
+
+        string? procName = ExtractProcessNameFromSourceApp(info.SourceAppId);
+        bool isBrowser = info.Platform == MediaPlatform.Browser || IsBrowserSourceApp(info.SourceAppId);
+
+        bool isPip = _windowTitleScanner.IsPipActive(procName);
+        if (!isPip && isBrowser)
+        {
+            isPip = _windowTitleScanner.IsPipActive(null);
+        }
+
+        info.IsPictureInPicture = isPip;
     }
 
     private static bool IsIgnoredSourceApp(string sourceAppId)
@@ -2128,7 +2161,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         _stableArtist = r.stableArtist;
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private static void ApplySpotifyGroundTruthCorrection(MediaInfo info, string? spotifyGroundTruth, ref GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties)
     {
         bool isStaleSMTC = false;
@@ -2254,7 +2287,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         catch { info.IsPlaying = info.IsAnyMediaPlaying; }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private void ResolveBrowserMediaSource(
         MediaInfo info,
         string sessionSourceApp,
@@ -2426,7 +2459,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private async Task ApplySessionThumbnailAsync(MediaInfo info, GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties, bool trackChangedForThisPass)
     {
         bool isYouTubeLikeSource = info.Platform == MediaPlatform.YouTube || (info.Platform == MediaPlatform.Browser && IsLikelyYouTube(info));
@@ -2584,7 +2617,7 @@ public sealed class MediaDetectionService : IMediaDetectionService
         catch { info.IsIndeterminate = true; }
     }
 
-    #pragma warning disable S3776
+#pragma warning disable S3776
     private async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth)> ResolveActiveSessionAsync(bool forceRefresh)
     {
         if (_sessionManager == null) return (null, null);
@@ -3106,6 +3139,14 @@ public sealed class MediaDetectionService : IMediaDetectionService
     private bool IsLikelyYouTube(MediaInfo info)
     {
         if (info.Platform == MediaPlatform.YouTube) return true;
+
+        if (info.IsPictureInPicture && (info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource)) && !string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            if (MediaPlatformExtensions.ParsePlatform(_stableSource) == MediaPlatform.YouTube)
+            {
+                return true;
+            }
+        }
 
         if (info.Platform == MediaPlatform.Browser && !string.IsNullOrEmpty(info.SourceAppId) &&
             TryGetSessionSourceOverride(info, out var sOver) &&

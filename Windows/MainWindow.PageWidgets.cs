@@ -53,7 +53,6 @@ public partial class MainWindow
                 if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
                 break;
 
-            case "camera":
             default:
                 SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
                 SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
@@ -92,7 +91,6 @@ public partial class MainWindow
                 }
                 break;
 
-            case "analog":
             default:
                 if (ClockViewDigitalClock != null) ClockViewDigitalClock.Visibility = Visibility.Collapsed;
                 if (ClockViewWordClock != null) ClockViewWordClock.Visibility = Visibility.Collapsed;

@@ -13,6 +13,7 @@ public partial class MainWindow
 {
     #region Gesture Controls
 
+    private const string GestureLogTag = "GESTURE";
     private GestureController _gestureController = null!;
 
     private bool _isGestureActive
@@ -109,23 +110,23 @@ public partial class MainWindow
     {
         if (!_settings.EnableGestureControls)
         {
-            RuntimeLog.Log("GESTURE", "blocked: EnableGestureControls=false");
+            RuntimeLog.Log(GestureLogTag, "blocked: EnableGestureControls=false");
             return false;
         }
         if (_isAnimating)
         {
-            RuntimeLog.Log("GESTURE", "blocked: _isAnimating=true");
+            RuntimeLog.Log(GestureLogTag, "blocked: _isAnimating=true");
             return false;
         }
 
         if (_isExpanded || _isMusicExpanded)
         {
-            RuntimeLog.Log("GESTURE", $"blocked: expanded={_isExpanded} musicExpanded={_isMusicExpanded}");
+            RuntimeLog.Log(GestureLogTag, $"blocked: expanded={_isExpanded} musicExpanded={_isMusicExpanded}");
             return false;
         }
         if (_currentMediaInfo == null || !_currentMediaInfo.IsAnyMediaPlaying)
         {
-            RuntimeLog.Log("GESTURE", $"blocked: mediaInfo={(_currentMediaInfo != null)} isPlaying={_currentMediaInfo?.IsAnyMediaPlaying}");
+            RuntimeLog.Log(GestureLogTag, $"blocked: mediaInfo={(_currentMediaInfo != null)} isPlaying={_currentMediaInfo?.IsAnyMediaPlaying}");
             return false;
         }
 
@@ -187,7 +188,7 @@ public partial class MainWindow
 
     private async void OnGestureSwipeLeft()
     {
-        Dispatcher.Invoke(() =>
+        await Dispatcher.InvokeAsync(() =>
         {
             PlayGestureSwipeFeedback(isLeft: true);
             PlayNextSkipAnimation();
@@ -196,20 +197,20 @@ public partial class MainWindow
 
         try
         {
-            if ((DateTime.Now - _lastMediaActionTime).TotalMilliseconds < 500) return;
-            _lastMediaActionTime = DateTime.Now;
+            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
+            _lastMediaActionTime = DateTime.UtcNow;
 
             await _mediaService.NextTrackAsync();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("GESTURE", ex, "SwipeLeft/Next failed");
+            RuntimeLog.Error(GestureLogTag, ex, "SwipeLeft/Next failed");
         }
     }
 
     private async void OnGestureSwipeRight()
     {
-        Dispatcher.Invoke(() =>
+        await Dispatcher.InvokeAsync(() =>
         {
             PlayGestureSwipeFeedback(isLeft: false);
             PlayPrevSkipAnimation();
@@ -217,15 +218,15 @@ public partial class MainWindow
 
         try
         {
-            if ((DateTime.Now - _lastMediaActionTime).TotalMilliseconds < 500) return;
-            _lastMediaActionTime = DateTime.Now;
+            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
+            _lastMediaActionTime = DateTime.UtcNow;
 
             PrepareForPreviousTrackRequest();
             await _mediaService.PreviousTrackAsync();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("GESTURE", ex, "SwipeRight/Prev failed");
+            RuntimeLog.Error(GestureLogTag, ex, "SwipeRight/Prev failed");
         }
     }
 
@@ -261,25 +262,25 @@ public partial class MainWindow
 
     private async void OnGestureDoubleTap()
     {
-        Dispatcher.Invoke(() =>
+        await Dispatcher.InvokeAsync(() =>
         {
             PlayGestureDoubleTapFeedback();
         });
 
         try
         {
-            if ((DateTime.Now - _lastMediaActionTime).TotalMilliseconds < 500) return;
-            _lastMediaActionTime = DateTime.Now;
+            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
+            _lastMediaActionTime = DateTime.UtcNow;
 
             _isPlaying = !_isPlaying;
-            Dispatcher.Invoke(() => UpdatePlayPauseIcon());
+            await Dispatcher.InvokeAsync(() => UpdatePlayPauseIcon());
 
             _progressEngine.NotifyUserPlayPause(_isPlaying);
             await _mediaService.PlayPauseAsync();
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("GESTURE", ex, "DoubleTap/PlayPause failed");
+            RuntimeLog.Error(GestureLogTag, ex, "DoubleTap/PlayPause failed");
         }
     }
 

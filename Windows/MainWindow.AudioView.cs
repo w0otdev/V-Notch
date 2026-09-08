@@ -175,7 +175,7 @@ public partial class MainWindow
 
         AnimateAudioViewSwap(
             outgoing, AudioContent,
-            fromW, fromH, _audioViewWidth, _audioViewHeight,
+            new Size(fromW, fromH), new Size(_audioViewWidth, _audioViewHeight),
             prepIncoming: null,
             onComplete: () =>
             {
@@ -218,7 +218,7 @@ public partial class MainWindow
 
         AnimateAudioViewSwap(
             AudioContent, ExpandedContent,
-            fromW, fromH, _expandedWidth, _expandedHeight,
+            new Size(fromW, fromH), new Size(_expandedWidth, _expandedHeight),
             prepIncoming: () =>
             {
                 ExpandedContent.Effect = null;
@@ -269,7 +269,7 @@ public partial class MainWindow
 
         AnimateAudioViewSwap(
             AudioContent, SecondaryContent,
-            fromW, fromH, _expandedWidth, _expandedHeight,
+            new Size(fromW, fromH), new Size(_expandedWidth, _expandedHeight),
             prepIncoming: () =>
             {
                 EnableKeyboardInput();
@@ -305,7 +305,7 @@ public partial class MainWindow
 
         AnimateAudioViewSwap(
             AudioContent, TimerContent,
-            fromW, fromH, _clockViewWidth, _clockViewHeight,
+            new Size(fromW, fromH), new Size(_clockViewWidth, _clockViewHeight),
             prepIncoming: () =>
             {
                 ApplyClockViewWindowSize();
@@ -319,9 +319,13 @@ public partial class MainWindow
 
     private void AnimateAudioViewSwap(
         FrameworkElement outgoing, FrameworkElement incoming,
-        double notchFromW, double notchFromH, double notchToW, double notchToH,
+        Size notchFrom, Size notchTo,
         Action? prepIncoming, Action? onComplete, int? generation = null)
     {
+        double notchFromW = notchFrom.Width;
+        double notchFromH = notchFrom.Height;
+        double notchToW = notchTo.Width;
+        double notchToH = notchTo.Height;
         int activeGen = generation ?? _viewTransitionGeneration;
         NotchBorder.IsHitTestVisible = false;
 

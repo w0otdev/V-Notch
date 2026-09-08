@@ -32,7 +32,7 @@ jobs:
       # actions/setup-dotnet@v4.3.1
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '8.0.x'
 
       - name: Install NSIS
         shell: pwsh
@@ -89,7 +89,7 @@ jobs:
           body: |
             Build from `${{ github.event.workflow_run.head_sha }}`.
 
-            - `V-Notch-Setup.exe` requires [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0).
+            - `V-Notch-Setup.exe` requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
             - `V-Notch-Setup-SelfContained.exe` includes required runtime.
           files: release-assets/*
         env:

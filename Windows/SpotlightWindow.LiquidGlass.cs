@@ -718,7 +718,7 @@ public partial class SpotlightWindow
         }
 
         UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
-        UpdateDynamicGlassTint(_liquidGlass.AverageBackgroundBrightness);
+        UpdateDynamicGlassTint();
         UpdateShaderGeometryPerFrame();
     }
 
@@ -778,7 +778,7 @@ public partial class SpotlightWindow
         });
     }
 
-    private void UpdateDynamicGlassTint(double bgBrightness)
+    private void UpdateDynamicGlassTint()
     {
         if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
 
@@ -861,13 +861,6 @@ public partial class SpotlightWindow
         }
         catch { /* ignored */ }
         return true;
-    }
-
-    private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
     }
 
     private static SolidColorBrush CreateFrozenBrush(byte a, byte r, byte g, byte b)

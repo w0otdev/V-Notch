@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,6 +16,9 @@ namespace VNotch;
 public partial class MainWindow
 {
     #region Update Notification Handlers
+
+    private const string LocKeyUpdateVersion = "update.version";
+    private const string LocKeyUpdateClickToInstall = "update.clickToInstall";
 
     private async void UpdateCheckTimer_Tick(object? sender, EventArgs e)
     {
@@ -54,8 +58,10 @@ public partial class MainWindow
                 HideUpdateNotification();
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // Background update checks can fail due to network unavailability or API rate limits; ignore silently to avoid disrupting the user.
+            System.Diagnostics.Debug.WriteLine($"[Update] Background update check failed: {ex.Message}");
         }
     }
 
@@ -77,13 +83,13 @@ public partial class MainWindow
         UpdateNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         UpdateNotificationButton.Visibility = Visibility.Visible;
         UpdateNotificationButton.IsHitTestVisible = true;
-        UpdateNotificationButton.Tag = Loc.Get("update.version", _availableUpdate?.Version?.ToString() ?? "-");
+        UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");
         UpdateNotificationButton.Cursor = Cursors.Hand;
         UpdateNotificationButton.Opacity = 1.0;
         UpdateNotificationTranslate.Y = 0;
         SetUpdateInlineTooltipContent(
-            Loc.Get("update.version", _availableUpdate?.Version?.ToString() ?? "-"),
-            Loc.Get("update.clickToInstall"));
+            Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-"),
+            Loc.Get(LocKeyUpdateClickToInstall));
 
         if (wasVisible)
         {
@@ -269,18 +275,18 @@ public partial class MainWindow
 
         try
         {
-            var installed = await _updateService.DownloadAndInstallUpdateAsync(_availableUpdate, downloadProgress);
+            var installed = await _updateService.DownloadAndInstallUpdateAsync(_availableUpdate, downloadProgress, CancellationToken.None);
 
             if (!installed)
             {
                 updateProgressWindow.Close();
                 _isUpdateInstalling = false;
-                UpdateNotificationButton.Tag = Loc.Get("update.version", _availableUpdate.Version);
+                UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version);
                 UpdateNotificationButton.Cursor = Cursors.Hand;
                 UpdateNotificationButton.Opacity = 1.0;
                 SetUpdateInlineTooltipContent(
-                    Loc.Get("update.version", _availableUpdate.Version),
-                    Loc.Get("update.clickToInstall"));
+                    Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version),
+                    Loc.Get(LocKeyUpdateClickToInstall));
                 StartUpdatePulseAnimation();
                 MessageBox.Show(
                     Loc.Get("error.updateFailed"),
@@ -293,12 +299,12 @@ public partial class MainWindow
         {
             updateProgressWindow.Close();
             _isUpdateInstalling = false;
-            UpdateNotificationButton.Tag = Loc.Get("update.version", _availableUpdate?.Version?.ToString() ?? "-");
+            UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");
             UpdateNotificationButton.Cursor = Cursors.Hand;
             UpdateNotificationButton.Opacity = 1.0;
             SetUpdateInlineTooltipContent(
-                Loc.Get("update.version", _availableUpdate?.Version?.ToString() ?? "-"),
-                Loc.Get("update.clickToInstall"));
+                Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-"),
+                Loc.Get(LocKeyUpdateClickToInstall));
             StartUpdatePulseAnimation();
             MessageBox.Show(
                 Loc.Get("error.updateError"),
@@ -316,10 +322,10 @@ public partial class MainWindow
 
         if (_availableUpdate != null && !_isUpdateInstalling)
         {
-            UpdateNotificationButton.Tag = Loc.Get("update.version", _availableUpdate.Version);
+            UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version);
             SetUpdateInlineTooltipContent(
-                Loc.Get("update.version", _availableUpdate.Version),
-                Loc.Get("update.clickToInstall"));
+                Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version),
+                Loc.Get(LocKeyUpdateClickToInstall));
         }
     }
 

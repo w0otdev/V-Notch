@@ -177,7 +177,7 @@ public partial class MainWindow
         _greetingDismissTimer.Start();
     }
 
-    private void PreparePath(Path path)
+    private static void PreparePath(Path path)
     {
         path.Visibility = Visibility.Visible;
 
@@ -193,7 +193,7 @@ public partial class MainWindow
         path.Tag = normalizedLength;
     }
 
-    private double GetPathLength(PathGeometry geometry)
+    private static double GetPathLength(PathGeometry geometry)
     {
         double totalLength = 0;
 

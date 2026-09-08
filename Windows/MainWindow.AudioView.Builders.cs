@@ -287,7 +287,7 @@ public partial class MainWindow
                 Capture = quick.Capture
             };
             QueueAudioSnapshot(token, detailed, afterBuild);
-        });
+        }, System.Threading.CancellationToken.None);
     }
 
     private void QueueAudioSnapshot(int token, AudioMixerSnapshot snap, Action? afterBuild = null)
@@ -410,7 +410,7 @@ public partial class MainWindow
             {
                 System.Threading.Volatile.Write(ref _audioPollInFlight, 0);
             }
-        });
+        }, System.Threading.CancellationToken.None);
     }
 
     private void PatchInPlace(AudioMixerSnapshot snap)
@@ -700,7 +700,7 @@ public partial class MainWindow
         AnimateAudioNotchHeight(newFit, dur, ease);
     }
 
-    private T? SafeCall<T>(Func<T> fn)
+    private static T? SafeCall<T>(Func<T> fn)
     {
         try { return fn(); } catch { return default; }
     }
@@ -1016,7 +1016,14 @@ public partial class MainWindow
             if (w <= 0) return;
             currentRatio = Math.Clamp(x / w, 0, 1);
             UpdateVisual(currentRatio);
-            try { onChanged(currentRatio); } catch { }
+            try
+            {
+                onChanged(currentRatio);
+            }
+            catch
+            {
+                // Ignore callback errors during slider dragging
+            }
         }
 
         setVisual = r =>
@@ -1041,7 +1048,14 @@ public partial class MainWindow
             if (!dragging) return;
             dragging = false;
             area.ReleaseMouseCapture();
-            try { onChanged(currentRatio); } catch { }
+            try
+            {
+                onChanged(currentRatio);
+            }
+            catch
+            {
+                // Ignore callback errors on slider release
+            }
             suppressUntil = DateTime.UtcNow.AddMilliseconds(600);
             if (!area.IsMouseOver) AnimateSliderHover(false);
             e.Handled = true;
@@ -1275,7 +1289,10 @@ public partial class MainWindow
             var pos = anchor.TransformToVisual(AudioContent).Transform(new Point(0, 0));
             container.Margin = new Thickness(pos.X, pos.Y + anchor.ActualHeight + 4, 0, 0);
         }
-        catch { }
+        catch
+        {
+            // Anchor element might be disconnected from the visual tree during fast UI updates
+        }
 
         AudioOverlay.Children.Add(container);
         AudioOverlay.Visibility = Visibility.Visible;

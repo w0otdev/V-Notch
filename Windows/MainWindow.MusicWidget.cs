@@ -76,99 +76,6 @@ public partial class MainWindow
         MediaWidgetLayoutTranslate.BeginAnimation(TranslateTransform.XProperty, translateAnim);
     }
 
-    private void ExpandMusicWidget()
-    {
-        if (_isMusicAnimating) return;
-        _isMusicAnimating = true;
-        _notchState.TryTransitionTo(NotchState.MusicExpanding);
-        UpdateProgressSectionLayout();
-
-        ResetCalendarHoverFocusVisualState();
-
-        var expandDuration = new Duration(TimeSpan.FromMilliseconds(500));
-        var contentDelay = TimeSpan.FromMilliseconds(150);
-
-        var fadeOutCalendar = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutCalendar.Completed += (s, e) => CalendarWidget.Visibility = Visibility.Collapsed;
-        CalendarWidget.BeginAnimation(OpacityProperty, fadeOutCalendar);
-
-        if (_isLyricsActive && LyricsWidget.Visibility == Visibility.Visible)
-        {
-            var fadeOutLyrics = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-            fadeOutLyrics.Completed += (s, e) => LyricsWidget.Visibility = Visibility.Collapsed;
-            LyricsWidget.BeginAnimation(OpacityProperty, fadeOutLyrics);
-        }
-
-        var fadeOutControls = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutControls.Completed += (s, e) => MediaControls.Visibility = Visibility.Collapsed;
-        MediaControls.BeginAnimation(OpacityProperty, fadeOutControls);
-
-        var fadeOutBattery = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutBattery.Completed += (s, e) => BatterySection.Visibility = Visibility.Collapsed;
-        BatterySection.BeginAnimation(OpacityProperty, fadeOutBattery);
-
-        var fadeOutNavPanel = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutNavPanel.Completed += (s, e) => NavIconsPanel.Visibility = Visibility.Collapsed;
-        NavIconsPanel.BeginAnimation(OpacityProperty, fadeOutNavPanel);
-
-        var fadeOutNavBg = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutNavBg.Completed += (s, e) => NavIconsBackground.Visibility = Visibility.Collapsed;
-        NavIconsBackground.BeginAnimation(OpacityProperty, fadeOutNavBg);
-
-        if (UpdateNotificationButton != null && UpdateNotificationButton.Visibility == Visibility.Visible)
-        {
-            StopUpdatePulseAnimation();
-            var fadeOutUpdate = MakeAnim(UpdateNotificationButton.Opacity, 0d, _dur150, _easePowerIn2, null);
-            fadeOutUpdate.Completed += (s, e) =>
-            {
-                UpdateNotificationButton.Visibility = Visibility.Collapsed;
-                UpdateNotificationButton.IsHitTestVisible = false;
-            };
-            UpdateNotificationButton.BeginAnimation(OpacityProperty, fadeOutUpdate);
-        }
-
-        var fadeOutSettings = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutSettings.Completed += (s, e) => SettingsButton.Visibility = Visibility.Collapsed;
-        SettingsButton.BeginAnimation(OpacityProperty, fadeOutSettings);
-
-        var fadeOutGreeting = MakeAnim(1d, 0d, _dur150, _easePowerIn2, null);
-        fadeOutGreeting.Completed += (s, e) => GreetingSection.Visibility = Visibility.Collapsed;
-        GreetingSection.BeginAnimation(OpacityProperty, fadeOutGreeting);
-
-        double startWidth = MediaWidgetContainer.ActualWidth;
-        double startX = GetMediaWidgetLayoutX();
-
-        MediaWidgetContainer.BeginAnimation(WidthProperty, null);
-        MediaWidgetContainer.BeginAnimation(MarginProperty, null);
-        MediaWidgetContainer.Width = double.NaN;
-        MediaWidgetContainer.Margin = new Thickness(-8, 0, 0, 0);
-        MediaWidgetContainer.HorizontalAlignment = HorizontalAlignment.Stretch;
-        Panel.SetZIndex(MediaWidgetContainer, 10);
-        Grid.SetColumnSpan(MediaWidgetContainer, 3);
-
-        AnimateMediaWidgetLayoutFrom(startWidth, startX, expandDuration, _easeExpOut7, () =>
-        {
-            UpdateProgressSectionLayout();
-            _isMusicAnimating = false;
-            _notchState.TryTransitionTo(NotchState.MusicExpanded);
-            UpdateProgressTimerState();
-        });
-
-        InlineControls.Visibility = Visibility.Visible;
-
-        var fadeInInline = MakeAnim(0d, 1d, _dur350, _easeExpOut7, contentDelay);
-        InlineControls.BeginAnimation(OpacityProperty, fadeInInline);
-
-        var slideUpAnim = MakeAnim(10, 0, _dur450, _easeSpring, contentDelay);
-        var slideTransform = InlineControls.RenderTransform as TranslateTransform ?? new TranslateTransform(0, 10);
-        InlineControls.RenderTransform = slideTransform;
-        slideTransform.BeginAnimation(TranslateTransform.YProperty, slideUpAnim);
-
-        InlinePauseIcon.Visibility = _isPlaying ? Visibility.Visible : Visibility.Collapsed;
-        InlinePlayIcon.Visibility = _isPlaying ? Visibility.Collapsed : Visibility.Visible;
-
-        SyncVolumeFromActiveSession();
-    }
 
     private void CollapseMusicWidget()
     {
@@ -305,7 +212,6 @@ public partial class MainWindow
 
         bool useCompactLayout = !_isMusicExpanded;
         double fallbackWidth = useCompactLayout ? 208 : 340;
-        double visibleTextWidth = GetVisibleMediaTextWidth(fallbackWidth);
 
         double containerHeight = useCompactLayout ? 10 : 14;
         double barHeight = 4;

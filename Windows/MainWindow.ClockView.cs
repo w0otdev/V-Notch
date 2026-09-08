@@ -93,10 +93,12 @@ public partial class MainWindow : IClockWidgetHost
     private void ResizeHostWindowHeight(double notchHeightDip)
         => EnsureClockWidgetPresenterLoaded().ResizeHostWindowHeight(notchHeightDip);
 
+#pragma warning disable S107 // WPF notch resize transition requires source, target, timing, and callback parameters
     private void AnimateClockViewNotchResize(double fromWidth, double fromHeight,
         double toWidth, double toHeight, Duration duration, TimeSpan delay, Action? onCompleted = null, int? generation = null)
         => EnsureClockWidgetPresenterLoaded().AnimateClockViewNotchResize(
             fromWidth, fromHeight, toWidth, toHeight, duration, delay, onCompleted, generation);
+#pragma warning restore S107
 
     #endregion
 

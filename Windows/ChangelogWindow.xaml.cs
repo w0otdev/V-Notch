@@ -17,7 +17,6 @@ public partial class ChangelogWindow : Window
 {
     private readonly IUpdateService _updateService;
     private List<ChangelogEntry> _changelogEntries = new();
-    private string? _selectedVersion;
 
     public ChangelogWindow(IUpdateService updateService)
     {
@@ -92,7 +91,7 @@ public partial class ChangelogWindow : Window
                 _changelogEntries.Add(new ChangelogEntry
                 {
                     Version = currentVersion,
-                    Date = DateTime.Now,
+                    Date = DateTime.UtcNow,
                     Content = Loc.Get("changelog.currentInstalled"),
                     IsCurrent = true
                 });
@@ -198,8 +197,6 @@ public partial class ChangelogWindow : Window
 
     private void SelectVersion(string version)
     {
-        _selectedVersion = version;
-
         // Update button states
         foreach (Button button in VersionListPanel.Children.OfType<Button>())
         {
@@ -344,25 +341,25 @@ public partial class ChangelogWindow : Window
             }
 
             // Heading
-            if (trimmedLine.StartsWith("###"))
+            if (trimmedLine.StartsWith("###", StringComparison.Ordinal))
             {
                 var text = trimmedLine.TrimStart('#').Trim();
                 ChangelogContent.Children.Add(CreateHeading(text, 16, FontWeights.SemiBold));
             }
-            else if (trimmedLine.StartsWith("##"))
+            else if (trimmedLine.StartsWith("##", StringComparison.Ordinal))
             {
                 var text = trimmedLine.TrimStart('#').Trim();
                 ChangelogContent.Children.Add(CreateHeading(text, 18, FontWeights.Bold));
             }
-            else if (trimmedLine.StartsWith("#"))
+            else if (trimmedLine.StartsWith('#'))
             {
                 var text = trimmedLine.TrimStart('#').Trim();
                 ChangelogContent.Children.Add(CreateHeading(text, 20, FontWeights.Bold));
             }
             // Bullet point
-            else if (trimmedLine.StartsWith("-") || trimmedLine.StartsWith("*"))
+            else if (trimmedLine.StartsWith('-') || trimmedLine.StartsWith('*'))
             {
-                var text = trimmedLine.Substring(1).Trim();
+                var text = trimmedLine[1..].Trim();
                 ChangelogContent.Children.Add(CreateBulletPoint(text));
             }
             // Regular paragraph
@@ -447,21 +444,21 @@ public partial class ChangelogWindow : Window
         {
             if (match.Index > lastIndex)
             {
-                textBlock.Inlines.Add(new Run(text.Substring(lastIndex, match.Index - lastIndex)));
+                textBlock.Inlines.Add(new Run(text[lastIndex..match.Index]));
             }
 
             string value = match.Value;
-            if (value.StartsWith("**") && value.EndsWith("**"))
+            if (value.StartsWith("**", StringComparison.Ordinal) && value.EndsWith("**", StringComparison.Ordinal))
             {
-                textBlock.Inlines.Add(new Bold(new Run(value.Substring(2, value.Length - 4))));
+                textBlock.Inlines.Add(new Bold(new Run(value[2..^2])));
             }
-            else if (value.StartsWith("*") && value.EndsWith("*"))
+            else if (value.StartsWith('*') && value.EndsWith('*'))
             {
-                textBlock.Inlines.Add(new Italic(new Run(value.Substring(1, value.Length - 2))));
+                textBlock.Inlines.Add(new Italic(new Run(value[1..^1])));
             }
-            else if (value.StartsWith("`") && value.EndsWith("`"))
+            else if (value.StartsWith('`') && value.EndsWith('`'))
             {
-                var run = new Run(value.Substring(1, value.Length - 2))
+                var run = new Run(value[1..^1])
                 {
                     FontFamily = new FontFamily("Consolas"),
                     Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)),
@@ -469,7 +466,7 @@ public partial class ChangelogWindow : Window
                 };
                 textBlock.Inlines.Add(run);
             }
-            else if (value.StartsWith("["))
+            else if (value.StartsWith('['))
             {
                 var linkMatch = Regex.Match(value, @"\[(.*?)\]\((.*?)\)");
                 if (linkMatch.Success)
@@ -496,7 +493,7 @@ public partial class ChangelogWindow : Window
 
         if (lastIndex < text.Length)
         {
-            textBlock.Inlines.Add(new Run(text.Substring(lastIndex)));
+            textBlock.Inlines.Add(new Run(text[lastIndex..]));
         }
     }
 
@@ -514,8 +511,9 @@ public partial class ChangelogWindow : Window
             var cleanVersion = Regex.Replace(versionString, @"[^\d\.]", "");
             return Version.Parse(cleanVersion);
         }
-        catch
+        catch (Exception)
         {
+            // Fallback to version 0.0.0 on malformed version string
             return new Version(0, 0, 0);
         }
     }
@@ -557,7 +555,7 @@ public partial class ChangelogWindow : Window
         }
     }
 
-    private class ChangelogEntry
+    private sealed class ChangelogEntry
     {
         public string Version { get; set; } = string.Empty;
         public DateTime Date { get; set; }

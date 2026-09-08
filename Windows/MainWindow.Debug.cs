@@ -11,14 +11,13 @@ namespace VNotch;
 public partial class MainWindow
 {
     private bool _isDebugModeEnabled = false;
-    private int _frameCount = 0;
     private long _lastFpsUpdate = 0;
     private double _currentMeasuredFps = 0;
     private int _currentDisplayHz = 0;
     private DebugWindow? _debugWindow;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct DEVMODE
+    private struct Devmode
     {
         private const int CCHDEVICENAME = 32;
         private const int CCHFORMNAME = 32;
@@ -57,7 +56,7 @@ public partial class MainWindow
     }
 
     [DllImport("user32.dll")]
-    private static extern bool EnumDisplaySettings(string? deviceName, int modeNum, ref DEVMODE devMode);
+    private static extern bool EnumDisplaySettings(string? deviceName, int modeNum, ref Devmode devMode);
 
     internal void ToggleDebugMode(bool enable)
     {
@@ -69,30 +68,32 @@ public partial class MainWindow
         {
             if (_debugWindow == null)
             {
-                _debugWindow = new DebugWindow(
-                    initialX: _settings.DebugWindowX,
-                    initialY: _settings.DebugWindowY,
-                    onClose: () =>
+                _debugWindow = new DebugWindow(new DebugWindowOptions
+                {
+                    InitialX = _settings.DebugWindowX,
+                    InitialY = _settings.DebugWindowY,
+                    OnClose = () =>
                     {
                         _settings.EnableDebugMode = false;
                         _settingsService.Save(_settings);
                         ToggleDebugMode(false);
                     },
-                    onPositionChanged: (x, y) =>
+                    OnPositionChanged = (x, y) =>
                     {
                         _settings.DebugWindowX = x;
                         _settings.DebugWindowY = y;
                         _settingsService.Save(_settings);
                     },
-                    liveMetricsProvider: () =>
+                    LiveMetricsProvider = () =>
                     {
                         PerformanceDiagnosticService.Instance.PingDispatcher(Dispatcher);
                         return (_currentMeasuredFps, _currentDisplayHz, _currentMeasuredFrameTimeMs, _lastNetDownBytesPerSec, _lastNetUpBytesPerSec);
                     },
-                    onLockViewChanged: (locked) => SetDebugViewLock(locked),
-                    onDragNotchChanged: (draggable) => SetDebugDraggable(draggable),
-                    onViewStateChanged: (state) => SetDebugViewState(state),
-                    onResetPosition: () => ResetNotchPosition());
+                    OnLockViewChanged = (locked) => SetDebugViewLock(locked),
+                    OnDragNotchChanged = (draggable) => SetDebugDraggable(draggable),
+                    OnViewStateChanged = (state) => SetDebugViewState(state),
+                    OnResetPosition = () => ResetNotchPosition()
+                });
             }
             _debugWindow.Show();
             _debugWindow.Activate();
@@ -104,7 +105,6 @@ public partial class MainWindow
             _lastFrameTimestamp = _lastFpsUpdate;
             _currentMeasuredFrameTimeMs = 0;
             _fpsWindowFrameCount = 0;
-            _frameCount = 0;
 
             UpdateRefreshRate();
 
@@ -198,8 +198,8 @@ public partial class MainWindow
     {
         try
         {
-            DEVMODE devMode = new DEVMODE();
-            devMode.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+            Devmode devMode = new Devmode();
+            devMode.dmSize = (short)Marshal.SizeOf(typeof(Devmode));
             if (EnumDisplaySettings(null, -1, ref devMode))
             {
                 _currentDisplayHz = devMode.dmDisplayFrequency;
@@ -226,19 +226,33 @@ public partial class MainWindow
 
     private void CompositionTarget_Rendering_DebugFps(object? sender, EventArgs e)
     {
+        if (IsDuplicateRenderingFrame(e))
+            return;
+
+        _fpsWindowFrameCount++;
+        long now = Stopwatch.GetTimestamp();
+
+        UpdateFrameTimeMetrics(now);
+        UpdateMeasuredFpsMetrics(now);
+        UpdateDisplayHzPeriodically(now);
+    }
+
+    private bool IsDuplicateRenderingFrame(EventArgs e)
+    {
         if (e is RenderingEventArgs rea)
         {
             if (rea.RenderingTime == _lastRenderingTime)
             {
                 // Discard duplicate callbacks pumped by modal mouse-drag loops (e.g. moving DebugWindow) within the same VSync frame
-                return;
+                return true;
             }
             _lastRenderingTime = rea.RenderingTime;
         }
+        return false;
+    }
 
-        _fpsWindowFrameCount++;
-        long now = Stopwatch.GetTimestamp();
-
+    private void UpdateFrameTimeMetrics(long now)
+    {
         if (_lastFrameTimestamp > 0)
         {
             double ft = (double)(now - _lastFrameTimestamp) / Stopwatch.Frequency * 1000.0;
@@ -250,30 +264,33 @@ public partial class MainWindow
             }
         }
         _lastFrameTimestamp = now;
+    }
 
+    private void UpdateMeasuredFpsMetrics(long now)
+    {
         if (_fpsWindowStartTicks == 0)
         {
             _fpsWindowStartTicks = now;
-        }
-        else
-        {
-            double elapsedSec = (double)(now - _fpsWindowStartTicks) / Stopwatch.Frequency;
-            if (elapsedSec >= 0.4) // Refresh FPS count every 400ms for stable, accurate readings
-            {
-                double calculatedFps = _fpsWindowFrameCount / elapsedSec;
-                double maxAllowedFps = _currentDisplayHz > 0 ? _currentDisplayHz : 240;
-                _currentMeasuredFps = Math.Min(Math.Round(calculatedFps), maxAllowedFps);
-                _fpsWindowFrameCount = 0;
-                _fpsWindowStartTicks = now;
-            }
+            return;
         }
 
-        _frameCount++;
+        double elapsedSec = (double)(now - _fpsWindowStartTicks) / Stopwatch.Frequency;
+        if (elapsedSec >= 0.4) // Refresh FPS count every 400ms for stable, accurate readings
+        {
+            double calculatedFps = _fpsWindowFrameCount / elapsedSec;
+            double maxAllowedFps = _currentDisplayHz > 0 ? _currentDisplayHz : 240;
+            _currentMeasuredFps = Math.Min(Math.Round(calculatedFps), maxAllowedFps);
+            _fpsWindowFrameCount = 0;
+            _fpsWindowStartTicks = now;
+        }
+    }
+
+    private void UpdateDisplayHzPeriodically(long now)
+    {
         if ((now - _lastFpsUpdate) / Stopwatch.Frequency >= 1.0)
         {
             UpdateRefreshRate();
             _lastFpsUpdate = now;
-            _frameCount = 0;
         }
     }
 }

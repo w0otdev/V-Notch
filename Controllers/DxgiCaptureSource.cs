@@ -275,6 +275,13 @@ public sealed class DxgiCaptureSource : IDisposable
         byte* dst = (byte*)destinationPointer;
         long copyBytes = (long)copyWidth * 4;
 
+        if (sourcePitch == destinationPitch && sourcePitch == copyBytes)
+        {
+            long totalBytes = copyBytes * copyHeight;
+            Buffer.MemoryCopy(src, dst, totalBytes, totalBytes);
+            return;
+        }
+
         for (int row = 0; row < copyHeight; row++)
         {
             Buffer.MemoryCopy(

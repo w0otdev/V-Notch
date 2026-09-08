@@ -77,6 +77,7 @@ public partial class MainWindow
                 UpdateArtistText(result.DisplayText.Artist);
             }
             CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
+            UpdatePictureInPictureBadge(info.IsPictureInPicture && (result.HasRealTrack || info.IsAnyMediaPlaying));
 
             bool isSpotify = result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify;
             bool isYouTube = result.HasRealTrack && (
@@ -251,6 +252,7 @@ public partial class MainWindow
                     ThumbnailFallback.Visibility = Visibility.Visible;
                     HideMediaBackground();
                     ClearLyrics();
+                    UpdatePictureInPictureBadge(false, animate: false);
                 }
             }
 
@@ -1076,6 +1078,65 @@ public partial class MainWindow
         else
         {
             TrackTitle.Foreground = Brushes.White;
+        }
+    }
+
+    #endregion
+
+    #region Picture-in-Picture Indicator
+
+    private void UpdatePictureInPictureBadge(bool isPip, bool animate = true)
+    {
+        if (ThumbnailPipBadge == null) return;
+
+        if (isPip)
+        {
+            if (ThumbnailPipBadge.Visibility != Visibility.Visible || ThumbnailPipBadge.Opacity < 0.95)
+            {
+                ThumbnailPipBadge.Visibility = Visibility.Visible;
+                if (animate)
+                {
+                    var anim = new DoubleAnimation(ThumbnailPipBadge.Opacity, 1.0, TimeSpan.FromMilliseconds(200))
+                    {
+                        EasingFunction = _easeQuadOut
+                    };
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+                    ThumbnailPipBadge.BeginAnimation(OpacityProperty, anim);
+                }
+                else
+                {
+                    ThumbnailPipBadge.BeginAnimation(OpacityProperty, null);
+                    ThumbnailPipBadge.Opacity = 1.0;
+                }
+            }
+        }
+        else
+        {
+            if (ThumbnailPipBadge.Visibility == Visibility.Visible)
+            {
+                if (animate && ThumbnailPipBadge.Opacity > 0.05)
+                {
+                    var anim = new DoubleAnimation(ThumbnailPipBadge.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
+                    {
+                        EasingFunction = _easeQuadOut
+                    };
+                    anim.Completed += (s, e) =>
+                    {
+                        if (!(_currentMediaInfo?.IsPictureInPicture ?? false))
+                        {
+                            ThumbnailPipBadge.Visibility = Visibility.Collapsed;
+                        }
+                    };
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+                    ThumbnailPipBadge.BeginAnimation(OpacityProperty, anim);
+                }
+                else
+                {
+                    ThumbnailPipBadge.BeginAnimation(OpacityProperty, null);
+                    ThumbnailPipBadge.Opacity = 0.0;
+                    ThumbnailPipBadge.Visibility = Visibility.Collapsed;
+                }
+            }
         }
     }
 

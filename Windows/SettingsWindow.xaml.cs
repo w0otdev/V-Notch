@@ -22,10 +22,51 @@ namespace VNotch;
 
 public partial class SettingsWindow : Window
 {
+    private const string LogCategory = "SETTINGS";
+    private const string DefaultNavTabs = "Media,Secondary,Timer,AudioMixer";
+    private const string SubtitlePriorityDataFormat = "SubtitlePriorityItem";
+    private const string NavTabMedia = "Media";
+    private const string WidgetClock = "clock";
+    private const string WidgetWordClock = "wordclock";
+    private const string WidgetWeather = "weather";
+    private const string WidgetSysMon = "sysmon";
+    private const string SkinLiquidGlass = "liquidglass";
+    private const string GlassPresetCustom = "custom";
+    private const string GlassPresetFrosted = "frosted";
+    private const string GlassPresetRegular = "regular";
+    private const string GlassPresetClear = "clear";
+
+    // Navigation sections
+    private const string NavSectionAppearance = "Appearance";
+    private const string NavSectionSearching = "Searching";
+    private const string NavSectionSkins = "Skins";
+    private const string NavSectionBehavior = "Behavior";
+    private const string NavSectionDevices = "Devices";
+    private const string NavSectionSystem = "System";
+    private const string NavSectionPrivacy = "Privacy";
+    private const string NavSectionSpotlight = "Spotlight";
+    private const string NavSectionAdvanced = "Advanced";
+    private const string NavSectionPerformance = "Performance";
+    private const string NavSectionDonating = "Donating";
+    private const string NavSectionUpdates = "Updates";
+
+    // Localization key constants
+    private const string LocKeySearching = "settings.searching";
+    private const string LocKeyWidth = "settings.width";
+    private const string LocKeyDynamicIslandWidth = "settings.dynamicIslandWidth";
+    private const string LocKeyDynamicIslandHeight = "settings.dynamicIslandHeight";
+    private const string LocKeyHeight = "settings.height";
+    private const string LocKeyCornerRadius = "settings.cornerRadius";
+    private const string LocKeyOpacity = "settings.opacity";
+    private const string LocKeyBlurBrightness = "settings.blurBrightness";
+    private const string LocKeyLyricsDarkOverlay = "settings.lyricsDarkOverlay";
+    private const string LocKeyBadgeAlpha = "settings.badge.alpha";
+    private const string LocKeyExpandDelay = "settings.expandDelay";
+    private const string LocKeyAnimationFps = "settings.animationFps";
+
     private NotchSettings _settings;
     private NotchSettings _originalSettings;
     private readonly SettingsService _settingsService;
-    private readonly BluetoothModule? _bluetoothModule;
     private readonly IUpdateService _updateService;
     private UpdateInfo? _availableUpdate;
     private bool _isLoadingSettings = true;
@@ -34,10 +75,7 @@ public partial class SettingsWindow : Window
 
     // Liquid Glass UI components
     private LiquidGlassController? _liquidGlass;
-    private LiquidGlassRefractionEffect? _glassRefractionEffect;
-    private bool _gpuRefractionConfigured;
     private double _lastAppliedDpiScale = 1.0;
-    private IntPtr _hwnd = IntPtr.Zero;
 
     public event EventHandler<NotchSettings>? SettingsChanged;
     public event EventHandler? AnimatedClosing;
@@ -51,10 +89,10 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         AnimationPrimitives.ApplyFpsToTree(this);
 
+        _ = bluetoothModule;
         _settings = settings.Clone();
         _originalSettings = settings.Clone();
         _settingsService = settingsService;
-        _bluetoothModule = bluetoothModule;
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
         _updateService = new UpdateService();
 
@@ -108,28 +146,31 @@ public partial class SettingsWindow : Window
                     return true;
 
                 if (fe.Tag is string tag &&
-                    (tag is "NavTabRow" or "Media" or "Secondary" or "Timer" or "AudioMixer" ||
-                     tag == "Searching" || tag == "Appearance" || tag == "Skins" || tag == "Behavior" || tag == "Devices" ||
-                     tag == "System" || tag == "Privacy" || tag == "Spotlight" || tag == "Advanced" || tag == "Performance" ||
-                     tag == "Donating" || tag == "Updates" || Array.IndexOf(_navOrder, tag) >= 0))
+                    (tag is "NavTabRow" or NavTabMedia or "Secondary" or "Timer" or "AudioMixer" ||
+                     Array.IndexOf(_navOrder, tag) >= 0))
                 {
                     return true;
                 }
             }
 
-            if (source is Visual or System.Windows.Media.Media3D.Visual3D)
-            {
-                try { source = VisualTreeHelper.GetParent(source); }
-                catch { source = null; }
-            }
-            else
-            {
-                try { source = LogicalTreeHelper.GetParent(source); }
-                catch { source = null; }
-            }
+            source = source is Visual or System.Windows.Media.Media3D.Visual3D
+                ? SafeGetVisualParent(source)
+                : SafeGetLogicalParent(source);
         }
 
         return false;
+    }
+
+    private static DependencyObject? SafeGetVisualParent(DependencyObject source)
+    {
+        try { return VisualTreeHelper.GetParent(source); }
+        catch (Exception) { return null; }
+    }
+
+    private static DependencyObject? SafeGetLogicalParent(DependencyObject source)
+    {
+        try { return LogicalTreeHelper.GetParent(source); }
+        catch (Exception) { return null; }
     }
 
     private void LoadSettings()
@@ -366,10 +407,10 @@ public partial class SettingsWindow : Window
         EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight");
         EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint");
         SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict");
-        SearchingHeader.Text = Loc.Get("settings.searching");
+        SearchingHeader.Text = Loc.Get(LocKeySearching);
         SearchingEmptyText.Text = Loc.Get("settings.search.noResults");
 
-        NavSearchingText.Text = Loc.Get("settings.searching");
+        NavSearchingText.Text = Loc.Get(LocKeySearching);
         NavAppearanceText.Text = Loc.Get("settings.nav.appearance");
         NavSkinsText.Text = Loc.Get("settings.nav.skins");
         NavBehaviorText.Text = Loc.Get("settings.nav.behavior");
@@ -419,29 +460,29 @@ public partial class SettingsWindow : Window
         RepopulateShelfWidgetComboPreservingSelection();
         RepopulateClockPageStyleComboPreservingSelection();
         PopulateNavTabsSettings();
-        WidthLabel.Text = Loc.Get("settings.width");
-        WidthSlider.Label = Loc.Get("settings.width");
+        WidthLabel.Text = Loc.Get(LocKeyWidth);
+        WidthSlider.Label = Loc.Get(LocKeyWidth);
         WidthSlider.Description = Loc.Get("settings.width.hint");
-        DynamicIslandWidthLabel.Text = Loc.Get("settings.dynamicIslandWidth");
-        DynamicIslandWidthSlider.Label = Loc.Get("settings.dynamicIslandWidth");
+        DynamicIslandWidthLabel.Text = Loc.Get(LocKeyDynamicIslandWidth);
+        DynamicIslandWidthSlider.Label = Loc.Get(LocKeyDynamicIslandWidth);
         DynamicIslandWidthSlider.Description = Loc.Get("settings.dynamicIslandWidth.hint");
-        DynamicIslandHeightLabel.Text = Loc.Get("settings.dynamicIslandHeight");
-        DynamicIslandHeightSlider.Label = Loc.Get("settings.dynamicIslandHeight");
+        DynamicIslandHeightLabel.Text = Loc.Get(LocKeyDynamicIslandHeight);
+        DynamicIslandHeightSlider.Label = Loc.Get(LocKeyDynamicIslandHeight);
         DynamicIslandHeightSlider.Description = Loc.Get("settings.dynamicIslandHeight.hint");
-        HeightLabel.Text = Loc.Get("settings.height");
-        HeightSlider.Label = Loc.Get("settings.height");
+        HeightLabel.Text = Loc.Get(LocKeyHeight);
+        HeightSlider.Label = Loc.Get(LocKeyHeight);
         HeightSlider.Description = Loc.Get("settings.height.hint");
-        RadiusLabel.Text = Loc.Get("settings.cornerRadius");
-        RadiusSlider.Label = Loc.Get("settings.cornerRadius");
+        RadiusLabel.Text = Loc.Get(LocKeyCornerRadius);
+        RadiusSlider.Label = Loc.Get(LocKeyCornerRadius);
         RadiusSlider.Description = Loc.Get("settings.cornerRadius.hint");
-        OpacityLabel.Text = Loc.Get("settings.opacity");
-        OpacitySlider.Label = Loc.Get("settings.opacity");
+        OpacityLabel.Text = Loc.Get(LocKeyOpacity);
+        OpacitySlider.Label = Loc.Get(LocKeyOpacity);
         OpacitySlider.Description = Loc.Get("settings.opacity.hint");
-        BlurLabel.Text = Loc.Get("settings.blurBrightness");
-        BlurBrightnessSlider.Label = Loc.Get("settings.blurBrightness");
+        BlurLabel.Text = Loc.Get(LocKeyBlurBrightness);
+        BlurBrightnessSlider.Label = Loc.Get(LocKeyBlurBrightness);
         BlurBrightnessSlider.Description = Loc.Get("settings.blurBrightness.hint");
-        DarkOverlayLabel.Text = Loc.Get("settings.lyricsDarkOverlay");
-        BlurDarkOverlaySlider.Label = Loc.Get("settings.lyricsDarkOverlay");
+        DarkOverlayLabel.Text = Loc.Get(LocKeyLyricsDarkOverlay);
+        BlurDarkOverlaySlider.Label = Loc.Get(LocKeyLyricsDarkOverlay);
         BlurDarkOverlaySlider.Description = Loc.Get("settings.lyricsDarkOverlay.hint");
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
         EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint");
@@ -455,7 +496,7 @@ public partial class SettingsWindow : Window
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
         UpdateSpotifyCanvasConnectionStatus();
         EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles");
-        if (YouTubeSubtitlesAlphaBadge != null) YouTubeSubtitlesAlphaBadge.Text = Loc.Get("settings.badge.alpha");
+        if (YouTubeSubtitlesAlphaBadge != null) YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
         EnableYouTubeSubtitlesHint.Text = Loc.Get("settings.enableYouTubeSubtitles.hint");
         IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles");
         IgnoreYouTubeAutoSubtitlesHint.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles.hint");
@@ -469,8 +510,8 @@ public partial class SettingsWindow : Window
 
         HoverExpandCheck.Content = Loc.Get("settings.hoverExpand");
         HoverExpandHint.Text = Loc.Get("settings.hoverExpand.hint");
-        ExpandDelayLabel.Text = Loc.Get("settings.expandDelay");
-        HoverDelaySlider.Label = Loc.Get("settings.expandDelay");
+        ExpandDelayLabel.Text = Loc.Get(LocKeyExpandDelay);
+        HoverDelaySlider.Label = Loc.Get(LocKeyExpandDelay);
         HoverDelaySlider.Description = Loc.Get("settings.expandDelay.hint");
         DisableMouseLeaveAutoCloseCheck.Content = Loc.Get("settings.disableAutoClose");
         DisableMouseLeaveAutoCloseHint.Text = Loc.Get("settings.disableAutoClose.hint");
@@ -547,8 +588,8 @@ public partial class SettingsWindow : Window
         YouTubeApiKeyLabel.Text = Loc.Get("settings.youtubeApiKey");
         YouTubeApiKeyHint.Text = Loc.Get("settings.youtubeApiKey.hint");
 
-        AnimationFpsLabel.Text = Loc.Get("settings.animationFps");
-        AnimationFpsSlider.Label = Loc.Get("settings.animationFps");
+        AnimationFpsLabel.Text = Loc.Get(LocKeyAnimationFps);
+        AnimationFpsSlider.Label = Loc.Get(LocKeyAnimationFps);
         AnimationFpsSlider.Description = Loc.Get("settings.animationFps.hint");
         EnableBlurEffectsCheck.Content = Loc.Get("settings.enableBlurEffects");
         EnableBlurEffectsHint.Text = Loc.Get("settings.enableBlurEffects.hint");
@@ -603,110 +644,118 @@ public partial class SettingsWindow : Window
 
     private void UpdateLocalOnlyDependentControls(bool isLocalOnly, bool animate = false)
     {
-        if (PrivacyNetworkSection != null)
-        {
-            PrivacyNetworkSection.Visibility = Visibility.Visible;
-            PrivacyNetworkSection.IsEnabled = !isLocalOnly;
-            PrivacyNetworkSection.IsHitTestVisible = !isLocalOnly;
+        UpdatePrivacyNetworkSection(isLocalOnly, animate);
+        UpdateLocalOnlyActiveBadge(isLocalOnly, animate);
 
-            double targetOpacity = isLocalOnly ? 0.35 : 1.0;
-            if (animate && !AnimationConfig.ReduceMotion)
+        if (AutoCheckUpdatesCheck != null) AutoCheckUpdatesCheck.IsEnabled = !isLocalOnly;
+        if (EnableOnlineArtworkCheck != null) EnableOnlineArtworkCheck.IsEnabled = !isLocalOnly;
+        if (EnableOnlineLyricsCheck != null) EnableOnlineLyricsCheck.IsEnabled = !isLocalOnly;
+    }
+
+    private void UpdatePrivacyNetworkSection(bool isLocalOnly, bool animate)
+    {
+        if (PrivacyNetworkSection == null) return;
+
+        PrivacyNetworkSection.Visibility = Visibility.Visible;
+        PrivacyNetworkSection.IsEnabled = !isLocalOnly;
+        PrivacyNetworkSection.IsHitTestVisible = !isLocalOnly;
+
+        double targetOpacity = isLocalOnly ? 0.35 : 1.0;
+        if (animate && !AnimationConfig.ReduceMotion)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var opacityAnim = new DoubleAnimation(PrivacyNetworkSection.Opacity, targetOpacity, TimeSpan.FromMilliseconds(260))
             {
-                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-                var opacityAnim = new DoubleAnimation(PrivacyNetworkSection.Opacity, targetOpacity, TimeSpan.FromMilliseconds(260))
+                EasingFunction = ease
+            };
+            Timeline.SetDesiredFrameRate(opacityAnim, AnimationConfig.TargetFps);
+            PrivacyNetworkSection.BeginAnimation(OpacityProperty, opacityAnim);
+        }
+        else
+        {
+            PrivacyNetworkSection.BeginAnimation(OpacityProperty, null);
+            PrivacyNetworkSection.Opacity = targetOpacity;
+        }
+    }
+
+    private void UpdateLocalOnlyActiveBadge(bool isLocalOnly, bool animate)
+    {
+        if (LocalOnlyActiveBadge == null) return;
+
+        if (isLocalOnly)
+        {
+            ShowLocalOnlyBadge(animate);
+        }
+        else
+        {
+            HideLocalOnlyBadge(animate);
+        }
+    }
+
+    private void ShowLocalOnlyBadge(bool animate)
+    {
+        if (LocalOnlyActiveBadge == null) return;
+        LocalOnlyActiveBadge.Visibility = Visibility.Visible;
+        if (animate && !AnimationConfig.ReduceMotion)
+        {
+            var ease = new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut };
+            var fadeIn = new DoubleAnimation(LocalOnlyActiveBadge.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
+            {
+                EasingFunction = ease
+            };
+            Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
+            LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, fadeIn);
+
+            if (LocalOnlyActiveBadge.RenderTransform is ScaleTransform scale)
+            {
+                var scaleAnim = new DoubleAnimation(0.85, 1.0, TimeSpan.FromMilliseconds(240))
                 {
                     EasingFunction = ease
                 };
-                Timeline.SetDesiredFrameRate(opacityAnim, AnimationConfig.TargetFps);
-                PrivacyNetworkSection.BeginAnimation(OpacityProperty, opacityAnim);
-            }
-            else
-            {
-                PrivacyNetworkSection.BeginAnimation(OpacityProperty, null);
-                PrivacyNetworkSection.Opacity = targetOpacity;
+                Timeline.SetDesiredFrameRate(scaleAnim, AnimationConfig.TargetFps);
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
             }
         }
-
-        if (LocalOnlyActiveBadge != null)
+        else
         {
-            if (isLocalOnly)
+            LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, null);
+            LocalOnlyActiveBadge.Opacity = 1.0;
+            if (LocalOnlyActiveBadge.RenderTransform is ScaleTransform scale)
             {
-                LocalOnlyActiveBadge.Visibility = Visibility.Visible;
-                if (animate && !AnimationConfig.ReduceMotion)
-                {
-                    var ease = new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut };
-                    var fadeIn = new DoubleAnimation(LocalOnlyActiveBadge.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
-                    {
-                        EasingFunction = ease
-                    };
-                    Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
-                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, fadeIn);
-
-                    if (LocalOnlyActiveBadge.RenderTransform is ScaleTransform scale)
-                    {
-                        var scaleAnim = new DoubleAnimation(0.85, 1.0, TimeSpan.FromMilliseconds(240))
-                        {
-                            EasingFunction = ease
-                        };
-                        Timeline.SetDesiredFrameRate(scaleAnim, AnimationConfig.TargetFps);
-                        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
-                        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
-                    }
-                }
-                else
-                {
-                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, null);
-                    LocalOnlyActiveBadge.Opacity = 1.0;
-                    if (LocalOnlyActiveBadge.RenderTransform is ScaleTransform scale)
-                    {
-                        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                        scale.ScaleX = 1.0;
-                        scale.ScaleY = 1.0;
-                    }
-                }
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                scale.ScaleX = 1.0;
+                scale.ScaleY = 1.0;
             }
-            else
+        }
+    }
+
+    private void HideLocalOnlyBadge(bool animate)
+    {
+        if (LocalOnlyActiveBadge == null) return;
+        if (animate && !AnimationConfig.ReduceMotion && LocalOnlyActiveBadge.Visibility == Visibility.Visible)
+        {
+            var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            var fadeOut = new DoubleAnimation(LocalOnlyActiveBadge.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
             {
-                if (animate && !AnimationConfig.ReduceMotion && LocalOnlyActiveBadge.Visibility == Visibility.Visible)
+                EasingFunction = ease
+            };
+            fadeOut.Completed += (_, _) =>
+            {
+                if (!(LocalOnlyModeCheck?.IsChecked ?? false))
                 {
-                    var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-                    var fadeOut = new DoubleAnimation(LocalOnlyActiveBadge.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
-                    {
-                        EasingFunction = ease
-                    };
-                    fadeOut.Completed += (_, _) =>
-                    {
-                        if (!(LocalOnlyModeCheck?.IsChecked ?? false))
-                        {
-                            LocalOnlyActiveBadge.Visibility = Visibility.Collapsed;
-                        }
-                    };
-                    Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
-                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, fadeOut);
-                }
-                else
-                {
-                    LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, null);
-                    LocalOnlyActiveBadge.Opacity = 0.0;
                     LocalOnlyActiveBadge.Visibility = Visibility.Collapsed;
                 }
-            }
+            };
+            Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
+            LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, fadeOut);
         }
-
-        if (AutoCheckUpdatesCheck != null)
+        else
         {
-            AutoCheckUpdatesCheck.IsEnabled = !isLocalOnly;
-        }
-
-        if (EnableOnlineArtworkCheck != null)
-        {
-            EnableOnlineArtworkCheck.IsEnabled = !isLocalOnly;
-        }
-
-        if (EnableOnlineLyricsCheck != null)
-        {
-            EnableOnlineLyricsCheck.IsEnabled = !isLocalOnly;
+            LocalOnlyActiveBadge.BeginAnimation(OpacityProperty, null);
+            LocalOnlyActiveBadge.Opacity = 0.0;
+            LocalOnlyActiveBadge.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -759,63 +808,73 @@ public partial class SettingsWindow : Window
 
         if (visible)
         {
-            element.Visibility = Visibility.Visible;
-            element.IsEnabled = true;
-            element.IsHitTestVisible = true;
+            ExpandCollapsibleRow(element, animate);
+        }
+        else
+        {
+            CollapseCollapsibleRow(element, animate);
+        }
+    }
 
-            if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
-            {
-                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-                var fadeIn = new DoubleAnimation(element.Opacity < 0.1 ? 0.0 : element.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
-                {
-                    EasingFunction = ease
-                };
-                Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
-                element.BeginAnimation(OpacityProperty, fadeIn);
+    private void ExpandCollapsibleRow(FrameworkElement element, bool animate)
+    {
+        element.Visibility = Visibility.Visible;
+        element.IsEnabled = true;
+        element.IsHitTestVisible = true;
 
-                if (element.RenderTransform is TranslateTransform tt)
-                {
-                    var slideIn = new DoubleAnimation(-6, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease };
-                    Timeline.SetDesiredFrameRate(slideIn, AnimationConfig.TargetFps);
-                    tt.BeginAnimation(TranslateTransform.YProperty, slideIn);
-                }
-            }
-            else
+        if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var fadeIn = new DoubleAnimation(element.Opacity < 0.1 ? 0.0 : element.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
             {
-                element.BeginAnimation(OpacityProperty, null);
-                element.Opacity = 1.0;
-                if (element.RenderTransform is TranslateTransform tt)
-                {
-                    tt.BeginAnimation(TranslateTransform.YProperty, null);
-                    tt.Y = 0;
-                }
+                EasingFunction = ease
+            };
+            Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
+            element.BeginAnimation(OpacityProperty, fadeIn);
+
+            if (element.RenderTransform is TranslateTransform tt)
+            {
+                var slideIn = new DoubleAnimation(-6, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease };
+                Timeline.SetDesiredFrameRate(slideIn, AnimationConfig.TargetFps);
+                tt.BeginAnimation(TranslateTransform.YProperty, slideIn);
             }
         }
         else
         {
-            element.IsEnabled = false;
-            element.IsHitTestVisible = false;
+            element.BeginAnimation(OpacityProperty, null);
+            element.Opacity = 1.0;
+            if (element.RenderTransform is TranslateTransform tt)
+            {
+                tt.BeginAnimation(TranslateTransform.YProperty, null);
+                tt.Y = 0;
+            }
+        }
+    }
 
-            if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion && element.Visibility == Visibility.Visible)
+    private void CollapseCollapsibleRow(FrameworkElement element, bool animate)
+    {
+        element.IsEnabled = false;
+        element.IsHitTestVisible = false;
+
+        if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion && element.Visibility == Visibility.Visible)
+        {
+            var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            var fadeOut = new DoubleAnimation(element.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
             {
-                var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-                var fadeOut = new DoubleAnimation(element.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
-                {
-                    EasingFunction = ease
-                };
-                fadeOut.Completed += (_, _) =>
-                {
-                    element.Visibility = Visibility.Collapsed;
-                };
-                Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
-                element.BeginAnimation(OpacityProperty, fadeOut);
-            }
-            else
+                EasingFunction = ease
+            };
+            fadeOut.Completed += (_, _) =>
             {
-                element.BeginAnimation(OpacityProperty, null);
-                element.Opacity = 0.0;
                 element.Visibility = Visibility.Collapsed;
-            }
+            };
+            Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
+            element.BeginAnimation(OpacityProperty, fadeOut);
+        }
+        else
+        {
+            element.BeginAnimation(OpacityProperty, null);
+            element.Opacity = 0.0;
+            element.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -979,47 +1038,43 @@ public partial class SettingsWindow : Window
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
         CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         if (YouTubeSubtitlesAlphaBadge != null)
-            YouTubeSubtitlesAlphaBadge.Text = Loc.Get("settings.badge.alpha");
+            YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
 
-        if (GpuPreferenceLabel != null)
-            GpuPreferenceLabel.Text = Loc.Get("settings.gpuPreference");
-        if (GpuPreferenceHint != null)
-            GpuPreferenceHint.Text = Loc.Get("settings.gpuPreference.hint");
-        if (GpuPreferenceRestartNote != null)
-            GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restart");
-        if (GpuPreferenceRestartBadge != null)
-            GpuPreferenceRestartBadge.Text = Loc.Get("settings.badge.restartRequired");
-        if (ProcessPriorityLabel != null)
-            ProcessPriorityLabel.Text = Loc.Get("settings.processPriority");
-        if (ProcessPriorityHint != null)
-            ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint");
-
-        if (BackupHeader != null)
-            BackupHeader.Text = Loc.Get("settings.section.backup");
-        if (ExportSettingsLabel != null)
-            ExportSettingsLabel.Text = Loc.Get("settings.exportSettings");
-        if (ExportSettingsHint != null)
-            ExportSettingsHint.Text = Loc.Get("settings.exportSettings.hint");
-        if (ExportSettingsButton != null)
-            ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn");
-        if (ImportSettingsLabel != null)
-            ImportSettingsLabel.Text = Loc.Get("settings.importSettings");
-        if (ImportSettingsHint != null)
-            ImportSettingsHint.Text = Loc.Get("settings.importSettings.hint");
-        if (ImportSettingsButton != null)
-            ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn");
-
-        if (RestartPromptTitle != null)
-            RestartPromptTitle.Text = Loc.Get("settings.restartBanner.title");
-        if (RestartPromptMessage != null)
-            RestartPromptMessage.Text = Loc.Get("settings.restartBanner.message");
-        if (RestartNowButton != null)
-            RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow");
-        if (RestartLaterButton != null)
-            RestartLaterButton.Content = Loc.Get("settings.restartBanner.later");
+        ApplyGpuAndProcessLocalization();
+        ApplyBackupSectionLocalization();
+        ApplyRestartBannerLocalization();
 
         UpdateSpotifyCanvasConnectionStatus();
         UpdateYouTubeApiKeyStatus();
+    }
+
+    private void ApplyGpuAndProcessLocalization()
+    {
+        if (GpuPreferenceLabel != null) GpuPreferenceLabel.Text = Loc.Get("settings.gpuPreference");
+        if (GpuPreferenceHint != null) GpuPreferenceHint.Text = Loc.Get("settings.gpuPreference.hint");
+        if (GpuPreferenceRestartNote != null) GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restart");
+        if (GpuPreferenceRestartBadge != null) GpuPreferenceRestartBadge.Text = Loc.Get("settings.badge.restartRequired");
+        if (ProcessPriorityLabel != null) ProcessPriorityLabel.Text = Loc.Get("settings.processPriority");
+        if (ProcessPriorityHint != null) ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint");
+    }
+
+    private void ApplyBackupSectionLocalization()
+    {
+        if (BackupHeader != null) BackupHeader.Text = Loc.Get("settings.section.backup");
+        if (ExportSettingsLabel != null) ExportSettingsLabel.Text = Loc.Get("settings.exportSettings");
+        if (ExportSettingsHint != null) ExportSettingsHint.Text = Loc.Get("settings.exportSettings.hint");
+        if (ExportSettingsButton != null) ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn");
+        if (ImportSettingsLabel != null) ImportSettingsLabel.Text = Loc.Get("settings.importSettings");
+        if (ImportSettingsHint != null) ImportSettingsHint.Text = Loc.Get("settings.importSettings.hint");
+        if (ImportSettingsButton != null) ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn");
+    }
+
+    private void ApplyRestartBannerLocalization()
+    {
+        if (RestartPromptTitle != null) RestartPromptTitle.Text = Loc.Get("settings.restartBanner.title");
+        if (RestartPromptMessage != null) RestartPromptMessage.Text = Loc.Get("settings.restartBanner.message");
+        if (RestartNowButton != null) RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow");
+        if (RestartLaterButton != null) RestartLaterButton.Content = Loc.Get("settings.restartBanner.later");
     }
 
     #region Slider Value Changed Handlers
@@ -1169,12 +1224,13 @@ public partial class SettingsWindow : Window
     private void IgnoreYouTubeAutoSubtitlesCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
+        _settings.IgnoreYouTubeAutoSubtitles = IgnoreYouTubeAutoSubtitlesCheck.IsChecked ?? false;
         PushLivePreview();
     }
 
     #region Subtitle Priority
 
-    private class SubtitlePriorityItem
+    private sealed class SubtitlePriorityItem
     {
         public string Key { get; set; } = "";
         public string DisplayName { get; set; } = "";
@@ -1194,11 +1250,8 @@ public partial class SettingsWindow : Window
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var allKeys = new[] { "native", "english", "auto" };
-        var ordered = keys.Where(k => allKeys.Contains(k)).ToList();
-        foreach (var k in allKeys)
-        {
-            if (!ordered.Contains(k)) ordered.Add(k);
-        }
+        var ordered = keys.Where(allKeys.Contains).ToList();
+        ordered.AddRange(allKeys.Where(k => !ordered.Contains(k)));
 
         foreach (var key in ordered)
         {
@@ -1240,7 +1293,7 @@ public partial class SettingsWindow : Window
 
             if (sender is FrameworkElement fe && fe.DataContext is SubtitlePriorityItem item)
             {
-                var data = new DataObject("SubtitlePriorityItem", item);
+                var data = new DataObject(SubtitlePriorityDataFormat, item);
                 DragDrop.DoDragDrop(fe, data, DragDropEffects.Move);
             }
 
@@ -1256,7 +1309,7 @@ public partial class SettingsWindow : Window
 
     private void SubtitlePriority_DragOver(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent("SubtitlePriorityItem"))
+        if (!e.Data.GetDataPresent(SubtitlePriorityDataFormat))
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -1268,9 +1321,9 @@ public partial class SettingsWindow : Window
 
     private void SubtitlePriority_Drop(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent("SubtitlePriorityItem")) return;
+        if (!e.Data.GetDataPresent(SubtitlePriorityDataFormat)) return;
 
-        var draggedItem = e.Data.GetData("SubtitlePriorityItem") as SubtitlePriorityItem;
+        var draggedItem = e.Data.GetData(SubtitlePriorityDataFormat) as SubtitlePriorityItem;
         if (draggedItem == null) return;
 
         var dropPos = e.GetPosition(SubtitlePriorityItems);
@@ -1291,58 +1344,59 @@ public partial class SettingsWindow : Window
 
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-            for (int i = 0; i < _subtitleItems.Count; i++)
-            {
-                var container = SubtitlePriorityItems.ItemContainerGenerator.ContainerFromIndex(i) as FrameworkElement;
-                if (container == null) continue;
-
-                var item = _subtitleItems[i];
-                double newY = container.TranslatePoint(new Point(0, 0), SubtitlePriorityItems).Y;
-
-                if (positions.TryGetValue(item, out double oldY) && Math.Abs(oldY - newY) > 1)
-                {
-                    var translate = container.RenderTransform as TranslateTransform;
-                    if (translate == null)
-                    {
-                        translate = new TranslateTransform();
-                        container.RenderTransform = translate;
-                    }
-
-                    translate.Y = oldY - newY;
-                    var anim = new DoubleAnimation(oldY - newY, 0, TimeSpan.FromMilliseconds(250))
-                    {
-                        EasingFunction = ease
-                    };
-                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
-                    translate.BeginAnimation(TranslateTransform.YProperty, anim);
-                }
-
-                if (item == draggedItem)
-                {
-                    var scale = container.RenderTransform as ScaleTransform;
-                    if (container.RenderTransform is TranslateTransform)
-                    {
-                        var group = new TransformGroup();
-                        group.Children.Add(container.RenderTransform);
-                        var sc = new ScaleTransform(1, 1);
-                        group.Children.Add(sc);
-                        container.RenderTransformOrigin = new Point(0.5, 0.5);
-                        container.RenderTransform = group;
-
-                        var scaleAnim = new DoubleAnimation(1.03, 1.0, TimeSpan.FromMilliseconds(200))
-                        {
-                            EasingFunction = ease
-                        };
-                        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleAnim, VNotch.Services.AnimationConfig.TargetFps);
-                        sc.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
-                        sc.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
-                    }
-                }
-            }
+            AnimateSubtitlePriorityReorder(draggedItem, positions);
         });
 
         ApplySettingsFromUi(persist: true);
+    }
+
+    private void AnimateSubtitlePriorityReorder(SubtitlePriorityItem draggedItem, Dictionary<SubtitlePriorityItem, double> positions)
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        for (int i = 0; i < _subtitleItems.Count; i++)
+        {
+            var container = SubtitlePriorityItems.ItemContainerGenerator.ContainerFromIndex(i) as FrameworkElement;
+            if (container == null) continue;
+
+            var item = _subtitleItems[i];
+            double newY = container.TranslatePoint(new Point(0, 0), SubtitlePriorityItems).Y;
+
+            if (positions.TryGetValue(item, out double oldY) && Math.Abs(oldY - newY) > 1)
+            {
+                var translate = container.RenderTransform as TranslateTransform;
+                if (translate == null)
+                {
+                    translate = new TranslateTransform();
+                    container.RenderTransform = translate;
+                }
+
+                translate.Y = oldY - newY;
+                var anim = new DoubleAnimation(oldY - newY, 0, TimeSpan.FromMilliseconds(250))
+                {
+                    EasingFunction = ease
+                };
+                Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+                translate.BeginAnimation(TranslateTransform.YProperty, anim);
+            }
+
+            if (item == draggedItem && container.RenderTransform is TranslateTransform)
+            {
+                var group = new TransformGroup();
+                group.Children.Add(container.RenderTransform);
+                var sc = new ScaleTransform(1, 1);
+                group.Children.Add(sc);
+                container.RenderTransformOrigin = new Point(0.5, 0.5);
+                container.RenderTransform = group;
+
+                var scaleAnim = new DoubleAnimation(1.03, 1.0, TimeSpan.FromMilliseconds(200))
+                {
+                    EasingFunction = ease
+                };
+                Timeline.SetDesiredFrameRate(scaleAnim, AnimationConfig.TargetFps);
+                sc.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+                sc.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+            }
+        }
     }
 
     private int GetSubtitleDropIndex(Point dropPoint)
@@ -1379,7 +1433,7 @@ public partial class SettingsWindow : Window
     {
         AnimateDependentElement(DynamicIslandWidthSlider, islandEnabled, 0.4, animate);
         AnimateDependentElement(DynamicIslandHeightSlider, islandEnabled, 0.4, animate);
-        UpdateLiquidGlassAvailability(islandEnabled, animate);
+        UpdateLiquidGlassAvailability(animate);
     }
 
     private void UpdateLyricsDependentControls(bool lyricsEnabled, bool animate = false)
@@ -1449,19 +1503,19 @@ public partial class SettingsWindow : Window
     {
         WidgetCombo.Items.Clear();
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.calendar"), Tag = "calendar" });
-        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.clock"), Tag = "clock" });
-        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.wordclock"), Tag = "wordclock" });
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.clock"), Tag = WidgetClock });
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.wordclock"), Tag = WidgetWordClock });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.digitalclock"), Tag = "digitalclock" });
-        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.weather"), Tag = "weather" });
-        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.sysmon"), Tag = "sysmon" });
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.weather"), Tag = WidgetWeather });
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.sysmon"), Tag = WidgetSysMon });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.none"), Tag = "none" });
         WidgetCombo.SelectedIndex = _settings.ExpandedWidget switch
         {
-            "clock" => 1,
-            "wordclock" => 2,
+            WidgetClock => 1,
+            WidgetWordClock => 2,
             "digitalclock" => 3,
-            "weather" => 4,
-            "sysmon" => 5,
+            WidgetWeather => 4,
+            WidgetSysMon => 5,
             "none" => 6,
             _ => 0
         };
@@ -1494,16 +1548,16 @@ public partial class SettingsWindow : Window
         if (ShelfWidgetCombo == null) return;
         ShelfWidgetCombo.Items.Clear();
         ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.camera"), Tag = "camera" });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.sysmon"), Tag = "sysmon" });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.weather"), Tag = "weather" });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.clock"), Tag = "clock" });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.sysmon"), Tag = WidgetSysMon });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.weather"), Tag = WidgetWeather });
+        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.clock"), Tag = WidgetClock });
         ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.none"), Tag = "none" });
 
         ShelfWidgetCombo.SelectedIndex = (_settings.ShelfWidget ?? "camera").ToLowerInvariant() switch
         {
-            "sysmon" => 1,
-            "weather" => 2,
-            "clock" => 3,
+            WidgetSysMon => 1,
+            WidgetWeather => 2,
+            WidgetClock => 3,
             "none" => 4,
             _ => 0
         };
@@ -1535,12 +1589,12 @@ public partial class SettingsWindow : Window
         ClockPageStyleCombo.Items.Clear();
         ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.analog"), Tag = "analog" });
         ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.digital"), Tag = "digital" });
-        ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.wordclock"), Tag = "wordclock" });
+        ClockPageStyleCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.clockPageStyle.wordclock"), Tag = WidgetWordClock });
 
         ClockPageStyleCombo.SelectedIndex = (_settings.ClockPageStyle ?? "analog").ToLowerInvariant() switch
         {
             "digital" => 1,
-            "wordclock" => 2,
+            WidgetWordClock => 2,
             _ => 0
         };
     }
@@ -1583,28 +1637,24 @@ public partial class SettingsWindow : Window
 
         var tabMetadata = new Dictionary<string, (string title, string iconPath)>
         {
-            ["Media"] = ("Home", "M8 0L0 6V8H1V15H4V10H7V15H15V8H16V6L14 4.5V1H11V2.25L8 0ZM9 10H12V13H9V10Z"),
+            [NavTabMedia] = ("Home", "M8 0L0 6V8H1V15H4V10H7V15H15V8H16V6L14 4.5V1H11V2.25L8 0ZM9 10H12V13H9V10Z"),
             ["Secondary"] = ("File Shelf", "M479.66,268.7l-32-151.81C441.48,83.77,417.68,64,384,64H128c-16.8,0-31,4.69-42.1,13.94s-18.37,22.31-21.58,38.89l-32,151.87A16.65,16.65,0,0,0,32,272V384a64,64,0,0,0,64,64H416a64,64,0,0,0,64-64V272A16.65,16.65,0,0,0,479.66,268.7Zm-384-145.4c0-.1,0-.19,0-.28,3.55-18.43,13.81-27,32.29-27H384c18.61,0,28.87,8.55,32.27,26.91,0,.13.05.26.07.39l26.93,127.88a4,4,0,0,1-3.92,4.82H320a15.92,15.92,0,0,0-16,15.82,48,48,0,1,1-96,0A15.92,15.92,0,0,0,192,256H72.65a4,4,0,0,1-3.92-4.82Z"),
             ["Timer"] = ("Clock & Timer", "M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM15.8321 14.5547C15.5257 15.0142 14.9048 15.1384 14.4453 14.8321L11.8451 13.0986C11.3171 12.7466 11 12.1541 11 11.5196V11.5V7C11 6.44772 11.4477 6 12 6C12.5523 6 13 6.44772 13 7V11.4648L15.5547 13.1679C16.0142 13.4743 16.1384 14.0952 15.8321 14.5547Z"),
             ["AudioMixer"] = ("Audio Mixer", "M13.5 2.5C13.5 2.1 13.05 1.86 12.72 2.09L6.8 6.2H3.5C2.95 6.2 2.5 6.65 2.5 7.2V12.8C2.5 13.35 2.95 13.8 3.5 13.8H6.8L12.72 17.91C13.05 18.14 13.5 17.9 13.5 17.5V2.5ZM16.04 6.05C15.74 5.79 15.28 5.82 15.02 6.13C14.76 6.43 14.79 6.89 15.1 7.15C16.0 7.93 16.5 8.93 16.5 10C16.5 11.07 16.0 12.07 15.1 12.85C14.79 13.11 14.76 13.57 15.02 13.87C15.28 14.18 15.74 14.21 16.04 13.95C17.25 12.91 18 11.5 18 10C18 8.5 17.25 7.09 16.04 6.05Z")
         };
 
-        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer")
+        var orderTokens = (_settings.NavTabOrder ?? DefaultNavTabs)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        foreach (var key in tabMetadata.Keys)
-        {
-            if (!orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase))
-                orderTokens.Add(key);
-        }
+        orderTokens.AddRange(tabMetadata.Keys.Where(key => !orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase)));
 
         var visibleTokens = new HashSet<string>(
-            (_settings.VisibleNavTabs ?? "Media,Secondary,Timer,AudioMixer")
+            (_settings.VisibleNavTabs ?? DefaultNavTabs)
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             StringComparer.OrdinalIgnoreCase);
-        visibleTokens.Add("Media");
+        visibleTokens.Add(NavTabMedia);
 
         for (int i = 0; i < orderTokens.Count; i++)
         {
@@ -1638,7 +1688,7 @@ public partial class SettingsWindow : Window
             var check = new CheckBox
             {
                 IsChecked = visibleTokens.Contains(token),
-                IsEnabled = !string.Equals(token, "Media", StringComparison.OrdinalIgnoreCase),
+                IsEnabled = !string.Equals(token, NavTabMedia, StringComparison.OrdinalIgnoreCase),
                 Margin = new Thickness(0, 0, 10, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -1753,49 +1803,9 @@ public partial class SettingsWindow : Window
         Point current = e.GetPosition(NavTabsSettingsContainer);
         double deltaY = current.Y - _settingsNavDragStartPoint.Y;
 
-        if (!_isSettingsNavRowDragging)
+        if (!_isSettingsNavRowDragging && Math.Abs(deltaY) > 3)
         {
-            if (Math.Abs(deltaY) > 3)
-            {
-                _isSettingsNavRowDragging = true;
-                if (!_hasCapturedSettingsNavMouse)
-                {
-                    _hasCapturedSettingsNavMouse = _settingsNavDragRow.CaptureMouse();
-                }
-                Panel.SetZIndex(_settingsNavDragRow, 100);
-
-                if (_settingsNavDragRow is Border border)
-                {
-                    border.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
-                    border.BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255));
-                    border.Effect = new DropShadowEffect
-                    {
-                        Color = Colors.Black,
-                        BlurRadius = 16,
-                        ShadowDepth = 3,
-                        Opacity = 0.55
-                    };
-                }
-
-                if (_settingsNavDragRow.RenderTransform is TransformGroup group)
-                {
-                    var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
-                    if (scale != null)
-                    {
-                        var animScale = new DoubleAnimation
-                        {
-                            To = 1.025,
-                            Duration = new Duration(TimeSpan.FromMilliseconds(150)),
-                            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                        };
-                        Timeline.SetDesiredFrameRate(animScale, VNotch.Services.AnimationConfig.TargetFps);
-                        scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
-                        scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
-                    }
-                }
-
-                Mouse.OverrideCursor = Cursors.SizeNS;
-            }
+            BeginSettingsNavDrag();
         }
 
         if (_isSettingsNavRowDragging)
@@ -1814,6 +1824,50 @@ public partial class SettingsWindow : Window
 
             UpdateSettingsNavNeighborDisplacements();
         }
+    }
+
+    private void BeginSettingsNavDrag()
+    {
+        if (_settingsNavDragRow == null) return;
+
+        _isSettingsNavRowDragging = true;
+        if (!_hasCapturedSettingsNavMouse)
+        {
+            _hasCapturedSettingsNavMouse = _settingsNavDragRow.CaptureMouse();
+        }
+        Panel.SetZIndex(_settingsNavDragRow, 100);
+
+        if (_settingsNavDragRow is Border border)
+        {
+            border.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
+            border.BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255));
+            border.Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 16,
+                ShadowDepth = 3,
+                Opacity = 0.55
+            };
+        }
+
+        if (_settingsNavDragRow.RenderTransform is TransformGroup group)
+        {
+            var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+            if (scale != null)
+            {
+                var animScale = new DoubleAnimation
+                {
+                    To = 1.025,
+                    Duration = new Duration(TimeSpan.FromMilliseconds(150)),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Timeline.SetDesiredFrameRate(animScale, AnimationConfig.TargetFps);
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, animScale);
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, animScale);
+            }
+        }
+
+        Mouse.OverrideCursor = Cursors.SizeNS;
     }
 
     private void UpdateSettingsNavNeighborDisplacements()
@@ -1842,27 +1896,26 @@ public partial class SettingsWindow : Window
             var child = NavTabsSettingsContainer.Children[i] as FrameworkElement;
             if (child == null || child == _settingsNavDragRow) continue;
 
-            double desiredOffset = 0.0;
-
-            if (targetSlot < _settingsNavInitialSlot)
-            {
-                // Dragged UP: rows between targetSlot and _settingsNavInitialSlot - 1 shift DOWN (+_settingsNavRowPitch)
-                if (i >= targetSlot && i < _settingsNavInitialSlot)
-                {
-                    desiredOffset = _settingsNavRowPitch;
-                }
-            }
-            else if (targetSlot > _settingsNavInitialSlot)
-            {
-                // Dragged DOWN: rows between _settingsNavInitialSlot + 1 and targetSlot shift UP (-_settingsNavRowPitch)
-                if (i > _settingsNavInitialSlot && i <= targetSlot)
-                {
-                    desiredOffset = -_settingsNavRowPitch;
-                }
-            }
-
+            double desiredOffset = CalculateNeighborDesiredOffset(i, _settingsNavInitialSlot, targetSlot, _settingsNavRowPitch);
             AnimateSettingsRowToY(child, desiredOffset);
         }
+    }
+
+    private static double CalculateNeighborDesiredOffset(int index, int initialSlot, int targetSlot, double pitch)
+    {
+        if (targetSlot < initialSlot && index >= targetSlot && index < initialSlot)
+        {
+            // Dragged UP: rows between targetSlot and initialSlot - 1 shift DOWN (+pitch)
+            return pitch;
+        }
+
+        if (targetSlot > initialSlot && index > initialSlot && index <= targetSlot)
+        {
+            // Dragged DOWN: rows between initialSlot + 1 and targetSlot shift UP (-pitch)
+            return -pitch;
+        }
+
+        return 0.0;
     }
 
     private static int CalculateSettingsTargetSlotWithHysteresis(int currentTarget, double visualPos, double pitch, int totalSlots)
@@ -1903,7 +1956,7 @@ public partial class SettingsWindow : Window
             Duration = new Duration(TimeSpan.FromMilliseconds(200)),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
-        Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
         translate.BeginAnimation(TranslateTransform.YProperty, anim);
     }
 
@@ -1936,7 +1989,11 @@ public partial class SettingsWindow : Window
         if (_hasCapturedSettingsNavMouse)
         {
             _hasCapturedSettingsNavMouse = false;
-            try { row.ReleaseMouseCapture(); } catch { }
+            try { row.ReleaseMouseCapture(); }
+            catch (Exception)
+            {
+                // Ignore capture release exceptions during drag end
+            }
         }
 
         Mouse.OverrideCursor = null;
@@ -1966,7 +2023,7 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer")
+        var orderTokens = (_settings.NavTabOrder ?? DefaultNavTabs)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -2083,8 +2140,8 @@ public partial class SettingsWindow : Window
 
     private void ResetTabOrderButton_Click(object sender, RoutedEventArgs e)
     {
-        _settings.NavTabOrder = "Media,Secondary,Timer,AudioMixer";
-        _settings.VisibleNavTabs = "Media,Secondary,Timer,AudioMixer";
+        _settings.NavTabOrder = DefaultNavTabs;
+        _settings.VisibleNavTabs = DefaultNavTabs;
         PopulateNavTabsSettings();
         ApplySettingsFromUi(persist: true);
     }
@@ -2296,15 +2353,15 @@ public partial class SettingsWindow : Window
     private void EnsureGlassPresetItems()
     {
         if (GlassPresetCombo.Items.Count > 0) return;
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.custom"), Tag = "custom" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.frosted"), Tag = "frosted" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.custom"), Tag = GlassPresetCustom });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.frosted"), Tag = GlassPresetFrosted });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.dark"), Tag = "dark" });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.ultrathin"), Tag = "ultrathin" });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.thin"), Tag = "thin" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.regular"), Tag = "regular" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.regular"), Tag = GlassPresetRegular });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.thick"), Tag = "thick" });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.ultrathick"), Tag = "ultrathick" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.clear"), Tag = "clear" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.clear"), Tag = GlassPresetClear });
     }
 
     private Models.LiquidGlassConfig ReadGlassConfigFromSliders()
@@ -2391,7 +2448,7 @@ public partial class SettingsWindow : Window
 
             EnsureGlassPresetItems();
 
-            bool glass = string.Equals(_settings.NotchStyle, "liquidglass", StringComparison.OrdinalIgnoreCase);
+            bool glass = string.Equals(_settings.NotchStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase);
             SkinCombo.SelectedIndex = glass ? 1 : 0;
 
             var c = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
@@ -2403,7 +2460,7 @@ public partial class SettingsWindow : Window
             _settings.LiquidGlassCustom ??= c.Clone();
             _customGlassSnapshot = _settings.LiquidGlassCustom.Clone();
 
-            string preset = string.IsNullOrWhiteSpace(_settings.LiquidGlassPreset) ? "custom" : _settings.LiquidGlassPreset;
+            string preset = string.IsNullOrWhiteSpace(_settings.LiquidGlassPreset) ? GlassPresetCustom : _settings.LiquidGlassPreset;
             SelectGlassPreset(preset);
 
             LiquidGlassConfigPanel.Visibility = glass ? Visibility.Visible : Visibility.Collapsed;
@@ -2418,8 +2475,8 @@ public partial class SettingsWindow : Window
     {
         string requestedStyle =
             (SkinCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "default";
-        _settings.NotchStyle = string.Equals(requestedStyle, "liquidglass", StringComparison.OrdinalIgnoreCase)
-            ? "liquidglass"
+        _settings.NotchStyle = string.Equals(requestedStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase)
+            ? SkinLiquidGlass
             : "default";
 
         var c = _settings.LiquidGlass ??= new Models.LiquidGlassConfig();
@@ -2443,15 +2500,15 @@ public partial class SettingsWindow : Window
         c.BevelMode = ui.BevelMode;
         c.TargetFps = ui.TargetFps;
 
-        string activePreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "custom";
-        if (activePreset == "clear") c.Variant = 1;
-        else if (activePreset == "regular" || activePreset == "frosted" || activePreset == "dark" || activePreset == "ultrathin" || activePreset == "thin" || activePreset == "thick" || activePreset == "ultrathick") c.Variant = 0;
+        string activePreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
+        if (activePreset == GlassPresetClear) c.Variant = 1;
+        else if (activePreset == GlassPresetRegular || activePreset == GlassPresetFrosted || activePreset == "dark" || activePreset == "ultrathin" || activePreset == "thin" || activePreset == "thick" || activePreset == "ultrathick") c.Variant = 0;
         else c.Variant = _customGlassSnapshot?.Variant ?? c.Variant;
 
         c.UseGpuRefraction = GpuRefractionCheck?.IsChecked ?? false;
 
         // Persist which preset is active and the user's custom slot. A built-in
-        _settings.LiquidGlassPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "custom";
+        _settings.LiquidGlassPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
         if (_customGlassSnapshot != null)
             _settings.LiquidGlassCustom = _customGlassSnapshot.Clone();
     }
@@ -2464,15 +2521,14 @@ public partial class SettingsWindow : Window
         Models.LiquidGlassConfig? preset = null;
         switch (item.Tag as string)
         {
-            case "frosted": preset = FrostedGlassPreset(); break;
+            case GlassPresetFrosted: preset = FrostedGlassPreset(); break;
             case "dark": preset = DarkGlassPreset(); break;
-            case "regular": preset = RegularGlassPreset(); break;
+            case GlassPresetRegular: preset = RegularGlassPreset(); break;
             case "ultrathin": preset = UltraThinGlassPreset(); break;
             case "thin": preset = ThinGlassPreset(); break;
             case "thick": preset = ThickGlassPreset(); break;
             case "ultrathick": preset = UltraThickGlassPreset(); break;
-            case "clear": preset = ClearGlassPreset(); break;
-            case "custom":
+            case GlassPresetClear: preset = ClearGlassPreset(); break;
             default:
                 if (_customGlassSnapshot != null) preset = _customGlassSnapshot;
                 break;
@@ -2493,7 +2549,7 @@ public partial class SettingsWindow : Window
 
     private void SkinCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        UpdateLiquidGlassAvailability(DynamicIslandModeCheck?.IsChecked ?? _settings.EnableDynamicIslandMode, animate: true);
+        UpdateLiquidGlassAvailability(animate: true);
 
         if (_isLoadingSettings) return;
         PushLivePreview();
@@ -2506,17 +2562,17 @@ public partial class SettingsWindow : Window
         SkinCombo.Items.Add(new System.Windows.Controls.ComboBoxItem
         {
             Content = Loc.Get("settings.skin.liquidglass"),
-            Tag = "liquidglass",
+            Tag = SkinLiquidGlass,
             IsEnabled = true
         });
     }
 
-    private void UpdateLiquidGlassAvailability(bool islandEnabled, bool animate = false)
+    private void UpdateLiquidGlassAvailability(bool animate = false)
     {
         if (SkinCombo == null) return;
 
         bool glassSelected = SkinCombo.SelectedItem is System.Windows.Controls.ComboBoxItem selected &&
-                             (selected.Tag as string) == "liquidglass";
+                             (selected.Tag as string) == SkinLiquidGlass;
 
         AnimateCollapsibleRow(LiquidGlassConfigPanel, glassSelected, animate);
     }
@@ -2527,7 +2583,7 @@ public partial class SettingsWindow : Window
 
         // A manual slider tweak means the values no longer match a named preset â€”
         _customGlassSnapshot = ReadGlassConfigFromSliders();
-        SelectGlassPreset("custom");
+        SelectGlassPreset(GlassPresetCustom);
 
         PushLivePreview();
     }
@@ -2541,6 +2597,10 @@ public partial class SettingsWindow : Window
     private void GpuRefractionCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
+        if (_settings.LiquidGlass != null && GpuRefractionCheck != null)
+        {
+            _settings.LiquidGlass.UseGpuRefraction = GpuRefractionCheck.IsChecked ?? false;
+        }
         PushLivePreview();
     }
 
@@ -2550,7 +2610,7 @@ public partial class SettingsWindow : Window
 
         if (SkinHeader != null) SkinHeader.Text = Loc.Get("settings.skins");
         SkinLabel.Text = Loc.Get("settings.skin");
-        if (SkinAlphaBadge != null) SkinAlphaBadge.Text = Loc.Get("settings.badge.alpha");
+        if (SkinAlphaBadge != null) SkinAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
         SkinHint.Text = Loc.Get("settings.skin.hint");
         if (SkinWarningNote != null) SkinWarningNote.Text = Loc.Get("settings.skin.warning");
 
@@ -2560,7 +2620,7 @@ public partial class SettingsWindow : Window
         SkinCombo.Items.Clear();
         PopulateSkinItems();
         SkinCombo.SelectedIndex = idx < 0 ? 0 : idx;
-        UpdateLiquidGlassAvailability(DynamicIslandModeCheck?.IsChecked ?? _settings.EnableDynamicIslandMode);
+        UpdateLiquidGlassAvailability();
         _isLoadingSettings = prev;
 
         if (GlassPresetLabel != null) GlassPresetLabel.Text = Loc.Get("settings.glass.preset");
@@ -2568,11 +2628,11 @@ public partial class SettingsWindow : Window
         int presetIdx = GlassPresetCombo.SelectedIndex;
         _suppressGlassPresetChange = true;
         GlassPresetCombo.Items.Clear();
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.custom"), Tag = "custom" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.frosted"), Tag = "frosted" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.custom"), Tag = GlassPresetCustom });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.frosted"), Tag = GlassPresetFrosted });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.dark"), Tag = "dark" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.regular"), Tag = "regular" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.clear"), Tag = "clear" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.regular"), Tag = GlassPresetRegular });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.clear"), Tag = GlassPresetClear });
         GlassPresetCombo.SelectedIndex = presetIdx < 0 ? 0 : presetIdx;
         _suppressGlassPresetChange = false;
 
@@ -2722,7 +2782,7 @@ public partial class SettingsWindow : Window
 
             if (dialog.ShowDialog(this) == true)
             {
-                var (imported, requiresRestart) = _settingsService.ImportSettingsFromFile(dialog.FileName, _settings);
+                var (imported, _) = _settingsService.ImportSettingsFromFile(dialog.FileName, _settings);
 
                 _settings = imported.Clone();
                 _originalSettings = imported.Clone();
@@ -2832,7 +2892,7 @@ public partial class SettingsWindow : Window
         HideRestartBanner();
     }
 
-    private void ApplyProcessPriority(string priority)
+    private static void ApplyProcessPriority(string priority)
     {
         try
         {
@@ -2846,11 +2906,11 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            VNotch.Services.RuntimeLog.Log("SETTINGS", $"Failed to set process priority: {ex.Message}");
+            RuntimeLog.Log(LogCategory, $"Failed to set process priority: {ex.Message}");
         }
     }
 
-    private void ApplyGpuPreference(int preference)
+    private static void ApplyGpuPreference(int preference)
     {
         try
         {
@@ -2872,7 +2932,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            VNotch.Services.RuntimeLog.Log("SETTINGS", $"Failed to set GPU preference: {ex.Message}");
+            VNotch.Services.RuntimeLog.Log(LogCategory, $"Failed to set GPU preference: {ex.Message}");
         }
     }
 
@@ -3155,81 +3215,81 @@ public partial class SettingsWindow : Window
             }),
         };
 
-        AnimateContentChange(ExportSettingsButton, () => ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ExportSettingsButton, () => ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ImportSettingsButton, () => ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ImportSettingsButton, () => ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(RestartNowButton, () => RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(RestartNowButton, () => RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(RestartLaterButton, () => RestartLaterButton.Content = Loc.Get("settings.restartBanner.later"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(RestartLaterButton, () => RestartLaterButton.Content = Loc.Get("settings.restartBanner.later"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         TooltipHelper.SetLocalizedTooltip(ExportSettingsButton, "tooltip.exportSettings");
         TooltipHelper.SetLocalizedTooltip(ImportSettingsButton, "tooltip.importSettings");
 
-        AnimateContentChange(CheckUpdateButton, () => CheckUpdateButton.Content = Loc.Get("settings.checkUpdate"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(CheckUpdateButton, () => CheckUpdateButton.Content = Loc.Get("settings.checkUpdate"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(DownloadUpdateButton, () => DownloadUpdateButton.Content = Loc.Get("settings.downloadInstall"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(DownloadUpdateButton, () => DownloadUpdateButton.Content = Loc.Get("settings.downloadInstall"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(DonatePaypalButton, () => DonatePaypalButton.Content = Loc.Get("settings.donating.paypal"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(DonatePaypalButton, () => DonatePaypalButton.Content = Loc.Get("settings.donating.paypal"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ResetButton, () => ResetButton.Content = Loc.Get("settings.btn.reset"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ResetButton, () => ResetButton.Content = Loc.Get("settings.btn.reset"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ApplyButton, () => ApplyButton.Content = Loc.Get("settings.btn.apply"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ApplyButton, () => ApplyButton.Content = Loc.Get("settings.btn.apply"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(SaveButton, () => SaveButton.Content = Loc.Get("settings.btn.save"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(SaveButton, () => SaveButton.Content = Loc.Get("settings.btn.save"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
 
-        AnimateContentChange(AutoStartCheck, () => AutoStartCheck.Content = Loc.Get("settings.autoStart"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(AutoStartCheck, () => AutoStartCheck.Content = Loc.Get("settings.autoStart"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(StayBehindWindowsCheck, () => StayBehindWindowsCheck.Content = Loc.Get("settings.stayBehindWindows"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(StayBehindWindowsCheck, () => StayBehindWindowsCheck.Content = Loc.Get("settings.stayBehindWindows"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(HelloGreetingCheck, () => HelloGreetingCheck.Content = Loc.Get("settings.helloGreeting"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(HelloGreetingCheck, () => HelloGreetingCheck.Content = Loc.Get("settings.helloGreeting"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(HideOnExclusiveFullscreenCheck, () => HideOnExclusiveFullscreenCheck.Content = Loc.Get("settings.hideExclusiveFs"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(HideOnExclusiveFullscreenCheck, () => HideOnExclusiveFullscreenCheck.Content = Loc.Get("settings.hideExclusiveFs"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(HideOnWindowedFullscreenCheck, () => HideOnWindowedFullscreenCheck.Content = Loc.Get("settings.hideWindowedFs"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(HideOnWindowedFullscreenCheck, () => HideOnWindowedFullscreenCheck.Content = Loc.Get("settings.hideWindowedFs"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(MusicNotifyCheck, () => MusicNotifyCheck.Content = Loc.Get("settings.musicNotify"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(MusicNotifyCheck, () => MusicNotifyCheck.Content = Loc.Get("settings.musicNotify"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(SystemNotifyCheck, () => SystemNotifyCheck.Content = Loc.Get("settings.systemNotify"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(SystemNotifyCheck, () => SystemNotifyCheck.Content = Loc.Get("settings.systemNotify"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ShelfUnlockCheck, () => ShelfUnlockCheck.Content = Loc.Get("settings.shelfUnlock"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ShelfUnlockCheck, () => ShelfUnlockCheck.Content = Loc.Get("settings.shelfUnlock"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(CopyShelfClipboardCheck, () => CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(CopyShelfClipboardCheck, () => CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableSpotlightCheck, () => EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableSpotlightCheck, () => EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(YouTubeApiCheck, () => YouTubeApiCheck.Content = Loc.Get("settings.youtubeApi"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(YouTubeApiCheck, () => YouTubeApiCheck.Content = Loc.Get("settings.youtubeApi"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(HoverExpandCheck, () => HoverExpandCheck.Content = Loc.Get("settings.hoverExpand"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(HoverExpandCheck, () => HoverExpandCheck.Content = Loc.Get("settings.hoverExpand"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(DisableMouseLeaveAutoCloseCheck, () => DisableMouseLeaveAutoCloseCheck.Content = Loc.Get("settings.disableAutoClose"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(DisableMouseLeaveAutoCloseCheck, () => DisableMouseLeaveAutoCloseCheck.Content = Loc.Get("settings.disableAutoClose"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ReopenLastViewCheck, () => ReopenLastViewCheck.Content = Loc.Get("settings.reopenLastView"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(ReopenLastViewCheck, () => ReopenLastViewCheck.Content = Loc.Get("settings.reopenLastView"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(IdleAutoHideCheck, () => IdleAutoHideCheck.Content = Loc.Get("settings.idleAutoHide"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(IdleAutoHideCheck, () => IdleAutoHideCheck.Content = Loc.Get("settings.idleAutoHide"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableSpotifyLyricsCheck, () => EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableSpotifyLyricsCheck, () => EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableSpotifyCanvasCheck, () => EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableSpotifyCanvasCheck, () => EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(SpotifyConnectButton, () => SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(SpotifyConnectButton, () => SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(SpotifyDisconnectButton, () => SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(SpotifyDisconnectButton, () => SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableYouTubeSubtitlesCheck, () => EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableYouTubeSubtitlesCheck, () => EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(IgnoreYouTubeAutoSubtitlesCheck, () => IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(IgnoreYouTubeAutoSubtitlesCheck, () => IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableBlurEffectsCheck, () => EnableBlurEffectsCheck.Content = Loc.Get("settings.enableBlurEffects"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableBlurEffectsCheck, () => EnableBlurEffectsCheck.Content = Loc.Get("settings.enableBlurEffects"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableSubjectBlurCheck, () => EnableSubjectBlurCheck.Content = Loc.Get("settings.enableSubjectBlur"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableSubjectBlurCheck, () => EnableSubjectBlurCheck.Content = Loc.Get("settings.enableSubjectBlur"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableSmartCropCheck, () => EnableSmartCropCheck.Content = Loc.Get("settings.enableSmartCrop"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableSmartCropCheck, () => EnableSmartCropCheck.Content = Loc.Get("settings.enableSmartCrop"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(EnableWeatherCheck, () => EnableWeatherCheck.Content = Loc.Get("settings.enableWeather"), staggerMs, easeOut, fps, slideDist);
+        AnimateContentChange(EnableWeatherCheck, () => EnableWeatherCheck.Content = Loc.Get("settings.enableWeather"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
 
         foreach (var (element, update) in textUpdates)
@@ -3241,7 +3301,7 @@ public partial class SettingsWindow : Window
 
     }
 
-    private void AnimateTextSwap(FrameworkElement element, Action updateText, int delayMs, IEasingFunction easing, int fps, double slideDist)
+    private static void AnimateTextSwap(FrameworkElement element, Action updateText, int delayMs, IEasingFunction easing, int fps, double slideDist)
     {
         var translate = element.RenderTransform as TranslateTransform;
         if (translate == null)
@@ -3260,22 +3320,22 @@ public partial class SettingsWindow : Window
             EasingFunction = easing,
             BeginTime = TimeSpan.FromMilliseconds(delayMs)
         };
-        Timeline.SetDesiredFrameRate(fadeOut, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(fadeOut, fps);
 
         var slideOut = new DoubleAnimation
         {
-            To = -10,
+            To = -slideDist,
             Duration = TimeSpan.FromMilliseconds(100),
             EasingFunction = easing,
             BeginTime = TimeSpan.FromMilliseconds(delayMs)
         };
-        Timeline.SetDesiredFrameRate(slideOut, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(slideOut, fps);
 
         fadeOut.Completed += (s, e) =>
         {
             updateText();
 
-            translate.X = 14;
+            translate.X = slideDist;
 
             var fadeIn = new DoubleAnimation
             {
@@ -3284,16 +3344,16 @@ public partial class SettingsWindow : Window
                 Duration = TimeSpan.FromMilliseconds(220),
                 EasingFunction = easing
             };
-            Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
+            Timeline.SetDesiredFrameRate(fadeIn, fps);
 
             var slideIn = new DoubleAnimation
             {
-                From = 14,
+                From = slideDist,
                 To = 0,
                 Duration = TimeSpan.FromMilliseconds(300),
                 EasingFunction = easing
             };
-            Timeline.SetDesiredFrameRate(slideIn, VNotch.Services.AnimationConfig.TargetFps);
+            Timeline.SetDesiredFrameRate(slideIn, fps);
 
             slideIn.Completed += (s2, e2) =>
             {
@@ -3309,7 +3369,7 @@ public partial class SettingsWindow : Window
         translate.BeginAnimation(TranslateTransform.XProperty, slideOut);
     }
 
-    private void AnimateContentChange(FrameworkElement element, Action updateContent, int delayMs, IEasingFunction easing, int fps, double slideDist)
+    private static void AnimateContentChange(FrameworkElement element, Action updateContent, int delayMs, IEasingFunction easing, int fps)
     {
         element.BeginAnimation(OpacityProperty, null);
 
@@ -3317,7 +3377,7 @@ public partial class SettingsWindow : Window
         {
             To = 0,
             Duration = TimeSpan.FromMilliseconds(120),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+            EasingFunction = easing,
             BeginTime = TimeSpan.FromMilliseconds(delayMs)
         };
         Timeline.SetDesiredFrameRate(fadeOut, fps);
@@ -3331,7 +3391,7 @@ public partial class SettingsWindow : Window
                 From = 0,
                 To = 1,
                 Duration = TimeSpan.FromMilliseconds(280),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                EasingFunction = easing
             };
             Timeline.SetDesiredFrameRate(fadeIn, fps);
 
@@ -3422,7 +3482,6 @@ public partial class SettingsWindow : Window
         };
         Timeline.SetDesiredFrameRate(expandY, fps);
 
-        _shellCornerRadius = startRadius;
         var cornerAnim = new DoubleAnimation(startRadius, 24, totalDur)
         {
             EasingFunction = easeOut
@@ -3660,7 +3719,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            VNotch.Services.RuntimeLog.Error("SETTINGS", ex, "Error in Reset_Click");
+            VNotch.Services.RuntimeLog.Error(LogCategory, ex, "Error in Reset_Click");
         }
     }
 
@@ -3744,81 +3803,25 @@ public partial class SettingsWindow : Window
             bool confirmed = VNotch.Windows.ConfirmationDialog.Show(
                 this,
                 Loc.Get("settings.clearCache.confirm"),
-                Loc.Get("settings.clearCache.title"),
-                Loc.Get("dialog.confirm"),
-                Loc.Get("dialog.cancel"),
-                VNotch.Windows.ConfirmationDialog.DialogIcon.Trash,
-                VNotch.Windows.ConfirmationDialog.DialogStyle.Normal,
-                Loc.Get("settings.clearCache.detail"));
+                new VNotch.Windows.ConfirmationDialog.DialogOptions(
+                    Title: Loc.Get("settings.clearCache.title"),
+                    ConfirmText: Loc.Get("dialog.confirm"),
+                    CancelText: Loc.Get("dialog.cancel"),
+                    Icon: VNotch.Windows.ConfirmationDialog.DialogIcon.Trash,
+                    Style: VNotch.Windows.ConfirmationDialog.DialogStyle.Normal,
+                    DetailText: Loc.Get("settings.clearCache.detail")));
 
             if (!confirmed) return;
-
-            int deletedCount = 0;
-            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "V-Notch");
-            var baseDir = AppContext.BaseDirectory;
 
             // In-memory cache resets
             FileIconProvider.ClearCache();
 
-            // Clear cache directories
-            var cacheDirs = new[]
-            {
-                Path.Combine(appData, "cache"),
-                Path.Combine(appData, "canvas_cache"),
-                Path.Combine(appData, "lyrics_cache"),
-                Path.Combine(appData, "thumbnails"),
-                Path.Combine(appData, "temp"),
-            };
+            var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "V-Notch");
+            var baseDir = AppContext.BaseDirectory;
 
-            foreach (var dir in cacheDirs)
-            {
-                try
-                {
-                    if (Directory.Exists(dir))
-                    {
-                        var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
-                        foreach (var f in files)
-                        {
-                            try { File.Delete(f); deletedCount++; } catch { }
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            var filesToDelete = new[]
-            {
-                Path.Combine(appData, "source_cache.json"),
-                Path.Combine(baseDir, "vnotch-debug.log.old"),
-            };
-
-            foreach (var file in filesToDelete)
-            {
-                try
-                {
-                    if (File.Exists(file))
-                    {
-                        File.Delete(file);
-                        deletedCount++;
-                    }
-                }
-                catch { }
-            }
-
-            try
-            {
-                if (Directory.Exists(appData))
-                {
-                    foreach (var corrupt in Directory.GetFiles(appData, "settings.corrupt-*.json"))
-                    {
-                        try { File.Delete(corrupt); deletedCount++; } catch { }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                VNotch.Services.RuntimeLog.Warn("SETTINGS", $"Failed to enumerate corrupt backups: {ex.Message}");
-            }
+            int deletedCount = DeleteCacheDirectories(appData)
+                             + DeleteExplicitCacheFiles(appData, baseDir)
+                             + DeleteCorruptSettingsFiles(appData);
 
             ClearCacheHint.Text = deletedCount > 0
                 ? Loc.Get("settings.clearCache.done", deletedCount)
@@ -3826,8 +3829,106 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            VNotch.Services.RuntimeLog.Error("SETTINGS", ex, "Error in ClearCache_Click");
+            VNotch.Services.RuntimeLog.Error(LogCategory, ex, "Error in ClearCache_Click");
         }
+    }
+
+    private static int DeleteCacheDirectories(string appData)
+    {
+        int count = 0;
+        var cacheDirs = new[]
+        {
+            Path.Combine(appData, "cache"),
+            Path.Combine(appData, "canvas_cache"),
+            Path.Combine(appData, "lyrics_cache"),
+            Path.Combine(appData, "thumbnails"),
+            Path.Combine(appData, "temp"),
+        };
+
+        foreach (var dir in cacheDirs)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+
+                var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
+                foreach (var f in files)
+                {
+                    try
+                    {
+                        File.Delete(f);
+                        count++;
+                    }
+                    catch (Exception)
+                    {
+                        // In-use or locked cache files are safely ignored
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Inaccessible directory is safely skipped
+            }
+        }
+
+        return count;
+    }
+
+    private static int DeleteExplicitCacheFiles(string appData, string baseDir)
+    {
+        int count = 0;
+        var filesToDelete = new[]
+        {
+            Path.Combine(appData, "source_cache.json"),
+            Path.Combine(baseDir, "vnotch-debug.log.old"),
+        };
+
+        foreach (var file in filesToDelete)
+        {
+            try
+            {
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                    count++;
+                }
+            }
+            catch (Exception)
+            {
+                // In-use or locked file is safely ignored
+            }
+        }
+
+        return count;
+    }
+
+    private static int DeleteCorruptSettingsFiles(string appData)
+    {
+        int count = 0;
+        try
+        {
+            if (Directory.Exists(appData))
+            {
+                foreach (var corrupt in Directory.GetFiles(appData, "settings.corrupt-*.json"))
+                {
+                    try
+                    {
+                        File.Delete(corrupt);
+                        count++;
+                    }
+                    catch (Exception)
+                    {
+                        // Locked corrupt settings backup is safely ignored
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            VNotch.Services.RuntimeLog.Warn(LogCategory, $"Failed to enumerate corrupt backups: {ex.Message}");
+        }
+
+        return count;
     }
 
     private void Apply_Click(object sender, RoutedEventArgs e)
@@ -3849,7 +3950,6 @@ public partial class SettingsWindow : Window
 
         var easeIn = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 6 };
         var easeInStrong = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 7 };
-        var itemEase = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 5 };
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
         var totalDur = TimeSpan.FromMilliseconds(650);
@@ -3902,34 +4002,34 @@ public partial class SettingsWindow : Window
 
         UIElement? activeCard = _activeNav switch
         {
-            "Appearance" => AppearanceCard,
-            "Behavior" => BehaviorCard,
-            "Devices" => DisplayCard,
-            "System" => SystemCard,
-            "Privacy" => PrivacyCard,
-            "Spotlight" => SpotlightCard,
-            "Advanced" => AdvancedCard,
-            "Performance" => PerformanceCard,
-            "Donating" => DonatingCard,
-            "Updates" => UpdatesCard,
-            "Searching" => SearchingCard,
-            "Skins" => SkinCard,
+            NavSectionAppearance => AppearanceCard,
+            NavSectionBehavior => BehaviorCard,
+            NavSectionDevices => DisplayCard,
+            NavSectionSystem => SystemCard,
+            NavSectionPrivacy => PrivacyCard,
+            NavSectionSpotlight => SpotlightCard,
+            NavSectionAdvanced => AdvancedCard,
+            NavSectionPerformance => PerformanceCard,
+            NavSectionDonating => DonatingCard,
+            NavSectionUpdates => UpdatesCard,
+            NavSectionSearching => SearchingCard,
+            NavSectionSkins => SkinCard,
             _ => null
         };
         TranslateTransform? activeTranslate = _activeNav switch
         {
-            "Appearance" => AppearanceCardTranslate,
-            "Behavior" => BehaviorCardTranslate,
-            "Devices" => DisplayCardTranslate,
-            "System" => SystemCardTranslate,
-            "Privacy" => PrivacyCardTranslate,
-            "Spotlight" => SpotlightCardTranslate,
-            "Advanced" => AdvancedCardTranslate,
-            "Performance" => PerformanceCardTranslate,
-            "Donating" => DonatingCardTranslate,
-            "Updates" => UpdatesCardTranslate,
-            "Searching" => SearchingCardTranslate,
-            "Skins" => SkinCardTranslate,
+            NavSectionAppearance => AppearanceCardTranslate,
+            NavSectionBehavior => BehaviorCardTranslate,
+            NavSectionDevices => DisplayCardTranslate,
+            NavSectionSystem => SystemCardTranslate,
+            NavSectionPrivacy => PrivacyCardTranslate,
+            NavSectionSpotlight => SpotlightCardTranslate,
+            NavSectionAdvanced => AdvancedCardTranslate,
+            NavSectionPerformance => PerformanceCardTranslate,
+            NavSectionDonating => DonatingCardTranslate,
+            NavSectionUpdates => UpdatesCardTranslate,
+            NavSectionSearching => SearchingCardTranslate,
+            NavSectionSkins => SkinCardTranslate,
             _ => null
         };
 
@@ -3964,7 +4064,6 @@ public partial class SettingsWindow : Window
         };
         Timeline.SetDesiredFrameRate(shrinkY, fps);
 
-        _shellCornerRadius = currentRadius;
         var cornerAnim = new DoubleAnimation(currentRadius, targetRadius, totalDur)
         {
             EasingFunction = easeIn
@@ -3999,7 +4098,7 @@ public partial class SettingsWindow : Window
 
         if (activeCard != null && activeTranslate != null)
             AnimateExitItem(activeCard, activeTranslate, 60);
-        if (_activeNav == "System" && BackupCard != null && BackupCardTranslate != null)
+        if (_activeNav == NavSectionSystem && BackupCard != null && BackupCardTranslate != null)
             AnimateExitItem(BackupCard, BackupCardTranslate, 80);
 
         AnimateExitItem(NavPanel, NavPanelTranslate, 120);
@@ -4034,7 +4133,6 @@ public partial class SettingsWindow : Window
     }
 
     private bool _isClosing = false;
-    private double _shellCornerRadius = 24;
     public static readonly DependencyProperty ShellCornerRadiusProperty =
             DependencyProperty.Register("ShellCornerRadius", typeof(double), typeof(SettingsWindow),
                 new PropertyMetadata(24.0, OnShellCornerRadiusChanged));
@@ -4193,7 +4291,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("SETTINGS", ex, "CheckUpdate failed");
+            RuntimeLog.Error(LogCategory, ex, "CheckUpdate failed");
         }
     }
 
@@ -4262,7 +4360,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("SETTINGS", ex, "Failed to open changelog window");
+            RuntimeLog.Error(LogCategory, ex, "Failed to open changelog window");
             MessageBox.Show(
                 Loc.Get("settings.changelogOpenFailed", ex.Message),
                 Loc.Get("error.title"),
@@ -4275,44 +4373,44 @@ public partial class SettingsWindow : Window
 
     #region Navigation
 
-    private string _activeNav = "Appearance";
+    private string _activeNav = NavSectionAppearance;
     private readonly Dictionary<string, StackPanel> _navPanels = new();
     private readonly Dictionary<string, Border> _navButtons = new();
 
     private void InitializeNavigation()
     {
-        _navPanels["Searching"] = PanelSearching;
-        _navPanels["Appearance"] = PanelAppearance;
-        _navPanels["Skins"] = PanelSkins;
-        _navPanels["Behavior"] = PanelBehavior;
-        _navPanels["Devices"] = PanelDevices;
-        _navPanels["System"] = PanelSystem;
-        _navPanels["Privacy"] = PanelPrivacy;
-        _navPanels["Spotlight"] = PanelSpotlight;
-        _navPanels["Advanced"] = PanelAdvanced;
-        _navPanels["Performance"] = PanelPerformance;
-        _navPanels["Donating"] = PanelDonating;
-        _navPanels["Updates"] = PanelUpdates;
+        _navPanels[NavSectionSearching] = PanelSearching;
+        _navPanels[NavSectionAppearance] = PanelAppearance;
+        _navPanels[NavSectionSkins] = PanelSkins;
+        _navPanels[NavSectionBehavior] = PanelBehavior;
+        _navPanels[NavSectionDevices] = PanelDevices;
+        _navPanels[NavSectionSystem] = PanelSystem;
+        _navPanels[NavSectionPrivacy] = PanelPrivacy;
+        _navPanels[NavSectionSpotlight] = PanelSpotlight;
+        _navPanels[NavSectionAdvanced] = PanelAdvanced;
+        _navPanels[NavSectionPerformance] = PanelPerformance;
+        _navPanels[NavSectionDonating] = PanelDonating;
+        _navPanels[NavSectionUpdates] = PanelUpdates;
 
-        _navButtons["Searching"] = NavSearching;
-        _navButtons["Appearance"] = NavAppearance;
-        _navButtons["Skins"] = NavSkins;
-        _navButtons["Behavior"] = NavBehavior;
-        _navButtons["Devices"] = NavDevices;
-        _navButtons["System"] = NavSystem;
-        _navButtons["Privacy"] = NavPrivacy;
-        _navButtons["Spotlight"] = NavSpotlight;
-        _navButtons["Advanced"] = NavAdvanced;
-        _navButtons["Performance"] = NavPerformance;
-        _navButtons["Donating"] = NavDonating;
-        _navButtons["Updates"] = NavUpdates;
+        _navButtons[NavSectionSearching] = NavSearching;
+        _navButtons[NavSectionAppearance] = NavAppearance;
+        _navButtons[NavSectionSkins] = NavSkins;
+        _navButtons[NavSectionBehavior] = NavBehavior;
+        _navButtons[NavSectionDevices] = NavDevices;
+        _navButtons[NavSectionSystem] = NavSystem;
+        _navButtons[NavSectionPrivacy] = NavPrivacy;
+        _navButtons[NavSectionSpotlight] = NavSpotlight;
+        _navButtons[NavSectionAdvanced] = NavAdvanced;
+        _navButtons[NavSectionPerformance] = NavPerformance;
+        _navButtons[NavSectionDonating] = NavDonating;
+        _navButtons[NavSectionUpdates] = NavUpdates;
     }
 
     private void Nav_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is Border border && border.Tag is string section)
         {
-            if (_isSearchMode && section != "Searching")
+            if (_isSearchMode && section != NavSectionSearching)
             {
                 return;
             }
@@ -4323,8 +4421,8 @@ public partial class SettingsWindow : Window
 
     private static readonly string[] _navOrder =
     {
-        "Searching", "Appearance", "Skins", "Behavior", "Devices",
-        "System", "Privacy", "Spotlight", "Advanced", "Performance", "Donating", "Updates"
+        NavSectionSearching, NavSectionAppearance, NavSectionSkins, NavSectionBehavior, NavSectionDevices,
+        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
     };
 
     private int _navTransitionVersion;
@@ -4332,12 +4430,20 @@ public partial class SettingsWindow : Window
     private void UpdateNavButtonVisual(Border btn, bool isActive)
     {
         btn.Background = isActive ? (SolidColorBrush)FindResource("NavItemActiveBg") : _transparentBrush;
-        var stack = btn.Child as StackPanel;
-        if (stack == null || stack.Children.Count < 2) return;
+        if (btn.Child is not StackPanel stack || stack.Children.Count < 2) return;
 
         var targetBrush = isActive ? _whiteBrush : _navInactiveBrush;
+        ApplyNavIconBrush(stack.Children[0], targetBrush);
 
-        if (stack.Children[0] is Viewbox vb)
+        if (stack.Children[1] is TextBlock text)
+        {
+            text.Foreground = targetBrush;
+        }
+    }
+
+    private static void ApplyNavIconBrush(UIElement element, Brush targetBrush)
+    {
+        if (element is Viewbox vb)
         {
             if (vb.Child is System.Windows.Shapes.Path path)
             {
@@ -4351,14 +4457,9 @@ public partial class SettingsWindow : Window
                 }
             }
         }
-        else if (stack.Children[0] is TextBlock iconText)
+        else if (element is TextBlock iconText)
         {
             iconText.Foreground = targetBrush;
-        }
-
-        if (stack.Children[1] is TextBlock text)
-        {
-            text.Foreground = targetBrush;
         }
     }
 
@@ -4408,6 +4509,17 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        AnimateSectionExit(oldCard, oldTranslate, oldPanel, previous, direction, RevealIncoming);
+    }
+
+    private void AnimateSectionExit(
+        FrameworkElement oldCard,
+        TranslateTransform oldTranslate,
+        UIElement? oldPanel,
+        string previous,
+        int direction,
+        Action onExitCompleted)
+    {
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var exitEase = new CubicEase { EasingMode = EasingMode.EaseIn };
         var exitDur = TimeSpan.FromMilliseconds(130);
@@ -4425,7 +4537,7 @@ public partial class SettingsWindow : Window
             oldTranslate.Y = 12;
             if (oldPanel != null && !string.Equals(previous, _activeNav, StringComparison.Ordinal))
                 oldPanel.Visibility = Visibility.Collapsed;
-            RevealIncoming();
+            onExitCompleted();
         };
 
         oldCard.BeginAnimation(OpacityProperty, fadeOut);
@@ -4436,35 +4548,35 @@ public partial class SettingsWindow : Window
     {
         FrameworkElement? card = section switch
         {
-            "Appearance" => AppearanceCard,
-            "Searching" => SearchingCard,
-            "Behavior" => BehaviorCard,
-            "Devices" => DisplayCard,
-            "System" => SystemCard,
-            "Privacy" => PrivacyCard,
-            "Spotlight" => SpotlightCard,
-            "Advanced" => AdvancedCard,
-            "Performance" => PerformanceCard,
-            "Donating" => DonatingCard,
-            "Updates" => UpdatesCard,
-            "Skins" => SkinCard,
+            NavSectionAppearance => AppearanceCard,
+            NavSectionSearching => SearchingCard,
+            NavSectionBehavior => BehaviorCard,
+            NavSectionDevices => DisplayCard,
+            NavSectionSystem => SystemCard,
+            NavSectionPrivacy => PrivacyCard,
+            NavSectionSpotlight => SpotlightCard,
+            NavSectionAdvanced => AdvancedCard,
+            NavSectionPerformance => PerformanceCard,
+            NavSectionDonating => DonatingCard,
+            NavSectionUpdates => UpdatesCard,
+            NavSectionSkins => SkinCard,
             _ => null
         };
 
         TranslateTransform? translate = section switch
         {
-            "Appearance" => AppearanceCardTranslate,
-            "Searching" => SearchingCardTranslate,
-            "Behavior" => BehaviorCardTranslate,
-            "Devices" => DisplayCardTranslate,
-            "System" => SystemCardTranslate,
-            "Privacy" => PrivacyCardTranslate,
-            "Spotlight" => SpotlightCardTranslate,
-            "Advanced" => AdvancedCardTranslate,
-            "Performance" => PerformanceCardTranslate,
-            "Donating" => DonatingCardTranslate,
-            "Updates" => UpdatesCardTranslate,
-            "Skins" => SkinCardTranslate,
+            NavSectionAppearance => AppearanceCardTranslate,
+            NavSectionSearching => SearchingCardTranslate,
+            NavSectionBehavior => BehaviorCardTranslate,
+            NavSectionDevices => DisplayCardTranslate,
+            NavSectionSystem => SystemCardTranslate,
+            NavSectionPrivacy => PrivacyCardTranslate,
+            NavSectionSpotlight => SpotlightCardTranslate,
+            NavSectionAdvanced => AdvancedCardTranslate,
+            NavSectionPerformance => PerformanceCardTranslate,
+            NavSectionDonating => DonatingCardTranslate,
+            NavSectionUpdates => UpdatesCardTranslate,
+            NavSectionSkins => SkinCardTranslate,
             _ => null
         };
 
@@ -4512,7 +4624,7 @@ public partial class SettingsWindow : Window
         scale.ScaleX = 0.985;
         scale.ScaleY = 0.985;
 
-        var systemCardDelay = section == "System" && BackupCard != null ? TimeSpan.FromMilliseconds(40) : TimeSpan.Zero;
+        var systemCardDelay = section == NavSectionSystem && BackupCard != null ? TimeSpan.FromMilliseconds(40) : TimeSpan.Zero;
         var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, BeginTime = systemCardDelay };
         var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
         var grow = new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
@@ -4525,7 +4637,7 @@ public partial class SettingsWindow : Window
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
 
-        if (section == "System" && BackupCard != null && BackupCardTranslate != null)
+        if (section == NavSectionSystem && BackupCard != null && BackupCardTranslate != null)
         {
             if (VNotch.Services.AnimationConfig.ReduceMotion)
             {
@@ -4626,14 +4738,9 @@ public partial class SettingsWindow : Window
         EnterSearchMode();
         SearchResultsStack.Children.Clear();
 
-        var matches = new List<SearchRowEntry>();
-        foreach (var row in _searchRows)
-        {
-            if (SettingsSearchMatcher.IsNormalizedMatch(row.NormalizedSearchText, normalizedQuery))
-            {
-                matches.Add(row);
-            }
-        }
+        var matches = _searchRows
+            .Where(row => SettingsSearchMatcher.IsNormalizedMatch(row.NormalizedSearchText, normalizedQuery))
+            .ToList();
 
         foreach (var match in matches)
         {
@@ -4650,7 +4757,7 @@ public partial class SettingsWindow : Window
 
         SearchingEmptyText.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         SettingsScrollViewer.ScrollToTop();
-        AnimateActivePanel("Searching");
+        AnimateActivePanel(NavSectionSearching);
     }
 
     private void EnterSearchMode()
@@ -4666,16 +4773,21 @@ public partial class SettingsWindow : Window
             RestoreSearchRows();
         }
 
-        _activeNav = "Searching";
+        _activeNav = NavSectionSearching;
 
         foreach (var kvp in _navPanels)
         {
-            kvp.Value.Visibility = kvp.Key == "Searching" ? Visibility.Visible : Visibility.Collapsed;
+            kvp.Value.Visibility = kvp.Key == NavSectionSearching ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        UpdateNavButtonsForSearchMode();
+    }
+
+    private void UpdateNavButtonsForSearchMode()
+    {
         foreach (var kvp in _navButtons)
         {
-            bool isSearching = kvp.Key == "Searching";
+            bool isSearching = kvp.Key == NavSectionSearching;
             kvp.Value.Visibility = Visibility.Visible;
             kvp.Value.IsHitTestVisible = isSearching;
             kvp.Value.Opacity = isSearching ? 1.0 : 0.35;
@@ -4696,13 +4808,13 @@ public partial class SettingsWindow : Window
         SearchingEmptyText.Visibility = Visibility.Collapsed;
         _isSearchMode = false;
 
-        if (_activeNav == "Searching")
+        if (_activeNav == NavSectionSearching)
         {
-            _activeNav = "Appearance";
+            _activeNav = NavSectionAppearance;
         }
 
         ShowAllNavItems();
-        if (_navButtons.TryGetValue("Searching", out var searchButton))
+        if (_navButtons.TryGetValue(NavSectionSearching, out var searchButton))
         {
             searchButton.Visibility = Visibility.Collapsed;
         }
@@ -4722,7 +4834,7 @@ public partial class SettingsWindow : Window
         var rowStyle = FindResource("SettingRowBorder") as Style;
         foreach (var kvp in _navPanels)
         {
-            if (kvp.Key == "Searching") continue;
+            if (kvp.Key == NavSectionSearching) continue;
 
             foreach (var row in FindVisualChildren<Border>(kvp.Value))
             {
@@ -4769,7 +4881,7 @@ public partial class SettingsWindow : Window
         return string.Join(" ", parts);
     }
 
-    private void AddAllTranslations(string text, ISet<string> parts)
+    private static void AddAllTranslations(string text, ISet<string> parts)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
 
@@ -4827,7 +4939,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void AddSearchItemText(object? item, ISet<string> parts)
+    private static void AddSearchItemText(object? item, ISet<string> parts)
     {
         switch (item)
         {
@@ -4857,7 +4969,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void AddLanguageSearchTerms(ISet<string> parts)
+    private static void AddLanguageSearchTerms(ISet<string> parts)
     {
         foreach (var (code, nativeName) in Loc.GetAvailableLanguages())
         {
@@ -5202,15 +5314,6 @@ public partial class SettingsWindow : Window
         DetachGpuRefraction();
     }
 
-    private static readonly SolidColorBrush _glassBaseFill = CreateFrozenBrush(0x0B, 0x0E, 0x12);
-
-    private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
-
     /// <summary>Physical-pixel envelope the glass surface must cover: the full
     /// window at the current DPI (the shell always fits inside it, including
     /// during the open/close scale animation, whose scale never exceeds 1).</summary>
@@ -5257,70 +5360,6 @@ public partial class SettingsWindow : Window
         _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
     }
 
-    private void ApplyLiquidGlassConfig()
-    {
-        if (GlassBackdropHost == null) return;
-        var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
-
-        double dipRadius = Math.Clamp(cfg.BlurAmount, 0, 1) * 28.0;
-        double dpiScale = GetGlassDpiScale();
-        int gaussianSigma = (int)Math.Round(dipRadius * dpiScale);
-
-        if (_liquidGlass != null)
-        {
-            _liquidGlass.SetBlur(gaussianSigma);
-            int targetFps = cfg.TargetFps;
-            if (targetFps <= 0 || targetFps == 60) targetFps = AnimationConfig.TargetFps;
-            _liquidGlass.UpdateFps(targetFps);
-            bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
-            if (useGpu)
-            {
-                GlassBackdropImage.HorizontalAlignment = HorizontalAlignment.Left;
-                GlassBackdropImage.VerticalAlignment = VerticalAlignment.Top;
-                GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
-                GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
-            }
-        }
-
-        // GPU mode blurs on the host element instead of the CPU box blur.
-        ApplyGpuBlur(cfg.BlurAmount);
-
-        GlassBackdropHost.Opacity = Math.Clamp(cfg.Opacity, 0, 1);
-
-        if (GlassGrainOverlay != null)
-        {
-            double grainOpacity = Math.Clamp(cfg.Noise * 1.5, 0.0, 1.0);
-            GlassGrainOverlay.Opacity = grainOpacity;
-            GlassGrainOverlay.Visibility = grainOpacity > 0.005 ? Visibility.Visible : Visibility.Collapsed;
-            GlassGrainOverlay.Background = GlassGrainBrush.Instance;
-        }
-
-        _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
-        {
-            PowerFactor = cfg.PowerFactor,
-            RefractionA = cfg.RefractionA,
-            RefractionB = cfg.RefractionB,
-            RefractionC = cfg.RefractionC,
-            RefractionD = cfg.RefractionD,
-            FPower = cfg.FPower,
-            Noise = cfg.Noise,
-            GlowWeight = cfg.GlowWeight,
-            GlowBias = cfg.GlowBias,
-            GlowEdge0 = cfg.GlowEdge0,
-            GlowEdge1 = cfg.GlowEdge1,
-            Refraction = cfg.Refraction,
-            EdgeBend = cfg.EdgeBend,
-            ChromaticAberration = cfg.ChromaticAberration,
-            Distortion = cfg.Distortion,
-            ZRadius = cfg.ZRadius,
-            Saturation = cfg.Saturation,
-            Brightness = cfg.Brightness,
-            BevelMode = cfg.BevelMode,
-            TopCornerRadius = MainShell.CornerRadius.TopLeft,
-            BottomCornerRadius = MainShell.CornerRadius.BottomLeft
-        });
-    }
-
     private LiquidGlassController.CaptureRegion? GetGlassCaptureRegion()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
@@ -5331,19 +5370,7 @@ public partial class SettingsWindow : Window
         if (shellW <= 0 || shellH <= 0) return null;
 
         double dpiScale = GetGlassDpiScale();
-        if (Math.Abs(dpiScale - _lastAppliedDpiScale) > 0.01)
-        {
-            _lastAppliedDpiScale = dpiScale;
-            bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
-            if (_liquidGlass != null && GlassBackdropHost.Visibility == Visibility.Visible && useGpu)
-            {
-                GlassBackdropImage.HorizontalAlignment = HorizontalAlignment.Left;
-                GlassBackdropImage.VerticalAlignment = VerticalAlignment.Top;
-                GlassBackdropImage.Width = _liquidGlass.SurfaceWidth / dpiScale;
-                GlassBackdropImage.Height = _liquidGlass.SurfaceHeight / dpiScale;
-            }
-            QueueGlassRendererRebuildIfTooSmall();
-        }
+        UpdateGlassDpiIfChanged(dpiScale);
 
         int physW = (int)Math.Round(shellW * dpiScale);
         int physH = (int)Math.Round(shellH * dpiScale);
@@ -5381,133 +5408,24 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void ConfigureGpuRefraction()
+    private void UpdateGlassDpiIfChanged(double dpiScale)
     {
-        if (_liquidGlass == null) return;
+        if (Math.Abs(dpiScale - _lastAppliedDpiScale) <= 0.01) return;
 
-        bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
-        if (!useGpu)
-        {
-            if (_gpuRefractionConfigured || GlassBackdropImage.Effect != null)
-            {
-                DetachGpuRefraction();
-                _liquidGlass.SetGpuMode(false, null);
-            }
-            return;
-        }
-
-        if (_gpuRefractionConfigured && ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
-            return;
-
-        try
-        {
-            _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
-            GlassBackdropImage.Effect = _glassRefractionEffect;
-            if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure))
-            {
-                DetachGpuRefraction();
-                _liquidGlass.SetGpuMode(false, null);
-                return;
-            }
-            _gpuRefractionConfigured = true;
-        }
-        catch
-        {
-            DetachGpuRefraction();
-            _liquidGlass.SetGpuMode(false, null);
-        }
-    }
-
-    private System.Windows.Media.Effects.BlurEffect? _glassHostBlur;
-
-    /// <summary>Applies the GPU-mode host blur. CPU Liquid Glass blurs the
-    /// captured source before refraction instead.</summary>
-    private void ApplyGpuBlur(double blurAmount)
-    {
-        bool useGpu = (_settings.LiquidGlass?.UseGpuRefraction ?? true) && LiquidGlassRefractionEffect.IsAvailable;
-        if (!useGpu || GlassBackdropHost == null) return;
-
-        double radius = Math.Clamp(blurAmount, 0, 1) * 14.0;
-        if (radius < 0.5)
-        {
-            GlassBackdropHost.Effect = null;
-            _glassHostBlur = null;
-            return;
-        }
-
-        if (_glassHostBlur == null)
-        {
-            _glassHostBlur = new System.Windows.Media.Effects.BlurEffect
-            {
-                KernelType = System.Windows.Media.Effects.KernelType.Gaussian,
-                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
-            };
-            GlassBackdropHost.Effect = _glassHostBlur;
-        }
-        _glassHostBlur.Radius = radius;
+        _lastAppliedDpiScale = dpiScale;
+        QueueGlassRendererRebuildIfTooSmall();
     }
 
     private void DetachGpuRefraction()
     {
-        _gpuRefractionConfigured = false;
-        if (GlassBackdropImage != null && ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
+        if (GlassBackdropImage != null)
         {
             GlassBackdropImage.Effect = null;
-            // Restore CPU-present layout defaults (GPU mode set explicit size).
             GlassBackdropImage.Width = double.NaN;
             GlassBackdropImage.Height = double.NaN;
         }
         if (GlassBackdropHost != null)
             GlassBackdropHost.Effect = null;
-        _glassHostBlur = null;
-    }
-
-    private LiquidGlassController.GpuGeometry? _lastAppliedSettingsOptics;
-
-    /// <summary>Pushes the per-frame shader geometry from the controller into the
-    /// effect. The shader samples the presenter's fixed D3D surface, so SrcW/SrcH
-    /// must be the surface dimensions, not the per-frame capture size.</summary>
-    private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
-    {
-        var fx = _glassRefractionEffect;
-        var lg = _liquidGlass;
-        if (fx == null || lg == null) return;
-
-        if (Math.Abs(fx.SrcW - lg.SurfaceWidth) > 0.1) fx.SrcW = lg.SurfaceWidth;
-        if (Math.Abs(fx.SrcH - lg.SurfaceHeight) > 0.1) fx.SrcH = lg.SurfaceHeight;
-        if (Math.Abs(fx.NotchW - g.NotchW) > 0.1) fx.NotchW = g.NotchW;
-        if (Math.Abs(fx.NotchH - g.NotchH) > 0.1) fx.NotchH = g.NotchH;
-        if (Math.Abs(fx.OffX - g.OffX) > 0.1) fx.OffX = g.OffX;
-        if (Math.Abs(fx.OffY - g.OffY) > 0.1) fx.OffY = g.OffY;
-        if (Math.Abs(fx.TopCornerR - g.TopCornerR) > 0.1) fx.TopCornerR = g.TopCornerR;
-        if (Math.Abs(fx.BottomCornerR - g.BottomCornerR) > 0.1) fx.BottomCornerR = g.BottomCornerR;
-
-        if (_lastAppliedSettingsOptics == null || !_lastAppliedSettingsOptics.Value.Equals(g))
-        {
-            _lastAppliedSettingsOptics = g;
-            fx.PowerFactor = g.PowerFactor;
-            fx.A = g.A;
-            fx.B = g.B;
-            fx.C = g.C;
-            fx.D = g.D;
-            fx.FPower = g.FPower;
-            fx.Noise = g.Noise;
-            fx.GlowWeight = g.GlowWeight;
-            fx.GlowBias = g.GlowBias;
-            fx.GlowEdge0 = g.GlowEdge0;
-            fx.GlowEdge1 = g.GlowEdge1;
-            fx.Chroma = g.Chroma;
-            fx.EdgeBend = g.EdgeBend;
-            fx.BevelMode = g.BevelMode;
-            fx.SatFactor = g.SatFactor;
-            fx.BrightAdd = g.BrightAdd;
-        }
-    }
-
-    private void OnGpuRefractionFailure(Exception ex)
-    {
-        DetachGpuRefraction();
-        _liquidGlass?.SetGpuMode(false, null);
     }
 
     private double GetGlassDpiScale()
@@ -5538,7 +5456,6 @@ public partial class SettingsWindow : Window
         _liquidGlass?.Stop();
         DetachGpuRefraction();
         _liquidGlass = null;
-        _glassRefractionEffect = null;
         MemoryOptimizerService.Instance.ScheduleTrim(200, aggressive: true);
     }
 

@@ -93,24 +93,13 @@ public sealed class SpotlightKeyRoutingTests
         };
         var source = new HwndSource(parameters) { RootVisual = root };
         root.UpdateLayout();
+        searchBox.Focus();
+        Keyboard.Focus(searchBox);
         return (source, root, searchBox);
     }
 
     private static KeyEventArgs MakeKeyEvent(PresentationSource source, Key key, RoutedEvent routedEvent) =>
         new(Keyboard.PrimaryDevice, source, Environment.TickCount, key) { RoutedEvent = routedEvent };
 
-    private static void RunSta(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try { action(); }
-            catch (Exception ex) { failure = ex; }
-            finally { Dispatcher.CurrentDispatcher.InvokeShutdown(); }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join(TimeSpan.FromSeconds(30));
-        if (failure != null) throw failure;
-    }
+    private static void RunSta(Action action) => SharedStaTestRunner.Run(action, 45);
 }

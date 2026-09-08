@@ -32,6 +32,7 @@ public partial class MainWindow
         set => _notchState.IsLyricsActive = value;
     }
     private string _lastKnownYouTubeVideoId = "";
+    private const string SpotifyCanvasLogTag = "SPOTIFY-CANVAS";
     private CancellationTokenSource? _spotifyCanvasCts;
     private string _spotifyCanvasTrackKey = "";
     private Uri? _spotifyCanvasUri;
@@ -104,7 +105,7 @@ public partial class MainWindow
         else
             Dispatcher.BeginInvoke(new Action(() => HideSpotifyCanvasBackground(clearSource: true)));
 
-        RuntimeLog.Debug("SPOTIFY-CANVAS", () =>
+        RuntimeLog.Debug(SpotifyCanvasLogTag, () =>
             $"Fetch gate: enabled={_settings.EnableSpotifyCanvas}, localOnly={_settings.EnableLocalOnlyMode}, platform={info.Platform}, " +
             $"sessionStored={!string.IsNullOrWhiteSpace(_settings.SpotifySpDc)}");
         if (!_settings.EnableSpotifyCanvas || _settings.EnableLocalOnlyMode || info.Platform != MediaPlatform.Spotify)
@@ -127,7 +128,7 @@ public partial class MainWindow
         var requestCts = new CancellationTokenSource();
         _spotifyCanvasCts = requestCts;
         FetchSpotifyCanvasAsync(info, trackKey, requestCts)
-            .SafeFireAndForget("SPOTIFY-CANVAS");
+            .SafeFireAndForget(SpotifyCanvasLogTag);
     }
 
     private async Task FetchSpotifyCanvasAsync(
@@ -151,12 +152,12 @@ public partial class MainWindow
                 trackKey != _spotifyCanvasTrackKey)
             {
                 if (!token.IsCancellationRequested && canvasUri == null && trackKey == _spotifyCanvasTrackKey)
-                    RuntimeLog.Debug("SPOTIFY-CANVAS", "No Canvas available; keeping normal lyrics background");
+                    RuntimeLog.Debug(SpotifyCanvasLogTag, "No Canvas available; keeping normal lyrics background");
                 return;
             }
 
             _spotifyCanvasUri = canvasUri;
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Canvas is ready for the current lyrics view");
+            RuntimeLog.Debug(SpotifyCanvasLogTag, "Canvas is ready for the current lyrics view");
             await Dispatcher.InvokeAsync(() =>
             {
                 if (!token.IsCancellationRequested &&
@@ -226,11 +227,11 @@ public partial class MainWindow
             LyricsCanvasVideo.Play();
             if (_isSpotifyCanvasMediaOpen)
                 FadeInSpotifyCanvasBackgroundIfReady();
-            RuntimeLog.Debug("SPOTIFY-CANVAS", "Opening Canvas video in lyrics background");
+            RuntimeLog.Debug(SpotifyCanvasLogTag, "Opening Canvas video in lyrics background");
         }
         catch (Exception ex)
         {
-            RuntimeLog.Warn("SPOTIFY-CANVAS", $"Unable to start Canvas video: {ex.Message}");
+            RuntimeLog.Warn(SpotifyCanvasLogTag, $"Unable to start Canvas video: {ex.Message}");
             HideSpotifyCanvasBackground(clearSource: true);
         }
     }
@@ -282,7 +283,14 @@ public partial class MainWindow
         }
         catch
         {
-            try { LyricsCanvasVideo.Source = null; } catch { }
+            try
+            {
+                LyricsCanvasVideo.Source = null;
+            }
+            catch
+            {
+                // Ignore failure when resetting media element source
+            }
         }
     }
 
@@ -297,7 +305,14 @@ public partial class MainWindow
             _spotifyCanvasLookupCompleted = false;
         }
 
-        try { pending.Cancel(); } catch (ObjectDisposedException) { }
+        try
+        {
+            pending.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Token source was already disposed
+        }
         pending.Dispose();
     }
 
@@ -431,7 +446,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Playback state update skipped: {ex.Message}");
+            RuntimeLog.Debug(SpotifyCanvasLogTag, () => $"Playback state update skipped: {ex.Message}");
         }
     }
 
@@ -454,9 +469,12 @@ public partial class MainWindow
             else
                 LyricsCanvasVideo.Pause();
         }
-        catch { }
+        catch
+        {
+            // Ignore playback state transition errors on newly opened media
+        }
 
-        RuntimeLog.Debug("SPOTIFY-CANVAS", "Canvas media opened successfully");
+        RuntimeLog.Debug(SpotifyCanvasLogTag, "Canvas media opened successfully");
 
         _isSpotifyCanvasMediaOpen = true;
         ApplySpotifyCanvasBrightness();
@@ -544,7 +562,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            RuntimeLog.Debug("SPOTIFY-CANVAS", () => $"Canvas loop failed: {ex.Message}");
+            RuntimeLog.Debug(SpotifyCanvasLogTag, () => $"Canvas loop failed: {ex.Message}");
         }
     }
 
@@ -555,7 +573,7 @@ public partial class MainWindow
             return;
         }
 
-        RuntimeLog.Warn("SPOTIFY-CANVAS", $"Canvas video failed; using lyrics fallback: {e.ErrorException?.Message}");
+        RuntimeLog.Warn(SpotifyCanvasLogTag, $"Canvas video failed; using lyrics fallback: {e.ErrorException?.Message}");
         _spotifyCanvasUri = null;
         HideSpotifyCanvasBackground(clearSource: true);
     }
@@ -587,7 +605,7 @@ public partial class MainWindow
                 return;
             }
 
-            var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(info.CurrentTrack, info.CurrentArtist);
+            var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(info.CurrentTrack, info.CurrentArtist, System.Threading.CancellationToken.None);
             if (lookup != null && !string.IsNullOrEmpty(lookup.Id))
             {
                 videoId = lookup.Id;
@@ -615,18 +633,17 @@ public partial class MainWindow
 
         if (subtitles != null && subtitles.Count > 0)
         {
-            ApplySyncedLines(subtitles, info, isYouTube: true, provider: "YouTube");
+            ApplySyncedLines(subtitles, info, provider: "YouTube");
             return;
         }
 
         // No YouTube subtitles found — do NOT fall back to LRCLIB in YouTube subtitle mode.
-        ApplySyncedLines(null, info, isYouTube: true);
+        ApplySyncedLines(null, info);
     }
 
     private void ApplySyncedLines(
         List<LyricLine>? lines,
         MediaInfo info,
-        bool isYouTube = false,
         string? provider = null)
     {
         if (lines == null || lines.Count == 0)
@@ -815,7 +832,7 @@ public partial class MainWindow
         Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
         Storyboard.SetTarget(animation, LyricsSearchText);
         Storyboard.SetTargetProperty(animation,
-            new PropertyPath($"(TextBlock.Foreground).(GradientBrush.GradientStops)[{gradientStopIndex}].(GradientStop.Offset)"));
+            new PropertyPath($"(TextBlock.Foreground).(GradientBrush.GradientStops)[{gradientStopIndex}].(GradientStop.Offset)", Array.Empty<object>()));
         storyboard.Children.Add(animation);
     }
 

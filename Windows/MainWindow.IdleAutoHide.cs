@@ -10,8 +10,6 @@ public partial class MainWindow
 
     private IdleAutoHideController? _idleAutoHide;
 
-    private DispatcherTimer? _idleHideTimer => _idleAutoHide?.Timer;
-
     private void InitializeIdleAutoHide() => InitializeIdleAutoHideController();
 
     internal void InitializeIdleAutoHideController()

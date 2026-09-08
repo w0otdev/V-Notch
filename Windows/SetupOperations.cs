@@ -27,7 +27,9 @@ internal static class SetupOperations
     private const string AppName = "V-Notch";
     private const string AppExeName = "V-Notch.exe";
     private const string Publisher = "rainaku";
+#pragma warning disable S1075 // Official project repository URL for Windows uninstall registry
     private const string AppUrl = "https://github.com/rainaku/V-Notch";
+#pragma warning restore S1075
     private const string Version = "1.8.1";
     private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\V-Notch";
 
@@ -169,7 +171,6 @@ internal static class SetupOperations
     public static void RunUninstallFlow()
     {
         var installDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var installedExePath = Path.Combine(installDirectory, AppExeName);
 
         var confirmation = MessageBox.Show(
             Loc.Get("setup.uninstall.confirm"),
@@ -202,22 +203,24 @@ internal static class SetupOperations
             Path.GetTempPath(),
             $"v-notch-uninstall-{Guid.NewGuid():N}.cmd");
 
-        var scriptContents = string.Join(Environment.NewLine, new[]
-        {
+        var scriptContents = string.Join(
+            Environment.NewLine,
             "@echo off",
             "setlocal",
             "timeout /t 2 /nobreak >nul",
             $"rmdir /S /Q \"{installDirectory}\"",
-            $"del /Q \"{cleanupScriptPath}\""
-        });
+            $"del /Q \"{cleanupScriptPath}\"");
 
         File.WriteAllText(cleanupScriptPath, scriptContents);
 
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{cleanupScriptPath}\"")
+        var systemDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        var cmdPath = Path.Combine(systemDir, "cmd.exe");
+
+        Process.Start(new ProcessStartInfo(cmdPath, $"/c \"{cleanupScriptPath}\"")
         {
             CreateNoWindow = true,
             UseShellExecute = false,
-            WorkingDirectory = Path.GetTempPath()
+            WorkingDirectory = systemDir
         });
 
         Application.Current.Shutdown(0);
@@ -241,8 +244,10 @@ internal static class SetupOperations
                 process.WaitForExit(8000);
                 killedAny = true;
             }
-            catch
+            catch (Exception ex)
             {
+                // Process may have already exited or access denied; continue terminating any remaining instances.
+                Debug.WriteLine($"[Setup] Failed to terminate process {process.Id}: {ex.Message}");
             }
         }
 
@@ -317,8 +322,10 @@ internal static class SetupOperations
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(settingsPath, json);
         }
-        catch
+        catch (Exception ex)
         {
+            // Non-fatal: if initial settings file cannot be written, the app will generate default settings on first launch.
+            Debug.WriteLine($"[Setup] Failed to write initial settings: {ex.Message}");
         }
     }
 
@@ -362,24 +369,30 @@ internal static class SetupOperations
         {
             Registry.CurrentUser.DeleteSubKeyTree(UninstallRegistryPath, throwOnMissingSubKey: false);
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            // Best-effort cleanup: ignore permission errors when removing HKCU uninstall entry.
+            Debug.WriteLine($"[Setup] Could not remove HKCU uninstall key: {ex.Message}");
         }
 
         try
         {
             Registry.LocalMachine.DeleteSubKeyTree(UninstallRegistryPath, throwOnMissingSubKey: false);
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            // Best-effort cleanup: ignore permission errors when running without admin privileges for HKLM.
+            Debug.WriteLine($"[Setup] Could not remove HKLM uninstall key: {ex.Message}");
         }
 
         try
         {
             Registry.CurrentUser.DeleteSubKeyTree($@"Software\{AppName}", throwOnMissingSubKey: false);
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            // Best-effort cleanup: ignore permission errors when removing HKCU app key.
+            Debug.WriteLine($"[Setup] Could not remove HKCU app key: {ex.Message}");
         }
     }
 

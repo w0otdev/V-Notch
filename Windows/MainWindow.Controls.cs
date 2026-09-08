@@ -17,6 +17,7 @@ public partial class MainWindow
 {
     #region Media Controls
 
+    private const string MediaCtrlLogTag = "MEDIA-CTRL";
     private bool _isPlaying = true;
 
     private async void PlayPauseButton_Click(object sender, MouseButtonEventArgs e)
@@ -33,7 +34,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "PlayPause failed");
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "PlayPause failed");
         }
     }
 
@@ -50,7 +51,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "NextTrack failed");
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "NextTrack failed");
         }
     }
 
@@ -67,7 +68,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "PrevTrack failed");
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "PrevTrack failed");
         }
     }
 
@@ -102,7 +103,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "InlinePlayPause failed");
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "InlinePlayPause failed");
         }
     }
 
@@ -112,14 +113,14 @@ public partial class MainWindow
         try
         {
             PlayButtonPressAnimation(InlineNextButton);
-            PlayNextSkipAnimation(InlineNextArrow0, InlineNextArrow1, InlineNextArrow2);
+            PlayNextSkipAnimation(InlineNextArrow0, InlineNextArrow1);
 
             OptimisticPrepareForNextTrack();
             await _viewModel.NextTrackCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "InlineNext failed");
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "InlineNext failed");
         }
     }
 
@@ -129,14 +130,14 @@ public partial class MainWindow
         try
         {
             PlayButtonPressAnimation(InlinePrevButton);
-            PlayPrevSkipAnimation(InlinePrevArrow0, InlinePrevArrow1, InlinePrevArrow2);
+            PlayPrevSkipAnimation(InlinePrevArrow0, InlinePrevArrow2);
 
             PrepareForPreviousTrackRequest();
             await _viewModel.PreviousTrackCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("MEDIA-CTRL", ex, "InlinePrev failed");
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "InlinePrev failed");
         }
     }
 
@@ -196,14 +197,8 @@ public partial class MainWindow
     {
         var info = _currentMediaInfo;
         if (info == null || !info.IsAnyMediaPlaying) return;
-        Task.Run(() => MediaWindowActivator.TryActivateForMedia(info))
+        Task.Run(() => MediaWindowActivator.TryActivateForMedia(info), System.Threading.CancellationToken.None)
             .SafeFireAndForget("MEDIA-ACTIVATE");
-    }
-
-    private void SendMediaKey(byte key)
-    {
-        keybd_event(key, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        keybd_event(key, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     private void MediaButton_MouseEnter(object sender, MouseEventArgs e)

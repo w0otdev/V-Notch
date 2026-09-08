@@ -12,6 +12,8 @@ public interface IWindowTitleScanner
     string? TryGetMediaUrlFromAnyBrowser();
 
     bool IsSpotifyWebPlayerOpen();
+    bool IsPipActive(string? processName = null);
+    bool TryGetPipWindow(out IntPtr pipHwnd, out string pipTitle, string? processName = null);
 
     void InvalidateUrlCaches();
 }
@@ -39,7 +41,10 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
     private static readonly string[] _platformKeywords =
     {
         "spotify", "youtube", "soundcloud", "facebook", "tiktok", "instagram", "twitter", " / x", "apple music", "apple", "music",
-        "twitch", "discord", "vesktop", "netflix", "tidal", "deezer", "bandcamp", "bilibili", "哔哩哔哩", "vimeo", "crunchyroll", "prime video", "disney"
+        "twitch", "discord", "vesktop", "netflix", "tidal", "deezer", "bandcamp", "bilibili", "哔哩哔哩", "vimeo", "crunchyroll", "prime video", "disney",
+        "picture in picture", "picture-in-picture", "hình trong hình", "hinh trong hinh", "bild-in-bild", "image dans l'image",
+        "pantalla en pantalla", "cuadro en cuadro", "画中画", "畫中畫", "子母画面", "子母畫面", "ピクチャー イン ピクチャー", "ピクチャーインピクチャー",
+        "картинка в картинке", "imagem na imagem", "imagem sobre imagem", "finestra mobile", "gambar dalam gambar", "resim içinde resim", "화면 속 화면", "pip"
     };
 
     private static readonly string[] _browserProcessNames =
@@ -173,6 +178,12 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
         }
     }
 
+    private bool _cachedPipActive;
+    private IntPtr _cachedPipHwnd;
+    private string _cachedPipTitle = string.Empty;
+    private DateTime _lastPipCheckTime = DateTime.MinValue;
+    private string? _lastPipProcessName;
+
     public void InvalidateUrlCaches()
     {
         lock (_cacheLock)
@@ -183,7 +194,46 @@ public sealed class WindowTitleScanner : IWindowTitleScanner
             _lastAnyBrowserMediaUrlTime = DateTime.MinValue;
             _cachedSpotifyWebPlayerOpen = false;
             _lastSpotifyWebPlayerTime = DateTime.MinValue;
+            _cachedPipActive = false;
+            _cachedPipHwnd = IntPtr.Zero;
+            _cachedPipTitle = string.Empty;
+            _lastPipCheckTime = DateTime.MinValue;
+            _lastPipProcessName = null;
         }
+    }
+
+    public bool IsPipActive(string? processName = null)
+    {
+        lock (_cacheLock)
+        {
+            CheckPipCache(processName);
+            return _cachedPipActive;
+        }
+    }
+
+    public bool TryGetPipWindow(out IntPtr pipHwnd, out string pipTitle, string? processName = null)
+    {
+        lock (_cacheLock)
+        {
+            CheckPipCache(processName);
+            pipHwnd = _cachedPipHwnd;
+            pipTitle = _cachedPipTitle;
+            return _cachedPipActive;
+        }
+    }
+
+    private void CheckPipCache(string? processName)
+    {
+        int ttlMs = _cachedPipActive ? 400 : 700;
+        if ((DateTime.UtcNow - _lastPipCheckTime).TotalMilliseconds < ttlMs &&
+            string.Equals(processName, _lastPipProcessName, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _cachedPipActive = PipDetector.TryFindPipWindow(out _cachedPipHwnd, out _cachedPipTitle, processName);
+        _lastPipCheckTime = DateTime.UtcNow;
+        _lastPipProcessName = processName;
     }
 
     public bool IsSpotifyWebPlayerOpen()

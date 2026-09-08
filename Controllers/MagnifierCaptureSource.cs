@@ -652,7 +652,7 @@ public sealed class MagnifierCaptureSource : IDisposable
             uint* src = (uint*)bytes;
             uint* dst = (uint*)destination;
             long offsetX = (long)x - desktopX;
-            
+
             long offsetY = (long)y - desktopY;
             for (int row = 0; row < height; row++)
             {

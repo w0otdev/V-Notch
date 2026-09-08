@@ -43,11 +43,7 @@ public partial class MainWindow
             isAnimating: _isAnimating,
             isSecondaryView: _isSecondaryView);
 
-        if (handled && !wasExpanded && _dragDropController.IsDragAutoExpanded)
-        {
-            StartDragWaitForShelf();
-        }
-        else if (handled && _isExpanded && _isAnimating)
+        if (handled && ((!wasExpanded && _dragDropController.IsDragAutoExpanded) || (_isExpanded && _isAnimating)))
         {
             StartDragWaitForShelf();
         }

@@ -186,16 +186,14 @@ public partial class MainWindow
             if ((exStyle & WS_EX_TRANSPARENT) != 0)
                 return true;
 
-            if (FullscreenDetector.TryGetWindowBounds(hwnd, out var winRect))
+            if (FullscreenDetector.TryGetWindowBounds(hwnd, out var winRect) &&
+                winRect.Left < notchRect.Right &&
+                winRect.Right > notchRect.Left &&
+                winRect.Top < notchRect.Bottom &&
+                winRect.Bottom > notchRect.Top)
             {
-                if (winRect.Left < notchRect.Right &&
-                    winRect.Right > notchRect.Left &&
-                    winRect.Top < notchRect.Bottom &&
-                    winRect.Bottom > notchRect.Top)
-                {
-                    isObscured = true;
-                    return false;
-                }
+                isObscured = true;
+                return false;
             }
 
             return true;
