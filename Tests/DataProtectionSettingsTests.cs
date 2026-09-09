@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Threading.Tasks;
 using VNotch.Models;
 using VNotch.Services;
 using Xunit;
@@ -116,6 +117,66 @@ public class DataProtectionSettingsTests : IDisposable
         }
 
         Assert.Equal(10, Directory.GetFiles(_directory, "settings.bak-*.json").Length);
+    }
+
+    [Fact]
+    public void Save_WhenWriteOrReplaceFails_ThrowsExceptionAndPreservesOriginalFile()
+    {
+        var path = Path.Combine(_directory, "settings.json");
+        var original = "{\"SettingsVersion\":9,\"Width\":400}";
+        File.WriteAllText(path, original);
+        var service = new SettingsService(path, _ => { });
+
+        using (var lockStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.ThrowsAny<IOException>(() => service.Save(new NotchSettings { Width = 500 }));
+        }
+
+        Assert.Equal(original, File.ReadAllText(path));
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_WhenWriteOrReplaceFails_FaultsTaskAndPreservesOriginalFile()
+    {
+        var path = Path.Combine(_directory, "settings.json");
+        var original = "{\"SettingsVersion\":9,\"Width\":400}";
+        File.WriteAllText(path, original);
+        var service = new SettingsService(path, _ => { });
+
+        using (var lockStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await Assert.ThrowsAnyAsync<IOException>(() => service.SaveAsync(new NotchSettings { Width = 500 }));
+        }
+
+        Assert.Equal(original, File.ReadAllText(path));
+        Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void Load_WhenMigrationSaveFails_PreservesPlaintextKeyFileWithoutCleanup()
+    {
+        const string key = "legacy-plaintext-key";
+        var path = Path.Combine(_directory, "settings.json");
+        var legacyBackup = Path.Combine(_directory, "settings.bak-legacy.json");
+        var original = JsonSerializer.Serialize(new
+        {
+            SettingsVersion = SettingsMigrator.CurrentVersion,
+            YouTubeApiKey = key
+        });
+        File.WriteAllText(path, original);
+        File.Copy(path, legacyBackup);
+
+        using (var lockStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var settings = new SettingsService(path, _ => { }).Load();
+            Assert.Equal(SettingsMigrator.CurrentVersion, settings.SettingsVersion);
+        }
+
+        Assert.True(File.Exists(path));
+        Assert.Equal(original, File.ReadAllText(path));
+        Assert.True(File.Exists(legacyBackup));
+        Assert.False(File.Exists(path + ".tmp"));
     }
 
     public void Dispose()
