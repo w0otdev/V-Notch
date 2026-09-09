@@ -14,8 +14,17 @@ using Windows.Media.Control;
 
 namespace VNotch.Services;
 
-public sealed class MediaDetectionService : IMediaDetectionService
+public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
+    private enum ServiceLifecycleState
+    {
+        Stopped,
+        Starting,
+        Running,
+        Stopping,
+        Disposed
+    }
+
     private const string MediaSessionLogTag = "MEDIA-SESSION";
     private const string MediaThumbCropLogTag = "MEDIA-THUMB-CROP";
     private const string SpotifyPlatformName = "Spotify";
@@ -23,6 +32,24 @@ public sealed class MediaDetectionService : IMediaDetectionService
     private const string SoundCloudPlatformName = "SoundCloud";
     private const string YouTubeLowerPlatformName = "youtube";
     private const string SoundCloudLowerPlatformName = "soundcloud";
+
+    private readonly object _lifecycleLock = new();
+    private ServiceLifecycleState _state = ServiceLifecycleState.Stopped;
+    private int _lifecycleGeneration;
+    private Task? _initTask;
+    private Task? _processingTask;
+    private Task? _heartbeatTask;
+    private Task? _stagedRefreshTask;
+    private readonly Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? _sessionManagerFactory;
+
+    internal Task? InitTask => _initTask;
+    internal Task? ProcessingTask => _processingTask;
+    internal Task? HeartbeatTask => _heartbeatTask;
+    internal Task? StagedRefreshTask => _stagedRefreshTask;
+    internal bool IsRunning => _state == ServiceLifecycleState.Running;
+    internal bool IsStarting => _state == ServiceLifecycleState.Starting;
+    internal bool IsStopped => _state == ServiceLifecycleState.Stopped;
+    internal bool IsDisposed => _state == ServiceLifecycleState.Disposed;
 
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private bool _disposed;
@@ -99,10 +126,20 @@ public sealed class MediaDetectionService : IMediaDetectionService
         IMediaMetadataLookupService metadataLookup,
         IMediaArtworkService artworkService,
         IWindowTitleScanner windowTitleScanner)
+        : this(metadataLookup, artworkService, windowTitleScanner, null)
+    {
+    }
+
+    internal MediaDetectionService(
+        IMediaMetadataLookupService metadataLookup,
+        IMediaArtworkService artworkService,
+        IWindowTitleScanner windowTitleScanner,
+        Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? sessionManagerFactory)
     {
         _metadataLookup = metadataLookup;
         _artworkService = artworkService;
         _windowTitleScanner = windowTitleScanner;
+        _sessionManagerFactory = sessionManagerFactory;
         _volumeService = new MediaSessionVolumeService();
         _transportService = new MediaTransportControlService(GetActiveSession);
 
@@ -161,65 +198,110 @@ public sealed class MediaDetectionService : IMediaDetectionService
 
     public void Start()
     {
-        if (_disposed) return;
-        if (_sessionManager != null) return;
+        lock (_lifecycleLock)
+        {
+            if (_disposed || _state == ServiceLifecycleState.Disposed) return;
+            if (_state == ServiceLifecycleState.Starting || _state == ServiceLifecycleState.Running) return;
 
-        _startupProgressSyncUntilUtc = DateTime.UtcNow.AddSeconds(5);
+            _state = ServiceLifecycleState.Starting;
+            int generation = unchecked(++_lifecycleGeneration);
 
-        StartCoreAsync().SafeFireAndForget("MEDIA-START");
+            _bgCts?.Cancel();
+            _bgCts?.Dispose();
+            _bgCts = new CancellationTokenSource();
+            var ct = _bgCts.Token;
+
+            _startupProgressSyncUntilUtc = DateTime.UtcNow.AddSeconds(5);
+            _initTask = StartCoreAsync(generation, ct);
+        }
     }
 
-    private async Task StartCoreAsync()
+    private async Task StartCoreAsync(int generation, CancellationToken ct)
     {
         try
         {
-            _sessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-            _sessionManager.CurrentSessionChanged += OnSessionChanged;
-            _sessionManager.SessionsChanged += OnSessionsChanged;
+            var sessionManager = await GetSessionManagerAsync(ct).ConfigureAwait(false);
 
-            SubscribeToCurrentSession();
+            lock (_lifecycleLock)
+            {
+                if (ct.IsCancellationRequested || _disposed || generation != _lifecycleGeneration || _state != ServiceLifecycleState.Starting)
+                {
+                    return;
+                }
+
+                _sessionManager = sessionManager;
+                if (_sessionManager != null)
+                {
+                    _sessionManager.CurrentSessionChanged += OnSessionChanged;
+                    _sessionManager.SessionsChanged += OnSessionsChanged;
+                    SubscribeToCurrentSession();
+                }
+
+                _state = ServiceLifecycleState.Running;
+
+                _processingTask = Task.Run(() => ProcessingLoopAsync(ct), ct);
+                _heartbeatTask = Task.Run(() => HeartbeatLoopAsync(ct), ct);
+                _stagedRefreshTask = Task.Run(() => RunStagedRefreshAsync(ct), ct);
+            }
+
+            _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on cancellation during init
         }
         catch (Exception ex)
         {
             RuntimeLog.Log("MEDIA-INIT", $"Failed to init SMTC: {ex.Message}");
+            lock (_lifecycleLock)
+            {
+                if (generation == _lifecycleGeneration && _state == ServiceLifecycleState.Starting)
+                {
+                    _state = ServiceLifecycleState.Stopped;
+                }
+            }
+        }
+    }
+
+    private async Task<GlobalSystemMediaTransportControlsSessionManager?> GetSessionManagerAsync(CancellationToken ct)
+    {
+        if (_sessionManagerFactory != null)
+        {
+            return await _sessionManagerFactory(ct).ConfigureAwait(false);
         }
 
-        _bgCts = new CancellationTokenSource();
-        var ct = _bgCts.Token;
-        _ = Task.Run(() => ProcessingLoopAsync(ct), ct);
-        _ = Task.Run(() => HeartbeatLoopAsync(ct), ct);
+        return await GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask(ct).ConfigureAwait(false);
+    }
 
-        _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
-        _ = Task.Run(async () =>
+    private async Task RunStagedRefreshAsync(CancellationToken ct)
+    {
+        int[] stagedDelaysMs = { 120, 350, 800 };
+        foreach (int delayMs in stagedDelaysMs)
         {
-            int[] stagedDelaysMs = { 120, 350, 800 };
-            foreach (int delayMs in stagedDelaysMs)
+            try
             {
-                try
-                {
-                    await Task.Delay(delayMs, ct);
-                }
-                catch
-                {
-                    return;
-                }
-
-                if (_disposed || ct.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+                await Task.Delay(delayMs, ct).ConfigureAwait(false);
             }
-        }, ct);
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (_disposed || ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+        }
     }
 
     public void Stop()
     {
-        if (_disposed) return;
-        UnsubscribeFromSession();
-        _bgCts?.Cancel();
+        StopCoreAsync(isDisposing: false).GetAwaiter().GetResult();
     }
+
+    public Task StopAsync() => StopCoreAsync(isDisposing: false);
 
     private void SubscribeToCurrentSession()
     {
@@ -259,6 +341,21 @@ public sealed class MediaDetectionService : IMediaDetectionService
                 RuntimeLog.Error("MEDIA-UNSUBSCRIBE", ex.ToString());
             }
             _currentSession = null;
+        }
+
+        if (_activeDisplaySession != null)
+        {
+            try
+            {
+                _activeDisplaySession.MediaPropertiesChanged -= OnMediaPropertiesChanged;
+                _activeDisplaySession.PlaybackInfoChanged -= OnPlaybackChanged;
+                _activeDisplaySession.TimelinePropertiesChanged -= OnTimelineChanged;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error("MEDIA-DETECT-UNSUB", ex.ToString());
+            }
+            _activeDisplaySession = null;
         }
     }
 
@@ -679,8 +776,11 @@ public sealed class MediaDetectionService : IMediaDetectionService
 
     private async Task FireMediaChangedAsync(MediaInfo info)
     {
+        if (_disposed || (_bgCts?.IsCancellationRequested ?? true))
+            return;
+
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher != null)
+        if (dispatcher != null && !dispatcher.HasShutdownStarted)
         {
             if (!string.IsNullOrEmpty(info.CurrentTrack))
             {
@@ -698,7 +798,25 @@ public sealed class MediaDetectionService : IMediaDetectionService
                 $"Firing MediaChanged: Source={info.MediaSource}, App={info.SourceAppId}, Track='{info.CurrentTrack}', Artist='{info.CurrentArtist}', " +
                 $"Pos={info.Position.TotalSeconds:F3}s, Dur={info.Duration.TotalSeconds:F3}s, IsPlaying={info.IsPlaying}, " +
                 $"Rate={info.PlaybackRate:F3}, LastUpdated={info.LastUpdated:O}");
-            await dispatcher.InvokeAsync(() => MediaChanged?.Invoke(this, info));
+
+            if (dispatcher.CheckAccess())
+            {
+                MediaChanged?.Invoke(this, info);
+                return;
+            }
+
+            try
+            {
+                var ct = _bgCts?.Token ?? CancellationToken.None;
+                await dispatcher.InvokeAsync(() =>
+                {
+                    if (!_disposed)
+                    {
+                        MediaChanged?.Invoke(this, info);
+                    }
+                }, System.Windows.Threading.DispatcherPriority.Normal, ct);
+            }
+            catch (OperationCanceledException) { }
         }
         else
         {
@@ -3282,21 +3400,124 @@ public sealed class MediaDetectionService : IMediaDetectionService
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _bgCts?.Cancel();
-        _bgCts?.Dispose();
-        _thumbCts?.Cancel();
-        _thumbCts?.Dispose();
-        _updateLock.Dispose();
-        _changeChannel.Writer.TryComplete();
+        StopCoreAsync(isDisposing: true).GetAwaiter().GetResult();
+    }
 
-        UnsubscribeFromSession();
+    public async ValueTask DisposeAsync()
+    {
+        await StopCoreAsync(isDisposing: true).ConfigureAwait(false);
+    }
 
-        if (_sessionManager != null)
+    private async Task StopCoreAsync(bool isDisposing)
+    {
+        CancellationTokenSource? ctsToCancel;
+        Task? initTask;
+        Task? processingTask;
+        Task? heartbeatTask;
+        Task? stagedRefreshTask;
+        GlobalSystemMediaTransportControlsSessionManager? sessionManagerToUnsub;
+
+        lock (_lifecycleLock)
         {
-            _sessionManager.CurrentSessionChanged -= OnSessionChanged;
-            _sessionManager.SessionsChanged -= OnSessionsChanged;
+            if (_state == ServiceLifecycleState.Disposed || (!isDisposing && _state == ServiceLifecycleState.Stopped))
+                return;
+
+            _state = isDisposing ? ServiceLifecycleState.Disposed : ServiceLifecycleState.Stopping;
+            if (isDisposing)
+                _disposed = true;
+
+            unchecked { _lifecycleGeneration++; }
+
+            ctsToCancel = _bgCts;
+            _bgCts = null;
+
+            initTask = _initTask;
+            processingTask = _processingTask;
+            heartbeatTask = _heartbeatTask;
+            stagedRefreshTask = _stagedRefreshTask;
+
+            _initTask = null;
+            _processingTask = null;
+            _heartbeatTask = null;
+            _stagedRefreshTask = null;
+
+            sessionManagerToUnsub = _sessionManager;
+            _sessionManager = null;
+        }
+
+        // 1. Cancel background token
+        try
+        {
+            ctsToCancel?.Cancel();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log("MEDIA-STOP", $"CTS cancel failed: {ex.Message}");
+        }
+
+        // 2. Wait for running tasks to complete
+        var tasksToWait = new List<Task>();
+        if (initTask != null) tasksToWait.Add(initTask);
+        if (processingTask != null) tasksToWait.Add(processingTask);
+        if (heartbeatTask != null) tasksToWait.Add(heartbeatTask);
+        if (stagedRefreshTask != null) tasksToWait.Add(stagedRefreshTask);
+
+        if (tasksToWait.Count > 0)
+        {
+            try
+            {
+                var allTasks = Task.WhenAll(tasksToWait);
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2));
+                var completed = await Task.WhenAny(allTasks, timeoutTask).ConfigureAwait(false);
+                if (completed != allTasks)
+                {
+                    RuntimeLog.Warn("MEDIA-STOP", "Timed out waiting for background tasks to exit.");
+                }
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Log("MEDIA-STOP", $"Error waiting for tasks: {ex.Message}");
+            }
+        }
+
+        // 3. Unsubscribe from session & session manager
+        UnsubscribeFromSession();
+        if (sessionManagerToUnsub != null)
+        {
+            try
+            {
+                sessionManagerToUnsub.CurrentSessionChanged -= OnSessionChanged;
+                sessionManagerToUnsub.SessionsChanged -= OnSessionsChanged;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Log("MEDIA-STOP", $"Failed unsubscribing session manager: {ex.Message}");
+            }
+        }
+
+        // 4. Dispose CTS
+        ctsToCancel?.Dispose();
+
+        // 5. If disposing, complete channel and dispose update lock
+        if (isDisposing)
+        {
+            _thumbCts?.Cancel();
+            _thumbCts?.Dispose();
+            _changeChannel.Writer.TryComplete();
+            _updateLock.Dispose();
+        }
+        else
+        {
+            // Drain stale items from channel so restart is clean
+            while (_changeChannel.Reader.TryRead(out _)) { }
+
+            lock (_lifecycleLock)
+            {
+                if (_state == ServiceLifecycleState.Stopping)
+                {
+                    _state = ServiceLifecycleState.Stopped;
+                }
+            }
         }
     }
 
