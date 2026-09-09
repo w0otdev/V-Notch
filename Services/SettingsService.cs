@@ -3,13 +3,14 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-public class SettingsService : ISettingsService
+public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 {
     private const string LogCategoryLoad = "SETTINGS-LOAD";
     private const string LogCategorySave = "SETTINGS-SAVE";
@@ -20,31 +21,45 @@ public class SettingsService : ISettingsService
 
     private sealed record SaveOperation(NotchSettings Snapshot, bool KeepExistingBackup, TaskCompletionSource Tcs);
 
-    private readonly Channel<SaveOperation> _saveChannel = Channel.CreateUnbounded<SaveOperation>(new UnboundedChannelOptions
+    private const int SaveChannelCapacity = 32;
+
+    private readonly Channel<SaveOperation> _saveChannel = Channel.CreateBounded<SaveOperation>(new BoundedChannelOptions(SaveChannelCapacity)
     {
         SingleReader = true,
-        SingleWriter = false
+        SingleWriter = false,
+        FullMode = BoundedChannelFullMode.Wait
     });
 
-    private void StartWorker()
+    private readonly Task _worker;
+    private int _disposeSignaled;
+    private volatile bool _disposed;
+
+    private Task StartWorker()
     {
-        Task.Run(async () =>
+        return Task.Run(async () =>
         {
-            var reader = _saveChannel.Reader;
-            while (await reader.WaitToReadAsync().ConfigureAwait(false))
+            try
             {
-                while (reader.TryRead(out var op))
+                var reader = _saveChannel.Reader;
+                while (await reader.WaitToReadAsync().ConfigureAwait(false))
                 {
-                    try
+                    while (reader.TryRead(out var op))
                     {
-                        ExecuteSave(op.Snapshot, op.KeepExistingBackup);
-                        op.Tcs.TrySetResult();
-                    }
-                    catch (Exception ex)
-                    {
-                        op.Tcs.TrySetException(ex);
+                        try
+                        {
+                            ExecuteSave(op.Snapshot, op.KeepExistingBackup);
+                            op.Tcs.TrySetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            op.Tcs.TrySetException(ex);
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error(LogCategorySave, $"Save worker loop exited unexpectedly: {ex}");
             }
         });
     }
@@ -61,7 +76,7 @@ public class SettingsService : ISettingsService
 
         _settingsPath = Path.Combine(_appFolder, "settings.json");
         _apiKeySaveWarning = ShowApiKeySaveWarning;
-        StartWorker();
+        _worker = StartWorker();
     }
 
     // Test seam: production callers always use the APPDATA location and WPF notice.
@@ -72,11 +87,13 @@ public class SettingsService : ISettingsService
             ?? throw new ArgumentException("The settings path must include a directory.", nameof(settingsPath));
         Directory.CreateDirectory(_appFolder);
         _apiKeySaveWarning = apiKeySaveWarning ?? ShowApiKeySaveWarning;
-        StartWorker();
+        _worker = StartWorker();
     }
 
     public NotchSettings Load()
     {
+        ThrowIfDisposed();
+
         if (!File.Exists(_settingsPath))
         {
 
@@ -141,6 +158,11 @@ public class SettingsService : ISettingsService
         }
     }
 
+    /// <summary>
+    /// Synchronously persists settings by waiting for the background save worker.
+    /// Note: This blocks the calling thread during serialization, DPAPI, backup, and disk I/O.
+    /// UI and interactive call chains should use <see cref="SaveAsync(NotchSettings)"/> instead.
+    /// </summary>
     public void Save(NotchSettings settings)
     {
         Save(settings, keepExistingBackup: true);
@@ -151,18 +173,54 @@ public class SettingsService : ISettingsService
         return SaveAsync(settings, keepExistingBackup: true);
     }
 
-    public Task SaveAsync(NotchSettings settings, bool keepExistingBackup)
+    public async Task SaveAsync(NotchSettings settings, bool keepExistingBackup)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
+        ThrowIfDisposed();
+
         var snapshot = settings.Clone();
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _saveChannel.Writer.TryWrite(new SaveOperation(snapshot, keepExistingBackup, tcs));
-        return tcs.Task;
+
+        try
+        {
+            await _saveChannel.Writer.WriteAsync(new SaveOperation(snapshot, keepExistingBackup, tcs)).ConfigureAwait(false);
+        }
+        catch (ChannelClosedException)
+        {
+            throw new ObjectDisposedException(nameof(SettingsService), "SettingsService has been disposed.");
+        }
+
+        await tcs.Task.ConfigureAwait(false);
     }
 
     private void Save(NotchSettings settings, bool keepExistingBackup)
     {
         SaveAsync(settings, keepExistingBackup).GetAwaiter().GetResult();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposeSignaled, 1) != 0)
+        {
+            await _worker.ConfigureAwait(false);
+            return;
+        }
+
+        _disposed = true;
+        _saveChannel.Writer.TryComplete();
+        await _worker.ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+    }
+
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(SettingsService), "SettingsService has been disposed.");
     }
 
     private void ExecuteSave(NotchSettings settings, bool keepExistingBackup)

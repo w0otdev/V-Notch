@@ -28,16 +28,25 @@ public partial class SettingsViewModel : ObservableObject
         UpdateDerived(_value);
     }
 
+    public async Task ApplyAsync(NotchSettings settings)
+    {
+        await _service.SaveAsync(settings);
+        Value = settings;
+        UpdateDerived(settings);
+        Applied?.Invoke(this, settings);
+    }
+
     public void Apply(NotchSettings settings)
     {
-        Value = settings;
         _service.Save(settings);
+        Value = settings;
         UpdateDerived(settings);
         Applied?.Invoke(this, settings);
     }
 
     public NotchSettings Load() => _service.Load();
     public void Save(NotchSettings settings) => _service.Save(settings);
+    public Task SaveAsync(NotchSettings settings) => _service.SaveAsync(settings);
 
     private void UpdateDerived(NotchSettings settings)
     {

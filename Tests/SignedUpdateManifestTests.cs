@@ -1,5 +1,5 @@
-using System.IO;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -130,8 +130,13 @@ public sealed class SignedUpdateManifestTests
             var names = new List<string> { UpdateService.SetupName, UpdateService.SetupName + ".sha256" };
             if (signed) names.AddRange([UpdateService.SetupName + SignedUpdateManifest.ManifestSuffix,
                 UpdateService.SetupName + SignedUpdateManifest.SignatureSuffix]);
-            string json = JsonSerializer.Serialize(new { tag_name = "v99.0.0", body = "notes", published_at = DateTime.UtcNow,
-                assets = names.Select(name => new { name, browser_download_url = "https://example.test/" + name }) });
+            string json = JsonSerializer.Serialize(new
+            {
+                tag_name = "v99.0.0",
+                body = "notes",
+                published_at = DateTime.UtcNow,
+                assets = names.Select(name => new { name, browser_download_url = "https://example.test/" + name })
+            });
             using var client = new HttpClient(new Handler(request => new(HttpStatusCode.OK)
             {
                 Content = new StringContent(request.RequestUri!.AbsolutePath.EndsWith("/latest") ? json : "[" + json + "]")
@@ -178,8 +183,13 @@ public sealed class SignedUpdateManifestTests
             await File.WriteAllTextAsync(privatePath, key.ExportPkcs8PrivateKeyPem());
             await File.WriteAllTextAsync(publicPath, key.ExportSubjectPublicKeyInfoPem());
             await File.WriteAllBytesAsync(installerPath, Installer);
-            var start = new ProcessStartInfo("pwsh") { UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true };
+            var start = new ProcessStartInfo("pwsh")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
             foreach (string argument in new[] { "-NoProfile", "-File", Path.Combine(root.FullName, "scripts", "Sign-UpdateManifest.ps1"),
                 "-InstallerPath", installerPath, "-Version", "99.0.0", "-PrivateKeyPath", privatePath, "-PublicKeyPath", publicPath })
                 start.ArgumentList.Add(argument);
@@ -209,8 +219,10 @@ public sealed class SignedUpdateManifestTests
 
     private static UpdateInfo Update() => new()
     {
-        Version = "99.0.0", InstallerName = UpdateService.SetupName,
-        DownloadUrl = "https://example.test/installer", ManifestUrl = "https://example.test/manifest",
+        Version = "99.0.0",
+        InstallerName = UpdateService.SetupName,
+        DownloadUrl = "https://example.test/installer",
+        ManifestUrl = "https://example.test/manifest",
         ManifestSignatureUrl = "https://example.test/signature"
     };
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler

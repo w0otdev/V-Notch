@@ -20,6 +20,8 @@ public sealed class SettingsServiceAsyncTests : IDisposable
 
     public void Dispose()
     {
+        _service.Dispose();
+
         try
         {
             if (File.Exists(_tempFile)) File.Delete(_tempFile);
@@ -60,5 +62,80 @@ public sealed class SettingsServiceAsyncTests : IDisposable
         Assert.Equal(420, loaded.Width);
         Assert.Equal(55, loaded.Height);
         Assert.Equal("vi", loaded.Language);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DrainsEnqueuedSaves_AndCompletesWorker()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"vnotch_dispose_{Guid.NewGuid():N}.json");
+        var service = new SettingsService(tempFile);
+
+        try
+        {
+            var saveTask = service.SaveAsync(new NotchSettings { Width = 777 });
+            await service.DisposeAsync();
+            await saveTask;
+
+            Assert.True(File.Exists(tempFile));
+            var raw = File.ReadAllText(tempFile);
+            Assert.Contains("777", raw);
+
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => service.SaveAsync(new NotchSettings { Width = 888 }));
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public void Dispose_Synchronous_DrainsAndPreventsFurtherOperations()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"vnotch_sync_disp_{Guid.NewGuid():N}.json");
+        var service = new SettingsService(tempFile);
+
+        try
+        {
+            service.Save(new NotchSettings { Width = 666 });
+            service.Dispose();
+
+            Assert.True(File.Exists(tempFile));
+            Assert.Contains("666", File.ReadAllText(tempFile));
+
+            Assert.Throws<ObjectDisposedException>(() => service.Load());
+            Assert.Throws<ObjectDisposedException>(() => service.Save(new NotchSettings { Width = 999 }));
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task BoundedChannel_HandlesBurstAboveCapacity_AppliesBackpressureAndPersists()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"vnotch_burst_{Guid.NewGuid():N}.json");
+        var service = new SettingsService(tempFile);
+
+        try
+        {
+            // Enqueue 40 operations (above channel capacity of 32)
+            var tasks = new Task[40];
+            for (int i = 0; i < 40; i++)
+            {
+                tasks[i] = service.SaveAsync(new NotchSettings { Width = 300 + i });
+            }
+
+            await Task.WhenAll(tasks);
+            await service.DisposeAsync();
+
+            Assert.True(File.Exists(tempFile));
+            var raw = File.ReadAllText(tempFile);
+            Assert.NotNull(raw);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
     }
 }
