@@ -39,7 +39,7 @@ public class PerformanceDiagnosticServiceTests
         var logs = service.GetRecentLogs();
 
         Assert.NotEmpty(logs);
-        var last = logs.Last();
+        var last = logs[^1];
         Assert.Equal("TEST", last.Category);
         Assert.Equal("Testing custom diagnostic warning message", last.Message);
         Assert.Equal(PerformanceHealthLevel.Warning, last.Severity);

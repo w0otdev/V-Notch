@@ -47,6 +47,9 @@ public partial class SpotlightWindow : Window
     private bool _searchingPanelArmed;
     private DispatcherTimer? _failureTimer;
     private int _failureGeneration;
+    private static readonly TimeSpan ShakeCooldown = TimeSpan.FromMilliseconds(350);
+    private DateTime _lastShakeAtUtc = DateTime.MinValue;
+    private int _shakeGeneration;
     private int _launchGeneration;
     private bool _resultsDimmed;
     private bool _escBadgeVisible = true;
@@ -141,8 +144,15 @@ public partial class SpotlightWindow : Window
                     && !_viewModel.IsSearching)
                 {
                     SetResultsDimmed(false);
-                    // The search finished empty; a queued Enter must never fire
-                    if (_viewModel.Results.Count == 0) _pendingLaunchQuery = null;
+                    // The search finished empty; a queued Enter must never fire, but shake to notify
+                    if (_viewModel.Results.Count == 0)
+                    {
+                        if (_pendingLaunchQuery != null)
+                        {
+                            _pendingLaunchQuery = null;
+                            PlayShake();
+                        }
+                    }
                 }
                 RefreshStatus();
             }
@@ -765,6 +775,12 @@ public partial class SpotlightWindow : Window
         }
         else if (e.Key == Key.Enter)
         {
+            if (e.IsRepeat && _viewModel.SelectedResult == null)
+            {
+                e.Handled = true;
+                return;
+            }
+
             ModifierKeys modifiers = Keyboard.Modifiers;
             if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) LaunchSelectedElevated();
             else if ((modifiers & ModifierKeys.Control) != 0) RevealSelected();
@@ -872,8 +888,15 @@ public partial class SpotlightWindow : Window
         if (selected == null)
         {
             // Honor a fast type-and-Enter: launch the top result when the
+            // background search finishes. If not searching or no results, shake.
             if (_viewModel.IsSearching && !string.IsNullOrWhiteSpace(SearchBox.Text))
+            {
                 _pendingLaunchQuery = SearchBox.Text;
+            }
+            else if (!string.IsNullOrWhiteSpace(SearchBox.Text))
+            {
+                PlayShake();
+            }
             return;
         }
         if (_launchInFlight) return;
@@ -890,6 +913,7 @@ public partial class SpotlightWindow : Window
         try
         {
             // ShellExecute can block for hundreds of ms on cold starts; keep
+            // the UI thread responsive so mouse exits or clicks can still abort.
             bool launched = await Task.Run(() => _launcher.TryLaunch(selected), CancellationToken.None);
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
@@ -911,7 +935,12 @@ public partial class SpotlightWindow : Window
     private async void LaunchSelectedElevated()
     {
         SpotlightSearchItem? selected = _viewModel.SelectedResult;
-        if (selected == null || _launchInFlight) return;
+        if (selected == null)
+        {
+            if (!string.IsNullOrWhiteSpace(SearchBox.Text)) PlayShake();
+            return;
+        }
+        if (_launchInFlight) return;
         if (!SpotlightLauncher.CanLaunchElevated(selected))
         {
             // Store apps cannot take the runas verb; a plain launch beats a dead key.
@@ -945,7 +974,12 @@ public partial class SpotlightWindow : Window
     private async void RevealSelected()
     {
         SpotlightSearchItem? selected = _viewModel.SelectedResult;
-        if (selected == null || _launchInFlight || !SpotlightLauncher.CanReveal(selected)) return;
+        if (selected == null)
+        {
+            if (!string.IsNullOrWhiteSpace(SearchBox.Text)) PlayShake();
+            return;
+        }
+        if (_launchInFlight || !SpotlightLauncher.CanReveal(selected)) return;
 
         int launchGeneration = ++_launchGeneration;
         int sessionGeneration = _animationGeneration;
@@ -1031,6 +1065,11 @@ public partial class SpotlightWindow : Window
     {
         if (AnimationConfig.ReduceMotion) return;
 
+        var now = DateTime.UtcNow;
+        if (now - _lastShakeAtUtc < ShakeCooldown) return;
+        _lastShakeAtUtc = now;
+
+        int shakeGen = ++_shakeGeneration;
         double[] offsets = [0, -10, 8, -5, 2, 0];
         var shake = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(320) };
         for (int i = 0; i < offsets.Length; i++)
@@ -1040,6 +1079,14 @@ public partial class SpotlightWindow : Window
                 KeyTime.FromPercent(i / (double)(offsets.Length - 1))));
         }
         Timeline.SetDesiredFrameRate(shake, AnimationConfig.TargetFps);
+        shake.Completed += (_, _) =>
+        {
+            if (shakeGen == _shakeGeneration)
+            {
+                ShellShake.BeginAnimation(TranslateTransform.XProperty, null);
+                ShellShake.X = 0;
+            }
+        };
         ShellShake.BeginAnimation(TranslateTransform.XProperty, shake);
     }
 
@@ -1060,11 +1107,18 @@ public partial class SpotlightWindow : Window
         UpdateAutocomplete();
 
         if (_pendingLaunchQuery != null
-            && _pendingLaunchQuery == SearchBox.Text
-            && _viewModel.Results.Count > 0)
+            && _pendingLaunchQuery == SearchBox.Text)
         {
-            _pendingLaunchQuery = null;
-            LaunchSelected();
+            if (_viewModel.Results.Count > 0)
+            {
+                _pendingLaunchQuery = null;
+                LaunchSelected();
+            }
+            else if (!_viewModel.IsSearching)
+            {
+                _pendingLaunchQuery = null;
+                PlayShake();
+            }
         }
         RefreshStatus();
     }

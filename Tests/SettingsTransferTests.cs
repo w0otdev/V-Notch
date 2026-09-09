@@ -64,7 +64,7 @@ public sealed class SettingsTransferTests : IDisposable
     }
 
     [Fact]
-    public void ExportSettingsToString_ExportsPlaintextKeysForPortability()
+    public void ExportSettingsToString_ExcludesSensitiveCredentials()
     {
         var settings = new NotchSettings
         {
@@ -79,9 +79,11 @@ public sealed class SettingsTransferTests : IDisposable
         var inner = node["settings"];
         Assert.NotNull(inner);
 
-        // Keys in the .vns file must be portable (unencrypted plaintext so another machine can DPAPI-protect them)
-        Assert.Equal("TEST-YOUTUBE-API-KEY-12345", inner[nameof(NotchSettings.YouTubeApiKey)]?.GetValue<string>());
-        Assert.Equal("TEST-SP-DC-COOKIE-67890", inner[nameof(NotchSettings.SpotifySpDc)]?.GetValue<string>());
+        // Sensitive credentials must not be exported into .vns files to prevent accidental leakage
+        Assert.False(inner.AsObject().ContainsKey(nameof(NotchSettings.YouTubeApiKey)));
+        Assert.False(inner.AsObject().ContainsKey(nameof(NotchSettings.SpotifySpDc)));
+        Assert.DoesNotContain("TEST-YOUTUBE-API-KEY-12345", exportedJson);
+        Assert.DoesNotContain("TEST-SP-DC-COOKIE-67890", exportedJson);
     }
 
     [Fact]
@@ -111,8 +113,33 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.Equal("calendar", imported.ExpandedWidget);
         Assert.Equal("es", imported.Language);
         Assert.False(imported.EnableHelloGreeting);
-        Assert.Equal("MY-EXPORTED-KEY", imported.YouTubeApiKey);
+        // Sensitive credentials are excluded during export, so imported settings will have empty key
+        Assert.Equal("", imported.YouTubeApiKey);
+        Assert.Equal("", imported.SpotifySpDc);
         Assert.False(requiresRestart);
+    }
+
+    [Fact]
+    public void ImportSettingsFromString_LegacyEnvelopeWithCredentials_ImportsAndProtectsCredentials()
+    {
+        const string legacyEnvelope = """
+            {
+              "format": "vns",
+              "fileVersion": 1,
+              "settings": {
+                "SettingsVersion": 13,
+                "Width": 280,
+                "YouTubeApiKey": "LEGACY-KEY-12345",
+                "SpotifySpDc": "LEGACY-COOKIE-67890"
+              }
+            }
+            """;
+
+        var (imported, _) = SettingsService.ImportSettingsFromString(legacyEnvelope);
+
+        Assert.NotNull(imported);
+        Assert.Equal("LEGACY-KEY-12345", imported.YouTubeApiKey);
+        Assert.Equal("LEGACY-COOKIE-67890", imported.SpotifySpDc);
     }
 
     [Fact]

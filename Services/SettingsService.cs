@@ -390,15 +390,20 @@ public class SettingsService : ISettingsService
         var clone = settings.Clone();
         clone.SettingsVersion = SettingsMigrator.CurrentVersion;
 
+        clone.YouTubeApiKey = "";
+        clone.SpotifySpDc = "";
+
         var jsonNode = JsonSerializer.SerializeToNode(clone, new JsonSerializerOptions { WriteIndented = true });
         if (jsonNode is not JsonObject settingsObj)
         {
             settingsObj = new JsonObject();
         }
 
-        // Ensure keys are portable across machines (unprotected plaintext in .vns)
-        settingsObj[nameof(NotchSettings.YouTubeApiKey)] = clone.YouTubeApiKey ?? "";
-        settingsObj[nameof(NotchSettings.SpotifySpDc)] = clone.SpotifySpDc ?? "";
+        // Sensitive credentials (API keys, session cookies) must not be exported
+        // in plaintext or machine-bound DPAPI format to prevent accidental leakage.
+        // Users re-authenticate on destination machines.
+        settingsObj.Remove(nameof(NotchSettings.YouTubeApiKey));
+        settingsObj.Remove(nameof(NotchSettings.SpotifySpDc));
 
         var rootObj = new JsonObject
         {

@@ -120,6 +120,15 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         // visual order for index-based keyboard navigation to work.
         var ordered = results.OrderBy(SectionRank).ToList();
 
+        if (ordered.Count == 0)
+        {
+            SelectedResult = null;
+            Results.Clear();
+            if (markNoResults) HasNoResults = true;
+            ResultsPublished?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         string? selectedId = SelectedResult?.Id;
         int selectedIndex = SelectedResult == null ? -1 : Results.IndexOf(SelectedResult);
 
@@ -274,6 +283,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
             }
             catch (OperationCanceledException)
             {
+                // Expected when search query changes or cancellation is requested
             }
             catch (Exception ex)
             {

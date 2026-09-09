@@ -382,12 +382,11 @@ internal static class Win32Interop
     {
         lock (_desktopHostLock)
         {
-            if (_cachedDesktopHost != IntPtr.Zero && IsWindow(_cachedDesktopHost))
+            if (_cachedDesktopHost != IntPtr.Zero &&
+                IsWindow(_cachedDesktopHost) &&
+                FindWindowEx(_cachedDesktopHost, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
             {
-                if (FindWindowEx(_cachedDesktopHost, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
-                {
-                    return _cachedDesktopHost;
-                }
+                return _cachedDesktopHost;
             }
 
             IntPtr found = IntPtr.Zero;

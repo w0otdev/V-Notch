@@ -183,10 +183,11 @@ public partial class App : Application
 
         try
         {
-            string crashInfo = $"{RuntimeLog.LogPath}\nCrash Report: {CrashReporter.CrashLogPath}";
+            string message =
+                $"V-Notch encountered an unexpected error and must close. Details were written to:\n{RuntimeLog.LogPath}\n\nCrash Report:\n{CrashReporter.CrashLogPath}";
             MessageBox.Show(
-                Loc.Get("app.fatalClose", crashInfo),
-                Loc.Get("error.title"),
+                message,
+                "V-Notch Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }

@@ -22,6 +22,9 @@ public sealed record SpotlightSearchItem(
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public bool Equals(SpotlightSearchItem? other) => ReferenceEquals(this, other);
+    public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
+
     public double Score { get; init; }
 
     private ImageSource? _icon;

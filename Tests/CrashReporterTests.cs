@@ -63,7 +63,9 @@ public sealed class CrashReporterTests : IDisposable
     [Fact]
     public void FormatCrashReport_UnrollsInnerExceptionsAndFlattenAggregates()
     {
+#pragma warning disable CA2208 // Param name is intentional for testing exception formatting
         var inner1 = new ArgumentNullException("paramA", "Param cannot be null");
+#pragma warning restore CA2208
         var inner2 = new IOException("Disk write failed");
         var agg = new AggregateException("Multiple background errors", inner1, inner2);
 

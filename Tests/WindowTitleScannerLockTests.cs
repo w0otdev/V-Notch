@@ -45,13 +45,8 @@ public sealed class WindowTitleScannerLockTests
         workerRelease.Set();
 
         // Wait for worker to update cache
-        string? warmUrl = null;
-        for (int i = 0; i < 50; i++)
-        {
-            Thread.Sleep(20);
-            warmUrl = scanner.TryGetBrowserUrl();
-            if (warmUrl != null) break;
-        }
+        SpinWait.SpinUntil(() => scanner.TryGetBrowserUrl() != null, TimeSpan.FromSeconds(3));
+        string? warmUrl = scanner.TryGetBrowserUrl();
 
         Assert.Equal("https://youtube.com/watch?v=dQw4w9WgXcQ", warmUrl);
     }
@@ -62,6 +57,7 @@ public sealed class WindowTitleScannerLockTests
         using var scanner = new WindowTitleScanner();
         using var firstScanStarted = new ManualResetEventSlim(false);
         using var firstScanRelease = new ManualResetEventSlim(false);
+        using var firstScanCompleted = new ManualResetEventSlim(false);
 
         int invocationCount = 0;
         scanner.BrowserUrlExtractor = () =>
@@ -71,6 +67,7 @@ public sealed class WindowTitleScannerLockTests
             {
                 firstScanStarted.Set();
                 firstScanRelease.Wait(TimeSpan.FromSeconds(5));
+                firstScanCompleted.Set();
                 return "https://stale-site.com/video";
             }
             return "https://fresh-site.com/video";
@@ -85,20 +82,13 @@ public sealed class WindowTitleScannerLockTests
 
         // Release first scan
         firstScanRelease.Set();
-        Thread.Sleep(100);
-
-        // First scan was for old generation; its result should have been discarded!
-        // Cold cache immediately after invalidation:
+        Assert.True(firstScanCompleted.Wait(TimeSpan.FromSeconds(2)), "First scan did not complete");
         string? current = scanner.TryGetBrowserUrl();
         Assert.NotEqual("https://stale-site.com/video", current);
 
         // Wait for next generation scan to finish
-        for (int i = 0; i < 50; i++)
-        {
-            Thread.Sleep(20);
-            current = scanner.TryGetBrowserUrl();
-            if (current == "https://fresh-site.com/video") break;
-        }
+        SpinWait.SpinUntil(() => scanner.TryGetBrowserUrl() == "https://fresh-site.com/video", TimeSpan.FromSeconds(3));
+        current = scanner.TryGetBrowserUrl();
 
         Assert.Equal("https://fresh-site.com/video", current);
     }
@@ -125,7 +115,7 @@ public sealed class WindowTitleScannerLockTests
 
         // Release worker
         workerBlocked.Set();
-        Thread.Sleep(100);
+        SpinWait.SpinUntil(() => scanner.TryGetBrowserUrl() != null, TimeSpan.FromSeconds(3));
 
         // Verify extractor was NOT executed 100 times
         Assert.True(executionCount <= 2, $"Expected at most 2 executions, got {executionCount}");
@@ -151,13 +141,8 @@ public sealed class WindowTitleScannerLockTests
         Assert.True(workerDone.Wait(TimeSpan.FromSeconds(2)), "Spotify worker did not complete");
 
         // Subsequent call returns true from cache
-        bool updated = false;
-        for (int i = 0; i < 50; i++)
-        {
-            Thread.Sleep(20);
-            updated = scanner.IsSpotifyWebPlayerOpen();
-            if (updated) break;
-        }
+        SpinWait.SpinUntil(() => scanner.IsSpotifyWebPlayerOpen(), TimeSpan.FromSeconds(3));
+        bool updated = scanner.IsSpotifyWebPlayerOpen();
 
         Assert.True(updated);
     }
