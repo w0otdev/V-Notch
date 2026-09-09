@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
@@ -199,6 +200,62 @@ internal static class Win32Interop
 
     [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
     public static extern uint TimeEndPeriod(uint period);
+
+    #endregion
+
+    #region kernel32.dll waitable timer & synchronization
+
+    public const uint CREATE_WAITABLE_TIMER_MANUAL_RESET = 0x00000001;
+    public const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
+    public const uint TIMER_ALL_ACCESS = 0x001F0003;
+    public const uint WAIT_OBJECT_0 = 0x00000000;
+    public const uint WAIT_TIMEOUT = 0x00000102;
+    public const uint WAIT_FAILED = 0xFFFFFFFF;
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern SafeWaitHandle CreateWaitableTimerEx(
+        IntPtr lpTimerAttributes,
+        string? lpTimerName,
+        uint dwFlags,
+        uint dwDesiredAccess);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWaitableTimer(
+        SafeWaitHandle hTimer,
+        in long lpDueTime,
+        int lPeriod,
+        IntPtr pfnCompletionRoutine,
+        IntPtr lpArgToCompletionRoutine,
+        [MarshalAs(UnmanagedType.Bool)] bool fResume);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool CancelWaitableTimer(SafeWaitHandle hTimer);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern uint WaitForMultipleObjects(
+        uint nCount,
+        [In] IntPtr[] lpHandles,
+        [MarshalAs(UnmanagedType.Bool)] bool bWaitAll,
+        uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern uint WaitForSingleObject(
+        SafeWaitHandle hHandle,
+        uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetThreadTimes(
+        IntPtr hThread,
+        out FILETIME_METRICS lpCreationTime,
+        out FILETIME_METRICS lpExitTime,
+        out FILETIME_METRICS lpKernelTime,
+        out FILETIME_METRICS lpUserTime);
+
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetCurrentThread();
 
     #endregion
 

@@ -13,6 +13,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Microsoft.Win32.SafeHandles;
 using VNotch.Services;
 using static VNotch.Services.Win32Interop;
 
@@ -108,6 +109,8 @@ public sealed class LiquidGlassController
     private volatile bool _presentInFlight;
     private const uint RenderTimerPeriodMs = 1;
     private int _renderTimerPeriodRequested;
+    private SafeWaitHandle? _waitableTimer;
+    private IntPtr[]? _renderWaitHandles;
 
     // Owned exclusively by the worker thread once Start() runs.
     private WriteableBitmap? _bitmap;
@@ -609,6 +612,7 @@ public sealed class LiquidGlassController
         _exactBitBltCapture = false;
         _idleWakeEvent.Set();
         ReleaseRenderTimerPeriod();
+        DisposeWaitableTimer();
 
         // Safety: clear any display affinity a previous build may have set.
         SetWindowDisplayAffinitySafe(WDA_NONE);
@@ -685,6 +689,7 @@ public sealed class LiquidGlassController
     {
         var clock = Stopwatch.StartNew();
         double nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
+        EnsureWaitableTimer();
         try
         {
             while (ShouldContinueWorker(generation))
@@ -766,6 +771,7 @@ public sealed class LiquidGlassController
         _outW = _outH = _srcW = _srcH = _margin = 0;
         _presentInFlight = false;
         ReleaseRenderTimerPeriod();
+        DisposeWaitableTimer();
         _sourceBlurBuffer = _sourceBlurTmp = Array.Empty<byte>();
         try
         {
@@ -945,7 +951,67 @@ public sealed class LiquidGlassController
         }
     }
 
-    private void SleepUntilRenderDeadline(double milliseconds)
+    internal void SetActiveForTest(bool active) => _isActive = active;
+    internal void EnsureWaitableTimerForTest() => EnsureWaitableTimer();
+    internal void DisposeWaitableTimerForTest() => DisposeWaitableTimer();
+
+    private void EnsureWaitableTimer()
+    {
+        if (_waitableTimer != null && !_waitableTimer.IsInvalid && !_waitableTimer.IsClosed)
+            return;
+
+        try
+        {
+            _waitableTimer = CreateWaitableTimerEx(
+                IntPtr.Zero,
+                null,
+                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                TIMER_ALL_ACCESS);
+
+            if (_waitableTimer != null && !_waitableTimer.IsInvalid)
+            {
+                _renderWaitHandles = new IntPtr[2]
+                {
+                    _idleWakeEvent.SafeWaitHandle.DangerousGetHandle(),
+                    _waitableTimer.DangerousGetHandle()
+                };
+            }
+            else
+            {
+                _waitableTimer = null;
+                _renderWaitHandles = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log(LogCategory, $"High-resolution waitable timer creation failed: {ex.Message}");
+            _waitableTimer = null;
+            _renderWaitHandles = null;
+        }
+    }
+
+    private void DisposeWaitableTimer()
+    {
+        try
+        {
+            if (_waitableTimer != null && !_waitableTimer.IsClosed)
+            {
+                CancelWaitableTimer(_waitableTimer);
+                _waitableTimer.Dispose();
+            }
+        }
+        catch
+        {
+            // Best effort disposal
+        }
+        finally
+        {
+            _waitableTimer = null;
+            _renderWaitHandles = null;
+        }
+    }
+
+    internal void SleepUntilRenderDeadline(double milliseconds)
     {
         long targetTicks = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.1, milliseconds));
 
@@ -956,37 +1022,97 @@ public sealed class LiquidGlassController
             return;
         }
 
+        bool isAnimating = _animating;
+
         while (_isActive)
         {
             long remainingTicks = targetTicks - Stopwatch.GetTimestamp();
             if (remainingTicks <= 0) return;
 
             double remainingMs = remainingTicks * 1000.0 / Stopwatch.Frequency;
-            if (remainingMs > 2.0)
+
+            if (!isAnimating)
             {
-                int sleepMs = (int)Math.Floor(remainingMs - 1.5);
-                if (sleepMs >= 1)
+                // When not animating (idle / steady state), prioritize maximum CPU and battery savings.
+                // Zero spin wait (no Thread.SpinWait, no Thread.Sleep(0)).
+                if (remainingMs <= 1.0)
                 {
-                    Thread.Sleep(sleepMs);
-                    if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+                    return;
+                }
+
+                WaitDeadlineSlice(remainingMs);
+                return;
+            }
+            else
+            {
+                // When actively animating, prioritize smooth pacing while eliminating the long spin loop.
+                // High-resolution waitable timer sleeps down to ~0.15 ms before deadline.
+                if (remainingMs > 0.35)
+                {
+                    double waitMs = remainingMs - 0.15;
+                    if (!WaitDeadlineSlice(waitMs))
                     {
-                        _exactBitBltCapture = false;
-                        SetWindowDisplayAffinitySafe(WDA_NONE);
                         return;
                     }
                     continue;
                 }
-            }
 
-            if (remainingMs >= 0.25)
-            {
-                Thread.Sleep(0);
-            }
-            else
-            {
+                // Final slice (<= 0.35 ms): spin briefly until deadline reached.
                 Thread.SpinWait(8);
             }
         }
+    }
+
+    private bool WaitDeadlineSlice(double waitMs)
+    {
+        if (waitMs <= 0.05 || !_isActive) return false;
+
+        var timer = _waitableTimer;
+        var handles = _renderWaitHandles;
+
+        if (timer != null && !timer.IsInvalid && !timer.IsClosed && handles != null)
+        {
+            // Negative value in 100-nanosecond units specifies relative time (1 ms = 10,000 units)
+            long dueTime = -Math.Max(1L, (long)(waitMs * 10_000.0));
+            if (SetWaitableTimer(timer, in dueTime, 0, IntPtr.Zero, IntPtr.Zero, false))
+            {
+                uint timeout = (uint)Math.Ceiling(waitMs) + 100;
+                uint waitResult = WaitForMultipleObjects(2, handles, false, timeout);
+
+                if (waitResult == WAIT_OBJECT_0)
+                {
+                    // _idleWakeEvent was signaled (e.g. Stop, layout change, SetAnimating)
+                    return false;
+                }
+
+                if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+                {
+                    _exactBitBltCapture = false;
+                    SetWindowDisplayAffinitySafe(WDA_NONE);
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        // Fallback when high-resolution waitable timer is not available:
+        // Wait on _idleWakeEvent with timeout to remain interruptible.
+        int fallbackMs = (int)Math.Max(1, Math.Round(waitMs));
+        bool signaled = _idleWakeEvent.WaitOne(fallbackMs);
+        if (signaled)
+        {
+            return false;
+        }
+
+        if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+        {
+            _exactBitBltCapture = false;
+            SetWindowDisplayAffinitySafe(WDA_NONE);
+            return false;
+        }
+
+        return true;
     }
 
     private static long StopwatchTicksFromMilliseconds(double milliseconds) =>

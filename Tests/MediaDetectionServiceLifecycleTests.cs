@@ -191,6 +191,82 @@ public class MediaDetectionServiceLifecycleTests
         Assert.Equal(2, attempts);
     }
 
+    [Fact]
+    public void SuppressIntermediateYouTubeThumbnail_WhenWillFetchYouTubeThumbnail_AssignsCachedThumbnail()
+    {
+        using var service = CreateTestService(null);
+        var cached = CreateTestBitmap(100, 100);
+        service.CachedThumbnail = cached;
+
+        var info = new MediaInfo
+        {
+            MediaSource = "YouTube",
+            CurrentTrack = "Test Video",
+            Thumbnail = null
+        };
+
+        service.SuppressIntermediateYouTubeThumbnail(info, isNewTrackForThumbnail: false);
+
+        Assert.Same(cached, info.Thumbnail);
+    }
+
+    [Fact]
+    public void SuppressIntermediateYouTubeThumbnail_NewTrackWithWideThumbnail_SuppressesThumbnail()
+    {
+        using var service = CreateTestService(null);
+        var wideThumb = CreateTestBitmap(160, 90); // Aspect ratio ~1.77 > 1.3
+
+        var info = new MediaInfo
+        {
+            MediaSource = "YouTube",
+            CurrentTrack = "New Song",
+            Thumbnail = wideThumb
+        };
+
+        service.SuppressIntermediateYouTubeThumbnail(info, isNewTrackForThumbnail: true);
+
+        Assert.Null(info.Thumbnail);
+    }
+
+    [Fact]
+    public void SuppressIntermediateYouTubeThumbnail_NewTrackWithSquareThumbnail_PreservesThumbnail()
+    {
+        using var service = CreateTestService(null);
+        var squareThumb = CreateTestBitmap(100, 100); // Aspect ratio 1.0 <= 1.3
+
+        var info = new MediaInfo
+        {
+            MediaSource = "YouTube",
+            CurrentTrack = "New Song",
+            Thumbnail = squareThumb
+        };
+
+        service.SuppressIntermediateYouTubeThumbnail(info, isNewTrackForThumbnail: true);
+
+        Assert.Same(squareThumb, info.Thumbnail);
+    }
+
+    private static System.Windows.Media.Imaging.BitmapImage CreateTestBitmap(int width, int height)
+    {
+        var src = System.Windows.Media.Imaging.BitmapSource.Create(
+            width, height, 96, 96,
+            System.Windows.Media.PixelFormats.Bgra32, null,
+            new byte[width * height * 4], width * 4);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(src));
+        using var ms = new System.IO.MemoryStream();
+        encoder.Save(ms);
+        ms.Position = 0;
+
+        var bmp = new System.Windows.Media.Imaging.BitmapImage();
+        bmp.BeginInit();
+        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        bmp.StreamSource = ms;
+        bmp.EndInit();
+        bmp.Freeze();
+        return bmp;
+    }
+
     #region Dummy Services
 
     private sealed class DummyMetadataLookup : IMediaMetadataLookupService

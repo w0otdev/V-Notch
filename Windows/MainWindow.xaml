@@ -3414,9 +3414,12 @@
                                                    IsHitTestVisible="False">
                                                  <Border Background="#14FFFFFF" CornerRadius="1.5"/>
                                                  <Border x:Name="CountdownProgressFill"
-                                                         Width="0"
-                                                         HorizontalAlignment="Left"
-                                                         CornerRadius="1.5">
+                                                         HorizontalAlignment="Stretch"
+                                                         CornerRadius="1.5"
+                                                         RenderTransformOrigin="0,0.5">
+                                                     <Border.RenderTransform>
+                                                         <ScaleTransform x:Name="CountdownProgressScale" ScaleX="0"/>
+                                                     </Border.RenderTransform>
                                                      <Border.Background>
                                                          <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                                                              <GradientStop Color="#FF9F0A" Offset="0"/>

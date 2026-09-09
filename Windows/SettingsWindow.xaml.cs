@@ -66,6 +66,7 @@ public partial class SettingsWindow : Window
 
     private NotchSettings _settings;
     private NotchSettings _originalSettings;
+    private NotchSettings _appliedSettings;
     private readonly ISettingsApplicationService _settingsAppService;
     private readonly IUpdateService _updateService;
     private UpdateInfo? _availableUpdate;
@@ -93,6 +94,7 @@ public partial class SettingsWindow : Window
         _ = bluetoothModule;
         _settings = settings.Clone();
         _originalSettings = settings.Clone();
+        _appliedSettings = settings.Clone();
         _settingsAppService = settingsAppService ?? throw new ArgumentNullException(nameof(settingsAppService));
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
         _lastAppliedFps = settings.AnimationFps;
@@ -100,6 +102,8 @@ public partial class SettingsWindow : Window
 
         InitializeNavigation();
         LoadSettings();
+        _appliedSettings = ReadSettingsFromUi();
+        _settings = _appliedSettings.Clone();
         CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
     }
 
@@ -2483,15 +2487,15 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void SaveLiquidGlassUi()
+    private void ReadLiquidGlassUi(NotchSettings target)
     {
         string requestedStyle =
             (SkinCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "default";
-        _settings.NotchStyle = string.Equals(requestedStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase)
+        target.NotchStyle = string.Equals(requestedStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase)
             ? SkinLiquidGlass
             : "default";
 
-        var c = _settings.LiquidGlass ??= new Models.LiquidGlassConfig();
+        var c = target.LiquidGlass ??= new Models.LiquidGlassConfig();
         var ui = ReadGlassConfigFromSliders();
         c.BlurAmount = ui.BlurAmount;
         c.Refraction = ui.Refraction;
@@ -2520,10 +2524,12 @@ public partial class SettingsWindow : Window
         c.UseGpuRefraction = GpuRefractionCheck?.IsChecked ?? false;
 
         // Persist which preset is active and the user's custom slot. A built-in
-        _settings.LiquidGlassPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
+        target.LiquidGlassPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
         if (_customGlassSnapshot != null)
-            _settings.LiquidGlassCustom = _customGlassSnapshot.Clone();
+            target.LiquidGlassCustom = _customGlassSnapshot.Clone();
     }
+
+    private void SaveLiquidGlassUi() => ReadLiquidGlassUi(_settings);
 
     private void GlassPresetCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -2751,8 +2757,8 @@ public partial class SettingsWindow : Window
 
             if (dialog.ShowDialog(this) == true)
             {
-                ApplySettingsFromUi(persist: false);
-                _settingsAppService.Export(dialog.FileName, _settings);
+                NotchSettings snapshot = ReadSettingsFromUi();
+                _settingsAppService.Export(dialog.FileName, snapshot);
 
                 if (BackupStatusText != null)
                 {
@@ -2800,6 +2806,8 @@ public partial class SettingsWindow : Window
                 _originalSettings = imported.Clone();
 
                 LoadSettings();
+                _appliedSettings = ReadSettingsFromUi();
+                _settings = _appliedSettings.Clone();
                 SettingsChanged?.Invoke(this, _settings);
 
                 if (BackupStatusText != null)
@@ -3425,7 +3433,8 @@ public partial class SettingsWindow : Window
             _livePreviewDebounce.Tick += (s, e) =>
             {
                 _livePreviewDebounce.Stop();
-                ApplySettingsFromUi(persist: false);
+                var snapshot = ReadSettingsFromUi();
+                ApplyPreview(snapshot);
             };
         }
 
@@ -4163,103 +4172,153 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void ApplySettingsFromUi(bool persist = true)
+    internal NotchSettings ReadSettingsFromUi()
     {
-        _settings.Width = (int)WidthSlider.Value;
-        _settings.DynamicIslandWidth = Math.Max(100, (int)DynamicIslandWidthSlider.Value);
-        _settings.DynamicIslandHeight = Math.Max(24, (int)DynamicIslandHeightSlider.Value);
-        _settings.Height = (int)HeightSlider.Value;
-        _settings.CornerRadius = (int)RadiusSlider.Value;
-        _settings.Opacity = OpacitySlider.Value / 100.0;
-        _settings.MediaBlurBrightnessBoost = BlurBrightnessSlider.Value / 100.0;
-        _settings.MediaBlurDarkOverlay = BlurDarkOverlaySlider.Value / 100.0;
-        _settings.SpotifyCanvasBrightness = SpotifyCanvasBrightnessSlider.Value / 100.0;
-        int newFps = (int)Math.Round(AnimationFpsSlider.Value);
-        if (_lastAppliedFps != newFps)
-        {
-            _settings.AnimationFps = newFps;
-            _lastAppliedFps = newFps;
-            VNotch.Services.AnimationConfig.Configure(_settings.AnimationFps);
-            AnimationPrimitives.ApplyFpsToTree(this);
-        }
-        else
-        {
-            _settings.AnimationFps = newFps;
-        }
-        _settings.EnableBlurEffects = EnableBlurEffectsCheck.IsChecked ?? true;
-        _settings.ShowMediaArtBackground = MediaArtBackgroundCheck.IsChecked ?? true;
-        SaveLiquidGlassUi();
-        _settings.EnableSubjectBlur = EnableSubjectBlurCheck.IsChecked ?? true;
-        _settings.EnableSmartCrop = EnableSmartCropCheck.IsChecked ?? true;
-        _settings.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
-        _settings.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked ?? true;
-        _settings.EnableYouTubeSubtitles = EnableYouTubeSubtitlesCheck.IsChecked ?? true;
-        _settings.IgnoreYouTubeAutoSubtitles = IgnoreYouTubeAutoSubtitlesCheck.IsChecked ?? false;
+        var snapshot = _settings.Clone();
 
-        _settings.SubtitlePriority = GetSubtitlePriorityString();
+        snapshot.Width = (int)WidthSlider.Value;
+        snapshot.DynamicIslandWidth = Math.Max(100, (int)DynamicIslandWidthSlider.Value);
+        snapshot.DynamicIslandHeight = Math.Max(24, (int)DynamicIslandHeightSlider.Value);
+        snapshot.Height = (int)HeightSlider.Value;
+        snapshot.CornerRadius = (int)RadiusSlider.Value;
+        snapshot.Opacity = OpacitySlider.Value / 100.0;
+        snapshot.MediaBlurBrightnessBoost = BlurBrightnessSlider.Value / 100.0;
+        snapshot.MediaBlurDarkOverlay = BlurDarkOverlaySlider.Value / 100.0;
+        snapshot.SpotifyCanvasBrightness = SpotifyCanvasBrightnessSlider.Value / 100.0;
+        snapshot.AnimationFps = (int)Math.Round(AnimationFpsSlider.Value);
+        snapshot.EnableBlurEffects = EnableBlurEffectsCheck.IsChecked ?? true;
+        snapshot.ShowMediaArtBackground = MediaArtBackgroundCheck.IsChecked ?? true;
+        ReadLiquidGlassUi(snapshot);
+        snapshot.EnableSubjectBlur = EnableSubjectBlurCheck.IsChecked ?? true;
+        snapshot.EnableSmartCrop = EnableSmartCropCheck.IsChecked ?? true;
+        snapshot.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
+        snapshot.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked ?? true;
+        snapshot.EnableYouTubeSubtitles = EnableYouTubeSubtitlesCheck.IsChecked ?? true;
+        snapshot.IgnoreYouTubeAutoSubtitles = IgnoreYouTubeAutoSubtitlesCheck.IsChecked ?? false;
 
-        _settings.EnableDynamicIslandMode = DynamicIslandModeCheck.IsChecked ?? false;
+        snapshot.SubtitlePriority = GetSubtitlePriorityString();
 
-        _settings.EnableHoverExpand = HoverExpandCheck.IsChecked ?? true;
-        _settings.HoverExpandDelay = (int)HoverDelaySlider.Value;
-        _settings.DisableMouseLeaveAutoClose = DisableMouseLeaveAutoCloseCheck.IsChecked ?? false;
-        _settings.ReopenLastViewOnExpand = ReopenLastViewCheck.IsChecked ?? false;
+        snapshot.EnableDynamicIslandMode = DynamicIslandModeCheck.IsChecked ?? false;
 
-        _settings.MonitorIndex = MonitorCombo.SelectedIndex;
+        snapshot.EnableHoverExpand = HoverExpandCheck.IsChecked ?? true;
+        snapshot.HoverExpandDelay = (int)HoverDelaySlider.Value;
+        snapshot.DisableMouseLeaveAutoClose = DisableMouseLeaveAutoCloseCheck.IsChecked ?? false;
+        snapshot.ReopenLastViewOnExpand = ReopenLastViewCheck.IsChecked ?? false;
+
+        snapshot.MonitorIndex = MonitorCombo.SelectedIndex;
         if (CameraCombo.SelectedItem is CameraDeviceItem selectedCamera)
-            _settings.CameraDeviceId = selectedCamera.Id;
+            snapshot.CameraDeviceId = selectedCamera.Id;
         if (VisualizerAudioCombo.SelectedItem is AudioDeviceItem selectedAudioDevice)
-            _settings.VisualizerAudioDeviceId = selectedAudioDevice.Id;
-        _settings.AutoStart = AutoStartCheck.IsChecked ?? false;
-        _settings.StayBehindWindows = StayBehindWindowsCheck.IsChecked ?? false;
-        _settings.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
-        _settings.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;
-        _settings.EnableDebugMode = EnableDebugModeCheck.IsChecked ?? false;
-        _settings.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
-        _settings.HideOnWindowedFullscreen = HideOnWindowedFullscreenCheck.IsChecked ?? true;
-        _settings.EnableIdleAutoHide = IdleAutoHideCheck.IsChecked ?? false;
-        _settings.IdleAutoHideDelay = Math.Max(1000, (int)(IdleAutoHideDelaySlider.Value * 1000));
-        _settings.ShowMusicNotifications = MusicNotifyCheck.IsChecked ?? true;
-        _settings.ShowSystemNotifications = SystemNotifyCheck.IsChecked ?? true;
-        _settings.IsShelfUploadLimitUnlocked = ShelfUnlockCheck.IsChecked ?? false;
-        _settings.CopyShelfFilesToClipboard = CopyShelfClipboardCheck.IsChecked ?? false;
-        _settings.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;
+            snapshot.VisualizerAudioDeviceId = selectedAudioDevice.Id;
+        snapshot.AutoStart = AutoStartCheck.IsChecked ?? false;
+        snapshot.StayBehindWindows = StayBehindWindowsCheck.IsChecked ?? false;
+        snapshot.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
+        snapshot.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;
+        snapshot.EnableDebugMode = EnableDebugModeCheck.IsChecked ?? false;
+        snapshot.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
+        snapshot.HideOnWindowedFullscreen = HideOnWindowedFullscreenCheck.IsChecked ?? true;
+        snapshot.EnableIdleAutoHide = IdleAutoHideCheck.IsChecked ?? false;
+        snapshot.IdleAutoHideDelay = Math.Max(1000, (int)(IdleAutoHideDelaySlider.Value * 1000));
+        snapshot.ShowMusicNotifications = MusicNotifyCheck.IsChecked ?? true;
+        snapshot.ShowSystemNotifications = SystemNotifyCheck.IsChecked ?? true;
+        snapshot.IsShelfUploadLimitUnlocked = ShelfUnlockCheck.IsChecked ?? false;
+        snapshot.CopyShelfFilesToClipboard = CopyShelfClipboardCheck.IsChecked ?? false;
+        snapshot.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;
 
-        _settings.EnableWeather = EnableWeatherCheck.IsChecked ?? false;
-        _settings.ManualCity = ManualCityTextBox.Text?.Trim() ?? string.Empty;
+        snapshot.EnableWeather = EnableWeatherCheck.IsChecked ?? false;
+        snapshot.ManualCity = ManualCityTextBox.Text?.Trim() ?? string.Empty;
 
-        _settings.EnableLocalOnlyMode = LocalOnlyModeCheck.IsChecked ?? false;
-        _settings.AutoCheckUpdates = AutoCheckUpdatesCheck.IsChecked ?? true;
-        _settings.EnableOnlineArtworkLookup = EnableOnlineArtworkCheck.IsChecked ?? true;
-        _settings.EnableOnlineLyrics = EnableOnlineLyricsCheck.IsChecked ?? true;
-        _settings.EnablePrivacyIndicators = EnablePrivacyIndicatorsCheck.IsChecked ?? true;
-        _settings.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
-        VNotch.Services.WindowTitleScanner.UpdateInspectionAllowed(_settings.EnableBrowserUrlInspection);
-        _settings.EnableDiagnosticLogging = EnableDiagnosticLoggingCheck.IsChecked ?? true;
-        _settings.EnableSpotlightHistory = EnableSpotlightHistoryCheck.IsChecked ?? true;
+        snapshot.EnableLocalOnlyMode = LocalOnlyModeCheck.IsChecked ?? false;
+        snapshot.AutoCheckUpdates = AutoCheckUpdatesCheck.IsChecked ?? true;
+        snapshot.EnableOnlineArtworkLookup = EnableOnlineArtworkCheck.IsChecked ?? true;
+        snapshot.EnableOnlineLyrics = EnableOnlineLyricsCheck.IsChecked ?? true;
+        snapshot.EnablePrivacyIndicators = EnablePrivacyIndicatorsCheck.IsChecked ?? true;
+        snapshot.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
+        snapshot.EnableDiagnosticLogging = EnableDiagnosticLoggingCheck.IsChecked ?? true;
+        snapshot.EnableSpotlightHistory = EnableSpotlightHistoryCheck.IsChecked ?? true;
 
-        _settings.EnableYouTubeApi = YouTubeApiCheck.IsChecked ?? false;
-        _settings.YouTubeApiKey = YouTubeApiKeyPasswordBox.Password?.Trim() ?? "";
+        snapshot.EnableYouTubeApi = YouTubeApiCheck.IsChecked ?? false;
+        snapshot.YouTubeApiKey = YouTubeApiKeyPasswordBox.Password?.Trim() ?? "";
 
         if (LanguageCombo.SelectedItem is System.Windows.Controls.ComboBoxItem langItem && langItem.Tag is string langCode)
-            _settings.Language = langCode;
+            snapshot.Language = langCode;
 
         if (WidgetCombo.SelectedItem is System.Windows.Controls.ComboBoxItem widgetItem && widgetItem.Tag is string widgetCode)
-            _settings.ExpandedWidget = widgetCode;
+            snapshot.ExpandedWidget = widgetCode;
 
         if (ShelfWidgetCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem shelfItem && shelfItem.Tag is string shelfCode)
-            _settings.ShelfWidget = shelfCode;
+            snapshot.ShelfWidget = shelfCode;
 
         if (ClockPageStyleCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem clockItem && clockItem.Tag is string clockCode)
-            _settings.ClockPageStyle = clockCode;
-        if (persist)
+            snapshot.ClockPageStyle = clockCode;
+
+        return snapshot;
+    }
+
+    internal bool ApplyPreview(NotchSettings snapshot)
+    {
+        if (_lastAppliedFps != snapshot.AnimationFps)
         {
-            _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-APPLY");
-            _originalSettings = _settings.Clone();
+            _lastAppliedFps = snapshot.AnimationFps;
+            VNotch.Services.AnimationConfig.Configure(snapshot.AnimationFps);
+            AnimationPrimitives.ApplyFpsToTree(this);
         }
 
-        ApplyLiquidGlassSkin();
-        SettingsChanged?.Invoke(this, _settings);
+        if (_appliedSettings.EnableBrowserUrlInspection != snapshot.EnableBrowserUrlInspection)
+        {
+            VNotch.Services.WindowTitleScanner.UpdateInspectionAllowed(snapshot.EnableBrowserUrlInspection);
+        }
+
+        if (IsLiquidGlassConfigChanged(_appliedSettings, snapshot))
+        {
+            ApplyLiquidGlassSkin();
+        }
+
+        bool hasChanges = !_appliedSettings.ValueEquals(snapshot);
+        _settings = snapshot.Clone();
+
+        if (hasChanges)
+        {
+            _appliedSettings = snapshot.Clone();
+            SettingsChanged?.Invoke(this, _settings);
+        }
+
+        return hasChanges;
+    }
+
+    private static bool IsLiquidGlassConfigChanged(NotchSettings? oldSettings, NotchSettings? newSettings)
+    {
+        if (oldSettings == null || newSettings == null) return true;
+        if (!string.Equals(oldSettings.NotchStyle, newSettings.NotchStyle, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!string.Equals(oldSettings.LiquidGlassPreset, newSettings.LiquidGlassPreset, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if ((oldSettings.LiquidGlass == null) != (newSettings.LiquidGlass == null))
+            return true;
+        if (oldSettings.LiquidGlass != null && newSettings.LiquidGlass != null && !oldSettings.LiquidGlass.ValueEquals(newSettings.LiquidGlass))
+            return true;
+        return false;
+    }
+
+    internal async Task SaveAsync(NotchSettings snapshot, CancellationToken ct = default)
+    {
+        _originalSettings = snapshot.Clone();
+        await _settingsAppService.ApplyAsync(snapshot, ct);
+    }
+
+    private void Save(NotchSettings snapshot)
+    {
+        SaveAsync(snapshot).SafeFireAndForget("SETTINGS-APPLY");
+    }
+
+    private void ApplySettingsFromUi(bool persist = true)
+    {
+        var snapshot = ReadSettingsFromUi();
+        ApplyPreview(snapshot);
+        if (persist)
+        {
+            Save(snapshot);
+        }
     }
 
     #endregion

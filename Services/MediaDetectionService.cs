@@ -50,6 +50,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     internal bool IsStarting => _state == ServiceLifecycleState.Starting;
     internal bool IsStopped => _state == ServiceLifecycleState.Stopped;
     internal bool IsDisposed => _state == ServiceLifecycleState.Disposed;
+    internal BitmapImage? CachedThumbnail { get => _cachedThumbnail; set => _cachedThumbnail = value; }
 
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private bool _disposed;
@@ -727,8 +728,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         _lastPublishedSessionInstanceKey = info.SessionInstanceKey ?? "";
     }
 
-#pragma warning disable S3776
-    private void SuppressIntermediateYouTubeThumbnail(MediaInfo info, bool isNewTrackForThumbnail)
+    internal void SuppressIntermediateYouTubeThumbnail(MediaInfo info, bool isNewTrackForThumbnail)
     {
         bool willFetchYouTubeThumbnail = (info.Platform == MediaPlatform.YouTube || (info.Platform == MediaPlatform.Browser && IsLikelyYouTube(info)))
             && !string.IsNullOrEmpty(info.CurrentTrack)
@@ -736,27 +736,9 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             && (info.Thumbnail == null || info.Thumbnail.PixelWidth < 120)
             && (_cachedThumbnail == null || _cachedThumbnail.PixelWidth < 200);
 
-        bool hasGoodSmtcArtwork = false;
-        if (willFetchYouTubeThumbnail && info.Thumbnail != null && info.Thumbnail.PixelWidth >= 200)
+        if (willFetchYouTubeThumbnail)
         {
-            double smtcAspect = (double)info.Thumbnail.PixelWidth / info.Thumbnail.PixelHeight;
-            hasGoodSmtcArtwork = smtcAspect >= 0.85 && smtcAspect <= 1.15;
-        }
-
-        if (willFetchYouTubeThumbnail && !hasGoodSmtcArtwork)
-        {
-            if (isNewTrackForThumbnail)
-            {
-                info.Thumbnail = null;
-            }
-            else if (_cachedThumbnail != null && _cachedThumbnail.PixelWidth >= 200)
-            {
-                info.Thumbnail = _cachedThumbnail;
-            }
-            else
-            {
-                info.Thumbnail = _cachedThumbnail;
-            }
+            info.Thumbnail = _cachedThumbnail;
         }
 
         if (isNewTrackForThumbnail &&

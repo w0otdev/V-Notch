@@ -158,6 +158,58 @@ public class NotchSettings
         clone.LiquidGlassCustom = LiquidGlassCustom?.Clone();
         return clone;
     }
+
+    public bool ValueEquals(NotchSettings? other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (other is null) return false;
+
+        for (int i = 0; i < _cloneableProperties.Length; i++)
+        {
+            var prop = _cloneableProperties[i];
+            if (prop.PropertyType == typeof(LiquidGlassConfig))
+                continue;
+
+            var v1 = prop.GetValue(this);
+            var v2 = prop.GetValue(other);
+
+            if (prop.PropertyType == typeof(double))
+            {
+                if (Math.Abs((double)(v1 ?? 0.0) - (double)(v2 ?? 0.0)) > 0.0001)
+                    return false;
+            }
+            else if (prop.PropertyType == typeof(double?))
+            {
+                var d1 = (double?)v1;
+                var d2 = (double?)v2;
+                if (d1.HasValue != d2.HasValue)
+                    return false;
+                if (d1.HasValue && Math.Abs(d1.Value - d2!.Value) > 0.0001)
+                    return false;
+            }
+            else if (prop.PropertyType == typeof(string))
+            {
+                if (!string.Equals((string?)v1, (string?)v2, StringComparison.Ordinal))
+                    return false;
+            }
+            else if (!Equals(v1, v2))
+            {
+                return false;
+            }
+        }
+
+        if ((LiquidGlass == null) != (other.LiquidGlass == null))
+            return false;
+        if (LiquidGlass != null && other.LiquidGlass != null && !LiquidGlass.ValueEquals(other.LiquidGlass))
+            return false;
+
+        if ((LiquidGlassCustom == null) != (other.LiquidGlassCustom == null))
+            return false;
+        if (LiquidGlassCustom != null && other.LiquidGlassCustom != null && !LiquidGlassCustom.ValueEquals(other.LiquidGlassCustom))
+            return false;
+
+        return true;
+    }
 }
 
 public class LiquidGlassConfig

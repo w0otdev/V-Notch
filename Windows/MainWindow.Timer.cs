@@ -865,6 +865,9 @@ public partial class MainWindow
             return;
         }
 
+        if (TimerContent == null || TimerContent.Visibility != Visibility.Visible || !_isExpanded)
+            return;
+
         UpdateTimerDisplay();
     }
 
@@ -1822,29 +1825,43 @@ public partial class MainWindow
         SetCountdownProgress(animate: false);
     }
 
+    internal static double ComputeCountdownEdgeOpacity(double progress) => progress > 0.02 ? 1.0 : 0.0;
+
+    internal static bool ShouldUpdateCountdownVisual(bool isTimerContentVisible, bool isExpanded) =>
+        isTimerContentVisible && isExpanded;
+
     private void SetCountdownProgress(bool animate)
     {
+        if (!ShouldUpdateCountdownVisual(TimerContent != null && TimerContent.Visibility == Visibility.Visible, _isExpanded))
+            return;
+
+        if (CountdownProgressScale == null || CountdownProgressEdge == null)
+            return;
+
         double progress = Math.Clamp(_viewModel.Timer.Progress, 0, 1);
-
-        double trackWidth = CountdownProgressTrack.ActualWidth;
-        if (trackWidth <= 0) return;
-
-        double targetWidth = trackWidth * progress;
-        double edgeOpacity = progress > 0.02 ? 1.0 : 0.0;
+        double edgeOpacity = ComputeCountdownEdgeOpacity(progress);
 
         if (animate)
         {
-            var widthAnim = MakeAnim(targetWidth, new Duration(TimeSpan.FromMilliseconds(340)), _easeExpOut6);
-            CountdownProgressFill.BeginAnimation(WidthProperty, widthAnim);
-            var edgeAnim = MakeAnim(edgeOpacity, _dur200, _easeQuadOut);
-            CountdownProgressEdge.BeginAnimation(OpacityProperty, edgeAnim);
+            var scaleAnim = MakeAnim(progress, new Duration(TimeSpan.FromMilliseconds(340)), _easeExpOut6);
+            CountdownProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+
+            if (Math.Abs(CountdownProgressEdge.Opacity - edgeOpacity) > 0.001)
+            {
+                var edgeAnim = MakeAnim(edgeOpacity, _dur200, _easeQuadOut);
+                CountdownProgressEdge.BeginAnimation(OpacityProperty, edgeAnim);
+            }
         }
         else
         {
-            CountdownProgressFill.BeginAnimation(WidthProperty, null);
-            CountdownProgressFill.Width = targetWidth;
-            CountdownProgressEdge.BeginAnimation(OpacityProperty, null);
-            CountdownProgressEdge.Opacity = edgeOpacity;
+            CountdownProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            CountdownProgressScale.ScaleX = progress;
+
+            if (CountdownProgressEdge.Opacity != edgeOpacity)
+            {
+                CountdownProgressEdge.BeginAnimation(OpacityProperty, null);
+                CountdownProgressEdge.Opacity = edgeOpacity;
+            }
         }
     }
 
