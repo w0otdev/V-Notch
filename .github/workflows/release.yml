@@ -66,9 +66,47 @@ jobs:
             installers/${{ steps.artifact.outputs.name }}.sha256
           if-no-files-found: error
 
-  release:
+  sign-updates:
     needs: build-installer
     if: needs.build-installer.result == 'success'
+    runs-on: windows-latest
+    environment: update-signing
+    steps:
+      # Keep the signing secret in the protected update-signing environment.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: signed-assets
+          merge-multiple: true
+
+      - name: Sign update manifests
+        shell: pwsh
+        env:
+          VNOTCH_UPDATE_SIGNING_KEY_PEM: ${{ secrets.VNOTCH_UPDATE_SIGNING_KEY_PEM }}
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          [xml]$project = Get-Content V-Notch.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ($env:RELEASE_BRANCH.StartsWith('v') -and $env:RELEASE_BRANCH.Substring(1) -ne $version) {
+            throw 'Release tag/branch version must equal the application version.'
+          }
+          foreach ($name in @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.exe')) {
+            ./scripts/Sign-UpdateManifest.ps1 -InstallerPath "signed-assets/$name" -Version $version
+          }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: signed-update-assets
+          path: signed-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: sign-updates
+    if: needs.sign-updates.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -76,6 +114,7 @@ jobs:
       # actions/download-artifact@v4.3.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
+          name: signed-update-assets
           path: release-assets
           merge-multiple: true
 
@@ -102,4 +141,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+

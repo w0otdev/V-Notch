@@ -27,9 +27,9 @@
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>1.9.1</Version>
-    <AssemblyVersion>1.9.1</AssemblyVersion>
-    <FileVersion>1.9.1</FileVersion>
+    <Version>1.9.2</Version>
+    <AssemblyVersion>1.9.2</AssemblyVersion>
+    <FileVersion>1.9.2</FileVersion>
     <Authors>rainaku</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -76,6 +76,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="VNotch.Tests" />
+    <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
   </ItemGroup>
 
   <ItemGroup>

@@ -40,6 +40,8 @@ build-msix.ps1
 *.p12
 *.cer
 *.key
+*-private.pem
+*.pkcs8
 youtube-api.key
 /.vs
 test-setup.ps1

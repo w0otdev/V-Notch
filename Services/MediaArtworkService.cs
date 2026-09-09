@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO;
 using System.Net.Http;
 using System.Windows;
@@ -21,14 +22,22 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 {
     private const string ArtworkLogTag = "ARTWORK";
     private const string CropPathLogTag = "CROP-PATH";
+    private const long MaxArtworkDownloadSizeBytes = 8 * 1024 * 1024; // 8 MiB
+    private const int MaxDecodePixelWidth = 1024;
 
     private static readonly HttpClient _httpClient = new();
+    private readonly HttpClient _client;
     private readonly SmartThumbnailCropService _smartCrop;
     private bool _smartCropAvailable;
     private bool _disposed;
 
-    public MediaArtworkService()
+    public MediaArtworkService() : this(_httpClient)
     {
+    }
+
+    internal MediaArtworkService(HttpClient client)
+    {
+        _client = client;
         _smartCrop = new SmartThumbnailCropService();
         _smartCropAvailable = false;
     }
@@ -64,28 +73,50 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(4000));
-            var bytes = await _httpClient.GetByteArrayAsync(url, timeoutCts.Token);
 
-            BitmapImage? bitmap = null;
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null)
+            using var response = await _client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+            if (!response.IsSuccessStatusCode)
             {
-                await dispatcher.InvokeAsync(() =>
-                {
-                    using var ms = new MemoryStream(bytes);
-                    var bi = new BitmapImage();
-                    bi.BeginInit();
-                    bi.StreamSource = ms;
-                    bi.CacheOption = BitmapCacheOption.OnLoad;
-                    bi.EndInit();
-                    bi.Freeze();
-                    bitmap = bi;
-                });
+                return null;
             }
 
-            return bitmap;
+            if (response.Content.Headers.ContentLength is { } contentLength && contentLength > MaxArtworkDownloadSizeBytes)
+            {
+                RuntimeLog.Log(ArtworkLogTag, $"DownloadImageAsync rejected {url}: Content-Length {contentLength} exceeds limit of {MaxArtworkDownloadSizeBytes} bytes");
+                return null;
+            }
+
+            using var contentStream = await response.Content.ReadAsStreamAsync(timeoutCts.Token);
+            using var ms = new MemoryStream();
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(81920);
+            try
+            {
+                long totalRead = 0;
+                int bytesRead;
+                while ((bytesRead = await contentStream.ReadAsync(buffer.AsMemory(0, buffer.Length), timeoutCts.Token)) > 0)
+                {
+                    totalRead += bytesRead;
+                    if (totalRead > MaxArtworkDownloadSizeBytes)
+                    {
+                        RuntimeLog.Log(ArtworkLogTag, $"DownloadImageAsync exceeded max allowed size ({MaxArtworkDownloadSizeBytes} bytes) for {url}");
+                        return null;
+                    }
+                    ms.Write(buffer, 0, bytesRead);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            if (ms.Length == 0) return null;
+
+            var bytes = ms.ToArray();
+            return await DecodeImageAsync(bytes, timeoutCts.Token);
         }
         catch (Exception ex)
         {
@@ -273,6 +304,17 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     {
         try
         {
+            if (stream == null || stream.Size == 0)
+            {
+                return null;
+            }
+
+            if (stream.Size > MaxArtworkDownloadSizeBytes)
+            {
+                RuntimeLog.Log(ArtworkLogTag, $"ConvertToWpfBitmapAsync rejected stream: Size {stream.Size} exceeds limit of {MaxArtworkDownloadSizeBytes} bytes");
+                return null;
+            }
+
             byte[] bytes;
             using (var reader = new DataReader(stream))
             {
@@ -281,32 +323,31 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 reader.ReadBytes(bytes);
             }
 
-            BitmapImage? bitmap = null;
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher == null)
-            {
-                return null;
-            }
-
-            await dispatcher.InvokeAsync(() =>
-            {
-                using var ms = new MemoryStream(bytes);
-                var bi = new BitmapImage();
-                bi.BeginInit();
-                bi.StreamSource = ms;
-                bi.CacheOption = BitmapCacheOption.OnLoad;
-                bi.EndInit();
-                bi.Freeze();
-                bitmap = bi;
-            });
-
-            return bitmap;
+            return await DecodeImageAsync(bytes, ct);
         }
         catch (Exception ex)
         {
             RuntimeLog.Log(ArtworkLogTag, $"ConvertToWpfBitmapAsync failed: {ex.Message}");
             return null;
         }
+    }
+
+    private static async Task<BitmapImage?> DecodeImageAsync(byte[] bytes, CancellationToken ct = default)
+    {
+        if (bytes == null || bytes.Length == 0) return null;
+
+        return await Task.Run(() =>
+        {
+            using var stream = new MemoryStream(bytes);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.DecodePixelWidth = MaxDecodePixelWidth;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }, ct);
     }
 
     private static Int32Rect DetectContentBounds(BitmapSource source, int width, int height)

@@ -1,7 +1,9 @@
 # Chính Sách Bảo Mật — V-Notch
 
-**Ngày hiệu lực:** 31 tháng 8, 2026 (sửa đổi)  
-**Phiên bản ứng dụng:** 1.9.1  
+**Ngày hiệu lực:** 9 tháng 9, 2026 (sửa đổi)
+
+**Phiên bản ứng dụng:** 1.9.2
+
 **Nhà phát triển:** rainaku  
 **Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
 
@@ -134,10 +136,11 @@ V-Notch không có máy chủ backend và không thực hiện analytics, teleme
 
 - **Điểm đến:** `https://api.github.com/repos/rainaku/V-Notch/releases/latest`
 - **Tại sao:** Để phát hiện xem có phiên bản V-Notch mới hơn hay không.
-- **Dữ liệu gửi đi:** Chỉ header HTTP tiêu chuẩn, gồm `User-Agent: V-Notch-Updater` và header `If-None-Match` (ETag) có điều kiện để lưu cache. Không có dữ liệu cá nhân nào được gửi.
-- **Dữ liệu nhận về:** Tag phiên bản mới nhất, ghi chú phát hành (changelog), và URL tải xuống bộ cài đặt.
+- **Dữ liệu gửi đi:** Header HTTP tiêu chuẩn, gồm `User-Agent: V-Notch-Updater` và header `If-None-Match` (ETag) có điều kiện để lưu cache. Tính năng này không gửi metadata media, thông tin đăng nhập hay nội dung tệp cục bộ. Như mọi yêu cầu HTTPS, dịch vụ từ xa có thể thấy thông tin kết nối như địa chỉ IP của bạn.
+- **Dữ liệu nhận về:** Tag phiên bản mới nhất, ghi chú phát hành (changelog), URL tải bộ cài; khi cập nhật còn có manifest đã ký, chữ ký tách rời và bộ cài.
 - **Tần suất:** Giới hạn tối đa một lần mỗi 45 giây; phản hồi được cache trong bộ nhớ và xác thực lại bằng ETag.
-- **Bảo mật & Tính toàn vẹn:** Việc tải bản cập nhật bắt buộc dùng kết nối HTTPS bảo mật, kiểm tra chữ ký số Authenticode và mã băm toàn vẹn SHA256.
+- **Bảo mật & Tính toàn vẹn:** Từ phiên bản 1.9.2, cập nhật trong ứng dụng bắt buộc dùng HTTPS và manifest có chữ ký ECDSA P-256/SHA-256, được xác minh cục bộ bằng khóa công khai nhúng trong ứng dụng. Phiên bản, tên bộ cài, kích thước và mã băm SHA-256 đã ký phải khớp trước khi chạy bộ cài. Chữ ký thiếu hoặc không hợp lệ và việc hạ phiên bản đều bị từ chối. Authenticode là tùy chọn trừ khi có cấu hình thêm allowlist chứng chỉ; Windows vẫn có thể hiện cảnh báo nhà phát hành không xác định hoặc SmartScreen. Ứng dụng bản cũ dùng cơ chế xác minh cũ cho lần nâng cấp đầu tiên lên phiên bản này.
+- **Dữ liệu xác minh:** Manifest và chữ ký tách rời được tải từ cùng các asset GitHub release với bộ cài và xử lý trong bộ nhớ. Việc xác minh chữ ký không liên hệ dịch vụ mới hay tải lên tệp cục bộ, thông tin đăng nhập hoặc mã định danh thiết bị. GitHub và hạ tầng tải xuống có thể thấy thông tin kết nối tiêu chuẩn, gồm địa chỉ IP và header HTTP của bạn.
 - **Quyền kiểm soát của bạn:** Việc tải và cài đặt bản cập nhật chỉ xảy ra **khi** bạn chủ động chọn thực hiện. Khi bạn bắt đầu cập nhật, bộ cài (`V-Notch-Setup.exe`) được tải từ GitHub Releases về thư mục tạm của bạn và khởi chạy.
 
 ### 4.2 Tra cứu ảnh bìa album
@@ -282,7 +285,7 @@ V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài �
 
 ## 9. Bảo mật
 
-V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Tất cả thông tin nhạy cảm lưu trữ (cookie `sp_dc` của Spotify, khóa YouTube API) đều được mã hóa an toàn bằng Windows DPAPI. Mọi bản cập nhật tải về đều được ký số Authenticode và kiểm tra mã băm SHA256 qua kết nối HTTPS bảo mật. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Tất cả thông tin nhạy cảm lưu trữ (cookie `sp_dc` của Spotify, khóa YouTube API) đều được mã hóa an toàn bằng Windows DPAPI. Cập nhật trong ứng dụng từ phiên bản 1.9.2 trở đi bắt buộc xác minh manifest có chữ ký như mô tả tại Mục 4.1; cơ chế này không yêu cầu chứng chỉ Authenticode trả phí và không xác thực lần tải thủ công đầu tiên. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 ---
 

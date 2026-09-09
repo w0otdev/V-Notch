@@ -101,15 +101,15 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Authenticode-sign the installer before publishing it. A build without a configured
-# certificate is intentionally warned about; the in-app updater will reject unsigned files.
+# Authenticode is optional. The release workflow separately signs update manifests
+# using the free ECDSA key; the updater always requires those manifests.
 if ($CertificatePath) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign installer." -ForegroundColor Red; exit 1 }
     & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "installers\V-Notch-Setup.exe"
     if ($LASTEXITCODE -ne 0) { Write-Host "      Authenticode signing failed!" -ForegroundColor Red; exit 1 }
     Write-Host "      Installer Authenticode signature applied" -ForegroundColor Green
-} else { Write-Host "      WARNING: installer is unsigned. Configure a signing certificate for release builds." -ForegroundColor Yellow }
+} else { Write-Host "      No Authenticode certificate (optional). Release manifests must be signed separately." -ForegroundColor Yellow }
 
 $checksum = $null
 $retryCount = 0

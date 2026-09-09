@@ -1,7 +1,9 @@
 # Privacy Policy — V-Notch
 
-**Effective Date:** August 31, 2026 (revised)  
-**Application Version:** 1.9.0  
+**Effective Date:** September 9, 2026 (revised)
+
+**Application Version:** 1.9.2
+
 **Developer:** rainaku  
 **Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
 
@@ -134,10 +136,11 @@ V-Notch has no backend server and performs no analytics, telemetry, or user trac
 
 - **Endpoint:** `https://api.github.com/repos/rainaku/V-Notch/releases/latest`
 - **Why:** To detect whether a newer release of V-Notch is available.
-- **Data sent:** Standard HTTP headers only, including `User-Agent: V-Notch-Updater` and a conditional `If-None-Match` (ETag) header for caching. No personal data is sent.
-- **Data received:** Latest version tag, release notes, and installer download URL.
+- **Data sent:** Standard HTTP headers, including `User-Agent: V-Notch-Updater` and a conditional `If-None-Match` (ETag) header for caching. No media metadata, credentials, or local file contents are sent by this feature. As with any HTTPS request, the remote service sees connection information such as your IP address.
+- **Data received:** Latest version tag, release notes, installer download URL, and, when updating, the signed manifest, detached signature, and installer.
 - **Frequency:** Throttled to at most once per 45 seconds; responses are cached in memory and revalidated with ETags.
-- **Security & Integrity:** Update downloads enforce strict HTTPS, Authenticode signature validation, and SHA256 integrity checks.
+- **Security & Integrity:** Starting with version 1.9.2, in-app updates require HTTPS and an ECDSA P-256/SHA-256 signed manifest, verified locally using a public key embedded in the application. The signed version, installer name, size, and SHA-256 hash must match before the installer runs. Missing or invalid signatures and downgrades are rejected. Authenticode is optional unless an additional certificate allowlist is configured; Windows may still show an unknown-publisher or SmartScreen warning. Older clients use their existing verification for the first upgrade to this version.
+- **Verification data:** The manifest and detached signature are downloaded from the same GitHub release assets as the installer and processed in memory. Signature verification does not contact a new service or upload local files, credentials, or device identifiers. Standard connection information, including your IP address and HTTP headers, is visible to GitHub and its download infrastructure.
 - **Your control:** Downloading and installing an update happens **only** when you explicitly choose to. If you start an update, the installer (`V-Notch-Setup.exe`) is downloaded from GitHub Releases to your temporary folder and executed.
 
 ### 4.2 Album Artwork Lookup
@@ -282,7 +285,7 @@ V-Notch provides a dedicated **Privacy** section in Settings with granular toggl
 
 ## 9. Security
 
-V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). All sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key) are encrypted with Windows DPAPI. All update packages are signed and verified with Authenticode and SHA256 hashes over secure HTTPS. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). All sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 ---
 

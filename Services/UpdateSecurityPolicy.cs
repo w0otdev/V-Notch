@@ -3,8 +3,8 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace VNotch.Services;
 
-/// <summary>Security configuration for release installers. Values are deliberately
-/// allowlists: an unrecognised signing certificate is never accepted.</summary>
+/// <summary>Optional additional Authenticode policy. Signed update manifests are
+/// always required independently by UpdateService, even with no certificate allowlist.</summary>
 public sealed class UpdateSecurityPolicy
 {
     public const long MaximumInstallerBytes = 500L * 1024 * 1024;
@@ -22,7 +22,7 @@ public sealed class UpdateSecurityPolicy
     {
         if (AllowedPublisherNames.Count == 0 && AllowedCertificateThumbprints.Count == 0)
         {
-            reason = "No Authenticode allowlist configured. Skipping signature validation.";
+            reason = "No additional Authenticode policy configured; signed manifest verification is still required.";
             return true;
         }
 
@@ -49,7 +49,7 @@ public sealed class UpdateSecurityPolicy
                 return false;
             }
 
-            var publisher = certificate.GetNameInfo(X509NameType.SimpleName, false);
+            var publisher = Normalize(certificate.GetNameInfo(X509NameType.SimpleName, false));
             if (!AllowedPublisherNames.Contains(publisher))
             {
                 reason = "Installer certificate publisher is not allowlisted.";
