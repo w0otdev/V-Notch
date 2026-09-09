@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Media;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
+using VNotch.Controllers;
 using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
 using static VNotch.Services.Win32Interop;
@@ -34,6 +36,9 @@ public partial class MainWindow
     private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
     private bool _isCountdownRunning { get => _viewModel.Timer.IsRunning; set => _viewModel.Timer.IsRunning = value; }
     private DispatcherTimer? _countdownTimer;
+    private CountdownTracker CountdownTracker => _countdownTracker ??= new CountdownTracker(_viewModel.Timer);
+    private CountdownTracker? _countdownTracker;
+    private long _lastCountdownTimestamp => CountdownTracker.LastCountdownTimestamp;
 
     private DispatcherTimer? _countdownRepeatTimer;
     private int _countdownRepeatDirection;
@@ -842,20 +847,35 @@ public partial class MainWindow
         _countdownTimer.Tick += CountdownTimer_Tick;
     }
 
+    private void ResetCountdownTimestamp()
+    {
+        CountdownTracker.ResetCountdownTimestamp();
+    }
+
+    private bool AdvanceCountdown()
+    {
+        return CountdownTracker.AdvanceCountdown();
+    }
+
     private void CountdownTimer_Tick(object? sender, EventArgs e)
     {
-        if (_viewModel.Timer.Tick(TimeSpan.FromMilliseconds(100)))
+        if (AdvanceCountdown())
         {
-            _countdownTimer?.Stop();
-            SetCountdownStartVisual(false);
-
-            SystemSounds.Exclamation.Play();
-
-            ShowCountdownCompletionOnPill();
+            OnCountdownCompleted();
             return;
         }
 
         UpdateTimerDisplay();
+    }
+
+    private void OnCountdownCompleted()
+    {
+        _countdownTimer?.Stop();
+        SetCountdownStartVisual(false);
+
+        SystemSounds.Exclamation.Play();
+
+        ShowCountdownCompletionOnPill();
     }
 
     private bool _isCountdownCompleteVisible = false;
@@ -1246,6 +1266,7 @@ public partial class MainWindow
 
         _viewModel.Timer.Remaining = _countdownDuration;
         _isCountdownRunning = true;
+        ResetCountdownTimestamp();
         if (_countdownTimer == null) InitializeCountdownTimer();
         _countdownTimer?.Start();
 
@@ -1753,13 +1774,21 @@ public partial class MainWindow
 
         if (_isCountdownRunning)
         {
+            if (AdvanceCountdown())
+            {
+                OnCountdownCompleted();
+                return;
+            }
+
             _viewModel.Timer.Pause();
             _countdownTimer?.Stop();
             SetCountdownStartVisual(false);
+            UpdateTimerDisplay();
         }
         else
         {
             _viewModel.Timer.Start();
+            ResetCountdownTimestamp();
             _countdownTimer?.Start();
             SetCountdownStartVisual(true);
         }
@@ -1771,6 +1800,7 @@ public partial class MainWindow
         PlayTimerButtonPress(CountdownResetBtn);
         if (_isEditingTimer) CancelTimerEditing();
         _viewModel.Timer.Reset();
+        ResetCountdownTimestamp();
         _countdownTimer?.Stop();
         SetCountdownStartVisual(false);
         SetCountdownProgress(animate: true);
@@ -1829,9 +1859,16 @@ public partial class MainWindow
 
         if (_isCountdownRunning)
         {
+            if (AdvanceCountdown())
+            {
+                OnCountdownCompleted();
+                return;
+            }
+
             _viewModel.Timer.Pause();
             _countdownTimer?.Stop();
             SetCountdownStartVisual(false);
+            UpdateTimerDisplay();
         }
 
         StartTimerEditing();

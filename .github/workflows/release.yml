@@ -139,6 +139,8 @@ jobs:
               --notes-file release-notes.md
           fi
         env:
+          # This job downloads artifacts without checkout, so gh cannot infer a repo from .git.
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
