@@ -9,13 +9,33 @@ public sealed class UpdateSecurityPolicy
 {
     public const long MaximumInstallerBytes = 500L * 1024 * 1024;
 
-    public IReadOnlySet<string> AllowedPublisherNames { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    public IReadOnlySet<string> AllowedCertificateThumbprints { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlySet<string> _allowedPublisherNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private readonly IReadOnlySet<string> _allowedCertificateThumbprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlySet<string> AllowedPublisherNames
+    {
+        get => _allowedPublisherNames;
+        init => _allowedPublisherNames = value?
+            .Select(s => s?.Trim() ?? string.Empty)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public IReadOnlySet<string> AllowedCertificateThumbprints
+    {
+        get => _allowedCertificateThumbprints;
+        init => _allowedCertificateThumbprints = value?
+            .Select(NormalizeThumbprint)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
 
     public static UpdateSecurityPolicy FromEnvironment() => new()
     {
-        AllowedPublisherNames = Parse("VNOTCH_UPDATER_ALLOWED_PUBLISHERS"),
-        AllowedCertificateThumbprints = Parse("VNOTCH_UPDATER_ALLOWED_THUMBPRINTS")
+        AllowedPublisherNames = ParsePublishers("VNOTCH_UPDATER_ALLOWED_PUBLISHERS"),
+        AllowedCertificateThumbprints = ParseThumbprints("VNOTCH_UPDATER_ALLOWED_THUMBPRINTS")
     };
 
     public bool IsTrustedSignature(string installerPath, out string reason)
@@ -42,14 +62,16 @@ public sealed class UpdateSecurityPolicy
             }
             using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(installerPath));
 #pragma warning restore SYSLIB0057
-            var thumbprint = Normalize(certificate.Thumbprint);
+            var thumbprint = NormalizeThumbprint(certificate.Thumbprint);
             if (!AllowedCertificateThumbprints.Contains(thumbprint))
             {
                 reason = "Installer certificate thumbprint is not allowlisted.";
                 return false;
             }
 
-            var publisher = Normalize(certificate.GetNameInfo(X509NameType.SimpleName, false));
+            var publisher = certificate
+                .GetNameInfo(X509NameType.SimpleName, false)?
+                .Trim() ?? string.Empty;
             if (!AllowedPublisherNames.Contains(publisher))
             {
                 reason = "Installer certificate publisher is not allowlisted.";
@@ -73,14 +95,23 @@ public sealed class UpdateSecurityPolicy
         }
     }
 
-    private static IReadOnlySet<string> Parse(string variable) =>
+    private static IReadOnlySet<string> ParsePublishers(string variable) =>
         Environment.GetEnvironmentVariable(variable)?
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(Normalize)
+            .Select(s => s.Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
             .ToHashSet(StringComparer.OrdinalIgnoreCase)
         ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    private static string Normalize(string? value) => (value ?? string.Empty).Replace(" ", string.Empty).ToUpperInvariant();
+    private static IReadOnlySet<string> ParseThumbprints(string variable) =>
+        Environment.GetEnvironmentVariable(variable)?
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeThumbprint)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+        ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    private static string NormalizeThumbprint(string? value) => (value ?? string.Empty).Replace(" ", string.Empty).ToUpperInvariant();
 
     private static bool HasValidAuthenticodeSignature(string filePath)
     {

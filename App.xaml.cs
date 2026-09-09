@@ -239,6 +239,8 @@ public partial class App : Application
     private static void ConfigureServices(IServiceCollection services)
     {
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<IStartupManager, WindowsStartupManager>();
+        services.AddSingleton<ISettingsApplicationService, SettingsApplicationService>();
         services.AddSingleton<IMediaMetadataLookupService, MediaMetadataLookupService>();
         services.AddSingleton<IMediaArtworkService, MediaArtworkService>();
         services.AddSingleton<IColorExtractionService, ColorExtractionService>();

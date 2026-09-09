@@ -47,3 +47,9 @@ public static class StartupManager
         }
     }
 }
+
+public sealed class WindowsStartupManager : IStartupManager
+{
+    public bool IsAutoStartEnabled() => StartupManager.IsAutoStartEnabled();
+    public void SetAutoStart(bool enable) => StartupManager.SetAutoStart(enable);
+}

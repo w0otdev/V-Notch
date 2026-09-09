@@ -66,7 +66,7 @@ public partial class SettingsWindow : Window
 
     private NotchSettings _settings;
     private NotchSettings _originalSettings;
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsApplicationService _settingsAppService;
     private readonly IUpdateService _updateService;
     private UpdateInfo? _availableUpdate;
     private bool _isLoadingSettings = true;
@@ -83,7 +83,7 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow(
         NotchSettings settings,
-        SettingsService settingsService,
+        ISettingsApplicationService settingsAppService,
         BluetoothModule? bluetoothModule = null,
         bool isSpotlightHotkeyRegistered = true)
     {
@@ -93,7 +93,7 @@ public partial class SettingsWindow : Window
         _ = bluetoothModule;
         _settings = settings.Clone();
         _originalSettings = settings.Clone();
-        _settingsService = settingsService;
+        _settingsAppService = settingsAppService ?? throw new ArgumentNullException(nameof(settingsAppService));
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
         _lastAppliedFps = settings.AnimationFps;
         _updateService = new UpdateService();
@@ -101,6 +101,15 @@ public partial class SettingsWindow : Window
         InitializeNavigation();
         LoadSettings();
         CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
+    }
+
+    public SettingsWindow(
+        NotchSettings settings,
+        SettingsService settingsService,
+        BluetoothModule? bluetoothModule = null,
+        bool isSpotlightHotkeyRegistered = true)
+        : this(settings, new SettingsApplicationService(settingsService), bluetoothModule, isSpotlightHotkeyRegistered)
+    {
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -227,7 +236,7 @@ public partial class SettingsWindow : Window
         LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
         SetVisualizerAudioDevicePlaceholder();
 
-        AutoStartCheck.IsChecked = StartupManager.IsAutoStartEnabled();
+        AutoStartCheck.IsChecked = _settingsAppService.IsAutoStartEnabled();
         StayBehindWindowsCheck.IsChecked = _settings.StayBehindWindows;
         HelloGreetingCheck.IsChecked = _settings.EnableHelloGreeting;
         HideOnExclusiveFullscreenCheck.IsChecked = _settings.HideOnExclusiveFullscreen;
@@ -1495,7 +1504,7 @@ public partial class SettingsWindow : Window
 
             _settings.Language = lang;
             Loc.SetLanguage(lang);
-            _settingsService.Save(_settings);
+            _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-LANG");
             _originalSettings = _settings.Clone();
             AnimateLocalizationChange();
             SettingsChanged?.Invoke(this, _settings);
@@ -1700,14 +1709,14 @@ public partial class SettingsWindow : Window
             {
                 visibleTokens.Add(capturedToken);
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
-                _settingsService.Save(_settings);
+                _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVTABS");
                 (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
             };
             check.Unchecked += (s, e) =>
             {
                 visibleTokens.Remove(capturedToken);
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
-                _settingsService.Save(_settings);
+                _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVTABS");
                 (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
             };
             leftStack.Children.Add(check);
@@ -2038,7 +2047,7 @@ public partial class SettingsWindow : Window
             orderTokens.Insert(_settingsNavTargetSlot, movedToken);
 
             _settings.NavTabOrder = string.Join(",", orderTokens);
-            _settingsService.Save(_settings);
+            _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVORDER");
             (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
         }
 
@@ -2743,7 +2752,7 @@ public partial class SettingsWindow : Window
             if (dialog.ShowDialog(this) == true)
             {
                 ApplySettingsFromUi(persist: false);
-                _settingsService.ExportSettingsToFile(dialog.FileName, _settings);
+                _settingsAppService.Export(dialog.FileName, _settings);
 
                 if (BackupStatusText != null)
                 {
@@ -2772,7 +2781,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void ImportSettings_Click(object sender, RoutedEventArgs e)
+    private async void ImportSettings_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -2785,12 +2794,10 @@ public partial class SettingsWindow : Window
 
             if (dialog.ShowDialog(this) == true)
             {
-                var (imported, _) = _settingsService.ImportSettingsFromFile(dialog.FileName, _settings);
+                var (imported, _) = await _settingsAppService.ImportAsync(dialog.FileName, _settings);
 
                 _settings = imported.Clone();
                 _originalSettings = imported.Clone();
-                _settingsService.Save(_settings);
-                StartupManager.SetAutoStart(_settings.AutoStart);
 
                 LoadSettings();
                 SettingsChanged?.Invoke(this, _settings);
@@ -4247,8 +4254,7 @@ public partial class SettingsWindow : Window
             _settings.ClockPageStyle = clockCode;
         if (persist)
         {
-            _settingsService.Save(_settings);
-            StartupManager.SetAutoStart(_settings.AutoStart);
+            _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-APPLY");
             _originalSettings = _settings.Clone();
         }
 
