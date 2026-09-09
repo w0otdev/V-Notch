@@ -1,3 +1,4 @@
+using System.Text.Json;
 using VNotch.Models;
 using VNotch.Services;
 using Xunit;
@@ -153,5 +154,21 @@ public class SettingsMigratorTests
         var (settings, _) = SettingsMigrator.Migrate(rawJson);
 
         Assert.False(settings.EnableSpotlight);
+    }
+
+    [Theory]
+    [InlineData(int.MinValue)]
+    [InlineData(-1)]
+    [InlineData(SettingsMigrator.CurrentVersion + 1)]
+    public void Migrate_InvalidOrFutureVersion_ThrowsJsonException(int invalidVersion)
+    {
+        string rawJson = $$"""
+            {
+              "SettingsVersion": {{invalidVersion}}
+            }
+            """;
+
+        var ex = Assert.Throws<JsonException>(() => SettingsMigrator.Migrate(rawJson));
+        Assert.Contains($"Unsupported settings version: {invalidVersion}", ex.Message);
     }
 }

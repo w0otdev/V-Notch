@@ -161,6 +161,10 @@ public static class SettingsMigrator
             startVersion = parsed;
         }
 
+        if (startVersion < 0 || startVersion > CurrentVersion)
+            throw new JsonException(
+                $"Unsupported settings version: {startVersion}");
+
         int currentVersion = startVersion;
         bool migrated = false;
 

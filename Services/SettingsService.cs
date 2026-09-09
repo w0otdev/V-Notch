@@ -204,7 +204,7 @@ public class SettingsService : ISettingsService
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategorySave, ex.ToString());
-            DispatchSaveError(Loc.Get("error.settingsSave", ex.Message), Loc.Get("error.title"));
+            throw;
         }
         finally
         {
@@ -231,19 +231,6 @@ public class SettingsService : ISettingsService
         else
         {
             _apiKeySaveWarning(message);
-        }
-    }
-
-    private static void DispatchSaveError(string message, string title)
-    {
-        if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
-        {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
-                System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error));
-        }
-        else
-        {
-            System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 
