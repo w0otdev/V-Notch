@@ -958,6 +958,12 @@ public partial class MainWindow : Window
             NotchContainerTranslate.Y = 0;
         }
 
+        // Preserve the displayed values before removing clocks, including an
+        // interrupted return. Never expose the restored base opacity for a frame.
+        double fromNotchOpacity = NotchWrapper.Opacity;
+        double fromShadowOpacity = NotchShadowWrapper.Opacity;
+        NotchWrapper.Opacity = fromNotchOpacity;
+        NotchShadowWrapper.Opacity = fromShadowOpacity;
         // Ownership remains with Spotlight until its HWND is actually hidden.
         NotchWrapper.BeginAnimation(OpacityProperty, null);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
@@ -968,19 +974,23 @@ public partial class MainWindow : Window
 
         NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
         NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
-        NotchWrapper.IsHitTestVisible = _spotlightRestoreNotchHitTesting;
+        NotchWrapper.IsHitTestVisible = false;
         NotchScale.ScaleX = NotchScale.ScaleY = 1;
         NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
         _spotlightReturnHandoffActive = true;
 
         // Spotlight does not own the active notch view. In particular, do not
 
-        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
-        var notchFade = new DoubleAnimation(0, _spotlightRestoreNotchOpacity, duration)
+        // Restore the live notch early while Spotlight still covers the seam.
+        // Its paired ease-in fade removes the covering shell only after this
+        // ease-out has brought the material and content almost to full opacity.
+        _liquidGlass?.ForceRefresh();
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var notchFade = new DoubleAnimation(fromNotchOpacity, _spotlightRestoreNotchOpacity, duration)
         {
             EasingFunction = ease
         };
-        var shadowFade = new DoubleAnimation(0, _spotlightRestoreShadowOpacity, duration)
+        var shadowFade = new DoubleAnimation(fromShadowOpacity, _spotlightRestoreShadowOpacity, duration)
         {
             EasingFunction = ease
         };

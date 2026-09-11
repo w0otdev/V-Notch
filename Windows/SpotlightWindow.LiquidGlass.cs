@@ -20,7 +20,6 @@ public partial class SpotlightWindow
     private bool _gpuRefractionFailed;
     private NotchSettings _settings = new();
     private double _lastAppliedDpiScale = 1.0;
-    private double _lastActualHeight = -1;
     private LiquidGlassController.GpuGeometry? _lastGpuGeometry;
     private LiquidGlassController.GpuGeometry? _lastAppliedGpuOptics;
     private double _lastAppliedTouchLight = -1;
@@ -65,12 +64,18 @@ public partial class SpotlightWindow
             }
 
             Shell.Background = Brushes.Transparent;
+            Shell.BorderThickness = new Thickness(0);
             GlassBackdropHost.Background = _glassBaseFill;
             GlassMaterialClipHost.Visibility = Visibility.Visible;
             GlassBackdropHost.Visibility = Visibility.Visible;
             GlassTintOverlay.Visibility = Visibility.Visible;
             SetOpticalRimVisibility(Visibility.Visible);
-            if (GlassDarkOverlay != null) GlassDarkOverlay.Visibility = Visibility.Collapsed;
+            if (GlassDarkOverlay != null)
+            {
+                GlassDarkOverlay.Visibility = Visibility.Visible;
+                if (IsSpotlightOpen && !_entranceActive && !_isClosing && !_preparingGlassEntrance)
+                    AnimateGlassReadability(true);
+            }
             if (GlassGrainOverlay != null) GlassGrainOverlay.Background = GlassGrainBrush.Instance;
 
             CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
@@ -709,84 +714,26 @@ public partial class SpotlightWindow
         var region = GetGlassCaptureRegion();
         _liquidGlass.SetLiveRegion(region);
 
-        double curHeight = Shell?.ActualHeight ?? 0;
-        if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
-        {
-            _lastActualHeight = curHeight;
-            UpdateDynamicGlassParams();
-            UpdateGlassClip();
-        }
-
         UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
-        UpdateDynamicGlassTint();
         UpdateShaderGeometryPerFrame();
     }
 
-    private void UpdateDynamicGlassParams()
+    private void AnimateGlassReadability(bool opened, bool animate = true)
     {
-        if (GlassBackdropHost == null || !IsLiquidGlassEnabled) return;
-        var cfg = _settings.LiquidGlass ?? new LiquidGlassConfig();
+        if (GlassDarkOverlay == null) return;
 
-        double height = Shell?.ActualHeight ?? 0;
-        if (height <= 0) return;
+        double from = GlassDarkOverlay.Opacity;
+        double target = opened && IsLiquidGlassEnabled ? 0.64 : 0;
+        GlassDarkOverlay.BeginAnimation(OpacityProperty, null);
+        GlassDarkOverlay.Opacity = target;
+        if (!animate || AnimationConfig.ReduceMotion || Math.Abs(from - target) < 0.001) return;
 
-        double collapsedH = 64.0;
-        double factor = AnimationConfig.ReduceMotion ? 0.0 : Math.Clamp((height - collapsedH) / 200.0, 0.0, 1.0);
-
-        double activeZRadius = cfg.ZRadius * (1.0 + factor * 0.12);
-        double activeRefraction = cfg.Refraction * (1.0 + factor * 0.06);
-
-        double activeShadowOpacity = cfg.ShadowOpacity + (1.0 - cfg.ShadowOpacity) * factor * 0.35;
-        double activeShadowSpread = cfg.ShadowSpread * (1.0 + factor * 1.4);
-
-        if (Shell?.Effect is DropShadowEffect dse)
-        {
-            dse.Opacity = Math.Clamp(activeShadowOpacity, 0, 1);
-            dse.BlurRadius = Math.Clamp(activeShadowSpread, 0, 150);
-        }
-
-        double activeSpecular = cfg.Specular + (1.0 - cfg.Specular) * factor * 0.15;
-        double activeFresnel = cfg.Fresnel + (1.0 - cfg.Fresnel) * factor * 0.2;
-        double activeEdge = Math.Clamp(cfg.EdgeHighlight * (1.0 + factor * 0.5), 0, 1);
-        ApplyOpticalRimLevels(activeEdge, activeSpecular, activeFresnel, cfg.ChromaticAberration);
-
-        double activeDistortion = AnimationConfig.ReduceMotion ? 0.0 : cfg.Distortion;
-
-        _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
-        {
-            PowerFactor = cfg.PowerFactor,
-            RefractionA = cfg.RefractionA,
-            RefractionB = cfg.RefractionB,
-            RefractionC = cfg.RefractionC,
-            RefractionD = cfg.RefractionD,
-            FPower = cfg.FPower,
-            Noise = cfg.Noise,
-            GlowWeight = cfg.GlowWeight,
-            GlowBias = cfg.GlowBias,
-            GlowEdge0 = cfg.GlowEdge0,
-            GlowEdge1 = cfg.GlowEdge1,
-            Refraction = activeRefraction,
-            EdgeBend = cfg.EdgeBend,
-            ChromaticAberration = cfg.ChromaticAberration,
-            Distortion = activeDistortion,
-            ZRadius = activeZRadius,
-            Saturation = cfg.Saturation,
-            Brightness = cfg.Brightness,
-            BevelMode = cfg.BevelMode,
-            TopCornerRadius = Shell?.CornerRadius.TopLeft ?? 14.0,
-            BottomCornerRadius = Shell?.CornerRadius.BottomLeft ?? 14.0
-        });
-    }
-
-    private void UpdateDynamicGlassTint()
-    {
-        if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
-
-        if (GlassDarkOverlay.Opacity > 0 && GlassDarkOverlay.HasAnimatedProperties)
-        {
-            GlassDarkOverlay.BeginAnimation(OpacityProperty, null);
-            GlassDarkOverlay.Opacity = 0;
-        }
+        GlassDarkOverlay.BeginAnimation(OpacityProperty, CreateAnimation(
+            from, target, TimeSpan.FromMilliseconds(opened ? 360 : 280),
+            new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut
+            }));
     }
 
     internal void UpdateGlassClip()
@@ -808,6 +755,19 @@ public partial class SpotlightWindow
     private void GlassMaterialClipHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateGlassClip();
+        UpdateShaderGeometryPerFrame();
+    }
+
+    private void GlassMaterialClipHost_LayoutUpdated(object? sender, EventArgs e)
+    {
+        if (_liquidGlass == null || !IsLiquidGlassEnabled || !IsSpotlightOpen) return;
+
+        // Rendering can run before the layout invalidated by this tick's width,
+        // height and HWND position animations. Publish the arranged geometry as
+        // well, so the shader's lens and screen-space crop match the visual that
+        // WPF actually submits, including the final auto-size handoff.
+        _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
+        UpdateShaderGeometryPerFrame();
     }
 
     private void SyncGlassCornerRadius(CornerRadius cr)

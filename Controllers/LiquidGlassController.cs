@@ -155,6 +155,7 @@ public sealed class LiquidGlassController
     private MagnifierCaptureSource? _mag;
     private bool _magReady;
     private int _magFailStreak = 0;
+    private long _nextMagnifierRetryTicks;
 
     private bool _hideFromCapture;
     private volatile bool _exactBitBltCapture;
@@ -392,6 +393,10 @@ public sealed class LiquidGlassController
     // Morphing windows can reveal pixels beyond the previous frame's small
     // bounds before capture catches up. Fill a stable envelope for those hosts.
     public bool CaptureFullSurface { get; set; }
+
+    // Keep the desktop texture stationary while the lens moves inside it.
+    // Recentring every capture makes texture uploads and HWND movement race.
+    private (int X, int Y, int Width, int Height)? _fullSurfaceCaptureBounds;
 
     public int MaxRegionWidth => _maxRegionW;
     public int MaxRegionHeight => _maxRegionH;
@@ -1321,6 +1326,12 @@ public sealed class LiquidGlassController
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
+        if (!_magReady && _mag?.IsReady == true && Environment.TickCount64 >= _nextMagnifierRetryTicks)
+        {
+            _magReady = true;
+            _magFailStreak = 0;
+            _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
+        }
         bool useMag = _magReady && _mag != null;
         var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
         _outScale = dims.OutScale;
@@ -1382,6 +1393,30 @@ public sealed class LiquidGlassController
         int requestedSrcY = region.Y - physMargin;
         int srcX = ClampCaptureOriginToVirtualDesktop(requestedSrcX, physSrcW, horizontal: true);
         int srcY = ClampCaptureOriginToVirtualDesktop(requestedSrcY, physSrcH, horizontal: false);
+        if (gpuMode && CaptureFullSurface)
+        {
+            int samplingPad = Math.Min(requiredMargin, margin);
+            int neededLeft = ClampCaptureOriginToVirtualDesktop(
+                region.X - samplingPad, displayW + samplingPad * 2, horizontal: true);
+            int neededTop = ClampCaptureOriginToVirtualDesktop(
+                region.Y - samplingPad, displayH + samplingPad * 2, horizontal: false);
+            if (_fullSurfaceCaptureBounds is { } previous &&
+                previous.Width == physSrcW && previous.Height == physSrcH &&
+                ClampCaptureOriginToVirtualDesktop(previous.X, physSrcW, horizontal: true) == previous.X &&
+                ClampCaptureOriginToVirtualDesktop(previous.Y, physSrcH, horizontal: false) == previous.Y &&
+                neededLeft >= previous.X && neededTop >= previous.Y &&
+                neededLeft + displayW + samplingPad * 2 <= previous.X + physSrcW &&
+                neededTop + displayH + samplingPad * 2 <= previous.Y + physSrcH)
+            {
+                srcX = previous.X;
+                srcY = previous.Y;
+            }
+            _fullSurfaceCaptureBounds = (srcX, srcY, physSrcW, physSrcH);
+        }
+        else
+        {
+            _fullSurfaceCaptureBounds = null;
+        }
         int captureShiftX = srcX - requestedSrcX;
         int captureShiftY = srcY - requestedSrcY;
 
@@ -1440,8 +1475,13 @@ public sealed class LiquidGlassController
 
     private bool CaptureBackdrop(BackdropCaptureParams cp)
     {
-        if (cp.UseMag && TryMagnifierCapture(cp))
-            return true;
+        // A missed Magnifier frame is not a change of capture backend. BitBlt's
+        // non-excluded fallback samples below the window, so mixing it into a
+        // Magnifier sequence causes a vertical jump with the wrong geometry.
+        // Keep the last presented frame; persistent failures disable Magnifier
+        // and the next render computes geometry for the fallback backend.
+        if (cp.UseMag)
+            return TryMagnifierCapture(cp);
 
         return BitBltCapture(cp);
     }
@@ -1462,6 +1502,7 @@ public sealed class LiquidGlassController
             else if (++_magFailStreak >= 60)
             {
                 _magReady = false;
+                _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
                 RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
             }
         }
@@ -1487,6 +1528,7 @@ public sealed class LiquidGlassController
                 else if (++_magFailStreak >= 60)
                 {
                     _magReady = false;
+                    _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
                     RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
                 }
             }
@@ -1546,10 +1588,27 @@ public sealed class LiquidGlassController
 
         ulong sourceHash = ComputeSourceHash(dims.SrcW, dims.SrcH);
         long nowTicks = Environment.TickCount64;
+        // Full-surface hosts update the lens geometry on the UI thread every
+        // frame. Moving/resizing that lens does not change the desktop texture;
+        // uploading the entire envelope for it needlessly stalls WPF/D3D.
+        // Still upload when the source origin or any material parameter changes.
+        GpuGeometry uploadedGeometry = _lastUploadedGpuGeometry;
+        if (CaptureFullSurface)
+        {
+            uploadedGeometry = uploadedGeometry with
+            {
+                NotchW = geom.NotchW,
+                NotchH = geom.NotchH,
+                OffX = geom.OffX,
+                OffY = geom.OffY,
+                TopCornerR = geom.TopCornerR,
+                BottomCornerR = geom.BottomCornerR
+            };
+        }
         bool unchanged = _hasUploadedGpuFrame &&
             !_forceRefreshNeeded &&
             sourceHash == _lastCaptureHash &&
-            _lastUploadedGpuGeometry.Equals(geom);
+            uploadedGeometry.Equals(geom);
         if (unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
             return false;
 

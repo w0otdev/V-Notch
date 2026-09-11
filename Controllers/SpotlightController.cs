@@ -110,8 +110,10 @@ internal sealed class SpotlightController : ISpotlightController
     {
         if (msg == WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
-            ToggleSpotlight();
             handled = true;
+            // Leave the native message callback before activation/layout work.
+            _source?.Dispatcher.BeginInvoke(
+                System.Windows.Threading.DispatcherPriority.Input, (Action)ToggleSpotlight);
         }
         return IntPtr.Zero;
     }
@@ -210,16 +212,12 @@ internal sealed class SpotlightController : ISpotlightController
 
     internal void ToggleSpotlight()
     {
-        if (_disposed) return;
+        if (_disposed || _settings?.EnableSpotlight != true) return;
         if (_window == null)
         {
             _window = _windowFactory();
             if (_host != null) _window.Owner = _host;
             if (_settings != null) _window.ApplySettings(_settings);
-        }
-        else if (_settings != null)
-        {
-            _window.ApplySettings(_settings);
         }
         _window.ToggleFromHotkey();
     }

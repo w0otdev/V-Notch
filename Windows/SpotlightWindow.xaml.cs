@@ -65,7 +65,7 @@ public partial class SpotlightWindow : Window
     private bool _pendingContentReveal;
     private bool _entranceContentReserved;
     private SolidColorBrush? _shellBorderBrush;
-    private EventHandler? _freshEntranceRenderingHandler;
+    private DispatcherOperation? _freshEntranceOperation;
     private HwndSource? _hwndSource;
     private IntPtr _hwnd = IntPtr.Zero;
     private bool _isParked;
@@ -294,61 +294,27 @@ public partial class SpotlightWindow : Window
         int generation)
     {
         CancelPendingFreshEntrance();
-
-        // Hide() disconnects an AllowsTransparency layered HWND from WPF's
-        int pulsesRemaining = 3;
-        long glassWaitStarted = Environment.TickCount64;
-        EventHandler handler = null!;
-        handler = (_, _) =>
+        // Start on the next dispatcher turn; opening must not wait for a
+        // Magnifier frame or several composition pulses before becoming visible.
+        _freshEntranceOperation = Dispatcher.BeginInvoke(DispatcherPriority.Input, (Action)(() =>
         {
-            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing)
-            {
-                if (ReferenceEquals(_freshEntranceRenderingHandler, handler))
-                {
-                    CompositionTarget.Rendering -= handler;
-                    _freshEntranceRenderingHandler = null;
-                }
-                return;
-            }
+            _freshEntranceOperation = null;
+            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing) return;
 
-            if (IsLiquidGlassEnabled && _liquidGlass != null && !_liquidGlass.HasPresentedFrame)
-            {
-                // An upload is not a presented frame. Keep the live notch visible
-                // until Spotlight has its own initialized texture and geometry.
-                if (Environment.TickCount64 - glassWaitStarted < 1500) return;
+            if (IsLiquidGlassEnabled && _liquidGlass?.HasPresentedFrame != true)
                 Shell.Background = (Brush)FindResource("ShellBrush");
-            }
-            else if (--pulsesRemaining > 1)
-            {
-                return;
-            }
 
-            CompositionTarget.Rendering -= handler;
-            if (ReferenceEquals(_freshEntranceRenderingHandler, handler))
-                _freshEntranceRenderingHandler = null;
-
-            // The first prepared snapshot frame has now been submitted. Flush
-            DwmFlush();
-            // Foreground activation can enter native input-queue work. Finish
-            FocusSearchBox(generation);
             Opacity = 1;
             startEntrance();
-        };
-
-        _freshEntranceRenderingHandler = handler;
-        CompositionTarget.Rendering += handler;
-        // Ensure the newly shown transparent surface has work queued even when
-        InvalidateVisual();
+            FocusSearchBox(generation);
+        }));
     }
 
     private bool CancelPendingFreshEntrance()
     {
-        EventHandler? handler = _freshEntranceRenderingHandler;
-        if (handler == null) return false;
-
-        CompositionTarget.Rendering -= handler;
-        _freshEntranceRenderingHandler = null;
-        return true;
+        DispatcherOperation? operation = _freshEntranceOperation;
+        _freshEntranceOperation = null;
+        return operation?.Abort() == true;
     }
 
     private void FocusSearchBox(int generation)
@@ -1718,6 +1684,7 @@ public partial class SpotlightWindow : Window
     {
         if (AnimationConfig.ReduceMotion)
         {
+            AnimateGlassReadability(true, animate: false);
             ResetNotchMorphSnapshot();
             Left = finalLeft;
             Top = finalTop;
@@ -1833,6 +1800,7 @@ public partial class SpotlightWindow : Window
         {
             if (generation != _animationGeneration || _isClosing || !IsSpotlightOpen) return;
 
+            AnimateGlassReadability(true);
             _liquidGlass?.SetAnimating(true);
             Shell.Visibility = Visibility.Visible;
             if (morphsFromNotch)
@@ -1901,6 +1869,7 @@ public partial class SpotlightWindow : Window
         SearchBox.IsEnabled = true;
         SetResultsDimmed(false, animate: false);
         ApplyLiquidGlassSkin();
+        AnimateGlassReadability(true);
         _liquidGlass?.SetAnimating(true);
 
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
@@ -2000,6 +1969,13 @@ public partial class SpotlightWindow : Window
 
     private void PlayExit(int generation)
     {
+        AnimateGlassReadability(false);
+        if (IsLiquidGlassEnabled && GlassMaterialClipHost.Visibility == Visibility.Visible)
+        {
+            // The temporary opening fallback must never travel back to the
+            // notch as an opaque panel if the first glass frame was delayed.
+            Shell.Background = Brushes.Transparent;
+        }
         _liquidGlass?.SetAnimating(true);
         if (AnimationConfig.ReduceMotion)
         {
@@ -2128,9 +2104,17 @@ public partial class SpotlightWindow : Window
     private void BeginReturnHandoff(int generation)
     {
         if (generation != _animationGeneration || !IsSpotlightOpen) return;
-        var handoffDuration = TimeSpan.FromMilliseconds(180);
+        var handoffDuration = TimeSpan.FromMilliseconds(360);
         MorphSnapshot current = FreezeCurrentMorphState();
         double fromOpacity = current.ShellOpacity;
+
+        if (IsLiquidGlassEnabled && GlassMaterialClipHost.Visibility == Visibility.Visible)
+        {
+            // Readability dimming belongs only to the open Spotlight. Retire
+            // its clock before revealing notch content underneath this shell.
+            AnimateGlassReadability(false, animate: false);
+            Shell.Background = Brushes.Transparent;
+        }
 
         // Keep the morph shell on the exact notch frame while the real notch takes
         Shell.Opacity = fromOpacity;
@@ -2140,8 +2124,11 @@ public partial class SpotlightWindow : Window
 
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
+        // The search content has already faded out. Keep its base transparent
+        // while retiring clocks so it cannot flash back during the handoff.
+        ShellContent.Opacity = 0;
         var handoffFade = CreateAnimation(fromOpacity, 0, handoffDuration,
-            new CubicEase { EasingMode = EasingMode.EaseInOut }, synchronizedMorph: true);
+            new CubicEase { EasingMode = EasingMode.EaseIn }, synchronizedMorph: true);
         handoffFade.Completed += (_, _) =>
         {
             if (generation == _animationGeneration) CompleteHide();
@@ -2162,7 +2149,9 @@ public partial class SpotlightWindow : Window
         Shell.Height = double.NaN;
         ShellCornerRadius = ExpandedCornerRadius;
         ShellTopCornerRadius = ExpandedCornerRadius;
-        Shell.BorderThickness = new Thickness(1);
+        // Glass already draws its own optical rims. Adding a layout border at
+        // handoff shifts the backdrop by one DIP and changes the lens size.
+        Shell.BorderThickness = new Thickness(IsLiquidGlassEnabled ? 0 : 1);
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 1;
         AnimateMorphEars(0, 0, TimeSpan.Zero, TimeSpan.Zero);
         ShellContent.Opacity = 1;
@@ -2221,6 +2210,7 @@ public partial class SpotlightWindow : Window
 
     private void ResetMorphVisuals()
     {
+        AnimateGlassReadability(false, animate: false);
         CancelPendingFreshEntrance();
         _entranceActive = false;
         _pendingContentReveal = false;
@@ -2447,7 +2437,7 @@ public partial class SpotlightWindow : Window
             SpotlightShadowBlurRadius,
             SpotlightShadowDepth,
             animate ? 0 : SpotlightShadowOpacity);
-        if (!animate) return;
+        if (!animate || IsLiquidGlassEnabled) return;
 
         var shadow = (DropShadowEffect)Shell.Effect;
         var fade = CreateAnimation(0, SpotlightShadowOpacity, TimeSpan.FromMilliseconds(180),
@@ -2457,6 +2447,13 @@ public partial class SpotlightWindow : Window
 
     private void SetMorphShadow(double blurRadius, double shadowDepth, double opacity)
     {
+        if (IsLiquidGlassEnabled)
+        {
+            var cfg = _settings.LiquidGlass ?? new LiquidGlassConfig();
+            blurRadius = Math.Clamp(cfg.ShadowSpread, 0, 60);
+            shadowDepth = SpotlightShadowDepth;
+            opacity = Math.Clamp(cfg.ShadowOpacity, 0, 1);
+        }
         var shadow = Shell.Effect as DropShadowEffect;
         if (shadow == null)
         {
@@ -2483,6 +2480,11 @@ public partial class SpotlightWindow : Window
         double targetOpacity,
         TimeSpan duration)
     {
+        if (IsLiquidGlassEnabled)
+        {
+            SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);
+            return;
+        }
         if (Shell.Effect is not DropShadowEffect shadow)
         {
             SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);

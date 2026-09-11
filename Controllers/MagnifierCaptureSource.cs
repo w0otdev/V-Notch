@@ -206,6 +206,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     private int _unfilteredX, _unfilteredY;
     private bool _hasUnfilteredFrame;
     private ulong _frameCounter;
+    private long _completedFrameTicks;
     private int _filterVersion;
     private int _appliedFilterVersion;
     private int _completedFilterVersion;
@@ -356,18 +357,15 @@ public sealed class MagnifierCaptureSource : IDisposable
         lock (_frameLock)
         {
             if (!_hasCompletedFrame ||
-                _completedFilterVersion != Volatile.Read(ref _filterVersion)) return false;
+                _completedFilterVersion != Volatile.Read(ref _filterVersion) ||
+                Environment.TickCount64 - _completedFrameTicks > 500) return false;
 
             if (IsEffectivelyBlackCrop(_completedBuffer, _completedWidth, _completedHeight,
                     _completedX, _completedY, x, y, w, h))
             {
-                if (_hasUnfilteredFrame &&
-                    !IsEffectivelyBlackCrop(_unfilteredBuffer, _unfilteredWidth, _unfilteredHeight,
-                        _unfilteredX, _unfilteredY, x, y, w, h))
-                {
-                    return CopyDesktopCrop(_unfilteredBuffer, _unfilteredWidth, _unfilteredHeight,
-                        _unfilteredX, _unfilteredY, x, y, w, h, destBits);
-                }
+                // The pre-filter snapshot is only an initialization artifact.
+                // Returning it here reports success forever with stale pixels
+                // and prevents the controller from recovering its live backend.
                 return false;
             }
 
@@ -438,8 +436,6 @@ public sealed class MagnifierCaptureSource : IDisposable
             IsReady = true;
             _initDone.Set();
 
-            Win32Interop.RECT lastRect = default;
-            bool hasConfiguredRect = false;
             bool hostShown = true;
 
             // High-frequency pump loop: update source rect and query DWM for the freshest frame
@@ -486,15 +482,13 @@ public sealed class MagnifierCaptureSource : IDisposable
                             Bottom = req.Y + req.Height
                         };
 
-                        // Avoid resetting DWM magnifier state if the rect is unchanged
-                        if (!hasConfiguredRect ||
-                            rect.Left != lastRect.Left || rect.Top != lastRect.Top ||
-                            rect.Right != lastRect.Right || rect.Bottom != lastRect.Bottom)
-                        {
-                            if (!MagSetWindowSource(_magWnd, rect)) continue;
-                            lastRect = rect;
-                            hasConfiguredRect = true;
-                        }
+                        // Refresh the source on every capture request, including
+                        // when the lens and desktop bounds are stationary.
+                        // Invalidating the control alone can repaint its cached
+                        // magnified image without acquiring a new desktop frame.
+                        // Keep the same physical rectangle so refreshes do not
+                        // introduce any movement in the shared capture texture.
+                        if (!MagSetWindowSource(_magWnd, rect)) continue;
 
                         InvalidateRect(_magWnd, IntPtr.Zero, false);
                         UpdateWindow(_magWnd);
@@ -611,6 +605,7 @@ public sealed class MagnifierCaptureSource : IDisposable
                 _completedY = _activeRequest.Y;
                 _completedFilterVersion = _appliedFilterVersion;
                 _hasCompletedFrame = true;
+                _completedFrameTicks = Environment.TickCount64;
                 _frameCounter++;
 
                 if (_appliedFilterVersion == 0)

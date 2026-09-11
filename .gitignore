@@ -45,6 +45,9 @@ build-msix.ps1
 youtube-api.key
 /.vs
 test-setup.ps1
+youtube-api.key
+/.vs
+test-setup.ps1
 /release-debug
 *_wpftmp.csproj
 remove_comments.py
@@ -52,7 +55,6 @@ remove_comments.ps1
 *.cmd
 /Tests/artifacts
 /coco128-tmp
-/tools
 
 out.xml
 /attached_assets

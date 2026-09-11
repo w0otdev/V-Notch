@@ -246,20 +246,29 @@
             <!-- Final rounded clip for the complete material stack. It is
                  intentionally outside every blurred child so post-effects
                  cannot spread blur into the transparent canvas corners. -->
+            <!-- The material must not inherit the content's minimum size during
+                 morphs. All rims and the lens share the shell's actual bounds;
+                 the oversized desktop texture contributes no desired size. -->
+            <Canvas IsHitTestVisible="False">
             <Grid x:Name="GlassMaterialClipHost"
+                  Width="{Binding ActualWidth, ElementName=Shell}"
+                  Height="{Binding ActualHeight, ElementName=Shell}"
                   IsHitTestVisible="False"
+                  LayoutUpdated="GlassMaterialClipHost_LayoutUpdated"
                   SizeChanged="GlassMaterialClipHost_SizeChanged">
                 <Border x:Name="GlassBackdropHost"
                         IsHitTestVisible="False"
                         ClipToBounds="True"
                         Visibility="Collapsed"
                         CornerRadius="14">
+                    <Canvas>
                     <Image x:Name="GlassBackdropImage"
                            HorizontalAlignment="Left"
                            VerticalAlignment="Top"
                            Stretch="Fill"
                            Margin="0"
                            RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Canvas>
                 </Border>
 
                 <Border x:Name="GlassGrainOverlay"
@@ -280,6 +289,13 @@
                         </LinearGradientBrush>
                     </Border.Background>
                 </Border>
+
+                <Border x:Name="GlassDarkOverlay"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"
+                        Opacity="0"
+                        CornerRadius="14"
+                        Background="Black"/>
 
                 <!-- Optical rim stack: depth, spectral split, Fresnel,
                      broken edge reflection and a focused specular glint. -->
@@ -368,13 +384,6 @@
                         CornerRadius="13"
                         BorderBrush="Transparent"/>
 
-                <Border x:Name="GlassDarkOverlay"
-                        IsHitTestVisible="False"
-                        Visibility="Collapsed"
-                        Opacity="0"
-                        CornerRadius="14"
-                        Background="#90000000"/>
-
                 <Border x:Name="GlassRimBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
@@ -414,6 +423,8 @@
                     </Border.BorderBrush>
                 </Border>
             </Grid>
+
+            </Canvas>
 
             <!-- ClipToBounds keeps rows inside the shell while its explicit
                  morph height is smaller than the content's natural height. -->

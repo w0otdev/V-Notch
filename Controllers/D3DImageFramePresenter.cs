@@ -100,6 +100,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             present);
 
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;
+        CompositionTarget.Rendering += OnRendering;
     }
 
     public bool UploadFrame(IntPtr source, int width, int height, int sourceStride, object? tag = null)
@@ -235,10 +236,9 @@ internal sealed class D3DImageFramePresenter : IDisposable
     {
         try
         {
-            // Send is intentionally used here: the render-priority queue can
-            // wait behind layout work and present an older desktop frame. Only
-            // one callback is ever queued, so this does not build a backlog.
-            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)PresentPendingFrame);
+            // Capture must not preempt the animation/layout work that positions
+            // its lens. Consume the newest pending frame at render priority.
+            _dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)PresentPendingFrame);
         }
         catch (Exception ex)
         {
@@ -251,12 +251,11 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_disposed || _failed)
             return;
 
-        _presentQueued = false;
-
         try
         {
             bool presented = false;
-            bool acquiredSync = Monitor.TryEnter(_surfaceSync, 20);
+            // Never stall the UI while the worker copies a desktop texture.
+            bool acquiredSync = Monitor.TryEnter(_surfaceSync);
             if (!acquiredSync)
             {
                 ScheduleRetry();
@@ -265,6 +264,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
             try
             {
+                _presentQueued = false;
                 if (!_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
                     return;
 
@@ -276,14 +276,17 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 if (_renderSurface == null || _uploadSurface == null)
                     return;
 
-                if (!_image.TryLock(new Duration(TimeSpan.FromMilliseconds(20))))
-                {
-                    ScheduleRetry();
-                    return;
-                }
-
+                // WPF D3DImage.LockImpl increments its nesting count even when
+                // TryLock returns false. Every completed call needs Unlock;
+                // otherwise the first timeout permanently prevents presenting.
+                bool imageWritable = _image.TryLock(new Duration(TimeSpan.FromMilliseconds(1)));
                 try
                 {
+                    if (!imageWritable)
+                    {
+                        ScheduleRetry();
+                        return;
+                    }
                     var frameRect = new Vortice.Direct3D9.Rect(
                         0, 0, frameWidth, frameHeight);
                     _device.UpdateSurface(
@@ -338,7 +341,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
         _ = System.Threading.Tasks.Task.Delay(16).ContinueWith(_ =>
         {
             if (_disposed || _failed) return;
-            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
+            _dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
             {
                 Interlocked.Exchange(ref _retryScheduled, 0);
                 if (_pendingFrame && !_disposed && !_failed)
@@ -347,6 +350,16 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 }
             }));
         }, System.Threading.Tasks.TaskScheduler.Default);
+    }
+
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        // Also consume at WPF's composition boundary. A queued/retried dispatcher
+        // callback alone can repeatedly run while WPF still owns the buffer,
+        // leaving a healthy capture worker displaying its last successful frame.
+        // This path does not depend on the scheduling gate remaining in sync.
+        if (!_disposed && !_failed && Volatile.Read(ref _pendingFrame))
+            PresentPendingFrame();
     }
 
     private void OnFrontBufferAvailableChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -380,11 +393,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_attachedSurface == null || !_image.IsFrontBufferAvailable)
             return;
 
-        if (!_image.TryLock(new Duration(TimeSpan.FromMilliseconds(5))))
-            return;
-
+        bool imageWritable = _image.TryLock(new Duration(TimeSpan.FromMilliseconds(5)));
         try
         {
+            if (!imageWritable) return;
             _image.SetBackBuffer(
                 D3DResourceType.IDirect3DSurface9,
                 _attachedSurface.NativePointer,
@@ -484,6 +496,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             return;
 
         _disposed = true;
+        CompositionTarget.Rendering -= OnRendering;
         _image.IsFrontBufferAvailableChanged -= OnFrontBufferAvailableChanged;
 
         lock (_surfaceSync)
