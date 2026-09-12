@@ -1274,10 +1274,12 @@ public partial class SpotlightWindow : Window
                 status = "noResults";
             }
 
+            bool isWarning = status == "unavailable";
+            StatusWarningIcon.Visibility = isWarning ? Visibility.Visible : Visibility.Collapsed;
+            StatusGlyph.Visibility = isWarning ? Visibility.Collapsed : Visibility.Visible;
             StatusGlyph.Text = status switch
             {
                 "searching" => "\uE895",
-                "unavailable" => "\uE7BA",
                 _ => "\uE721"
             };
             StatusTitle.Text = Loc.Get($"spotlight.{status}");
@@ -1667,7 +1669,7 @@ public partial class SpotlightWindow : Window
         {
             Rect workArea = SystemParameters.WorkArea;
             return (workArea.Left + (workArea.Width - Width) / 2.0,
-                workArea.Top + Math.Max(72, workArea.Height * 0.18));
+                workArea.Top + Math.Max(72, workArea.Height * 0.18) - Shell.Margin.Top);
         }
 
         double scale = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) == 0
@@ -1677,7 +1679,7 @@ public partial class SpotlightWindow : Window
         int left = info.rcWork.Left + (info.rcWork.Right - info.rcWork.Left - width) / 2;
         int top = info.rcWork.Top + Math.Max((int)Math.Round(72 * scale),
             (int)Math.Round((info.rcWork.Bottom - info.rcWork.Top) * 0.18));
-        return (left / scale, top / scale);
+        return (left / scale, top / scale - Shell.Margin.Top);
     }
 
     private Action PrepareEntrance(double finalLeft, double finalTop, int generation)
@@ -1721,7 +1723,7 @@ public partial class SpotlightWindow : Window
             startTopRadius = Math.Max(0, notch.TopCornerRadius);
             startBottomRadius = Math.Max(0, notch.BottomCornerRadius);
             startLeft = notch.Left + notch.Width / 2.0 - ActualWidth / 2.0;
-            startTop = notch.Top;
+            startTop = notch.Top - Shell.Margin.Top;
         }
         bool hasNotchSnapshot = morphsFromNotch
             && !IsLiquidGlassEnabled
@@ -1954,10 +1956,13 @@ public partial class SpotlightWindow : Window
         // ActualSize can still describe the final notch-sized frame when a
         double width = ActualWidth;
         if (!double.IsFinite(width) || width <= 0) width = Width;
-        if (!double.IsFinite(width) || width <= 0) width = 720;
+        if (!double.IsFinite(width) || width <= 0) width = 768;
 
         Shell.Measure(new Size(width, double.PositiveInfinity));
-        double height = Shell.DesiredSize.Height;
+        // The HWND includes room for the horizontal shake; the visible shell
+        // keeps its original width in both automatic layout and morph targets.
+        width = Math.Max(1, width - Shell.Margin.Left - Shell.Margin.Right);
+        double height = Shell.DesiredSize.Height - Shell.Margin.Top - Shell.Margin.Bottom;
         if (!double.IsFinite(height) || height <= 0)
             height = Math.Max(1, Shell.ActualHeight);
 
@@ -2017,7 +2022,7 @@ public partial class SpotlightWindow : Window
         double targetBottomRadius = Math.Max(0, notch.BottomCornerRadius);
         double targetTopRadius = Math.Max(0, notch.TopCornerRadius);
         double targetLeft = notch.Left + notch.Width / 2.0 - ActualWidth / 2.0;
-        double targetTop = notch.Top;
+        double targetTop = notch.Top - Shell.Margin.Top;
 
         // Preserve the live presentation as the replacement clock's base. The
         Left = current.Left;
@@ -2085,13 +2090,8 @@ public partial class SpotlightWindow : Window
         Shell.BeginAnimation(OpacityProperty, shellNormalize);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-        // The blur ramp softens the collapse. Because we froze the layout width
-        if (!hadVisibleContent)
-        {
-            var blurIn = CreateAnimation(current.ContentBlurRadius, 12,
-                TimeSpan.FromMilliseconds(210), contentEase);
-            contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurIn);
-        }
+        // Exit content fades away without an additional blur pulse. The single
+        // blur-to-clear reveal belongs to the live notch at the handoff.
         // Shed the panel outline early so the shell arrives looking like the
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
 
@@ -2104,9 +2104,8 @@ public partial class SpotlightWindow : Window
     private void BeginReturnHandoff(int generation)
     {
         if (generation != _animationGeneration || !IsSpotlightOpen) return;
-        var handoffDuration = TimeSpan.FromMilliseconds(360);
-        MorphSnapshot current = FreezeCurrentMorphState();
-        double fromOpacity = current.ShellOpacity;
+        var handoffDuration = TimeSpan.FromMilliseconds(500);
+        FreezeCurrentMorphState();
 
         if (IsLiquidGlassEnabled && GlassMaterialClipHost.Visibility == Visibility.Visible)
         {
@@ -2116,8 +2115,8 @@ public partial class SpotlightWindow : Window
             Shell.Background = Brushes.Transparent;
         }
 
-        // Keep the morph shell on the exact notch frame while the real notch takes
-        Shell.Opacity = fromOpacity;
+        // Retire the morph shell in the same dispatcher turn that restores the notch.
+        Shell.Opacity = 0;
         // ClearMorphAnimations restored the border's base opacity; the shell
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 0;
         GetMorphHost()?.BeginSpotlightReturnHandoff(handoffDuration);
@@ -2127,7 +2126,9 @@ public partial class SpotlightWindow : Window
         // The search content has already faded out. Keep its base transparent
         // while retiring clocks so it cannot flash back during the handoff.
         ShellContent.Opacity = 0;
-        var handoffFade = CreateAnimation(fromOpacity, 0, handoffDuration,
+        // Keep the session guard until the content reveal finishes, with the
+        // Spotlight material already invisible instead of crossfading two lenses.
+        var handoffFade = CreateAnimation(0, 0, handoffDuration,
             new CubicEase { EasingMode = EasingMode.EaseIn }, synchronizedMorph: true);
         handoffFade.Completed += (_, _) =>
         {
@@ -2433,45 +2434,13 @@ public partial class SpotlightWindow : Window
 
     private void RestoreShadow(bool animate)
     {
-        SetMorphShadow(
-            SpotlightShadowBlurRadius,
-            SpotlightShadowDepth,
-            animate ? 0 : SpotlightShadowOpacity);
-        if (!animate || IsLiquidGlassEnabled) return;
-
-        var shadow = (DropShadowEffect)Shell.Effect;
-        var fade = CreateAnimation(0, SpotlightShadowOpacity, TimeSpan.FromMilliseconds(180),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut });
-        shadow.BeginAnimation(DropShadowEffect.OpacityProperty, fade);
+        Shell.Effect = null;
     }
 
     private void SetMorphShadow(double blurRadius, double shadowDepth, double opacity)
     {
-        if (IsLiquidGlassEnabled)
-        {
-            var cfg = _settings.LiquidGlass ?? new LiquidGlassConfig();
-            blurRadius = Math.Clamp(cfg.ShadowSpread, 0, 60);
-            shadowDepth = SpotlightShadowDepth;
-            opacity = Math.Clamp(cfg.ShadowOpacity, 0, 1);
-        }
-        var shadow = Shell.Effect as DropShadowEffect;
-        if (shadow == null)
-        {
-            shadow = new DropShadowEffect
-            {
-                Color = Color.FromRgb(2, 4, 8),
-                Direction = 270,
-                RenderingBias = RenderingBias.Performance
-            };
-            Shell.Effect = shadow;
-        }
-
-        shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
-        shadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
-        shadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
-        shadow.BlurRadius = blurRadius;
-        shadow.ShadowDepth = shadowDepth;
-        shadow.Opacity = opacity;
+        // No shell shadow, including when a morph snapshot is restored.
+        Shell.Effect = null;
     }
 
     private void AnimateMorphShadow(
@@ -2480,32 +2449,7 @@ public partial class SpotlightWindow : Window
         double targetOpacity,
         TimeSpan duration)
     {
-        if (IsLiquidGlassEnabled)
-        {
-            SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);
-            return;
-        }
-        if (Shell.Effect is not DropShadowEffect shadow)
-        {
-            SetMorphShadow(targetBlurRadius, targetShadowDepth, targetOpacity);
-            return;
-        }
-
-        double startBlurRadius = shadow.BlurRadius;
-        double startShadowDepth = shadow.ShadowDepth;
-        double startOpacity = shadow.Opacity;
-        SetMorphShadow(startBlurRadius, startShadowDepth, startOpacity);
-
-        var ease = CreateMorphEase();
-        shadow.BeginAnimation(
-            DropShadowEffect.BlurRadiusProperty,
-            CreateAnimation(startBlurRadius, targetBlurRadius, duration, ease, synchronizedMorph: true));
-        shadow.BeginAnimation(
-            DropShadowEffect.ShadowDepthProperty,
-            CreateAnimation(startShadowDepth, targetShadowDepth, duration, ease, synchronizedMorph: true));
-        shadow.BeginAnimation(
-            DropShadowEffect.OpacityProperty,
-            CreateAnimation(startOpacity, targetOpacity, duration, ease, synchronizedMorph: true));
+        Shell.Effect = null;
     }
 
     private DoubleAnimation CreateAnimation(

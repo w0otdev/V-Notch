@@ -874,6 +874,10 @@ public sealed class LiquidGlassController
     {
         lock (_liveRegionSync)
         {
+            // Rendering and LayoutUpdated may publish the same region several
+            // times per frame. Waking for those duplicates interrupts capture
+            // pacing even though no geometry needs to be refreshed.
+            if (_hasLiveRegion && _liveRegion == region) return;
             _liveRegion = region;
             _hasLiveRegion = true;
         }
@@ -1326,13 +1330,17 @@ public sealed class LiquidGlassController
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
-        if (!_magReady && _mag?.IsReady == true && Environment.TickCount64 >= _nextMagnifierRetryTicks)
+        // Once display affinity excludes this window, BitBlt captures the real
+        // backdrop at the same coordinates without waiting for Magnifier. Do not
+        // periodically switch back to a failing Magnifier: each retry used to
+        // hold the last frame for 60 failed captures before returning to BitBlt.
+        if (!_exactBitBltCapture && !_magReady && _mag?.IsReady == true && Environment.TickCount64 >= _nextMagnifierRetryTicks)
         {
             _magReady = true;
             _magFailStreak = 0;
             _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
         }
-        bool useMag = _magReady && _mag != null;
+        bool useMag = !_exactBitBltCapture && _magReady && _mag != null;
         var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
         _outScale = dims.OutScale;
 

@@ -67,6 +67,7 @@ public partial class MainWindow : Window
     private bool _spotlightMorphSessionActive;
     private bool _spotlightMorphOwnsNotchVisibility;
     private bool _spotlightReturnHandoffActive;
+    private BlurEffect? _spotlightReturnContentBlur;
     private double _spotlightRestoreNotchOpacity = 1;
     private double _spotlightRestoreShadowOpacity = 1;
     private bool _spotlightRestoreNotchHitTesting = true;
@@ -958,12 +959,11 @@ public partial class MainWindow : Window
             NotchContainerTranslate.Y = 0;
         }
 
-        // Preserve the displayed values before removing clocks, including an
-        // interrupted return. Never expose the restored base opacity for a frame.
-        double fromNotchOpacity = NotchWrapper.Opacity;
-        double fromShadowOpacity = NotchShadowWrapper.Opacity;
-        NotchWrapper.Opacity = fromNotchOpacity;
-        NotchShadowWrapper.Opacity = fromShadowOpacity;
+        CompleteSpotlightReturnScaleHandoff();
+        // Restore material once. Only the dedicated content host animates, so
+        // glass, tint and shadow cannot pulse as two window fades overlap.
+        NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
+        NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
         // Ownership remains with Spotlight until its HWND is actually hidden.
         NotchWrapper.BeginAnimation(OpacityProperty, null);
         NotchShadowWrapper.BeginAnimation(OpacityProperty, null);
@@ -979,31 +979,51 @@ public partial class MainWindow : Window
         NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
         _spotlightReturnHandoffActive = true;
 
-        // Spotlight does not own the active notch view. In particular, do not
-
-        // Restore the live notch early while Spotlight still covers the seam.
-        // Its paired ease-in fade removes the covering shell only after this
-        // ease-out has brought the material and content almost to full opacity.
         _liquidGlass?.ForceRefresh();
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var notchFade = new DoubleAnimation(fromNotchOpacity, _spotlightRestoreNotchOpacity, duration)
-        {
-            EasingFunction = ease
-        };
-        var shadowFade = new DoubleAnimation(fromShadowOpacity, _spotlightRestoreShadowOpacity, duration)
-        {
-            EasingFunction = ease
-        };
-        Timeline.SetDesiredFrameRate(notchFade, AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(shadowFade, AnimationConfig.TargetFps);
+        if (AnimationConfig.ReduceMotion || duration <= TimeSpan.Zero)
+            return;
 
-        NotchWrapper.BeginAnimation(OpacityProperty, notchFade);
-        NotchShadowWrapper.BeginAnimation(OpacityProperty, shadowFade);
+        _spotlightReturnContentBlur = new BlurEffect
+        {
+            Radius = 0,
+            KernelType = KernelType.Gaussian,
+            RenderingBias = RenderingBias.Performance
+        };
+        SpotlightReturnContentHost.Effect = _spotlightReturnContentBlur;
+        SpotlightReturnContentHost.Opacity = 1;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        // Make content readable as soon as ownership returns; keep the longer
+        // blur-to-clear animation without spending its first frames invisible.
+        var contentFade = new DoubleAnimation(0.3, 1,
+            TimeSpan.FromMilliseconds(duration.TotalMilliseconds * 0.45))
+        {
+            EasingFunction = ease
+        };
+        var contentSharpen = new DoubleAnimation(14, 0, duration)
+        {
+            EasingFunction = ease
+        };
+        Timeline.SetDesiredFrameRate(contentFade, AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(contentSharpen, AnimationConfig.TargetFps);
+
+        SpotlightReturnContentHost.BeginAnimation(OpacityProperty, contentFade);
+        _spotlightReturnContentBlur.BeginAnimation(BlurEffect.RadiusProperty, contentSharpen);
     }
 
     private void CompleteSpotlightReturnScaleHandoff()
     {
         if (!_spotlightReturnHandoffActive) return;
+
+        SpotlightReturnContentHost.Opacity = 1;
+        SpotlightReturnContentHost.BeginAnimation(OpacityProperty, null);
+        if (_spotlightReturnContentBlur != null)
+        {
+            _spotlightReturnContentBlur.Radius = 0;
+            _spotlightReturnContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+            if (ReferenceEquals(SpotlightReturnContentHost.Effect, _spotlightReturnContentBlur))
+                SpotlightReturnContentHost.Effect = null;
+            _spotlightReturnContentBlur = null;
+        }
 
         // Set the bases first so removing an interrupted or completed clock
         NotchScale.ScaleX = 1;

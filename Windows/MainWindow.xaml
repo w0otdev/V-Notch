@@ -633,6 +633,7 @@
                             </Grid>
                         </Border>
 
+                        <Grid x:Name="SpotlightReturnContentHost">
                         <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled">
                             
 
@@ -3809,6 +3810,7 @@
                         </Border.Background>
                     </Border>
                     </Grid>
+                        </Grid>
                 </Grid>
             </Border>
         </Border>

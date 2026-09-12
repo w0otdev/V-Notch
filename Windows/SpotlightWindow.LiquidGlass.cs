@@ -95,7 +95,7 @@ public partial class SpotlightWindow
                 maxRegionWidth: (int)Math.Ceiling(800 * GetGlassDpiScale()),
                 maxRegionHeight: (int)Math.Ceiling(700 * GetGlassDpiScale()));
 
-            _liquidGlass.CaptureFullSurface = true;
+            UpdateGlassCaptureExtent();
 
             _liquidGlass.HideFromScreenCapture = false;
             _liquidGlass.SetAnimating(_entranceActive || _isClosing);
@@ -711,6 +711,7 @@ public partial class SpotlightWindow
 
         if (_liquidGlass.HasPresentedFrame && Shell.Background != Brushes.Transparent)
             Shell.Background = Brushes.Transparent;
+        UpdateGlassCaptureExtent();
         var region = GetGlassCaptureRegion();
         _liquidGlass.SetLiveRegion(region);
 
@@ -758,6 +759,17 @@ public partial class SpotlightWindow
         UpdateShaderGeometryPerFrame();
     }
 
+    private void UpdateGlassCaptureExtent()
+    {
+        if (_liquidGlass == null) return;
+
+        // The stationary envelope is needed only while morphing between windows.
+        // At rest, capture/upload the visible shell plus refraction margins, just
+        // like the notch. The D3D presentation surface stays fixed in both modes.
+        _liquidGlass.CaptureFullSurface =
+            _entranceActive || _isClosing || _preparingGlassEntrance;
+    }
+
     private void GlassMaterialClipHost_LayoutUpdated(object? sender, EventArgs e)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled || !IsSpotlightOpen) return;
@@ -766,6 +778,7 @@ public partial class SpotlightWindow
         // height and HWND position animations. Publish the arranged geometry as
         // well, so the shader's lens and screen-space crop match the visual that
         // WPF actually submits, including the final auto-size handoff.
+        UpdateGlassCaptureExtent();
         _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
         UpdateShaderGeometryPerFrame();
     }
