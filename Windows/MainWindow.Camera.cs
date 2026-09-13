@@ -504,7 +504,7 @@ public partial class MainWindow
 
                     var wbmp = _cameraWriteableBitmap;
                     // Reuse bitmap if large enough (grow-only) to eliminate LOH allocations
-                        // during webcam resolution negotiation.
+                    // during webcam resolution negotiation.
                     if (wbmp == null || _cameraBitmapAllocW < w || _cameraBitmapAllocH < h)
                     {
                         wbmp = new WriteableBitmap(

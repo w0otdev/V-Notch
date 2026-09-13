@@ -244,7 +244,7 @@ public partial class MainWindow
         SecondaryContent.RenderTransform = secondaryGroup;
         SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
         // Prepare hidden view while transparent so animated frames contain
-                // fresh content instead of cached surfaces.
+        // fresh content instead of cached surfaces.
         SecondaryContent.UpdateLayout();
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);

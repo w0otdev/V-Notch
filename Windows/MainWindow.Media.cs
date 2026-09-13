@@ -671,7 +671,7 @@ public partial class MainWindow
         else if (_isMusicCompactMode)
         {
             // Defer exiting compact mode across brief SMTC session gaps between
-                // tracks to prevent pill and privacy indicator flickering.
+            // tracks to prevent pill and privacy indicator flickering.
             SchedulePendingMusicCompactExit();
             return;
         }

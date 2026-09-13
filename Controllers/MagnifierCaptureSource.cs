@@ -199,7 +199,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     private int _completedX, _completedY;
     private bool _hasCompletedFrame;
     // Desktop frame captured before Magnifier exclusion list inclusion, avoiding
-        // layered windows returning opaque black rectangles.
+    // layered windows returning opaque black rectangles.
     private byte[] _unfilteredBuffer = Array.Empty<byte>();
     private int _unfilteredWidth, _unfilteredHeight;
     private int _unfilteredX, _unfilteredY;

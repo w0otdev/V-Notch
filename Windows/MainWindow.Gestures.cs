@@ -32,7 +32,7 @@ public partial class MainWindow
     private TranslateTransform? _gestureShadowTranslate;
 
     // Synchronize translate transforms on notch body and shadow shape so gesture
-        // drags move both together without leaving shadow artifacts behind.
+    // drags move both together without leaving shadow artifacts behind.
     private void EnsureGestureTransforms()
     {
         if (_gestureTranslate is not TranslateTransform)

@@ -42,7 +42,7 @@ public partial class MainWindow
         else if (_desktopPromotionPending && !interactionActive)
         {
             // Allow pointer to move into notch once armed, avoiding frame
-                // alternation from immediately cancelling outside the 3px edge strip.
+            // alternation from immediately cancelling outside the 3px edge strip.
             CancelPendingDesktopPromotion();
         }
         else if (_isDesktopEdgePromoted && !interactionActive)
@@ -134,7 +134,7 @@ public partial class MainWindow
                 if (_cleanedUp || !_isDesktopEdgePromoted) return;
 
                 // Check live WPF input state before demotion so active panels, drags,
-                    // or fields do not disappear behind foreground applications.
+                // or fields do not disappear behind foreground applications.
                 if (IsDesktopNotchInteractionActive()) return;
 
                 DemoteToDesktopLayerWithFade();
@@ -223,18 +223,18 @@ public partial class MainWindow
         }
 
         // Render a transparent frame before promotion to prevent DWM from
-            // exposing the previous opaque surface as a bright flash.
+        // exposing the previous opaque surface as a bright flash.
         _desktopPromotionPending = true;
         _desktopDemotionPending = false;
         SetDesktopRevealOpacityImmediate(0);
         _desktopTransparentFramesObserved = 0;
 
         // Wait for composition frame and flush DWM before altering z-order to
-            // ensure transparent pixels are committed before changing layers.
+        // ensure transparent pixels are committed before changing layers.
         _desktopTransparentFrameHandler = (_, _) =>
         {
             // Wait for subsequent composition callback to guarantee transparent frame
-                // submission to DWM before promoting, preventing one-frame flashes.
+            // submission to DWM before promoting, preventing one-frame flashes.
             if (++_desktopTransparentFramesObserved < 2)
                 return;
 
@@ -252,7 +252,7 @@ public partial class MainWindow
             _isDesktopEdgePromoted = true;
 
             // Update HWND layer after transparent frame commit, maintaining
-                // WS_EX_TOPMOST without exposing stale opaque surfaces.
+            // WS_EX_TOPMOST without exposing stale opaque surfaces.
             ConfigureOverlayWindow();
             AnimateDesktopRevealOpacity(1, 320, null);
         };
@@ -289,7 +289,7 @@ public partial class MainWindow
             ConfigureOverlayWindow();
 
             // Ensure DWM consumes transparent surface at new z-order before
-                // restoring opacity to prevent flashes on quick pointer reversal.
+            // restoring opacity to prevent flashes on quick pointer reversal.
             DwmFlush();
 
             // It is now behind normal windows. Restore its visual state so it is
@@ -326,7 +326,7 @@ public partial class MainWindow
     private void AnimateDesktopRevealOpacity(double target, int durationMs, Action? completed)
     {
         // Animate Window.Opacity and snapshot current value before replacement to
-            // avoid animation collisions with NotchContainer and base-value resets.
+        // avoid animation collisions with NotchContainer and base-value resets.
         double from = Math.Clamp(Opacity, 0, 1);
         int version = ++_desktopRevealAnimationVersion;
         BeginAnimation(Window.OpacityProperty, null);

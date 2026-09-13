@@ -32,7 +32,7 @@ public partial class MainWindow
         if (IsLiquidGlassEnabled)
         {
             // Keep material transparent until first complete frame presents, avoiding
-                // transient black notch feedback while DWM applies exclusion.
+            // transient black notch feedback while DWM applies exclusion.
             bool needsInitialFrame = _liquidGlass?.HasPresentedFrame != true;
             _glassInitialFramePending = needsInitialFrame;
             NotchBackground.Opacity = 0;

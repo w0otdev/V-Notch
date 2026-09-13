@@ -29,7 +29,7 @@ public partial class MainWindow
         bool glass = IsLiquidGlassEnabled;
 
         // In glass mode, skip backdrop image but derive accent colors from album
-            // art so themed UI controls remain styled over glass.
+        // art so themed UI controls remain styled over glass.
         if (!glass && (!_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects))
         {
             HideMediaBackground();

@@ -807,7 +807,7 @@ public partial class MainWindow
     }
 
     // Trigger digit scale bump on soft spring, glyph amber flash, and capsule
-            // border pulse on state changes.
+    // border pulse on state changes.
     private void AnimateCountdownDigitBump(double magnitude = 1.0)
     {
         double peak = 1.0 + 0.05 * magnitude;

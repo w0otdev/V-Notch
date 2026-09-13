@@ -267,7 +267,7 @@ public partial class MainWindow
         System.Threading.Tasks.Task.Run(() =>
         {
             // Publish lightweight mixer snapshot first so mixer is immediately usable
-        // without waiting for slower icon resolution.
+            // without waiting for slower icon resolution.
             var quick = ReadAudioSnapshot(includeIcons: false);
             QueueAudioSnapshot(token, quick);
 
@@ -297,7 +297,7 @@ public partial class MainWindow
             _lastAudioSnapshot = snap;
 
             // Build empty first-boot view immediately to prevent blank animations;
-        // defer later structural updates to avoid layout stalls during transitions.
+            // defer later structural updates to avoid layout stalls during transitions.
             bool hasBuiltUi = AudioRoot?.Children.Count > 0;
             if (ShouldDeferAudioSnapshotDuringTransition(_isAudioView, _isAnimating, hasBuiltUi))
             {

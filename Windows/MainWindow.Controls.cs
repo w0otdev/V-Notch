@@ -146,7 +146,7 @@ public partial class MainWindow
         try
         {
             // Render confirmed timeline until SMTC reports actual restart/track
-                // changes, as some players ignore previous track requests.
+            // changes, as some players ignore previous track requests.
             _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
             _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
             _progressEngine.NotifyPreviousTrackRequested();
@@ -325,7 +325,7 @@ public partial class MainWindow
         if (!_volumeSynced)
         {
             // Query baseline volume off UI thread to avoid cold COM query stalls,
-                // applying volume state once known to prevent flicker.
+            // applying volume state once known to prevent flicker.
             if (_volumeBaselinePending) return;
             _volumeBaselinePending = true;
 

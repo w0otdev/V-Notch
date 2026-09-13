@@ -78,7 +78,7 @@ public partial class MainWindow
             if (version != _compactWidthAnimationVersion) return;
 
             // Allow dismiss animations to finish post token release, but prevent
-                // expansions from committing if preempted by another notification.
+            // expansions from committing if preempted by another notification.
             bool returningToRest = Math.Abs(targetWidth - _collapsedWidth) < 0.5;
             bool canCommitTarget = token == 0
                 || _compactPillArbiter.IsTokenCurrent(token)

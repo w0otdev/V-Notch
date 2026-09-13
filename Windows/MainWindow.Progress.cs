@@ -229,9 +229,11 @@ public partial class MainWindow
         ProgressSection.Visibility = Visibility.Visible;
         ProgressSection.Opacity = 1;
 
-        bool showProgressDetails = info.IsAnyMediaPlaying || info.Duration.TotalSeconds > 0;
+        bool hasRealTrack = !string.IsNullOrWhiteSpace(info.CurrentTrack) &&
+                            !string.Equals(info.CurrentTrack, "No media playing", StringComparison.OrdinalIgnoreCase);
+        bool showProgressDetails = (info.IsAnyMediaPlaying || info.Duration.TotalSeconds > 0) && hasRealTrack;
 
-        if (showProgressDetails || info.HasTimeline || info.IsIndeterminate)
+        if (showProgressDetails || (hasRealTrack && (info.HasTimeline || info.IsIndeterminate)))
         {
             if (_isDraggingProgress) return;
 
@@ -284,7 +286,6 @@ public partial class MainWindow
                 _progressTargetRatio = 0;
                 _progressSpringTargetRatio = 0;
                 _lastRenderedRatio = 0;
-                CurrentTimeText.Text = "0:00";
                 RemainingTimeText.Text = FormatDuration(info.Duration);
 
                 if (isFirstEverTrack)
@@ -306,6 +307,7 @@ public partial class MainWindow
                     {
                         _progressDisplayRatio = 0;
                         ProgressBarScale.ScaleX = 0;
+                        CurrentTimeText.Text = "0:00";
                     }
                 }
                 else if (_isExpanded || _isMusicExpanded)
@@ -316,6 +318,7 @@ public partial class MainWindow
                 {
                     _progressDisplayRatio = 0;
                     ProgressBarScale.ScaleX = 0;
+                    CurrentTimeText.Text = "0:00";
                 }
 
                 _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(2);
@@ -427,8 +430,43 @@ public partial class MainWindow
             _progressEngine.Reset();
             _lastProgressTimelineKey = "";
             _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
-            ResetProgressUI();
-            if (_isExpanded || _isMusicExpanded) RenderProgressBar();
+
+            double fromRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
+            if (fromRatio <= 0.005) fromRatio = Math.Clamp(_progressDisplayRatio, 0, 1);
+
+            if (fromRatio > 0.005 && (_isExpanded || _isMusicExpanded))
+            {
+                if (!_isRewindAnimating)
+                {
+                    _trackChangeSequence++;
+                    StopCatchUpAnimation();
+                    StopRewindTextAnimation();
+
+                    _progressVelocity = 0;
+                    _springSettleFrames = 0;
+                    _isSeekSpringActive = false;
+                    _lastRenderTime = DateTime.MinValue;
+                    _lastDisplayedSecond = -1;
+                    _progressSnapshotSequence = 0;
+                    StopSpringRenderLoop();
+
+                    _progressDisplayRatio = fromRatio;
+                    _progressTargetRatio = 0;
+                    _progressSpringTargetRatio = 0;
+                    _lastRenderedRatio = 0;
+                    RemainingTimeText.Text = "0:00";
+
+                    _lastProgressSignature = "";
+                    AnimateTrackChangeRewindToZero(fromRatio, TimeSpan.Zero);
+                }
+            }
+            else if (!_isRewindAnimating)
+            {
+                _lastProgressSignature = "";
+                ResetProgressUI();
+            }
+
+            if ((_isExpanded || _isMusicExpanded) && !_isRewindAnimating) RenderProgressBar();
         }
     }
 
@@ -485,6 +523,26 @@ public partial class MainWindow
     {
         if (_isDraggingProgress || _currentMediaInfo == null) return;
         if (_isRewindAnimating) return;
+
+        bool hasRealTrack = !string.IsNullOrWhiteSpace(_currentMediaInfo.CurrentTrack) &&
+                            !string.Equals(_currentMediaInfo.CurrentTrack, "No media playing", StringComparison.OrdinalIgnoreCase);
+        if (!hasRealTrack)
+        {
+            CurrentTimeText.Text = "0:00";
+            RemainingTimeText.Text = "0:00";
+            ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            ProgressBarScale.ScaleX = 0;
+            _progressDisplayRatio = 0;
+            _progressTargetRatio = 0;
+            _progressSpringTargetRatio = 0;
+            _progressVelocity = 0;
+            _springSettleFrames = 0;
+            _isSeekSpringActive = false;
+            StopSpringRenderLoop();
+            _lastRenderTime = DateTime.MinValue;
+            _lastDisplayedSecond = -1;
+            return;
+        }
 
         var frame = _progressEngine.GetUiFrame();
         bool isLiveStream = frame.Duration.TotalSeconds <= 0 && frame.State == ProgressState.Playing;
@@ -773,6 +831,26 @@ public partial class MainWindow
 
     private static string FormatTime(TimeSpan time) => MediaProgressHelpers.FormatTime(time);
     private static string FormatDuration(TimeSpan duration) => duration.TotalSeconds > 0 ? FormatTime(duration) : "--:--";
+
+    private static TimeSpan ParseCurrentTime(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return TimeSpan.Zero;
+        var parts = text.Trim().Split(':');
+        if (parts.Length == 2 &&
+            int.TryParse(parts[0], out int m) &&
+            double.TryParse(parts[1], out double s))
+        {
+            return TimeSpan.FromSeconds(m * 60 + s);
+        }
+        if (parts.Length == 3 &&
+            int.TryParse(parts[0], out int h) &&
+            int.TryParse(parts[1], out int m2) &&
+            double.TryParse(parts[2], out double s2))
+        {
+            return TimeSpan.FromSeconds(h * 3600 + m2 * 60 + s2);
+        }
+        return TimeSpan.Zero;
+    }
 
     #region Progress Bar Click and Drag to Seek
 
@@ -1173,7 +1251,7 @@ public partial class MainWindow
             _springSettleFrames = 0;
             StopSpringRenderLoop();
             CurrentTimeText.Text = "0:00";
-            RemainingTimeText.Text = FormatDuration(newDuration);
+            RemainingTimeText.Text = newDuration > TimeSpan.Zero ? FormatDuration(newDuration) : "0:00";
             StopRewindTextAnimation();
             _isRewindAnimating = false;
             _lastRenderTime = DateTime.Now;
@@ -1202,6 +1280,46 @@ public partial class MainWindow
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = fromRatio;
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
+
+        double startSeconds = ParseCurrentTime(CurrentTimeText.Text).TotalSeconds;
+        if (startSeconds <= 0 && fromRatio > 0 && newDuration.TotalSeconds > 0)
+        {
+            startSeconds = newDuration.TotalSeconds * fromRatio;
+        }
+
+        StopRewindTextAnimation();
+        if (startSeconds > 0)
+        {
+            var startTime = DateTime.UtcNow;
+            var totalMs = duration.TotalMilliseconds;
+            _rewindTextTimer = new DispatcherTimer(DispatcherPriority.Render)
+            {
+                Interval = TimeSpan.FromMilliseconds(16)
+            };
+            _rewindTextTimer.Tick += (s, e) =>
+            {
+                if (_trackChangeSequence != seqAtStart)
+                {
+                    StopRewindTextAnimation();
+                    return;
+                }
+                double t = (DateTime.UtcNow - startTime).TotalMilliseconds / totalMs;
+                if (t >= 1.0)
+                {
+                    CurrentTimeText.Text = "0:00";
+                    StopRewindTextAnimation();
+                    return;
+                }
+                double eased = 1 - Math.Pow(2, -6 * 10 * t);
+                double currentSec = Math.Max(0, startSeconds * (1.0 - eased));
+                CurrentTimeText.Text = FormatTime(TimeSpan.FromSeconds(currentSec));
+            };
+            _rewindTextTimer.Start();
+        }
+        else
+        {
+            CurrentTimeText.Text = "0:00";
+        }
     }
 
     private void AnimateExternalSeekTo(double targetRatio)

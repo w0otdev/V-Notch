@@ -1572,7 +1572,7 @@ public sealed class LiquidGlassController
     private bool CaptureBackdrop(BackdropCaptureParams cp)
     {
         // Retain last presented frame on missed Magnifier frames to avoid geometry
-            // jumps from fallback mixing; persistent failures cleanly disable Magnifier.
+        // jumps from fallback mixing; persistent failures cleanly disable Magnifier.
         if (cp.UseMag)
             return TryMagnifierCapture(cp);
 
@@ -1684,7 +1684,7 @@ public sealed class LiquidGlassController
 
         long nowTicks = Environment.TickCount64;
         // Avoid re-uploading desktop texture when only lens geometry moves/resizes;
-            // upload only when source origin or material parameters change.
+        // upload only when source origin or material parameters change.
         GpuGeometry uploadedGeometry = _lastUploadedGpuGeometry;
         if (CaptureFullSurface)
         {

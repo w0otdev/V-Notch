@@ -55,7 +55,7 @@ public sealed class OverlayWindowController : IDisposable
         var desiredStyle = exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
 
         // Use SetWindowPos instead of SetWindowLong to toggle topmost bands, preventing
-    // DWM duplicate surface flashes during desktop-edge reveal.
+        // DWM duplicate surface flashes during desktop-edge reveal.
         if (desiredStyle != exStyle)
             SetWindowLong(_state.Hwnd, GWL_EXSTYLE, desiredStyle);
 

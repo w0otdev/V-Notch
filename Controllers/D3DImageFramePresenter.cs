@@ -21,14 +21,14 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private IDirect3DSurface9? _uploadSurface;
     private IDirect3DSurface9? _renderSurface;
     // Keep D3DImage surface separate from _renderSurface during resize uploads
-        // so WPF draws the last complete frame until replacement is ready.
+    // so WPF draws the last complete frame until replacement is ready.
     private IDirect3DSurface9? _attachedSurface;
     private readonly int _surfaceWidth;
     private readonly int _surfaceHeight;
     private int _frameWidth;
     private int _frameHeight;
     // Track recently presented frame bounds to avoid full envelope dirtying
-        // while ensuring shrinking frames properly refresh previously covered areas.
+    // while ensuring shrinking frames properly refresh previously covered areas.
     private int _lastDirtyWidth;
     private int _lastDirtyHeight;
     private bool _pendingFrame;
@@ -448,7 +448,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private void OnRendering(object? sender, EventArgs e)
     {
         // Consume at composition boundary so capture presenter does not stall
-            // when queued dispatcher callbacks run while WPF owns the buffer.
+        // when queued dispatcher callbacks run while WPF owns the buffer.
         if (!_disposed && !_failed && Volatile.Read(ref _pendingFrame))
             PresentPendingFrame();
     }

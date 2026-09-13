@@ -228,7 +228,7 @@ public partial class MainWindow
         if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
         {
             // Preserve resolved "yt:{id}" key and avoid overwriting with unresolved
-                // fallback when MediaChanged fires with empty videoId after subtitle fetch.
+            // fallback when MediaChanged fires with empty videoId after subtitle fetch.
             if (!force && _lyricsTrackKey.StartsWith("yt:", StringComparison.Ordinal)
                 && !_lyricsTrackKey.StartsWith("yt-lrc:", StringComparison.Ordinal)
                 && _currentLyrics != null && _currentLyrics.Count > 0)
@@ -684,7 +684,7 @@ public partial class MainWindow
         if (LyricTextA == null || LyricTextB == null) return;
 
         // Apply edge fade mask only during transitions and remove when settled
-            // so resting text rows are not dimmed.
+        // so resting text rows are not dimmed.
         _lyricsLayerFadeMask ??= AnimatedLyricsLayer.OpacityMask;
         int transitionVersion = ++_lyricsLineTransitionVersion;
 
@@ -769,7 +769,7 @@ public partial class MainWindow
         Dispatcher.Invoke(() =>
         {
             // Enforce CalendarWidget hidden and LyricsWidget visible to resolve
-                // uncommitted visual states during in-flight animations.
+            // uncommitted visual states during in-flight animations.
             if (CalendarWidget.Visibility != Visibility.Collapsed || CalendarWidget.Opacity > 0.01)
             {
                 CalendarWidget.BeginAnimation(OpacityProperty, null);

@@ -249,7 +249,7 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
         catch (System.Security.Cryptography.CryptographicException)
         {
             // DPAPI encryption failed; preserve existing settings file and notify
-                // user that API keys could not be saved.
+            // user that API keys could not be saved.
             RuntimeLog.Error(LogCategorySave, "DPAPI encryption failed — settings were not saved.");
             DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
         }

@@ -182,7 +182,7 @@ public static class SettingsMigrator
         root[nameof(NotchSettings.SettingsVersion)] = CurrentVersion;
 
         // Inspect all files for legacy plaintext keys regardless of reported version;
-            // callers must preserve the old file if protection fails.
+        // callers must preserve the old file if protection fails.
         foreach (string keyName in new[]
                  {
                      nameof(NotchSettings.YouTubeApiKey),

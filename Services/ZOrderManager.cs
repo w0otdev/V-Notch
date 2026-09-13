@@ -120,7 +120,7 @@ public sealed class ZOrderManager : IDisposable
     private void WatchdogTimer_Tick(object? sender, EventArgs e)
     {
         // Reassert desktop mode during Explorer transitions (Win+D/virtual desktops)
-            // so notch stays visible when desktop appears.
+        // so notch stays visible when desktop appears.
         var burstActive = DateTime.UtcNow <= _burstUntilUtc;
         if (_stayBehindWindows())
         {
