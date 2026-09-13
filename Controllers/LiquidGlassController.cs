@@ -1949,14 +1949,8 @@ public sealed class LiquidGlassController
     }
 
 
-    /// <summary>Sampled fingerprint of the captured source frame. Used to skip
-    /// presenting frames whose backdrop did not change: an unchanged present
-    /// still forces a WPF re-render plus a layered-window readback for the whole
-    /// window, which is what saturates the render thread when the notch and the
-    /// settings window run glass simultaneously.</summary>
-    private ulong ComputeSourceHash(int srcW, int srcH) =>
-        ComputeSourceHash(_dibBits, srcW, srcH);
-
+    /// <summary>Legacy sampled fingerprint retained for capture regression tests.
+    /// Live capture uses exact pixel comparisons instead.</summary>
     internal static ulong ComputeSourceHash(IntPtr dibBits, int srcW, int srcH) =>
         GlassFrameFingerprint.Compute(dibBits, srcW, srcH);
 
