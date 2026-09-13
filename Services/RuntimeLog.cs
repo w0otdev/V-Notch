@@ -141,10 +141,6 @@ public static class RuntimeLog
 #endif
     }
 
-    /// <summary>
-    /// Completes after every log item queued before this call has been written.
-    /// Normal callers do not need to flush; this is intended for fatal-error paths.
-    /// </summary>
     public static Task FlushAsync()
     {
         lock (_lifecycleLock)
@@ -153,10 +149,6 @@ public static class RuntimeLog
         }
     }
 
-    /// <summary>
-    /// Stops accepting new entries, drains the queue, and waits briefly for the
-    /// background writer. Call this once during application shutdown.
-    /// </summary>
     public static bool Shutdown(TimeSpan timeout)
     {
         AsyncLogWriter? writer;

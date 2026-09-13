@@ -477,6 +477,3 @@ public sealed class LiquidGlassCaptureTests
     }
 }
 
-
-
-

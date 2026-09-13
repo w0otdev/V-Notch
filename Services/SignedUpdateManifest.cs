@@ -4,7 +4,6 @@ using System.Text.Json;
 
 namespace VNotch.Services;
 
-/// <summary>The signature covers the exact UTF-8 manifest bytes, not reserialized JSON.</summary>
 internal sealed record SignedUpdateManifest(int SchemaVersion, string Version, string InstallerName, long Size, string Sha256)
 {
     internal const int MaximumManifestBytes = 16 * 1024;

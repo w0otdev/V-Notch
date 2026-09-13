@@ -5,10 +5,6 @@ using System.Windows.Media;
 
 namespace VNotch.Controls;
 
-/// <summary>
-/// Attached behavior that renders a TextBlock with every query token
-/// emphasized in bright bold text (used by Spotlight results).
-/// </summary>
 public static class HighlightedText
 {
     private static readonly Brush MatchBrush = Brushes.White;

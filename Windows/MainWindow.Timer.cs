@@ -734,9 +734,8 @@ public partial class MainWindow
         PlayButtonPressAnimation(button);
     }
 
-    // The digits themselves react: a quick scale bump that settles on a soft
-    // spring, an amber flash rolling through the glyphs, and a brief orange
-    // pulse on the capsule border.
+    // Trigger digit scale bump on soft spring, glyph amber flash, and capsule
+            // border pulse on state changes.
     private void AnimateCountdownDigitBump(double magnitude = 1.0)
     {
         double peak = 1.0 + 0.05 * magnitude;
@@ -1012,9 +1011,8 @@ public partial class MainWindow
     private void AnimateCountdownCompletionToClockView()
     {
         EnsureExpandedStateForTimerSurface();
-        // This animation can take ownership of Width/Height while the normal
-        // expand animation is still running. Its old completion is then
-        // removed, so finalize the logical expanded state here as well.
+        // Finalize logical expanded state if this animation preempts in-flight expand
+        // animations and overrides Width/Height.
         _isExpanded = true;
         _isTimerView = true;
         _isSecondaryView = false;
@@ -1891,17 +1889,15 @@ public partial class MainWindow
         StartTimerEditing();
     }
 
-    // Edit mode swaps the digits for a text field with a vertical carousel:
-    // digits lift out through the top while the input rises from below on a
-    // spring, and the capsule border warms to orange while typing.
+    // Swap digits with animated text field carousel in edit mode with orange
+    // border accent while typing.
     private void StartTimerEditing()
     {
         if (_isEditingTimer) return;
         _isEditingTimer = true;
 
-        // The notch is a WS_EX_NOACTIVATE overlay; without lifting that style
-        // the window can never take keyboard focus and typing goes to the app
-        // behind it.
+        // Temporarily lift WS_EX_NOACTIVATE style so window can receive keyboard
+        // focus and text input.
         EnableKeyboardInput();
 
         CountdownInput.Text = _viewModel.Timer.DisplayText;

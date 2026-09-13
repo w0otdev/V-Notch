@@ -503,9 +503,8 @@ public partial class MainWindow
                     if (!_isCameraActive || frameToken != _camera.FadeToken) return;
 
                     var wbmp = _cameraWriteableBitmap;
-                    // Reuse the bitmap when it is large enough; only grow, never shrink.
-                    // This eliminates the repeated LOH allocation caused by tiny resolution
-                    // changes during the webcam's startup negotiation phase.
+                    // Reuse bitmap if large enough (grow-only) to eliminate LOH allocations
+                        // during webcam resolution negotiation.
                     if (wbmp == null || _cameraBitmapAllocW < w || _cameraBitmapAllocH < h)
                     {
                         wbmp = new WriteableBitmap(

@@ -145,9 +145,8 @@ public partial class MainWindow
     {
         try
         {
-            // Previous is only a request: some players ignore it or expose the
-            // control while declining the command. Keep rendering the confirmed
-            // timeline until SMTC reports an actual restart/track change.
+            // Render confirmed timeline until SMTC reports actual restart/track
+                // changes, as some players ignore previous track requests.
             _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
             _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
             _progressEngine.NotifyPreviousTrackRequested();
@@ -325,12 +324,8 @@ public partial class MainWindow
     {
         if (!_volumeSynced)
         {
-            // Read the baseline volume off the UI thread. The first (cold) COM
-            // query enumerates audio sessions and scans processes, which can stall
-            // the UI thread for tens of ms. That stalls the LiquidGlass present
-            // (it marshals each frame back onto the UI thread), showing up as a
-            // glass flicker on first boot. Defer applying this step until the real
-            // baseline is known so the volume bar doesn't jump from a stale value.
+            // Query baseline volume off UI thread to avoid cold COM query stalls,
+                // applying volume state once known to prevent flicker.
             if (_volumeBaselinePending) return;
             _volumeBaselinePending = true;
 

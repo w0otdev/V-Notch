@@ -344,10 +344,8 @@ internal static class Win32Interop
     [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
     public static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
-    /// <summary>Blocks until pending DirectX/DWM drawing commands have been presented.</summary>
     [DllImport("dwmapi.dll")]
     public static extern int DwmFlush();
-
 
     #endregion
 
@@ -461,9 +459,6 @@ internal static class Win32Interop
         }
     }
 
-    /// <summary>
-    /// Checks if the given window is already positioned directly above the desktop host.
-    /// </summary>
     public static bool IsWindowDirectlyAboveDesktop(IntPtr window, out IntPtr requiredAnchor)
     {
         requiredAnchor = HWND_NOTOPMOST;
@@ -482,17 +477,12 @@ internal static class Win32Interop
         return false;
     }
 
-    /// <summary>
-    /// Returns a z-order anchor that places an unowned window immediately above
-    /// the desktop icon host, but below all ordinary application windows.
-    /// </summary>
     public static IntPtr GetDesktopLayerInsertAfter(IntPtr window)
     {
         var desktopHost = GetCachedDesktopHost();
 
-        // Explorer can briefly rebuild its WorkerW/Progman hierarchy (notably
-        // during Win+D and display changes). Falling back to NOTOPMOST is much
-        // safer than HWND_BOTTOM, which puts the notch underneath the desktop.
+        // Fall back to NOTOPMOST during Explorer hierarchy rebuilds to avoid
+        // placing the notch underneath desktop icons.
         if (desktopHost == IntPtr.Zero)
             return HWND_NOTOPMOST;
 

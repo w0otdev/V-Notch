@@ -76,7 +76,6 @@ public partial class MainWindow
         MediaWidgetLayoutTranslate.BeginAnimation(TranslateTransform.XProperty, translateAnim);
     }
 
-
     private void CollapseMusicWidget()
     {
         if (_isDebugViewLocked || _isMusicAnimating) return;

@@ -28,10 +28,8 @@ public partial class MainWindow
     {
         bool glass = IsLiquidGlassEnabled;
 
-        // Outside glass mode the blurred album-art backdrop honours the user's
-        // toggles. In glass mode we skip the backdrop image entirely but still
-        // derive the accent colours (progress bar, time text, visualiser, ...)
-        // from the album art so themed UI keeps working over the glass.
+        // In glass mode, skip backdrop image but derive accent colors from album
+            // art so themed UI controls remain styled over glass.
         if (!glass && (!_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects))
         {
             HideMediaBackground();
@@ -433,11 +431,8 @@ public partial class MainWindow
     {
         if (!_isExpanded || _isAnimating || _currentMediaInfo == null) return;
 
-        // In Liquid Glass mode there's no blurred album-art backdrop, but the
-        // accent colours (progress bar, time text, visualiser, ...) still need to
-        // be re-derived after a view switch — the music view brushes get reset
-        // when the file tray / secondary view is shown, so without this they stay
-        // grey ("mất màu chủ đạo") on the way back.
+        // Re-derive accent colors after view switches in Liquid Glass mode to
+        // restore music brushes from fallback defaults.
         if (IsLiquidGlassEnabled)
         {
             UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);

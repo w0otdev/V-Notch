@@ -16,9 +16,8 @@ public sealed class CropCacheCollisionTests
             int w = 100;
             int h = 60;
 
-            // Generate two 100x60 images where the 25 grid sample points:
-            // xs = { 0, 25, 50, 75, 99 }, ys = { 0, 15, 30, 45, 59 } are ALL black (0, 0, 0, 255).
-            // But internal regions (e.g. between the grid lines) differ completely.
+            // Generate two images sharing identical 25 black grid sample points
+            // but differing completely in internal regions.
             var pixelsA = CreateCollidingSampleGridPixels(w, h, fillByte: 50);
             var pixelsB = CreateCollidingSampleGridPixels(w, h, fillByte: 200);
 

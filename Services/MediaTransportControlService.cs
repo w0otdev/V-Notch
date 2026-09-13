@@ -50,10 +50,8 @@ public sealed class MediaTransportControlService
                     return;
                 }
 
-                // Browser videos (e.g. YouTube outside a playlist) register no next-track
-                // handler, so both SMTC skip and the media key are no-ops for them.
-                // Jumping to the end of the timeline finishes the video and lets the
-                // player advance on its own (autoplay / playlist).
+                // Seek to timeline end when next-track handler is absent, triggering
+                // player autoplay or playlist advance.
                 if (await TrySeekToTimelineEdgeAsync(session, toEnd: true))
                 {
                     RuntimeLog.Log(LogTag, "Next: skip unsupported, jumped to end of timeline");

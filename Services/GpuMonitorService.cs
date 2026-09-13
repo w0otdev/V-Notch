@@ -154,9 +154,7 @@ public sealed class GpuMonitorService : IDisposable
                         string name = desc.Description.Trim();
                         ulong vram = (ulong)desc.DedicatedVideoMemory;
 
-                        // Score GPUs:
-                        // 1. Dedicated VRAM (MB)
-                        // 2. Discrete high-performance GPU keywords get large priority bonus
+                        // Score GPUs by dedicated VRAM (MB) with discrete high-performance bonuses.
                         long score = (long)(vram / (1024 * 1024));
                         if (name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
                             name.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
@@ -194,9 +192,6 @@ public sealed class GpuMonitorService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Samples all CPU and RAM metrics instantaneously via Win32 in &lt; 0.002ms with 0 allocations.
-    /// </summary>
     public PerformanceDebugSnapshot SampleFastMetrics(double fps, int hz, double netDown = 0, double netUp = 0)
     {
         long nowTicks = Stopwatch.GetTimestamp();

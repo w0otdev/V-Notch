@@ -11,11 +11,6 @@ using VNotch.Services;
 
 namespace VNotch.Uninstaller;
 
-/// <summary>
-/// Standalone uninstaller for V-Notch. Removes every trace of the app:
-/// the install folder, the per-user data folder, shortcuts, startup entry
-/// and all registry keys. Run with "/S" (or "--silent") for a quiet wipe.
-/// </summary>
 internal static class Program
 {
     private const string AppName = "V-Notch";
@@ -67,9 +62,8 @@ internal static class Program
         TrySilently(RemoveShortcuts, errors, Loc.Get("uninstall.action.removeShortcuts"));
         TrySilently(RemoveAppData, errors, Loc.Get("uninstall.action.removeData"));
 
-        // The install folder contains this running uninstall.exe, so it cannot
-        // delete itself directly. Hand the final wipe to a temp batch script
-        // that waits for us to exit, deletes the folder, then deletes itself.
+        // Hand final deletion to a temp script that waits for process exit,
+        // deletes the install folder, and removes itself.
         TrySilently(() => ScheduleInstallDirRemoval(installDirectory), errors,
             Loc.Get("uninstall.action.removeInstallFolder"));
 
@@ -123,11 +117,6 @@ internal static class Program
         Loc.SetLanguage(language);
     }
 
-    /// <summary>
-    /// The uninstaller normally lives inside the install folder, so the folder
-    /// it runs from is the install directory. Fall back to the registry value
-    /// and finally the default location.
-    /// </summary>
     private static string ResolveInstallDirectory()
     {
         var baseDir = AppContext.BaseDirectory

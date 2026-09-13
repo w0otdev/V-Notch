@@ -74,10 +74,8 @@ public sealed class ZOrderManager : IDisposable
         var hwnd = _getHwnd();
         if (hwnd == IntPtr.Zero || !_isEffectivelyVisible()) return;
 
-        // Desktop mode deliberately opts out of the topmost watchdog. Keeping this
-        // as a normal bottom-most window lets maximized applications own every
-        // pixel (including browser tab controls) while the notch remains available
-        // whenever the desktop is exposed.
+        // Desktop mode opts out of topmost watchdog so maximized apps own screen space
+        // while notch remains accessible on desktop reveal.
         if (_stayBehindWindows())
         {
             if (!force && IsWindowDirectlyAboveDesktop(hwnd, out _))
@@ -121,9 +119,8 @@ public sealed class ZOrderManager : IDisposable
 
     private void WatchdogTimer_Tick(object? sender, EventArgs e)
     {
-        // Explorer may move its desktop host during Win+D, virtual-desktop, and
-        // display transitions. Reassert desktop mode so the notch is visible as
-        // soon as the desktop appears, without requiring an icon/file click.
+        // Reassert desktop mode during Explorer transitions (Win+D/virtual desktops)
+            // so notch stays visible when desktop appears.
         var burstActive = DateTime.UtcNow <= _burstUntilUtc;
         if (_stayBehindWindows())
         {

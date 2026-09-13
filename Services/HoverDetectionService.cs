@@ -156,11 +156,6 @@ public class HoverDetectionService : IDisposable
         return _notchBounds.Contains(point);
     }
 
-    /// <summary>
-    /// Returns true when the pointer is touching the top screen edge directly
-    /// above the notch. The horizontal padding makes the target easy to hit while
-    /// keeping unrelated corners of the monitor from revealing the notch.
-    /// </summary>
     public bool IsPointInTopEdgeRevealZone(Point point)
     {
         if (_notchBounds.IsEmpty || _notchBounds.Width <= 0) return false;

@@ -181,11 +181,8 @@ public static class SettingsMigrator
 
         root[nameof(NotchSettings.SettingsVersion)] = CurrentVersion;
 
-        // Version 9 introduced key protection, but a settings file can already
-        // report that version while still containing a legacy plaintext value.
-        // Therefore inspect every loaded file, not just a particular migration
-        // step. Protect intentionally throws: callers must retain the old file
-        // rather than clear or rewrite a key that could not be protected.
+        // Inspect all files for legacy plaintext keys regardless of reported version;
+            // callers must preserve the old file if protection fails.
         foreach (string keyName in new[]
                  {
                      nameof(NotchSettings.YouTubeApiKey),

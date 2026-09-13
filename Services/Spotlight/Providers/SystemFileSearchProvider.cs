@@ -3,10 +3,6 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-/// <summary>
-/// Indexes launchable files that Windows Search does not expose when its query
-/// root is the user's profile, such as ncpa.cpl and services.msc.
-/// </summary>
 internal sealed class SystemFileSearchProvider : ISpotlightProvider
 {
     private static readonly HashSet<string> LaunchableExtensions = new(

@@ -394,9 +394,8 @@
                                 IsHitTestVisible="False"
                                 CornerRadius="0,0,20,20"/>
 
-                        <!-- Final rounded clip for the complete material stack. It is
-                             intentionally outside every blurred child so post-effects
-                             cannot spread Touch Light into the rectangular corners. -->
+                        <!-- Final rounded clip for material stack; kept outside blurred children
+                             so post-effects cannot spread Touch Light into rectangular corners. -->
                         <Grid x:Name="GlassMaterialClipHost"
                               IsHitTestVisible="False"
                               SizeChanged="GlassMaterialClipHost_SizeChanged">

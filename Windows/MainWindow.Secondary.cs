@@ -273,11 +273,8 @@ public partial class MainWindow
 
     private void ResetShelfDropVisualState()
     {
-        // In the Liquid Glass skin the tray's resting state must keep the
-        // translucent glass material (so the refracted backdrop shows through),
-        // otherwise it snaps back to a solid dark panel as soon as files land or a
-        // drag ends. The active/reject/unlock states below keep their solid
-        // feedback colours — they're only shown transiently during a drag.
+        // Keep translucent glass material in resting state for Liquid Glass skin;
+        // solid feedback colors are used only transiently during drag states.
         if (IsLiquidGlassEnabled)
         {
             FileShelf.Background = _glassPanelBg;
@@ -656,10 +653,8 @@ public partial class MainWindow
             }
         };
 
-        // Load the shell icon off the UI thread to avoid blocking layout during the
-        // camera-open transition, which realizes the entire visible shelf simultaneously
-        // and would otherwise spike memory by calling SHCreateItemFromParsingName /
-        // SHGetFileInfo synchronously for every file in a single burst.
+        // Load shell icons asynchronously off the UI thread to prevent layout
+        // stalls and memory spikes when realizing the shelf.
         var capturedPath = filePath;
         System.Threading.Tasks.Task.Run(() => GetFileIcon(capturedPath), System.Threading.CancellationToken.None)
             .ContinueWith(t =>

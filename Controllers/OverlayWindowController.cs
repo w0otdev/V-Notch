@@ -6,7 +6,6 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
 
-/// <summary>Owns HWND hook, overlay styles, keyboard activation, and screen placement.</summary>
 public sealed class OverlayWindowController : IDisposable
 {
     private const double HorizontalPadding = 96;
@@ -55,10 +54,8 @@ public sealed class OverlayWindowController : IDisposable
         var exStyle = GetWindowLong(_state.Hwnd, GWL_EXSTYLE);
         var desiredStyle = exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED;
 
-        // Do not toggle WS_EX_TOPMOST through SetWindowLong. SetWindowPos below is
-        // the documented way to move between topmost and non-topmost bands. Writing
-        // the style first and then moving the HWND caused DWM to expose the layered
-        // surface twice, producing a visible flash during desktop-edge reveal.
+        // Use SetWindowPos instead of SetWindowLong to toggle topmost bands, preventing
+    // DWM duplicate surface flashes during desktop-edge reveal.
         if (desiredStyle != exStyle)
             SetWindowLong(_state.Hwnd, GWL_EXSTYLE, desiredStyle);
 
@@ -109,9 +106,8 @@ public sealed class OverlayWindowController : IDisposable
         _window.Width = widthDip;
         _window.Height = heightDip;
 
-        // Keep geometry independent from the desktop-layer anchor. Explorer rebuilds
-        // its WorkerW/Progman windows during sign-in, so an expired anchor must never
-        // be able to reject this placement and leave WPF's startup position visible.
+        // Decouple geometry from desktop anchor to avoid placement rejections
+        // when Explorer rebuilds WorkerW/Progman windows during sign-in.
         ApplyFixedBounds();
         ApplyPreferredZOrder();
     }

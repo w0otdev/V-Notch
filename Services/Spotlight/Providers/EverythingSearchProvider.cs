@@ -5,13 +5,6 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-/// <summary>
-/// Queries the Everything search engine (voidtools) over its WM_COPYDATA IPC
-/// protocol, the same engine Flow Launcher uses for instant global file
-/// search. Requires Everything to be running; when it is not, the provider
-/// reports unavailable and returns nothing so the Windows Search index
-/// provider remains the fallback.
-/// </summary>
 internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 {
     private const string EverythingIpcWindowClass = "EVERYTHING_TASKBAR_NOTIFICATION";
@@ -39,10 +32,6 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 
     public bool IsAvailable { get; private set; }
 
-    /// <summary>
-    /// Everything answers from its in-memory NTFS index in single-digit
-    /// milliseconds, so it is cheap enough to run on every keystroke.
-    /// </summary>
     public bool IsInstant => true;
 
     public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(

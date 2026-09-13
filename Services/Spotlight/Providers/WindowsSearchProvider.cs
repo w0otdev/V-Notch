@@ -6,12 +6,6 @@ using VNotch.Services;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-/// <summary>
-/// Queries the Windows Search index (SystemIndex) directly over OLE DB, the
-/// way Flow Launcher's Windows Index plugin does. This skips the slow
-/// StorageFile materialization of Windows.Storage.Search and widens the scope
-/// from the user profile to every indexed location.
-/// </summary>
 internal sealed class WindowsSearchProvider : ISpotlightProvider
 {
     private const int QueryTimeoutMilliseconds = 1500;
@@ -184,10 +178,6 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
             path);
     }
 
-    /// <summary>
-    /// Word-prefix match through the full-text index (fast) plus a substring
-    /// LIKE so mid-name hits such as "port" in "report.pdf" still appear.
-    /// </summary>
     private static string BuildNamePredicate(string sanitizedQuery)
     {
         string like = EscapeLikePattern(sanitizedQuery);
@@ -196,10 +186,6 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         return $"System.FileName LIKE '%{like}%' OR CONTAINS(System.FileName, '{contains}')";
     }
 
-    /// <summary>
-    /// SanitizeQuery already strips quote/paren/star characters that break
-    /// Windows Search SQL; this additionally escapes LIKE wildcards.
-    /// </summary>
     private static string EscapeLikePattern(string sanitizedQuery)
     {
         var builder = new StringBuilder(sanitizedQuery.Length);

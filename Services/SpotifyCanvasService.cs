@@ -12,11 +12,6 @@ using System.Text.RegularExpressions;
 
 namespace VNotch.Services;
 
-/// <summary>
-/// Resolves the current Spotify track and retrieves its Canvas directly from
-/// Spotify using the user's web session. Canvas is optional: every failure
-/// returns null so the normal lyrics background remains untouched.
-/// </summary>
 internal sealed class SpotifyCanvasService : IDisposable
 {
     private const string LogCategory = "SPOTIFY-CANVAS";

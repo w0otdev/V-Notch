@@ -839,12 +839,6 @@ public partial class MainWindow : Window
         return _overlayWindow.GetNotchScreenRect(_collapsedWidth, _collapsedHeight, _cornerRadiusCollapsed);
     }
 
-    /// <summary>
-    /// Screen rect and per-edge corner radii of the currently visible notch,
-    /// for the Spotlight morph. This must use the live arranged size: capturing
-    /// an expanded media view and squeezing it into the collapsed envelope
-    /// distorts the opening handoff before Spotlight begins to expand.
-    /// </summary>
     internal (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius)
         GetSpotlightMorphRect()
     {
@@ -2237,11 +2231,6 @@ public partial class MainWindow : Window
     private double _lastGlassClipTopRadius = double.NaN;
     private double _lastGlassClipBottomRadius = double.NaN;
 
-    /// <summary>
-    /// Clips the complete glass material stack after all child effects have run.
-    /// Keeping the clip on an effect-free ancestor prevents the backdrop and
-    /// Fresnel blurs from spreading Touch Light beyond the rounded silhouette.
-    /// </summary>
     private void UpdateGlassClip()
     {
         if (GlassMaterialClipHost == null) return;

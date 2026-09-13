@@ -8,16 +8,10 @@ using VNotch.Services;
 
 namespace VNotch.Controllers;
 
-/// <summary>
-/// GPU pixel-shader (ps_3_0) Liquid Glass refraction based on OverShifted/LiquidGlass.
-/// Samples the desktop backdrop and applies squircle SDF, exponential refraction,
-/// chromatic dispersion, film grain noise, and directional specular glow.
-/// </summary>
 public sealed class LiquidGlassRefractionEffect : ShaderEffect
 {
     private static readonly PixelShader _shader = LoadShader();
 
-    /// <summary>True if the compiled shader loaded successfully (GPU path usable).</summary>
     public static bool IsAvailable { get; private set; }
 
     private static PixelShader LoadShader()

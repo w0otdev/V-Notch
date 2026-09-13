@@ -10,11 +10,6 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-/// <summary>
-/// Reproduces the reported "arrow keys do not move the selection" defect with
-/// the real view model and a ListBox wired exactly like SpotlightWindow:
-/// grouped default view, TwoWay SelectedItem binding, SelectedIndex moves.
-/// </summary>
 [Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class SpotlightSelectionReproTests
 {

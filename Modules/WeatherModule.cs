@@ -32,18 +32,11 @@ public class WeatherModule : NotchModuleBase
 
     public event EventHandler<WeatherUpdateEventArgs>? WeatherUpdated;
 
-    /// <summary>
-    /// Replays the latest provider data so the UI can reformat it after a locale change
-    /// without making another network request.
-    /// </summary>
     public void RefreshLocalization()
     {
         WeatherUpdated?.Invoke(this, new WeatherUpdateEventArgs { Weather = _lastWeather });
     }
 
-    /// <summary>
-    /// Applies weather settings immediately, including unsaved settings-window previews.
-    /// </summary>
     public void OnSettingsChanged(NotchSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

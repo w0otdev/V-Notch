@@ -4,9 +4,6 @@ using System.Linq;
 
 namespace VNotch.Services;
 
-/// <summary>
-/// Manages undo/redo history for File Shelf operations
-/// </summary>
 public sealed class FileShelfHistory
 {
     private readonly Stack<IFileShelfOperation> _undoStack = new();
@@ -20,9 +17,6 @@ public sealed class FileShelfHistory
 
     public event Action? HistoryChanged;
 
-    /// <summary>
-    /// Records a new operation and clears redo stack
-    /// </summary>
     public void RecordOperation(IFileShelfOperation operation)
     {
         if (operation == null)
@@ -42,9 +36,6 @@ public sealed class FileShelfHistory
         HistoryChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Undo the last operation
-    /// </summary>
     internal IFileShelfOperation? Undo()
     {
         if (!CanUndo)
@@ -56,9 +47,6 @@ public sealed class FileShelfHistory
         return operation;
     }
 
-    /// <summary>
-    /// Redo the last undone operation
-    /// </summary>
     internal IFileShelfOperation? Redo()
     {
         if (!CanRedo)
@@ -90,9 +78,6 @@ public sealed class FileShelfHistory
         return true;
     }
 
-    /// <summary>
-    /// Clear all history
-    /// </summary>
     public void Clear()
     {
         _undoStack.Clear();
@@ -100,26 +85,17 @@ public sealed class FileShelfHistory
         HistoryChanged?.Invoke();
     }
 
-    /// <summary>
-    /// Get description of the next undo operation
-    /// </summary>
     public string? GetUndoDescription()
     {
         return CanUndo ? _undoStack.Peek().Description : null;
     }
 
-    /// <summary>
-    /// Get description of the next redo operation
-    /// </summary>
     public string? GetRedoDescription()
     {
         return CanRedo ? _redoStack.Peek().Description : null;
     }
 }
 
-/// <summary>
-/// Base interface for File Shelf operations
-/// </summary>
 public interface IFileShelfOperation
 {
     string Description { get; }
@@ -127,9 +103,6 @@ public interface IFileShelfOperation
     bool Redo(Controllers.FileShelfController controller);
 }
 
-/// <summary>
-/// Operation for adding files to the shelf
-/// </summary>
 public sealed class AddFilesOperation : IFileShelfOperation
 {
     private readonly string[] _files;
@@ -156,9 +129,6 @@ public sealed class AddFilesOperation : IFileShelfOperation
     }
 }
 
-/// <summary>
-/// Operation for removing files from the shelf
-/// </summary>
 public sealed class RemoveFilesOperation : IFileShelfOperation
 {
     private readonly string[] _files;
@@ -194,9 +164,6 @@ public sealed class RemoveFilesOperation : IFileShelfOperation
     }
 }
 
-/// <summary>
-/// Operation for pinning/unpinning a file
-/// </summary>
 public sealed class TogglePinOperation : IFileShelfOperation
 {
     private readonly string _file;
@@ -225,9 +192,6 @@ public sealed class TogglePinOperation : IFileShelfOperation
     }
 }
 
-/// <summary>
-/// Batch operation for multiple pin/unpin actions
-/// </summary>
 public sealed class BatchPinOperation : IFileShelfOperation
 {
     private readonly Dictionary<string, bool> _fileStates;

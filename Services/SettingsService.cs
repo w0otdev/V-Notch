@@ -158,11 +158,6 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
         }
     }
 
-    /// <summary>
-    /// Synchronously persists settings by waiting for the background save worker.
-    /// Note: This blocks the calling thread during serialization, DPAPI, backup, and disk I/O.
-    /// UI and interactive call chains should use <see cref="SaveAsync(NotchSettings)"/> instead.
-    /// </summary>
     public void Save(NotchSettings settings)
     {
         Save(settings, keepExistingBackup: true);
@@ -253,9 +248,8 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
-            // DPAPI encryption failed — do NOT overwrite the existing settings file.
-            // The old file remains intact. Notify the user so they know the API keys
-            // was not saved.
+            // DPAPI encryption failed; preserve existing settings file and notify
+                // user that API keys could not be saved.
             RuntimeLog.Error(LogCategorySave, "DPAPI encryption failed — settings were not saved.");
             DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
         }
@@ -266,9 +260,8 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
         }
         finally
         {
-            // Serialization happens before writing this file, but remove any stale
-            // temporary output so an interrupted/failed save can never be mistaken
-            // for a settings file containing sensitive data.
+            // Clean up stale temporary files before writing so failed saves never
+            // leave incomplete sensitive artifacts.
             try
             {
                 if (File.Exists(tempPath)) File.Delete(tempPath);
@@ -298,9 +291,8 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 
     private void RemovePlaintextKeySettingsFiles()
     {
-        // A backup made by an older application release may still contain a
-        // plaintext key. Once migration has succeeded, remove only those unsafe
-        // settings artifacts; encrypted backups remain available for recovery.
+        // Remove unsafe legacy plaintext backups after successful migration while
+        // retaining encrypted backups for recovery.
         foreach (var path in Directory.GetFiles(_appFolder, "settings*.json"))
         {
             try
@@ -334,12 +326,6 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 
     private const int MaxSettingsBackups = 10;
 
-    /// <summary>
-    /// Snapshots the current settings.json into a timestamped backup before it is
-    /// overwritten, keeping the most recent <see cref="MaxSettingsBackups"/>. Skips
-    /// writing a new backup when the content is identical to the latest one so the
-    /// history stays meaningful instead of filling with duplicates.
-    /// </summary>
     private void BackupExistingSettings()
     {
         try
@@ -444,9 +430,8 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
             settingsObj = new JsonObject();
         }
 
-        // Sensitive credentials (API keys, session cookies) must not be exported
-        // in plaintext or machine-bound DPAPI format to prevent accidental leakage.
-        // Users re-authenticate on destination machines.
+        // Exclude sensitive credentials from export to prevent accidental leakage;
+        // users re-authenticate on destination machines.
         settingsObj.Remove(nameof(NotchSettings.YouTubeApiKey));
         settingsObj.Remove(nameof(NotchSettings.SpotifySpDc));
 

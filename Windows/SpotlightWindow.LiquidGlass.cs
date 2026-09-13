@@ -799,9 +799,8 @@ public partial class SpotlightWindow
     {
         if (_liquidGlass == null) return;
 
-        // The stationary envelope is needed only while morphing between windows.
-        // At rest, capture/upload the visible shell plus refraction margins, just
-        // like the notch. The D3D presentation surface stays fixed in both modes.
+        // Use stationary envelope only during window morphs; at rest capture/upload
+        // visible shell and refraction margins with fixed D3D surface.
         _liquidGlass.CaptureFullSurface =
             _entranceActive || _isClosing || _preparingGlassEntrance;
     }
@@ -810,10 +809,8 @@ public partial class SpotlightWindow
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled || !IsSpotlightOpen) return;
 
-        // Rendering can run before the layout invalidated by this tick's width,
-        // height and HWND position animations. Publish the arranged geometry as
-        // well, so the shader's lens and screen-space crop match the visual that
-        // WPF actually submits, including the final auto-size handoff.
+        // Publish arranged geometry so shader lens and crop match what WPF renders
+        // across animated layout updates and auto-size handoffs.
         UpdateGlassCaptureExtent();
         _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
         UpdateShaderGeometryPerFrame();

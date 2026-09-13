@@ -39,10 +39,6 @@ public sealed record SpotlightSearchItem(
         }
     }
 
-    /// <summary>
-    /// True for items republished from the launch history on an empty query;
-    /// they group under a "Recents" header regardless of kind.
-    /// </summary>
     public bool IsRecent { get; init; }
 
     public string SectionTitle => IsRecent

@@ -196,9 +196,8 @@
         </Style>
     </Window.Resources>
 
-    <!-- The window is a fixed-size transparent canvas; only the shell resizes.
-         Animating an HWND resize on a layered window re-uploads the whole
-         surface every frame and stutters, so the window never changes size. -->
+    <!-- Fixed-size transparent canvas where only shell resizes to prevent
+         stuttering from re-uploading the layered HWND surface during resizing. -->
     <Grid>
         <!-- Match NotchShadowWrapper: a solid silhouette behind the shell,
              with the shadow on its wrapper and no exclusion clip. -->
@@ -262,12 +261,10 @@
                   IsHitTestVisible="False"
                   Opacity="0"/>
 
-            <!-- Final rounded clip for the complete material stack. It is
-                 intentionally outside every blurred child so post-effects
-                 cannot spread blur into the transparent canvas corners. -->
-            <!-- The material must not inherit the content's minimum size during
-                 morphs. All rims and the lens share the shell's actual bounds;
-                 the oversized desktop texture contributes no desired size. -->
+            <!-- Final rounded clip for material stack; kept outside blurred children
+                 so post-effects cannot spread blur into transparent canvas corners. -->
+            <!-- Material bounds follow shell bounds during morphs; desktop texture
+                 contributes no desired size so content min-size is not inherited. -->
             <Canvas IsHitTestVisible="False">
             <Grid x:Name="GlassMaterialClipHost"
                   Width="{Binding ActualWidth, ElementName=Shell}"
@@ -601,9 +598,8 @@
                             </ListBox.Resources>
                             <ListBox.Template>
                                 <ControlTemplate TargetType="ListBox">
-                                    <!-- The selection highlight is one shared surface that glides
-                                         between rows; it lives inside the scrolled content so it
-                                         stays glued to its row while scrolling. -->
+                                    <!-- Shared selection highlight lives inside scrolled content
+                                         so it stays glued to its target row while scrolling. -->
                                     <ScrollViewer Focusable="False"
                                                   CanContentScroll="False"
                                                   HorizontalScrollBarVisibility="Disabled"
@@ -770,10 +766,8 @@
                 </Border>
             </Grid>
 
-            <!-- Rounded viewport for the captured source view. The viewport
-                 follows the morphing shell, while the bitmap keeps its native
-                 size and is cropped from the top instead of being squeezed
-                 from a tall auxiliary view into the 66px search bar. -->
+            <!-- Rounded viewport follows morphing shell while bitmap retains native
+                 size cropped from top rather than being squeezed into search bar. -->
             <Border x:Name="NotchMorphSnapshot"
                     Margin="-1"
                     HorizontalAlignment="Stretch"

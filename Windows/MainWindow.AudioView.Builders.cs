@@ -266,9 +266,8 @@ public partial class MainWindow
 
         System.Threading.Tasks.Task.Run(() =>
         {
-            // Shell and file-version lookups for application icons can be much
-            // slower than the Core Audio queries. Publish a lightweight snapshot
-            // first so the mixer is usable without waiting for that work.
+            // Publish lightweight mixer snapshot first so mixer is immediately usable
+        // without waiting for slower icon resolution.
             var quick = ReadAudioSnapshot(includeIcons: false);
             QueueAudioSnapshot(token, quick);
 
@@ -297,10 +296,8 @@ public partial class MainWindow
             if (token != _audioPopulateToken) return;
             _lastAudioSnapshot = snap;
 
-            // Rebuilding an existing dynamic tree during the scale/fade can
-            // still invalidate layout and stall Liquid Glass. Defer later
-            // structural updates, but always build the empty first-boot view
-            // immediately so the opening animation never reveals a blank panel.
+            // Build empty first-boot view immediately to prevent blank animations;
+        // defer later structural updates to avoid layout stalls during transitions.
             bool hasBuiltUi = AudioRoot?.Children.Count > 0;
             if (ShouldDeferAudioSnapshotDuringTransition(_isAudioView, _isAnimating, hasBuiltUi))
             {

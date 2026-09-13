@@ -10,14 +10,6 @@ using Vortice.Mathematics;
 
 namespace VNotch.Controllers;
 
-/// <summary>
-/// Presents CPU-captured BGRA frames through a Direct3D 9 render-target surface.
-/// The worker copies into a system-memory upload surface; a render-priority UI
-/// callback uploads and scales the newest frame into one stable presentation
-/// surface. Keeping that D3DImage back buffer at a fixed size is important: notch
-/// width/height animate every compositor frame, and repeatedly replacing the back
-/// buffer during that animation can make DWM briefly composite a black surface.
-/// </summary>
 internal sealed class D3DImageFramePresenter : IDisposable
 {
     private readonly Dispatcher _dispatcher;
@@ -28,19 +20,15 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private IDirect3DDevice9Ex? _device;
     private IDirect3DSurface9? _uploadSurface;
     private IDirect3DSurface9? _renderSurface;
-    // The surface currently owned by D3DImage can differ from _renderSurface
-    // while a resized frame is being uploaded. Keeping them separate lets WPF
-    // continue drawing the last complete frame until its replacement is ready.
+    // Keep D3DImage surface separate from _renderSurface during resize uploads
+        // so WPF draws the last complete frame until replacement is ready.
     private IDirect3DSurface9? _attachedSurface;
     private readonly int _surfaceWidth;
     private readonly int _surfaceHeight;
     private int _frameWidth;
     private int _frameHeight;
-    // Captured frames occupy only the top-left corner of the fixed presentation
-    // surface. Dirtying the whole surface made WPF's render thread copy the full
-    // envelope every present, which saturates it once two glass windows (notch +
-    // settings) present at once. Track the largest recently presented frame so a
-    // shrinking frame still refreshes the area the previous frame covered.
+    // Track recently presented frame bounds to avoid full envelope dirtying
+        // while ensuring shrinking frames properly refresh previously covered areas.
     private int _lastDirtyWidth;
     private int _lastDirtyHeight;
     private bool _pendingFrame;
@@ -192,9 +180,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 _uploadTag = tag;
                 _lastUploadTicks = Stopwatch.GetTimestamp();
 
-                // Intermediate frames may be overwritten while the UI is busy.
-                // The presenter consumes the newest complete capture, preventing a
-                // dispatcher queue from growing behind the live desktop.
+                // Consume newest complete capture directly to prevent dispatcher queues
+                // from growing behind the live desktop when the UI thread is busy.
                 _pendingFrame = true;
                 uploaded = true;
                 if (!_presentQueued)
@@ -294,9 +281,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
             _pendingDirtyRows = default;
             _presentQueued = false;
 
-            // Do not attach this target until PresentPendingFrame has populated it.
-            // After that first attach it remains the D3DImage back buffer for the
-            // presenter's entire lifetime, including every notch resize animation.
+            // Attach target only after initial population; it remains the D3DImage
+            // back buffer across all subsequent resizes throughout presenter lifetime.
         }
     }
 
@@ -344,11 +330,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 if (_renderSurface == null || _uploadSurface == null)
                     return;
 
-                // WPF D3DImage.LockImpl increments its nesting count even when
-                // TryLock returns false. Every completed call needs Unlock;
-                // otherwise the first timeout permanently prevents presenting.
-                // Do not spend the UI frame budget waiting for WPF's render
-                // thread. Retry with the newest upload when the buffer is free.
+                // Unlock on TryLock failure to avoid permanent lockouts, and skip
+                // waiting on WPF render thread so we can retry on the next upload.
                 bool imageWritable = _image.TryLock(new Duration(TimeSpan.Zero));
                 try
                 {
@@ -357,9 +340,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
                         ScheduleRetry();
                         return;
                     }
-                    // A resize or front-buffer recovery needs the full visible
-                    // region. Otherwise only transfer rows changed since the
-                    // last successful present, including overwritten captures.
+                    // Transfer full visible region on resize/recovery; otherwise transfer
+                    // only rows modified since the last successful present.
                     bool fullDirty = frameWidth != _lastDirtyWidth || frameHeight != _lastDirtyHeight;
                     int dirtyTop = fullDirty ? 0 : Math.Min(_pendingDirtyRows.Top, frameHeight - 1);
                     int dirtyBottom = fullDirty ? frameHeight : Math.Min(_pendingDirtyRows.Bottom, frameHeight);
@@ -465,10 +447,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
     private void OnRendering(object? sender, EventArgs e)
     {
-        // Also consume at WPF's composition boundary. A queued/retried dispatcher
-        // callback alone can repeatedly run while WPF still owns the buffer,
-        // leaving a healthy capture worker displaying its last successful frame.
-        // This path does not depend on the scheduling gate remaining in sync.
+        // Consume at composition boundary so capture presenter does not stall
+            // when queued dispatcher callbacks run while WPF owns the buffer.
         if (!_disposed && !_failed && Volatile.Read(ref _pendingFrame))
             PresentPendingFrame();
     }

@@ -783,10 +783,6 @@ public partial class SettingsWindow : Window
         PushLivePreview();
     }
 
-    /// <summary>
-    /// Smoothly animates the opacity and interactive state of a UI element or panel
-    /// when its parent setting is toggled on or off across all settings panels.
-    /// </summary>
     private void AnimateDependentElement(UIElement? element, bool enabled, double disabledOpacity = 0.4, bool animate = false)
     {
         if (element == null) return;
@@ -813,10 +809,6 @@ public partial class SettingsWindow : Window
         }
     }
 
-    /// <summary>
-    /// Smoothly animates the expanding/collapsing and fade of a child row or panel
-    /// when its parent toggle is enabled/disabled across all settings panels.
-    /// </summary>
     private void AnimateCollapsibleRow(FrameworkElement? element, bool visible, bool animate = false)
     {
         if (element == null) return;
@@ -5393,9 +5385,6 @@ public partial class SettingsWindow : Window
         DetachGpuRefraction();
     }
 
-    /// <summary>Physical-pixel envelope the glass surface must cover: the full
-    /// window at the current DPI (the shell always fits inside it, including
-    /// during the open/close scale animation, whose scale never exceeds 1).</summary>
     private (int Width, int Height) GetGlassSurfaceEnvelope()
     {
         double wDip = ActualWidth > 0 ? ActualWidth : Width;
@@ -5409,9 +5398,6 @@ public partial class SettingsWindow : Window
 
     private bool _glassRebuildQueued;
 
-    /// <summary>PerMonitorV2: moving to a higher-DPI monitor can outgrow the
-    /// fixed presentation surface. Tear the renderer down and rebuild it with a
-    /// fresh envelope instead of presenting a truncated backdrop.</summary>
     private void QueueGlassRendererRebuildIfTooSmall()
     {
         var lg = _liquidGlass;

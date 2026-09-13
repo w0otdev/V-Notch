@@ -31,10 +31,8 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled)
         {
-            // The first Magnifier callback can still contain this HWND while DWM
-            // applies its exclusion list. Keep the material transparent until a
-            // complete frame is actually presented, so that transient feedback
-            // cannot expose the opaque fallback as a black notch.
+            // Keep material transparent until first complete frame presents, avoiding
+                // transient black notch feedback while DWM applies exclusion.
             bool needsInitialFrame = _liquidGlass?.HasPresentedFrame != true;
             _glassInitialFramePending = needsInitialFrame;
             NotchBackground.Opacity = 0;
@@ -297,8 +295,6 @@ public partial class MainWindow
 
     private LiquidGlassController.GpuGeometry? _lastGpuGeometry;
 
-    /// <summary>Pushes the per-frame shader geometry from the controller into the
-    /// effect. Invoked on the UI thread by the controller's present.</summary>
     private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
     {
         _lastGpuGeometry = g;
@@ -461,8 +457,6 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Applies the legacy GPU-mode host blur. CPU Liquid Glass blurs the
-    /// captured source before refraction for a cleaner material result.</summary>
     private void ApplyGpuBlur(double blurAmount)
     {
         if (!UseGpuRefraction || GlassBackdropHost == null) return;
@@ -698,11 +692,6 @@ public partial class MainWindow
         return brush;
     }
 
-    /// <summary>
-    /// Gives the camera box and file-tray the same translucent glass material as
-    /// the audio redirect frame (only while the Liquid Glass skin is active), so
-    /// the refracted backdrop shows through them. Restores the solid look otherwise.
-    /// </summary>
     private void ApplyGlassPanelMaterial(bool glass)
     {
         ApplyGlassToProgressBar(glass);
@@ -845,11 +834,6 @@ public partial class MainWindow
     private bool _glassGestureSnapBackMotion;
     private int _glassGestureSnapBackGen;
 
-    /// <summary>
-    /// Marks the glass as "in motion" for the lifetime of a hover scale animation,
-    /// so it tracks the moving notch smoothly. A generation token guards against a
-    /// superseded animation's Completed event clearing a newer motion state.
-    /// </summary>
     private void BeginGlassHoverMotion(System.Windows.Media.Animation.AnimationTimeline completionAnim)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled || completionAnim == null) return;
@@ -883,11 +867,6 @@ public partial class MainWindow
         safetyTimer.Start();
     }
 
-    /// <summary>
-    /// Keeps backdrop capture locked to the translated notch until the gesture
-    /// spring has actually returned to rest. Mouse capture ends before this visual
-    /// animation does, so gesture state alone is not long-lived enough.
-    /// </summary>
     private void BeginGlassGestureSnapBack(System.Windows.Media.Animation.AnimationTimeline completionAnim)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled || completionAnim == null) return;
@@ -917,8 +896,6 @@ public partial class MainWindow
         SetGlassRegionPush(motion && _liquidGlass != null && IsLiquidGlassEnabled);
     }
 
-    /// <summary>While the notch moves, push the capture region from the UI thread each
-    /// compositor frame so the worker need not pull it synchronously at Send priority.</summary>
     private void SetGlassRegionPush(bool enabled)
     {
         if (enabled == _glassRegionPushActive) return;

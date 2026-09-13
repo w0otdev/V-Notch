@@ -77,9 +77,8 @@ public partial class MainWindow
         {
             if (version != _compactWidthAnimationVersion) return;
 
-            // A dismiss animation is allowed to finish after its compact-slot
-            // token has been released by the shorter content fade. Expansions,
-            // however, must not commit after another notification preempts them.
+            // Allow dismiss animations to finish post token release, but prevent
+                // expansions from committing if preempted by another notification.
             bool returningToRest = Math.Abs(targetWidth - _collapsedWidth) < 0.5;
             bool canCommitTarget = token == 0
                 || _compactPillArbiter.IsTokenCurrent(token)

@@ -4,11 +4,6 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-/// <summary>
-/// Persists which Spotlight results the user actually launches so that
-/// (a) an empty query can show recent items and (b) habitual items get a
-/// bounded ranking boost on top of the lexical score.
-/// </summary>
 internal sealed class SpotlightUsageStore
 {
     private const string LogTag = "SPOTLIGHT-USAGE";
@@ -122,10 +117,6 @@ internal sealed class SpotlightUsageStore
         }
     }
 
-    /// <summary>
-    /// Bounded frecency bonus added to the lexical score. Capped well below a
-    /// single ranking tier jump chain so exact/prefix matches stay dominant.
-    /// </summary>
     public double GetBoost(string id)
     {
         UsageEntry? entry;
@@ -148,9 +139,6 @@ internal sealed class SpotlightUsageStore
         return countBoost + recencyBoost;
     }
 
-    /// <summary>
-    /// Most recently launched items, newest first, with stale targets dropped.
-    /// </summary>
     public IReadOnlyList<SpotlightSearchItem> GetRecentItems(int limit)
     {
         if (limit <= 0) return Array.Empty<SpotlightSearchItem>();

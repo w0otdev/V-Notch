@@ -503,11 +503,6 @@ public sealed class LiquidGlassController
 
     public void SetAnimating(bool animating) => _animating = animating;
 
-    /// <summary>
-    /// Keeps acquiring the desktop at the configured cadence while holding the
-    /// last completed visual frame. This lets short WPF hover transforms reuse one
-    /// stable GPU texture instead of invalidating the layered window every 8 ms.
-    /// </summary>
     public void SetPresentationPaused(bool paused)
     {
         bool wasPaused = _presentationPaused;
@@ -978,9 +973,8 @@ public sealed class LiquidGlassController
     {
         lock (_liveRegionSync)
         {
-            // Rendering and LayoutUpdated may publish the same region several
-            // times per frame. Waking for those duplicates interrupts capture
-            // pacing even though no geometry needs to be refreshed.
+            // Ignore duplicate region updates per frame to preserve capture pacing
+            // without unnecessary wakeups when geometry is unchanged.
             if (_hasLiveRegion && _liveRegion == region) return;
             _liveRegion = region;
             _hasLiveRegion = true;
@@ -1146,10 +1140,8 @@ public sealed class LiquidGlassController
 
             if (!isAnimating)
             {
-                // When not animating (idle / steady state), prioritize maximum CPU and battery savings.
-                // Zero spin wait (no Thread.SpinWait, no Thread.Sleep(0)).
-                // High-Hz intervals are only a few milliseconds. Returning up
-                // to 1 ms early introduces substantial capture cadence jitter.
+                // Prioritize CPU/battery savings in steady state with zero spin wait;
+                // maintain precise sleep intervals to prevent capture cadence jitter.
                 if (!WaitDeadlineSlice(remainingMs)) return;
                 continue;
             }
@@ -1253,9 +1245,6 @@ public sealed class LiquidGlassController
         return _overlayActiveCached;
     }
 
-    /// <summary>Cheap check: does the current foreground window belong to a known
-    /// snip/screenshot tool? Result is cached per-HWND so the process lookup runs
-    /// only when the foreground window actually changes.</summary>
     private bool ForegroundIsCaptureTool()
     {
         IntPtr fg = GetForegroundWindow();
@@ -1431,10 +1420,8 @@ public sealed class LiquidGlassController
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
-        // Once display affinity excludes this window, BitBlt captures the real
-        // backdrop at the same coordinates without waiting for Magnifier. Do not
-        // periodically switch back to a failing Magnifier: each retry used to
-        // hold the last frame for 60 failed captures before returning to BitBlt.
+        // With display affinity exclusion, BitBlt captures backdrop directly;
+        // avoid periodic retries to a failing Magnifier to eliminate frame stalls.
         if (!_exactBitBltCapture && !_magReady && _mag?.IsReady == true && Environment.TickCount64 >= _nextMagnifierRetryTicks)
         {
             _magReady = true;
@@ -1584,11 +1571,8 @@ public sealed class LiquidGlassController
 
     private bool CaptureBackdrop(BackdropCaptureParams cp)
     {
-        // A missed Magnifier frame is not a change of capture backend. BitBlt's
-        // non-excluded fallback samples below the window, so mixing it into a
-        // Magnifier sequence causes a vertical jump with the wrong geometry.
-        // Keep the last presented frame; persistent failures disable Magnifier
-        // and the next render computes geometry for the fallback backend.
+        // Retain last presented frame on missed Magnifier frames to avoid geometry
+            // jumps from fallback mixing; persistent failures cleanly disable Magnifier.
         if (cp.UseMag)
             return TryMagnifierCapture(cp);
 
@@ -1699,10 +1683,8 @@ public sealed class LiquidGlassController
             dims.SrcX, dims.SrcY);
 
         long nowTicks = Environment.TickCount64;
-        // Full-surface hosts update the lens geometry on the UI thread every
-        // frame. Moving/resizing that lens does not change the desktop texture;
-        // uploading the entire envelope for it needlessly stalls WPF/D3D.
-        // Still upload when the source origin or any material parameter changes.
+        // Avoid re-uploading desktop texture when only lens geometry moves/resizes;
+            // upload only when source origin or material parameters change.
         GpuGeometry uploadedGeometry = _lastUploadedGpuGeometry;
         if (CaptureFullSurface)
         {
@@ -1948,9 +1930,6 @@ public sealed class LiquidGlassController
         return true;
     }
 
-
-    /// <summary>Legacy sampled fingerprint retained for capture regression tests.
-    /// Live capture uses exact pixel comparisons instead.</summary>
     internal static ulong ComputeSourceHash(IntPtr dibBits, int srcW, int srcH) =>
         GlassFrameFingerprint.Compute(dibBits, srcW, srcH);
 

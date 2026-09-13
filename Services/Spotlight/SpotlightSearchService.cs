@@ -11,10 +11,6 @@ internal sealed class SpotlightSearchService
     private readonly IReadOnlyList<ISpotlightProvider> _providers;
     private readonly SpotlightUsageStore? _usage;
 
-    /// <summary>
-    /// File search is healthy when either backend answers: the Windows Search
-    /// index or the Everything IPC engine.
-    /// </summary>
     public bool IsWindowsSearchAvailable =>
         (_providers.OfType<WindowsSearchProvider>().FirstOrDefault()?.IsAvailable ?? false) ||
         (_providers.OfType<EverythingSearchProvider>().FirstOrDefault()?.IsAvailable ?? false);
@@ -32,18 +28,12 @@ internal sealed class SpotlightSearchService
             _providers.OfType<AppSearchProvider>().Select(provider => provider.WarmupAsync())
             .Concat(_providers.OfType<SystemFileSearchProvider>().Select(provider => provider.WarmupAsync())));
 
-    /// <summary>
-    /// In-memory providers (apps, calculator); cheap enough to run per keystroke.
-    /// </summary>
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
         string query,
         int limit,
         CancellationToken cancellationToken) =>
         SearchGroupAsync(provider => provider.IsInstant, query, limit, cancellationToken);
 
-    /// <summary>
-    /// Expensive providers (the Windows Search index); callers debounce these.
-    /// </summary>
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchDeferredAsync(
         string query,
         int limit,

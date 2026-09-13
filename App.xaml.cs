@@ -143,9 +143,8 @@ public partial class App : Application
 
     private void OnDispatcherUnhandledException(object? sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
     {
-        // MessageBox.Show runs a nested dispatcher loop. Without this guard,
-        // another queued UI callback can fail while the first fatal dialog is
-        // open and recursively create an entire stack of error dialogs.
+        // MessageBox.Show runs a nested dispatcher loop; guard against recursive
+        // error dialogs from queued UI callbacks while a fatal dialog is open.
         if (Volatile.Read(ref _fatalUiExceptionInProgress) != 0)
         {
             args.Handled = true;

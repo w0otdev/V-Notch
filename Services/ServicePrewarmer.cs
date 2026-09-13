@@ -107,9 +107,8 @@ internal static class ServicePrewarmer
 
     private static void WarmupSpotlight(IServiceProvider provider, NotchSettings? settings)
     {
-        // Building the app index walks both Start Menu trees and shell:AppsFolder.
-        // Skip it entirely when Spotlight is switched off, otherwise every launch
-        // pays for a feature the user cannot reach.
+        // Skip Start Menu and apps indexing if Spotlight is disabled to avoid
+        // unnecessary launch overhead.
         if (settings?.EnableSpotlight ?? true)
         {
             try

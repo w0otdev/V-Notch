@@ -8,12 +8,6 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-/// <summary>
-/// Guards the Spotlight arrow-key routing fix. A single-line TextBox consumes
-/// Up/Down/PageUp/PageDown through its editing-command bindings during the
-/// bubbling KeyDown, so navigation wired to the search box's KeyDown never
-/// fires; it must live on the window's tunneling PreviewKeyDown instead.
-/// </summary>
 [Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class SpotlightKeyRoutingTests
 {

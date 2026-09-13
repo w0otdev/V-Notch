@@ -2,9 +2,8 @@ using System;
 
 namespace VNotch.Controllers;
 
-// Worker-owned snapshot of the last submitted pixels. Span equality uses the
-// runtime's vectorized comparison and checks every byte, including tiny motion
-// between the fingerprint's sample positions.
+// Worker snapshot of last pixels; vectorized span equality checks every byte,
+// catching subtle motions between sample positions.
 internal sealed class GlassFrameHistory
 {
     private byte[] _pixels = Array.Empty<byte>();

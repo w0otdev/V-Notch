@@ -55,9 +55,8 @@ public class NotchSettings
 
     public LiquidGlassConfig LiquidGlass { get; set; } = new();
 
-    // The user's personally tuned Liquid Glass values. Kept as a separate slot so
-    // that applying a built-in preset (Frosted/Dark) never destroys what the user
-    // hand-tuned — selecting "Custom Settings" always restores exactly this.
+    // User's custom Liquid Glass settings; kept separate so applying presets
+    // does not overwrite hand-tuned values when switching back to Custom.
     public LiquidGlassConfig? LiquidGlassCustom { get; set; }
 
     // Which Liquid Glass preset is active: "custom", "frosted" or "dark".

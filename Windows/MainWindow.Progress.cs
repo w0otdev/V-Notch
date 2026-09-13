@@ -119,9 +119,8 @@ public partial class MainWindow
     {
         Dispatcher.Invoke(() =>
         {
-            // Spotlight temporarily owns the notch surface. Clicks inside its
-            // window are outside MainWindow by definition and must not collapse
-            // the hidden source state underneath the morph.
+            // Clicks inside Spotlight window must not collapse MainWindow's hidden
+            // state while Spotlight temporarily owns the notch surface.
             if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
             if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
@@ -931,8 +930,6 @@ public partial class MainWindow
     private DispatcherTimer? _rewindTextTimer;
     private bool _isRewindAnimating = false;
 
-
-
     private void StopRewindTextAnimation()
     {
         if (_rewindTextTimer != null)
@@ -978,8 +975,6 @@ public partial class MainWindow
             RuntimeLog.Error(ProgressSeekLogTag, ex.ToString());
         }
     }
-
-
 
     private void ProgressBar_MouseEnter(object sender, MouseEventArgs e)
     {
@@ -1314,8 +1309,6 @@ public partial class MainWindow
         };
         _rewindTextTimer.Start();
     }
-
-
 
     #endregion
 }

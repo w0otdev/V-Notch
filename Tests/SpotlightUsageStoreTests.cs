@@ -180,9 +180,8 @@ public sealed class SpotlightUsageStoreTests : IDisposable
             store.RecordLaunch(item);
             Assert.True(firstWriteStarted.Wait(TimeSpan.FromSeconds(5)));
 
-            // Mutate while the first snapshot is already in the persistence
-            // callback. The same writer must notice the newer version and
-            // persist it after the stale snapshot, without a concurrent writer.
+            // Mutate during in-flight persistence; the writer must detect the newer
+            // version and persist it sequentially without concurrent writer conflicts.
             store.RecordLaunch(item);
             Task pendingSaves = store.WaitForPendingSavesAsync();
 

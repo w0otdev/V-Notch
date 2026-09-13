@@ -3,14 +3,8 @@ using System.Windows.Controls;
 
 namespace VNotch.Services;
 
-/// <summary>
-/// Helper class for adding localized tooltips to UI elements
-/// </summary>
 public static class TooltipHelper
 {
-    /// <summary>
-    /// Sets a localized tooltip on a UI element
-    /// </summary>
     public static void SetLocalizedTooltip(FrameworkElement element, string localizationKey)
     {
         if (element == null || string.IsNullOrEmpty(localizationKey))
@@ -29,9 +23,6 @@ public static class TooltipHelper
         }
     }
 
-    /// <summary>
-    /// Sets a direct tooltip text on a UI element
-    /// </summary>
     public static void SetTooltip(FrameworkElement element, string text)
     {
         if (element == null || string.IsNullOrEmpty(text))
@@ -46,9 +37,6 @@ public static class TooltipHelper
         element.ToolTip = tooltip;
     }
 
-    /// <summary>
-    /// Updates all localized tooltips in the application (useful after language change)
-    /// </summary>
     public static void RefreshTooltips(DependencyObject parent)
     {
         if (parent == null)

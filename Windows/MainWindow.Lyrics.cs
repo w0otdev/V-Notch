@@ -213,9 +213,8 @@ public partial class MainWindow
 
         try
         {
-            // Media/status/layout updates can request the same Canvas repeatedly.
-            // Keep both its current frame and its in-flight fade instead of
-            // blanking the background and restarting playback on every request.
+            // Preserve current frame and fade on repeated Canvas requests instead of
+                // blanking and restarting playback on every update.
             if (LyricsCanvasVideo.Source == _spotifyCanvasUri &&
                 LyricsCanvasBackground.Visibility == Visibility.Visible)
             {
@@ -633,9 +632,8 @@ public partial class MainWindow
         string videoId = info.YouTubeVideoId ?? "";
         if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
         {
-            // If _lyricsTrackKey is already a resolved "yt:{id}" key, do NOT overwrite it with an
-            // unresolved fallback. This can happen when MediaChanged fires with empty videoId after
-            // a successful subtitle fetch — we must keep the existing resolved state.
+            // Preserve resolved "yt:{id}" key and avoid overwriting with unresolved
+                // fallback when MediaChanged fires with empty videoId after subtitle fetch.
             if (!force && _lyricsTrackKey.StartsWith("yt:", StringComparison.Ordinal)
                 && !_lyricsTrackKey.StartsWith("yt-lrc:", StringComparison.Ordinal)
                 && _currentLyrics != null && _currentLyrics.Count > 0)
@@ -1090,10 +1088,8 @@ public partial class MainWindow
     {
         if (LyricTextA == null || LyricTextB == null) return;
 
-        // The edge fade mask exists only to soften lines sliding in/out. Keeping
-        // it on while a line is at rest dims the first/last text rows whenever
-        // layout hugs the text, so it is applied per-transition and removed once
-        // the incoming line settles.
+        // Apply edge fade mask only during transitions and remove when settled
+            // so resting text rows are not dimmed.
         _lyricsLayerFadeMask ??= AnimatedLyricsLayer.OpacityMask;
         int transitionVersion = ++_lyricsLineTransitionVersion;
 
@@ -1176,9 +1172,8 @@ public partial class MainWindow
 
         Dispatcher.Invoke(() =>
         {
-            // Always enforce: CalendarWidget hidden, LyricsWidget visible.
-            // This corrects cases where _isLyricsActive was already true (e.g. from ShowLyricsSearchState)
-            // but the visual state was not yet committed (animation still in flight, or race with RestoreExpandedContentOpacity).
+            // Enforce CalendarWidget hidden and LyricsWidget visible to resolve
+                // uncommitted visual states during in-flight animations.
             if (CalendarWidget.Visibility != Visibility.Collapsed || CalendarWidget.Opacity > 0.01)
             {
                 CalendarWidget.BeginAnimation(OpacityProperty, null);

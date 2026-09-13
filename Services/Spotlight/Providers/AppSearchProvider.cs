@@ -45,9 +45,8 @@ internal sealed class AppSearchProvider : ISpotlightProvider
         AddStartMenuShortcuts(apps, Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu));
         AddAppsFolderItems(apps);
 
-        // Icons are decoded lazily: SpotlightSearchService.Merge loads them for the
-        // handful of results actually shown. Decoding every installed app up front
-        // costs hundreds of bitmaps that no one ever looks at.
+        // Decode icons lazily in Merge for displayed results only, avoiding
+        // upfront decoding overhead for hundreds of unused app bitmaps.
         return apps.Values.ToArray();
     }
 

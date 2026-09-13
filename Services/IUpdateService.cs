@@ -15,7 +15,6 @@ public class UpdateInfo
 {
     public string Version { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
-    /// <summary>HTTPS URL of the SHA-256 sidecar for the selected installer.</summary>
     public string ChecksumUrl { get; set; } = string.Empty;
     public string ManifestUrl { get; set; } = string.Empty;
     public string ManifestSignatureUrl { get; set; } = string.Empty;

@@ -9,10 +9,6 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
 
-/// <summary>
-/// Provides detection and lookup for Picture-in-Picture (PiP) video windows across
-/// web browsers (Chromium, Firefox, WebKit forks) and desktop media players.
-/// </summary>
 public static class PipDetector
 {
     private static readonly string[] MultilingualPipKeywords =
@@ -56,9 +52,6 @@ public static class PipDetector
         "Windows.UI.Core.CoreWindow"
     };
 
-    /// <summary>
-    /// Checks whether a window title represents a Picture-in-Picture window.
-    /// </summary>
 #pragma warning disable S3267 // Keyword lookup does not iterate loops
     public static bool IsPipTitle(string? title)
     {
@@ -78,9 +71,6 @@ public static class PipDetector
     }
 #pragma warning restore S3267
 
-    /// <summary>
-    /// Checks whether the given process name belongs to a known browser capable of PiP.
-    /// </summary>
     public static bool IsKnownBrowserProcess(string? processName)
     {
         if (string.IsNullOrWhiteSpace(processName))
@@ -93,9 +83,6 @@ public static class PipDetector
         return KnownBrowserProcesses.Contains(cleaned);
     }
 
-    /// <summary>
-    /// Determines whether an HWND represents an active, visible Picture-in-Picture window.
-    /// </summary>
     public static bool IsPipWindow(IntPtr hWnd, string? targetProcessName = null, string? currentTrack = null)
     {
         if (hWnd == IntPtr.Zero || !IsWindowVisible(hWnd) || IsIconic(hWnd))
@@ -147,9 +134,6 @@ public static class PipDetector
         return false;
     }
 
-    /// <summary>
-    /// Searches active top-level windows for an open Picture-in-Picture window.
-    /// </summary>
     public static bool TryFindPipWindow(
         out IntPtr pipHwnd,
         out string pipTitle,

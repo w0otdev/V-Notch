@@ -670,10 +670,8 @@ public partial class MainWindow
         }
         else if (_isMusicCompactMode)
         {
-            // SMTC drops the session for a moment between tracks (playlist
-            // advance, browser navigation). Defer leaving compact mode so the
-            // pill doesn't flicker out of the music layout and back — and the
-            // privacy dot doesn't hop between positions — on every track change.
+            // Defer exiting compact mode across brief SMTC session gaps between
+                // tracks to prevent pill and privacy indicator flickering.
             SchedulePendingMusicCompactExit();
             return;
         }

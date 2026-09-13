@@ -5,15 +5,10 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-/// <summary>
-/// Evaluates plain arithmetic queries ("52*18+3") inline, macOS-Spotlight style.
-/// The result row copies its value to the clipboard when opened.
-/// </summary>
 internal sealed partial class CalculatorProvider : ISpotlightProvider
 {
     private const int MaxExpressionLength = 64;
 
-    /// <summary>Outranks every lexical tier in SpotlightRanker (max 1000).</summary>
     internal const double ResultScore = 1100;
 
     public bool IsAvailable => true;

@@ -198,9 +198,8 @@ public sealed class MagnifierCaptureSource : IDisposable
     private int _completedWidth, _completedHeight;
     private int _completedX, _completedY;
     private bool _hasCompletedFrame;
-    // A desktop frame captured before an overlay HWND is added to the Magnifier
-    // exclusion list. On some WPF layered-window configurations the excluded
-    // rectangle is returned as opaque black instead of the desktop behind it.
+    // Desktop frame captured before Magnifier exclusion list inclusion, avoiding
+        // layered windows returning opaque black rectangles.
     private byte[] _unfilteredBuffer = Array.Empty<byte>();
     private int _unfilteredWidth, _unfilteredHeight;
     private int _unfilteredX, _unfilteredY;
@@ -213,11 +212,6 @@ public sealed class MagnifierCaptureSource : IDisposable
 
     public bool IsReady { get; private set; }
 
-    /// <summary>
-    /// Captures one desktop frame before any glass overlay is registered as an
-    /// excluded HWND. That frame is used only when a later excluded crop is
-    /// demonstrably all black.
-    /// </summary>
     public static bool PrewarmUnfilteredDesktopFrame(TimeSpan timeout)
     {
         MagnifierCaptureSource source = AcquireShared(IntPtr.Zero);
@@ -279,9 +273,8 @@ public sealed class MagnifierCaptureSource : IDisposable
             {
                 if (h != IntPtr.Zero && !list.Contains(h))
                 {
-                    // If the window already has WDA_EXCLUDEFROMCAPTURE, DWM's compositor
-                    // excludes it cleanly. Passing a WS_EX_LAYERED window with display
-                    // affinity to MagSetWindowFilterList causes DWM to paint the region as solid black.
+                    // Rely on WDA_EXCLUDEFROMCAPTURE; passing display-affinity layered windows
+                    // to MagSetWindowFilterList causes DWM to render black regions.
                     if (GetWindowDisplayAffinity(h, out uint aff) && aff == WDA_EXCLUDEFROMCAPTURE)
                         continue;
                     list.Add(h);
@@ -327,19 +320,14 @@ public sealed class MagnifierCaptureSource : IDisposable
         return IsReady;
     }
 
-    /// <summary>
-    /// Low-latency synchronized capture: requests DWM composite update and copies the
-    /// freshest available frame with microsecond synchronization to eliminate 1-2 frame lag.
-    /// </summary>
     public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits, out int actualX, out int actualY)
     {
         actualX = x;
         actualY = y;
         if (!IsReady || !_running || destBits == IntPtr.Zero || w <= 0 || h <= 0) return false;
 
-        // All glass windows consume crops of the same stationary desktop frame.
-        // Moving/resizing a shared magnifier source lets one consumer overwrite
-        // another's request and mislabels delayed callbacks during morphs.
+        // Glass windows consume stationary desktop crops; keep shared source fixed
+        // to avoid requests overwriting each other or mislabeling callbacks.
         ulong previous;
         lock (_frameLock) previous = _frameCounter;
         _frameReceivedEvent.Reset();
@@ -363,9 +351,8 @@ public sealed class MagnifierCaptureSource : IDisposable
             if (IsEffectivelyBlackCrop(_completedBuffer, _completedWidth, _completedHeight,
                     _completedX, _completedY, x, y, w, h))
             {
-                // The pre-filter snapshot is only an initialization artifact.
-                // Returning it here reports success forever with stale pixels
-                // and prevents the controller from recovering its live backend.
+                // Do not return pre-filter snapshot as it would report stale pixels
+                // and block the controller from recovering its live backend.
                 return false;
             }
 
@@ -450,9 +437,8 @@ public sealed class MagnifierCaptureSource : IDisposable
                         hostShown = false;
                         lock (_frameLock)
                         {
-                            // Shared capture may stay alive for a later reopen,
-                            // but idle consumers must not retain desktop-sized
-                            // BGRA buffers (two 4K frames are about 63 MiB).
+                            // Release desktop-sized BGRA buffers when consumers are idle to prevent
+                            // excessive memory retention.
                             _hasCompletedFrame = false;
                             _hasUnfilteredFrame = false;
                             _completedBuffer = Array.Empty<byte>();
@@ -493,12 +479,8 @@ public sealed class MagnifierCaptureSource : IDisposable
                             Bottom = req.Y + req.Height
                         };
 
-                        // Refresh the source on every capture request, including
-                        // when the lens and desktop bounds are stationary.
-                        // Invalidating the control alone can repaint its cached
-                        // magnified image without acquiring a new desktop frame.
-                        // Keep the same physical rectangle so refreshes do not
-                        // introduce any movement in the shared capture texture.
+                        // Refresh source on every capture request using fixed physical bounds to
+                        // ensure fresh desktop frames without jitter in the shared texture.
                         if (!MagSetWindowSource(_magWnd, rect)) continue;
 
                         InvalidateRect(_magWnd, IntPtr.Zero, false);

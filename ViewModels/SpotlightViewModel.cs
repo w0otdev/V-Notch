@@ -13,9 +13,8 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 {
     private const int ResultLimit = 10;
 
-    // Only the Windows Search index phase is debounced; the in-memory
-    // providers and the Everything IPC provider run on every keystroke so the
-    // first paint is instant.
+    // Debounce only Windows Search; in-memory and Everything IPC providers run
+    // on every keystroke for instant first paint.
     private const int DeferredSearchDebounceMs = 75;
     private const int MaxIconConcurrency = 2;
 
@@ -27,7 +26,6 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<SpotlightSearchItem> Results { get; } = new();
 
-    /// <summary>Raised on the UI thread after every result publish (including no-op ones).</summary>
     public event EventHandler? ResultsPublished;
 
     [ObservableProperty] private string _query = string.Empty;
@@ -94,10 +92,6 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     public void RecordLaunch(SpotlightSearchItem item) => _usage.RecordLaunch(item);
 
-    /// <summary>
-    /// Drops an item whose launch failed (stale index entry) and moves the
-    /// selection to its nearest neighbour so Enter stays useful.
-    /// </summary>
     public void RemoveResult(SpotlightSearchItem item)
     {
         int index = Results.IndexOf(item);
@@ -144,12 +138,6 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         ResultsPublished?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Reconciles Results toward <paramref name="ordered"/> with minimal
-    /// Move/Insert/Remove operations instead of Clear+re-add, so unchanged rows
-    /// keep their containers: no selection-accent replay, no scroll reset, and
-    /// an identical republish (the common phase-2 case) emits no events at all.
-    /// </summary>
     private void ApplyDiff(IReadOnlyList<SpotlightSearchItem> ordered)
     {
         for (int i = Results.Count - 1; i >= 0; i--)

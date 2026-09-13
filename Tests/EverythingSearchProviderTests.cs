@@ -5,12 +5,6 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-/// <summary>
-/// Locks the EVERYTHING_IPC_LISTW v1 layout the provider parses: a 28-byte
-/// header (totfolders, totfiles, totitems, numfolders, numfiles, numitems,
-/// offset) followed by 12-byte items whose string offsets are relative to the
-/// start of the list.
-/// </summary>
 public sealed class EverythingSearchProviderTests
 {
     private const int HeaderBytes = 28;

@@ -3,8 +3,6 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace VNotch.Services;
 
-/// <summary>Optional additional Authenticode policy. Signed update manifests are
-/// always required independently by UpdateService, even with no certificate allowlist.</summary>
 public sealed class UpdateSecurityPolicy
 {
     public const long MaximumInstallerBytes = 500L * 1024 * 1024;

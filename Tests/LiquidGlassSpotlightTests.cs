@@ -292,9 +292,8 @@ public sealed class LiquidGlassSpotlightTests
                 host.Show();
                 host.UpdateLayout();
 
-                // The reported regression is the stable expanded MainWindow, not
-                // the compact pill. Exercise its production transition before
-                // comparing capture, texture, and composed desktop pixels.
+                // Exercise expanded MainWindow production transition before verifying
+                // capture, texture, and composed desktop pixel fidelity.
                 var setDebugViewState = typeof(MainWindow).GetMethod(
                     "SetDebugViewState", BindingFlags.Instance | BindingFlags.NonPublic);
                 Assert.NotNull(setDebugViewState);

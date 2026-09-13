@@ -28,9 +28,8 @@ public sealed class DpapiJsonConverter : JsonConverter<string>
             }
         }
 
-        // SettingsMigrator must encrypt legacy data before this converter receives
-        // it. Accepting it here would leave a plaintext key in memory and make a
-        // later, unrelated save capable of persisting it again.
+        // SettingsMigrator encrypts legacy data prior to converter receipt to prevent
+        // plaintext keys from lingering in memory or being persisted on save.
         throw new System.Security.Cryptography.CryptographicException(
             "A plaintext API key must be migrated before it can be loaded.");
     }

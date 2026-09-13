@@ -3,10 +3,6 @@ using System.Threading;
 
 namespace VNotch.Services;
 
-/// <summary>
-/// Encapsulates single-instance application logic using a named mutex.
-/// Designed to be testable and to prevent crashes during shutdown.
-/// </summary>
 public sealed class SingleInstanceGuard : IDisposable
 {
     private Mutex? _mutex;
@@ -22,10 +18,6 @@ public sealed class SingleInstanceGuard : IDisposable
         MutexName = mutexName;
     }
 
-    /// <summary>
-    /// Attempts to create or open the named mutex.
-    /// Returns true if this instance is the first/owner.
-    /// </summary>
     public bool TryAcquire()
     {
         _mutex = new Mutex(true, MutexName, out bool createdNew);
@@ -33,10 +25,6 @@ public sealed class SingleInstanceGuard : IDisposable
         return _ownsMutex;
     }
 
-    /// <summary>
-    /// For restart scenarios: waits up to <paramref name="timeout"/> for the
-    /// previous instance to release the mutex. Returns true if ownership was acquired.
-    /// </summary>
     public bool TryWaitForPreviousInstance(TimeSpan timeout)
     {
         if (_mutex == null)

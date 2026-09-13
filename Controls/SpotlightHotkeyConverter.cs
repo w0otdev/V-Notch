@@ -3,10 +3,6 @@ using System.Windows.Data;
 
 namespace VNotch.Controls;
 
-/// <summary>
-/// Maps a result row's alternation index to its quick-launch chord (Ctrl+1..9);
-/// rows past the ninth get no badge.
-/// </summary>
 public sealed class SpotlightHotkeyConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>

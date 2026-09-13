@@ -78,10 +78,6 @@ internal sealed class SpotlightLauncher
         && IsValidTarget(item)
         && File.Exists(item.Target);
 
-    /// <summary>
-    /// The text put on the clipboard for "copy path"; the computed value for
-    /// calculations, the target path for everything file-backed.
-    /// </summary>
     internal static string? GetCopyableText(SpotlightSearchItem item)
     {
         if (item.Kind == SpotlightResultKind.Calculation)

@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 
 namespace VNotch.Services;
 
-
 public static class CrashReporter
 {
     private static readonly object _crashLock = new();
@@ -21,7 +20,6 @@ public static class CrashReporter
     private static volatile bool _initialized;
     private const long MaxCrashLogSizeBytes = 2 * 1024 * 1024; // 2 MB
     public const string CrashLogFileName = "vnotch-crash.log";
-
 
     public static string CrashLogPath
     {
@@ -36,10 +34,6 @@ public static class CrashReporter
         internal set => _crashLogPath = value;
     }
 
-    /// <summary>
-    /// Initializes global exception hooks as early as possible.
-    /// Safe to call multiple times; subsequent calls are ignored.
-    /// </summary>
     public static void Initialize()
     {
         if (_initialized) return;
@@ -75,10 +69,6 @@ public static class CrashReporter
     [ThreadStatic]
     private static bool _isLogging;
 
-    /// <summary>
-    /// Records a crash or critical error synchronously to the crash log file.
-    /// This method is fail-safe and will never throw an exception to the caller.
-    /// </summary>
     public static void LogCrash(string source, object? exceptionOrError, string? context = null, bool isTerminating = false)
     {
         if (_isLogging) return;
@@ -107,9 +97,6 @@ public static class CrashReporter
         }
     }
 
-    /// <summary>
-    /// Formats a complete, human-readable diagnostic report for an exception or error object.
-    /// </summary>
     public static string FormatCrashReport(string source, object? exceptionOrError, string? context, bool isTerminating)
     {
         var nowUtc = DateTime.UtcNow;

@@ -235,9 +235,8 @@ public partial class MainWindow
         secondaryGroup.Children.Add(secondaryTranslate);
         SecondaryContent.RenderTransform = secondaryGroup;
         SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
-        // Hidden views may have received data updates without a layout pass.
-        // Keep the root live and prepare it while transparent so the first
-        // animated frame contains current content instead of a cached surface.
+        // Prepare hidden view while transparent so animated frames contain
+                // fresh content instead of cached surfaces.
         SecondaryContent.UpdateLayout();
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);

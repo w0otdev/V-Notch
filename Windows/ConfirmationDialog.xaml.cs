@@ -55,9 +55,6 @@ public partial class ConfirmationDialog : Window
         CancelButton.Content = Loc.Get(CancelKey);
     }
 
-    /// <summary>
-    /// Show a confirmation dialog matching native V-Notch Settings design
-    /// </summary>
     public static bool Show(
         Window? owner,
         string message,
@@ -70,9 +67,6 @@ public partial class ConfirmationDialog : Window
         return Show(owner, message, new DialogOptions(title, confirmText, cancelText, icon, style, null));
     }
 
-    /// <summary>
-    /// Show a confirmation dialog with structured options matching native V-Notch Settings design
-    /// </summary>
     public static bool Show(
         Window? owner,
         string message,

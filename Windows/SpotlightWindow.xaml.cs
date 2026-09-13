@@ -1219,10 +1219,6 @@ public partial class SpotlightWindow : Window
         ResultsList.BeginAnimation(OpacityProperty, fade);
     }
 
-    /// <summary>
-    /// Shows the top result's remaining characters as a dim inline completion
-    /// behind the typed text (Flow Launcher style). Only prefix matches qualify.
-    /// </summary>
     private void UpdateAutocomplete()
     {
         string query = SearchBox.Text;
@@ -1310,10 +1306,6 @@ public partial class SpotlightWindow : Window
         });
     }
 
-    /// <summary>
-    /// Expands or collapses the results region with an animated height so the
-    /// auto-sized window grows/shrinks smoothly instead of snapping.
-    /// </summary>
     private void SetContentShown(bool shown)
     {
         // While the notch morph locks the shell's height, revealing content
@@ -2093,9 +2085,8 @@ public partial class SpotlightWindow : Window
         Shell.BeginAnimation(OpacityProperty, shellNormalize);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-        // Exit content fades away without an additional blur pulse. The single
-        // blur-to-clear reveal belongs to the live notch at the handoff.
-        // Shed the panel outline early so the shell arrives looking like the
+        // Fade exit content without extra blur pulse and shed outline early so shell
+        // matches destination geometry at handoff.
         AnimateShellBorder(current.BorderOpacity, 0, TimeSpan.FromMilliseconds(200));
 
         if (!IsLiquidGlassEnabled && targetTopRadius == 0)
@@ -2382,10 +2373,6 @@ public partial class SpotlightWindow : Window
     private ISpotlightMorphHost? GetMorphHost() =>
         MorphHostOverride ?? Owner as ISpotlightMorphHost;
 
-    /// <summary>
-    /// Swaps the shared border resource for a window-local brush once, so its
-    /// opacity can animate without touching other users of the resource.
-    /// </summary>
     private SolidColorBrush EnsureShellBorderBrush()
     {
         if (_shellBorderBrush != null) return _shellBorderBrush;
