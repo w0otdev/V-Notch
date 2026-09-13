@@ -17,6 +17,36 @@ public partial class MainWindow
     private bool _hasWeatherData;
     private int _weatherRevealVersion;
 
+    internal void InitializeWeatherWidget()
+    {
+        if (WeatherWidgetContent != null)
+        {
+            WeatherWidgetContent.IsVisibleChanged += (s, e) =>
+            {
+                if (WeatherWidgetContent.Visibility == Visibility.Visible)
+                {
+                    if (!_hasWeatherData)
+                    {
+                        UpdateWeatherSkeletonState();
+                    }
+                }
+                else
+                {
+                    StopWeatherSkeletonAnimation();
+                }
+            };
+        }
+
+        if (!_settings.EnableWeather)
+        {
+            ShowWeatherStatus(isEnabled: false);
+        }
+        else
+        {
+            UpdateWeatherSkeletonState();
+        }
+    }
+
     internal void InitializeWeatherPresenter()
     {
         if (_weatherPresenter != null) return;
@@ -51,18 +81,102 @@ public partial class MainWindow
         });
     }
 
+    private void StartWeatherSkeletonAnimation()
+    {
+        if (WeatherWidgetSkeleton == null) return;
+        if (WeatherWidgetSkeleton.Visibility != Visibility.Visible) return;
+
+        var anim = new DoubleAnimation(0.55, 1.0, new Duration(TimeSpan.FromMilliseconds(950)))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        WeatherWidgetSkeleton.BeginAnimation(OpacityProperty, anim);
+    }
+
+    private void StopWeatherSkeletonAnimation()
+    {
+        if (WeatherWidgetSkeleton == null) return;
+        WeatherWidgetSkeleton.BeginAnimation(OpacityProperty, null);
+    }
+
+    internal void StartShelfWeatherSkeletonAnimation()
+    {
+        if (ShelfWeatherSkeleton == null) return;
+        if (ShelfWeatherSkeleton.Visibility != Visibility.Visible) return;
+
+        var anim = new DoubleAnimation(0.55, 1.0, new Duration(TimeSpan.FromMilliseconds(950)))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        ShelfWeatherSkeleton.BeginAnimation(OpacityProperty, anim);
+    }
+
+    internal void StopShelfWeatherSkeletonAnimation()
+    {
+        if (ShelfWeatherSkeleton == null) return;
+        ShelfWeatherSkeleton.BeginAnimation(OpacityProperty, null);
+    }
+
+    private void UpdateWeatherSkeletonState()
+    {
+        if (_hasWeatherData)
+        {
+            StopWeatherSkeletonAnimation();
+            if (WeatherWidgetSkeleton != null) WeatherWidgetSkeleton.Visibility = Visibility.Collapsed;
+            if (WeatherActualContent != null)
+            {
+                WeatherActualContent.Visibility = Visibility.Visible;
+                WeatherActualContent.Opacity = 1;
+            }
+            if (WeatherWidgetTranslate != null) WeatherWidgetTranslate.Y = 0;
+        }
+        else
+        {
+            if (WeatherActualContent != null)
+            {
+                WeatherActualContent.Visibility = Visibility.Collapsed;
+                WeatherActualContent.Opacity = 0;
+            }
+            if (WeatherWidgetSkeleton != null)
+            {
+                WeatherWidgetSkeleton.Visibility = Visibility.Visible;
+                StartWeatherSkeletonAnimation();
+            }
+        }
+    }
+
     private void ShowWeatherStatus(bool isEnabled)
     {
         _hasWeatherData = false;
         _weatherRevealVersion++;
-        WeatherWidgetContent.BeginAnimation(OpacityProperty, null);
-        WeatherWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        StopWeatherSkeletonAnimation();
+        if (WeatherWidgetSkeleton != null)
+            WeatherWidgetSkeleton.Visibility = Visibility.Collapsed;
+
+        if (WeatherActualContent != null)
+        {
+            WeatherActualContent.BeginAnimation(OpacityProperty, null);
+            WeatherActualContent.Visibility = Visibility.Visible;
+            WeatherActualContent.Opacity = 1;
+        }
+        if (WeatherWidgetTranslate != null)
+        {
+            WeatherWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            WeatherWidgetTranslate.Y = 0;
+        }
+
         WeatherLocationText.Text = Loc.Get(isEnabled ? "weather.unavailable" : "weather.disabled");
         WeatherTempText.Text = "\u2014\u00b0";
         WeatherConditionText.Text = Loc.Get(isEnabled ? "weather.retryLater" : "weather.enableInSettings");
         WeatherHiLoText.Text = string.Empty;
-        WeatherWidgetContent.Opacity = 1;
-        WeatherWidgetTranslate.Y = 0;
+
+        RefreshShelfWeatherData();
     }
 
     private void UpdateWeatherUI(WeatherInfo weather)
@@ -76,22 +190,36 @@ public partial class MainWindow
 
         if (shouldReveal)
             RevealWeatherContent();
+        else
+            UpdateWeatherSkeletonState();
+
+        RefreshShelfWeatherData();
     }
 
     private void RevealWeatherContent()
     {
         int transitionVersion = ++_weatherRevealVersion;
-        WeatherWidgetContent.BeginAnimation(OpacityProperty, null);
+
+        StopWeatherSkeletonAnimation();
+        if (WeatherWidgetSkeleton != null)
+        {
+            WeatherWidgetSkeleton.Visibility = Visibility.Collapsed;
+        }
+
+        if (WeatherActualContent == null || WeatherWidgetTranslate == null) return;
+
+        WeatherActualContent.Visibility = Visibility.Visible;
+        WeatherActualContent.BeginAnimation(OpacityProperty, null);
         WeatherWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
 
         if (AnimationConfig.ReduceMotion)
         {
-            WeatherWidgetContent.Opacity = 1;
+            WeatherActualContent.Opacity = 1;
             WeatherWidgetTranslate.Y = 0;
             return;
         }
 
-        WeatherWidgetContent.Opacity = 0;
+        WeatherActualContent.Opacity = 0;
         WeatherWidgetTranslate.Y = 8;
 
         var duration = new Duration(TimeSpan.FromMilliseconds(420));
@@ -104,15 +232,15 @@ public partial class MainWindow
             if (!_hasWeatherData || transitionVersion != _weatherRevealVersion)
                 return;
 
-            WeatherWidgetContent.BeginAnimation(OpacityProperty, null);
+            WeatherActualContent.BeginAnimation(OpacityProperty, null);
             WeatherWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            WeatherWidgetContent.Opacity = 1;
+            WeatherActualContent.Opacity = 1;
             WeatherWidgetTranslate.Y = 0;
         };
 
         Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(slideIn, AnimationConfig.TargetFps);
-        WeatherWidgetContent.BeginAnimation(OpacityProperty, fadeIn);
+        WeatherActualContent.BeginAnimation(OpacityProperty, fadeIn);
         WeatherWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, slideIn);
     }
 

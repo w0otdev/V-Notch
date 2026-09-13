@@ -2504,12 +2504,49 @@
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Left"
                                           Margin="2,0,0,0"
-                                          Opacity="0"
                                           Visibility="Collapsed">
-                                        <Grid.RenderTransform>
-                                            <TranslateTransform x:Name="WeatherWidgetTranslate" Y="8"/>
-                                        </Grid.RenderTransform>
-                                        <StackPanel Orientation="Vertical" HorizontalAlignment="Left">
+
+                                        <!-- Weather Skeleton Loading View -->
+                                        <StackPanel x:Name="WeatherWidgetSkeleton"
+                                                    Orientation="Vertical"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    Visibility="Visible">
+                                            <!-- Location line skeleton -->
+                                            <Border Width="68" Height="12"
+                                                    CornerRadius="6"
+                                                    Background="#4DFFFFFF"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,2,0,0"/>
+                                            <!-- Temperature skeleton -->
+                                            <Border Width="52" Height="28"
+                                                    CornerRadius="7"
+                                                    Background="#5EFFFFFF"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,6,0,0"/>
+                                            <!-- Condition skeleton -->
+                                            <Border Width="80" Height="12"
+                                                    CornerRadius="6"
+                                                    Background="#46FFFFFF"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,9,0,0"/>
+                                            <!-- Hi/Lo skeleton -->
+                                            <Border Width="62" Height="10"
+                                                    CornerRadius="5"
+                                                    Background="#38FFFFFF"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,4,0,0"/>
+                                        </StackPanel>
+
+                                        <!-- Actual Weather Content View -->
+                                        <StackPanel x:Name="WeatherActualContent"
+                                                    Orientation="Vertical"
+                                                    HorizontalAlignment="Left"
+                                                    Opacity="0"
+                                                    Visibility="Collapsed">
+                                            <StackPanel.RenderTransform>
+                                                <TranslateTransform x:Name="WeatherWidgetTranslate" Y="8"/>
+                                            </StackPanel.RenderTransform>
 
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                 <TextBlock x:Name="WeatherLocationText"
@@ -2967,11 +3004,22 @@
                                 Margin="0,0,8,0"
                                 ClipToBounds="True"
                                 Visibility="Collapsed">
-                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
-                                <TextBlock x:Name="ShelfWeatherTempText" Text="--°" Style="{StaticResource TitleText}" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="ShelfWeatherDescText" Text="Weather" Style="{StaticResource SmallText}" FontSize="11" Foreground="#CCFFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock x:Name="ShelfWeatherCityText" Text="" Style="{StaticResource SmallText}" FontSize="9" Foreground="#88FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
-                            </StackPanel>
+                            <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
+                                <StackPanel x:Name="ShelfWeatherSkeleton"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            Visibility="Collapsed">
+                                    <Border Width="42" Height="22" CornerRadius="6" Background="#5EFFFFFF" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                    <Border Width="56" Height="10" CornerRadius="5" Background="#46FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                    <Border Width="38" Height="9" CornerRadius="4" Background="#38FFFFFF" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <StackPanel x:Name="ShelfWeatherActualContent"
+                                            VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
+                                    <TextBlock x:Name="ShelfWeatherTempText" Text="--°" Style="{StaticResource TitleText}" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="ShelfWeatherDescText" Text="Weather" Style="{StaticResource SmallText}" FontSize="11" Foreground="#CCFFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="ShelfWeatherCityText" Text="" Style="{StaticResource SmallText}" FontSize="9" Foreground="#88FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </Grid>
                         </Border>
 
                         <Border x:Name="ShelfClockSection"

@@ -18,7 +18,7 @@ public partial class MainWindow
                 SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
                 SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
                 if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) ShelfWeatherSection.Visibility = Visibility.Collapsed;
+                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
                 if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
                 if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Visible;
                 RefreshShelfSysMonData();
@@ -39,7 +39,7 @@ public partial class MainWindow
                 SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
                 if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
                 if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) ShelfWeatherSection.Visibility = Visibility.Collapsed;
+                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
                 if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Visible;
                 RefreshShelfClockData();
                 break;
@@ -49,7 +49,7 @@ public partial class MainWindow
                 SecondaryRightCol.Width = new GridLength(1, GridUnitType.Star);
                 if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
                 if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) ShelfWeatherSection.Visibility = Visibility.Collapsed;
+                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
                 if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
                 break;
 
@@ -57,7 +57,7 @@ public partial class MainWindow
                 SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
                 SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
                 if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) ShelfWeatherSection.Visibility = Visibility.Collapsed;
+                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
                 if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
                 if (CameraSection != null) CameraSection.Visibility = Visibility.Visible;
                 break;
@@ -125,6 +125,18 @@ public partial class MainWindow
     private void RefreshShelfWeatherData()
     {
         if (ShelfWeatherSection == null || ShelfWeatherSection.Visibility != Visibility.Visible) return;
+
+        if (!_hasWeatherData)
+        {
+            if (ShelfWeatherSkeleton != null) ShelfWeatherSkeleton.Visibility = Visibility.Visible;
+            if (ShelfWeatherActualContent != null) ShelfWeatherActualContent.Visibility = Visibility.Collapsed;
+            StartShelfWeatherSkeletonAnimation();
+            return;
+        }
+
+        StopShelfWeatherSkeletonAnimation();
+        if (ShelfWeatherSkeleton != null) ShelfWeatherSkeleton.Visibility = Visibility.Collapsed;
+        if (ShelfWeatherActualContent != null) ShelfWeatherActualContent.Visibility = Visibility.Visible;
 
         if (WeatherTempText != null && ShelfWeatherTempText != null)
         {
