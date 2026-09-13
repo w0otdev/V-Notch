@@ -1,0 +1,8 @@
+Runtime: .NET 8.0.29; Microsoft Windows 10.0.26200; X64
+Sampled backdrop fingerprint; Release; 9 alternating rounds x 3000 frames; median and worst round (us/frame). No capture/WPF/GPU timing.
+Region | Before median / worst | After median / worst | Speedup | Alloc B/frame
+515x280 | 19.116 / 19.685 | 8.982 / 10.913 | 2.13x | 0.00
+960x304 | 10.016 / 10.330 | 6.799 / 7.222 | 1.47x | 0.00
+1120x1020 | 12.166 / 13.503 | 7.905 / 10.123 | 1.54x | 0.00
+1520x1370 | 11.098 / 12.450 | 8.207 / 9.913 | 1.35x | 0.00
+Correctness checks passed; checksum=B9E09A28D8EA5789

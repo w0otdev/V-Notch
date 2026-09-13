@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -45,15 +46,32 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private bool _pendingFrame;
     private bool _presentQueued;
     private int _retryScheduled;
+    private readonly DispatcherTimer _retryTimer;
+    private readonly Action _presentAction;
+    private GlassDirtyRows _pendingDirtyRows;
+    private long _transferredBytes;
+    private long _submittedFrames;
+    private long _queueTicks;
+    private long _lastUploadTicks;
+
+    internal (long Bytes, long Frames, double MeanQueueMs) TakeStatistics()
+    {
+        long frames = Interlocked.Exchange(ref _submittedFrames, 0);
+        long ticks = Interlocked.Exchange(ref _queueTicks, 0);
+        return (Interlocked.Exchange(ref _transferredBytes, 0), frames,
+            frames == 0 ? 0 : ticks * 1000.0 / Stopwatch.Frequency / frames);
+    }
     private bool _disposed;
     private bool _failed;
+    private int _sessionGeneration;
+    private bool _acceptingFrames;
 
-    private object? _uploadTag;
-    private object? _presentedTag;
+    private LiquidGlassController.GpuGeometry _uploadTag;
+    private LiquidGlassController.GpuGeometry _presentedTag;
 
     public ImageSource ImageSource => _image;
 
-    public event Action<object?>? FramePresented;
+    public event Action<LiquidGlassController.GpuGeometry>? FramePresented;
     public event Action<Exception>? Failed;
 
     public D3DImageFramePresenter(
@@ -74,6 +92,12 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
         _surfaceWidth = surfaceWidth;
         _surfaceHeight = surfaceHeight;
+        _presentAction = PresentPendingFrame;
+        _retryTimer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(4)
+        };
+        _retryTimer.Tick += OnRetryTick;
 
         _direct3D = D3D9.Direct3DCreate9Ex();
         var present = new PresentParameters
@@ -103,8 +127,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
         CompositionTarget.Rendering += OnRendering;
     }
 
-    public bool UploadFrame(IntPtr source, int width, int height, int sourceStride, object? tag = null)
+    public bool UploadFrame(IntPtr source, int width, int height, int sourceStride,
+        int generation, out bool uploaded, LiquidGlassController.GpuGeometry tag = default, bool forcePresent = false)
     {
+        uploaded = false;
         if (_disposed || _failed || source == IntPtr.Zero || width <= 0 || height <= 0)
             return false;
         if (width > _surfaceWidth || height > _surfaceHeight)
@@ -116,18 +142,45 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
         try
         {
+            lock (_surfaceSync)
+            {
+                if (!_acceptingFrames || generation != _sessionGeneration) return true;
+            }
             EnsureResources();
 
             bool shouldSchedule = false;
             lock (_surfaceSync)
             {
+                // Stop/Start may run while this worker waits for the dispatcher.
+                // An old capture must never enter a reused presentation surface.
+                if (!_acceptingFrames || generation != _sessionGeneration) return true;
                 if (_disposed || _uploadSurface == null)
                     return false;
 
                 LockedRectangle locked = _uploadSurface.LockRect(LockFlags.None);
                 try
                 {
-                    CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
+                    GlassDirtyRows dirtyRows;
+                    if (_frameWidth != width || _frameHeight != height)
+                    {
+                        // Initialize every pixel when the capture extent changes.
+                        CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
+                        dirtyRows = new GlassDirtyRows(0, height);
+                    }
+                    else
+                    {
+                        dirtyRows = GlassUploadDelta.CopyChangedRows(source, sourceStride, locked.DataPointer,
+                            locked.Pitch, rowBytes, height);
+                    }
+                    if (dirtyRows.IsEmpty && !forcePresent)
+                    {
+                        // Pending pixels already represent this frame. Leave their
+                        // scheduling/tag intact until WPF consumes them.
+                        return true;
+                    }
+                    // Geometry changes/periodic refresh still submit a frame.
+                    if (forcePresent) dirtyRows = new GlassDirtyRows(0, height);
+                    _pendingDirtyRows = _pendingDirtyRows.Union(dirtyRows);
                 }
                 finally
                 {
@@ -137,11 +190,13 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 _frameWidth = width;
                 _frameHeight = height;
                 _uploadTag = tag;
+                _lastUploadTicks = Stopwatch.GetTimestamp();
 
                 // Intermediate frames may be overwritten while the UI is busy.
                 // The presenter consumes the newest complete capture, preventing a
                 // dispatcher queue from growing behind the live desktop.
                 _pendingFrame = true;
+                uploaded = true;
                 if (!_presentQueued)
                 {
                     _presentQueued = true;
@@ -156,6 +211,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
         }
         catch (Exception ex)
         {
+            lock (_surfaceSync)
+            {
+                if (!_acceptingFrames || generation != _sessionGeneration) return true;
+            }
             ReportFailure(ex);
             return false;
         }
@@ -201,6 +260,14 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 MultisampleType.None,
                 0,
                 lockable: false);
+            // A partial first capture must not expose uninitialized pixels in
+            // the fixed-size texture around it. Initialize once, not per frame.
+            LockedRectangle initial = nextUpload.LockRect(LockFlags.None);
+            try { ClearSurface(initial.DataPointer, initial.Pitch, _surfaceHeight); }
+            finally { nextUpload.UnlockRect(); }
+            _device.UpdateSurface(nextUpload,
+                new Vortice.Direct3D9.Rect(0, 0, _surfaceWidth, _surfaceHeight),
+                nextRender, new Int2(0, 0));
         }
         catch
         {
@@ -219,11 +286,12 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
             _frameWidth = 0;
             _frameHeight = 0;
-            // The fresh render target is uninitialized; the first present must
-            // push its full extent to WPF regardless of the frame's size.
+            // The initialized target still needs one full transfer into WPF's
+            // copy on first attach, regardless of the capture region's size.
             _lastDirtyWidth = _surfaceWidth;
             _lastDirtyHeight = _surfaceHeight;
             _pendingFrame = false;
+            _pendingDirtyRows = default;
             _presentQueued = false;
 
             // Do not attach this target until PresentPendingFrame has populated it.
@@ -238,7 +306,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
         {
             // Capture must not preempt the animation/layout work that positions
             // its lens. Consume the newest pending frame at render priority.
-            _dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)PresentPendingFrame);
+            _dispatcher.BeginInvoke(DispatcherPriority.Render, _presentAction);
         }
         catch (Exception ex)
         {
@@ -265,7 +333,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             try
             {
                 _presentQueued = false;
-                if (!_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
+                if (!_acceptingFrames || !_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
                     return;
 
                 int frameWidth = _frameWidth;
@@ -279,7 +347,9 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 // WPF D3DImage.LockImpl increments its nesting count even when
                 // TryLock returns false. Every completed call needs Unlock;
                 // otherwise the first timeout permanently prevents presenting.
-                bool imageWritable = _image.TryLock(new Duration(TimeSpan.FromMilliseconds(1)));
+                // Do not spend the UI frame budget waiting for WPF's render
+                // thread. Retry with the newest upload when the buffer is free.
+                bool imageWritable = _image.TryLock(new Duration(TimeSpan.Zero));
                 try
                 {
                     if (!imageWritable)
@@ -287,13 +357,20 @@ internal sealed class D3DImageFramePresenter : IDisposable
                         ScheduleRetry();
                         return;
                     }
+                    // A resize or front-buffer recovery needs the full visible
+                    // region. Otherwise only transfer rows changed since the
+                    // last successful present, including overwritten captures.
+                    bool fullDirty = frameWidth != _lastDirtyWidth || frameHeight != _lastDirtyHeight;
+                    int dirtyTop = fullDirty ? 0 : Math.Min(_pendingDirtyRows.Top, frameHeight - 1);
+                    int dirtyBottom = fullDirty ? frameHeight : Math.Min(_pendingDirtyRows.Bottom, frameHeight);
                     var frameRect = new Vortice.Direct3D9.Rect(
-                        0, 0, frameWidth, frameHeight);
+                        0, dirtyTop, frameWidth, dirtyBottom);
                     _device.UpdateSurface(
                         _uploadSurface,
                         frameRect,
                         _renderSurface,
-                        new Int2(0, 0));
+                        new Int2(0, dirtyTop));
+                    Interlocked.Add(ref _transferredBytes, (long)frameWidth * (dirtyBottom - dirtyTop) * 4);
 
                     if (!ReferenceEquals(_attachedSurface, _renderSurface))
                     {
@@ -306,13 +383,18 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
                     int dirtyWidth = Math.Max(frameWidth, _lastDirtyWidth);
                     int dirtyHeight = Math.Max(frameHeight, _lastDirtyHeight);
-                    _image.AddDirtyRect(new Int32Rect(0, 0, dirtyWidth, dirtyHeight));
+                    _image.AddDirtyRect(fullDirty
+                        ? new Int32Rect(0, 0, dirtyWidth, dirtyHeight)
+                        : new Int32Rect(0, dirtyTop, frameWidth, dirtyBottom - dirtyTop));
                     _lastDirtyWidth = frameWidth;
                     _lastDirtyHeight = frameHeight;
 
                     _pendingFrame = false;
+                    _pendingDirtyRows = default;
                     _presentedTag = _uploadTag;
                     presented = true;
+                    Interlocked.Add(ref _queueTicks, Stopwatch.GetTimestamp() - _lastUploadTicks);
+                    Interlocked.Increment(ref _submittedFrames);
                 }
                 finally
                 {
@@ -338,18 +420,47 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_disposed || _failed || Interlocked.CompareExchange(ref _retryScheduled, 1, 0) != 0)
             return;
 
-        _ = System.Threading.Tasks.Task.Delay(16).ContinueWith(_ =>
+        // All callers run on the dispatcher. Reuse one timer instead of creating
+        // Task/continuation/closure objects during every buffer-contention retry.
+        _retryTimer.Start();
+    }
+
+    internal void PrepareResources() => EnsureResources();
+
+    internal void BeginSession(int generation)
+    {
+        SuspendPresentation();
+        lock (_surfaceSync)
         {
-            if (_disposed || _failed) return;
-            _dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
-            {
-                Interlocked.Exchange(ref _retryScheduled, 0);
-                if (_pendingFrame && !_disposed && !_failed)
-                {
-                    PresentPendingFrame();
-                }
-            }));
-        }, System.Threading.Tasks.TaskScheduler.Default);
+            _sessionGeneration = generation;
+            _acceptingFrames = true;
+            Interlocked.Exchange(ref _queueTicks, 0);
+            Interlocked.Exchange(ref _submittedFrames, 0);
+            Interlocked.Exchange(ref _transferredBytes, 0);
+        }
+    }
+
+    internal void SuspendPresentation()
+    {
+        _retryTimer.Stop();
+        Interlocked.Exchange(ref _retryScheduled, 0);
+        lock (_surfaceSync)
+        {
+            _acceptingFrames = false;
+            _pendingFrame = false;
+            _pendingDirtyRows = default;
+            _presentQueued = false;
+            // Keep allocations, but require a fresh capture before displaying
+            // anything from the next Spotlight session.
+            _frameWidth = _frameHeight = 0;
+        }
+    }
+
+    private void OnRetryTick(object? sender, EventArgs e)
+    {
+        _retryTimer.Stop();
+        Interlocked.Exchange(ref _retryScheduled, 0);
+        if (_pendingFrame && !_disposed && !_failed) PresentPendingFrame();
     }
 
     private void OnRendering(object? sender, EventArgs e)
@@ -438,6 +549,11 @@ internal sealed class D3DImageFramePresenter : IDisposable
     }
 
 #pragma warning disable S6640 // Pointer-based row blitting is required for high-performance frame presentation
+    private static unsafe void ClearSurface(IntPtr pixels, int pitch, int height)
+    {
+        new Span<byte>((void*)pixels, checked(pitch * height)).Clear();
+    }
+
     private static unsafe void CopyRows(
         IntPtr source,
         int sourceStride,
@@ -496,11 +612,14 @@ internal sealed class D3DImageFramePresenter : IDisposable
             return;
 
         _disposed = true;
+        _retryTimer.Stop();
+        _retryTimer.Tick -= OnRetryTick;
         CompositionTarget.Rendering -= OnRendering;
         _image.IsFrontBufferAvailableChanged -= OnFrontBufferAvailableChanged;
 
         lock (_surfaceSync)
         {
+            _acceptingFrames = false;
             try
             {
                 DetachBackBuffer();

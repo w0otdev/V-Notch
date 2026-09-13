@@ -1,0 +1,16 @@
+.NET 8.0.29; Microsoft Windows 10.0.26200; X64
+Detection microbenchmark, not desktop-to-photon latency. 7 alternating rounds x 500 frames after 1s warmup.
+Size | scenario | before us | after us | before misses / 240 | after misses / 240 | retained MiB | after alloc B/frame
+515x280 | static | 12.694 | 16.456 | 0 | 0 | 0.55 | 0.00
+515x280 | small motion | 10.466 | 15.146 | 240 | 0 | 0.55 | 0.00
+515x280 | late-frame motion | 10.013 | 25.197 | 0 | 0 | 0.55 | 0.00
+960x304 | static | 8.759 | 37.153 | 0 | 0 | 1.11 | 0.00
+960x304 | small motion | 7.477 | 45.568 | 240 | 0 | 1.11 | 0.00
+960x304 | late-frame motion | 7.433 | 70.923 | 240 | 0 | 1.11 | 0.00
+1120x1020 | static | 7.661 | 235.005 | 0 | 0 | 4.36 | 0.00
+1120x1020 | small motion | 8.037 | 293.645 | 240 | 0 | 4.36 | 0.00
+1120x1020 | late-frame motion | 8.513 | 1471.799 | 240 | 0 | 4.36 | 0.00
+1520x1370 | static | 8.387 | 435.318 | 0 | 0 | 7.94 | 0.00
+1520x1370 | small motion | 8.415 | 508.309 | 240 | 0 | 7.94 | 0.00
+1520x1370 | late-frame motion | 8.234 | 985.924 | 240 | 0 | 7.94 | 0.00
+Checks passed; sink=31500

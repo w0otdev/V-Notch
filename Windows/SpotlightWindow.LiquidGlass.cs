@@ -23,6 +23,41 @@ public partial class SpotlightWindow
     private LiquidGlassController.GpuGeometry? _lastGpuGeometry;
     private LiquidGlassController.GpuGeometry? _lastAppliedGpuOptics;
     private double _lastAppliedTouchLight = -1;
+    private System.Windows.Threading.DispatcherTimer? _glassResourceExpiry;
+
+    internal void PrepareGlassForOpening()
+    {
+        if (!IsLiquidGlassEnabled || IsSpotlightOpen) return;
+        _liquidGlass?.PrepareGpuResources();
+        ScheduleGlassResourceExpiry();
+    }
+
+    private void RetainGlassForReopen()
+    {
+        _liquidGlass?.Stop(retainGpuResources: true);
+        ScheduleGlassResourceExpiry();
+    }
+
+    private void ScheduleGlassResourceExpiry()
+    {
+        if (_glassResourceExpiry == null)
+        {
+            _glassResourceExpiry = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromSeconds(30)
+            };
+            _glassResourceExpiry.Tick += (_, _) =>
+            {
+                _glassResourceExpiry.Stop();
+                if (IsSpotlightOpen) return;
+                _liquidGlass?.Stop();
+                DetachGpuRefraction();
+            };
+        }
+        _glassResourceExpiry.Stop();
+        _glassResourceExpiry.Start();
+    }
 
     private static readonly SolidColorBrush _glassBaseFill = CreateFrozenBrush(0x18, 0x0B, 0x0E, 0x12);
 
@@ -272,6 +307,7 @@ public partial class SpotlightWindow
 
     private void DetachGpuRefraction()
     {
+        _glassResourceExpiry?.Stop();
         _gpuRefractionConfigured = false;
         _lastGpuGeometry = null;
         _lastAppliedGpuOptics = null;

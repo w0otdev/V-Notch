@@ -21,7 +21,7 @@ namespace VNotch.Controllers;
 
 public sealed class LiquidGlassController
 {
-    public const int MaxTargetFps = 240;
+    public const int MaxTargetFps = 1000;
 
     public readonly record struct CaptureRegion(int X, int Y, int Width, int Height,
         double TopCornerRadiusDip = 0, double BottomCornerRadiusDip = 0,
@@ -91,6 +91,8 @@ public sealed class LiquidGlassController
     private readonly Func<CaptureRegion?> _regionProvider;
 
     private double _activeIntervalMs;
+    private long _nextDisplayRefreshProbe;
+    private int _displayRefreshHz;
     private volatile bool _animating;
     private volatile bool _presentationPaused;
     private readonly AutoResetEvent _idleWakeEvent = new(false);
@@ -156,10 +158,12 @@ public sealed class LiquidGlassController
     private bool _magReady;
     private int _magFailStreak = 0;
     private long _nextMagnifierRetryTicks;
+    private int _magnifierInitQueued;
 
     private bool _hideFromCapture;
     private volatile bool _exactBitBltCapture;
     private int _currentDisplayAffinity = -1;
+    private int _captureAffinityFlushPending;
     public bool HideFromScreenCapture
     {
         get => _hideFromCapture;
@@ -237,7 +241,7 @@ public sealed class LiquidGlassController
     // Unchanged-frame suppression. Re-presenting an identical backdrop is a pure
     private const int UnchangedRepresentIntervalMs = 500;
     internal Action? OnGpuFrameUploaded { get; set; }
-    private ulong _lastCaptureHash;
+    private readonly GlassFrameHistory _frameHistory = new();
     private long _lastPresentTicks;
     private bool _hasUploadedGpuFrame;
     private GpuGeometry _lastUploadedGpuGeometry;
@@ -309,6 +313,7 @@ public sealed class LiquidGlassController
                 _maxRegionH + GpuSamplingMarginLimit * 2);
             _d3dPresenter.FramePresented += OnD3DFramePresented;
             _d3dPresenter.Failed += OnD3DPresenterFailed;
+            if (_isActive) _d3dPresenter.BeginSession(Volatile.Read(ref _renderGeneration));
         }
 
         _host.Stretch = Stretch.Fill;
@@ -365,14 +370,13 @@ public sealed class LiquidGlassController
         _forceRefreshNeeded = true;
     }
 
-    private void OnD3DFramePresented(object? tag)
+    private void OnD3DFramePresented(GpuGeometry geom)
     {
         if (!_isActive) return;
         _hasVisibleFrame = true;
         Interlocked.Increment(ref _dbgPresentCount);
 
-        if (tag is GpuGeometry geom &&
-            (!_hasPresentedGpuGeometry || !_lastPresentedGpuGeometry.Equals(geom)))
+        if (!_hasPresentedGpuGeometry || !_lastPresentedGpuGeometry.Equals(geom))
         {
             _lastPresentedGpuGeometry = geom;
             _hasPresentedGpuGeometry = true;
@@ -415,7 +419,7 @@ public sealed class LiquidGlassController
         {
             try { _onGpuFailure?.Invoke(ex); }
             catch { /* fallback must not take down the UI thread */ }
-            if (_mag == null)
+            if (!_exactBitBltCapture && _mag == null)
             {
                 try
                 {
@@ -473,7 +477,23 @@ public sealed class LiquidGlassController
     {
         int target = (activeFps <= 0 || activeFps == 60) ? AnimationConfig.TargetFps : activeFps;
         int active = Math.Clamp(target, AnimationConfig.MinFps, MaxTargetFps);
-        Volatile.Write(ref _activeIntervalMs, 1000.0 / active);
+        // A configured value is only a fallback when display detection fails.
+        // Live glass follows its own monitor, independently of UI animation caps.
+        if (Volatile.Read(ref _displayRefreshHz) == 0)
+            Volatile.Write(ref _activeIntervalMs, 1000.0 / active);
+    }
+
+    private void RefreshDisplayCadence()
+    {
+        long now = Environment.TickCount64;
+        if (now < _nextDisplayRefreshProbe) return;
+        _nextDisplayRefreshProbe = now + 1000;
+        int? detected = GlassDisplayCadence.GetRefreshRate(_getHwnd());
+        if (detected is not { } hz) return;
+        if (hz == _displayRefreshHz) return;
+        Volatile.Write(ref _displayRefreshHz, hz);
+        Volatile.Write(ref _activeIntervalMs, 1000.0 / hz);
+        RuntimeLog.Log(LogCategory, $"[{_logTag}] Capture cadence follows current display: {hz} Hz");
     }
 
     internal static double ChooseLockedFrameIntervalMs(double configuredIntervalMs) =>
@@ -554,12 +574,14 @@ public sealed class LiquidGlassController
     {
         if (_isActive) return;
         _isActive = true;
+        _nextDisplayRefreshProbe = 0;
         ++_renderGeneration;
         _hasVisibleFrame = false;
         _cachedRegion = null;
         _lastRegionFetchMs = double.NegativeInfinity;
         if (_gpuMode && _d3dPresenter == null && !TryEnableGpuPresenter(out var error))
             OnD3DPresenterFailed(error ?? new InvalidOperationException("GPU presenter restart failed."));
+        if (_gpuMode) _d3dPresenter?.BeginSession(Volatile.Read(ref _renderGeneration));
         _presentationPaused = false;
         _presentInFlight = false;
         _hasUploadedGpuFrame = false;
@@ -568,7 +590,8 @@ public sealed class LiquidGlassController
         _idleWakeEvent.Set();
         RequestRenderTimerPeriod();
 
-        if (_mag == null)
+        _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+        if (!_exactBitBltCapture && _mag == null)
         {
             try
             {
@@ -606,9 +629,22 @@ public sealed class LiquidGlassController
         _worker.Start();
     }
 
-    public void Stop()
+    public void Stop() => Stop(retainGpuResources: false);
+
+    public void PrepareGpuResources()
     {
-        if (!_isActive) return;
+        if (!_gpuMode) return;
+        try { _d3dPresenter?.PrepareResources(); }
+        catch (Exception ex) { OnD3DPresenterFailed(ex); }
+    }
+
+    public void Stop(bool retainGpuResources)
+    {
+        if (!_isActive)
+        {
+            if (!retainGpuResources) DisposeGpuPresenter();
+            return;
+        }
         _isActive = false;
         ++_renderGeneration;
         _hasVisibleFrame = false;
@@ -616,23 +652,24 @@ public sealed class LiquidGlassController
         _presentationPaused = false;
         _exactBitBltCapture = false;
         _idleWakeEvent.Set();
-        ReleaseRenderTimerPeriod();
-        DisposeWaitableTimer();
+        // The worker owns the timer until its wait has returned and it exits.
+        // Closing that handle here races WaitForMultipleObjects during Stop.
 
         // Safety: clear any display affinity a previous build may have set.
         SetWindowDisplayAffinitySafe(WDA_NONE);
 
         IntPtr h = IntPtr.Zero;
         try { h = _getHwnd(); } catch { /* best-effort handle retrieval during shutdown */ }
-        MagnifierCaptureSource.ReleaseShared(h);
+        if (_mag != null) MagnifierCaptureSource.ReleaseShared(h);
         _mag = null;
         _magReady = false;
         _magFailStreak = 0;
 
         try
         {
-            DisposeGpuPresenter();
+            if (!retainGpuResources) DisposeGpuPresenter();
             _host.Source = null;
+            if (retainGpuResources) _d3dPresenter?.SuspendPresentation();
             _bitmap = null;
             ResetGpuGeometryTracking();
             // Capture buffers and GDI handles belong to the worker. It may still
@@ -680,7 +717,9 @@ public sealed class LiquidGlassController
             if (hwnd == IntPtr.Zero) return false;
             if (!SetWindowDisplayAffinity(hwnd, affinity)) return false;
             Volatile.Write(ref _currentDisplayAffinity, (int)affinity);
-            try { DwmFlush(); } catch { /* affinity still applied */ }
+            // The worker must see the committed exclusion before capturing, but
+            // the UI thread must not wait for a compositor refresh on hotkey open.
+            Interlocked.Exchange(ref _captureAffinityFlushPending, 1);
             return true;
         }
         catch (Exception ex)
@@ -694,14 +733,19 @@ public sealed class LiquidGlassController
     {
         var clock = Stopwatch.StartNew();
         double nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
-        EnsureWaitableTimer();
         try
         {
+            EnsureWaitableTimer();
             while (ShouldContinueWorker(generation))
             {
                 if (!ExecuteWorkerFrame(generation, clock, ref nextFrameAtMs))
                     break;
             }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log(LogCategory, $"[{_logTag}] Capture worker interrupted: {ex.Message}");
+            if (ShouldContinueWorker(generation)) WaitForIdleOrEvent(250);
         }
         finally
         {
@@ -715,10 +759,16 @@ public sealed class LiquidGlassController
     private bool ExecuteWorkerFrame(int generation, Stopwatch clock, ref double nextFrameAtMs)
     {
         double frameStart = clock.Elapsed.TotalMilliseconds;
+        RefreshDisplayCadence();
         double frameIntervalMs = ChooseLockedFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
 
         if (HandleCaptureOverlay(frameIntervalMs))
             return true;
+
+        if (Interlocked.Exchange(ref _captureAffinityFlushPending, 0) != 0)
+        {
+            try { DwmFlush(); } catch { /* affinity was already applied */ }
+        }
 
         if (IsPresentationBlocked(frameIntervalMs, ref nextFrameAtMs, clock))
             return true;
@@ -734,7 +784,7 @@ public sealed class LiquidGlassController
         }
 
         TryRenderRegion(region.Value, generation);
-        if (!_isActive) return false;
+        if (!ShouldContinueWorker(generation)) return false;
 
         TrackDiagnostics(frameStart);
         nextFrameAtMs = AdvanceFrameDeadline(nextFrameAtMs, frameIntervalMs, clock.Elapsed.TotalMilliseconds);
@@ -769,6 +819,16 @@ public sealed class LiquidGlassController
 
     private void CleanupWorkerResources()
     {
+        // Start can arrive before the old worker's finally block. Reset all
+        // worker-owned frame state here before permitting its replacement.
+        _hasUploadedGpuFrame = false;
+        _hasPresentedCpuFrame = false;
+        _fullSurfaceCaptureBounds = null;
+        _cachedRegion = null;
+        _lastRegionFetchMs = double.NegativeInfinity;
+        _dbgFrameCount = 0;
+        _dbgLastLogMs = 0;
+        _frameHistory.Clear();
         ReleaseGdiResources();
         _outBuffer = _blurTmp = Array.Empty<byte>();
         _idxR = _auxR = _idxG = _auxG = _idxB = _auxB = Array.Empty<int>();
@@ -807,8 +867,42 @@ public sealed class LiquidGlassController
         if (!_exactBitBltCapture)
         {
             _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+            if (!_exactBitBltCapture && _mag == null) RequestMagnifierFallback();
         }
         return false;
+    }
+
+    private void RequestMagnifierFallback()
+    {
+        if (Environment.TickCount64 < _nextMagnifierRetryTicks ||
+            Interlocked.CompareExchange(ref _magnifierInitQueued, 1, 0) != 0) return;
+        int generation = Volatile.Read(ref _renderGeneration);
+        try
+        {
+            _dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+            {
+                try
+                {
+                    if (!_isActive || _exactBitBltCapture || _mag != null ||
+                        generation != Volatile.Read(ref _renderGeneration)) return;
+                    _mag = MagnifierCaptureSource.AcquireShared(_getHwnd());
+                    _magReady = _mag.IsReady;
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier fallback init failed: {ex.Message}");
+                }
+                finally
+                {
+                    _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
+                    Interlocked.Exchange(ref _magnifierInitQueued, 0);
+                }
+            }));
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _magnifierInitQueued, 0);
+        }
     }
 
     private void TryRenderRegion(CaptureRegion region, int generation)
@@ -843,6 +937,14 @@ public sealed class LiquidGlassController
             $"renderer={(_gpuMode ? "GPU" : "CPU")} backdrop=rgb({optics.Red},{optics.Green},{optics.Blue})" +
             $" outside=rgb({outside.Red},{outside.Green},{outside.Blue})" +
             geometry);
+        if (_gpuMode && _d3dPresenter is { } presenter)
+        {
+            var stats = presenter.TakeStatistics();
+            RuntimeLog.Log(LogCategory,
+                $"[{_logTag}] GPU submit={stats.Frames * 1000.0 / sinceLastLog:F1} fps " +
+                $"transfer={stats.Bytes / 1048576.0 / (sinceLastLog / 1000.0):F2} MiB/s " +
+                $"upload-to-submit={stats.MeanQueueMs:F2} ms (excludes capture/display latency)");
+        }
         _dbgFrameCount = 0;
         _dbgLastLogMs = frameStart;
     }
@@ -850,8 +952,10 @@ public sealed class LiquidGlassController
     private double AdvanceFrameDeadline(double nextFrameAtMs, double frameIntervalMs, double nowMs)
     {
         nextFrameAtMs += frameIntervalMs;
-        if (nextFrameAtMs < nowMs - 250.0)
+        if (nextFrameAtMs <= nowMs)
         {
+            // Discard timing debt but start the next capture immediately. Waiting
+            // for another slot here adds latency precisely when capture is slow.
             return nowMs;
         }
         if (nextFrameAtMs > nowMs)
@@ -1044,13 +1148,10 @@ public sealed class LiquidGlassController
             {
                 // When not animating (idle / steady state), prioritize maximum CPU and battery savings.
                 // Zero spin wait (no Thread.SpinWait, no Thread.Sleep(0)).
-                if (remainingMs <= 1.0)
-                {
-                    return;
-                }
-
-                WaitDeadlineSlice(remainingMs);
-                return;
+                // High-Hz intervals are only a few milliseconds. Returning up
+                // to 1 ms early introduces substantial capture cadence jitter.
+                if (!WaitDeadlineSlice(remainingMs)) return;
+                continue;
             }
             else
             {
@@ -1561,7 +1662,10 @@ public sealed class LiquidGlassController
         try
         {
             int bltSrcY = _exactBitBltCapture ? cp.SrcY : ComputeFallbackSourceY(cp.RegionY, cp.DisplayH);
-            if (!StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
+            bool captured = cp.SrcW == cp.PhysSrcW && cp.SrcH == cp.PhysSrcH
+                ? BitBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, SRCCOPY)
+                : StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY);
+            if (!captured)
                 return false;
             GdiFlush();
             return true;
@@ -1594,7 +1698,6 @@ public sealed class LiquidGlassController
             p.BevelMode >= 1 ? 1.0 : 0.0,
             dims.SrcX, dims.SrcY);
 
-        ulong sourceHash = ComputeSourceHash(dims.SrcW, dims.SrcH);
         long nowTicks = Environment.TickCount64;
         // Full-surface hosts update the lens geometry on the UI thread every
         // frame. Moving/resizing that lens does not change the desktop texture;
@@ -1613,18 +1716,14 @@ public sealed class LiquidGlassController
                 BottomCornerR = geom.BottomCornerR
             };
         }
-        bool unchanged = _hasUploadedGpuFrame &&
-            !_forceRefreshNeeded &&
-            sourceHash == _lastCaptureHash &&
-            uploadedGeometry.Equals(geom);
-        if (unchanged && nowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
-            return false;
+        bool forcePresent = !_hasUploadedGpuFrame || _forceRefreshNeeded ||
+            !uploadedGeometry.Equals(geom) ||
+            nowTicks - _lastPresentTicks >= UnchangedRepresentIntervalMs;
 
-        if (PresentRawGpu(dims.SrcW, dims.SrcH, geom, generation))
+        if (PresentRawGpu(dims.SrcW, dims.SrcH, geom, generation, forcePresent))
         {
             _hasUploadedGpuFrame = true;
             _forceRefreshNeeded = false;
-            _lastCaptureHash = sourceHash;
             _lastUploadedGpuGeometry = geom;
             _lastPresentTicks = nowTicks;
         }
@@ -1634,10 +1733,10 @@ public sealed class LiquidGlassController
     private bool ProcessCpuFrame(
         GlassParams p, int srcW, int srcH, bool mapsChanged, int blurSigma, int[] blurPassRadii)
     {
-        ulong cpuSourceHash = ComputeSourceHash(srcW, srcH);
+        bool sourceUnchanged = _frameHistory.IsUnchanged(_dibBits, srcW, srcH);
         long cpuNowTicks = Environment.TickCount64;
         bool cpuUnchanged = _hasPresentedCpuFrame && !_forceRefreshNeeded && !mapsChanged &&
-            cpuSourceHash == _lastCaptureHash &&
+            sourceUnchanged &&
             Math.Abs(_presentSubX - _lastPresentedSubX) < 0.001 &&
             Math.Abs(_presentSubY - _lastPresentedSubY) < 0.001 &&
             Math.Abs(p.Saturation - _lastPresentedSaturation) < 0.001 &&
@@ -1652,7 +1751,7 @@ public sealed class LiquidGlassController
 
         _hasPresentedCpuFrame = true;
         _forceRefreshNeeded = false;
-        _lastCaptureHash = cpuSourceHash;
+        _frameHistory.Commit(_dibBits, srcW, srcH);
         _lastPresentedSubX = _presentSubX;
         _lastPresentedSubY = _presentSubY;
         _lastPresentedSaturation = p.Saturation;
@@ -1824,7 +1923,7 @@ public sealed class LiquidGlassController
         return checked(((target + quantum - 1) / quantum) * quantum);
     }
 
-    private bool PresentRawGpu(int srcW, int srcH, GpuGeometry geom, int generation)
+    private bool PresentRawGpu(int srcW, int srcH, GpuGeometry geom, int generation, bool forcePresent)
     {
         if (!_isActive || !_gpuMode || generation != Volatile.Read(ref _renderGeneration) || _dibBits == IntPtr.Zero) return false;
 
@@ -1836,18 +1935,21 @@ public sealed class LiquidGlassController
             return false;
         }
 
-        if (!presenter.UploadFrame(_dibBits, srcW, srcH, srcW * 4, geom))
+        if (!presenter.UploadFrame(_dibBits, srcW, srcH, srcW * 4, generation, out bool uploaded, geom, forcePresent))
         {
-            if (_isActive && _gpuMode && generation == Volatile.Read(ref _renderGeneration))
+            if (_isActive && _gpuMode && generation == Volatile.Read(ref _renderGeneration) &&
+                ReferenceEquals(presenter, _d3dPresenter))
                 OnD3DPresenterFailed(new InvalidOperationException("GPU frame upload failed."));
             return false;
         }
+        if (!ShouldContinueWorker(generation) || !ReferenceEquals(presenter, _d3dPresenter)) return false;
+        if (!uploaded) return false;
         OnGpuFrameUploaded?.Invoke();
         return true;
     }
 
 
-    /// <summary>Exact FNV-1a hash of the captured source frame. Used to skip
+    /// <summary>Sampled fingerprint of the captured source frame. Used to skip
     /// presenting frames whose backdrop did not change: an unchanged present
     /// still forces a WPF re-render plus a layered-window readback for the whole
     /// window, which is what saturates the render thread when the notch and the
@@ -1855,31 +1957,8 @@ public sealed class LiquidGlassController
     private ulong ComputeSourceHash(int srcW, int srcH) =>
         ComputeSourceHash(_dibBits, srcW, srcH);
 
-    internal static unsafe ulong ComputeSourceHash(IntPtr dibBits, int srcW, int srcH)
-    {
-        if (dibBits == IntPtr.Zero || srcW <= 0 || srcH <= 0) return 0;
-
-        const ulong fnvPrime = 1099511628211UL;
-        ulong hash = 14695981039346656037UL;
-        byte* src = (byte*)dibBits;
-        int rowBytes = srcW * 4;
-        int qwordsPerRow = rowBytes >> 3;
-        int qwordStep = Math.Max(1, qwordsPerRow / 96);
-        int rowStep = Math.Max(1, srcH / 96);
-
-        for (int y = 0; y < srcH; y += rowStep)
-        {
-            byte* rowStart = src + (long)y * rowBytes;
-            ulong* row = (ulong*)rowStart;
-            for (int i = 0; i < qwordsPerRow; i += qwordStep)
-            {
-                hash ^= row[i];
-                hash *= fnvPrime;
-            }
-        }
-
-        return hash;
-    }
+    internal static ulong ComputeSourceHash(IntPtr dibBits, int srcW, int srcH) =>
+        GlassFrameFingerprint.Compute(dibBits, srcW, srcH);
 
     private unsafe void UpdateBackdropOptics(
         int srcW, int srcH, int sampleX, int sampleY, int sampleW, int sampleH)

@@ -165,6 +165,7 @@ public partial class SpotlightWindow : Window
     {
         if (_isClosing) return;
 
+        _glassResourceExpiry?.Stop();
         PlaySpotlightClickSfx();
 
         _previousForegroundWindow = GetForegroundWindow();
@@ -187,6 +188,9 @@ public partial class SpotlightWindow : Window
 
         _preparingGlassEntrance = true;
         ApplyLiquidGlassSkin();
+        // On a cold cache, allocate before the animation clocks start instead
+        // of servicing a synchronous Send-priority request from the first capture.
+        _liquidGlass?.PrepareGpuResources();
         _liquidGlass?.SetAnimating(true);
 
         // Acquire the source view before Show(). WPF can deactivate MainWindow
@@ -525,8 +529,7 @@ public partial class SpotlightWindow : Window
         Opacity = 0;
 
         _liquidGlass?.ClearLiveRegion();
-        _liquidGlass?.Stop();
-        DetachGpuRefraction();
+        RetainGlassForReopen();
         CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
 
         // Hide() used to return activation to the previous foreground app.
@@ -2192,8 +2195,7 @@ public partial class SpotlightWindow : Window
         ClearMorphAnimations();
         ReleaseMorphSession();
         _liquidGlass?.ClearLiveRegion();
-        _liquidGlass?.Stop();
-        DetachGpuRefraction();
+        RetainGlassForReopen();
         CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
         _pendingLaunchQuery = null;
         ClearLaunchFailure();

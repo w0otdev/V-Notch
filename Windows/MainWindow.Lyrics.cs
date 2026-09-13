@@ -38,6 +38,8 @@ public partial class MainWindow
     private Uri? _spotifyCanvasUri;
     private bool _spotifyCanvasShouldPlay;
     private bool _isSpotifyCanvasMediaOpen;
+    private bool _spotifyCanvasFadeInProgress;
+    private int _spotifyCanvasFadeGeneration;
     private bool _spotifyCanvasLookupCompleted;
 
     private bool IsSpotifyCanvasSurfaceVisible =>
@@ -211,6 +213,18 @@ public partial class MainWindow
 
         try
         {
+            // Media/status/layout updates can request the same Canvas repeatedly.
+            // Keep both its current frame and its in-flight fade instead of
+            // blanking the background and restarting playback on every request.
+            if (LyricsCanvasVideo.Source == _spotifyCanvasUri &&
+                LyricsCanvasBackground.Visibility == Visibility.Visible)
+            {
+                ApplySpotifyCanvasBrightness();
+                if (_isSpotifyCanvasMediaOpen) FadeInSpotifyCanvasBackgroundIfReady();
+                return;
+            }
+            ++_spotifyCanvasFadeGeneration;
+            _spotifyCanvasFadeInProgress = false;
             LyricsCanvasBackground.BeginAnimation(OpacityProperty, null);
             LyricsCanvasBackground.Opacity = 0;
             LyricsCanvasBackground.Visibility = Visibility.Visible;
@@ -218,6 +232,7 @@ public partial class MainWindow
             ApplySpotifyCanvasBrightness();
             if (LyricsCanvasVideo.Source != _spotifyCanvasUri)
             {
+                _isSpotifyCanvasMediaOpen = false;
                 LyricsCanvasVideo.Stop();
                 LyricsCanvasVideo.Source = _spotifyCanvasUri;
             }
@@ -242,6 +257,8 @@ public partial class MainWindow
             return;
 
         _isSpotifyCanvasMediaOpen = false;
+        ++_spotifyCanvasFadeGeneration;
+        _spotifyCanvasFadeInProgress = false;
         LyricsCanvasBackground.BeginAnimation(OpacityProperty, null);
         LyricsCanvasBackground.Opacity = 0;
         LyricsCanvasBackground.Visibility = Visibility.Collapsed;
@@ -271,6 +288,8 @@ public partial class MainWindow
     private void ReleaseSpotifyCanvasMediaElement()
     {
         _isSpotifyCanvasMediaOpen = false;
+        ++_spotifyCanvasFadeGeneration;
+        _spotifyCanvasFadeInProgress = false;
         if (LyricsCanvasVideo == null) return;
 
         try
@@ -483,6 +502,10 @@ public partial class MainWindow
 
     private void FadeInSpotifyCanvasBackgroundIfReady()
     {
+        // A resize/hover animation may defer the first reveal, but must not
+        // briefly erase a Canvas that is already visible.
+        if (_isAnimating && _isSpotifyCanvasMediaOpen && _isLyricsActive && _isExpanded)
+            return;
         if (!_isSpotifyCanvasMediaOpen ||
             !_isLyricsActive ||
             !_isExpanded ||
@@ -491,23 +514,38 @@ public partial class MainWindow
         {
             if (LyricsCanvasBackground != null)
             {
+                ++_spotifyCanvasFadeGeneration;
+                _spotifyCanvasFadeInProgress = false;
                 LyricsCanvasBackground.BeginAnimation(OpacityProperty, null);
                 LyricsCanvasBackground.Opacity = 0;
             }
             return;
         }
 
+        if (_spotifyCanvasFadeInProgress) return;
+        if (LyricsCanvasBackground.Visibility == Visibility.Visible && LyricsCanvasBackground.Opacity >= 0.999)
+        {
+            HideLyricsBlurForCanvas();
+            return;
+        }
+
         Uri? canvasUri = _spotifyCanvasUri;
+        int fadeGeneration = ++_spotifyCanvasFadeGeneration;
+        double fromOpacity = Math.Clamp(LyricsCanvasBackground.Opacity, 0, 1);
+        _spotifyCanvasFadeInProgress = true;
+        LyricsCanvasBackground.Opacity = 1;
         LyricsCanvasBackground.BeginAnimation(OpacityProperty, null);
         LyricsCanvasBackground.Visibility = Visibility.Visible;
-        LyricsCanvasBackground.Opacity = 0;
 
-        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250))
+        var fadeIn = new DoubleAnimation(fromOpacity, 1, TimeSpan.FromMilliseconds(250))
         {
             EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseOut }
         };
         fadeIn.Completed += (s, e) =>
         {
+            if (fadeGeneration != _spotifyCanvasFadeGeneration) return;
+            _spotifyCanvasFadeInProgress = false;
+            LyricsCanvasBackground.BeginAnimation(OpacityProperty, null);
             if (_isSpotifyCanvasMediaOpen &&
                 _isLyricsActive &&
                 _isExpanded &&

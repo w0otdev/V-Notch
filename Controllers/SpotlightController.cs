@@ -36,6 +36,7 @@ internal sealed class SpotlightController : ISpotlightController
     private uint _lastFallbackSpaceEventTime;
     private NotchSettings? _settings;
     private bool _disposed;
+    private bool _preparationQueued;
 
     public bool IsHotkeyRegistered => _nativeRegistered || _keyboardHook != IntPtr.Zero;
 
@@ -71,6 +72,8 @@ internal sealed class SpotlightController : ISpotlightController
         {
             _window?.ApplySettings(_settings);
         }
+        if (settings.EnableSpotlight && (spotlightChanged || glassChanged))
+            QueuePreparation();
 
         if (_hwnd == IntPtr.Zero) return;
 
@@ -220,6 +223,31 @@ internal sealed class SpotlightController : ISpotlightController
             if (_settings != null) _window.ApplySettings(_settings);
         }
         _window.ToggleFromHotkey();
+    }
+
+    private void QueuePreparation()
+    {
+        if (_preparationQueued || _host == null) return;
+        _preparationQueued = true;
+        _host.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, (Action)(() =>
+        {
+            _preparationQueued = false;
+            if (_disposed || _settings?.EnableSpotlight != true) return;
+            try
+            {
+                if (_window == null)
+                {
+                    _window = _windowFactory();
+                    _window.Owner = _host;
+                    _window.ApplySettings(_settings);
+                }
+                _window.PrepareGlassForOpening();
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Log(LogTag, $"Spotlight idle preparation skipped: {ex.Message}");
+            }
+        }));
     }
 
     private void DisableHotkey()

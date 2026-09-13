@@ -448,7 +448,18 @@ public sealed class MagnifierCaptureSource : IDisposable
                     {
                         if (hostShown) ShowWindow(_hostWnd, 0);
                         hostShown = false;
-                        lock (_frameLock) _hasCompletedFrame = false;
+                        lock (_frameLock)
+                        {
+                            // Shared capture may stay alive for a later reopen,
+                            // but idle consumers must not retain desktop-sized
+                            // BGRA buffers (two 4K frames are about 63 MiB).
+                            _hasCompletedFrame = false;
+                            _hasUnfilteredFrame = false;
+                            _completedBuffer = Array.Empty<byte>();
+                            _unfilteredBuffer = Array.Empty<byte>();
+                            _frameReceivedEvent.Reset();
+                            _unfilteredFrameReceivedEvent.Reset();
+                        }
                         continue;
                     }
                     if (!hostShown) ShowWindow(_hostWnd, SW_SHOWNA);
@@ -545,7 +556,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     {
         try
         {
-            if (srcdata == IntPtr.Zero) return false;
+            if (srcdata == IntPtr.Zero || !_captureEnabled) return false;
 
             int w = (int)srcheader.width;
             int rows = (int)srcheader.height;
@@ -565,6 +576,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
             lock (_frameLock)
             {
+                if (!_captureEnabled) return false;
                 if (_completedBuffer.Length < needed)
                     _completedBuffer = new byte[needed];
 

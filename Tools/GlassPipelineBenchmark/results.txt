@@ -1,0 +1,16 @@
+.NET 8.0.29; Microsoft Windows 10.0.26200; X64
+CPU upload + memory-copy transfer model. NOT actual D3D/GPU/FPS measurements. 7 alternating rounds x 200 frames; median us/frame.
+Size | motion | old us | new us | old transfer KiB | new transfer KiB | new alloc B/frame
+515x280 | static | 17.23 | 18.65 | 0.00 | 0.00 | 0.00
+515x280 | 8 rows | 37.78 | 14.68 | 563.28 | 16.09 | 0.00
+515x280 | full | 32.49 | 33.59 | 563.28 | 563.28 | 0.00
+960x304 | static | 22.08 | 22.13 | 0.00 | 0.00 | 0.00
+960x304 | 8 rows | 161.60 | 30.22 | 1140.00 | 30.00 | 0.00
+960x304 | full | 71.61 | 66.03 | 1140.00 | 1140.00 | 0.00
+1120x1020 | static | 400.32 | 365.95 | 0.00 | 0.00 | 0.00
+1120x1020 | 8 rows | 729.26 | 214.21 | 4462.50 | 35.00 | 0.00
+1120x1020 | full | 862.04 | 804.84 | 4462.50 | 4462.50 | 0.00
+1520x1370 | static | 395.65 | 374.13 | 0.00 | 0.00 | 0.00
+1520x1370 | 8 rows | 1503.43 | 383.98 | 8134.38 | 47.50 | 0.00
+1520x1370 | full | 4023.95 | 3480.35 | 8134.38 | 8134.38 | 0.00
+Pixel/padding/coalescing checks passed; sink=24035804
