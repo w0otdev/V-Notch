@@ -652,76 +652,7 @@ public partial class MainWindow
     public void NavigateToNotchView(NotchView targetView)
     {
         if (_isAnimating) return;
-
-        NotchView currentView = NotchView.Media;
-        if (_isAudioView)
-        {
-            currentView = NotchView.AudioMixer;
-        }
-        else if (_isTimerView)
-        {
-            currentView = NotchView.Timer;
-        }
-        else if (_isSecondaryView)
-        {
-            currentView = NotchView.Secondary;
-        }
-
-        if (currentView == targetView) return;
-
-        switch (targetView)
-        {
-            case NotchView.Media:
-                if (_isAudioView)
-                {
-                    SwitchFromAudioToPrimaryView();
-                }
-                else if (_isTimerView)
-                {
-                    SwitchFromTimerToPrimaryView();
-                }
-                else if (_isSecondaryView)
-                {
-                    StopCameraPreviewForViewExit();
-                    SwitchToPrimaryView();
-                }
-                break;
-
-            case NotchView.Secondary:
-                if (_isAudioView)
-                {
-                    SwitchFromAudioToSecondaryView();
-                }
-                else if (_isTimerView)
-                {
-                    SwitchFromTimerToSecondaryView();
-                }
-                else if (!_isSecondaryView)
-                {
-                    SwitchToSecondaryView();
-                }
-                break;
-
-            case NotchView.Timer:
-                if (_isAudioView)
-                {
-                    SwitchFromAudioToTimerView();
-                }
-                else if (_isSecondaryView)
-                {
-                    StopCameraPreviewForViewExit();
-                    SwitchFromSecondaryToTimerView();
-                }
-                else if (!_isTimerView)
-                {
-                    SwitchToTimerView();
-                }
-                break;
-
-            case NotchView.AudioMixer:
-                SwitchToAudioView();
-                break;
-        }
+        _transitionCoordinator.RequestView(targetView, "NavTabClick");
     }
 
     #endregion

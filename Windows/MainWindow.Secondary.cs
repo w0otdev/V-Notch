@@ -21,19 +21,17 @@ public partial class MainWindow
 {
     private FileShelfController _fileShelf = null!;
 
+    private bool _localSecondaryView;
     private bool _isSecondaryView
     {
-        get => _notchState.IsSecondaryView;
+        get => _localSecondaryView;
         set
         {
+            _localSecondaryView = value;
             if (value && !_notchState.IsSecondaryView)
                 _notchState.TryTransitionTo(NotchState.SecondaryView);
             else if (!value && _notchState.IsSecondaryView)
                 _notchState.TryTransitionTo(NotchState.Expanded);
-
-            if (value) _viewModel.SetView(VNotch.Models.NotchView.Secondary);
-            else if (_viewModel.CurrentView == VNotch.Models.NotchView.Secondary)
-                _viewModel.SetView(VNotch.Models.NotchView.Media);
         }
     }
     private DateTime _lastViewSwitchUtc = DateTime.MinValue;

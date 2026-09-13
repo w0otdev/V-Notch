@@ -268,6 +268,7 @@ public partial class App : Application
             sp.GetRequiredService<SpotlightLauncher>()));
         services.AddSingleton<Controllers.ISpotlightController>(sp =>
             new Controllers.SpotlightController(() => sp.GetRequiredService<SpotlightWindow>()));
+        services.AddSingleton<Controllers.NotchTransitionCoordinator>();
         // This is the application state owner used by both the running window and unit tests.
         services.AddSingleton<ShellViewModel>();
 

@@ -175,9 +175,16 @@ public partial class MainWindow : Window
     private int _debugDragStartFixedY;
 
     private readonly VNotch.Controllers.CompactPillArbiter _compactPillArbiter = new();
+    private readonly VNotch.Controllers.NotchTransitionCoordinator _transitionCoordinator;
+    private VNotch.Presenters.NotchShellPresenter? _notchShellPresenter;
+    private VNotch.Presenters.NotchContentTransitionPresenter? _notchContentPresenter;
 
-    private int _viewTransitionGeneration;
-    private int NextViewTransitionGeneration() => ++_viewTransitionGeneration;
+    private int _viewTransitionGeneration
+    {
+        get => (int)_transitionCoordinator.ActiveTransitionId;
+        set { }
+    }
+    private int NextViewTransitionGeneration() => (int)_transitionCoordinator.NextGeneration();
 
     private static readonly TimeSpan ProgressRenderInterval = TimeSpan.FromMilliseconds(16);
     private static readonly TimeSpan LyricsUpdateInterval = TimeSpan.FromMilliseconds(100);
@@ -229,10 +236,28 @@ public partial class MainWindow : Window
         PrivacyIndicatorModule privacyIndicatorModule,
         WeatherModule weatherModule,
         SystemMonitorModule systemMonitorModule,
-        ISpotlightController spotlightController)
+        ISpotlightController spotlightController,
+        VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null)
     {
         InitializeComponent();
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
+        _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
+        _transitionCoordinator.StateChanged += OnCoordinatorStateChanged;
+        _transitionCoordinator.TransitionRequested += OnTransitionRequested;
+        _transitionCoordinator.CountdownCompletionDisplayRequested += OnCountdownCompletionDisplayRequested;
+
+        _notchShellPresenter = new VNotch.Presenters.NotchShellPresenter(new VNotch.Presenters.NotchShellViewRefs
+        {
+            NotchBorder = NotchBorder,
+            NotchContainer = NotchContainer
+        });
+        _notchContentPresenter = new VNotch.Presenters.NotchContentTransitionPresenter(new VNotch.Presenters.NotchContentViewRefs
+        {
+            ExpandedContent = ExpandedContent,
+            TimerContent = TimerContent,
+            AudioScrollViewer = AudioScrollViewer,
+            SecondaryContent = SecondaryContent
+        });
         _viewModel = viewModel;
         DataContext = _viewModel;
         _viewModel.IsExpandedCheck = () => _isExpanded || _isMusicExpanded;
@@ -568,7 +593,6 @@ public partial class MainWindow : Window
         _mediaService?.Dispose();
         _lyricsService?.Dispose();
         DisposeSpotifyCanvasLifecycle();
-        _spotifyCanvasService?.Dispose();
         _notchManager?.Dispose();
         _zOrderManager?.Dispose();
         TrayIcon?.Dispose();
@@ -587,6 +611,148 @@ public partial class MainWindow : Window
         DisposeGestureController();
         DisposeAllShelfWatchers();
         CancelDragDropTimers();
+        _countdownController?.Dispose();
+        _countdownPresenter?.Dispose();
+        _transitionCoordinator.StateChanged -= OnCoordinatorStateChanged;
+        _transitionCoordinator.TransitionRequested -= OnTransitionRequested;
+        _transitionCoordinator.CountdownCompletionDisplayRequested -= OnCountdownCompletionDisplayRequested;
+        _notchShellPresenter?.Dispose();
+        _notchContentPresenter?.Dispose();
+        _transitionCoordinator.Dispose();
+    }
+
+    private void OnCoordinatorStateChanged(object? sender, VNotch.Controllers.NotchTransitionSnapshot snapshot)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            ApplyCoordinatorSnapshot(snapshot);
+        }
+        else
+        {
+            Dispatcher.BeginInvoke(() => ApplyCoordinatorSnapshot(snapshot));
+        }
+    }
+
+    private void ApplyCoordinatorSnapshot(VNotch.Controllers.NotchTransitionSnapshot snapshot)
+    {
+        _notchState.IsTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
+        _notchState.IsAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
+        if (snapshot.CurrentView == VNotch.Models.NotchView.Secondary)
+        {
+            if (_notchState.CurrentState != NotchState.SecondaryView)
+                _notchState.ForceState(NotchState.SecondaryView);
+        }
+        else if (_notchState.CurrentState == NotchState.SecondaryView)
+        {
+            _notchState.ForceState(NotchState.Expanded);
+        }
+        UpdateSpotifyCanvasPresentationContext();
+    }
+
+    private void OnCountdownCompletionDisplayRequested(object? sender, EventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            ShowCountdownCompletionOnPill();
+        }
+        else
+        {
+            Dispatcher.BeginInvoke(ShowCountdownCompletionOnPill);
+        }
+    }
+
+    private void OnTransitionRequested(object? sender, VNotch.Controllers.TransitionRequestEventArgs args)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            ExecuteTransitionRequest(args);
+        }
+        else
+        {
+            Dispatcher.BeginInvoke(() => ExecuteTransitionRequest(args));
+        }
+    }
+
+    private void ExecuteTransitionRequest(VNotch.Controllers.TransitionRequestEventArgs args)
+    {
+        switch (args.TargetView)
+        {
+            case VNotch.Models.NotchView.Compact:
+                CollapseNotch(args.TransitionId);
+                break;
+
+            case VNotch.Models.NotchView.Media:
+                if (args.FromView == VNotch.Models.NotchView.Compact || !_isExpanded)
+                {
+                    ExpandNotch(args.TransitionId);
+                }
+                else if (_isAudioView)
+                {
+                    SwitchFromAudioToPrimaryView(args.TransitionId);
+                }
+                else if (_isTimerView)
+                {
+                    SwitchFromTimerToPrimaryView(args.TransitionId);
+                }
+                else if (_isSecondaryView)
+                {
+                    SwitchToPrimaryView(args.TransitionId);
+                }
+                else
+                {
+                    _transitionCoordinator.CompleteTransition(args.TransitionId);
+                }
+                break;
+
+            case VNotch.Models.NotchView.Timer:
+                if (!_isExpanded)
+                {
+                    ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.Timer);
+                }
+                else if (_isAudioView)
+                {
+                    SwitchFromAudioToTimerView(args.TransitionId);
+                }
+                else if (_isSecondaryView)
+                {
+                    SwitchFromSecondaryToTimerView(args.TransitionId);
+                }
+                else
+                {
+                    SwitchToTimerView(args.TransitionId);
+                }
+                break;
+
+            case VNotch.Models.NotchView.AudioMixer:
+                if (!_isExpanded)
+                {
+                    ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.AudioMixer);
+                }
+                else
+                {
+                    SwitchToAudioView(args.TransitionId);
+                }
+                break;
+
+            case VNotch.Models.NotchView.Secondary:
+                if (!_isExpanded)
+                {
+                    ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.Secondary);
+                }
+                else if (_isTimerView)
+                {
+                    SwitchFromTimerToSecondaryView(args.TransitionId);
+                }
+                else if (_isAudioView)
+                {
+                    SwitchFromAudioToSecondaryView(args.TransitionId);
+                }
+                else
+                {
+                    SwitchToSecondaryView(args.TransitionId);
+                }
+                break;
+        }
     }
 
     // The ViewModel is the single production subscriber to media state.  This window
@@ -880,10 +1046,13 @@ public partial class MainWindow : Window
         _hoverThumbnailDelayTimer.Stop();
     }
 
+    private long _activeSpotlightSessionId;
+
     internal void SetSpotlightMorphActive(bool active)
     {
         if (active)
         {
+            _activeSpotlightSessionId = _transitionCoordinator.BeginSpotlightHandoff("SpotlightMorphOpen");
             CompleteSpotlightReturnScaleHandoff();
             // Spotlight now owns the visible notch snapshot. Do not let hover
             _hoverCollapseTimer.Stop();
@@ -937,6 +1106,7 @@ public partial class MainWindow : Window
 
         _spotlightMorphOwnsNotchVisibility = false;
         CompleteSpotlightReturnScaleHandoff();
+        _transitionCoordinator.CompleteSpotlightHandoff(_activeSpotlightSessionId, restorePreviousView: true);
     }
 
     internal void BeginSpotlightReturnHandoff(TimeSpan duration)
@@ -1132,11 +1302,12 @@ public partial class MainWindow : Window
 
             if (spotifyCanvasSettingsChanged)
             {
-                _spotifyCanvasService?.ClearCache();
-                if (_settings.EnableSpotifyCanvas)
-                    RefreshSpotifyCanvasForCurrentTrack();
-                else
-                    ResetSpotifyCanvas();
+                _spotifyCanvasController?.ClearCache();
+                _spotifyCanvasController?.UpdateSettings(
+                    _settings.EnableSpotifyCanvas,
+                    _settings.SpotifySpDc,
+                    _settings.SpotifyCanvasBrightness,
+                    _settings.EnableLocalOnlyMode);
             }
 
             bool priorityChanged = !string.Equals(oldSubtitlePriority, _settings.SubtitlePriority, StringComparison.Ordinal);

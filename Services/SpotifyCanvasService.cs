@@ -12,7 +12,7 @@ using System.Text.RegularExpressions;
 
 namespace VNotch.Services;
 
-internal sealed class SpotifyCanvasService : IDisposable
+public sealed class SpotifyCanvasService : IDisposable
 {
     private const string LogCategory = "SPOTIFY-CANVAS";
     private const string JsonContentType = "application/json";

@@ -687,7 +687,7 @@ public partial class MainWindow
         }
     }
 
-    private void OnExpandCompleted(int generation, bool suppressCompactThumbnailMotion)
+    private void OnExpandCompleted(int generation, bool suppressCompactThumbnailMotion, VNotch.Models.NotchView effectiveTarget = VNotch.Models.NotchView.Media)
     {
         if (generation != _viewTransitionGeneration) return;
         StopMainViewHorizontalStabilizer();
@@ -696,23 +696,52 @@ public partial class MainWindow
         _notchState.TryTransitionTo(NotchState.Expanded);
         NotchBorder.IsHitTestVisible = true;
 
-        RestoreExpandedContentOpacity();
-
-        UpdateProgressTimerState();
-        UpdateCalendarInfo();
-        ShowMediaBackground();
-
-        FadeInLyricsBlurBackgroundIfActive();
-        FadeInSpotifyCanvasBackgroundIfReady();
-        ResumeSpotifyCanvasLifecycle();
-
-        if (_isLyricsActive)
+        if (effectiveTarget == VNotch.Models.NotchView.Timer)
         {
-            UpdateLyricsDisplay();
+            _isTimerView = true;
+            _isSecondaryView = false;
+            _isAudioView = false;
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.Secondary)
+        {
+            _isSecondaryView = true;
+            _isTimerView = false;
+            _isAudioView = false;
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.AudioMixer)
+        {
+            _isAudioView = true;
+            _isTimerView = false;
+            _isSecondaryView = false;
+        }
+        else
+        {
+            _isTimerView = false;
+            _isSecondaryView = false;
+            _isAudioView = false;
         }
 
-        StartProgressCatchUpAnimation();
-        RenderProgressBar();
+        _transitionCoordinator.CompleteTransition(generation);
+        UpdateSpotifyCanvasPresentationContext();
+
+        if (effectiveTarget == VNotch.Models.NotchView.Media)
+        {
+            RestoreExpandedContentOpacity();
+            UpdateProgressTimerState();
+            UpdateCalendarInfo();
+            ShowMediaBackground();
+            FadeInLyricsBlurBackgroundIfActive();
+            FadeInSpotifyCanvasBackgroundIfReady();
+            ResumeSpotifyCanvasLifecycle();
+
+            if (_isLyricsActive)
+            {
+                UpdateLyricsDisplay();
+            }
+
+            StartProgressCatchUpAnimation();
+            RenderProgressBar();
+        }
 
         if (_pendingFlipThumbnail != null)
         {
@@ -738,15 +767,28 @@ public partial class MainWindow
         CollapsedContent.Visibility = Visibility.Collapsed;
         MusicCompactContent.Visibility = Visibility.Collapsed;
 
-        ReopenLastViewIfConfigured();
+        if (effectiveTarget == VNotch.Models.NotchView.Media)
+        {
+            ReopenLastViewIfConfigured();
+        }
     }
 
-    private void ExpandNotch()
+    private void ExpandNotch(long? transitionId = null, VNotch.Models.NotchView? targetView = null)
     {
-        if (_isAnimating || _isExpanded || _isGreetingActive) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            var target = targetView ?? DetermineTargetExpandedView();
+            _transitionCoordinator.RequestView(target, "ExpandNotch");
+            return;
+        }
+
+        if (_isGreetingActive) return;
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isAnimating = true;
         _notchState.TryTransitionTo(NotchState.Expanding);
+
+        var effectiveTarget = targetView ?? VNotch.Models.NotchView.Media;
 
         bool suppressCompactThumbnailMotion = IsCountdownCompletionVisualActive;
         if (suppressCompactThumbnailMotion)
@@ -757,6 +799,7 @@ public partial class MainWindow
 
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
+        this.BeginAnimation(CurrentCornerRadiusProperty, null);
 
         DismissStateBeforeExpand();
 
@@ -771,64 +814,109 @@ public partial class MainWindow
         double currentWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth;
         double currentHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight;
 
-        NotchBorder.BeginAnimation(WidthProperty, null);
-        NotchBorder.BeginAnimation(HeightProperty, null);
-        this.BeginAnimation(CurrentCornerRadiusProperty, null);
-
         NotchBorder.Width = currentWidth;
         NotchBorder.Height = currentHeight;
 
         ResetNotchScaleBounce();
-        SetupExpandedContentBeforeAnimation();
+
+        double targetWidth = _expandedWidth;
+        double targetHeight = _expandedHeight;
+
+        if (effectiveTarget == VNotch.Models.NotchView.Timer)
+        {
+            targetHeight = _timerViewHeight;
+            ApplyClockViewWindowSize();
+            PrepareClockViewContentSize();
+            RefreshClockView();
+            UpdateTimerNavIconsState();
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.Secondary)
+        {
+            targetWidth = _expandedWidth;
+            targetHeight = _expandedHeight;
+            UpdateShelfCapacityIndicator();
+            UpdateNavIconsActiveState();
+            EnableKeyboardInput();
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.AudioMixer)
+        {
+            targetWidth = _audioViewWidth;
+            targetHeight = _audioViewHeight > 0 ? _audioViewHeight : 200;
+            StartAudioPoll();
+        }
+        else
+        {
+            SetupExpandedContentBeforeAnimation();
+        }
 
         NotchBorder.IsHitTestVisible = false;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var widthAnim = MakeExpandGeometryAnimation(currentWidth, _expandedWidth, _easeExpOut6, animFps);
-        var heightAnim = MakeExpandGeometryAnimation(currentHeight, _expandedHeight, _easeExpOut6, animFps);
+        var widthAnim = MakeExpandGeometryAnimation(currentWidth, targetWidth, _easeExpOut6, animFps);
+        var heightAnim = MakeExpandGeometryAnimation(currentHeight, targetHeight, _easeExpOut6, animFps);
         var fadeOutAnim = MakeAnim(0, _dur200, _easeQuadOut);
 
-        double contentTargetY = ExpandedContentRestY;
-        var expandedGroup = new TransformGroup();
-        var expandedTranslate = new TranslateTransform(0, contentTargetY);
-        expandedGroup.Children.Add(expandedTranslate);
-        ExpandedContent.RenderTransform = expandedGroup;
-        ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
-
         var fadeInAnim = MakeAnim(0d, 1d, _dur400, _easePowerOut3);
-        var springSlide = MakeAnim(10, contentTargetY, _dur400, _easeExpOut6);
-
         var glowAnim = MakeAnim(0.15, _dur200);
-
-        double contentBlurRadius = _settings.EnableBlurEffects ? 24 : 0;
-        var blurOutAnim = MakeAnim(0, contentBlurRadius, _dur350, _easeQuadIn);
-        var blurInAnim = MakeAnim(contentBlurRadius, 0, _dur500, _easePowerOut3);
-        ExpandedContentBlur.Radius = contentBlurRadius;
 
         if (_isMusicCompactMode && CompactThumbnail.Source != null && !suppressCompactThumbnailMotion)
         {
             AnimateThumbnailExpandOverlay(compactThumbnailRestOffset);
         }
 
-        heightAnim.Completed += (s, e) => OnExpandCompleted(generation, suppressCompactThumbnailMotion);
-
-        StartMainViewHorizontalStabilizer(expandedTranslate);
+        heightAnim.Completed += (s, e) => OnExpandCompleted(generation, suppressCompactThumbnailMotion, effectiveTarget);
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-        NotchBorder.Width = _expandedWidth;
-        NotchBorder.Height = _expandedHeight;
+        NotchBorder.Width = targetWidth;
+        NotchBorder.Height = targetHeight;
         CollapsedContent.BeginAnimation(OpacityProperty, fadeOutAnim);
         MusicCompactContent.BeginAnimation(OpacityProperty, fadeOutAnim);
 
+        double contentBlurRadius = _settings.EnableBlurEffects ? 24 : 0;
+        var blurOutAnim = MakeAnim(0, contentBlurRadius, _dur350, _easeQuadIn);
+        var blurInAnim = MakeAnim(contentBlurRadius, 0, _dur500, _easePowerOut3);
         CollapsedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
         MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
-        ExpandedContent.BeginAnimation(OpacityProperty, fadeInAnim);
-        ExpandedContent.Opacity = 1;
-        expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+        if (effectiveTarget == VNotch.Models.NotchView.Timer && TimerContent != null)
+        {
+            ExpandedContent.Visibility = Visibility.Collapsed;
+            TimerContent.Visibility = Visibility.Visible;
+            TimerContent.BeginAnimation(OpacityProperty, fadeInAnim);
+            TimerContent.Opacity = 1;
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.Secondary && SecondaryContent != null)
+        {
+            ExpandedContent.Visibility = Visibility.Collapsed;
+            SecondaryContent.Visibility = Visibility.Visible;
+            SecondaryContent.BeginAnimation(OpacityProperty, fadeInAnim);
+            SecondaryContent.Opacity = 1;
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.AudioMixer && AudioScrollViewer != null)
+        {
+            ExpandedContent.Visibility = Visibility.Collapsed;
+            AudioScrollViewer.Visibility = Visibility.Visible;
+            AudioScrollViewer.BeginAnimation(OpacityProperty, fadeInAnim);
+            AudioScrollViewer.Opacity = 1;
+        }
+        else
+        {
+            double contentTargetY = ExpandedContentRestY;
+            var expandedGroup = new TransformGroup();
+            var expandedTranslate = new TranslateTransform(0, contentTargetY);
+            expandedGroup.Children.Add(expandedTranslate);
+            ExpandedContent.RenderTransform = expandedGroup;
+            ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
+            var springSlide = MakeAnim(10, contentTargetY, _dur400, _easeExpOut6);
+            StartMainViewHorizontalStabilizer(expandedTranslate);
 
-        ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
+            ExpandedContentBlur.Radius = contentBlurRadius;
+            ExpandedContent.BeginAnimation(OpacityProperty, fadeInAnim);
+            ExpandedContent.Opacity = 1;
+            expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+            ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
+        }
 
         HoverGlow.BeginAnimation(OpacityProperty, glowAnim);
         AnimateCornerRadius(_cornerRadiusExpanded, TimeSpan.FromMilliseconds(400));
@@ -840,6 +928,21 @@ public partial class MainWindow
         if (_isTimerView) return LastExpandedView.Timer;
         if (_isSecondaryView) return LastExpandedView.Secondary;
         return LastExpandedView.Primary;
+    }
+
+    private VNotch.Models.NotchView DetermineTargetExpandedView()
+    {
+        if (_settings.ReopenLastViewOnExpand)
+        {
+            return _lastExpandedViewBeforeCollapse switch
+            {
+                LastExpandedView.Timer => VNotch.Models.NotchView.Timer,
+                LastExpandedView.Secondary => VNotch.Models.NotchView.Secondary,
+                LastExpandedView.Audio => VNotch.Models.NotchView.AudioMixer,
+                _ => VNotch.Models.NotchView.Media
+            };
+        }
+        return VNotch.Models.NotchView.Media;
     }
 
     private void AnimateSecondaryViewCollapse(bool wasSecondary, int generation)
@@ -1176,6 +1279,8 @@ public partial class MainWindow
         _isExpanded = false;
         _notchState.TryTransitionTo(NotchState.Collapsed);
         NotchBorder.IsHitTestVisible = true;
+        _transitionCoordinator.CompleteTransition(generation);
+        UpdateSpotifyCanvasPresentationContext();
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
         NotchBorder.Width = _collapsedWidth;
@@ -1286,10 +1391,18 @@ public partial class MainWindow
         MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
     }
 
-    private void CollapseNotch()
+    private void CollapseNotch(long? transitionId = null)
     {
-        if (!CanStartCollapse()) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestCollapse("CollapseNotch");
+            return;
+        }
+
+        if (_isDebugViewLocked || _isGreetingActive) return;
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
+        _isAnimating = true;
 
         PrepareStateBeforeCollapse();
 
@@ -1312,8 +1425,16 @@ public partial class MainWindow
         NotchBorder.IsHitTestVisible = false;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var widthAnim = MakeAnim(_collapsedWidth, _dur500, _easeExpOut6, animFps);
-        var heightAnim = MakeAnim(_collapsedHeight, _dur500, _easeExpOut6, animFps);
+        double currentWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
+        double currentHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight;
+
+        NotchBorder.BeginAnimation(WidthProperty, null);
+        NotchBorder.BeginAnimation(HeightProperty, null);
+        NotchBorder.Width = currentWidth;
+        NotchBorder.Height = currentHeight;
+
+        var widthAnim = MakeAnim(currentWidth, _collapsedWidth, _dur500, _easeExpOut6, animFps);
+        var heightAnim = MakeAnim(currentHeight, _collapsedHeight, _dur500, _easeExpOut6, animFps);
 
         var expandedGroup = new TransformGroup();
         var expandedTranslate = new TranslateTransform(0, ExpandedContentRestY);

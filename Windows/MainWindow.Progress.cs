@@ -376,28 +376,31 @@ public partial class MainWindow
                 _lastProgressTimelineUpdated = info.LastUpdated;
             }
 
-            bool isLiveStream = info.Duration.TotalSeconds <= 0 && info.IsPlaying;
+            if (!_isRewindAnimating)
+            {
+                bool isLiveStream = info.Duration.TotalSeconds <= 0 && info.IsPlaying;
 
-            if (isLiveStream || info.IsIndeterminate)
-            {
-                bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
-                IndeterminateProgress.Visibility = Visibility.Visible;
-                ProgressBar.Visibility = Visibility.Collapsed;
-                ProgressBarBg.Visibility = Visibility.Visible;
-                if (!wasIndeterminate)
+                if (isLiveStream || info.IsIndeterminate)
                 {
-                    StartIndeterminateAnimation();
+                    bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
+                    IndeterminateProgress.Visibility = Visibility.Visible;
+                    ProgressBar.Visibility = Visibility.Collapsed;
+                    ProgressBarBg.Visibility = Visibility.Visible;
+                    if (!wasIndeterminate)
+                    {
+                        StartIndeterminateAnimation();
+                    }
                 }
-            }
-            else
-            {
-                if (IndeterminateProgress.Visibility == Visibility.Visible)
+                else
                 {
-                    IndeterminateProgress.BeginAnimation(OpacityProperty, null);
+                    if (IndeterminateProgress.Visibility == Visibility.Visible)
+                    {
+                        IndeterminateProgress.BeginAnimation(OpacityProperty, null);
+                    }
+                    IndeterminateProgress.Visibility = Visibility.Collapsed;
+                    ProgressBar.Visibility = Visibility.Visible;
+                    ProgressBarBg.Visibility = Visibility.Visible;
                 }
-                IndeterminateProgress.Visibility = Visibility.Collapsed;
-                ProgressBar.Visibility = Visibility.Visible;
-                ProgressBarBg.Visibility = Visibility.Visible;
             }
 
             bool canSeek = info.IsSeekEnabled && info.Duration.TotalSeconds > 0;
@@ -769,7 +772,7 @@ public partial class MainWindow
     }
 
     private static string FormatTime(TimeSpan time) => MediaProgressHelpers.FormatTime(time);
-    private static string FormatDuration(TimeSpan duration) => duration.TotalSeconds > 0 ? FormatTime(duration) : "LIVE";
+    private static string FormatDuration(TimeSpan duration) => duration.TotalSeconds > 0 ? FormatTime(duration) : "--:--";
 
     #region Progress Bar Click and Drag to Seek
 
@@ -1131,9 +1134,20 @@ public partial class MainWindow
         _isRewindAnimating = true;
 
         long seqAtStart = _trackChangeSequence;
-        var duration = TimeSpan.FromMilliseconds(Math.Clamp(320 + fromRatio * 150, 340, 470));
+        var duration = TimeSpan.FromMilliseconds(Math.Clamp(280 + fromRatio * 180, 300, 450));
 
-        AnimateProgressTrackChangeAppearance(seqAtStart);
+        ProgressBar.Visibility = Visibility.Visible;
+        ProgressBarBg.Visibility = Visibility.Visible;
+        if (IndeterminateProgress.Visibility == Visibility.Visible)
+        {
+            IndeterminateProgress.BeginAnimation(OpacityProperty, null);
+            IndeterminateProgress.Visibility = Visibility.Collapsed;
+        }
+
+        ProgressBarContainer.BeginAnimation(OpacityProperty, null);
+        ProgressBarContainer.Opacity = 1;
+        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        ProgressBarMainScale.ScaleY = 1;
 
         var anim = new DoubleAnimation(fromRatio, targetRatio, new Duration(duration))
         {
@@ -1163,6 +1177,22 @@ public partial class MainWindow
             StopRewindTextAnimation();
             _isRewindAnimating = false;
             _lastRenderTime = DateTime.Now;
+
+            if (_currentMediaInfo != null)
+            {
+                bool isLive = _currentMediaInfo.Duration.TotalSeconds <= 0 && _currentMediaInfo.IsPlaying;
+                if (isLive || _currentMediaInfo.IsIndeterminate)
+                {
+                    bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
+                    IndeterminateProgress.Visibility = Visibility.Visible;
+                    ProgressBar.Visibility = Visibility.Collapsed;
+                    ProgressBarBg.Visibility = Visibility.Visible;
+                    if (!wasIndeterminate)
+                    {
+                        StartIndeterminateAnimation();
+                    }
+                }
+            }
         };
 
         _progressTargetRatio = 0;
@@ -1172,50 +1202,6 @@ public partial class MainWindow
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = fromRatio;
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
-    }
-
-    private void AnimateProgressTrackChangeAppearance(long seqAtStart)
-    {
-        double currentOpacity = ProgressBarContainer.Opacity;
-        double currentScaleY = ProgressBarMainScale.ScaleY;
-
-        ProgressBarContainer.BeginAnimation(OpacityProperty, null);
-        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-
-        var opacity = new DoubleAnimationUsingKeyFrames
-        {
-            Duration = _dur600,
-            FillBehavior = FillBehavior.Stop
-        };
-        opacity.KeyFrames.Add(new DiscreteDoubleKeyFrame(currentOpacity, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        opacity.KeyFrames.Add(new EasingDoubleKeyFrame(0.68, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)), _easeQuadIn));
-        opacity.KeyFrames.Add(new EasingDoubleKeyFrame(0.84, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(320)), _easeExpOut6));
-        opacity.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(600)), _easeExpOut6));
-        Timeline.SetDesiredFrameRate(opacity, VNotch.Services.AnimationConfig.TargetFps);
-
-        var scaleY = new DoubleAnimationUsingKeyFrames
-        {
-            Duration = _dur600,
-            FillBehavior = FillBehavior.Stop
-        };
-        scaleY.KeyFrames.Add(new DiscreteDoubleKeyFrame(currentScaleY, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(0.48, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)), _easeQuadIn));
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(0.76, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(320)), _easeExpOut6));
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(600)), _easeExpOut6));
-        Timeline.SetDesiredFrameRate(scaleY, VNotch.Services.AnimationConfig.TargetFps);
-
-        opacity.Completed += (_, _) =>
-        {
-            if (_trackChangeSequence != seqAtStart) return;
-
-            ProgressBarContainer.BeginAnimation(OpacityProperty, null);
-            ProgressBarContainer.Opacity = 1;
-            ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            ProgressBarMainScale.ScaleY = 1;
-        };
-
-        ProgressBarContainer.BeginAnimation(OpacityProperty, opacity);
-        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
     }
 
     private void AnimateExternalSeekTo(double targetRatio)

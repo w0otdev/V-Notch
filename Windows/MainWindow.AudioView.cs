@@ -14,15 +14,14 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    private bool _localAudioView;
     private bool _isAudioView
     {
-        get => _notchState.IsAudioView;
+        get => _localAudioView;
         set
         {
+            _localAudioView = value;
             _notchState.IsAudioView = value;
-            if (value) _viewModel.SetView(VNotch.Models.NotchView.AudioMixer);
-            else if (_viewModel.CurrentView == VNotch.Models.NotchView.AudioMixer)
-                _viewModel.SetView(VNotch.Models.NotchView.Media);
         }
     }
     private const double _audioViewWidth = 720;
@@ -103,10 +102,16 @@ public partial class MainWindow
         SwitchToAudioView();
     }
 
-    private void SwitchToAudioView()
+    private void SwitchToAudioView(long? transitionId = null)
     {
-        if (_isAudioView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.AudioMixer, "SwitchToAudioView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         CancelTimerEditingInstant();
 
         FrameworkElement outgoing;
@@ -190,10 +195,16 @@ public partial class MainWindow
         RefreshAudioData(SettleAudioNotchToFit);
     }
 
-    private void SwitchFromAudioToPrimaryView()
+    private void SwitchFromAudioToPrimaryView(long? transitionId = null)
     {
-        if (!_isAudioView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Media, "SwitchFromAudioToPrimaryView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
         _audioMixerServiceCached?.ReleaseSessionCache();
@@ -249,10 +260,16 @@ public partial class MainWindow
             generation: generation);
     }
 
-    private void SwitchFromAudioToSecondaryView()
+    private void SwitchFromAudioToSecondaryView(long? transitionId = null)
     {
-        if (!_isAudioView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Secondary, "SwitchFromAudioToSecondaryView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
         _audioMixerServiceCached?.ReleaseSessionCache();
@@ -286,10 +303,16 @@ public partial class MainWindow
             generation: generation);
     }
 
-    private void SwitchFromAudioToTimerView()
+    private void SwitchFromAudioToTimerView(long? transitionId = null)
     {
-        if (!_isAudioView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Timer, "SwitchFromAudioToTimerView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
         _audioMixerServiceCached?.ReleaseSessionCache();
@@ -438,6 +461,7 @@ public partial class MainWindow
                 NotchBorder.IsHitTestVisible = true;
                 incoming.Opacity = 1;
                 incoming.BeginAnimation(OpacityProperty, null);
+                _transitionCoordinator.CompleteTransition(activeGen);
                 onComplete?.Invoke();
             };
             incoming.BeginAnimation(OpacityProperty, aFadeIn);
@@ -504,6 +528,7 @@ public partial class MainWindow
                 }
                 if (outIsAudio)
                     RestorePrivacyDotVisibility();
+                _transitionCoordinator.CompleteTransition(activeGen);
                 onComplete?.Invoke();
             };
 

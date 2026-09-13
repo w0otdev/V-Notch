@@ -1682,8 +1682,9 @@
                                 Margin="-60,-20,-20,-30"
                                 Panel.ZIndex="0"
                                 Visibility="Collapsed"
-                                IsHitTestVisible="False"
-                                SizeChanged="LyricsCanvasBackground_SizeChanged">
+                                CornerRadius="0,0,20,20"
+                                ClipToBounds="True"
+                                IsHitTestVisible="False">
                             <Border.OpacityMask>
                                 <RadialGradientBrush GradientOrigin="0.75,0.6" Center="0.75,0.6" RadiusX="0.55" RadiusY="0.6">
                                     <GradientStop Color="#EEFFFFFF" Offset="0"/>
@@ -1693,25 +1694,32 @@
                                 </RadialGradientBrush>
                             </Border.OpacityMask>
                             <Grid x:Name="LyricsCanvasViewport"
-                                  Background="Black"
+                                  Background="Transparent"
                                   ClipToBounds="True">
                                 <MediaElement x:Name="LyricsCanvasVideo"
                                               LoadedBehavior="Manual"
                                               UnloadedBehavior="Manual"
-                                              Stretch="Fill"
+                                              Stretch="UniformToFill"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
                                               IsMuted="True"
-                                              ScrubbingEnabled="False"
-                                              Opacity="1"
-                                              MediaOpened="LyricsCanvasVideo_MediaOpened"
-                                              MediaEnded="LyricsCanvasVideo_MediaEnded"
-                                              MediaFailed="LyricsCanvasVideo_MediaFailed"
-                                              Unloaded="LyricsCanvasVideo_Unloaded"/>
+                                              ScrubbingEnabled="True"
+                                              Opacity="1"/>
                                 <Rectangle x:Name="LyricsCanvasBrightnessOverlay"
                                            Fill="Black"
+                                           RadiusX="20"
+                                           RadiusY="20"
                                            Opacity="0.3"
-                                           IsHitTestVisible="False"/>
+                                           IsHitTestVisible="False">
+                                    <Rectangle.OpacityMask>
+                                        <RadialGradientBrush GradientOrigin="0.75,0.6" Center="0.75,0.6" RadiusX="0.55" RadiusY="0.6">
+                                            <GradientStop Color="#EEFFFFFF" Offset="0"/>
+                                            <GradientStop Color="#AAFFFFFF" Offset="0.35"/>
+                                            <GradientStop Color="#44FFFFFF" Offset="0.7"/>
+                                            <GradientStop Color="#00FFFFFF" Offset="0.98"/>
+                                        </RadialGradientBrush>
+                                    </Rectangle.OpacityMask>
+                                </Rectangle>
                             </Grid>
                         </Border>
 

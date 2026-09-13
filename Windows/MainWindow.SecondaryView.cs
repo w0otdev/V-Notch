@@ -146,11 +146,19 @@ public partial class MainWindow
         }
     }
 
-    private void SwitchToSecondaryView()
+    private void SwitchToSecondaryView(long? transitionId = null)
     {
-        if (_isSecondaryView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Secondary, "SwitchToSecondaryView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isSecondaryView = true;
+        _isTimerView = false;
+        _isAudioView = false;
         _isAnimating = true;
         SuspendSpotifyCanvasLifecycle();
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -257,6 +265,7 @@ public partial class MainWindow
             SecondaryContent.Opacity = 1;
             SecondaryContent.BeginAnimation(OpacityProperty, null);
             SecondaryContent.RenderTransform = null;
+            _transitionCoordinator.CompleteTransition(generation);
 
             if (_pendingFlipThumbnail != null)
             {
@@ -278,10 +287,16 @@ public partial class MainWindow
         secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
     }
 
-    private void SwitchToPrimaryView()
+    private void SwitchToPrimaryView(long? transitionId = null)
     {
-        if (!_isSecondaryView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Media, "SwitchToPrimaryView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isSecondaryView = false;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -385,6 +400,7 @@ public partial class MainWindow
             ExpandedContent.BeginAnimation(OpacityProperty, null);
             RestoreExpandedContentRestLayout();
             ResumeSpotifyCanvasLifecycle();
+            _transitionCoordinator.CompleteTransition(generation);
 
             ShowMediaBackground();
 

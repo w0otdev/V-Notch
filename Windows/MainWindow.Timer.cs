@@ -9,6 +9,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using VNotch.Controllers;
+using VNotch.Presenters;
 using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
 using static VNotch.Services.Win32Interop;
@@ -17,28 +18,75 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    private bool _localTimerView;
     private bool _isTimerView
     {
-        get => _notchState.IsTimerView;
+        get => _localTimerView;
         set
         {
+            _localTimerView = value;
             _notchState.IsTimerView = value;
-            if (value) _viewModel.SetView(VNotch.Models.NotchView.Timer);
-            else if (_viewModel.CurrentView == VNotch.Models.NotchView.Timer)
-                _viewModel.SetView(VNotch.Models.NotchView.Media);
         }
     }
     private const double _timerViewHeight = 108;
     private const double _countdownCompleteWidthInset = 28;
     private double CountdownCompleteViewWidth => Math.Max(_collapsedWidth, _expandedWidth - _countdownCompleteWidthInset);
 
-    // ponytail: aliases keep animation code stable; TimerViewModel owns countdown state.
+    // CountdownController owns timing and run completion; CountdownPresenter owns UI presentation
+    private CountdownController? _countdownController;
+    private CountdownController CountdownController
+    {
+        get
+        {
+            if (_countdownController == null)
+            {
+                _countdownController = new CountdownController(_viewModel.Timer, action =>
+                {
+                    if (Dispatcher.CheckAccess()) action();
+                    else Dispatcher.BeginInvoke(action);
+                });
+                _countdownController.Completed += (_, args) => OnCountdownCompleted(args.RunId);
+                _countdownController.Tick += (_, _) =>
+                {
+                    if (TimerContent != null && TimerContent.Visibility == Visibility.Visible && _isExpanded)
+                    {
+                        SetCountdownProgress(animate: false);
+                    }
+                };
+            }
+            return _countdownController;
+        }
+    }
+
+    private CountdownPresenter? _countdownPresenter;
+    private CountdownPresenter CountdownPresenter
+    {
+        get
+        {
+            if (_countdownPresenter == null)
+            {
+                var refs = new CountdownViewRefs
+                {
+                    StartIcon = CountdownStartIcon,
+                    StartButton = CountdownStartBtn,
+                    StepperCapsule = CountdownStepperCapsule,
+                    DisplayScale = CountdownDisplayScale,
+                    DigitsBrush = CountdownDigitsBrush,
+                    PanelBorderBrush = CountdownPanelBorderBrush,
+                    PlusButton = CountdownPlusBtn,
+                    MinusButton = CountdownMinusBtn,
+                    PlusHighlight = CountdownPlusHighlight,
+                    MinusHighlight = CountdownMinusHighlight,
+                    CompleteOverlay = CountdownCompleteOverlay
+                };
+                _countdownPresenter = new CountdownPresenter(refs, Dispatcher);
+            }
+            return _countdownPresenter;
+        }
+    }
+
     private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
-    private bool _isCountdownRunning { get => _viewModel.Timer.IsRunning; set => _viewModel.Timer.IsRunning = value; }
-    private DispatcherTimer? _countdownTimer;
-    private CountdownTracker CountdownTracker => _countdownTracker ??= new CountdownTracker(_viewModel.Timer);
-    private CountdownTracker? _countdownTracker;
-    private long _lastCountdownTimestamp => CountdownTracker.LastCountdownTimestamp;
+    private bool _isCountdownRunning { get => CountdownController.IsRunning; set => _viewModel.Timer.IsRunning = value; }
 
     private DispatcherTimer? _countdownRepeatTimer;
     private int _countdownRepeatDirection;
@@ -79,13 +127,7 @@ public partial class MainWindow
 
     private void SetCountdownStartVisual(bool running)
     {
-        CountdownStartIcon.Data = running ? _countdownPauseGeometry : _countdownPlayGeometry;
-        CountdownStartBtn.Background = running ? _countdownStartRunningBrush : _countdownStartIdleBrush;
-
-        // Steppers only make sense while paused; fade them out of reach during a run.
-        CountdownStepperCapsule.IsHitTestVisible = !running;
-        var stepperFade = MakeAnim(running ? 0.4 : 1.0, _dur200, _easeQuadOut);
-        CountdownStepperCapsule.BeginAnimation(OpacityProperty, stepperFade);
+        CountdownPresenter.SetStartVisual(running);
     }
 
     #region Timer View Navigation
@@ -112,11 +154,19 @@ public partial class MainWindow
         }
     }
 
-    private void SwitchToTimerView()
+    private void SwitchToTimerView(long? transitionId = null)
     {
-        if (_isTimerView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Timer, "SwitchToTimerView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isTimerView = true;
+        _isSecondaryView = false;
+        _isAudioView = false;
         _isAnimating = true;
         SuspendSpotifyCanvasLifecycle();
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -244,6 +294,7 @@ public partial class MainWindow
             TimerContent.BeginAnimation(OpacityProperty, null);
             TimerContent.RenderTransform = null;
             RestoreTimerContentOpacity();
+            _transitionCoordinator.CompleteTransition(generation);
         };
 
         RestoreTimerContentOpacity();
@@ -331,12 +382,19 @@ public partial class MainWindow
         barScale.BeginAnimation(ScaleTransform.ScaleYProperty, barGrow);
     }
 
-    private void SwitchFromSecondaryToTimerView()
+    private void SwitchFromSecondaryToTimerView(long? transitionId = null)
     {
-        if (_isTimerView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Timer, "SwitchFromSecondaryToTimerView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         _isTimerView = true;
         _isSecondaryView = false;
+        _isAudioView = false;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
         _isScrollSessionLocked = true;
@@ -453,10 +511,16 @@ public partial class MainWindow
         UpdateTimerDisplay();
     }
 
-    private void SwitchFromTimerToPrimaryView()
+    private void SwitchFromTimerToPrimaryView(long? transitionId = null)
     {
-        if (!_isTimerView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Media, "SwitchFromTimerToPrimaryView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         CancelTimerEditingInstant();
         _isTimerView = false;
         _isAnimating = true;
@@ -554,6 +618,7 @@ public partial class MainWindow
             ExpandedContent.BeginAnimation(OpacityProperty, null);
             RestoreExpandedContentRestLayout();
             ResumeSpotifyCanvasLifecycle();
+            _transitionCoordinator.CompleteTransition(generation);
 
             ShowMediaBackground();
 
@@ -588,10 +653,16 @@ public partial class MainWindow
         }
     }
 
-    private void SwitchFromTimerToSecondaryView()
+    private void SwitchFromTimerToSecondaryView(long? transitionId = null)
     {
-        if (!_isTimerView || _isAnimating) return;
-        int generation = NextViewTransitionGeneration();
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Secondary, "SwitchFromTimerToSecondaryView");
+            return;
+        }
+
+        int generation = (int)transitionId;
+        _viewTransitionGeneration = generation;
         CancelTimerEditingInstant();
         _isTimerView = false;
         _isSecondaryView = true;
@@ -678,6 +749,7 @@ public partial class MainWindow
             SecondaryContent.Opacity = 1;
             SecondaryContent.BeginAnimation(OpacityProperty, null);
             SecondaryContent.RenderTransform = null;
+            _transitionCoordinator.CompleteTransition(generation);
 
             if (IsCameraPreviewLifecycleActive)
             {
@@ -837,45 +909,19 @@ public partial class MainWindow
 
     #region Countdown Logic
 
-    private void InitializeCountdownTimer()
+    private void OnCountdownCompleted(long runId = 0)
     {
-        _countdownTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(100)
-        };
-        _countdownTimer.Tick += CountdownTimer_Tick;
-    }
-
-    private void ResetCountdownTimestamp()
-    {
-        CountdownTracker.ResetCountdownTimestamp();
-    }
-
-    private bool AdvanceCountdown()
-    {
-        return CountdownTracker.AdvanceCountdown();
-    }
-
-    private void CountdownTimer_Tick(object? sender, EventArgs e)
-    {
-        if (AdvanceCountdown())
-        {
-            OnCountdownCompleted();
-            return;
-        }
-
-        if (TimerContent == null || TimerContent.Visibility != Visibility.Visible || !_isExpanded)
-            return;
-
-        UpdateTimerDisplay();
-    }
-
-    private void OnCountdownCompleted()
-    {
-        _countdownTimer?.Stop();
         SetCountdownStartVisual(false);
 
         SystemSounds.Exclamation.Play();
+
+        if (_transitionCoordinator.Ownership == DisplayOwnership.Spotlight)
+        {
+            _transitionCoordinator.NotifyCountdownCompleted();
+            return;
+        }
+
+        _transitionCoordinator.NotifyCountdownCompleted();
 
         ShowCountdownCompletionOnPill();
     }
@@ -1265,11 +1311,8 @@ public partial class MainWindow
         e.Handled = true;
         if (_isAnimating) return;
 
-        _viewModel.Timer.Remaining = _countdownDuration;
-        _isCountdownRunning = true;
-        ResetCountdownTimestamp();
-        if (_countdownTimer == null) InitializeCountdownTimer();
-        _countdownTimer?.Start();
+        CountdownController.Reset();
+        CountdownController.Start();
 
         AnimateCountdownRestartToTimerView();
     }
@@ -1770,27 +1813,15 @@ public partial class MainWindow
         if (_isEditingTimer)
             CommitTimerEditing(allowRetry: false);
 
-        if (_countdownTimer == null)
-            InitializeCountdownTimer();
-
         if (_isCountdownRunning)
         {
-            if (AdvanceCountdown())
-            {
-                OnCountdownCompleted();
-                return;
-            }
-
-            _viewModel.Timer.Pause();
-            _countdownTimer?.Stop();
+            CountdownController.Pause();
             SetCountdownStartVisual(false);
             UpdateTimerDisplay();
         }
         else
         {
-            _viewModel.Timer.Start();
-            ResetCountdownTimestamp();
-            _countdownTimer?.Start();
+            CountdownController.Start();
             SetCountdownStartVisual(true);
         }
     }
@@ -1800,9 +1831,7 @@ public partial class MainWindow
         e.Handled = true;
         PlayTimerButtonPress(CountdownResetBtn);
         if (_isEditingTimer) CancelTimerEditing();
-        _viewModel.Timer.Reset();
-        ResetCountdownTimestamp();
-        _countdownTimer?.Stop();
+        CountdownController.Reset();
         SetCountdownStartVisual(false);
         SetCountdownProgress(animate: true);
         AnimateCountdownDigitBump(1.2);
@@ -1874,14 +1903,7 @@ public partial class MainWindow
 
         if (_isCountdownRunning)
         {
-            if (AdvanceCountdown())
-            {
-                OnCountdownCompleted();
-                return;
-            }
-
-            _viewModel.Timer.Pause();
-            _countdownTimer?.Stop();
+            CountdownController.Pause();
             SetCountdownStartVisual(false);
             UpdateTimerDisplay();
         }

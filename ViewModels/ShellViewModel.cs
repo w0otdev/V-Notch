@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services;
 
@@ -31,17 +32,30 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     public event EventHandler? NextTrackTriggered { add => Media.NextTrackTriggered += value; remove => Media.NextTrackTriggered -= value; }
     public event EventHandler? PreviousTrackTriggered { add => Media.PreviousTrackTriggered += value; remove => Media.PreviousTrackTriggered -= value; }
 
+    private readonly NotchTransitionCoordinator? _coordinator;
+
     public ShellViewModel(IMediaDetectionService mediaService, ISettingsService settingsService,
-        IVolumeService volumeService, IBatteryService batteryService, IDispatcherService dispatcher)
+        IVolumeService volumeService, IBatteryService batteryService, IDispatcherService dispatcher,
+        NotchTransitionCoordinator? coordinator = null)
     {
         _mediaService = mediaService;
         _dispatcher = dispatcher;
+        _coordinator = coordinator;
         Progress = new(mediaService);
         Media = new(mediaService, Progress.SeekRelative);
         Secondary = new(batteryService);
         AudioMixer = new(volumeService);
         Settings = new(settingsService);
         _mediaService.MediaChanged += OnMediaChanged;
+
+        if (_coordinator != null)
+        {
+            _coordinator.StateChanged += (_, snapshot) => _dispatcher.BeginInvoke(() =>
+            {
+                CurrentView = snapshot.CurrentView;
+                IsExpanded = snapshot.CurrentView != NotchView.Compact;
+            });
+        }
     }
 
     public void Initialize()
@@ -60,11 +74,41 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         MediaInfoUpdated?.Invoke(this, info);
     });
 
-    [RelayCommand] private void OpenMedia() => SetView(NotchView.Media);
-    [RelayCommand] private void OpenTimer() => SetView(NotchView.Timer);
-    [RelayCommand] private void OpenSecondary() => SetView(NotchView.Secondary);
-    [RelayCommand] private void OpenAudioMixer() => SetView(NotchView.AudioMixer);
-    [RelayCommand] private void Collapse() => SetView(NotchView.Compact);
+    [RelayCommand]
+    private void OpenMedia()
+    {
+        if (_coordinator != null) _coordinator.RequestView(NotchView.Media, "CommandOpenMedia");
+        else SetView(NotchView.Media);
+    }
+
+    [RelayCommand]
+    private void OpenTimer()
+    {
+        if (_coordinator != null) _coordinator.RequestView(NotchView.Timer, "CommandOpenTimer");
+        else SetView(NotchView.Timer);
+    }
+
+    [RelayCommand]
+    private void OpenSecondary()
+    {
+        if (_coordinator != null) _coordinator.RequestView(NotchView.Secondary, "CommandOpenSecondary");
+        else SetView(NotchView.Secondary);
+    }
+
+    [RelayCommand]
+    private void OpenAudioMixer()
+    {
+        if (_coordinator != null) _coordinator.RequestView(NotchView.AudioMixer, "CommandOpenAudioMixer");
+        else SetView(NotchView.AudioMixer);
+    }
+
+    [RelayCommand]
+    private void Collapse()
+    {
+        if (_coordinator != null) _coordinator.RequestCollapse("CommandCollapse");
+        else SetView(NotchView.Compact);
+    }
+
     [RelayCommand] private void ToggleNotch() => IsNotchVisible = !IsNotchVisible;
 
     public void SetView(NotchView view)
