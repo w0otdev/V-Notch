@@ -1340,10 +1340,21 @@ public partial class MainWindow
                 CalendarWidget.BeginAnimation(OpacityProperty, null);
                 CalendarWidget.Visibility = Visibility.Collapsed;
                 CalendarWidget.Opacity = 0;
-                if (LyricsWidget != null && LyricsWidget.Visibility == Visibility.Visible)
+                if (LyricsWidget != null)
                 {
                     LyricsWidget.BeginAnimation(OpacityProperty, null);
+                    LyricsWidget.Visibility = Visibility.Visible;
                     LyricsWidget.Opacity = 1.0;
+
+                    if (_currentLyricIndex < 0 && !_isLyricsSearchVisible && LyricsPlaceholderPanel != null)
+                    {
+                        if (LyricsPlaceholderPanel.Visibility != Visibility.Visible)
+                        {
+                            string placeholderTitle = _currentMediaInfo?.CurrentTrack ?? "";
+                            string placeholderArtist = _currentMediaInfo?.CurrentArtist ?? "";
+                            ShowLyricsPlaceholder(placeholderTitle, placeholderArtist, _lyricsProvider);
+                        }
+                    }
                 }
             }
             else
