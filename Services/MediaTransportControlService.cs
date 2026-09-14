@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using VNotch.Models;
 using Windows.Media.Control;
 
 namespace VNotch.Services;
@@ -84,7 +85,10 @@ public sealed class MediaTransportControlService
                 var timeline = session.GetTimelineProperties();
                 string sessionId = session.SourceAppUserModelId ?? "";
 
-                TimeSpan currentPos = GetCurrentPosition(session, timeline);
+                // Use the player's reported position for the restart threshold.
+                // LastUpdatedTime can carry over from the previous video, so
+                // extrapolating it can turn the first seconds into a restart.
+                TimeSpan currentPos = timeline?.Position ?? TimeSpan.Zero;
                 TimeSpan relativePos = timeline != null && currentPos >= timeline.StartTime
                     ? currentPos - timeline.StartTime
                     : currentPos;
@@ -122,6 +126,22 @@ public sealed class MediaTransportControlService
                     RuntimeLog.Log(LogTag, "Previous: skipped track via SMTC");
                     return;
                 }
+
+                var browserInfo = new MediaInfo { SourceAppId = sessionId };
+                if (await Task.Run(() => MediaWindowActivator.IsBrowserMediaSession(sessionId)))
+                {
+                    // Outside a playlist, a browser may expose no previous-track
+                    // action. The media key cannot navigate its watch history.
+                    var properties = await session.TryGetMediaPropertiesAsync();
+                    browserInfo.CurrentTrack = properties?.Title ?? string.Empty;
+                    if (!ReferenceEquals(session, _getActiveSession())) return;
+
+                    bool navigated = await Task.Run(() => MediaWindowActivator.TryGoBackInMediaTab(browserInfo));
+                    RuntimeLog.Log(LogTag, navigated
+                        ? "Previous: navigated back in the matching browser tab"
+                        : "Previous: no unambiguous browser tab with an available Back button");
+                    return;
+                }
             }
             RuntimeLog.Log(LogTag, "Previous: sending VK_MEDIA_PREV_TRACK");
             SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
@@ -131,38 +151,6 @@ public sealed class MediaTransportControlService
             RuntimeLog.Error(LogTag, ex, "PreviousTrack failed");
             SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
-    }
-
-    private static TimeSpan GetCurrentPosition(
-        GlobalSystemMediaTransportControlsSession session,
-        GlobalSystemMediaTransportControlsSessionTimelineProperties? timeline)
-    {
-        if (timeline == null) return TimeSpan.Zero;
-
-        var pos = timeline.Position;
-        if (timeline.LastUpdatedTime != default)
-        {
-            try
-            {
-                var playbackInfo = session.GetPlaybackInfo();
-                if (playbackInfo?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
-                {
-                    var elapsed = DateTimeOffset.UtcNow - timeline.LastUpdatedTime;
-                    if (elapsed > TimeSpan.Zero)
-                    {
-                        double rate = playbackInfo?.PlaybackRate ?? 1.0;
-                        if (rate <= 0) rate = 1.0;
-                        pos += TimeSpan.FromSeconds(elapsed.TotalSeconds * rate);
-                    }
-                }
-            }
-            catch
-            {
-                // Fall back to timeline.Position
-            }
-        }
-
-        return pos;
     }
 
     private static GlobalSystemMediaTransportControlsSessionPlaybackControls? TryGetControls(

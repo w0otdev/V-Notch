@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Automation;
@@ -86,6 +87,164 @@ internal static class MediaWindowActivator
 
     private static bool TryActivateByProcessCandidates(IEnumerable<string> candidates)
         => candidates.Any(TryActivateProcessWindows);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetApplicationUserModelId(IntPtr process, ref uint length, StringBuilder? appId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam,
+        IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+
+    private static bool IsChromiumWindow(IntPtr hwnd)
+    {
+        var className = new StringBuilder(256);
+        return GetClassName(hwnd, className, className.Capacity) > 0 &&
+            className.ToString().StartsWith("Chrome_WidgetWin_", StringComparison.Ordinal);
+    }
+
+    private static bool IsMediaBrowserWindow(IntPtr hwnd, string sourceAppId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceAppId)) return false;
+        GetWindowThreadProcessId(hwnd, out uint processId);
+        try
+        {
+            using var process = Process.GetProcessById((int)processId);
+            string processName = process.ProcessName;
+            if (!IsBrowserProcess(processName) && !IsChromiumWindow(hwnd)) return false;
+
+            // Match the session owner, including Chromium forks with custom executable
+            // names. Window class alone also matches Electron, so it is insufficient.
+            if (Regex.IsMatch(sourceAppId, @"(?:^|[\\/.!_\-])" + Regex.Escape(processName) +
+                @"(?:$|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                return true;
+
+            uint length = 0;
+            const int insufficientBuffer = 122;
+            if (GetApplicationUserModelId(process.Handle, ref length, null) != insufficientBuffer ||
+                length == 0 || length > 32768) return false;
+            var appId = new StringBuilder((int)length);
+            return GetApplicationUserModelId(process.Handle, ref length, appId) == 0 &&
+                string.Equals(appId.ToString(), sourceAppId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static bool IsBrowserMediaSession(string sourceAppId)
+    {
+        bool found = false;
+        EnumWindows((hwnd, _) =>
+        {
+            found = IsWindowVisible(hwnd) && IsMediaBrowserWindow(hwnd, sourceAppId);
+            return !found;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    internal static bool TryGoBackInMediaTab(MediaInfo info)
+    {
+        string track = NormalizeTitle(info.CurrentTrack);
+        if (track.Length < 3) return false;
+
+        // Restrict navigation to the browser owning the media session, and require
+        // the actual track title. A platform-only match can select another tab.
+        IntPtr targetWindow = IntPtr.Zero;
+        AutomationElement? targetTab = null;
+        bool ambiguous = false;
+        try
+        {
+            EnumWindows((hwnd, _) =>
+            {
+                if (!IsWindowVisible(hwnd)) return true;
+                try
+                {
+                    if (!IsMediaBrowserWindow(hwnd, info.SourceAppId)) return true;
+
+                    var root = AutomationElement.FromHandle(hwnd);
+                    var tabs = root.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+                    foreach (AutomationElement tab in tabs)
+                    {
+                        if (!NormalizeTitle(tab.Current.Name).Contains(track, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (targetTab != null)
+                        {
+                            ambiguous = true;
+                            return false;
+                        }
+                        targetWindow = hwnd;
+                        targetTab = tab;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Log(LogTag, $"Browser back: window inspection failed: {ex.Message}");
+                }
+                return true;
+            }, IntPtr.Zero);
+
+            if (ambiguous || targetTab == null || !TrySelectTab(targetTab)) return false;
+            if (!targetTab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection) ||
+                selection is not SelectionItemPattern selected || !selected.Current.IsSelected)
+                return false;
+
+            var window = AutomationElement.FromHandle(targetWindow);
+            if (IsChromiumWindow(targetWindow))
+            {
+                // Chromium handles APPCOMMAND_BROWSER_BACK regardless of UI language
+                // or toolbar layout. Address the matched window instead of emitting
+                // a global shortcut that could navigate a different application.
+                const uint wmAppCommand = 0x0319;
+                const int browserBackward = 1;
+                return SendMessageTimeout(targetWindow, wmAppCommand, targetWindow,
+                    new IntPtr(browserBackward << 16), 0x0002, 500, out _) != IntPtr.Zero;
+            }
+            // Search browser toolbars only; a web page may also contain Back buttons.
+            var toolbars = window.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolBar));
+            foreach (AutomationElement toolbar in toolbars)
+            {
+                bool inDocument = false;
+                for (var parent = TreeWalker.ControlViewWalker.GetParent(toolbar);
+                     parent != null && !Automation.Compare(parent, window);
+                     parent = TreeWalker.ControlViewWalker.GetParent(parent))
+                {
+                    if (parent.Current.ControlType == ControlType.Document)
+                    {
+                        inDocument = true;
+                        break;
+                    }
+                }
+                if (inDocument) continue;
+
+                var buttons = toolbar.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+                foreach (AutomationElement button in buttons)
+                {
+                    string name = button.Current.Name ?? string.Empty;
+                    bool isBack = button.Current.AutomationId == "back_button" ||
+                        name.Equals("Back", StringComparison.OrdinalIgnoreCase) ||
+                        name.StartsWith("Back (", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("Quay lại", StringComparison.OrdinalIgnoreCase) ||
+                        name.StartsWith("Quay lại (", StringComparison.OrdinalIgnoreCase);
+                    if (!isBack || !button.Current.IsEnabled || button.Current.IsOffscreen) continue;
+                    if (button.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern) &&
+                        pattern is InvokePattern invoke)
+                    {
+                        invoke.Invoke();
+                        return true;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error(LogTag, $"Browser back failed: {ex.Message}");
+        }
+        return false;
+    }
 
     private static bool TryActivateProcessWindows(string processName)
     {
