@@ -228,9 +228,9 @@ Network communication is strictly limited to user-driven or functional features:
 
 All user preferences, cache records, and launch statistics are stored locally on your machine at `%APPDATA%\V-Notch\`.
 
-Read the complete Privacy Policy:
-- [English Privacy Policy](PRIVACY_POLICY.md)
-- [Chính Sách Bảo Mật (Tiếng Việt)](PRIVACY_POLICY_VI.md)
+Read the legal documents & policies:
+- **Privacy Policy:** [English](PRIVACY_POLICY.md) | [Tiếng Việt](PRIVACY_POLICY_VI.md)
+- **Terms of Service:** [English](TERMS_OF_SERVICE.md) | [Tiếng Việt](TERMS_OF_SERVICE_VI.md)
 
 ---
 
