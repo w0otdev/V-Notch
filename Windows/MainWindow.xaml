@@ -2646,7 +2646,7 @@
                                                             Width="0" Height="5"
                                                             CornerRadius="2.5"
                                                             HorizontalAlignment="Left"
-                                                            Background="#FF4ED164"/>
+                                                            Background="White"/>
                                                 </Border>
                                             </StackPanel>
 
@@ -2681,7 +2681,7 @@
                                                             Width="0" Height="5"
                                                             CornerRadius="2.5"
                                                             HorizontalAlignment="Left"
-                                                            Background="#FF4E9BD1"/>
+                                                            Background="White"/>
                                                 </Border>
                                             </StackPanel>
 
@@ -2977,7 +2977,7 @@
                                         <TextBlock x:Name="ShelfSysMonCpuText" Text="0%" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Right"/>
                                     </Grid>
                                     <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
-                                        <Border x:Name="ShelfSysMonCpuBar" Width="0" Height="4" CornerRadius="2" Background="#FF4ED164" HorizontalAlignment="Left"/>
+                                        <Border x:Name="ShelfSysMonCpuBar" Width="0" Height="4" CornerRadius="2" Background="White" HorizontalAlignment="Left"/>
                                     </Border>
                                 </StackPanel>
                                 <StackPanel Orientation="Vertical" Margin="0,0,0,8">
@@ -2986,7 +2986,7 @@
                                         <TextBlock x:Name="ShelfSysMonRamText" Text="—" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Right"/>
                                     </Grid>
                                     <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
-                                        <Border x:Name="ShelfSysMonRamBar" Width="0" Height="4" CornerRadius="2" Background="#FF4ED164" HorizontalAlignment="Left"/>
+                                        <Border x:Name="ShelfSysMonRamBar" Width="0" Height="4" CornerRadius="2" Background="White" HorizontalAlignment="Left"/>
                                     </Border>
                                 </StackPanel>
                                 <Grid Width="110">
