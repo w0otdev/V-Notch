@@ -368,7 +368,7 @@ public class ElasticSlider : Slider
         string unit = Unit;
         int val = (int)Value;
         if (val == 0 && unit == " fps")
-            _valueText.Text = "Auto";
+            _valueText.Text = VNotch.Services.Loc.Get("settings.fps.auto");
         else
             _valueText.Text = string.IsNullOrEmpty(unit) ? val.ToString() : $"{val}{unit}";
     }

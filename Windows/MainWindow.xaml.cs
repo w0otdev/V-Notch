@@ -1810,6 +1810,13 @@ public partial class MainWindow : Window
         RefreshAudioLocalization();
         RefreshClockViewLocale();
         WordClockWidget.RefreshLocalization();
+        if (_isUpdateAvailable && _availableUpdate != null)
+        {
+            UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");
+            SetUpdateInlineTooltipContent(
+                Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-"),
+                Loc.Get(LocKeyUpdateClickToInstall));
+        }
     }
 
     private const double DynamicIslandTopMargin = 8.0;

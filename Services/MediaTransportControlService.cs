@@ -119,16 +119,11 @@ public sealed class MediaTransportControlService
 
                 if (controls?.IsPreviousEnabled == true && await session.TrySkipPreviousAsync())
                 {
-                    return;
-                }
-
-                // Fallback for players without previous-track handler: restart timeline
-                if (await TrySeekToTimelineEdgeAsync(session, toEnd: false))
-                {
-                    RuntimeLog.Log(LogTag, "Previous: skip unsupported, restarted timeline");
+                    RuntimeLog.Log(LogTag, "Previous: skipped track via SMTC");
                     return;
                 }
             }
+            RuntimeLog.Log(LogTag, "Previous: sending VK_MEDIA_PREV_TRACK");
             SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
         catch (Exception ex)

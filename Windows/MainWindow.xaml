@@ -3892,7 +3892,8 @@
                     <StackPanel>
                         <DockPanel LastChildFill="True">
                             <Ellipse Width="7" Height="7" Fill="#30D158" Margin="0,0,7,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Ready To Update"
+                            <TextBlock x:Name="UpdateInlineTitleText"
+                                       Text="Ready To Update"
                                        Foreground="White"
                                        FontSize="11.5"
                                        FontWeight="SemiBold"

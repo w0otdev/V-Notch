@@ -499,6 +499,8 @@ public partial class SettingsWindow : Window
         DarkOverlayLabel.Text = Loc.Get(LocKeyLyricsDarkOverlay);
         BlurDarkOverlaySlider.Label = Loc.Get(LocKeyLyricsDarkOverlay);
         BlurDarkOverlaySlider.Description = Loc.Get("settings.lyricsDarkOverlay.hint");
+        EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode");
+        EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint");
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
         EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint");
         EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas");
@@ -1064,6 +1066,20 @@ public partial class SettingsWindow : Window
         if (GpuPreferenceRestartBadge != null) GpuPreferenceRestartBadge.Text = Loc.Get("settings.badge.restartRequired");
         if (ProcessPriorityLabel != null) ProcessPriorityLabel.Text = Loc.Get("settings.processPriority");
         if (ProcessPriorityHint != null) ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint");
+
+        if (ProcessPriorityCombo != null && ProcessPriorityCombo.Items.Count >= 3)
+        {
+            ((ComboBoxItem)ProcessPriorityCombo.Items[0]).Content = Loc.Get("settings.processPriority.normal");
+            ((ComboBoxItem)ProcessPriorityCombo.Items[1]).Content = Loc.Get("settings.processPriority.high");
+            ((ComboBoxItem)ProcessPriorityCombo.Items[2]).Content = Loc.Get("settings.processPriority.realtime");
+        }
+
+        if (GpuPreferenceCombo != null && GpuPreferenceCombo.Items.Count >= 3)
+        {
+            ((ComboBoxItem)GpuPreferenceCombo.Items[0]).Content = Loc.Get("settings.gpuPreference.auto");
+            ((ComboBoxItem)GpuPreferenceCombo.Items[1]).Content = Loc.Get("settings.gpuPreference.igpu");
+            ((ComboBoxItem)GpuPreferenceCombo.Items[2]).Content = Loc.Get("settings.gpuPreference.dgpu");
+        }
     }
 
     private void ApplyBackupSectionLocalization()
@@ -2663,6 +2679,7 @@ public partial class SettingsWindow : Window
         GlassShadowOpacitySlider.Label = Loc.Get("settings.glass.shadowOpacity");
         GlassShadowSpreadSlider.Label = Loc.Get("settings.glass.shadowSpread");
         GlassBevelModeSlider.Label = Loc.Get("settings.glass.bevelMode");
+        GlassFpsSlider.Label = Loc.Get("settings.glass.targetFps");
     }
 
     #endregion
@@ -3172,6 +3189,8 @@ public partial class SettingsWindow : Window
             (YouTubeApiKeyLabel, () => YouTubeApiKeyLabel.Text = Loc.Get("settings.youtubeApiKey")),
             (YouTubeApiKeyHint, () => YouTubeApiKeyHint.Text = Loc.Get("settings.youtubeApiKey.hint")),
             (YouTubeApiKeyStatus, UpdateYouTubeApiKeyStatus),
+            (EnableDebugModeHint, () => EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint")),
+            (GlassFpsSlider, () => GlassFpsSlider.Label = Loc.Get("settings.glass.targetFps")),
 
             (AnimationFpsLabel, () => { AnimationFpsLabel.Text = Loc.Get("settings.animationFps"); AnimationFpsSlider.Label = Loc.Get("settings.animationFps"); AnimationFpsSlider.Description = Loc.Get("settings.animationFps.hint"); }),
             (EnableBlurEffectsHint, () => EnableBlurEffectsHint.Text = Loc.Get("settings.enableBlurEffects.hint")),
@@ -3280,6 +3299,8 @@ public partial class SettingsWindow : Window
         AnimateContentChange(ReopenLastViewCheck, () => ReopenLastViewCheck.Content = Loc.Get("settings.reopenLastView"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(IdleAutoHideCheck, () => IdleAutoHideCheck.Content = Loc.Get("settings.idleAutoHide"), staggerMs, easeOut, fps);
+        staggerMs += staggerStep;
+        AnimateContentChange(EnableDebugModeCheck, () => EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(EnableSpotifyLyricsCheck, () => EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;

@@ -17,6 +17,7 @@ public partial class MainWindow
 {
     #region Update Notification Handlers
 
+    private const string LocKeyUpdateReady = "update.readyToUpdate";
     private const string LocKeyUpdateVersion = "update.version";
     private const string LocKeyUpdateClickToInstall = "update.clickToInstall";
 
@@ -378,6 +379,7 @@ public partial class MainWindow
 
     private void SetUpdateInlineTooltipContent(string status, string hint)
     {
+        if (UpdateInlineTitleText != null) UpdateInlineTitleText.Text = Loc.Get(LocKeyUpdateReady);
         UpdateInlineStatusText.Text = status;
         UpdateInlineHintText.Text = hint;
     }
