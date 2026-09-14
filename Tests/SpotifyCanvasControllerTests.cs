@@ -30,6 +30,7 @@ public sealed class SpotifyCanvasControllerTests
         public int DisposeCount { get; private set; }
 
         public bool IsMediaOpen { get; set; }
+        public bool IsCanvasVisiblyShowing { get; set; }
         public Uri? CurrentSource { get; set; }
         public long CurrentSourceVersion { get; set; }
 
@@ -86,11 +87,25 @@ public sealed class SpotifyCanvasControllerTests
         return new SpotifyCanvasService(new HttpClient(handler));
     }
 
+    private static SpotifyCanvasService CreateAsyncStubService(Func<HttpRequestMessage, Task<HttpResponseMessage>> handlerFunc)
+    {
+        var handler = new AsyncTestHttpMessageHandler(handlerFunc);
+        return new SpotifyCanvasService(new HttpClient(handler));
+    }
+
     private sealed class TestHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             return Task.FromResult(reply(request));
+        }
+    }
+
+    private sealed class AsyncTestHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> reply) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return reply(request);
         }
     }
 
@@ -112,9 +127,11 @@ public sealed class SpotifyCanvasControllerTests
     public void UpdateTrack_WhenSurfaceNotVisible_DefersFetchUntilVisible()
     {
         var presenter = new FakeSpotifyCanvasPresenter();
-        using var service = CreateStubService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var tcs = new TaskCompletionSource<HttpResponseMessage>();
+        using var service = CreateAsyncStubService(_ => tcs.Task);
         using var controller = new SpotifyCanvasController(service, presenter, action => action());
 
+        controller.UpdateSettings(enabled: true, spDc: "dummy_sp_dc_cookie", brightness: 0.7, localOnlyMode: false);
         controller.SetSurfaceVisibility(false);
         controller.UpdateTrack("Track A", "Artist A", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
 
@@ -144,9 +161,11 @@ public sealed class SpotifyCanvasControllerTests
     public void SetSurfaceVisibility_WhenHidden_HidesPresenterAndCancelsFetch()
     {
         var presenter = new FakeSpotifyCanvasPresenter();
-        using var service = CreateStubService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var tcs = new TaskCompletionSource<HttpResponseMessage>();
+        using var service = CreateAsyncStubService(_ => tcs.Task);
         using var controller = new SpotifyCanvasController(service, presenter, action => action());
 
+        controller.UpdateSettings(enabled: true, spDc: "dummy_sp_dc_cookie", brightness: 0.7, localOnlyMode: false);
         controller.SetSurfaceVisibility(true);
         controller.UpdateTrack("Track", "Artist", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
         Assert.True(controller.HasPendingFetch);

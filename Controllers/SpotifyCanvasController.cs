@@ -136,10 +136,6 @@ public sealed class SpotifyCanvasController : IDisposable
             _runOnUi(() =>
             {
                 _presenter.SetPlaybackState(_shouldPlay);
-                if (_currentUri != null && _isSurfaceVisible)
-                {
-                    _presenter.SetSource(_currentUri, _activeRequestId, _shouldPlay);
-                }
             });
             return;
         }

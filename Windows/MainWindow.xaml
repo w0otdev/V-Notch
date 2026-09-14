@@ -1705,21 +1705,20 @@
                                               IsMuted="True"
                                               ScrubbingEnabled="True"
                                               Opacity="1"/>
+                                <MediaElement x:Name="LyricsCanvasVideoAlt"
+                                              LoadedBehavior="Manual"
+                                              UnloadedBehavior="Manual"
+                                              Stretch="UniformToFill"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              IsMuted="True"
+                                              ScrubbingEnabled="True"
+                                              Opacity="0"/>
                                 <Rectangle x:Name="LyricsCanvasBrightnessOverlay"
                                            Fill="Black"
-                                           RadiusX="20"
-                                           RadiusY="20"
                                            Opacity="0.3"
-                                           IsHitTestVisible="False">
-                                    <Rectangle.OpacityMask>
-                                        <RadialGradientBrush GradientOrigin="0.75,0.6" Center="0.75,0.6" RadiusX="0.55" RadiusY="0.6">
-                                            <GradientStop Color="#EEFFFFFF" Offset="0"/>
-                                            <GradientStop Color="#AAFFFFFF" Offset="0.35"/>
-                                            <GradientStop Color="#44FFFFFF" Offset="0.7"/>
-                                            <GradientStop Color="#00FFFFFF" Offset="0.98"/>
-                                        </RadialGradientBrush>
-                                    </Rectangle.OpacityMask>
-                                </Rectangle>
+                                           Panel.ZIndex="10"
+                                           IsHitTestVisible="False"/>
                             </Grid>
                         </Border>
 

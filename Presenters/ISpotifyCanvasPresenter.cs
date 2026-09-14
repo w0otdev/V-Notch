@@ -17,6 +17,7 @@ public interface ISpotifyCanvasPresenter : IDisposable
     event EventHandler? Unloaded;
 
     bool IsMediaOpen { get; }
+    bool IsCanvasVisiblyShowing { get; }
     Uri? CurrentSource { get; }
     long CurrentSourceVersion { get; }
 
