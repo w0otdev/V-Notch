@@ -415,15 +415,16 @@
                         <StackPanel>
                             <Image Source="/Assets/logo.png" Width="68" Height="68" HorizontalAlignment="Left" Margin="0,0,0,18"/>
                             <TextBlock Text="V-Notch" FontSize="18" FontWeight="Bold" Foreground="White" FontFamily="{StaticResource SFProDisplay}"/>
-                            <TextBlock x:Name="SetupTaglineText" Text="Dynamic Island for Windows" FontSize="11.5" Foreground="#99FFFFFF" TextWrapping="Wrap" LineHeight="16" Margin="0,4,0,18"/>
+                            <TextBlock x:Name="SetupTaglineText" Text="Dynamic Island for Windows" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="#99FFFFFF" TextWrapping="Wrap" LineHeight="16" Margin="0,4,0,18"/>
                             <StackPanel>
-                                <TextBlock x:Name="Step1Text" Text="01  Language" Foreground="#FFFFFFFF" FontSize="11.5" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="Step2Text" Text="02  Welcome" Foreground="#88FFFFFF" FontSize="11.5" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="Step3Text" Text="03  About" Foreground="#88FFFFFF" FontSize="11.5" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="Step4Text" Text="04  Location" Foreground="#88FFFFFF" FontSize="11.5" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="Step5Text" Text="05  Startup" Foreground="#88FFFFFF" FontSize="11.5" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="Step6Text" Text="06  Install" Foreground="#88FFFFFF" FontSize="11.5" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="Step7Text" Text="07  Finish" Foreground="#88FFFFFF" FontSize="11.5"/>
+                                <TextBlock x:Name="Step1Text" Text="01  Language" Foreground="#FFFFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step2Text" Text="02  Welcome" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step3Text" Text="03  Terms" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step4Text" Text="04  About" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step5Text" Text="05  Location" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step6Text" Text="06  Startup" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step7Text" Text="07  Install" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="Step8Text" Text="08  Finish" Foreground="#88FFFFFF" FontSize="11.5" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -450,13 +451,13 @@
                             </TextBlock.RenderTransform>
                         </TextBlock>
                         
-                        <TextBlock x:Name="BodyText" Grid.Row="2" FontSize="14" Foreground="#CCFFFFFF" FontFamily="{StaticResource SFProDisplay}" LineHeight="23" TextWrapping="Wrap" Opacity="0">
+                        <TextBlock x:Name="BodyText" Grid.Row="2" FontSize="14" FontWeight="Bold" Foreground="#CCFFFFFF" FontFamily="{StaticResource SFProDisplay}" LineHeight="23" TextWrapping="Wrap" Opacity="0">
                             <TextBlock.RenderTransform>
                                 <TranslateTransform x:Name="BodyTranslate" Y="8"/>
                             </TextBlock.RenderTransform>
-                            <Run Text="Hey there! Thanks for choosing V-Notch."/>
+                            <Run Text="Hey there! Thanks for choosing V-Notch." FontWeight="Bold"/>
                             <LineBreak/><LineBreak/>
-                            <Run Text="We're about to set up a sleek little notch at the top of your screen — it handles your music, battery, calendar, file shelf, and more. Think of it as a tiny command center that stays out of your way until you need it."/>
+                            <Run Text="We're about to set up a sleek little notch at the top of your screen — it handles your music, battery, calendar, file shelf, and more. Think of it as a tiny command center that stays out of your way until you need it." FontWeight="Bold"/>
                             <LineBreak/><LineBreak/>
                             <Run Text="This will only take a minute. Let's get started!" FontWeight="Bold"/>
                         </TextBlock>

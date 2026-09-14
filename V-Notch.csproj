@@ -77,9 +77,13 @@
   <ItemGroup>
     <InternalsVisibleTo Include="VNotch.Tests" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
+    <EmbeddedResource Include="TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />
+    <EmbeddedResource Include="TERMS_OF_SERVICE_VI.md" LogicalName="VNotch.TERMS_OF_SERVICE_VI.md" />
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="TERMS_OF_SERVICE.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="TERMS_OF_SERVICE_VI.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Introduction\spotlight.gif" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

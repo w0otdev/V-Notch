@@ -35,8 +35,8 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
         new LanguageMetadata { FlagCode = "IN", Name = "हिन्दी", Description = "V-Notch का उपयोग हिन्दी में करें", Code = "hi" }
     };
 
-    private static readonly FontFamily SFProBold = new("SF Pro Display, Nirmala UI, Segoe UI Variable Display, Segoe UI, Inter, Roboto, Sans-serif");
-    private static readonly FontFamily SFProText = new("SF Pro Text, Nirmala UI, Segoe UI, Inter, Roboto, Sans-serif");
+    private static readonly FontFamily SFProBold = new("pack://application:,,,/Fonts/#SF Pro Display, SF Pro Display, Nirmala UI, Segoe UI Variable Display, Segoe UI, Inter, Roboto, Sans-serif");
+    private static readonly FontFamily SFProText = SFProBold;
 
     private static readonly SolidColorBrush BrushCardBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 22, 22, 26)));
     private static readonly SolidColorBrush BrushCardBorder = Freeze(new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)));
@@ -62,7 +62,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
 
         _headline = new TextBlock
         {
-            Text = "Choose Language",
+            Text = VNotch.Services.Loc.Get("setup.language.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = BrushWhite,
@@ -75,11 +75,12 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
 
         _description = new TextBlock
         {
-            Text = "Select your preferred language for V-Notch.",
+            Text = VNotch.Services.Loc.Get("setup.language.description"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             LineHeight = 21,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = SFProText,
+            FontFamily = SFProBold,
             Margin = new Thickness(0, 0, 0, 28),
             TextWrapping = TextWrapping.Wrap
         };
@@ -165,7 +166,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
         {
             Text = title,
             FontSize = 15,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Bold,
             Foreground = BrushWhite,
             FontFamily = SFProBold,
             Margin = new Thickness(0, 0, 0, 3)
@@ -174,8 +175,9 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
         {
             Text = subtitle,
             FontSize = 12.5,
+            FontWeight = FontWeights.Bold,
             Foreground = BrushDimWhite,
-            FontFamily = SFProText
+            FontFamily = SFProBold
         });
 
         var checkmark = new TextBlock
@@ -222,9 +224,11 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
 
         border.MouseLeftButtonDown += (s, e) =>
         {
-            if (_selectedLanguage == langCode) { e.Handled = true; return; }
-            _selectedLanguage = langCode;
-            UpdateSelectionVisuals(animate: true);
+            if (_selectedLanguage != langCode)
+            {
+                _selectedLanguage = langCode;
+                UpdateSelectionVisuals(animate: true);
+            }
             LanguageChanged?.Invoke(langCode);
             e.Handled = true;
         };

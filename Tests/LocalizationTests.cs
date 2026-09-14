@@ -9,6 +9,10 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[CollectionDefinition("Localization", DisableParallelization = true)]
+public sealed class LocalizationCollectionDefinition { }
+
+[Collection("Localization")]
 public sealed class LocalizationTests
 {
     private static readonly string[] Languages = { "en", "vi", "es", "fr", "de", "ja", "hi" };

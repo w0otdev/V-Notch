@@ -26,7 +26,7 @@ internal interface ISetupAnimatedPage
 
 internal static class SetupFonts
 {
-    public const string SfProDisplay = "pack://application:,,,/Fonts/#SF Pro Display";
+    public const string SfProDisplay = "pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI";
 }
 
 public partial class SetupWindow : Window
@@ -49,6 +49,7 @@ public partial class SetupWindow : Window
     private readonly FinishPage _finishPage;
     private readonly CancelSetupPage _cancelSetupPage;
     private readonly LanguagePage _languagePage;
+    private readonly TermsOfServicePage _termsPage;
     private readonly string _sourceDirectory;
     private bool _isWelcomePage = true;
     private bool _isTransitioning;
@@ -64,24 +65,29 @@ public partial class SetupWindow : Window
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
-    public SetupWindow(string? sourceDirectory = null)
+    public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en")
     {
+        Loc.SetLanguage(initialLanguage);
         InitializeComponent();
         AnimationPrimitives.ApplyFpsToTree(this);
 
         _sourceDirectory = sourceDirectory ?? AppContext.BaseDirectory;
         _introductionPage = new IntroductionPage();
-        _languagePage = new LanguagePage("en");
+        _languagePage = new LanguagePage(initialLanguage);
+        _termsPage = new TermsOfServicePage();
         _directoryPage = new DirectoryPage(SetupOperations.GetDefaultInstallDirectory());
         _startupOptionsPage = new StartupOptionsPage(startWithWindows: true);
         _installProgressPage = new InstallProgressPage();
         _finishPage = new FinishPage(launchAfterInstall: true);
         _cancelSetupPage = new CancelSetupPage();
 
+        _termsPage.CanContinueChanged += OnTermsCanContinueChanged;
+
         _pageFactories = new Func<UIElement>[]
         {
             () => _languagePage,
             () => null!,
+            () => _termsPage,
             () => _introductionPage,
             () => _directoryPage,
             () => _startupOptionsPage,
@@ -90,7 +96,18 @@ public partial class SetupWindow : Window
         };
 
         _languagePage.LanguageChanged += OnSetupLanguageChanged;
+        _languagePage.RefreshLocalization();
         ApplyLocalizationToSetupUi();
+    }
+
+    private void OnTermsCanContinueChanged(bool canContinue)
+    {
+        if (_currentPageIndex >= 0 && _currentPageIndex < _pageFactories.Length &&
+            _pageFactories[_currentPageIndex]() is TermsOfServicePage &&
+            !_isShowingCancelSetupPage && !_isTransitioning)
+        {
+            NextButton.IsEnabled = canContinue;
+        }
     }
 
     private void OnSetupLanguageChanged(string lang)
@@ -98,21 +115,14 @@ public partial class SetupWindow : Window
         Loc.SetLanguage(lang);
         ApplyLocalizationToSetupUi();
 
-        if (_currentPageIndex >= 0 && _currentPageIndex < _pageFactories.Length)
-        {
-            var page = _pageFactories[_currentPageIndex]();
-            if (page is LanguagePage langPage) langPage.RefreshLocalization();
-            else if (page is IntroductionPage intro) intro.RefreshLocalization();
-            else if (page is DirectoryPage dir) dir.RefreshLocalization();
-            else if (page is StartupOptionsPage startup) startup.RefreshLocalization();
-            else if (page is InstallProgressPage progress) progress.RefreshLocalization();
-            else if (page is FinishPage finish) finish.RefreshLocalization();
-        }
-
-        if (_cancelSetupPage != null)
-        {
-            _cancelSetupPage.RefreshLocalization();
-        }
+        _languagePage?.RefreshLocalization();
+        _termsPage?.RefreshLocalization();
+        _introductionPage?.RefreshLocalization();
+        _directoryPage?.RefreshLocalization();
+        _startupOptionsPage?.RefreshLocalization();
+        _installProgressPage?.RefreshLocalization();
+        _finishPage?.RefreshLocalization();
+        _cancelSetupPage?.RefreshLocalization();
     }
 
     private void ApplyLocalizationToSetupUi()
@@ -126,11 +136,12 @@ public partial class SetupWindow : Window
 
         Step1Text.Text = Loc.Get("setup.step.language");
         Step2Text.Text = Loc.Get("setup.step.welcome");
-        Step3Text.Text = Loc.Get("setup.step.about");
-        Step4Text.Text = Loc.Get("setup.step.location");
-        Step5Text.Text = Loc.Get("setup.step.startup");
-        Step6Text.Text = Loc.Get("setup.step.install");
-        Step7Text.Text = Loc.Get("setup.step.finish");
+        Step3Text.Text = Loc.Get("setup.step.terms");
+        Step4Text.Text = Loc.Get("setup.step.about");
+        Step5Text.Text = Loc.Get("setup.step.location");
+        Step6Text.Text = Loc.Get("setup.step.startup");
+        Step7Text.Text = Loc.Get("setup.step.install");
+        Step8Text.Text = Loc.Get("setup.step.finish");
 
         if (!_isShowingCancelSetupPage)
         {
@@ -155,6 +166,7 @@ public partial class SetupWindow : Window
         _isWelcomePage = false;
         _currentPageIndex = 0;
 
+        _languagePage.RefreshLocalization();
         ConfigurePageScrolling(_languagePage);
         ContentPresenter.Content = _languagePage;
         ContentPresenter.Visibility = Visibility.Visible;
@@ -338,6 +350,7 @@ public partial class SetupWindow : Window
         var page = _pageFactories[index]();
 
         if (page is LanguagePage langPage) langPage.RefreshLocalization();
+        else if (page is TermsOfServicePage terms) terms.RefreshLocalization();
         else if (page is IntroductionPage intro) intro.RefreshLocalization();
         else if (page is DirectoryPage dir) dir.RefreshLocalization();
         else if (page is StartupOptionsPage startup) startup.RefreshLocalization();
@@ -367,6 +380,7 @@ public partial class SetupWindow : Window
             BackButton.Visibility = Visibility.Visible;
             CancelButton.Visibility = Visibility.Collapsed;
             NextButton.Visibility = Visibility.Visible;
+            NextButton.IsEnabled = true;
             return;
         }
 
@@ -384,10 +398,6 @@ public partial class SetupWindow : Window
         {
             NextButton.Content = Loc.Get("setup.btn.finish");
         }
-        else if (index == _pageFactories.Length - 3)
-        {
-            NextButton.Content = Loc.Get("setup.btn.continue");
-        }
         else
         {
             NextButton.Content = Loc.Get("setup.btn.continue");
@@ -396,6 +406,16 @@ public partial class SetupWindow : Window
         BackButton.Visibility = showBack ? Visibility.Visible : Visibility.Collapsed;
         CancelButton.Visibility = showCancel ? Visibility.Visible : Visibility.Collapsed;
         NextButton.Visibility = showNext ? Visibility.Visible : Visibility.Collapsed;
+
+        var currentPage = index >= 0 && index < _pageFactories.Length ? _pageFactories[index]() : null;
+        if (currentPage is TermsOfServicePage termsPage)
+        {
+            NextButton.IsEnabled = termsPage.CanContinue;
+        }
+        else
+        {
+            NextButton.IsEnabled = true;
+        }
     }
 
     private void AnimateCurrentViewOut(NavigationDirection direction, Action onComplete)
@@ -722,9 +742,8 @@ public partial class SetupWindow : Window
 
     private void ConfigurePageScrolling(UIElement content)
     {
-        // LanguagePage owns its scroll viewport so its header stays visible and
-        // the seventh option remains reachable at every window size/DPI scale.
-        PageScrollViewer.VerticalScrollBarVisibility = content is LanguagePage
+        // LanguagePage and TermsOfServicePage own their scroll viewports so headers stay visible
+        PageScrollViewer.VerticalScrollBarVisibility = (content is LanguagePage || content is TermsOfServicePage)
             ? ScrollBarVisibility.Disabled
             : ScrollBarVisibility.Auto;
         PageScrollViewer.ScrollToHome();
@@ -831,7 +850,19 @@ public partial class SetupWindow : Window
     {
         BackButton.IsEnabled = isEnabled;
         CancelButton.IsEnabled = isEnabled;
-        NextButton.IsEnabled = isEnabled;
+
+        if (_isShowingCancelSetupPage)
+        {
+            NextButton.IsEnabled = isEnabled;
+        }
+        else if (_currentPageIndex >= 0 && _currentPageIndex < _pageFactories.Length && _pageFactories[_currentPageIndex]() is TermsOfServicePage terms)
+        {
+            NextButton.IsEnabled = isEnabled && terms.CanContinue;
+        }
+        else
+        {
+            NextButton.IsEnabled = isEnabled;
+        }
     }
 
     private void CompleteTransition()
@@ -842,7 +873,7 @@ public partial class SetupWindow : Window
 
     private void UpdateStepIndicators(int currentStep)
     {
-        var steps = new[] { Step1Text, Step2Text, Step3Text, Step4Text, Step5Text, Step6Text, Step7Text };
+        var steps = new[] { Step1Text, Step2Text, Step3Text, Step4Text, Step5Text, Step6Text, Step7Text, Step8Text };
 
         for (int i = 0; i < steps.Length; i++)
         {
@@ -926,7 +957,16 @@ public partial class SetupWindow : Window
 
     private bool CommitCurrentStep()
     {
-        if (_currentPageIndex == 2)
+        var currentPage = _currentPageIndex >= 0 && _currentPageIndex < _pageFactories.Length
+            ? _pageFactories[_currentPageIndex]()
+            : null;
+
+        if (currentPage is TermsOfServicePage termsPage)
+        {
+            return termsPage.CanContinue;
+        }
+
+        if (currentPage is DirectoryPage)
         {
             return ValidateInstallDirectory();
         }
@@ -1072,6 +1112,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.intro.lead"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             LineHeight = 21,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
@@ -1149,6 +1190,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
         {
             Text = body,
             FontSize = 13,
+            FontWeight = FontWeights.Bold,
             LineHeight = 20,
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromArgb(196, 255, 255, 255)),
@@ -1201,6 +1243,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.directory.description"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 24)
@@ -1238,6 +1281,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
         {
             Text = initialInstallPath,
             FontSize = 13,
+            FontWeight = FontWeights.Bold,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Background = System.Windows.Media.Brushes.Transparent,
             Foreground = System.Windows.Media.Brushes.White,
@@ -1265,6 +1309,8 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
         _browseText = new TextBlock
         {
             Text = Loc.Get("setup.directory.browse"),
+            FontWeight = FontWeights.Bold,
+            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             VerticalAlignment = VerticalAlignment.Center
         };
         browseButton.Content = _browseText;
@@ -1373,6 +1419,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.startup.description"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 32)
@@ -1385,6 +1432,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             Content = Loc.Get("setup.startup.checkbox"),
             IsChecked = startWithWindows,
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
         };
@@ -1441,6 +1489,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.cancel.description"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             LineHeight = 22,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
@@ -1488,6 +1537,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.cancel.warningBody"),
             FontSize = 13,
+            FontWeight = FontWeights.Bold,
             LineHeight = 20,
             Foreground = new SolidColorBrush(Color.FromArgb(196, 255, 255, 255)),
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
@@ -1537,6 +1587,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.install.copying"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 21,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
@@ -1713,6 +1764,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.finish.description"),
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             LineHeight = 22,
@@ -1727,6 +1779,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             Content = Loc.Get("setup.finish.launch"),
             IsChecked = launchAfterInstall,
             FontSize = 14,
+            FontWeight = FontWeights.Bold,
             Foreground = System.Windows.Media.Brushes.White,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
         };
