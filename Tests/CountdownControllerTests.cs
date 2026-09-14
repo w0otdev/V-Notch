@@ -15,14 +15,28 @@ public class CountdownControllerTests
 
         var controller = new CountdownController(vm, action => action());
         int tickCount = 0;
+        bool completedFired = false;
         controller.Tick += (_, _) => tickCount++;
+        controller.Completed += (_, _) => completedFired = true;
 
         controller.Start();
         Assert.True(controller.IsRunning);
 
-        // Advance manually via tracker logic inside controller
-        // Tick is fired whenever timer advances
-        Assert.Equal(0, tickCount);
+        long startTimestamp = controller.Tracker.LastCountdownTimestamp;
+        // Advance time by 1 second
+        controller.Advance(startTimestamp + System.Diagnostics.Stopwatch.Frequency);
+
+        Assert.Equal(1, tickCount);
+        Assert.True(controller.Remaining <= TimeSpan.FromSeconds(4));
+        Assert.False(completedFired);
+
+        // Advance past remaining duration
+        controller.Advance(startTimestamp + System.Diagnostics.Stopwatch.Frequency * 6);
+
+        Assert.True(tickCount >= 2);
+        Assert.True(completedFired);
+        Assert.False(controller.IsRunning);
+        Assert.Equal(TimeSpan.Zero, controller.Remaining);
 
         controller.Dispose();
     }

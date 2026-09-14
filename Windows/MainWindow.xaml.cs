@@ -242,6 +242,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
+        _transitionCoordinator.CanInitiateTransition = (target, reason) =>
+        {
+            if (_isGreetingActive) return false;
+            if (_isDebugViewLocked && target == VNotch.Models.NotchView.Compact) return false;
+            return true;
+        };
         _transitionCoordinator.StateChanged += OnCoordinatorStateChanged;
         _transitionCoordinator.TransitionRequested += OnTransitionRequested;
         _transitionCoordinator.CountdownCompletionDisplayRequested += OnCountdownCompletionDisplayRequested;
@@ -249,12 +255,15 @@ public partial class MainWindow : Window
         _notchShellPresenter = new VNotch.Presenters.NotchShellPresenter(new VNotch.Presenters.NotchShellViewRefs
         {
             NotchBorder = NotchBorder,
-            NotchContainer = NotchContainer
+            NotchContainer = NotchContainer,
+            AnimateCornerRadius = (radius, dur) => AnimateCornerRadius(radius, dur),
+            CornerRadiusBuilder = MakeNotchCornerRadius
         });
         _notchContentPresenter = new VNotch.Presenters.NotchContentTransitionPresenter(new VNotch.Presenters.NotchContentViewRefs
         {
             ExpandedContent = ExpandedContent,
             TimerContent = TimerContent,
+            AudioContent = AudioContent,
             AudioScrollViewer = AudioScrollViewer,
             SecondaryContent = SecondaryContent
         });
@@ -632,6 +641,8 @@ public partial class MainWindow : Window
 
     private void ApplyCoordinatorSnapshot(VNotch.Controllers.NotchTransitionSnapshot snapshot)
     {
+        _localAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
+        _localSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
         _notchState.IsTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
         _notchState.IsAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
         if (snapshot.CurrentView == VNotch.Models.NotchView.Secondary)
@@ -648,14 +659,7 @@ public partial class MainWindow : Window
 
     private void OnCountdownCompletionDisplayRequested(object? sender, EventArgs e)
     {
-        if (Dispatcher.CheckAccess())
-        {
-            ShowCountdownCompletionOnPill();
-        }
-        else
-        {
-            Dispatcher.BeginInvoke(ShowCountdownCompletionOnPill);
-        }
+        // Managed through TransitionRequested with Reason="CountdownCompletion"
     }
 
     private void OnTransitionRequested(object? sender, VNotch.Controllers.TransitionRequestEventArgs args)
@@ -702,7 +706,11 @@ public partial class MainWindow : Window
                 break;
 
             case VNotch.Models.NotchView.Timer:
-                if (!_isExpanded)
+                if (args.Reason == "CountdownCompletion")
+                {
+                    ShowCountdownCompletionOnPill(args.TransitionId);
+                }
+                else if (!_isExpanded)
                 {
                     ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.Timer);
                 }
@@ -790,6 +798,7 @@ public partial class MainWindow : Window
         if (NotchContainer == null) return;
 
         bool shouldBeVisible = IsEffectivelyNotchVisible;
+        _transitionCoordinator.SetEffectivelyVisible(shouldBeVisible, "ApplyNotchVisibilityState");
 
         if (shouldBeVisible == _fullscreenSlideVisible && !_isFullscreenSlideAnimating) return;
 

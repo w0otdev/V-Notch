@@ -33,9 +33,12 @@ public partial class MainWindow
         {
             _currentMediaInfo = info;
         }
-        else if (_currentMediaInfo != null && !string.IsNullOrEmpty(info.YouTubeVideoId))
+        else if (_currentMediaInfo != null)
         {
-            _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
+            if (!string.IsNullOrEmpty(info.YouTubeVideoId))
+                _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
+            if (info.Thumbnail != null)
+                _currentMediaInfo.Thumbnail = info.Thumbnail;
         }
 
         Dispatcher.BeginInvoke(() =>
@@ -131,34 +134,10 @@ public partial class MainWindow
             {
                 if (result.HasThumbnail && info.Thumbnail != null)
                 {
-                    if (LyricsBlurImage != null && _isExpanded && _isLyricsActive)
+                    if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || _isLyricsActive))
                     {
-                        if (!ReferenceEquals(LyricsBlurImage.Source, info.Thumbnail) &&
-                            !ReferenceEquals(LyricsBlurImageNext.Source, info.Thumbnail))
-                        {
-                            LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
-                            if (LyricsBlurImageNext.Opacity > 0.5 && LyricsBlurImageNext.Source != null)
-                            {
-                                LyricsBlurImage.Source = LyricsBlurImageNext.Source;
-                            }
-                            LyricsBlurImageNext.Opacity = 0;
-                            LyricsBlurImageNext.Source = info.Thumbnail;
-                            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400))
-                            {
-                                EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseOut }
-                            };
-                            fadeIn.Completed += (s, e) =>
-                            {
-                                if (ReferenceEquals(LyricsBlurImageNext.Source, info.Thumbnail))
-                                {
-                                    LyricsBlurImage.Source = info.Thumbnail;
-                                    LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
-                                    LyricsBlurImageNext.Opacity = 0;
-                                }
-                            };
-                            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
-                            LyricsBlurImageNext.BeginAnimation(OpacityProperty, fadeIn);
-                        }
+                        AnimateLyricsBlurImageSwitch(info.Thumbnail);
+                        FadeInLyricsBlurBackgroundIfActive();
                     }
                     else if (LyricsBlurImage != null)
                     {

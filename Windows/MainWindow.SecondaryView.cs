@@ -404,19 +404,7 @@ public partial class MainWindow
 
             ShowMediaBackground();
 
-            if (_settings.EnableBlurEffects && !IsLiquidGlassEnabled && _isLyricsActive && !_isSpotifyCanvasMediaOpen && LyricsBlurBackground != null)
-            {
-                LyricsBlurImage.BeginAnimation(OpacityProperty, null);
-                LyricsBlurImage.Opacity = 1;
-                LyricsBlurBackground.Visibility = Visibility.Visible;
-                LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
-                var lyricsBlurFadeIn = new DoubleAnimation(0, 0.55, new Duration(TimeSpan.FromMilliseconds(250)))
-                {
-                    EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseOut }
-                };
-                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(lyricsBlurFadeIn, VNotch.Services.AnimationConfig.TargetFps);
-                LyricsBlurBackground.BeginAnimation(OpacityProperty, lyricsBlurFadeIn);
-            }
+            FadeInLyricsBlurBackgroundIfActive();
 
             if (_pendingFlipThumbnail != null)
             {

@@ -11,6 +11,8 @@ public sealed class NotchShellViewRefs
 {
     public required Border NotchBorder { get; init; }
     public FrameworkElement? NotchContainer { get; init; }
+    public Action<double, TimeSpan>? AnimateCornerRadius { get; init; }
+    public Func<double, CornerRadius>? CornerRadiusBuilder { get; init; }
 }
 
 /// <summary>
@@ -55,14 +57,30 @@ public sealed class NotchShellPresenter : IDisposable
         // 4. Đặt base value cần thiết để không bật về giá trị cũ
         border.Width = currentWidth;
         border.Height = currentHeight;
-        border.CornerRadius = new CornerRadius(plan.TargetCornerRadius);
+
+        // Xử lý bo góc thông qua delegate hoặc builder
+        if (_refs.AnimateCornerRadius != null)
+        {
+            _refs.AnimateCornerRadius(plan.TargetCornerRadius, plan.Motion.Duration.TimeSpan);
+        }
+        else if (_refs.CornerRadiusBuilder != null)
+        {
+            border.CornerRadius = _refs.CornerRadiusBuilder(plan.TargetCornerRadius);
+        }
+        else
+        {
+            border.CornerRadius = new CornerRadius(plan.TargetCornerRadius);
+        }
 
         // ReduceMotion hoặc duration = 0: hoàn tất tức thì
         if (plan.Motion.ReduceMotion || plan.Motion.Duration.TimeSpan <= TimeSpan.Zero)
         {
             border.Width = plan.TargetWidth;
             border.Height = plan.TargetHeight;
-            border.CornerRadius = new CornerRadius(plan.TargetCornerRadius);
+            if (_refs.CornerRadiusBuilder != null)
+                border.CornerRadius = _refs.CornerRadiusBuilder(plan.TargetCornerRadius);
+            else
+                border.CornerRadius = new CornerRadius(plan.TargetCornerRadius);
             onCompleted(new TransitionExecutionResult(sessionId, TransitionExecutionStatus.Completed));
             return;
         }
@@ -101,7 +119,10 @@ public sealed class NotchShellPresenter : IDisposable
             border.BeginAnimation(FrameworkElement.HeightProperty, null);
             border.Width = plan.TargetWidth;
             border.Height = plan.TargetHeight;
-            border.CornerRadius = new CornerRadius(plan.TargetCornerRadius);
+            if (_refs.CornerRadiusBuilder != null)
+                border.CornerRadius = _refs.CornerRadiusBuilder(plan.TargetCornerRadius);
+            else
+                border.CornerRadius = new CornerRadius(plan.TargetCornerRadius);
 
             onCompleted(new TransitionExecutionResult(sessionId, TransitionExecutionStatus.Completed));
         }
@@ -121,7 +142,10 @@ public sealed class NotchShellPresenter : IDisposable
         border.BeginAnimation(FrameworkElement.HeightProperty, null);
         border.Width = width;
         border.Height = height;
-        border.CornerRadius = new CornerRadius(cornerRadius);
+        if (_refs.CornerRadiusBuilder != null)
+            border.CornerRadius = _refs.CornerRadiusBuilder(cornerRadius);
+        else
+            border.CornerRadius = new CornerRadius(cornerRadius);
     }
 
     public void CancelCurrentAnimation()

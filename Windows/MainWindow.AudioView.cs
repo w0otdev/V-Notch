@@ -181,7 +181,16 @@ public partial class MainWindow
         AnimateAudioViewSwap(
             outgoing, AudioContent,
             new Size(fromW, fromH), new Size(_audioViewWidth, _audioViewHeight),
-            prepIncoming: null,
+            prepIncoming: () =>
+            {
+                if (AudioScrollViewer != null)
+                {
+                    AudioScrollViewer.BeginAnimation(OpacityProperty, null);
+                    AudioScrollViewer.Visibility = Visibility.Visible;
+                    AudioScrollViewer.Opacity = 1;
+                    VNotch.Presenters.NotchContentTransitionPresenter.ClearTransformAndEffects(AudioScrollViewer);
+                }
+            },
             onComplete: () =>
             {
                 if (openWindowHeight > _audioViewHeight)
@@ -243,19 +252,7 @@ public partial class MainWindow
                 ShowMediaBackground();
                 UpdateProgressSectionLayout();
                 RefreshMediaMarquee();
-                if (_settings.EnableBlurEffects && _isLyricsActive && !_isSpotifyCanvasMediaOpen && LyricsBlurBackground != null)
-                {
-                    LyricsBlurImage.BeginAnimation(OpacityProperty, null);
-                    LyricsBlurImage.Opacity = 1;
-                    LyricsBlurBackground.Visibility = Visibility.Visible;
-                    LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
-                    var lyricsBlurFadeIn = new DoubleAnimation(0, 0.55, new Duration(TimeSpan.FromMilliseconds(250)))
-                    {
-                        EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseOut }
-                    };
-                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(lyricsBlurFadeIn, VNotch.Services.AnimationConfig.TargetFps);
-                    LyricsBlurBackground.BeginAnimation(OpacityProperty, lyricsBlurFadeIn);
-                }
+                FadeInLyricsBlurBackgroundIfActive();
             },
             generation: generation);
     }
@@ -449,6 +446,13 @@ public partial class MainWindow
         if (inIsAudio)
         {
             incoming.RenderTransform = null;
+            if (AudioScrollViewer != null)
+            {
+                AudioScrollViewer.BeginAnimation(OpacityProperty, null);
+                AudioScrollViewer.Visibility = Visibility.Visible;
+                AudioScrollViewer.Opacity = 1;
+                VNotch.Presenters.NotchContentTransitionPresenter.ClearTransformAndEffects(AudioScrollViewer);
+            }
             incoming.InvalidateMeasure();
             incoming.InvalidateArrange();
             var aFadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
@@ -461,6 +465,13 @@ public partial class MainWindow
                 NotchBorder.IsHitTestVisible = true;
                 incoming.Opacity = 1;
                 incoming.BeginAnimation(OpacityProperty, null);
+                if (AudioScrollViewer != null)
+                {
+                    AudioScrollViewer.BeginAnimation(OpacityProperty, null);
+                    AudioScrollViewer.Visibility = Visibility.Visible;
+                    AudioScrollViewer.Opacity = 1;
+                    VNotch.Presenters.NotchContentTransitionPresenter.ClearTransformAndEffects(AudioScrollViewer);
+                }
                 _transitionCoordinator.CompleteTransition(activeGen);
                 onComplete?.Invoke();
             };

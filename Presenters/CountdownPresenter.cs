@@ -167,6 +167,21 @@ public sealed class CountdownPresenter : IDisposable
         highlight.BeginAnimation(UIElement.OpacityProperty, anim);
     }
 
+    public void AnimateStepHighlightOpacity(UIElement highlight, double to, int durationMs)
+    {
+        if (_disposed) return;
+        var anim = MakeAnim(to, new Duration(TimeSpan.FromMilliseconds(durationMs)), _easeQuadOut);
+        highlight.BeginAnimation(UIElement.OpacityProperty, anim);
+    }
+
+    public void FlashStepHighlight(UIElement highlight)
+    {
+        if (_disposed || AnimationConfig.ReduceMotion) return;
+        var flash = MakeAnim(0.20, new Duration(TimeSpan.FromMilliseconds(80)), _easeQuadOut);
+        flash.Completed += (_, _) => AnimateStepHighlightOpacity(highlight, 0.08, 260);
+        highlight.BeginAnimation(UIElement.OpacityProperty, flash);
+    }
+
     private static Geometry CreateFrozenGeometry(string data)
     {
         var geometry = Geometry.Parse(data);

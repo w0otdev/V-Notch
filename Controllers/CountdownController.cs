@@ -45,6 +45,7 @@ public sealed class CountdownController : IDisposable
     public TimeSpan Duration => _viewModel.Duration;
     public TimeSpan Remaining => _viewModel.Remaining;
     public TimerViewModel ViewModel => _viewModel;
+    public CountdownTracker Tracker => _tracker;
 
     public CountdownController(TimerViewModel viewModel, Action<Action> runOnUi)
     {
@@ -143,11 +144,14 @@ public sealed class CountdownController : IDisposable
         return result;
     }
 
-    private void OnTimerTick(object? sender, EventArgs e)
+    public bool Advance(long? nowTimestamp = null)
     {
-        if (_disposed || !_viewModel.IsRunning) return;
+        if (_disposed || !_viewModel.IsRunning) return false;
 
-        bool completed = _tracker.AdvanceCountdown();
+        bool completed = nowTimestamp.HasValue
+            ? _tracker.AdvanceCountdown(nowTimestamp.Value)
+            : _tracker.AdvanceCountdown();
+
         _runOnUi(() => Tick?.Invoke(this, EventArgs.Empty));
 
         if (completed)
@@ -161,6 +165,13 @@ public sealed class CountdownController : IDisposable
                 TriggerCompleted(runId);
             }
         }
+
+        return completed;
+    }
+
+    private void OnTimerTick(object? sender, EventArgs e)
+    {
+        Advance();
     }
 
     private void TriggerCompleted(long runId)

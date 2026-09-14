@@ -163,4 +163,65 @@ public class NotchTransitionCoordinatorTests
         Assert.Equal(NotchView.Compact, coordinator.CurrentView);
         Assert.Equal(NotchShapeState.Collapsed, coordinator.Snapshot.ShapeState);
     }
+
+    [Fact]
+    public void SpotlightHandoff_WhenCollapsed_DoesNotAutoExpandOnComplete()
+    {
+        var coordinator = new NotchTransitionCoordinator();
+        Assert.Equal(NotchView.Compact, coordinator.CurrentView);
+
+        // Handoff to Spotlight while compact
+        long sessionId = coordinator.BeginSpotlightHandoff("SpotlightOpened");
+        Assert.Equal(DisplayOwnership.Spotlight, coordinator.Ownership);
+
+        bool transitionRequested = false;
+        coordinator.TransitionRequested += (_, _) => transitionRequested = true;
+
+        // Spotlight completes with restorePreviousView = true
+        coordinator.CompleteSpotlightHandoff(sessionId, restorePreviousView: true);
+
+        // Must remain in Compact view and NOT request expanding to Media
+        Assert.False(transitionRequested);
+        Assert.Equal(NotchView.Compact, coordinator.CurrentView);
+        Assert.False(coordinator.IsTransitionActive);
+    }
+
+    [Fact]
+    public void CanInitiateTransition_WhenPredicateReturnsFalse_RejectsRequestWithoutTransitionActive()
+    {
+        var coordinator = new NotchTransitionCoordinator();
+        bool allowTransitions = false;
+        coordinator.CanInitiateTransition = (target, reason) => allowTransitions;
+
+        bool accepted = coordinator.RequestView(NotchView.Media, "UserClickWhileGreeting");
+        Assert.False(accepted);
+        Assert.False(coordinator.IsTransitionActive);
+        Assert.Equal(0, coordinator.ActiveTransitionId);
+
+        // When allowed again, transition succeeds
+        allowTransitions = true;
+        bool acceptedAfter = coordinator.RequestView(NotchView.Media, "UserClickAfterGreeting");
+        Assert.True(acceptedAfter);
+        Assert.True(coordinator.IsTransitionActive);
+        Assert.Equal(1, coordinator.ActiveTransitionId);
+    }
+
+    [Fact]
+    public void CancelTransition_ClearsTransitionActiveAndAllowsSubsequentRequest()
+    {
+        var coordinator = new NotchTransitionCoordinator();
+        coordinator.RequestView(NotchView.Media, "OpenMedia");
+        long id = coordinator.ActiveTransitionId;
+        Assert.True(coordinator.IsTransitionActive);
+
+        // Transition gets canceled (e.g. Greeting active or debug lock)
+        coordinator.CancelTransition(id, "GreetingActive");
+        Assert.False(coordinator.IsTransitionActive);
+        Assert.Equal(NotchView.Compact, coordinator.CurrentView);
+
+        // Re-requesting Media now succeeds because coordinator is no longer stuck
+        bool secondAccepted = coordinator.RequestView(NotchView.Media, "OpenMediaAgain");
+        Assert.True(secondAccepted);
+        Assert.True(coordinator.IsTransitionActive);
+    }
 }

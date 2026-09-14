@@ -88,13 +88,6 @@ public partial class MainWindow
     private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
     private bool _isCountdownRunning { get => CountdownController.IsRunning; set => _viewModel.Timer.IsRunning = value; }
 
-    private DispatcherTimer? _countdownRepeatTimer;
-    private int _countdownRepeatDirection;
-    private int _countdownRepeatCount;
-    private const int RepeatInitialDelayMs = 400;
-    private const int RepeatFastIntervalMs = 80;
-    private const int RepeatAccelerateAfter = 4;
-
     private static readonly Geometry _countdownPlayGeometry = CreateFrozenGeometry(
         "M133,440a35.37,35.37,0,0,1-17.5-4.67c-12-6.8-17.46-20-17.46-41.73V118.4c0-21.74,5.48-34.93,17.46-41.73a35.13,35.13,0,0,1,35.77.45L399.68,225.11a38.19,38.19,0,0,1,0,61.78L151.23,435a35.77,35.77,0,0,1-18.27,5Z");
     private static readonly Geometry _countdownPauseGeometry = CreateFrozenGeometry(
@@ -622,19 +615,7 @@ public partial class MainWindow
 
             ShowMediaBackground();
 
-            if (_settings.EnableBlurEffects && !IsLiquidGlassEnabled && _isLyricsActive && !_isSpotifyCanvasMediaOpen && LyricsBlurBackground != null)
-            {
-                LyricsBlurImage.BeginAnimation(OpacityProperty, null);
-                LyricsBlurImage.Opacity = 1;
-                LyricsBlurBackground.Visibility = Visibility.Visible;
-                LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
-                var lyricsBlurFadeIn = new DoubleAnimation(0, 0.55, new Duration(TimeSpan.FromMilliseconds(250)))
-                {
-                    EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseOut }
-                };
-                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(lyricsBlurFadeIn, VNotch.Services.AnimationConfig.TargetFps);
-                LyricsBlurBackground.BeginAnimation(OpacityProperty, lyricsBlurFadeIn);
-            }
+            FadeInLyricsBlurBackgroundIfActive();
         };
 
         ExpandedContent.BeginAnimation(OpacityProperty, primaryFadeIn);
@@ -810,71 +791,22 @@ public partial class MainWindow
     // border pulse on state changes.
     private void AnimateCountdownDigitBump(double magnitude = 1.0)
     {
-        double peak = 1.0 + 0.05 * magnitude;
-
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        CountdownDisplayScale.ScaleX = 1.0;
-        CountdownDisplayScale.ScaleY = 1.0;
-
-        var upX = MakeAnim(1.0, peak, _dur80, _easeQuadOut, null);
-        var upY = MakeAnim(1.0, peak, _dur80, _easeQuadOut, null);
-        upX.Completed += (_, _) =>
-        {
-            var settle = MakeAnim(peak, 1.0, _dur250, _easeSoftSpring, null);
-            CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
-        };
-        upY.Completed += (_, _) =>
-        {
-            var settle = MakeAnim(peak, 1.0, _dur250, _easeSoftSpring, null);
-            CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
-        };
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, upX);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, upY);
-
-        AnimateCountdownDigitFlash();
-        AnimateCountdownPanelBorderFlash();
+        CountdownPresenter.AnimateDigitBump(magnitude);
     }
 
     private void AnimateCountdownDigitFlash()
     {
-        var toAmber = new ColorAnimation(_countdownDigitsFlashColor, new Duration(TimeSpan.FromMilliseconds(90)))
-        {
-            EasingFunction = _easeQuadOut
-        };
-        Timeline.SetDesiredFrameRate(toAmber, VNotch.Services.AnimationConfig.TargetFps);
-        toAmber.Completed += (_, _) =>
-        {
-            var toRest = new ColorAnimation(_countdownDigitsRestColor, new Duration(TimeSpan.FromMilliseconds(340)))
-            {
-                EasingFunction = _easeQuadOut
-            };
-            Timeline.SetDesiredFrameRate(toRest, VNotch.Services.AnimationConfig.TargetFps);
-            CountdownDigitsBrush.BeginAnimation(SolidColorBrush.ColorProperty, toRest);
-        };
-        CountdownDigitsBrush.BeginAnimation(SolidColorBrush.ColorProperty, toAmber);
+        CountdownPresenter.AnimateDigitFlash();
     }
 
     private void AnimateCountdownPanelBorder(Color target, int durationMs)
     {
-        var anim = new ColorAnimation(target, new Duration(TimeSpan.FromMilliseconds(durationMs)))
-        {
-            EasingFunction = _easeQuadOut
-        };
-        Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
-        CountdownPanelBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+        CountdownPresenter.AnimatePanelBorder(target, durationMs);
     }
 
     private void AnimateCountdownPanelBorderFlash()
     {
-        var flash = new ColorAnimation(_countdownBorderFlashColor, new Duration(TimeSpan.FromMilliseconds(90)))
-        {
-            EasingFunction = _easeQuadOut
-        };
-        Timeline.SetDesiredFrameRate(flash, VNotch.Services.AnimationConfig.TargetFps);
-        flash.Completed += (_, _) => AnimateCountdownPanelBorder(
-            _isEditingTimer ? _countdownBorderEditingColor : _countdownBorderIdleColor, 380);
-        CountdownPanelBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, flash);
+        CountdownPresenter.AnimatePanelBorderFlash();
     }
 
     private Border? GetStepHighlight(object sender)
@@ -886,17 +818,14 @@ public partial class MainWindow
         return null;
     }
 
-    private static void AnimateStepHighlightOpacity(Border highlight, double to, int durationMs)
+    private void AnimateStepHighlightOpacity(Border highlight, double to, int durationMs)
     {
-        var anim = MakeAnim(to, new Duration(TimeSpan.FromMilliseconds(durationMs)), _easeQuadOut);
-        highlight.BeginAnimation(OpacityProperty, anim);
+        CountdownPresenter.AnimateStepHighlightOpacity(highlight, to, durationMs);
     }
 
     private void FlashStepHighlight(Border highlight)
     {
-        var flash = MakeAnim(0.20, _dur80, _easeQuadOut);
-        flash.Completed += (_, _) => AnimateStepHighlightOpacity(highlight, 0.08, 260);
-        highlight.BeginAnimation(OpacityProperty, flash);
+        CountdownPresenter.FlashStepHighlight(highlight);
     }
 
     private void CountdownStepBtn_MouseEnter(object sender, MouseEventArgs e)
@@ -915,15 +844,7 @@ public partial class MainWindow
 
         SystemSounds.Exclamation.Play();
 
-        if (_transitionCoordinator.Ownership == DisplayOwnership.Spotlight)
-        {
-            _transitionCoordinator.NotifyCountdownCompleted();
-            return;
-        }
-
         _transitionCoordinator.NotifyCountdownCompleted();
-
-        ShowCountdownCompletionOnPill();
     }
 
     private bool _isCountdownCompleteVisible = false;
@@ -1045,32 +966,56 @@ public partial class MainWindow
         _notchState.ForceState(NotchState.Collapsed);
     }
 
-    private void ShowCountdownCompletionOnPill()
+    private void ShowCountdownCompletionOnPill(long? transitionId = null)
     {
         _isCountdownCompleteVisible = true;
         SuppressCompactMediaChromeForCountdownCompletion(animate: true);
         AnimateCornerRadius(_cornerRadiusExpanded, TimeSpan.FromMilliseconds(360));
 
-        AnimateCountdownCompletionToClockView();
+        AnimateCountdownCompletionToClockView(transitionId);
     }
 
-    private void AnimateCountdownCompletionToClockView()
+    private void AnimateCountdownCompletionToClockView(long? transitionId = null)
     {
         EnsureExpandedStateForTimerSurface();
-        // Finalize logical expanded state if this animation preempts in-flight expand
-        // animations and overrides Width/Height.
+        int generation = (int)(transitionId ?? _transitionCoordinator.ActiveTransitionId);
+        _viewTransitionGeneration = generation;
+
+        if (_isAudioView)
+        {
+            _isAudioView = false;
+            StopAudioPoll();
+            _audioMixerServiceCached?.ReleaseSessionCache();
+        }
+
+        if (_isSecondaryView)
+        {
+            _isSecondaryView = false;
+            StopCameraPreviewForViewExit();
+            DisableKeyboardInput();
+        }
+
         _isExpanded = true;
         _isTimerView = true;
         _isSecondaryView = false;
+        _isAudioView = false;
         _isAnimating = true;
         _isScrollSessionLocked = true;
         NotchBorder.IsHitTestVisible = false;
+
+        // Invalidate and cancel in-flight content presenter sessions so any old callbacks are ignored
+        _notchContentPresenter?.CancelActiveTransition();
 
         var exitDuration = new Duration(TimeSpan.FromMilliseconds(220));
         var resizeDuration = new Duration(TimeSpan.FromMilliseconds(420));
 
         AnimateCountdownCompletionContentOut(ExpandedContent, exitDuration);
         AnimateCountdownCompletionContentOut(SecondaryContent, exitDuration);
+        AnimateCountdownCompletionContentOut(AudioContent, exitDuration);
+        if (AudioScrollViewer != null)
+        {
+            AudioScrollViewer.BeginAnimation(OpacityProperty, null);
+        }
         AnimateCountdownCompletionContentOut(TimerContent, exitDuration);
         AnimateCountdownCompletionContentOut(CollapsedContent, exitDuration);
         AnimateCountdownCompletionContentOut(MusicCompactContent, exitDuration);
@@ -1082,18 +1027,10 @@ public partial class MainWindow
         if (double.IsNaN(currentHeight) || currentHeight <= 0) currentHeight = _collapsedHeight;
         double targetWidth = CountdownCompleteViewWidth;
 
-        NotchBorder.BeginAnimation(WidthProperty, null);
-        NotchBorder.BeginAnimation(HeightProperty, null);
-        NotchBorder.Width = currentWidth;
-        NotchBorder.Height = currentHeight;
-
-        var widthAnim = MakeAnim(currentWidth, targetWidth, resizeDuration, _easeExpOut6);
-        var heightAnim = MakeAnim(currentHeight, _timerViewHeight, resizeDuration, _easeExpOut6);
-        Timeline.SetDesiredFrameRate(widthAnim, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(heightAnim, VNotch.Services.AnimationConfig.TargetFps);
-
-        heightAnim.Completed += (_, _) =>
+        Action onCompletedAction = () =>
         {
+            if (transitionId.HasValue && generation != _viewTransitionGeneration) return;
+
             EnsureExpandedStateForTimerSurface();
             _isAnimating = false;
             _isScrollSessionLocked = false;
@@ -1104,18 +1041,80 @@ public partial class MainWindow
             NotchBorder.Height = _timerViewHeight;
             RestoreExpandedWindowSize();
             ShowCompletionOverlayContent();
+
+            if (transitionId.HasValue)
+            {
+                _transitionCoordinator.CompleteTransition(transitionId.Value);
+            }
         };
 
-        NotchBorder.BeginAnimation(WidthProperty, widthAnim, HandoffBehavior.SnapshotAndReplace);
-        NotchBorder.BeginAnimation(HeightProperty, heightAnim, HandoffBehavior.SnapshotAndReplace);
+        if (_notchShellPresenter != null)
+        {
+            var motion = new VNotch.Models.TransitionMotionConfig(
+                Duration: resizeDuration,
+                Easing: _easeExpOut6,
+                TargetFps: VNotch.Services.AnimationConfig.TargetFps,
+                ReduceMotion: false
+            );
+
+            var plan = new VNotch.Models.TransitionPlan(
+                SessionId: generation,
+                FromView: _isExpanded ? VNotch.Models.NotchView.Media : VNotch.Models.NotchView.Compact,
+                TargetView: VNotch.Models.NotchView.Timer,
+                TargetShape: VNotch.Controllers.NotchShapeState.Expanded,
+                TargetWidth: targetWidth,
+                TargetHeight: _timerViewHeight,
+                TargetCornerRadius: _cornerRadiusExpanded,
+                Motion: motion
+            );
+
+            _notchShellPresenter.AnimateShell(plan, res =>
+            {
+                if (res.Status == VNotch.Models.TransitionExecutionStatus.Completed)
+                {
+                    onCompletedAction();
+                }
+            });
+        }
+        else
+        {
+            NotchBorder.BeginAnimation(WidthProperty, null);
+            NotchBorder.BeginAnimation(HeightProperty, null);
+            NotchBorder.Width = currentWidth;
+            NotchBorder.Height = currentHeight;
+
+            var widthAnim = MakeAnim(currentWidth, targetWidth, resizeDuration, _easeExpOut6);
+            var heightAnim = MakeAnim(currentHeight, _timerViewHeight, resizeDuration, _easeExpOut6);
+            Timeline.SetDesiredFrameRate(widthAnim, VNotch.Services.AnimationConfig.TargetFps);
+            Timeline.SetDesiredFrameRate(heightAnim, VNotch.Services.AnimationConfig.TargetFps);
+
+            heightAnim.Completed += (_, _) => onCompletedAction();
+
+            NotchBorder.BeginAnimation(WidthProperty, widthAnim, HandoffBehavior.SnapshotAndReplace);
+            NotchBorder.BeginAnimation(HeightProperty, heightAnim, HandoffBehavior.SnapshotAndReplace);
+        }
     }
 
-    private static void AnimateCountdownCompletionContentOut(FrameworkElement element, Duration duration)
+    private static void AnimateCountdownCompletionContentOut(FrameworkElement? element, Duration duration)
     {
-        if (element.Visibility != Visibility.Visible || element.Opacity <= 0.01) return;
+        if (element == null) return;
 
+        double currentOpacity = element.Visibility == Visibility.Visible ? element.Opacity : 0.0;
+
+        // Cancel any active animation clock and clear effects immediately
         element.BeginAnimation(OpacityProperty, null);
+        element.Opacity = currentOpacity;
         element.Effect = null;
+
+        if (element.Visibility != Visibility.Visible || currentOpacity <= 0.01)
+        {
+            element.Opacity = 0.0;
+            element.Visibility = Visibility.Collapsed;
+            VNotch.Presenters.NotchContentTransitionPresenter.ClearTemporaryAnimationTransforms(element);
+            return;
+        }
+
+        element.Opacity = currentOpacity;
 
         var group = new TransformGroup();
         var scale = new ScaleTransform(1, 1);
@@ -1125,7 +1124,7 @@ public partial class MainWindow
         element.RenderTransform = group;
         element.RenderTransformOrigin = new Point(0.5, 0.5);
 
-        var fade = MakeAnim(element.Opacity, 0.0, duration, _easeQuadIn);
+        var fade = MakeAnim(currentOpacity, 0.0, duration, _easeQuadIn);
         var slide = MakeAnim(0.0, -14.0, duration, _easeQuadIn);
         var scaleAnim = MakeAnim(1.0, 0.96, duration, _easeQuadIn);
         Timeline.SetDesiredFrameRate(fade, VNotch.Services.AnimationConfig.TargetFps);
@@ -1189,6 +1188,14 @@ public partial class MainWindow
         ExpandedContent.Visibility = Visibility.Collapsed;
         TimerContent.Visibility = Visibility.Collapsed;
         SecondaryContent.Visibility = Visibility.Collapsed;
+        AudioContent.Visibility = Visibility.Collapsed;
+        AudioContent.Opacity = 0;
+        if (AudioScrollViewer != null)
+        {
+            AudioScrollViewer.BeginAnimation(OpacityProperty, null);
+            AudioScrollViewer.Visibility = Visibility.Collapsed;
+            AudioScrollViewer.Opacity = 0;
+        }
         SuppressCompactMediaChromeForCountdownCompletion();
 
         CountdownCompleteOverlay.BeginAnimation(OpacityProperty, null);
@@ -1323,6 +1330,7 @@ public partial class MainWindow
         _isCountdownCompleteVisible = false;
         _isTimerView = true;
         _isSecondaryView = false;
+        _isAudioView = false;
         EnsureExpandedStateForTimerSurface();
         _lastViewSwitchUtc = DateTime.UtcNow;
         _isScrollSessionLocked = true;
@@ -1337,6 +1345,14 @@ public partial class MainWindow
         ExpandedContent.Opacity = 0;
         SecondaryContent.Visibility = Visibility.Collapsed;
         SecondaryContent.Opacity = 0;
+        AudioContent.Visibility = Visibility.Collapsed;
+        AudioContent.Opacity = 0;
+        if (AudioScrollViewer != null)
+        {
+            AudioScrollViewer.BeginAnimation(OpacityProperty, null);
+            AudioScrollViewer.Visibility = Visibility.Collapsed;
+            AudioScrollViewer.Opacity = 0;
+        }
         CollapsedContent.Visibility = Visibility.Collapsed;
         CollapsedContent.Opacity = 0;
         MusicCompactContent.Visibility = Visibility.Collapsed;
@@ -1748,7 +1764,7 @@ public partial class MainWindow
 
     private void ApplyCountdownStep(int direction)
     {
-        if (_viewModel.Timer.Adjust(direction))
+        if (CountdownController.AdjustDuration(direction))
         {
             SetCountdownProgress(animate: true);
             AnimateCountdownDigitBump();
@@ -1758,41 +1774,20 @@ public partial class MainWindow
     private void StartCountdownRepeat(int direction)
     {
         StopCountdownRepeat();
-        _countdownRepeatDirection = direction;
-        _countdownRepeatCount = 0;
-        _countdownRepeatTimer = new DispatcherTimer
+        CountdownPresenter.StartRepeat(() =>
         {
-            Interval = TimeSpan.FromMilliseconds(RepeatInitialDelayMs)
-        };
-        _countdownRepeatTimer.Tick += CountdownRepeat_Tick;
-        _countdownRepeatTimer.Start();
-    }
-
-    private void CountdownRepeat_Tick(object? sender, EventArgs e)
-    {
-        if (_isCountdownRunning)
-        {
-            StopCountdownRepeat();
-            return;
-        }
-
-        _countdownRepeatCount++;
-        ApplyCountdownStep(_countdownRepeatDirection);
-
-        if (_countdownRepeatCount == RepeatAccelerateAfter && _countdownRepeatTimer != null)
-        {
-            _countdownRepeatTimer.Interval = TimeSpan.FromMilliseconds(RepeatFastIntervalMs);
-        }
+            if (_isCountdownRunning)
+            {
+                StopCountdownRepeat();
+                return;
+            }
+            ApplyCountdownStep(direction);
+        });
     }
 
     private void StopCountdownRepeat()
     {
-        if (_countdownRepeatTimer != null)
-        {
-            _countdownRepeatTimer.Stop();
-            _countdownRepeatTimer.Tick -= CountdownRepeat_Tick;
-            _countdownRepeatTimer = null;
-        }
+        CountdownPresenter.StopRepeat();
     }
 
     private void CountdownBtn_MouseLeaveOrUp(object sender, EventArgs e)
@@ -2050,7 +2045,7 @@ public partial class MainWindow
 
         if (_viewModel.Timer.TryParseCustomTime(input, out TimeSpan customTime))
         {
-            _viewModel.Timer.SetCustomDuration(customTime);
+            CountdownController.SetCustomDuration(customTime);
             ExitTimerEditing();
             SetCountdownProgress(animate: true);
             AnimateCountdownDigitFlash();

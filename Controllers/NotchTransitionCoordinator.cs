@@ -73,10 +73,15 @@ public sealed class NotchTransitionCoordinator
     private bool _isTransitionActive;
     private DisplayOwnership _ownership = DisplayOwnership.Notch;
     private long _spotlightSessionId;
-    private NotchView _viewToRestoreOnSpotlightClose = NotchView.Media;
+    private NotchView _viewToRestoreOnSpotlightClose = NotchView.Compact;
     private bool _hasPendingCountdownCompletion;
     private bool _isEffectivelyVisible = true;
     private bool _isDisposed;
+
+    /// <summary>
+    /// Cho phép view/window đăng ký tiền điều kiện từ chối yêu cầu chuyển cảnh trước khi cấp token (tránh kẹt animation).
+    /// </summary>
+    public Func<NotchView, string, bool>? CanInitiateTransition { get; set; }
 
     public event EventHandler<NotchTransitionSnapshot>? StateChanged;
     public event EventHandler<TransitionRequestEventArgs>? TransitionRequested;
@@ -159,6 +164,12 @@ public sealed class NotchTransitionCoordinator
                 return false;
             }
 
+            if (CanInitiateTransition != null && !CanInitiateTransition(target, reason))
+            {
+                RuntimeLog.Debug(LogTag, () => $"RequestView({target}) rejected by CanInitiateTransition predicate ({reason})");
+                return false;
+            }
+
             // Quy tắc: Spotlight đang giữ quyền hiển thị
             if (_ownership == DisplayOwnership.Spotlight)
             {
@@ -174,15 +185,17 @@ public sealed class NotchTransitionCoordinator
                 return false;
             }
 
+            bool isCountdownCompletion = string.Equals(reason, "CountdownCompletion", StringComparison.OrdinalIgnoreCase);
+
             // Quy tắc: Yêu cầu lại đúng đích đang mở và không trong chuyển cảnh
-            if (target == _currentView && !_isTransitionActive)
+            if (target == _currentView && !_isTransitionActive && !isCountdownCompletion)
             {
                 RuntimeLog.Debug(LogTag, () => $"RequestView({target}) ignored: already in target view ({reason})");
                 return false;
             }
 
             // Đang chuyển tới đúng đích đó rồi
-            if (target == _targetView && _isTransitionActive)
+            if (target == _targetView && _isTransitionActive && !isCountdownCompletion)
             {
                 RuntimeLog.Debug(LogTag, () => $"RequestView({target}) ignored: already transitioning to target ({reason})");
                 return false;
@@ -232,10 +245,7 @@ public sealed class NotchTransitionCoordinator
 
         lock (_lock)
         {
-            if (_currentView != NotchView.Compact)
-            {
-                _viewToRestoreOnSpotlightClose = _currentView;
-            }
+            _viewToRestoreOnSpotlightClose = _currentView;
 
             _ownership = DisplayOwnership.Spotlight;
             sessionId = ++_spotlightSessionId;
@@ -269,7 +279,7 @@ public sealed class NotchTransitionCoordinator
                 showDeferredCountdown = true;
                 restoreView = NotchView.Timer;
             }
-            else if (restorePreviousView && _viewToRestoreOnSpotlightClose != NotchView.Compact)
+            else if (restorePreviousView)
             {
                 restoreView = _viewToRestoreOnSpotlightClose;
             }
@@ -280,14 +290,14 @@ public sealed class NotchTransitionCoordinator
         RuntimeLog.Log(LogTag, $"Spotlight handoff session #{sessionId} completed");
         StateChanged?.Invoke(this, newSnapshot);
 
-        if (restoreView.HasValue)
-        {
-            RequestView(restoreView.Value, "SpotlightHandoffRestoration");
-        }
-
         if (showDeferredCountdown)
         {
             CountdownCompletionDisplayRequested?.Invoke(this, EventArgs.Empty);
+            RequestView(NotchView.Timer, "CountdownCompletion");
+        }
+        else if (restoreView.HasValue)
+        {
+            RequestView(restoreView.Value, "SpotlightHandoffRestoration");
         }
     }
 
@@ -391,11 +401,7 @@ public sealed class NotchTransitionCoordinator
             _targetView = view;
             _shapeState = shape;
             _isTransitionActive = false;
-
-            if (view != NotchView.Compact)
-            {
-                _viewToRestoreOnSpotlightClose = view;
-            }
+            _viewToRestoreOnSpotlightClose = view;
 
             newSnapshot = CreateSnapshotUnderLock();
         }
