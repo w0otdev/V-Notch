@@ -67,6 +67,12 @@ public sealed class MediaTransportControlService
         }
     }
 
+    public const double RestartThresholdSeconds = 3.0;
+    public const double ConsecutiveClickWindowSeconds = 3.0;
+
+    private DateTime _lastRewindUtc = DateTime.MinValue;
+    private string _lastRewindSessionId = "";
+
     public async Task PreviousTrackAsync()
     {
         try
@@ -75,13 +81,48 @@ public sealed class MediaTransportControlService
             if (session != null)
             {
                 var controls = TryGetControls(session);
+                var timeline = session.GetTimelineProperties();
+                string sessionId = session.SourceAppUserModelId ?? "";
+
+                TimeSpan currentPos = GetCurrentPosition(session, timeline);
+                TimeSpan relativePos = timeline != null && currentPos >= timeline.StartTime
+                    ? currentPos - timeline.StartTime
+                    : currentPos;
+
+                bool isConsecutive = (DateTime.UtcNow - _lastRewindUtc).TotalSeconds < ConsecutiveClickWindowSeconds
+                    && string.Equals(_lastRewindSessionId, sessionId, StringComparison.OrdinalIgnoreCase);
+
+                // If playing past the 3-second threshold and not a rapid consecutive click,
+                // rewind / restart the track to the beginning.
+                if (!isConsecutive && timeline != null && timeline.EndTime > TimeSpan.Zero && relativePos.TotalSeconds > RestartThresholdSeconds)
+                {
+                    _lastRewindUtc = DateTime.UtcNow;
+                    _lastRewindSessionId = sessionId;
+
+                    TimeSpan startTarget = timeline.StartTime > TimeSpan.Zero ? timeline.StartTime : TimeSpan.Zero;
+                    if (await session.TryChangePlaybackPositionAsync(startTarget.Ticks))
+                    {
+                        RuntimeLog.Log(LogTag, $"Previous: rewound track to {startTarget.TotalSeconds:F1}s (was at {relativePos.TotalSeconds:F1}s)");
+                        return;
+                    }
+
+                    if (await TrySeekToTimelineEdgeAsync(session, toEnd: false))
+                    {
+                        RuntimeLog.Log(LogTag, "Previous: rewound timeline edge");
+                        return;
+                    }
+                }
+
+                // If within initial 3 seconds or consecutive double-click, skip to previous track
+                _lastRewindUtc = DateTime.MinValue;
+                _lastRewindSessionId = "";
+
                 if (controls?.IsPreviousEnabled == true && await session.TrySkipPreviousAsync())
                 {
                     return;
                 }
 
-                // Same story as NextTrackAsync: with no previous-track handler the only
-                // meaningful "previous" for a browser video is restarting it.
+                // Fallback for players without previous-track handler: restart timeline
                 if (await TrySeekToTimelineEdgeAsync(session, toEnd: false))
                 {
                     RuntimeLog.Log(LogTag, "Previous: skip unsupported, restarted timeline");
@@ -95,6 +136,38 @@ public sealed class MediaTransportControlService
             RuntimeLog.Error(LogTag, ex, "PreviousTrack failed");
             SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
+    }
+
+    private static TimeSpan GetCurrentPosition(
+        GlobalSystemMediaTransportControlsSession session,
+        GlobalSystemMediaTransportControlsSessionTimelineProperties? timeline)
+    {
+        if (timeline == null) return TimeSpan.Zero;
+
+        var pos = timeline.Position;
+        if (timeline.LastUpdatedTime != default)
+        {
+            try
+            {
+                var playbackInfo = session.GetPlaybackInfo();
+                if (playbackInfo?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    var elapsed = DateTimeOffset.UtcNow - timeline.LastUpdatedTime;
+                    if (elapsed > TimeSpan.Zero)
+                    {
+                        double rate = playbackInfo?.PlaybackRate ?? 1.0;
+                        if (rate <= 0) rate = 1.0;
+                        pos += TimeSpan.FromSeconds(elapsed.TotalSeconds * rate);
+                    }
+                }
+            }
+            catch
+            {
+                // Fall back to timeline.Position
+            }
+        }
+
+        return pos;
     }
 
     private static GlobalSystemMediaTransportControlsSessionPlaybackControls? TryGetControls(

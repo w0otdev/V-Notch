@@ -141,15 +141,41 @@ public partial class MainWindow
         }
     }
 
+    private DateTime _lastPrevRewindClickTime = DateTime.MinValue;
+
     private void PrepareForPreviousTrackRequest()
     {
         try
         {
-            // Render confirmed timeline until SMTC reports actual restart/track
-            // changes, as some players ignore previous track requests.
-            _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
-            _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
-            _progressEngine.NotifyPreviousTrackRequested();
+            var frame = _progressEngine.GetUiFrame();
+            bool isConsecutive = (DateTime.UtcNow - _lastPrevRewindClickTime).TotalSeconds < 3.0;
+
+            if (!isConsecutive && frame.Duration.TotalSeconds > 0 && frame.Position.TotalSeconds > 3.0)
+            {
+                _lastPrevRewindClickTime = DateTime.UtcNow;
+                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(5);
+                _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(5);
+                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
+
+                _progressEngine.NotifyUserSeek(TimeSpan.Zero);
+                _progressEngine.NotifyPreviousTrackRequested();
+
+                AnimateSeekProgressTo(0);
+                CurrentTimeText.Text = FormatTime(TimeSpan.Zero);
+                _lastDisplayedSecond = 0;
+                UpdateProgressTimerState();
+
+                RuntimeLog.Log("PROGRESS-PREV-PREP", $"Rewound UI to 0 (was at {frame.Position.TotalSeconds:F1}s)");
+            }
+            else
+            {
+                _lastPrevRewindClickTime = DateTime.MinValue;
+                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(5);
+                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
+                _progressEngine.NotifyPreviousTrackRequested();
+
+                RuntimeLog.Log("PROGRESS-PREV-PREP", $"Skip to previous track (pos={frame.Position.TotalSeconds:F1}s, consecutive={isConsecutive})");
+            }
         }
         catch (Exception ex)
         {
@@ -161,6 +187,7 @@ public partial class MainWindow
     {
         try
         {
+            _lastPrevRewindClickTime = DateTime.MinValue;
             var frame = _progressEngine.GetUiFrame();
             _progressEngine.NotifyUserSeek(frame.Position);
             _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);

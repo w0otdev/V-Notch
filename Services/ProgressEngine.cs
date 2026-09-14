@@ -189,8 +189,7 @@ public class ProgressEngine
         bool likelySessionSwitch = snapshot.Duration > TimeSpan.Zero &&
             Math.Abs((snapshot.Duration - _duration).TotalSeconds) > Math.Max(5.0, _duration.TotalSeconds * 0.1);
 
-        bool likelyUserSeekBackward = backwardDiff.TotalSeconds > 5.0 &&
-            Math.Abs((effectiveSnapshotPosition - _basePosition).TotalSeconds) > 5.0;
+        bool likelyUserSeekBackward = backwardDiff.TotalSeconds > 5.0 || _state == ProgressState.Seeking;
 
         bool isFalseZeroGlitch = effectiveSnapshotPosition.TotalSeconds < 1.0 &&
             currentPredicted.TotalSeconds > 15.0 &&
@@ -198,7 +197,7 @@ public class ProgressEngine
 
         bool predictedAtTrackEnd = currentPredicted.TotalSeconds >= _duration.TotalSeconds - 2.0;
 
-        if (isFalseZeroGlitch && !predictedAtTrackEnd && !isExpectedPreviousTrackJump)
+        if (isFalseZeroGlitch && !predictedAtTrackEnd && !isExpectedPreviousTrackJump && _state != ProgressState.Seeking)
         {
             RuntimeLog.Log(LogReject,
                 $"false-zero-glitch: predicted={currentPredicted.TotalSeconds:F2}s snapshot={effectiveSnapshotPosition.TotalSeconds:F2}s " +
@@ -519,7 +518,7 @@ public class ProgressEngine
         {
             // Arm acceptance of a confirmed backward/zero snapshot without
             // changing the displayed position optimistically.
-            _previousTrackRequestUntilUtc = DateTime.UtcNow.AddSeconds(3);
+            _previousTrackRequestUntilUtc = DateTime.UtcNow.AddSeconds(5);
         }
     }
 
