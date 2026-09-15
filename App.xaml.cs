@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Windows;
@@ -7,6 +8,7 @@ using VNotch.Services;
 using VNotch.Services.Spotlight;
 using VNotch.Services.Spotlight.Providers;
 using VNotch.ViewModels;
+using VNotch.Windows;
 
 namespace VNotch;
 
@@ -28,7 +30,7 @@ public partial class App : Application
         Services = services;
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         try
         {
@@ -37,12 +39,30 @@ public partial class App : Application
 
             System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
 
-            var earlySettings = new SettingsService();
+            using var earlySettings = new SettingsService();
             var loadedSettings = earlySettings.Load();
             Loc.SetLanguage(loadedSettings.Language);
             AnimationConfig.Configure(loadedSettings.AnimationFps);
 
-            if (HandleSetupOrUninstall(e))
+            if (e.Args.Contains("--test-integrity") || e.Args.Contains("--test-hash"))
+            {
+                if (e.Args.Contains("--test-hash"))
+                {
+                    AppIntegrityService.ShowIntegrityAlert(
+                        Loc.Get("integrity.warningTitle"),
+                        Loc.Get("integrity.hashMismatch", AppIntegrityService.GetAppVersion()));
+                }
+                else
+                {
+                    AppIntegrityService.ShowIntegrityAlert(
+                        Loc.Get("integrity.warningTitle"),
+                        Loc.Get("integrity.untrustedSource", "https://trang-web-la-chua-virus.com/V-Notch.exe"));
+                }
+                Shutdown(0);
+                return;
+            }
+
+            if (await HandleSetupOrUninstallAsync(e))
             {
                 return;
             }
@@ -67,7 +87,7 @@ public partial class App : Application
             mainWindow.Show();
 
             CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
-            earlySettings.Dispose();
+            _ = AppIntegrityService.StartBackgroundCheckAsync();
 
             base.OnStartup(e);
         }
@@ -90,7 +110,7 @@ public partial class App : Application
         }
     }
 
-    private bool HandleSetupOrUninstall(StartupEventArgs e)
+    private async Task<bool> HandleSetupOrUninstallAsync(StartupEventArgs e)
     {
         var setupSource = TryGetArgumentValue(e.Args, "--setup-source");
         var exeName = System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "");
@@ -98,6 +118,64 @@ public partial class App : Application
 
         if (launchSetup)
         {
+            var installerPath = TryGetArgumentValue(e.Args, "--installer-path") ?? Environment.ProcessPath ?? "";
+            var (isTrusted, untrustedUrl) = AppIntegrityService.CheckDownloadOrigin(installerPath);
+            if (!isTrusted && !string.IsNullOrWhiteSpace(untrustedUrl))
+            {
+                var options = new ConfirmationDialog.DialogOptions(
+                    Title: Loc.Get("integrity.warningTitle"),
+                    ConfirmText: Loc.Get("integrity.openOfficialRepo"),
+                    CancelText: Loc.Get("integrity.ignore"),
+                    Icon: ConfirmationDialog.DialogIcon.Warning,
+                    Style: ConfirmationDialog.DialogStyle.Danger);
+
+                if (ConfirmationDialog.Show(null, Loc.Get("integrity.untrustedSource", untrustedUrl), options))
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo("https://github.com/rainaku/V-Notch/releases") { UseShellExecute = true });
+                    }
+                    catch { }
+                    Shutdown(0);
+                    return true;
+                }
+            }
+
+            // 2. Check SHA-256 integrity against GitHub Releases
+            try
+            {
+                string version = AppIntegrityService.GetAppVersion();
+                // Keep the WPF dispatcher running while hashing/downloading. A
+                // synchronous wait here can deadlock before any window is shown.
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                var status = await AppIntegrityService.VerifyChecksumAsync(
+                    installerPath, version, cancellationToken: timeout.Token);
+                if (status == IntegrityCheckStatus.HashMismatch)
+                {
+                    var options = new ConfirmationDialog.DialogOptions(
+                        Title: Loc.Get("integrity.warningTitle"),
+                        ConfirmText: Loc.Get("integrity.openOfficialRepo"),
+                        CancelText: Loc.Get("integrity.ignore"),
+                        Icon: ConfirmationDialog.DialogIcon.Warning,
+                        Style: ConfirmationDialog.DialogStyle.Danger);
+
+                    if (ConfirmationDialog.Show(null, Loc.Get("integrity.hashMismatch", version), options))
+                    {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo("https://github.com/rainaku/V-Notch/releases") { UseShellExecute = true });
+                        }
+                        catch { }
+                        Shutdown(0);
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Warn("INTEGRITY", $"Setup checksum check skipped: {ex.Message}");
+            }
+
             var setupWindow = new SetupWindow(setupSource);
             setupWindow.ShowDialog();
             Shutdown(setupWindow.ResultExitCode);

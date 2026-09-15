@@ -54,7 +54,12 @@ jobs:
           $out = if ('${{ matrix.variant }}' -eq 'self-contained') { 'V-Notch-Setup-SelfContained.exe' } else { 'V-Notch-Setup.exe' }
           if ($out -ne 'V-Notch-Setup.exe') { Copy-Item 'installers\V-Notch-Setup.exe' "installers\$out" -Force }
           $hash = (Get-FileHash -Algorithm SHA256 "installers\$out").Hash.ToLowerInvariant()
-          Set-Content -Path "installers\$out.sha256" -Value "$hash  $out" -NoNewline
+          Set-Content -Path "installers\$out.sha256" -Value "$hash  $out`n" -NoNewline
+
+          $exeShaName = if ('${{ matrix.variant }}' -eq 'self-contained') { 'V-Notch-SelfContained.exe.sha256' } else { 'V-Notch.exe.sha256' }
+          $appExeHash = (Get-FileHash -Algorithm SHA256 "release\V-Notch.exe").Hash.ToLowerInvariant()
+          Set-Content -Path "installers\$exeShaName" -Value "$appExeHash  V-Notch.exe`n" -NoNewline
+
           "name=$out" >> $env:GITHUB_OUTPUT
 
       # actions/upload-artifact@v4.6.2
@@ -64,6 +69,7 @@ jobs:
           path: |
             installers/${{ steps.artifact.outputs.name }}
             installers/${{ steps.artifact.outputs.name }}.sha256
+            installers/*.sha256
           if-no-files-found: error
 
   sign-updates:
@@ -120,6 +126,7 @@ jobs:
 
       - name: Publish release
         run: |
+          cat release-assets/*.sha256 > release-assets/checksums.txt || true
           if [ "${{ startsWith(github.event.workflow_run.head_branch, 'v') }}" = "true" ]; then
             printf "Release %s from commit \`%s\`.\n\n- \`V-Notch-Setup.exe\` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- \`V-Notch-Setup-SelfContained.exe\` (runtime bundled)\n- SHA256 checksums are attached for verification.\n" "${{ github.event.workflow_run.head_branch }}" "${{ github.event.workflow_run.head_sha }}" > release-notes.md
             gh release create "${{ github.event.workflow_run.head_branch }}" release-assets/* \

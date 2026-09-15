@@ -620,5 +620,10 @@
   "weather.retryLater": "接続を確認して再試行してください",
   "weather.unavailable": "天気を取得できません",
   "wordClock.oclock": "ちょうど",
-  "wordClock.prefix": "現在"
+  "wordClock.prefix": "現在",
+  "integrity.warningTitle": "セキュリティ警告 - V-Notch",
+  "integrity.untrustedSource": "このアプリケーションは信頼されていないソースからダウンロードされました:\n{0}\n\n非公式のソースからのソフトウェアを実行すると、セキュリティリスクが生じる可能性があります。公式のGitHubリポジトリから直接ダウンロードすることをお勧めします。",
+  "integrity.hashMismatch": "アプリケーションの実行可能ファイルが、バージョン v{0} の公式チェックサム (SHA-256) と一致しません。\n\n第三者によって改ざんまたは再パッケージ化された可能性があります。安全のため、GitHubから検証済みのリリースをダウンロードしてください。",
+  "integrity.openOfficialRepo": "公式リリースをダウンロード",
+  "integrity.ignore": "このまま続行"
 }

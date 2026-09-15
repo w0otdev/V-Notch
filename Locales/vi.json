@@ -620,5 +620,10 @@
   "weather.retryLater": "Kiểm tra kết nối rồi thử lại",
   "weather.unavailable": "Không thể tải thời tiết",
   "wordClock.oclock": "Đúng giờ",
-  "wordClock.prefix": "Bây giờ là"
+  "wordClock.prefix": "Bây giờ là",
+  "integrity.warningTitle": "Cảnh Báo Bảo Mật - V-Notch",
+  "integrity.untrustedSource": "Ứng dụng này được tải về từ một nguồn không xác định hoặc không chính thức:\n{0}\n\nSử dụng phần mềm từ nguồn không rõ ràng có thể gây rủi ro an toàn cho thiết bị của bạn. Khuyến nghị chỉ tải bản phát hành chính thức từ kho lưu trữ GitHub của tác giả.",
+  "integrity.hashMismatch": "File thực thi ứng dụng không trùng khớp với mã băm (SHA-256) của bản phát hành chính thức phiên bản v{0}.\n\nỨng dụng có thể đã bị can thiệp hoặc đóng gói lại bởi bên thứ ba. Để đảm bảo an toàn, vui lòng tải lại bản phát hành chuẩn từ GitHub.",
+  "integrity.openOfficialRepo": "Tải bản phát hành chính thức",
+  "integrity.ignore": "Bỏ qua & Tiếp tục"
 }

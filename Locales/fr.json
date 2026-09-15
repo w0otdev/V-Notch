@@ -620,5 +620,10 @@
   "weather.retryLater": "Vérifiez la connexion et réessayez",
   "weather.unavailable": "Météo indisponible",
   "wordClock.oclock": "Pile",
-  "wordClock.prefix": "Il est"
+  "wordClock.prefix": "Il est",
+  "integrity.warningTitle": "Avertissement de sécurité - V-Notch",
+  "integrity.untrustedSource": "Cette application a été téléchargée à partir d'une source non fiable :\n{0}\n\nL'exécution de logiciels provenant de sources non officielles peut exposer votre système à des risques de sécurité. Nous vous recommandons de télécharger les versions officielles directement depuis notre dépôt GitHub.",
+  "integrity.hashMismatch": "L'exécutable de l'application ne correspond pas à la somme de contrôle officielle (SHA-256) pour la version v{0}.\n\nIl a peut-être été modifié ou reconditionné par un tiers. Pour votre sécurité, veuillez télécharger la version vérifiée sur GitHub.",
+  "integrity.openOfficialRepo": "Télécharger la version officielle",
+  "integrity.ignore": "Continuer quand même"
 }

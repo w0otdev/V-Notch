@@ -57,7 +57,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $exeVersion = (Get-Item "$publishDir\V-Notch.exe").VersionInfo.FileVersion
-Write-Host "      Published successfully (v$exeVersion)" -ForegroundColor Green
+$appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
+Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+Write-Host "      Published successfully (v$exeVersion, SHA256: $appExeHash)" -ForegroundColor Green
 
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.

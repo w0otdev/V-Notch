@@ -64,7 +64,7 @@ Section "Install"
 
     ; Launch the WPF setup experience from the staged payload. The WPF setup is
     ; responsible for closing running instances and copying files into $INSTDIR.
-    ExecWait '"$PLUGINSDIR\payload\${APP_EXE}" --setup --setup-source "$PLUGINSDIR\payload"' $0
+    ExecWait '"$PLUGINSDIR\payload\${APP_EXE}" --setup --setup-source "$PLUGINSDIR\payload" --installer-path "$EXEPATH"' $0
     SetErrorLevel $0
 SectionEnd
 
