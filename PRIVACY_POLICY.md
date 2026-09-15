@@ -2,7 +2,7 @@
 
 **Effective Date:** September 9, 2026 (revised)
 
-**Application Version:** 1.9.2
+**Application Version:** 1.9.3
 
 **Developer:** rainaku  
 **Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  

@@ -512,7 +512,7 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
         var v = Assembly.GetExecutingAssembly().GetName().Version;
         if (v == null)
         {
-            return "1.9.1";
+            return "1.9.3";
         }
 
         return v.Revision > 0

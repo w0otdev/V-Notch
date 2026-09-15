@@ -2,7 +2,7 @@
 
 **Ngày hiệu lực:** 9 tháng 9, 2026 (sửa đổi)
 
-**Phiên bản ứng dụng:** 1.9.2
+**Phiên bản ứng dụng:** 1.9.3
 
 **Nhà phát triển:** rainaku  
 **Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  

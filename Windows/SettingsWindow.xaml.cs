@@ -308,7 +308,7 @@ public partial class SettingsWindow : Window
     private static string GetAppVersion()
     {
         var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        return v != null ? FormatVersion(v) : "1.9.1";
+        return v != null ? FormatVersion(v) : "1.9.3";
     }
 
     private static string FormatVersion(Version v)
