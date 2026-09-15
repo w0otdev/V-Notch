@@ -275,7 +275,15 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 
     private void DispatchSaveWarning(string message)
     {
-        if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        if (_apiKeySaveWarning != ShowApiKeySaveWarning)
+        {
+            _apiKeySaveWarning(message);
+            return;
+        }
+
+        if (System.Windows.Application.Current?.Dispatcher != null &&
+            !System.Windows.Application.Current.Dispatcher.HasShutdownStarted &&
+            !System.Windows.Application.Current.Dispatcher.CheckAccess())
         {
             System.Windows.Application.Current.Dispatcher.BeginInvoke(() => _apiKeySaveWarning(message));
         }
