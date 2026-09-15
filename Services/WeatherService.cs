@@ -22,6 +22,7 @@ public sealed class WeatherService : IWeatherService
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var location = await ResolveLocationAsync(manualCity, cancellationToken).ConfigureAwait(false);
             if (location is null) return null;
 
@@ -128,6 +129,7 @@ public sealed class WeatherService : IWeatherService
 
     private async Task<(double lat, double lon, string city)?> ResolveCityCoordinatesAsync(string city, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         try
         {
             string url = "https://geocoding-api.open-meteo.com/v1/search" +
@@ -160,6 +162,10 @@ public sealed class WeatherService : IWeatherService
 
             return (lat, lon, resolvedCity);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             RuntimeLog.Log(LogCategory, $"Geocoding failed: {ex.Message}");
@@ -169,6 +175,7 @@ public sealed class WeatherService : IWeatherService
 
     private async Task<(double, double, string)?> TryIpWhoIsAsync(CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         try
         {
             using var response = await _http.GetAsync("https://ipwho.is/", token).ConfigureAwait(false);
@@ -203,6 +210,10 @@ public sealed class WeatherService : IWeatherService
                 : string.Empty;
 
             return (lat, lon, city);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
