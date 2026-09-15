@@ -13,6 +13,38 @@ namespace VNotch.Tests;
 public sealed class SetupTermsOfServicePageTests
 {
     [Fact]
+    public void BeforeFirstLayout_ZeroScrollHeightDoesNotMarkTermsRead()
+    {
+        RunOnStaThread(() =>
+        {
+            var page = new TermsOfServicePage();
+            Assert.Equal(0, page.TermsScrollViewer.ScrollableHeight);
+            page.CheckIfScrolledToBottom();
+            Assert.False(page.HasReadToBottom);
+            Assert.False(page.AgreeCheckBox.IsEnabled);
+            Assert.False(page.CanContinue);
+        });
+    }
+
+    [Fact]
+    public void FinalLineStillBelowViewport_DoesNotMarkTermsRead()
+    {
+        RunOnStaThread(() =>
+        {
+            var page = new TermsOfServicePage();
+            page.Measure(new Size(500, 300));
+            page.Arrange(new Rect(0, 0, 500, 300));
+            page.UpdateLayout();
+            Assert.True(page.TermsScrollViewer.ScrollableHeight > 25);
+            page.TermsScrollViewer.ScrollToVerticalOffset(page.TermsScrollViewer.ScrollableHeight - 20);
+            page.UpdateLayout();
+            page.CheckIfScrolledToBottom();
+            Assert.False(page.HasReadToBottom);
+            Assert.False(page.CanContinue);
+        });
+    }
+
+    [Fact]
     public void InitialState_CannotContinueUntilReadToBottom()
     {
         RunOnStaThread(() =>
@@ -23,12 +55,10 @@ public sealed class SetupTermsOfServicePageTests
             page.UpdateLayout();
 
             // When content requires scrolling
-            if (page.TermsScrollViewer.ScrollableHeight > 0)
-            {
+            Assert.True(page.TermsScrollViewer.ScrollableHeight > 0);
                 Assert.False(page.HasReadToBottom);
                 Assert.False(page.AgreeCheckBox.IsEnabled);
                 Assert.False(page.CanContinue);
-            }
         });
     }
 

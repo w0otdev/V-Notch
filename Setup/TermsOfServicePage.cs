@@ -235,6 +235,15 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             return;
         }
 
+        // The page is constructed before it is displayed. Before layout, both
+        // extent and scrollable height are zero; that does not mean it was read.
+        if (!IsMeasureValid || !IsArrangeValid ||
+            !_termsScrollViewer.IsMeasureValid || !_termsScrollViewer.IsArrangeValid ||
+            _termsScrollViewer.ViewportHeight <= 0 || _termsScrollViewer.ExtentHeight <= 0)
+        {
+            return;
+        }
+
         // If content fits completely without scroll
         if (_termsScrollViewer.ScrollableHeight <= 0)
         {
@@ -242,8 +251,8 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             return;
         }
 
-        // Tolerance of 25px
-        if (_termsScrollViewer.VerticalOffset >= _termsScrollViewer.ScrollableHeight - 25)
+        // Allow only sub-pixel rounding, not an unread final line.
+        if (_termsScrollViewer.VerticalOffset >= _termsScrollViewer.ScrollableHeight - 1)
         {
             MarkAsReadToBottom();
         }
@@ -266,7 +275,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private void ScrollToBottomButton_Click(object sender, RoutedEventArgs e)
     {
         _termsScrollViewer.ScrollToEnd();
-        MarkAsReadToBottom();
+        // ScrollToEnd is queued by WPF. ScrollChanged confirms the actual offset.
     }
 
     private void AgreeCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
@@ -293,6 +302,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private void LoadAndRenderTerms(string language)
     {
         _currentLoadedLanguage = language;
+        _hasReadToBottom = false;
+        _agreeCheckBox.IsChecked = false;
+        _agreeCheckBox.IsEnabled = false;
+        _termsScrollViewer.ScrollToTop();
+        CanContinueChanged?.Invoke(false);
         string markdown = LoadTermsMarkdown(language);
         RenderMarkdownToPanel(markdown);
 
