@@ -70,7 +70,7 @@
             <GradientStop Color="#FB5C74" Offset="1"/>
         </LinearGradientBrush>
 
-        <FontFamily x:Key="MainSystemFont">pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+        <FontFamily x:Key="MainSystemFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
 
         <Style x:Key="TitleText" TargetType="TextBlock">
             <Setter Property="Foreground" Value="White"/>

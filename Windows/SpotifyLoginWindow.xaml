@@ -11,9 +11,10 @@
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
-        Closed="Window_Closed">
+        Closed="Window_Closed"
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI">
     <Window.Resources>
-        <FontFamily x:Key="SettingsFont">pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+        <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
         <SolidColorBrush x:Key="PanelBg" Color="#F4020202"/>
         <SolidColorBrush x:Key="CardBg" Color="#F0080808"/>
         <SolidColorBrush x:Key="CardBorder" Color="#14FFFFFF"/>

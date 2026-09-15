@@ -21,8 +21,8 @@
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">
     <Window.Resources>
-        <FontFamily x:Key="SFProDisplay">Segoe UI</FontFamily>
-        <FontFamily x:Key="SFProText">Segoe UI</FontFamily>
+        <FontFamily x:Key="SFProDisplay">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+        <FontFamily x:Key="SFProText">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
         <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
         <controls:SpotlightHotkeyConverter x:Key="HotkeyConverter"/>
 

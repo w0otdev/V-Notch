@@ -26,7 +26,7 @@ internal interface ISetupAnimatedPage
 
 internal static class SetupFonts
 {
-    public const string SfProDisplay = "pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI";
+    public const string SfProDisplay = "pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI";
 }
 
 public partial class SetupWindow : Window
