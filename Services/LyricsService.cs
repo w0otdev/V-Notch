@@ -446,7 +446,7 @@ internal sealed class LyricsService : IDisposable
         _cts?.Cancel();
     }
 
-    private static List<LyricLine> ParseLrc(string lrc)
+    internal static List<LyricLine> ParseLrc(string lrc)
     {
         var lines = new List<LyricLine>();
         foreach (var rawLine in lrc.Split('\n', StringSplitOptions.RemoveEmptyEntries))

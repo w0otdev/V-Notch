@@ -72,7 +72,7 @@ public partial class MainWindow
     private int _lyricsPlaceholderTransitionVersion;
     private bool _isLyricsPlaceholderActive;
     private int _lyricsFetchGeneration;
-    private int _subtitleFetchGeneration;
+    private readonly SubtitleSearchController _subtitleSearchController = new();
     private bool _isLyricsActive
     {
         get => _notchState.IsLyricsActive;
@@ -92,6 +92,7 @@ public partial class MainWindow
 
     private async Task FetchLyricsForTrack(MediaInfo info)
     {
+        _subtitleSearchController.Invalidate();
         if (!_settings.EnableSpotifyLyrics || !_settings.EnableOnlineLyrics || _settings.EnableLocalOnlyMode)
         {
             ResetSpotifyCanvas();
@@ -250,7 +251,6 @@ public partial class MainWindow
             return;
         }
 
-        int generation = ++_subtitleFetchGeneration;
         _lyricsTrackKey = trackKey;
         _syncedTextSource = SyncedTextSource.YouTubeSubtitles;
 
@@ -259,66 +259,47 @@ public partial class MainWindow
         _currentLyricIndex = -1;
         _lyricsProvider = "";
 
-        if (_isLyricsActive || _isExpanded)
-        {
-            ShowLyricsSearchState(isYouTube: true);
-        }
-
-        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
-        {
-            var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(info.CurrentTrack, info.CurrentArtist, System.Threading.CancellationToken.None);
-            if (generation != _subtitleFetchGeneration) return;
-
-            if (lookup != null && !string.IsNullOrEmpty(lookup.Id))
+        await _subtitleSearchController.SearchAsync(
+            () => ResolveSubtitleVideoIdAsync(info, videoId),
+            id => _youtubeSubtitleService.FetchSubtitlesAsync(id, force: force),
+            id =>
             {
-                videoId = lookup.Id;
-                info.YouTubeVideoId = videoId;
-                trackKey = $"yt:{videoId}";
+                info.YouTubeVideoId = id;
+                trackKey = $"yt:{id}";
                 _lyricsTrackKey = trackKey;
-            }
-        }
-
-        // Check if _currentMediaInfo was updated with YouTubeVideoId concurrently
-        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(_currentMediaInfo?.YouTubeVideoId))
-        {
-            videoId = _currentMediaInfo.YouTubeVideoId;
-            info.YouTubeVideoId = videoId;
-            trackKey = $"yt:{videoId}";
-            _lyricsTrackKey = trackKey;
-        }
-
-        // If videoId is still empty, give the browser extension a short grace period (350ms)
-        // to deliver YouTubeVideoId before giving up and collapsing to calendar.
-        if (string.IsNullOrEmpty(videoId))
-        {
-            await Task.Delay(350);
-            if (generation != _subtitleFetchGeneration) return;
-
-            if (!string.IsNullOrEmpty(_currentMediaInfo?.YouTubeVideoId))
+                if (_isLyricsActive || _isExpanded)
+                    ShowLyricsSearchState(isYouTube: true);
+            },
+            subtitles =>
             {
-                videoId = _currentMediaInfo.YouTubeVideoId;
-                info.YouTubeVideoId = videoId;
-                trackKey = $"yt:{videoId}";
-                _lyricsTrackKey = trackKey;
-            }
-        }
+                if (trackKey != _lyricsTrackKey) return;
+                ApplySyncedLines(subtitles, info, provider: "YouTube");
+            });
+    }
 
-        List<LyricLine>? subtitles = null;
-        if (!string.IsNullOrEmpty(videoId))
+    private async Task<string> ResolveSubtitleVideoIdAsync(MediaInfo info, string videoId)
+    {
+        if (!string.IsNullOrEmpty(videoId)) return videoId;
+
+        if (!string.IsNullOrEmpty(info.CurrentTrack))
         {
-            subtitles = await _youtubeSubtitleService.FetchSubtitlesAsync(videoId, force: force);
+            var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(
+                info.CurrentTrack, info.CurrentArtist, System.Threading.CancellationToken.None);
+            if (!string.IsNullOrEmpty(lookup?.Id)) return lookup.Id;
         }
 
-        if (generation != _subtitleFetchGeneration || trackKey != _lyricsTrackKey) return;
+        string CurrentVideoId() =>
+            string.Equals(info.CurrentTrack, _currentMediaInfo?.CurrentTrack, StringComparison.Ordinal)
+                ? _currentMediaInfo?.YouTubeVideoId ?? ""
+                : "";
 
-        if (subtitles != null && subtitles.Count > 0)
-        {
-            ApplySyncedLines(subtitles, info, provider: "YouTube");
-            return;
-        }
+        videoId = CurrentVideoId();
+        if (!string.IsNullOrEmpty(videoId)) return videoId;
 
-        // No YouTube subtitles found — do NOT fall back to LRCLIB in YouTube subtitle mode.
-        ApplySyncedLines(null, info);
+        // Allow the browser extension to deliver metadata without flashing the
+        // search widget when no usable ID arrives during this grace period.
+        await Task.Delay(350);
+        return CurrentVideoId();
     }
 
     private void ApplySyncedLines(
@@ -396,7 +377,7 @@ public partial class MainWindow
             ShowLyricsWidget();
 
             string searchText = Loc.Get(isYouTube ? "subtitles.searching" : "lyrics.searching");
-            if (_isLyricsSearchVisible && LyricsSearchPanel.Visibility == Visibility.Visible && LyricsSearchPanel.Opacity > 0.1)
+            if (_isLyricsSearchVisible && LyricsSearchPanel.Visibility == Visibility.Visible)
             {
                 LyricsSearchText.Text = searchText;
                 if (_lyricsSearchShimmerStoryboard == null)
@@ -1121,6 +1102,7 @@ public partial class MainWindow
 
     private void HideLyricsWidget()
     {
+        _subtitleSearchController.Invalidate();
         if (!_isLyricsActive) return;
         _isLyricsActive = false;
         _isLyricsBlurFadeInProgress = false;
