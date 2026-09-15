@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Confirm"
-        Width="440"
+        Width="560"
         SizeToContent="Height"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -13,10 +13,11 @@
         Topmost="True"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
-        KeyDown="Window_KeyDown">
+        KeyDown="Window_KeyDown"
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI">
 
     <Window.Resources>
-        <FontFamily x:Key="SettingsFont">pack://application:,,,/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+        <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
         <SolidColorBrush x:Key="PanelBg" Color="#F4020202"/>
         <SolidColorBrush x:Key="CardBg" Color="#F0080808"/>
         <SolidColorBrush x:Key="CardBorder" Color="#14FFFFFF"/>
@@ -38,16 +39,25 @@
 
         <!-- Native V-Notch Cancel / Standard Button -->
         <Style x:Key="DialogButton" TargetType="Button">
-            <Setter Property="Height" Value="42"/>
+            <Setter Property="MinHeight" Value="44"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
             <Setter Property="Foreground" Value="#F7FAFD"/>
             <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="18,0"/>
+            <Setter Property="Padding" Value="14,12"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" TextWrapping="Wrap"
+                                   TextAlignment="Center" FontWeight="SemiBold"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -169,13 +179,24 @@
     </Window.Resources>
 
     <!-- Outer shadow container -->
-    <Grid Margin="20" MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    <Grid Margin="36" MouseLeftButtonDown="Window_MouseLeftButtonDown">
+        <!-- Render the shadow separately so text is not rasterized by the effect.
+             The transparent gutter also contains the shadow during slide animations. -->
+        <Border Background="{StaticResource PanelBg}" CornerRadius="22"
+                IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5"
+                RenderTransform="{Binding RenderTransform, ElementName=DialogCard}"
+                Opacity="{Binding Opacity, ElementName=DialogCard}">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" Direction="270" ShadowDepth="6"
+                                  Opacity="0.45" BlurRadius="22"/>
+            </Border.Effect>
+        </Border>
         <Border x:Name="DialogCard"
                 Background="{StaticResource PanelBg}"
                 BorderBrush="{StaticResource CardBorder}"
                 BorderThickness="1"
                 CornerRadius="22"
-                Padding="22"
+                Padding="24"
                 Opacity="0"
                 RenderTransformOrigin="0.5, 0.5">
             <Border.RenderTransform>
@@ -184,25 +205,22 @@
                     <TranslateTransform x:Name="CardTranslate" Y="10"/>
                 </TransformGroup>
             </Border.RenderTransform>
-            <Border.Effect>
-                <DropShadowEffect Color="#000000" Direction="270" ShadowDepth="14" Opacity="0.85" BlurRadius="36"/>
-            </Border.Effect>
 
             <StackPanel>
                 <!-- Header (Title & Icon) -->
-                <Grid Margin="0,0,0,14">
+                <Grid Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <Viewbox Grid.Column="0"
-                             Width="32"
-                             Height="34"
+                             Width="24"
+                             Height="26"
                              Stretch="Uniform"
                              HorizontalAlignment="Center"
                              VerticalAlignment="Center"
-                             Margin="0,0,14,0">
+                             Margin="0,0,12,0">
                         <Path x:Name="DialogIconPath"
                               Data="M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z"
                               Fill="White"/>
@@ -211,18 +229,19 @@
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock x:Name="TitleText"
                                    Text="Clear cache"
-                                   FontSize="15"
+                                   FontSize="18"
                                    FontWeight="Bold"
                                    Foreground="White"
-                                   Margin="0,0,0,2"/>
-                        <TextBlock x:Name="MessageText"
-                                   Text="Clear all cached data and logs?"
-                                   FontSize="13"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource SoftText}"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
+
+                <TextBlock x:Name="MessageText"
+                           Text="Clear all cached data and logs?"
+                           FontSize="14" FontWeight="Normal"
+                           LineHeight="21" LineStackingStrategy="BlockLineHeight"
+                           Foreground="{StaticResource SoftText}"
+                           TextWrapping="Wrap" Margin="0,0,0,24"/>
 
                 <!-- Detail / Body Card -->
                 <Border x:Name="DetailCard"

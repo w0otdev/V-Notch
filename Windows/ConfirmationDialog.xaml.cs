@@ -80,9 +80,15 @@ public partial class ConfirmationDialog : Window
             {
                 dialog.Owner = owner;
             }
+            else
+            {
+                dialog.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                dialog.ShowInTaskbar = true;
+            }
 
             // Set title
             dialog.TitleText.Text = string.IsNullOrEmpty(options.Title) ? Loc.Get(DefaultTitleKey) : options.Title;
+            dialog.Title = dialog.TitleText.Text;
 
             // Set message
             dialog.MessageText.Text = message;
