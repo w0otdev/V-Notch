@@ -598,6 +598,9 @@ public partial class MainWindow
 
     private void ShowMusicVisualizer(bool animate = true, Duration? duration = null)
     {
+        EnsureCompactPresentationGuard();
+        long revision = _compactPillArbiter.Revision;
+        if (!_compactPillArbiter.CanRestoreMedia(revision)) return;
         double currentOpacity = Math.Clamp(MusicViz.Opacity, 0.0, 1.0);
 
         MusicViz.Opacity = currentOpacity;
@@ -613,6 +616,7 @@ public partial class MainWindow
         var vizFadeIn = MakeAnim(currentOpacity, 1.0, duration ?? _dur200, _easeQuadOut);
         vizFadeIn.Completed += (s, e) =>
         {
+            if (!_compactPillArbiter.CanRestoreMedia(revision)) return;
             MusicViz.Opacity = 1.0;
             MusicViz.BeginAnimation(OpacityProperty, null);
         };

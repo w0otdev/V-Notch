@@ -10,10 +10,76 @@ namespace VNotch;
 public partial class MainWindow
 {
     private int _compactWidthAnimationVersion = 0;
+    private bool _compactPresentationGuardInstalled;
+    private bool _enforcingCompactPresentation;
+
+    private void EnsureCompactPresentationGuard()
+    {
+        if (_compactPresentationGuardInstalled) return;
+        _compactPresentationGuardInstalled = true;
+        foreach (var element in new UIElement[] { MusicViz, CompactThumbnailBorder,
+            MusicCompactContent, CollapsedContent,
+            ClipboardCheckIcon, ClipboardCopiedText, VolumeIndicatorContainer,
+            BluetoothNotification, BluetoothDisconnectNotification, ChargingNotification })
+            element.IsVisibleChanged += (_, _) => EnforceCompactPresentationOwner();
+    }
+
+    private static void HideCompactSurface(UIElement element)
+    {
+        element.BeginAnimation(OpacityProperty, null);
+        element.Opacity = 0;
+        element.Visibility = Visibility.Collapsed;
+    }
+
+    private void EnforceCompactPresentationOwner()
+    {
+        if (_enforcingCompactPresentation) return;
+        _enforcingCompactPresentation = true;
+        try
+        {
+            var owner = _compactPillArbiter.ActiveSlot;
+            if (owner is CompactPillSlot.Bluetooth or CompactPillSlot.Charging or CompactPillSlot.Greeting)
+            {
+                HideCompactSurface(MusicCompactContent);
+                HideCompactSurface(CollapsedContent);
+            }
+            if (owner != CompactPillSlot.None)
+            {
+                if (owner != CompactPillSlot.Clipboard) HideCompactSurface(MusicViz);
+                HideCompactSurface(CompactThumbnailBorder);
+            }
+            if (owner != CompactPillSlot.Clipboard)
+            {
+                HideCompactSurface(ClipboardCheckIcon);
+                HideCompactSurface(ClipboardCopiedText);
+            }
+            if (owner != CompactPillSlot.Volume) HideCompactSurface(VolumeIndicatorContainer);
+            if (owner != CompactPillSlot.Bluetooth)
+            {
+                HideCompactSurface(BluetoothNotification);
+                HideCompactSurface(BluetoothDisconnectNotification);
+            }
+            if (owner != CompactPillSlot.Charging) HideCompactSurface(ChargingNotification);
+        }
+        finally { _enforcingCompactPresentation = false; }
+    }
+
+    private void RestoreCompactMediaPresentation()
+    {
+        if (_isExpanded || _isAnimating || !_isMusicCompactMode ||
+            !_compactPillArbiter.CanRestoreMedia(_compactPillArbiter.Revision)) return;
+        EnforceCompactPresentationOwner();
+        AnimateCompactWidth(_collapsedWidth, _dur350, _easeExpOut6, 0);
+        CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        CompactThumbnailBorder.Opacity = 1;
+        CompactThumbnailBorder.Visibility = Visibility.Visible;
+        ShowMusicVisualizer();
+    }
 
     private bool TryAcquireCompactSlot(CompactPillSlot slot, out int token)
     {
         WakeFromIdle();
+        EnsureCompactPresentationGuard();
 
         var result = _compactPillArbiter.TryAcquire(slot);
         token = result.Token;
@@ -26,6 +92,7 @@ public partial class MainWindow
         {
             CancelCompactSlotImmediate(result.Preempted);
         }
+        EnforceCompactPresentationOwner();
         return true;
     }
 
@@ -56,6 +123,7 @@ public partial class MainWindow
     private void AnimateCompactWidth(double targetWidth, Duration duration, IEasingFunction ease, int token)
     {
         int version = ++_compactWidthAnimationVersion;
+        long revision = _compactPillArbiter.Revision;
         double fromWidth = NotchBorder.ActualWidth;
         if (double.IsNaN(fromWidth) || double.IsInfinity(fromWidth) || fromWidth <= 0)
         {
@@ -76,13 +144,14 @@ public partial class MainWindow
         anim.Completed += (_, _) =>
         {
             if (version != _compactWidthAnimationVersion) return;
+            if (token == 0 && !_compactPillArbiter.CanRestoreMedia(revision)) return;
 
             // Allow dismiss animations to finish post token release, but prevent
             // expansions from committing if preempted by another notification.
             bool returningToRest = Math.Abs(targetWidth - _collapsedWidth) < 0.5;
             bool canCommitTarget = token == 0
                 || _compactPillArbiter.IsTokenCurrent(token)
-                || returningToRest;
+                || (returningToRest && _compactPillArbiter.CanRestoreMedia(revision + 1));
             double finalWidth = canCommitTarget ? targetWidth : previousBaseWidth;
 
             // Set the base while HoldEnd still owns the rendered value, then

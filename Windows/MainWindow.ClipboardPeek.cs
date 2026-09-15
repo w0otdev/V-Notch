@@ -73,39 +73,21 @@ public partial class MainWindow
         var thumbFadeOut = MakeAnim(1.0, 0.0, _dur150, _easeQuadOut);
         thumbFadeOut.Completed += (s, e) =>
         {
-            if (_isClipboardPeekActive)
+            if (_isClipboardPeekActive && !IsCompactSlotStale(token))
                 CompactThumbnailBorder.Visibility = Visibility.Collapsed;
         };
         CompactThumbnailBorder.BeginAnimation(OpacityProperty, thumbFadeOut);
 
         MusicViz.BeginAnimation(OpacityProperty, null);
-        var vizFadeOut = MakeAnim(1.0, 0.0, _dur150, _easeQuadOut);
-        vizFadeOut.Completed += (s, e) =>
-        {
-            if (_isClipboardPeekActive)
-                MusicViz.Visibility = Visibility.Collapsed;
-        };
-        MusicViz.BeginAnimation(OpacityProperty, vizFadeOut);
+        MusicViz.Opacity = 1;
+        MusicViz.Visibility = Visibility.Visible;
+        MusicViz.SetCopiedFeedback(true);
 
         CompactHoverInfo.BeginAnimation(OpacityProperty, null);
         CompactHoverInfo.Opacity = 0;
         CompactHoverInfo.Visibility = Visibility.Collapsed;
 
-        ClipboardCheckIcon.Visibility = Visibility.Visible;
-        ClipboardCheckIcon.BeginAnimation(OpacityProperty, null);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-
-        ClipboardCheckScale.ScaleX = 0.5;
-        ClipboardCheckScale.ScaleY = 0.5;
-
-        var checkFadeIn = MakeAnim(0.0, 1.0, _dur250, _easeQuadOut);
-        var checkScaleIn = MakeAnim(0.5, 1.0, _dur400, _easeSoftSpring);
-        Timeline.SetDesiredFrameRate(checkScaleIn, VNotch.Services.AnimationConfig.TargetFps);
-
-        ClipboardCheckIcon.BeginAnimation(OpacityProperty, checkFadeIn);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleXProperty, checkScaleIn);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleYProperty, checkScaleIn);
+        HideCompactSurface(ClipboardCheckIcon);
 
         ClipboardCopiedText.Visibility = Visibility.Visible;
         ClipboardCopiedText.BeginAnimation(OpacityProperty, null);
@@ -145,29 +127,15 @@ public partial class MainWindow
     private void RevertClipboardCopiedState()
     {
         int token = _clipboardPeekToken;
+        if (IsCompactSlotStale(token)) return;
         _isClipboardPeekActive = false;
         _compactPillArbiter.Release(token);
         _clipboardPeekToken = 0;
 
         RestorePrivacyDotVisibility();
 
-        ClipboardCheckIcon.BeginAnimation(OpacityProperty, null);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-
-        var checkFadeOut = MakeAnim(1.0, 0.0, _dur250, _easeQuadOut);
-        var checkScaleOut = MakeAnim(1.0, 0.5, _dur400, _easeSoftSpring);
-        Timeline.SetDesiredFrameRate(checkScaleOut, VNotch.Services.AnimationConfig.TargetFps);
-
-        checkFadeOut.Completed += (s, e) =>
-        {
-            if (!_isClipboardPeekActive)
-                ClipboardCheckIcon.Visibility = Visibility.Collapsed;
-        };
-
-        ClipboardCheckIcon.BeginAnimation(OpacityProperty, checkFadeOut);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleXProperty, checkScaleOut);
-        ClipboardCheckScale.BeginAnimation(ScaleTransform.ScaleYProperty, checkScaleOut);
+        MusicViz.SetCopiedFeedback(false);
+        HideCompactSurface(ClipboardCheckIcon);
 
         ClipboardCopiedText.BeginAnimation(OpacityProperty, null);
         ClipboardCopiedTranslate.BeginAnimation(TranslateTransform.XProperty, null);
@@ -203,6 +171,7 @@ public partial class MainWindow
         if (!_isClipboardPeekActive) return;
 
         StopClipboardRevertTimer();
+        MusicViz.SetCopiedFeedback(false);
         _isClipboardPeekActive = false;
         _clipboardPeekToken = 0;
 

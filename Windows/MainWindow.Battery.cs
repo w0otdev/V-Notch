@@ -228,6 +228,7 @@ public partial class MainWindow
             ChargingNotification.Visibility = Visibility.Collapsed;
             _isChargingNotificationVisible = false;
             _compactPillArbiter.Release(token);
+            RestoreCompactMediaPresentation();
             _chargingGlanceToken = 0;
 
             if (_isMusicCompactMode && _currentMediaInfo != null)

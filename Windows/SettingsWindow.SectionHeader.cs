@@ -20,8 +20,8 @@ public partial class SettingsWindow
         SectionHeroTitle.SetBinding(TextBlock.TextProperty, new Binding(nameof(TextBlock.Text))
         {
             Source = label,
-            Mode = BindingMode.OneWay,
-            NotifyOnTargetUpdated = true
+            Mode = BindingMode.OneWay
+
         });
         System.Windows.Automation.AutomationProperties.SetName(SectionHeroIcon, label.Text);
         var icon = new GeometryGroup { FillRule = FillRule.Nonzero };
@@ -52,26 +52,4 @@ public partial class SettingsWindow
         }
     }
 
-    private void SectionHeroTitle_TargetUpdated(object sender, DataTransferEventArgs e)
-    {
-        var translate = (TranslateTransform)SectionHeroTitle.RenderTransform;
-        var blur = (BlurEffect)SectionHeroTitle.Effect;
-        SectionHeroTitle.BeginAnimation(OpacityProperty, null);
-        translate.BeginAnimation(TranslateTransform.YProperty, null);
-        blur.BeginAnimation(BlurEffect.RadiusProperty, null);
-        if (!IsLoaded || AnimationConfig.ReduceMotion) return;
-
-        DoubleAnimation Transition(double from, double to)
-        {
-            var animation = new DoubleAnimation(from, to, System.TimeSpan.FromMilliseconds(360))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            };
-            Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
-            return animation;
-        }
-        SectionHeroTitle.BeginAnimation(OpacityProperty, Transition(0, 1));
-        translate.BeginAnimation(TranslateTransform.YProperty, Transition(8, 0));
-        blur.BeginAnimation(BlurEffect.RadiusProperty, Transition(5, 0));
-    }
 }

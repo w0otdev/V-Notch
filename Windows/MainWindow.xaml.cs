@@ -1949,7 +1949,7 @@ public partial class MainWindow : Window
 
         if (_isVolumeIndicatorActive)
         {
-            DismissVolumeIndicatorImmediate();
+            DismissVolumeIndicatorImmediate(restoreMedia: true);
         }
 
         if (TryBeginGesture(e))

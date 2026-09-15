@@ -8,8 +8,9 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public sealed class MorphingSettingsIcon : FrameworkElement
+public class MorphingSettingsIcon : FrameworkElement
 {
+    protected virtual bool IsTextGeometry => false;
     private const int Samples = 96;
     private Geometry? _target;
     private Geometry? _display;
@@ -39,6 +40,7 @@ public sealed class MorphingSettingsIcon : FrameworkElement
         matrix.Translate(-bounds.X - bounds.Width / 2, -bounds.Y - bounds.Height / 2);
         matrix.Scale(scale, scale);
         matrix.Translate(28, 28);
+        if (IsTextGeometry) matrix = Matrix.Identity;
         var normalized = new GeometryGroup { Transform = new MatrixTransform(matrix) };
         normalized.Children.Add(next);
         normalized.Freeze();
@@ -63,7 +65,7 @@ public sealed class MorphingSettingsIcon : FrameworkElement
         BeginAnimation(ProgressProperty, animation);
     }
 
-    private static Point[][] Sample(Geometry geometry)
+    private Point[][] Sample(Geometry geometry)
     {
         var flat = geometry.GetFlattenedPathGeometry(0.1, ToleranceType.Absolute);
         // Flattened geometry may have no transform; its points are already in place.
@@ -110,6 +112,8 @@ public sealed class MorphingSettingsIcon : FrameworkElement
             }
             contours.Add(points);
         }
+        if (IsTextGeometry)
+            return contours.OrderBy(points => points.Min(p => p.X)).ToArray();
         return contours.OrderByDescending(points =>
             (points.Max(p => p.X) - points.Min(p => p.X)) *
             (points.Max(p => p.Y) - points.Min(p => p.Y))).ToArray();
@@ -145,7 +149,8 @@ public sealed class MorphingSettingsIcon : FrameworkElement
             shape.Freeze();
             _display = shape;
         }
-        drawingContext.PushTransform(new ScaleTransform(ActualWidth / 56, ActualHeight / 56));
+        drawingContext.PushTransform(IsTextGeometry ? Transform.Identity :
+            new ScaleTransform(ActualWidth / 56, ActualHeight / 56));
         drawingContext.DrawGeometry(Brushes.White, null, _display);
         drawingContext.Pop();
     }

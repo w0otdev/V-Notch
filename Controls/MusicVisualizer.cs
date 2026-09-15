@@ -125,6 +125,18 @@ namespace VNotch.Controls
         private double _iconVelocity;
         private double _playMix;
         private double _playVelocity;
+        private bool _copiedFeedback;
+        private double _checkMix;
+        private double _checkVelocity;
+
+        public void SetCopiedFeedback(bool copied)
+        {
+            _copiedFeedback = copied;
+            _feedbackUntil = 0;
+            if (IsLoaded && IsVisible) StartRendering();
+            else UpdateRenderingState();
+            InvalidateVisual();
+        }
 
         // Native filled-vector morph inspired by https://www.morphicons.com/.
         // Five quadrilaterals connect the visualizer bars to solid icon silhouettes.
@@ -150,10 +162,10 @@ namespace VNotch.Controls
         {
             if (d is MusicVisualizer viz)
             {
-                if (e.Property == TrackIdProperty)
+                if (e.Property == TrackIdProperty && !viz._copiedFeedback)
                     viz.ResetPlaybackFeedback();
                 else if (e.Property == IsPlayingProperty && viz.IsLoaded && viz.IsVisible &&
-                         !string.IsNullOrEmpty(viz.TrackId))
+                         !string.IsNullOrEmpty(viz.TrackId) && !viz._copiedFeedback)
                 {
                     viz._feedbackUntil = viz._stopwatch.Elapsed.TotalSeconds + PlaybackFeedbackSeconds;
                     viz.StartRendering();
@@ -250,6 +262,8 @@ namespace VNotch.Controls
         private void ResetPlaybackFeedback()
         {
             _feedbackUntil = 0;
+            _copiedFeedback = false;
+            _checkMix = _checkVelocity = 0;
             _iconMix = _iconVelocity = _playVelocity = 0;
             _playMix = IsPlaying ? 1 : 0;
             InvalidateVisual();
@@ -257,7 +271,11 @@ namespace VNotch.Controls
 
         private bool UpdatePlaybackFeedback(double dt, double now)
         {
-            double target = now < _feedbackUntil ? 1 : 0;
+            double target = _copiedFeedback || now < _feedbackUntil ? 1 : 0;
+            // Keep the outgoing check shape while it returns to the bars;
+            // do not pass through the play/pause silhouette on the way out.
+            double checkTarget = _copiedFeedback ? 1 : target > 0 ? 0 : _checkMix;
+            StepSpring(ref _checkMix, ref _checkVelocity, checkTarget, dt);
             StepSpring(ref _iconMix, ref _iconVelocity, target, dt);
             StepSpring(ref _playMix, ref _playVelocity, IsPlaying ? 1 : 0, dt);
             return target > 0 || _iconMix > 0;
@@ -284,10 +302,12 @@ namespace VNotch.Controls
         {
             double size = Math.Min(width, height);
             var brush = GetPlaybackMorphBrush();
-            for (int i = 0; i < BarCount; i++)
+            // Rasterize all slices together so shared edges do not get
+            // antialiased separately and leave translucent seams.
+            var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
+            using (var path = geometry.Open())
             {
-                var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
-                using (var path = geometry.Open())
+                for (int i = 0; i < BarCount; i++)
                 {
                     Point Corner(int corner)
                     {
@@ -303,6 +323,15 @@ namespace VNotch.Controls
                         double pauseX = (i < 3 ? 6 : 14) + 4.0 * (slice + (right ? 1 : 0)) / slices;
                         var pause = new Point(pauseX, bottom ? 20 : 4);
                         Point icon = pause + (play - pause) * _playMix;
+                        // Five adjoining filled slices form a continuous check mark.
+                        bool leftArm = i < 2;
+                        int checkSlice = leftArm ? i : i - 2;
+                        double checkX = leftArm
+                            ? 3 + 6.0 * (checkSlice + (right ? 1 : 0)) / 2
+                            : 9 + 12.0 * (checkSlice + (right ? 1 : 0)) / 3;
+                        double checkY = leftArm ? checkX + 9 : 27 - checkX;
+                        var check = new Point(checkX, checkY + (bottom ? 1.7 : -1.7));
+                        icon += (check - icon) * _checkMix;
                         icon = new Point((width - size) / 2 + icon.X * size / 24,
                             (height - size) / 2 + icon.Y * size / 24);
                         var bar = new Point(startX + i * (barWidth + spacing) + (right ? barWidth : 0),
@@ -314,9 +343,9 @@ namespace VNotch.Controls
                     path.LineTo(Corner(2), isStroked: false, isSmoothJoin: false);
                     path.LineTo(Corner(3), isStroked: false, isSmoothJoin: false);
                 }
-                geometry.Freeze();
-                context.DrawGeometry(brush, null, geometry);
             }
+            geometry.Freeze();
+            context.DrawGeometry(brush, null, geometry);
         }
 
 #pragma warning disable S3776 // Cognitive complexity is inherent to the multi-state audio reactivity animation loop

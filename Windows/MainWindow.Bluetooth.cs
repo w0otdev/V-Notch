@@ -141,6 +141,7 @@ public partial class MainWindow
             _isBluetoothNotificationVisible = false;
             _bluetoothController.MarkDismissed();
             _compactPillArbiter.Release(token);
+            RestoreCompactMediaPresentation();
             _bluetoothNotificationToken = 0;
 
             RestorePrivacyDotVisibility();

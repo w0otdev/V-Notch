@@ -31,7 +31,7 @@ public partial class MainWindow
 
             if (_isVolumeIndicatorActive)
             {
-                DismissVolumeIndicatorImmediate();
+                DismissVolumeIndicatorImmediate(restoreMedia: true);
             }
 
             _isPlaying = !_viewModel.IsPlaying;
@@ -451,6 +451,7 @@ public partial class MainWindow
         if (!_isVolumeIndicatorActive)
         {
             _isVolumeIndicatorActive = true;
+            int presentationToken = _volumeIndicatorToken;
 
             SuppressPrivacyDot();
 
@@ -487,7 +488,7 @@ public partial class MainWindow
             var vizOut = MakeAnim(1.0, 0.0, _dur200, _easeQuadOut);
             vizOut.Completed += (s, e) =>
             {
-                if (_isVolumeIndicatorActive)
+                if (_isVolumeIndicatorActive && !IsCompactSlotStale(presentationToken))
                     MusicViz.Visibility = Visibility.Collapsed;
             };
             MusicViz.BeginAnimation(OpacityProperty, vizOut);
@@ -496,7 +497,7 @@ public partial class MainWindow
             var thumbOut = MakeAnim(1.0, 0.0, _dur200, _easeQuadOut);
             thumbOut.Completed += (s, e) =>
             {
-                if (_isVolumeIndicatorActive)
+                if (_isVolumeIndicatorActive && !IsCompactSlotStale(presentationToken))
                     CompactThumbnailBorder.Visibility = Visibility.Collapsed;
             };
             CompactThumbnailBorder.BeginAnimation(OpacityProperty, thumbOut);
@@ -534,6 +535,7 @@ public partial class MainWindow
     private void HideVolumeIndicator()
     {
         if (VolumeIndicatorContainer == null) return;
+        if (!_isVolumeIndicatorActive || IsCompactSlotStale(_volumeIndicatorToken)) return;
         ResetCompactVolumeWheelIntent();
         int token = _volumeIndicatorToken;
 
@@ -578,7 +580,7 @@ public partial class MainWindow
         }
     }
 
-    private void DismissVolumeIndicatorImmediate()
+    private void DismissVolumeIndicatorImmediate(bool restoreMedia = false)
     {
         _volumeIndicatorHideTimer?.Stop();
         ResetCompactVolumeWheelIntent();
@@ -608,6 +610,7 @@ public partial class MainWindow
         }
 
         RestorePrivacyDotVisibility();
+        if (restoreMedia) RestoreCompactMediaPresentation();
     }
 
     #region Volume Indicator Drag

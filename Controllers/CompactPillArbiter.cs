@@ -18,6 +18,14 @@ public sealed class CompactPillArbiter
     private CompactPillSlot _activeSlot = CompactPillSlot.None;
     private int _activeToken = 0;
     private int _nextToken = 1;
+    private long _revision;
+
+    public long Revision { get { lock (_gate) return _revision; } }
+
+    public bool CanRestoreMedia(long revision)
+    {
+        lock (_gate) return revision == _revision && _activeSlot == CompactPillSlot.None;
+    }
 
     public CompactPillSlot ActiveSlot
     {
@@ -64,6 +72,7 @@ public sealed class CompactPillArbiter
 
             _activeSlot = slot;
             _activeToken = _nextToken++;
+            _revision++;
             return new AcquireResult(true, preempted, _activeToken);
         }
     }
@@ -75,6 +84,7 @@ public sealed class CompactPillArbiter
             if (token == 0 || token != _activeToken) return;
             _activeSlot = CompactPillSlot.None;
             _activeToken = 0;
+            _revision++;
         }
     }
 
@@ -84,6 +94,7 @@ public sealed class CompactPillArbiter
         {
             _activeSlot = CompactPillSlot.None;
             _activeToken = 0;
+            _revision++;
         }
     }
 
