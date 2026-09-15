@@ -183,7 +183,7 @@ public sealed class SignedUpdateManifestTests
             await File.WriteAllTextAsync(privatePath, key.ExportPkcs8PrivateKeyPem());
             await File.WriteAllTextAsync(publicPath, key.ExportSubjectPublicKeyInfoPem());
             await File.WriteAllBytesAsync(installerPath, Installer);
-            var start = new ProcessStartInfo("pwsh")
+            var start = new ProcessStartInfo(ResolvePwsh())
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -215,6 +215,17 @@ public sealed class SignedUpdateManifestTests
             foreach (string path in Directory.EnumerateFiles(directory)) File.Delete(path);
             Directory.Delete(directory);
         }
+    }
+
+    private static string ResolvePwsh()
+    {
+        string dotnetToolPwsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet", "tools", "pwsh.exe");
+        if (File.Exists(dotnetToolPwsh)) return dotnetToolPwsh;
+
+        string programFilesPwsh = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe");
+        if (File.Exists(programFilesPwsh)) return programFilesPwsh;
+
+        return "pwsh";
     }
 
     private static UpdateInfo Update() => new()

@@ -179,6 +179,40 @@ public class DataProtectionSettingsTests : IDisposable
         Assert.False(File.Exists(path + ".tmp"));
     }
 
+    [Fact]
+    public void Save_WithSpotifySpDc_IsEncryptedOnDisk()
+    {
+        const string cookie = "test-spotify-sp-dc-cookie";
+        var path = Path.Combine(_directory, "settings-spotify.json");
+        var service = new SettingsService(path, _ => { });
+
+        service.Save(new NotchSettings { SpotifySpDc = cookie });
+
+        var raw = File.ReadAllText(path);
+        Assert.DoesNotContain(cookie, raw);
+        Assert.Contains("enc:", raw);
+
+        var loaded = service.Load();
+        Assert.Equal(cookie, loaded.SpotifySpDc);
+    }
+
+    [Fact]
+    public void ProtectFailure_WithSpotifySpDc_DoesNotCreateOrOverwriteSettingsContainingCookie()
+    {
+        const string cookie = "sensitive-sp-dc-must-not-leak";
+        var path = Path.Combine(_directory, "settings-spotify-fail.json");
+        var original = "{\"SettingsVersion\":9,\"SpotifySpDc\":\"enc:existing-sp-dc\"}";
+        File.WriteAllText(path, original);
+        string? warning = null;
+        DataProtection.ProtectBytes = _ => throw new CryptographicException("simulated DPAPI failure");
+
+        new SettingsService(path, message => warning = message).Save(new NotchSettings { SpotifySpDc = cookie });
+
+        Assert.Equal(original, File.ReadAllText(path));
+        Assert.NotNull(warning);
+        Assert.DoesNotContain(cookie, File.ReadAllText(path));
+    }
+
     public void Dispose()
     {
         DataProtection.ProtectBytes = _originalProtectBytes;
