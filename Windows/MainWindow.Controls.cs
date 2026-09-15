@@ -20,6 +20,46 @@ public partial class MainWindow
     private const string MediaCtrlLogTag = "MEDIA-CTRL";
     private bool _isPlaying = true;
 
+    private async Task TogglePlayPauseInstantAsync()
+    {
+        try
+        {
+            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 250) return;
+            _lastMediaActionTime = DateTime.UtcNow;
+
+            WakeFromIdle();
+
+            if (_isVolumeIndicatorActive)
+            {
+                DismissVolumeIndicatorImmediate();
+            }
+
+            _isPlaying = !_viewModel.IsPlaying;
+            UpdatePlayPauseIcon();
+
+            if (!_isAnimating)
+            {
+                PlayGestureMiddleClickFeedback();
+            }
+
+            if (_isExpanded && PlayPauseButton != null && PlayPauseButton.Visibility == Visibility.Visible)
+            {
+                PlayGentleButtonPressAnimation(PlayPauseButton);
+            }
+            else if (_isExpanded && InlinePlayPauseButton != null && InlinePlayPauseButton.Visibility == Visibility.Visible)
+            {
+                PlayGentleButtonPressAnimation(InlinePlayPauseButton);
+            }
+
+            _progressEngine.NotifyUserPlayPause(_isPlaying);
+            await _viewModel.PlayPauseCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "MiddleClick/PlayPause failed");
+        }
+    }
+
     private async void PlayPauseButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;

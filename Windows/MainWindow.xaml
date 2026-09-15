@@ -352,6 +352,8 @@
                   VerticalAlignment="Top"
                   RenderTransformOrigin="0.5,0"
                   Cursor="Hand"
+                  PreviewMouseDown="NotchWrapper_PreviewMouseDown"
+                  PreviewMouseUp="NotchWrapper_PreviewMouseUp"
                   MouseLeftButtonDown="NotchBorder_MouseLeftButtonDown"
                   MouseMove="NotchWrapper_MouseMove"
                   MouseLeftButtonUp="NotchWrapper_MouseLeftButtonUp"

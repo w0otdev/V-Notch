@@ -358,6 +358,33 @@ public partial class MainWindow
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, squish);
     }
 
+    private void PlayGentleButtonPressAnimation(Border button)
+    {
+        var transform = button.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
+        button.RenderTransform = transform;
+        button.RenderTransformOrigin = new Point(0.5, 0.5);
+
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+        var squish = MakeAnim(1d, 0.90d, _dur80, _easeQuadOut, null);
+        var bounce = new DoubleAnimation(0.90, 1.0, _dur200)
+        {
+            EasingFunction = _easeSoftSpring,
+            BeginTime = TimeSpan.Zero
+        };
+        Timeline.SetDesiredFrameRate(bounce, VNotch.Services.AnimationConfig.TargetFps);
+
+        squish.Completed += (s, e) =>
+        {
+            transform.BeginAnimation(ScaleTransform.ScaleXProperty, bounce);
+            transform.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
+        };
+
+        transform.BeginAnimation(ScaleTransform.ScaleXProperty, squish);
+        transform.BeginAnimation(ScaleTransform.ScaleYProperty, squish);
+    }
+
     private void PlayNextSkipAnimation()
     {
         PlayNextSkipAnimation(NextArrow0, NextArrow1);

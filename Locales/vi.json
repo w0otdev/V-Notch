@@ -279,7 +279,7 @@
   "settings.privacy.section.sensors": "CẢM BIẾN & THEO DÕI HỆ THỐNG",
   "settings.privacy.section.storage": "DỮ LIỆU CỤC BỘ & LỊCH SỬ",
   "settings.privacy.spotlightHistory": "Lịch sử khởi chạy tìm kiếm Spotlight",
-  "settings.privacy.spotlightHistory.hint": "Lưu tần suất mở ứng dụng từ Spotlight trong spotlight-usage.json để ưu tiên các mục yêu thích.",
+  "settings.privacy.spotlightHistory.hint": "Lưu tần suất mở ứng dụng từ Spotlight trong cài đặt nội bộ để ưu tiên các mục yêu thích.",
   "settings.processPriority": "Độ ưu tiên tiến trình",
   "settings.processPriority.high": "Cao",
   "settings.processPriority.hint": "Điều chỉnh mức ưu tiên của V-Notch trong Windows để đảm bảo hiệu ứng mượt mà khi hệ thống tải nặng.",

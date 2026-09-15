@@ -56,6 +56,25 @@ public partial class MainWindow
         _gestureController.DoubleTap += OnGestureDoubleTap;
     }
 
+    private async void NotchWrapper_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle) return;
+        if (!_settings.EnableGestureControls) return;
+        if (_isDraggingVolumeIndicator || _isDraggingNotchDebug) return;
+        if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+
+        e.Handled = true;
+        await TogglePlayPauseInstantAsync();
+    }
+
+    private void NotchWrapper_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle)
+        {
+            e.Handled = true;
+        }
+    }
+
     private void NotchWrapper_MouseMove(object sender, MouseEventArgs e)
     {
         if (_isDraggingNotchDebug && e.LeftButton == MouseButtonState.Pressed)
@@ -392,6 +411,41 @@ public partial class MainWindow
         NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, bounce);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
+    }
+
+    private void PlayGestureMiddleClickFeedback()
+    {
+        // Physics-based Squash & Stretch:
+        // Height (ScaleY) compresses crisply, Width (ScaleX) expands organically (conservation of volume),
+        // followed by a lively spring rebound and smooth settling. Highly satisfying Dynamic Island feel.
+        var scaleY = new DoubleAnimationUsingKeyFrames();
+        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(0.94,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(75)),
+            _easeQuadOut));
+        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.028,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)),
+            _easeQuadOut));
+        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
+            _easeSoftSpring));
+        Timeline.SetDesiredFrameRate(scaleY, VNotch.Services.AnimationConfig.TargetFps);
+
+        var scaleX = new DoubleAnimationUsingKeyFrames();
+        scaleX.KeyFrames.Add(new EasingDoubleKeyFrame(1.022,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(75)),
+            _easeQuadOut));
+        scaleX.KeyFrames.Add(new EasingDoubleKeyFrame(0.988,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)),
+            _easeQuadOut));
+        scaleX.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
+            KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)),
+            _easeSoftSpring));
+        Timeline.SetDesiredFrameRate(scaleX, VNotch.Services.AnimationConfig.TargetFps);
+
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
     }
 
     private void DisposeGestureController()
