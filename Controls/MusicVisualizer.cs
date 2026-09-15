@@ -119,12 +119,21 @@ namespace VNotch.Controls
         private DpiScale? _cachedDpi;
         private double _currentOpacity = 0.2;
         private VisualizerState _state = VisualizerState.Idle;
+        private const double PlaybackFeedbackSeconds = 1.5;
+        private double _feedbackUntil;
+        private double _iconMix;
+        private double _iconVelocity;
+        private double _playMix;
+        private double _playVelocity;
 
+        // Native filled-vector morph inspired by https://www.morphicons.com/.
+        // Five quadrilaterals connect the visualizer bars to solid icon silhouettes.
         public MusicVisualizer()
         {
             Loaded += (s, e) => UpdateRenderingState();
             Unloaded += (s, e) =>
             {
+                ResetPlaybackFeedback();
                 StopRendering();
                 ReleaseCaptureLease();
             };
@@ -141,6 +150,14 @@ namespace VNotch.Controls
         {
             if (d is MusicVisualizer viz)
             {
+                if (e.Property == TrackIdProperty)
+                    viz.ResetPlaybackFeedback();
+                else if (e.Property == IsPlayingProperty && viz.IsLoaded && viz.IsVisible &&
+                         !string.IsNullOrEmpty(viz.TrackId))
+                {
+                    viz._feedbackUntil = viz._stopwatch.Elapsed.TotalSeconds + PlaybackFeedbackSeconds;
+                    viz.StartRendering();
+                }
                 viz.UpdateInternalState();
             }
         }
@@ -178,8 +195,9 @@ namespace VNotch.Controls
 
         private void UpdateRenderingState()
         {
-            if (!IsVisible || _state == VisualizerState.Idle)
+            if (!IsLoaded || !IsVisible || _state == VisualizerState.Idle)
             {
+                ResetPlaybackFeedback();
                 StopRendering();
                 return;
             }
@@ -216,8 +234,9 @@ namespace VNotch.Controls
 
             _lastDtMs = dt * 1000.0;
             bool isSettled = UpdateAnimation(dt, totalSec);
+            bool feedbackActive = UpdatePlaybackFeedback(dt, totalSec);
 
-            if (isSettled && _state == VisualizerState.Paused)
+            if (isSettled && !feedbackActive && _state == VisualizerState.Paused)
             {
                 InvalidateVisual();
                 StopRendering();
@@ -226,6 +245,78 @@ namespace VNotch.Controls
             }
 
             InvalidateVisual();
+        }
+
+        private void ResetPlaybackFeedback()
+        {
+            _feedbackUntil = 0;
+            _iconMix = _iconVelocity = _playVelocity = 0;
+            _playMix = IsPlaying ? 1 : 0;
+            InvalidateVisual();
+        }
+
+        private bool UpdatePlaybackFeedback(double dt, double now)
+        {
+            double target = now < _feedbackUntil ? 1 : 0;
+            StepSpring(ref _iconMix, ref _iconVelocity, target, dt);
+            StepSpring(ref _playMix, ref _playVelocity, IsPlaying ? 1 : 0, dt);
+            return target > 0 || _iconMix > 0;
+        }
+
+        private static void StepSpring(ref double value, ref double velocity, double target, double dt)
+        {
+            // Exact critically damped spring: stable across frame rates and rapid toggles.
+            const double frequency = 24;
+            double offset = value - target;
+            double impulse = velocity + frequency * offset;
+            double decay = Math.Exp(-frequency * dt);
+            value = target + (offset + impulse * dt) * decay;
+            velocity = (velocity - frequency * impulse * dt) * decay;
+            if (Math.Abs(value - target) < 0.001 && Math.Abs(velocity) < 0.01)
+            {
+                value = target;
+                velocity = 0;
+            }
+        }
+
+        private void DrawPlaybackMorph(DrawingContext context, double width, double height,
+            double startX, double barWidth, double spacing)
+        {
+            double size = Math.Min(width, height);
+            var brush = GetPlaybackMorphBrush();
+            for (int i = 0; i < BarCount; i++)
+            {
+                var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
+                using (var path = geometry.Open())
+                {
+                    Point Corner(int corner)
+                    {
+                        bool right = corner == 1 || corner == 2;
+                        bool bottom = corner >= 2;
+                        // Adjacent slices form one solid triangle with no outline.
+                        double playX = 7 + 13.0 * (i + (right ? 1 : 0)) / BarCount;
+                        double playHalfHeight = 8 * (20 - playX) / 13;
+                        var play = new Point(playX, 12 + (bottom ? playHalfHeight : -playHalfHeight));
+                        // Three slices form the left pause bar, two form the right.
+                        int slice = i < 3 ? i : i - 3;
+                        int slices = i < 3 ? 3 : 2;
+                        double pauseX = (i < 3 ? 6 : 14) + 4.0 * (slice + (right ? 1 : 0)) / slices;
+                        var pause = new Point(pauseX, bottom ? 20 : 4);
+                        Point icon = pause + (play - pause) * _playMix;
+                        icon = new Point((width - size) / 2 + icon.X * size / 24,
+                            (height - size) / 2 + icon.Y * size / 24);
+                        var bar = new Point(startX + i * (barWidth + spacing) + (right ? barWidth : 0),
+                            height / 2 + (bottom ? 1 : -1) * _drawHeights[i] * height / 2);
+                        return bar + (icon - bar) * _iconMix;
+                    }
+                    path.BeginFigure(Corner(0), isFilled: true, isClosed: true);
+                    path.LineTo(Corner(1), isStroked: false, isSmoothJoin: false);
+                    path.LineTo(Corner(2), isStroked: false, isSmoothJoin: false);
+                    path.LineTo(Corner(3), isStroked: false, isSmoothJoin: false);
+                }
+                geometry.Freeze();
+                context.DrawGeometry(brush, null, geometry);
+            }
         }
 
 #pragma warning disable S3776 // Cognitive complexity is inherent to the multi-state audio reactivity animation loop
@@ -587,6 +678,26 @@ namespace VNotch.Controls
 
         private Color _cachedGradientBaseColor;
         private LinearGradientBrush? _cachedBarGradient;
+        private LinearGradientBrush? _playbackMorphBrush;
+
+        private LinearGradientBrush GetPlaybackMorphBrush()
+        {
+            var original = GetBarGradientBrush();
+            _playbackMorphBrush ??= original.Clone();
+            float mix = (float)Math.Clamp(_iconMix, 0, 1);
+            for (int i = 0; i < original.GradientStops.Count; i++)
+            {
+                Color color = original.GradientStops[i].Color;
+                // Blend in linear light, following the same spring as the geometry.
+                // At rest this exactly matches each visualizer bar's original gradient.
+                _playbackMorphBrush.GradientStops[i].Color = Color.FromScRgb(
+                    color.ScA + (1 - color.ScA) * mix,
+                    color.ScR + (1 - color.ScR) * mix,
+                    color.ScG + (1 - color.ScG) * mix,
+                    color.ScB + (1 - color.ScB) * mix);
+            }
+            return _playbackMorphBrush;
+        }
 
         private LinearGradientBrush GetBarGradientBrush()
         {
@@ -640,9 +751,16 @@ namespace VNotch.Controls
 
             double snappedW = Math.Max(1.0, Math.Round(barWidth * dpi.DpiScaleX) / dpi.DpiScaleX);
 
-            drawingContext.PushOpacity(_currentOpacity);
+            drawingContext.PushOpacity(_currentOpacity + (1 - _currentOpacity) * _iconMix);
 
             PrepareDrawHeights();
+
+            if (_iconMix > 0)
+            {
+                DrawPlaybackMorph(drawingContext, width, height, startX, snappedW, spacing);
+                drawingContext.Pop();
+                return;
+            }
 
             var gradientBrush = GetBarGradientBrush();
 

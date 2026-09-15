@@ -919,8 +919,26 @@
                 </Border>
 
                 <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="26,16,24,0" IsHitTestVisible="False">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="56"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:MorphingSettingsIcon x:Name="SectionHeroIcon" Width="56" Height="56"/>
+                        <TextBlock x:Name="SectionHeroTitle" Grid.Column="1" Margin="18,0,0,0"
+                                   TargetUpdated="SectionHeroTitle_TargetUpdated"
+                                   FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   TextWrapping="Wrap">
+                            <TextBlock.RenderTransform><TranslateTransform/></TextBlock.RenderTransform>
+                            <TextBlock.Effect><BlurEffect Radius="0"/></TextBlock.Effect>
+                        </TextBlock>
+                    </Grid>
 
-                    <Border IsHitTestVisible="False" VerticalAlignment="Top" Height="24" Panel.ZIndex="1">
+                    <Border Grid.Row="1" IsHitTestVisible="False" VerticalAlignment="Top" Height="24" Panel.ZIndex="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#FF000000" Offset="0"/>
@@ -929,7 +947,7 @@
                         </Border.Background>
                     </Border>
 
-                    <Border IsHitTestVisible="False" VerticalAlignment="Bottom" Height="24" Panel.ZIndex="1">
+                    <Border Grid.Row="1" IsHitTestVisible="False" VerticalAlignment="Bottom" Height="24" Panel.ZIndex="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#00000000" Offset="0"/>
@@ -939,9 +957,10 @@
                     </Border>
 
                     <ScrollViewer x:Name="SettingsScrollViewer"
+                                  Grid.Row="1"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
-                                  Padding="20,18,14,14"
+                                  Padding="20,6,14,14"
                                   CanContentScroll="False"
                                    PreviewMouseWheel="SettingsScrollViewer_PreviewMouseWheel">
                         <Grid x:Name="ContentHost">
@@ -952,7 +971,7 @@
                                         <TranslateTransform x:Name="SearchingCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="SearchingHeader" Text="SEARCHING" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="SearchingHeader" Text="SEARCHING" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
                                         <TextBlock x:Name="SearchingEmptyText"
                                                    Text="No matching settings."
                                                    Style="{StaticResource SettingHintText}"
@@ -969,7 +988,7 @@
                                         <TranslateTransform x:Name="AppearanceCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="AppearanceHeader" Text="APPEARANCE" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="AppearanceHeader" Text="APPEARANCE" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <!-- Navigation Tabs Order & Visibility -->
                                         <Border Style="{StaticResource SettingRowBorder}">
@@ -1182,7 +1201,7 @@
                                         <TranslateTransform x:Name="BehaviorCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="BehaviorHeader" Text="BEHAVIOR" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="BehaviorHeader" Text="BEHAVIOR" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
@@ -1265,7 +1284,7 @@
                                         <TranslateTransform x:Name="SkinCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="SkinHeader" Text="NOTCH SKINS" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="SkinHeader" Text="NOTCH SKINS" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
@@ -1420,7 +1439,7 @@
                                         <TranslateTransform x:Name="DisplayCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="DisplayHeader" Text="DEVICES" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="DisplayHeader" Text="DEVICES" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
                                                 <TextBlock x:Name="MonitorLabel" Text="Active Monitor" Style="{StaticResource SettingTitleText}"/>
@@ -1521,7 +1540,7 @@
                                         <TranslateTransform x:Name="SystemCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="SystemHeader" Text="SYSTEM" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="SystemHeader" Text="SYSTEM" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
@@ -1675,7 +1694,7 @@
                                         <TranslateTransform x:Name="PrivacyCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="PrivacyHeader" Text="PRIVACY &amp; LOCAL-ONLY" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="PrivacyHeader" Text="PRIVACY &amp; LOCAL-ONLY" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,10"
                                                 Background="#0AFFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1"
@@ -1847,7 +1866,7 @@
                                         <TranslateTransform x:Name="SpotlightCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="SpotlightHeader" Text="SPOTLIGHT" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="SpotlightHeader" Text="SPOTLIGHT" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
@@ -1880,7 +1899,7 @@
                                         <TranslateTransform x:Name="AdvancedCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="AdvancedHeader" Text="ADVANCED" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="AdvancedHeader" Text="ADVANCED" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
@@ -2213,7 +2232,7 @@
                                         <TranslateTransform x:Name="PerformanceCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="PerformanceHeader" Text="PERFORMANCE" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="PerformanceHeader" Text="PERFORMANCE" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
@@ -2295,7 +2314,7 @@
                                         <TranslateTransform x:Name="DonatingCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="DonatingHeader" Text="DONATING" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="DonatingHeader" Text="DONATING" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}" Padding="0" Margin="0">
                                         <Grid>
@@ -2369,7 +2388,7 @@
                                         <TranslateTransform x:Name="UpdatesCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="UpdatesHeader" Text="UPDATES &amp; REPORT BUG" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="UpdatesHeader" Text="UPDATES &amp; REPORT BUG" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,12">
                                             <Grid>

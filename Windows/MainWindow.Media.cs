@@ -701,8 +701,8 @@ public partial class MainWindow
 
                 if (info != null && !_isClipboardPeekActive)
                 {
-                    MusicViz.IsPlaying = info.IsPlaying;
                     MusicViz.TrackId = info.GetSignature();
+                    MusicViz.IsPlaying = info.IsPlaying;
 
                     if (info.IsPlaying && !_isVolumeIndicatorActive)
                     {

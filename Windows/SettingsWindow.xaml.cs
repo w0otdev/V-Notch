@@ -4495,6 +4495,7 @@ public partial class SettingsWindow : Window
         _navButtons[NavSectionPerformance] = NavPerformance;
         _navButtons[NavSectionDonating] = NavDonating;
         _navButtons[NavSectionUpdates] = NavUpdates;
+        UpdateSectionHeader();
     }
 
     private void Nav_Click(object sender, MouseButtonEventArgs e)
@@ -4566,6 +4567,7 @@ public partial class SettingsWindow : Window
         }
 
         _activeNav = section;
+        UpdateSectionHeader();
 
         if (_navButtons.TryGetValue(section, out var newBtn))
         {
@@ -4865,6 +4867,7 @@ public partial class SettingsWindow : Window
         }
 
         _activeNav = NavSectionSearching;
+        UpdateSectionHeader();
 
         foreach (var kvp in _navPanels)
         {
@@ -4902,6 +4905,7 @@ public partial class SettingsWindow : Window
         if (_activeNav == NavSectionSearching)
         {
             _activeNav = NavSectionAppearance;
+            UpdateSectionHeader();
         }
 
         ShowAllNavItems();
