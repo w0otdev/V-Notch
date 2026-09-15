@@ -56,9 +56,9 @@ public sealed class SetupTermsOfServicePageTests
 
             // When content requires scrolling
             Assert.True(page.TermsScrollViewer.ScrollableHeight > 0);
-                Assert.False(page.HasReadToBottom);
-                Assert.False(page.AgreeCheckBox.IsEnabled);
-                Assert.False(page.CanContinue);
+            Assert.False(page.HasReadToBottom);
+            Assert.False(page.AgreeCheckBox.IsEnabled);
+            Assert.False(page.CanContinue);
         });
     }
 
