@@ -37,6 +37,7 @@ public partial class MainWindow
     private DateTime _protectSpringTargetUntil = DateTime.MinValue;
     private DateTime _suppressOutsideClickUntilUtc = DateTime.MinValue;
     private DateTime _suppressHoverCollapseUntilUtc = DateTime.MinValue;
+    private DateTime _suppressIndeterminateUntilUtc = DateTime.MinValue;
 
     private ProgressSpringRenderer? _springRenderer;
     private ProgressSpringRenderer Spring => _springRenderer ??= new ProgressSpringRenderer(
@@ -261,6 +262,7 @@ public partial class MainWindow
 
             if (isTrackChanged)
             {
+                _suppressIndeterminateUntilUtc = DateTime.UtcNow.AddSeconds(4);
                 _lastProgressSignature = newSignature;
                 double visibleRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
 
@@ -381,9 +383,10 @@ public partial class MainWindow
 
             if (!_isRewindAnimating)
             {
-                bool isLiveStream = info.Duration.TotalSeconds <= 0 && info.IsPlaying;
+                bool isTrackChangeGrace = DateTime.UtcNow < _suppressIndeterminateUntilUtc;
+                bool isLiveStream = !isTrackChangeGrace && info.Duration.TotalSeconds <= 0 && info.IsPlaying;
 
-                if (isLiveStream || info.IsIndeterminate)
+                if (!isTrackChangeGrace && (isLiveStream || info.IsIndeterminate))
                 {
                     bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
                     IndeterminateProgress.Visibility = Visibility.Visible;
@@ -545,12 +548,21 @@ public partial class MainWindow
         }
 
         var frame = _progressEngine.GetUiFrame();
-        bool isLiveStream = frame.Duration.TotalSeconds <= 0 && frame.State == ProgressState.Playing;
+        bool isTrackChangeGrace = DateTime.UtcNow < _suppressIndeterminateUntilUtc;
+        bool isLiveStream = !isTrackChangeGrace && frame.Duration.TotalSeconds <= 0 && frame.State == ProgressState.Playing;
 
-        if (frame.Duration.TotalSeconds <= 0 && (!frame.ShowIndeterminate || isLiveStream))
+        if (frame.Duration.TotalSeconds <= 0 && (!frame.ShowIndeterminate || isLiveStream || isTrackChangeGrace))
         {
-            CurrentTimeText.Text = isLiveStream ? "" : "--:--";
-            RemainingTimeText.Text = isLiveStream ? "LIVE" : "--:--";
+            if (isLiveStream)
+            {
+                CurrentTimeText.Text = "";
+                RemainingTimeText.Text = "LIVE";
+            }
+            else
+            {
+                CurrentTimeText.Text = "0:00";
+                RemainingTimeText.Text = "0:00";
+            }
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
             _progressDisplayRatio = 0;
@@ -1255,22 +1267,6 @@ public partial class MainWindow
             StopRewindTextAnimation();
             _isRewindAnimating = false;
             _lastRenderTime = DateTime.Now;
-
-            if (_currentMediaInfo != null)
-            {
-                bool isLive = _currentMediaInfo.Duration.TotalSeconds <= 0 && _currentMediaInfo.IsPlaying;
-                if (isLive || _currentMediaInfo.IsIndeterminate)
-                {
-                    bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
-                    IndeterminateProgress.Visibility = Visibility.Visible;
-                    ProgressBar.Visibility = Visibility.Collapsed;
-                    ProgressBarBg.Visibility = Visibility.Visible;
-                    if (!wasIndeterminate)
-                    {
-                        StartIndeterminateAnimation();
-                    }
-                }
-            }
         };
 
         _progressTargetRatio = 0;

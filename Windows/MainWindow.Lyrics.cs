@@ -230,25 +230,42 @@ public partial class MainWindow
             return;
         }
 
-        int generation = ++_subtitleFetchGeneration;
-
-        // Reset current lyrics immediately so UpdateLyricsDisplay won't run old subtitles for the new track
-        _currentLyrics = null;
-        _currentLyricIndex = -1;
-        _lyricsProvider = "";
-
         string videoId = info.YouTubeVideoId ?? "";
+
+        // Preserve resolved "yt:{id}" key and avoid overwriting with unresolved
+        // fallback when MediaChanged fires with empty videoId while subtitles are already loaded.
         if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
         {
-            // Preserve resolved "yt:{id}" key and avoid overwriting with unresolved
-            // fallback when MediaChanged fires with empty videoId after subtitle fetch.
             if (!force && _lyricsTrackKey.StartsWith("yt:", StringComparison.Ordinal)
                 && !_lyricsTrackKey.StartsWith("yt-lrc:", StringComparison.Ordinal)
                 && _currentLyrics != null && _currentLyrics.Count > 0)
             {
                 return;
             }
+        }
 
+        string trackKey = !string.IsNullOrEmpty(videoId) ? $"yt:{videoId}" : $"yt-lrc:{info.CurrentTrack}|{info.CurrentArtist}";
+        if (!force && trackKey == _lyricsTrackKey && (_currentLyrics != null && _currentLyrics.Count > 0 || _isLyricsSearchVisible || !_isLyricsActive))
+        {
+            return;
+        }
+
+        int generation = ++_subtitleFetchGeneration;
+        _lyricsTrackKey = trackKey;
+        _syncedTextSource = SyncedTextSource.YouTubeSubtitles;
+
+        // Reset current lyrics immediately so UpdateLyricsDisplay won't run old subtitles for the new track
+        _currentLyrics = null;
+        _currentLyricIndex = -1;
+        _lyricsProvider = "";
+
+        if (_isLyricsActive || _isExpanded)
+        {
+            ShowLyricsSearchState(isYouTube: true);
+        }
+
+        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
+        {
             var lookup = await _mediaService.TryGetYouTubeVideoIdWithInfoAsync(info.CurrentTrack, info.CurrentArtist, System.Threading.CancellationToken.None);
             if (generation != _subtitleFetchGeneration) return;
 
@@ -256,17 +273,34 @@ public partial class MainWindow
             {
                 videoId = lookup.Id;
                 info.YouTubeVideoId = videoId;
+                trackKey = $"yt:{videoId}";
+                _lyricsTrackKey = trackKey;
             }
         }
 
-        string trackKey = !string.IsNullOrEmpty(videoId) ? $"yt:{videoId}" : $"yt-lrc:{info.CurrentTrack}|{info.CurrentArtist}";
-        if (!force && trackKey == _lyricsTrackKey && (_currentLyrics != null && _currentLyrics.Count > 0 || !_isLyricsActive)) return;
-        _lyricsTrackKey = trackKey;
-        _syncedTextSource = SyncedTextSource.YouTubeSubtitles;
-
-        if (_isLyricsActive || _isExpanded)
+        // Check if _currentMediaInfo was updated with YouTubeVideoId concurrently
+        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(_currentMediaInfo?.YouTubeVideoId))
         {
-            ShowLyricsSearchState(isYouTube: true);
+            videoId = _currentMediaInfo.YouTubeVideoId;
+            info.YouTubeVideoId = videoId;
+            trackKey = $"yt:{videoId}";
+            _lyricsTrackKey = trackKey;
+        }
+
+        // If videoId is still empty, give the browser extension a short grace period (350ms)
+        // to deliver YouTubeVideoId before giving up and collapsing to calendar.
+        if (string.IsNullOrEmpty(videoId))
+        {
+            await Task.Delay(350);
+            if (generation != _subtitleFetchGeneration) return;
+
+            if (!string.IsNullOrEmpty(_currentMediaInfo?.YouTubeVideoId))
+            {
+                videoId = _currentMediaInfo.YouTubeVideoId;
+                info.YouTubeVideoId = videoId;
+                trackKey = $"yt:{videoId}";
+                _lyricsTrackKey = trackKey;
+            }
         }
 
         List<LyricLine>? subtitles = null;
@@ -361,6 +395,15 @@ public partial class MainWindow
 
             ShowLyricsWidget();
 
+            string searchText = Loc.Get(isYouTube ? "subtitles.searching" : "lyrics.searching");
+            if (_isLyricsSearchVisible && LyricsSearchPanel.Visibility == Visibility.Visible && LyricsSearchPanel.Opacity > 0.1)
+            {
+                LyricsSearchText.Text = searchText;
+                if (_lyricsSearchShimmerStoryboard == null)
+                    StartLyricsSearchShimmer();
+                return;
+            }
+
             LyricTextA.BeginAnimation(OpacityProperty, null);
             LyricTextB.BeginAnimation(OpacityProperty, null);
             LyricTextA.Opacity = 0;
@@ -370,7 +413,7 @@ public partial class MainWindow
 
             HideLyricsPlaceholder(immediate: true);
 
-            LyricsSearchText.Text = Loc.Get(isYouTube ? "subtitles.searching" : "lyrics.searching");
+            LyricsSearchText.Text = searchText;
             _isLyricsSearchVisible = true;
             int transitionVersion = ++_lyricsSearchTransitionVersion;
             TranslateTransform searchTranslate = GetLyricsSearchTransform();
@@ -1026,18 +1069,17 @@ public partial class MainWindow
             }
 
             // Always make LyricsWidget visible
-            if (LyricsWidget.Visibility != Visibility.Visible || LyricsWidget.Opacity < 0.99)
+            if (LyricsWidget.Visibility != Visibility.Visible)
             {
-                LyricsWidget.BeginAnimation(OpacityProperty, null);
                 LyricsWidget.Visibility = Visibility.Visible;
 
                 if (!alreadyActive)
                 {
+                    LyricsWidget.BeginAnimation(OpacityProperty, null);
                     LyricsWidget.Opacity = 0;
-                    var fadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
+                    var fadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
                     {
-                        EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut },
-                        BeginTime = TimeSpan.FromMilliseconds(100)
+                        EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut }
                     };
                     fadeIn.Completed += (s, e) =>
                     {
@@ -1051,6 +1093,21 @@ public partial class MainWindow
                 {
                     LyricsWidget.Opacity = 1.0;
                 }
+            }
+            else if (!alreadyActive)
+            {
+                // Visibility is already Visible, but transitioning from an inactive state
+                var fadeIn = new DoubleAnimation(LyricsWidget.Opacity, 1, new Duration(TimeSpan.FromMilliseconds(250)))
+                {
+                    EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut }
+                };
+                fadeIn.Completed += (s, e) =>
+                {
+                    LyricsWidget.BeginAnimation(OpacityProperty, null);
+                    LyricsWidget.Opacity = 1.0;
+                };
+                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
+                LyricsWidget.BeginAnimation(OpacityProperty, fadeIn);
             }
 
             UpdateSpotifyCanvasPresentationContext();
