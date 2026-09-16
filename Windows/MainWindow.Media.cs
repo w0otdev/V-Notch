@@ -22,6 +22,52 @@ public partial class MainWindow
     private int _compactThumbnailAnimationGeneration = 0;
     private bool _thumbnailShownForCurrentTrack = false;
     private bool _isThumbnailSwitchActive = false;
+    private bool _showingEmptyThumbnail;
+    private int _emptyThumbnailGeneration;
+
+    private void TransitionToEmptyThumbnail()
+    {
+        if (_showingEmptyThumbnail) return;
+        _showingEmptyThumbnail = true;
+        int generation = ++_emptyThumbnailGeneration;
+        CancelThumbnailSwitchAnimations();
+        ThumbnailFallback.BeginAnimation(OpacityProperty, null);
+        ThumbnailFallback.Visibility = Visibility.Visible;
+        ThumbnailFallback.Opacity = 1;
+        if (AnimationConfig.ReduceMotion || !ThumbnailImage.IsVisible || ThumbnailImage.Source == null)
+        {
+            ThumbnailImage.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var duration = new Duration(TimeSpan.FromMilliseconds(320));
+        var fade = MakeAnim(ThumbnailImage.Opacity, 0, duration, _easeQuadOut);
+        fade.Completed += (_, _) =>
+        {
+            if (generation != _emptyThumbnailGeneration || !_showingEmptyThumbnail) return;
+            ThumbnailImage.Visibility = Visibility.Collapsed;
+            ResetEmptyThumbnailAnimation();
+        };
+        ThumbnailImage.BeginAnimation(OpacityProperty, fade);
+        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(1, 0.88, duration, _easeQuadOut));
+        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(1, 0.88, duration, _easeQuadOut));
+        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty,
+            MakeAnim(0, _settings.EnableBlurEffects ? 8 : 0, duration, _easeQuadOut));
+        ThumbnailFallback.BeginAnimation(OpacityProperty, MakeAnim(0, 1, duration, _easeQuadOut));
+    }
+
+    private void ResetEmptyThumbnailAnimation()
+    {
+        ThumbnailImage.BeginAnimation(OpacityProperty, null);
+        ThumbnailImage.Opacity = 1;
+        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        ThumbnailOutScale.ScaleX = ThumbnailOutScale.ScaleY = 1;
+        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+        ThumbnailOutBlur.Radius = 0;
+        ThumbnailFallback.BeginAnimation(OpacityProperty, null);
+        ThumbnailFallback.Opacity = 1;
+    }
 
     #region Media Changed Handler
 
@@ -64,6 +110,13 @@ public partial class MainWindow
 
             if (result.Action == MediaDisplayAction.Ignore)
                 return;
+
+            if (_showingEmptyThumbnail && (result.HasRealTrack || info.IsAnyMediaPlaying))
+            {
+                _showingEmptyThumbnail = false;
+                ++_emptyThumbnailGeneration;
+                ResetEmptyThumbnailAnimation();
+            }
 
             _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
             _thumbnailShownForCurrentTrack = _mediaDisplayController.ThumbnailShownForCurrentTrack;
@@ -226,9 +279,7 @@ public partial class MainWindow
                 else
                 {
                     _thumbnailSwitchGeneration = _mediaDisplayController.ThumbnailSwitchGeneration;
-                    CancelThumbnailSwitchAnimations();
-                    ThumbnailImage.Visibility = Visibility.Collapsed;
-                    ThumbnailFallback.Visibility = Visibility.Visible;
+                    TransitionToEmptyThumbnail();
                     HideMediaBackground();
                     ClearLyrics();
                     UpdatePictureInPictureBadge(false, animate: false);
