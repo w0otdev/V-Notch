@@ -36,7 +36,7 @@ public partial class MainWindow
         ThumbnailFallback.Opacity = 1;
         if (AnimationConfig.ReduceMotion || !ThumbnailImage.IsVisible || ThumbnailImage.Source == null)
         {
-            ThumbnailImage.Visibility = Visibility.Collapsed;
+            FinishEmptyThumbnailTransition();
             return;
         }
 
@@ -45,8 +45,7 @@ public partial class MainWindow
         fade.Completed += (_, _) =>
         {
             if (generation != _emptyThumbnailGeneration || !_showingEmptyThumbnail) return;
-            ThumbnailImage.Visibility = Visibility.Collapsed;
-            ResetEmptyThumbnailAnimation();
+            FinishEmptyThumbnailTransition();
         };
         ThumbnailImage.BeginAnimation(OpacityProperty, fade);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(1, 0.88, duration, _easeQuadOut));
@@ -69,6 +68,17 @@ public partial class MainWindow
         ThumbnailFallback.Opacity = 1;
     }
 
+    private void FinishEmptyThumbnailTransition()
+    {
+        ThumbnailImage.Visibility = Visibility.Collapsed;
+        ThumbnailImageNext.Visibility = Visibility.Collapsed;
+        ThumbnailImage.Source = null;
+        ThumbnailImageNext.Source = null;
+        _pendingFlipThumbnail = null;
+        ResetEmptyThumbnailAnimation();
+        ThumbnailFallback.Visibility = Visibility.Visible;
+    }
+
     #region Media Changed Handler
 
 #pragma warning disable S3776 // Cognitive complexity is inherent to dispatching rich media UI states
@@ -79,28 +89,28 @@ public partial class MainWindow
         {
             _currentMediaInfo = info;
         }
-        else if (_currentMediaInfo != null)
-        {
-            if (!string.IsNullOrEmpty(info.YouTubeVideoId))
-                _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
-            if (info.Thumbnail != null)
-                _currentMediaInfo.Thumbnail = info.Thumbnail;
-        }
 
         Dispatcher.BeginInvoke(() =>
         {
             WakeFromIdle();
 
-            if (isThumbnailOnlyUpdate && _currentMediaInfo != null)
+            if (!isThumbnailOnlyUpdate && !ReferenceEquals(info, _currentMediaInfo)) return;
+
+            if (isThumbnailOnlyUpdate)
             {
+                if (_currentMediaInfo == null || string.IsNullOrEmpty(_currentMediaInfo.CurrentTrack)) return;
                 string incomingTrack = info.CurrentTrack ?? "";
                 string currentTrack = _currentMediaInfo.CurrentTrack ?? "";
-                if (!string.IsNullOrEmpty(currentTrack) && !string.IsNullOrEmpty(incomingTrack) &&
-                    !string.Equals(incomingTrack, currentTrack, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(incomingTrack, currentTrack, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(info.CurrentArtist, _currentMediaInfo.CurrentArtist, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(info.MediaSource, _currentMediaInfo.MediaSource, StringComparison.OrdinalIgnoreCase))
                 {
                     VNotch.Services.RuntimeLog.Log("MEDIA-THUMB", $"Rejected stale thumbnail: incoming='{incomingTrack}' current='{currentTrack}'");
                     return;
                 }
+                if (!string.IsNullOrEmpty(info.YouTubeVideoId))
+                    _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
+                if (info.Thumbnail != null) _currentMediaInfo.Thumbnail = info.Thumbnail;
             }
 
             var result = _mediaDisplayController.ProcessMediaUpdate(
@@ -548,7 +558,7 @@ public partial class MainWindow
         var overlayTarget = ThumbnailImageNext.Source ?? CompactThumbnailNext.Source;
         var resolvedThumb = targetThumb ?? overlayTarget
                             ?? ThumbnailImage.Source ?? CompactThumbnail.Source;
-        if (resolvedThumb != null)
+        if (!_showingEmptyThumbnail && resolvedThumb != null)
         {
             ThumbnailImage.Source = resolvedThumb;
             CompactThumbnail.Source = resolvedThumb;
@@ -612,7 +622,7 @@ public partial class MainWindow
         var overlayTarget = ThumbnailImageNext.Source ?? CompactThumbnailNext.Source;
         var resolvedThumb = overlayTarget
                             ?? ThumbnailImage.Source ?? CompactThumbnail.Source;
-        if (resolvedThumb != null)
+        if (!_showingEmptyThumbnail && resolvedThumb != null)
         {
             ThumbnailImage.Source = resolvedThumb;
             CompactThumbnail.Source = resolvedThumb;

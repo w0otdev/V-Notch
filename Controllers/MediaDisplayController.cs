@@ -32,7 +32,7 @@ public sealed class MediaDisplayController
         if (info.IsThumbnailOnlyUpdate)
         {
             string incomingTrackId = $"{info.CurrentTrack}|{info.CurrentArtist}";
-            if (!string.IsNullOrEmpty(_lastAnimatedTrackSignature) &&
+            if (string.IsNullOrEmpty(_lastAnimatedTrackSignature) ||
                 incomingTrackId != _lastAnimatedTrackSignature)
             {
                 result.Action = MediaDisplayAction.Ignore;
@@ -138,6 +138,11 @@ public sealed class MediaDisplayController
 
         if (!info.IsAnyMediaPlaying)
         {
+            _lastAnimatedTrackSignature = "";
+            _lastAnimatedThumbnail = null;
+            _lastBackgroundThumbnail = null;
+            _thumbnailShownForCurrentTrack = false;
+            _trackChangeBounceNeeded = false;
             _lastColorTrackSignature = "";
             result.Action = MediaDisplayAction.Clear;
         }

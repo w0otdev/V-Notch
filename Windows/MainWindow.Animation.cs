@@ -301,7 +301,7 @@ public partial class MainWindow
     {
         if (ThumbnailBorder != null)
         {
-            if (CompactThumbnail.Source != null && ThumbnailImage != null)
+            if (!_showingEmptyThumbnail && CompactThumbnail.Source != null && ThumbnailImage != null)
             {
                 ThumbnailImage.Source = CompactThumbnail.Source;
                 ThumbnailImage.Visibility = Visibility.Visible;
@@ -571,11 +571,11 @@ public partial class MainWindow
 
         if (ThumbnailBorder != null)
         {
-            ThumbnailImage.Source = CompactThumbnail.Source;
-            ThumbnailImage.Visibility = Visibility.Visible;
+            ThumbnailImage.Source = _showingEmptyThumbnail ? null : CompactThumbnail.Source;
+            ThumbnailImage.Visibility = _showingEmptyThumbnail ? Visibility.Collapsed : Visibility.Visible;
             ThumbnailImage.Opacity = 1;
         }
-        AnimationThumbnailImage.Source = CompactThumbnail.Source;
+        AnimationThumbnailImage.Source = _showingEmptyThumbnail ? null : CompactThumbnail.Source;
         AnimationThumbnailBorder.Visibility = Visibility.Visible;
         AnimationThumbnailBorder.Opacity = 1;
         AnimationThumbnailBorder.CornerRadius = new CornerRadius(6);
@@ -872,7 +872,7 @@ public partial class MainWindow
             RenderProgressBar();
         }
 
-        if (_pendingFlipThumbnail != null)
+        if (!_showingEmptyThumbnail && _pendingFlipThumbnail != null)
         {
             var thumb = _pendingFlipThumbnail;
             _pendingFlipThumbnail = null;
