@@ -173,9 +173,9 @@ public partial class MainWindow
             {
                 if (isYouTube && !string.IsNullOrEmpty(info.YouTubeVideoId))
                 {
-                    // Only re-fetch if the resolved video ID has changed.
+                    // Re-fetch if the resolved video ID has changed, or if subtitles were not loaded and lyrics are inactive.
                     string targetKey = $"yt:{info.YouTubeVideoId}";
-                    if (targetKey != _lyricsTrackKey)
+                    if (targetKey != _lyricsTrackKey || (!_isLyricsActive && (_currentLyrics == null || _currentLyrics.Count == 0)))
                     {
                         FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
                     }

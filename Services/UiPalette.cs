@@ -4,7 +4,7 @@ namespace VNotch.Services;
 
 internal static class UiPalette
 {
-    public static readonly Color PrimaryColor = Color.FromRgb(0xB8, 0xB8, 0xB8);
+    public static readonly Color PrimaryColor = Color.FromRgb(0xC8, 0xC8, 0xC8);
     public static readonly SolidColorBrush PrimaryBrush = CreatePrimaryBrush();
 
     private static SolidColorBrush CreatePrimaryBrush()

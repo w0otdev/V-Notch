@@ -31,7 +31,7 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Ellipse Width="8" Height="8" Fill="#30D158" Margin="0,0,8,0"/>
                     <TextBlock x:Name="TitleText" Text="Installing Update"
-                               Foreground="#B8B8B8"
+                               Foreground="#C8C8C8"
                                FontSize="13.5"
                                FontWeight="SemiBold"/>
                 </StackPanel>

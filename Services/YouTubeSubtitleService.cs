@@ -230,60 +230,98 @@ internal sealed class YouTubeSubtitleService : IDisposable
         var tracks = await QueryInnertubePlayerAsync(videoId, _innertubeApiKey, token);
         if (tracks != null && tracks.Count > 0) return tracks;
 
-        // If first attempt returned nothing or failed, try refreshing API key from watch page
+        // If first attempt returned nothing or failed, refresh API key from watch page and re-query
         string? newKey = await RefreshApiKeyAsync(videoId, token);
-        if (!string.IsNullOrEmpty(newKey) && newKey != _innertubeApiKey)
+        if (!string.IsNullOrEmpty(newKey))
         {
             _innertubeApiKey = newKey;
-            tracks = await QueryInnertubePlayerAsync(videoId, _innertubeApiKey, token);
         }
 
+        tracks = await QueryInnertubePlayerAsync(videoId, _innertubeApiKey, token);
         return tracks;
     }
 
     private static async Task<List<YouTubeCaptionTrack>?> QueryInnertubePlayerAsync(string videoId, string apiKey, CancellationToken token)
     {
-        try
+        for (int attempt = 1; attempt <= 2; attempt++)
         {
-            string url = $"https://www.youtube.com/youtubei/v1/player?key={apiKey}";
-            string jsonBody = $"{{\"context\":{{\"client\":{{\"clientName\":\"ANDROID\",\"clientVersion\":\"20.10.38\"}}}},\"videoId\":\"{videoId}\"}}";
-
-            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            try
             {
-                Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
-            };
-            req.Headers.TryAddWithoutValidation("User-Agent", "com.google.android.youtube/20.10.38 (Linux; U; Android 14)");
+                string url = $"https://www.youtube.com/youtubei/v1/player?key={apiKey}";
+                string jsonBody = $"{{\"context\":{{\"client\":{{\"clientName\":\"ANDROID\",\"clientVersion\":\"20.10.38\"}}}},\"videoId\":\"{videoId}\"}}";
 
-            using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
-            if (!resp.IsSuccessStatusCode) return null;
+                using var req = new HttpRequestMessage(HttpMethod.Post, url)
+                {
+                    Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
+                };
+                req.Headers.TryAddWithoutValidation("User-Agent", "com.google.android.youtube/20.10.38 (Linux; U; Android 14)");
 
-            using var stream = await resp.Content.ReadAsStreamAsync(token);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+                using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    RuntimeLog.Warn(LogCategory, $"Innertube player returned {(int)resp.StatusCode} for {videoId} (attempt {attempt}/2)");
+                    if (attempt == 1 && !token.IsCancellationRequested)
+                    {
+                        await Task.Delay(250, token);
+                        continue;
+                    }
+                    return null;
+                }
 
-            if (!doc.RootElement.TryGetProperty("captions", out var captionsEl) ||
-                !captionsEl.TryGetProperty("playerCaptionsTracklistRenderer", out var tracklistEl) ||
-                !tracklistEl.TryGetProperty("captionTracks", out var tracksEl) ||
-                tracksEl.ValueKind != JsonValueKind.Array)
+                using var stream = await resp.Content.ReadAsStreamAsync(token);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+
+                if (!doc.RootElement.TryGetProperty("captions", out var captionsEl) ||
+                    !captionsEl.TryGetProperty("playerCaptionsTracklistRenderer", out var tracklistEl) ||
+                    !tracklistEl.TryGetProperty("captionTracks", out var tracksEl) ||
+                    tracksEl.ValueKind != JsonValueKind.Array)
+                {
+                    string status = "";
+                    string reason = "";
+                    if (doc.RootElement.TryGetProperty("playabilityStatus", out var playStatus))
+                    {
+                        if (playStatus.TryGetProperty("status", out var s)) status = s.GetString() ?? "";
+                        if (playStatus.TryGetProperty("reason", out var r)) reason = r.GetString() ?? "";
+                    }
+
+                    RuntimeLog.Warn(LogCategory, $"Innertube player response for {videoId} did not contain captions (status='{status}', reason='{reason}') (attempt {attempt}/2)");
+                    if (attempt == 1 && !token.IsCancellationRequested)
+                    {
+                        try { await Task.Delay(350, token); } catch { return null; }
+                        continue;
+                    }
+                    return null;
+                }
+
+                var list = new List<YouTubeCaptionTrack>();
+                foreach (var t in tracksEl.EnumerateArray())
+                {
+                    var track = ParseCaptionTrackFromJson(t);
+                    if (track != null)
+                    {
+                        list.Add(track);
+                    }
+                }
+
+                return list;
+            }
+            catch (OperationCanceledException)
             {
                 return null;
             }
-
-            var list = new List<YouTubeCaptionTrack>();
-            foreach (var t in tracksEl.EnumerateArray())
+            catch (Exception ex)
             {
-                var track = ParseCaptionTrackFromJson(t);
-                if (track != null)
+                RuntimeLog.Warn(LogCategory, $"Innertube player query error for {videoId} (attempt {attempt}/2): {ex.Message}");
+                if (attempt == 1 && !token.IsCancellationRequested)
                 {
-                    list.Add(track);
+                    try { await Task.Delay(250, token); } catch { return null; }
+                    continue;
                 }
+                return null;
             }
+        }
 
-            return list;
-        }
-        catch
-        {
-            return null;
-        }
+        return null;
     }
 
     private static YouTubeCaptionTrack? ParseCaptionTrackFromJson(JsonElement t)

@@ -1660,12 +1660,11 @@ public partial class MainWindow : Window
                 }
             }
             else if (_currentMediaInfo != null
-                     && _currentMediaInfo.Platform == MediaPlatform.YouTube
-                     && !string.IsNullOrEmpty(_currentMediaInfo.YouTubeVideoId)
+                     && IsCurrentTrackYouTube(_currentMediaInfo)
                      && !_isLyricsActive)
             {
                 _lyricsTrackKey = "";
-                FetchSubtitlesForTrack(_currentMediaInfo).SafeFireAndForget("SUBTITLES");
+                FetchSubtitlesForTrack(_currentMediaInfo, force: true).SafeFireAndForget("SUBTITLES");
             }
         }
 

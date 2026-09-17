@@ -66,4 +66,11 @@ public sealed class SettingsDiffingTests
         clone.LiquidGlass.BlurAmount = 0.9;
         Assert.False(settings.LiquidGlass.ValueEquals(clone.LiquidGlass));
     }
+
+    [Fact]
+    public void NotchSettings_Defaults_EnableYouTubeSubtitlesIsTrue()
+    {
+        var settings = new NotchSettings();
+        Assert.True(settings.EnableYouTubeSubtitles);
+    }
 }

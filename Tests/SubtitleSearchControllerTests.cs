@@ -132,6 +132,38 @@ public sealed class SubtitleSearchControllerTests
         Assert.Empty(events);
     }
 
+    [Fact]
+    public async Task FailedDownload_AllowsSubsequentRetrySearchToComplete()
+    {
+        var controller = new SubtitleSearchController();
+        var download1 = Pending<List<LyricLine>?>();
+        var download2 = Pending<List<LyricLine>?>();
+        var completedResults = new List<List<LyricLine>?>();
+
+        var firstSearch = controller.SearchAsync(
+            () => Task.FromResult("vid1"),
+            _ => download1.Task,
+            _ => { },
+            res => completedResults.Add(res));
+
+        download1.SetResult(null);
+        await firstSearch;
+        Assert.Single(completedResults);
+        Assert.Null(completedResults[0]);
+
+        var retrySearch = controller.SearchAsync(
+            () => Task.FromResult("vid1"),
+            _ => download2.Task,
+            _ => { },
+            res => completedResults.Add(res));
+
+        download2.SetResult(new() { new(TimeSpan.Zero, "Success") });
+        await retrySearch;
+        Assert.Equal(2, completedResults.Count);
+        Assert.NotNull(completedResults[1]);
+        Assert.Single(completedResults[1]!);
+    }
+
     private static TaskCompletionSource<T> Pending<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

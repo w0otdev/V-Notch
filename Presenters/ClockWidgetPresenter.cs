@@ -337,7 +337,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     private static DayOfWeek FirstDayOfWeek => Loc.GetCulture().DateTimeFormat.FirstDayOfWeek;
 
     private static readonly SolidColorBrush _clockViewAccent = CreateFrozenBrush(255, 69, 58);
-    private static readonly SolidColorBrush _clockViewWeekday = CreateFrozenBrush(235, 235, 240);
+    private static readonly SolidColorBrush _clockViewWeekday = VNotch.Services.UiPalette.PrimaryBrush;
 
     private static SolidColorBrush CreateFrozenBrush(byte r, byte g, byte b, byte a = 255)
     {

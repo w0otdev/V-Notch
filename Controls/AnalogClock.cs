@@ -8,8 +8,8 @@ namespace VNotch.Controls;
 
 public class AnalogClock : FrameworkElement
 {
-    private static readonly Brush HandBrush = CreateFrozenBrush(0xF5, 0xF5, 0xF7);
-    private static readonly Brush MajorTickBrush = CreateFrozenBrush(0xC8, 0xC8, 0xCC);
+    private static readonly Brush HandBrush = VNotch.Services.UiPalette.PrimaryBrush;
+    private static readonly Brush MajorTickBrush = VNotch.Services.UiPalette.PrimaryBrush;
     private static readonly Brush MinorTickBrush = CreateFrozenBrush(0x6E, 0x6E, 0x73);
     private static readonly Brush AccentBrush = CreateFrozenBrush(0xE0, 0x23, 0x1F);
     private static readonly Brush HubHoleBrush = CreateFrozenBrush(0x0A, 0x0A, 0x0A);

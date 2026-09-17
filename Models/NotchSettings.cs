@@ -99,7 +99,7 @@ public class NotchSettings
     [JsonConverter(typeof(VNotch.Services.DpapiJsonConverter))]
     public string SpotifySpDc { get; set; } = "";
 
-    public bool EnableYouTubeSubtitles { get; set; } = false;
+    public bool EnableYouTubeSubtitles { get; set; } = true;
     public bool IgnoreYouTubeAutoSubtitles { get; set; } = false;
 
     public bool IsShelfUploadLimitUnlocked { get; set; } = true;

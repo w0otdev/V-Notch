@@ -64,6 +64,8 @@ public partial class MainWindow
     private int _currentLyricIndex = -1;
     private string _lyricsTrackKey = "";
     private string _lyricsProvider = "";
+    private DateTime _lastSubtitleFetchFailureTime = DateTime.MinValue;
+    private int _subtitleFetchFailureCount;
     private Storyboard? _lyricsSearchShimmerStoryboard;
     private bool _isLyricsSearchVisible;
     private int _lyricsSearchTransitionVersion;
@@ -246,9 +248,27 @@ public partial class MainWindow
         }
 
         string trackKey = !string.IsNullOrEmpty(videoId) ? $"yt:{videoId}" : $"yt-lrc:{info.CurrentTrack}|{info.CurrentArtist}";
-        if (!force && trackKey == _lyricsTrackKey && (_currentLyrics != null && _currentLyrics.Count > 0 || _isLyricsSearchVisible || !_isLyricsActive))
+
+        if (trackKey != _lyricsTrackKey)
         {
-            return;
+            _subtitleFetchFailureCount = 0;
+            _lastSubtitleFetchFailureTime = DateTime.MinValue;
+        }
+        else if (!force)
+        {
+            if (_currentLyrics != null && _currentLyrics.Count > 0)
+            {
+                return;
+            }
+
+            if (!_isLyricsActive)
+            {
+                bool cooldownExpired = (DateTime.UtcNow - _lastSubtitleFetchFailureTime) > TimeSpan.FromSeconds(5);
+                if (!cooldownExpired || _subtitleFetchFailureCount >= 4)
+                {
+                    return;
+                }
+            }
         }
 
         _lyricsTrackKey = trackKey;
@@ -273,6 +293,18 @@ public partial class MainWindow
             subtitles =>
             {
                 if (trackKey != _lyricsTrackKey) return;
+
+                if (subtitles == null || subtitles.Count == 0)
+                {
+                    _lastSubtitleFetchFailureTime = DateTime.UtcNow;
+                    _subtitleFetchFailureCount++;
+                }
+                else
+                {
+                    _subtitleFetchFailureCount = 0;
+                    _lastSubtitleFetchFailureTime = DateTime.MinValue;
+                }
+
                 ApplySyncedLines(subtitles, info, provider: "YouTube");
             });
     }
@@ -313,6 +345,7 @@ public partial class MainWindow
             _currentLyricIndex = -1;
             _lyricsProvider = "";
             ResetSpotifyCanvas();
+            HideLyricsSearchState(immediate: true);
             if (_isLyricsActive)
                 HideLyricsWidget();
             return;
@@ -1196,13 +1229,34 @@ public partial class MainWindow
         });
     }
 
+    internal void CheckAndRetryYouTubeSubtitlesOnExpand()
+    {
+        if (!_settings.EnableYouTubeSubtitles || _settings.EnableLocalOnlyMode) return;
+        if (_currentMediaInfo == null || !IsCurrentTrackYouTube(_currentMediaInfo)) return;
+        if (_currentLyrics != null && _currentLyrics.Count > 0) return;
+
+        FetchSubtitlesForTrack(_currentMediaInfo, force: true).SafeFireAndForget("SUBTITLES-EXPAND-RETRY");
+    }
+
+    private static bool IsCurrentTrackYouTube(MediaInfo info)
+    {
+        return !string.IsNullOrEmpty(info.YouTubeVideoId)
+            || info.Platform == MediaPlatform.YouTube
+            || (info.CurrentArtist != null && info.CurrentArtist.Contains("YouTube", StringComparison.OrdinalIgnoreCase))
+            || MediaPlatformExtensions.ParsePlatform(info.CurrentArtist ?? "") == MediaPlatform.YouTube
+            || MediaPlatformExtensions.ParsePlatform(info.MediaSource ?? "") is MediaPlatform.YouTube or MediaPlatform.Browser;
+    }
+
     private void ClearLyrics()
     {
         _lyricsTrackKey = "";
+        _subtitleFetchFailureCount = 0;
+        _lastSubtitleFetchFailureTime = DateTime.MinValue;
         _syncedTextSource = SyncedTextSource.None;
         _lyricsService.Reset();
         _youtubeSubtitleService.Reset();
         ResetSpotifyCanvas();
+        HideLyricsSearchState(immediate: true);
         HideLyricsWidget();
     }
 }

@@ -867,6 +867,10 @@ public partial class MainWindow
             {
                 UpdateLyricsDisplay();
             }
+            else
+            {
+                CheckAndRetryYouTubeSubtitlesOnExpand();
+            }
 
             StartProgressCatchUpAnimation();
             RenderProgressBar();

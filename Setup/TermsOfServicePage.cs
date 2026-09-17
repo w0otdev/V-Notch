@@ -31,12 +31,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private static readonly FontFamily SFProText = SFProBold;
 
     private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
-    private static readonly SolidColorBrush BrushDimWhite = Freeze(new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)));
-    private static readonly SolidColorBrush BrushMuted = Freeze(new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)));
+    private static readonly SolidColorBrush BrushDimWhite = Freeze(new SolidColorBrush(Color.FromRgb(173, 173, 173)));
+    private static readonly SolidColorBrush BrushMuted = Freeze(new SolidColorBrush(Color.FromRgb(140, 149, 158)));
     private static readonly SolidColorBrush BrushGreen = Freeze(new SolidColorBrush(Color.FromArgb(255, 48, 209, 88)));
-    private static readonly SolidColorBrush BrushAmber = Freeze(new SolidColorBrush(Color.FromArgb(255, 255, 159, 10)));
-    private static readonly SolidColorBrush BrushContainerBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 18, 18, 22)));
-    private static readonly SolidColorBrush BrushContainerBorder = Freeze(new SolidColorBrush(Color.FromArgb(34, 255, 255, 255)));
+    private static readonly SolidColorBrush BrushContainerBg = Freeze(new SolidColorBrush(Color.FromRgb(8, 8, 8)));
+    private static readonly SolidColorBrush BrushContainerBorder = Freeze(new SolidColorBrush(Color.FromRgb(36, 36, 36)));
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 
@@ -59,8 +58,9 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         _headline = new TextBlock
         {
             Text = Loc.Get("setup.terms.headline"),
-            FontSize = 28,
-            FontWeight = FontWeights.Bold,
+            FontSize = 24,
+            LineHeight = 30,
+            FontWeight = FontWeights.SemiBold,
             Foreground = BrushWhite,
             FontFamily = SFProBold,
             Margin = new Thickness(0, 0, 0, 10),
@@ -74,7 +74,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.terms.description"),
             FontSize = 13.5,
-            FontWeight = FontWeights.Bold,
+            FontWeight = FontWeights.Normal,
             LineHeight = 20,
             Foreground = BrushDimWhite,
             FontFamily = SFProBold,
@@ -90,8 +90,8 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             Background = BrushContainerBg,
             BorderBrush = BrushContainerBorder,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(16, 14, 16, 14),
+            CornerRadius = new CornerRadius(18),
+            Padding = new Thickness(22, 18, 14, 18),
             ClipToBounds = true
         };
 
@@ -105,6 +105,8 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             Padding = new Thickness(0, 0, 8, 0)
         };
         _termsScrollViewer.ScrollChanged += TermsScrollViewer_ScrollChanged;
+        _termsScrollViewer.PanningMode = PanningMode.VerticalOnly;
+        System.Windows.Automation.AutomationProperties.SetName(_termsScrollViewer, Loc.Get("setup.terms.headline"));
 
         _termsContentPanel = new StackPanel
         {
@@ -129,10 +131,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         // Row 0 Col 0: Reading status
         _statusText = new TextBlock
         {
-            FontSize = 12.5,
-            FontWeight = FontWeights.Bold,
+            FontSize = 13,
+            FontWeight = FontWeights.Normal,
             FontFamily = SFProBold,
             VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 16, 0),
             TextWrapping = TextWrapping.Wrap
         };
         Grid.SetRow(_statusText, 0);
@@ -144,11 +147,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         {
             Content = Loc.Get("setup.terms.scrollToBottom"),
             FontSize = 12,
-            FontWeight = FontWeights.Bold,
+            FontWeight = FontWeights.Normal,
             FontFamily = SFProBold,
             Padding = new Thickness(12, 6, 12, 6),
             Cursor = Cursors.Hand,
-            Background = Freeze(new SolidColorBrush(Color.FromArgb(255, 30, 30, 36))),
+            Background = Freeze(new SolidColorBrush(Color.FromRgb(20, 20, 20))),
             Foreground = BrushWhite,
             BorderThickness = new Thickness(1),
             BorderBrush = Freeze(new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)))
@@ -167,6 +170,13 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         btnBorder.AppendChild(cp);
         btnTemplate.VisualTree = btnBorder;
+        var hover = new Trigger { Property = IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BackgroundProperty,
+            Freeze(new SolidColorBrush(Color.FromRgb(30, 30, 30))), "border"));
+        btnTemplate.Triggers.Add(hover);
+        var focus = new Trigger { Property = IsKeyboardFocusedProperty, Value = true };
+        focus.Setters.Add(new Setter(Border.BorderBrushProperty, BrushWhite, "border"));
+        btnTemplate.Triggers.Add(focus);
         _scrollToBottomButton.Template = btnTemplate;
 
         _scrollToBottomButton.Click += ScrollToBottomButton_Click;
@@ -179,13 +189,18 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         {
             Content = Loc.Get("setup.terms.checkbox"),
             FontSize = 13,
-            FontWeight = FontWeights.Bold,
+            FontWeight = FontWeights.Normal,
             FontFamily = SFProBold,
             Foreground = BrushWhite,
-            Margin = new Thickness(0, 10, 0, 0),
+            Margin = new Thickness(0, 16, 0, 0),
             IsEnabled = false,
             Cursor = Cursors.Hand
         };
+        var agreementText = new FrameworkElementFactory(typeof(TextBlock));
+        agreementText.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding());
+        agreementText.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+        agreementText.SetValue(TextBlock.LineHeightProperty, 20.0);
+        _agreeCheckBox.ContentTemplate = new DataTemplate { VisualTree = agreementText };
         _agreeCheckBox.Checked += AgreeCheckBox_CheckedChanged;
         _agreeCheckBox.Unchecked += AgreeCheckBox_CheckedChanged;
         Grid.SetRow(_agreeCheckBox, 1);
@@ -210,6 +225,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     public void RefreshLocalization()
     {
         _headline.Text = Loc.Get("setup.terms.headline");
+        System.Windows.Automation.AutomationProperties.SetName(_termsScrollViewer, _headline.Text);
         _description.Text = Loc.Get("setup.terms.description");
         _agreeCheckBox.Content = Loc.Get("setup.terms.checkbox");
         _scrollToBottomButton.Content = Loc.Get("setup.terms.scrollToBottom");
@@ -294,7 +310,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         else
         {
             _statusText.Text = "↓ " + Loc.Get("setup.terms.scrollHint");
-            _statusText.Foreground = BrushAmber;
+            _statusText.Foreground = BrushMuted;
             _scrollToBottomButton.Visibility = Visibility.Visible;
         }
     }
@@ -393,13 +409,13 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
 
             var tb = new TextBlock
             {
-                FontSize = 12.5,
-                FontWeight = FontWeights.Bold,
-                LineHeight = 19,
+                FontSize = 13,
+                FontWeight = FontWeights.Normal,
+                LineHeight = 22,
                 Foreground = BrushDimWhite,
                 FontFamily = SFProBold,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 8)
+                Margin = new Thickness(0, 0, 0, 12)
             };
             AddFormattedInlines(tb, fullText);
             _termsContentPanel.Children.Add(tb);
@@ -437,7 +453,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = line.Substring(2).Trim(),
                     FontSize = 18,
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.SemiBold,
                     Foreground = BrushWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap,
@@ -455,11 +471,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = line.Substring(3).Trim(),
                     FontSize = 15,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = BrushGreen,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = BrushWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 14, 0, 6)
+                    Margin = new Thickness(0, 24, 0, 8)
                 };
                 _termsContentPanel.Children.Add(h2);
                 continue;
@@ -473,11 +489,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = line.Substring(4).Trim(),
                     FontSize = 13.5,
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.SemiBold,
                     Foreground = BrushWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 10, 0, 4)
+                    Margin = new Thickness(0, 16, 0, 6)
                 };
                 _termsContentPanel.Children.Add(h3);
                 continue;
@@ -489,7 +505,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 FlushParagraph();
                 var bulletGrid = new Grid
                 {
-                    Margin = new Thickness(12, 1, 0, 4)
+                    Margin = new Thickness(0, 0, 0, 8)
                 };
                 bulletGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
                 bulletGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -498,9 +514,9 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = "•",
                     FontSize = 14,
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.Normal,
                     FontFamily = SFProBold,
-                    Foreground = BrushGreen,
+                    Foreground = BrushWhite,
                     VerticalAlignment = VerticalAlignment.Top,
                     Margin = new Thickness(0, -1, 0, 0)
                 };
@@ -509,9 +525,9 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
 
                 var itemText = new TextBlock
                 {
-                    FontSize = 12.5,
-                    FontWeight = FontWeights.Bold,
-                    LineHeight = 19,
+                    FontSize = 13,
+                    FontWeight = FontWeights.Normal,
+                    LineHeight = 22,
                     Foreground = BrushDimWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap
@@ -531,7 +547,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 FlushParagraph();
                 var numGrid = new Grid
                 {
-                    Margin = new Thickness(12, 1, 0, 4)
+                    Margin = new Thickness(0, 0, 0, 8)
                 };
                 numGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
                 numGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -539,8 +555,8 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 var num = new TextBlock
                 {
                     Text = numMatch.Groups[1].Value + ".",
-                    FontSize = 12.5,
-                    FontWeight = FontWeights.Bold,
+                    FontSize = 13,
+                    FontWeight = FontWeights.Normal,
                     FontFamily = SFProBold,
                     Foreground = BrushMuted,
                     VerticalAlignment = VerticalAlignment.Top
@@ -550,9 +566,9 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
 
                 var itemText = new TextBlock
                 {
-                    FontSize = 12.5,
-                    FontWeight = FontWeights.Bold,
-                    LineHeight = 19,
+                    FontSize = 13,
+                    FontWeight = FontWeights.Normal,
+                    LineHeight = 22,
                     Foreground = BrushDimWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap
@@ -567,6 +583,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
 
             // Regular paragraph line
             currentParagraph.Add(line);
+            if (rawLine.EndsWith("  ", StringComparison.Ordinal)) FlushParagraph();
         }
 
         FlushParagraph();
@@ -574,8 +591,8 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
 
     private static void AddFormattedInlines(TextBlock textBlock, string text)
     {
-        // Parse **bold** markers
-        var parts = Regex.Split(text, @"(\*\*.*?\*\*)");
+        // Keep emphasis and links readable without exposing Markdown syntax.
+        var parts = Regex.Split(text, @"(\*\*.*?\*\*|\[[^\]]+\]\([^)]+\)|`[^`]+`)");
         foreach (var part in parts)
         {
             if (string.IsNullOrEmpty(part)) continue;
@@ -585,7 +602,46 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 string boldText = part.Substring(2, part.Length - 4);
                 textBlock.Inlines.Add(new Run(boldText)
                 {
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = BrushWhite
+                });
+            }
+            else if (Regex.Match(part, @"^\[([^\]]+)\]\(([^)]+)\)$") is { Success: true } linkMatch)
+            {
+                string label = linkMatch.Groups[1].Value;
+                if (Uri.TryCreate(linkMatch.Groups[2].Value, UriKind.Absolute, out var uri) &&
+                    uri.Scheme == Uri.UriSchemeHttps)
+                {
+                    var link = new Hyperlink(new Run(label))
+                    {
+                        NavigateUri = uri,
+                        Foreground = BrushWhite,
+                        ToolTip = uri.AbsoluteUri
+                    };
+                    link.RequestNavigate += (_, e) =>
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri)
+                            {
+                                UseShellExecute = true
+                            });
+                        }
+                        catch (System.ComponentModel.Win32Exception) { }
+                        e.Handled = true;
+                    };
+                    textBlock.Inlines.Add(link);
+                }
+                else
+                {
+                    textBlock.Inlines.Add(new Run(label));
+                }
+            }
+            else if (part.StartsWith("`") && part.EndsWith("`") && part.Length > 2)
+            {
+                textBlock.Inlines.Add(new Run(part.Substring(1, part.Length - 2))
+                {
+                    FontFamily = new FontFamily("Consolas"),
                     Foreground = BrushWhite
                 });
             }
@@ -593,7 +649,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             {
                 textBlock.Inlines.Add(new Run(part)
                 {
-                    FontWeight = FontWeights.Bold
+                    FontWeight = FontWeights.Normal
                 });
             }
         }

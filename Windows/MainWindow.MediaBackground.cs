@@ -149,8 +149,8 @@ public partial class MainWindow
         MediaBackground.BeginAnimation(OpacityProperty, opacityAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, opacityAnim);
         EnsureUnfrozen(IndeterminateProgress.Background, c => IndeterminateProgress.Background = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
-        EnsureUnfrozen(CurrentTimeText.Foreground, c => CurrentTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(136, 136, 136)));
-        EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(136, 136, 136)));
+        EnsureUnfrozen(CurrentTimeText.Foreground, c => CurrentTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(173, 173, 173)));
+        EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(173, 173, 173)));
         EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
 
         var progressDarkColor = Color.FromArgb(
@@ -196,7 +196,7 @@ public partial class MainWindow
             visualizerBrush.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
         }
 
-        EnsureUnfrozen(VolumeIcon.Foreground, c => VolumeIcon.Foreground = new SolidColorBrush(c ?? Color.FromRgb(136, 136, 136)));
+        EnsureUnfrozen(VolumeIcon.Foreground, c => VolumeIcon.Foreground = new SolidColorBrush(c ?? Color.FromRgb(173, 173, 173)));
         ((SolidColorBrush)VolumeIcon.Foreground).BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
 
         var volStartAnim = new ColorAnimation
@@ -342,7 +342,7 @@ public partial class MainWindow
         };
         var defaultTextAnim = new ColorAnimation
         {
-            To = Color.FromRgb(136, 136, 136),
+            To = Color.FromRgb(173, 173, 173),
             Duration = TimeSpan.FromMilliseconds(400)
         };
 
@@ -942,7 +942,7 @@ public partial class MainWindow
 
         var artistWhiteAnim = new ColorAnimation
         {
-            To = Color.FromArgb(191, 255, 255, 255),
+            To = Color.FromRgb(173, 173, 173),
             Duration = TimeSpan.FromMilliseconds(400)
         };
         Timeline.SetDesiredFrameRate(whiteAnim, VNotch.Services.AnimationConfig.TargetFps);

@@ -84,4 +84,50 @@ public sealed class RuntimeLogTests
             }
         }
     }
+
+    [Fact]
+    public async Task InitializeNewSession_RotatesPreviousSessionToOldFile()
+    {
+        string logPath = Path.Combine(Path.GetTempPath(), $"vnotch-session-rotate-{Guid.NewGuid():N}.log");
+        string oldPath = logPath + ".old";
+        LogLevel previousMinimumLevel = RuntimeLog.MinimumLevel;
+
+        try
+        {
+            RuntimeLog.MinimumLevel = LogLevel.Info;
+            RuntimeLog.InitializeNewSession(logPath);
+            RuntimeLog.Info("SESSION-1", "This is session 1 data");
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(File.Exists(logPath));
+            string session1Content = await File.ReadAllTextAsync(logPath);
+            Assert.Contains("SESSION-1", session1Content);
+
+            // Start session 2
+            RuntimeLog.InitializeNewSession(logPath);
+            RuntimeLog.Info("SESSION-2", "This is session 2 data");
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(File.Exists(oldPath), "Previous session log was not rotated to .old");
+            string oldContent = await File.ReadAllTextAsync(oldPath);
+            Assert.Contains("SESSION-1", oldContent);
+
+            string currentContent = await File.ReadAllTextAsync(logPath);
+            Assert.Contains("SESSION-2", currentContent);
+            Assert.DoesNotContain("SESSION-1", currentContent);
+        }
+        finally
+        {
+            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            RuntimeLog.MinimumLevel = previousMinimumLevel;
+            try
+            {
+                if (File.Exists(logPath)) File.Delete(logPath);
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+            }
+            catch
+            {
+            }
+        }
+    }
 }

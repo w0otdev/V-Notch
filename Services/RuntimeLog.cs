@@ -69,7 +69,7 @@ public static class RuntimeLog
                     Directory.CreateDirectory(dir);
                 }
 
-                RotateIfNeeded();
+                RotateIfNeeded(forceSessionRotation: true);
 
                 File.WriteAllText(
                     _logPath,
@@ -236,13 +236,14 @@ public static class RuntimeLog
         }
     }
 
-    private static void RotateIfNeeded()
+    private static void RotateIfNeeded(bool forceSessionRotation = false)
     {
         try
         {
             if (!File.Exists(_logPath)) return;
             var info = new FileInfo(_logPath);
-            if (info.Length <= MaxLogSizeBytes) return;
+            if (!forceSessionRotation && info.Length <= MaxLogSizeBytes) return;
+            if (info.Length == 0) return;
 
             var backupPath = _logPath + ".old";
             if (File.Exists(backupPath))

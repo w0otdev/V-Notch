@@ -42,7 +42,7 @@
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="#2A2A2A"/>
-                    <Setter Property="Foreground" Value="#B8B8B8"/>
+                    <Setter Property="Foreground" Value="#C8C8C8"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -100,7 +100,7 @@
                 </Trigger>
                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="True">
                     <Setter Property="Background" Value="#1AFFFFFF"/>
-                    <Setter Property="Foreground" Value="#B8B8B8"/>
+                    <Setter Property="Foreground" Value="#C8C8C8"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -151,11 +151,11 @@
                                    Text="What's New"
                                    FontSize="16"
                                    FontWeight="SemiBold"
-                                   Foreground="#B8B8B8"/>
+                                   Foreground="#C8C8C8"/>
                         <TextBlock x:Name="SubtitleText"
                                    Text="Recent updates and changes"
                                    FontSize="11"
-                                   Foreground="#888888"
+                                   Foreground="#ADADAD"
                                    Margin="0,2,0,0"/>
                     </StackPanel>
 
@@ -219,7 +219,7 @@
                             <TextBlock x:Name="LoadingText"
                                        Text="Loading changelog..."
                                        FontSize="14"
-                                       Foreground="#888888"
+                                       Foreground="#ADADAD"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
                                        Margin="0,40,0,0"/>
@@ -234,7 +234,7 @@
                                 <TextBlock x:Name="ErrorText"
                                            Text="Failed to load changelog"
                                            FontSize="14"
-                                           Foreground="#888888"
+                                           Foreground="#ADADAD"
                                            TextAlignment="Center"
                                            TextWrapping="Wrap"
                                            HorizontalAlignment="Center"/>

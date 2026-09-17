@@ -28,7 +28,7 @@
 
         <!-- Text Defaults -->
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#B8B8B8"/>
+            <Setter Property="Foreground" Value="#C8C8C8"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
@@ -42,7 +42,7 @@
             <Setter Property="MinHeight" Value="44"/>
             <Setter Property="MinWidth" Value="100"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="#B8B8B8"/>
+            <Setter Property="Foreground" Value="#C8C8C8"/>
             <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,12"/>
@@ -139,7 +139,7 @@
         <!-- Native V-Notch Danger Confirm Button (Red filled) -->
         <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource DialogButton}">
             <Setter Property="Background" Value="#D9383A"/>
-            <Setter Property="Foreground" Value="#B8B8B8"/>
+            <Setter Property="Foreground" Value="#C8C8C8"/>
             <Setter Property="BorderBrush" Value="#D9383A"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -223,7 +223,7 @@
                              Margin="0,0,12,0">
                         <Path x:Name="DialogIconPath"
                               Data="M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z"
-                              Fill="#B8B8B8"/>
+                              Fill="#C8C8C8"/>
                     </Viewbox>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -231,7 +231,7 @@
                                    Text="Clear cache"
                                    FontSize="18"
                                    FontWeight="Bold"
-                                   Foreground="#B8B8B8"
+                                   Foreground="#C8C8C8"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
