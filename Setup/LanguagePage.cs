@@ -18,10 +18,10 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
 
     private class LanguageMetadata
     {
-        public string Flag     { get; set; } = "";
-        public string Name     { get; set; } = "";
+        public string Flag { get; set; } = "";
+        public string Name { get; set; } = "";
         public string NativeName { get; set; } = "";
-        public string Code     { get; set; } = "";
+        public string Code { get; set; } = "";
     }
 
     private static readonly List<LanguageMetadata> AvailableLanguages = new()
@@ -76,14 +76,14 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
     }
 
     // Palette
-    private static readonly SolidColorBrush BrushCardBg         = Freeze(new SolidColorBrush(Color.FromArgb(255, 20, 20, 24)));
-    private static readonly SolidColorBrush BrushCardBorder     = Freeze(new SolidColorBrush(Color.FromArgb(36, 255, 255, 255)));
-    private static readonly SolidColorBrush BrushSelectedBg     = Freeze(new SolidColorBrush(Color.FromArgb(255, 30, 30, 38)));
+    private static readonly SolidColorBrush BrushCardBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 20, 20, 24)));
+    private static readonly SolidColorBrush BrushCardBorder = Freeze(new SolidColorBrush(Color.FromArgb(36, 255, 255, 255)));
+    private static readonly SolidColorBrush BrushSelectedBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 30, 30, 38)));
     private static readonly SolidColorBrush BrushSelectedBorder = Freeze(new SolidColorBrush(Color.FromArgb(255, 255, 255, 255)));
-    private static readonly SolidColorBrush BrushHoverBg        = Freeze(new SolidColorBrush(Color.FromArgb(255, 26, 26, 32)));
-    private static readonly SolidColorBrush BrushWhite          = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
-    private static readonly SolidColorBrush BrushSubtle         = Freeze(new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)));
-    private static readonly SolidColorBrush BrushFlagBg         = Freeze(new SolidColorBrush(Color.FromArgb(255, 38, 38, 46)));
+    private static readonly SolidColorBrush BrushHoverBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 26, 26, 32)));
+    private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
+    private static readonly SolidColorBrush BrushSubtle = Freeze(new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)));
+    private static readonly SolidColorBrush BrushFlagBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 38, 38, 46)));
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
 
@@ -312,7 +312,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
 
     private static void UpdateCardVisual(Border card, bool isSelected, bool animate)
     {
-        var targetBg     = isSelected ? BrushSelectedBg     : BrushCardBg;
+        var targetBg = isSelected ? BrushSelectedBg : BrushCardBg;
         var targetBorder = isSelected ? BrushSelectedBorder : BrushCardBorder;
 
         if (animate)
@@ -356,7 +356,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
         }
         else
         {
-            card.Background  = targetBg;
+            card.Background = targetBg;
             card.BorderBrush = targetBorder;
         }
 
@@ -370,7 +370,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
                     if (animate)
                     {
                         var targetOpacity = isSelected ? 1.0 : 0.0;
-                        var targetScale   = isSelected ? 1.0 : 0.5;
+                        var targetScale = isSelected ? 1.0 : 0.5;
 
                         var fadeAnim = new DoubleAnimation(targetOpacity, TimeSpan.FromMilliseconds(180))
                         {
@@ -419,7 +419,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
 
     public void RefreshLocalization()
     {
-        _headline.Text    = VNotch.Services.Loc.Get("setup.language.headline");
+        _headline.Text = VNotch.Services.Loc.Get("setup.language.headline");
         _description.Text = VNotch.Services.Loc.Get("setup.language.description");
     }
 }
