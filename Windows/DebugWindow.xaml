@@ -36,11 +36,11 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ItemBorder" Property="Background" Value="#33333E"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="#B8B8B8"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="ItemBorder" Property="Background" Value="#1E88E5"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="#B8B8B8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -77,7 +77,7 @@
                                                 <ContentPresenter Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                                   VerticalAlignment="Center"
                                                                   HorizontalAlignment="Left"
-                                                                  TextElement.Foreground="#FFFFFF"
+                                                                  TextElement.Foreground="#B8B8B8"
                                                                   TextElement.FontSize="11"/>
                                                 <Path Data="M 0 0 L 3.5 4 L 7 0 Z"
                                                       Fill="#A0A0AA"
@@ -184,11 +184,11 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="BtnBorder" Property="Background" Value="#383842"/>
                                 <Setter TargetName="BtnBorder" Property="BorderBrush" Value="#1E88E5"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="#B8B8B8"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="BtnBorder" Property="Background" Value="#1E88E5"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="Foreground" Value="#B8B8B8"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -326,7 +326,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Border x:Name="HealthBadgeBorder" Background="#2E7D32" CornerRadius="2" Padding="4,1" VerticalAlignment="Center" Margin="0,0,6,0">
-                            <TextBlock x:Name="HealthBadgeText" Text="NOMINAL" Foreground="#FFFFFF" FontSize="9.5" FontWeight="Bold"/>
+                            <TextBlock x:Name="HealthBadgeText" Text="NOMINAL" Foreground="#B8B8B8" FontSize="9.5" FontWeight="Bold"/>
                         </Border>
                         <TextBlock x:Name="HealthSummaryText" Grid.Column="1" Text="Performance Nominal" Foreground="#E0E0E6" FontSize="11" FontWeight="SemiBold"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -401,7 +401,7 @@
                                         <ScaleTransform x:Name="VNotchCpuScale" ScaleX="0" ScaleY="1"/>
                                     </Border.RenderTransform>
                                 </Border>
-                                <TextBlock x:Name="VNotchCpuText" Text="0.0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="VNotchCpuText" Text="0.0%" Foreground="#B8B8B8" FontSize="10.5" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -422,7 +422,7 @@
                                         <ScaleTransform x:Name="VNotchRamScale" ScaleX="0" ScaleY="1"/>
                                     </Border.RenderTransform>
                                 </Border>
-                                <TextBlock x:Name="VNotchRamText" Text="0 MB" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="VNotchRamText" Text="0 MB" Foreground="#B8B8B8" FontSize="10.5" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -438,7 +438,7 @@
                         </Grid.ColumnDefinitions>
                         <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" Padding="5,0">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock x:Name="GcHeapText" Text="Heap 0 MB" Foreground="#FFFFFF" FontSize="10" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="GcHeapText" Text="Heap 0 MB" Foreground="#B8B8B8" FontSize="10" Margin="0,0,4,0"/>
                                 <TextBlock x:Name="AllocRateText" Text="(0 B/s)" Foreground="#A0A0AA" FontSize="9.5"/>
                             </StackPanel>
                         </Border>
@@ -459,7 +459,7 @@
                                         <ScaleTransform x:Name="VNotchGpuScale" ScaleX="0" ScaleY="1"/>
                                     </Border.RenderTransform>
                                 </Border>
-                                <TextBlock x:Name="VNotchGpuText" Text="0.0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="VNotchGpuText" Text="0.0%" Foreground="#B8B8B8" FontSize="10.5" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -494,7 +494,7 @@
                                         <ScaleTransform x:Name="GlobalCpuScale" ScaleX="0" ScaleY="1"/>
                                     </Border.RenderTransform>
                                 </Border>
-                                <TextBlock x:Name="GlobalCpuText" Text="0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="GlobalCpuText" Text="0%" Foreground="#B8B8B8" FontSize="10.5" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -515,7 +515,7 @@
                                         <ScaleTransform x:Name="GlobalRamScale" ScaleX="0" ScaleY="1"/>
                                     </Border.RenderTransform>
                                 </Border>
-                                <TextBlock x:Name="GlobalRamText" Text="0 GB (0%)" Foreground="#FFFFFF" FontSize="10" FontWeight="SemiBold"
+                                <TextBlock x:Name="GlobalRamText" Text="0 GB (0%)" Foreground="#B8B8B8" FontSize="10" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -536,7 +536,7 @@
                                         <ScaleTransform x:Name="GlobalGpuScale" ScaleX="0" ScaleY="1"/>
                                     </Border.RenderTransform>
                                 </Border>
-                                <TextBlock x:Name="GlobalGpuText" Text="0%" Foreground="#FFFFFF" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock x:Name="GlobalGpuText" Text="0%" Foreground="#B8B8B8" FontSize="10.5" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
@@ -553,9 +553,9 @@
                         <Border Background="#2B2B32" BorderBrush="#383842" BorderThickness="1" CornerRadius="3" Height="20" Padding="4,0">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="↓" Foreground="#64D2FF" FontSize="10.5" FontWeight="Bold" Margin="0,0,2,0"/>
-                                <TextBlock x:Name="NetDownText" Text="0 B/s" Foreground="#FFFFFF" FontSize="9.5" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="NetDownText" Text="0 B/s" Foreground="#B8B8B8" FontSize="9.5" Margin="0,0,6,0"/>
                                 <TextBlock Text="↑" Foreground="#FF9F0A" FontSize="10.5" FontWeight="Bold" Margin="0,0,2,0"/>
-                                <TextBlock x:Name="NetUpText" Text="0 B/s" Foreground="#FFFFFF" FontSize="9.5"/>
+                                <TextBlock x:Name="NetUpText" Text="0 B/s" Foreground="#B8B8B8" FontSize="9.5"/>
                             </StackPanel>
                         </Border>
                         <TextBlock Grid.Column="1" Text="Network I/O" Foreground="#D0D0D8" FontSize="10.5"

@@ -300,7 +300,7 @@
   "settings.restartBanner.title": "Redémarrage requis",
   "settings.search.noResults": "Aucun paramètre correspondant.",
   "settings.searchPlaceholder": "Rechercher des paramètres...",
-  "settings.searching": "RECHERCHE",
+  "settings.searching": "Mode de recherche",
   "settings.section.backup": "SAUVEGARDE ET TRANSFERT DES PARAMÈTRES",
   "settings.shelfUnlock": "Débloquer la limite de l'étagère",
   "settings.shelfUnlock.hint": "Supprime la limite recommandée de 30 fichiers dans la zone de fichiers.",

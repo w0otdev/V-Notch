@@ -69,13 +69,13 @@ public partial class MainWindow
         else if (battery.IsCharging)
         {
             fillBrush = _brushCharging;
-            percentBrush = _brushWhite;
+            percentBrush = VNotch.Services.UiPalette.PrimaryBrush;
             showLightning = true;
         }
         else
         {
             fillBrush = _brushWhite;
-            percentBrush = _brushWhite;
+            percentBrush = VNotch.Services.UiPalette.PrimaryBrush;
             showLightning = false;
         }
 

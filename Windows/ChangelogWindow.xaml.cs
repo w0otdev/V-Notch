@@ -227,7 +227,7 @@ public partial class ChangelogWindow : Window
             Text = Loc.Get("changelog.version", entry.Version),
             FontSize = 24,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush
         };
         headerStack.Children.Add(versionTitle);
 
@@ -376,7 +376,7 @@ public partial class ChangelogWindow : Window
         {
             FontSize = fontSize,
             FontWeight = weight,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             Margin = new Thickness(0, 12, 0, 8),
             TextWrapping = TextWrapping.Wrap
         };

@@ -880,7 +880,7 @@ public partial class SetupWindow : Window
             if (i == currentStep)
             {
                 steps[i].Foreground = new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromArgb(255, 255, 255, 255));
+                    System.Windows.Media.Color.FromRgb(220, 220, 220));
                 steps[i].FontWeight = FontWeights.Bold;
             }
             else if (i < currentStep)
@@ -1100,7 +1100,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.intro.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12),
             TextWrapping = TextWrapping.Wrap
@@ -1180,7 +1180,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             Text = title,
             FontSize = 13,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 7)
         };
@@ -1232,7 +1232,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.directory.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
@@ -1284,7 +1284,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             FontWeight = FontWeights.Bold,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Background = System.Windows.Media.Brushes.Transparent,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             BorderThickness = new Thickness(0),
             VerticalContentAlignment = VerticalAlignment.Center,
             Padding = new Thickness(0)
@@ -1301,7 +1301,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             FontWeight = FontWeights.Bold,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 10, 122, 255)),
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             BorderThickness = new Thickness(0),
             Cursor = Cursors.Hand
         };
@@ -1408,7 +1408,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.startup.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
@@ -1433,7 +1433,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             IsChecked = startWithWindows,
             FontSize = 14,
             FontWeight = FontWeights.Bold,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
         };
         Grid.SetRow(_checkbox, 2);
@@ -1478,7 +1478,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.cancel.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
@@ -1526,7 +1526,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.cancel.warningTitle"),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 6),
             TextWrapping = TextWrapping.Wrap
@@ -1576,7 +1576,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.install.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
@@ -1753,7 +1753,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             Text = Loc.Get("setup.finish.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
             Margin = new Thickness(0, 0, 0, 12)
         };
@@ -1780,7 +1780,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             IsChecked = launchAfterInstall,
             FontSize = 14,
             FontWeight = FontWeights.Bold,
-            Foreground = System.Windows.Media.Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
         };
         Grid.SetRow(_checkbox, 3);

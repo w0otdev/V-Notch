@@ -40,7 +40,7 @@ public sealed class MorphingSettingsTitle : MorphingSettingsIcon
             "pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"),
             FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
         var text = new FormattedText(Text, Loc.GetCulture(), FlowDirection,
-            typeface, 28, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            typeface, 28, VNotch.Services.UiPalette.PrimaryBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
         {
             MaxTextWidth = Math.Max(1, ActualWidth),
             MaxLineCount = 1,

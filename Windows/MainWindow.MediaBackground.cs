@@ -148,10 +148,10 @@ public partial class MainWindow
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
         MediaBackground.BeginAnimation(OpacityProperty, opacityAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, opacityAnim);
-        EnsureUnfrozen(IndeterminateProgress.Background, c => IndeterminateProgress.Background = new SolidColorBrush(c ?? Colors.White));
+        EnsureUnfrozen(IndeterminateProgress.Background, c => IndeterminateProgress.Background = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
         EnsureUnfrozen(CurrentTimeText.Foreground, c => CurrentTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(136, 136, 136)));
         EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(136, 136, 136)));
-        EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? Colors.White));
+        EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
 
         var progressDarkColor = Color.FromArgb(
             vibrantTargetColor.A,
@@ -239,7 +239,7 @@ public partial class MainWindow
         void EnsureUnfrozenFill(System.Windows.Shapes.Shape shape)
         {
             var brush = shape.Fill as SolidColorBrush;
-            if (brush == null || brush.IsFrozen) shape.Fill = new SolidColorBrush(brush?.Color ?? Colors.White);
+            if (brush == null || brush.IsFrozen) shape.Fill = new SolidColorBrush(brush?.Color ?? VNotch.Services.UiPalette.PrimaryColor);
             ((SolidColorBrush)shape.Fill).BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
         }
 
@@ -337,7 +337,7 @@ public partial class MainWindow
 
         var defaultColorAnim = new ColorAnimation
         {
-            To = Colors.White,
+            To = VNotch.Services.UiPalette.PrimaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
         var defaultTextAnim = new ColorAnimation
@@ -359,7 +359,9 @@ public partial class MainWindow
         if (IndeterminateProgress.Background is SolidColorBrush ipb && !ipb.IsFrozen) ipb.BeginAnimation(SolidColorBrush.ColorProperty, defaultColorAnim);
         if (CurrentTimeText.Foreground is SolidColorBrush st && !st.IsFrozen) st.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
         if (RemainingTimeText.Foreground is SolidColorBrush rt && !rt.IsFrozen) rt.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
-        if (CompactTitleMarquee.Foreground is SolidColorBrush cmt && !cmt.IsFrozen) cmt.BeginAnimation(SolidColorBrush.ColorProperty, defaultColorAnim);
+        var defaultTitleAnim = defaultColorAnim.Clone();
+        defaultTitleAnim.To = VNotch.Services.UiPalette.PrimaryColor;
+        if (CompactTitleMarquee.Foreground is SolidColorBrush cmt && !cmt.IsFrozen) cmt.BeginAnimation(SolidColorBrush.ColorProperty, defaultTitleAnim);
 
         ResetTitleGradientToWhite();
 
@@ -853,7 +855,7 @@ public partial class MainWindow
         }
         else
         {
-            var newBrush = new SolidColorBrush(tb.Foreground is SolidColorBrush sb ? sb.Color : Colors.White);
+            var newBrush = new SolidColorBrush(tb.Foreground is SolidColorBrush sb ? sb.Color : VNotch.Services.UiPalette.PrimaryColor);
             tb.Foreground = newBrush;
             newBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
         }
@@ -867,7 +869,7 @@ public partial class MainWindow
         }
         else
         {
-            var newBrush = new SolidColorBrush(path.Fill is SolidColorBrush sb ? sb.Color : Colors.White);
+            var newBrush = new SolidColorBrush(path.Fill is SolidColorBrush sb ? sb.Color : VNotch.Services.UiPalette.PrimaryColor);
             path.Fill = newBrush;
             newBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
         }
@@ -882,7 +884,7 @@ public partial class MainWindow
         }
         else if (path.Stroke != null)
         {
-            var newBrush = new SolidColorBrush(path.Stroke is SolidColorBrush sb ? sb.Color : Colors.White);
+            var newBrush = new SolidColorBrush(path.Stroke is SolidColorBrush sb ? sb.Color : VNotch.Services.UiPalette.PrimaryColor);
             path.Stroke = newBrush;
             newBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
         }
@@ -934,7 +936,7 @@ public partial class MainWindow
 
         var whiteAnim = new ColorAnimation
         {
-            To = Colors.White,
+            To = VNotch.Services.UiPalette.PrimaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
 

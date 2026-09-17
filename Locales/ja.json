@@ -300,7 +300,7 @@
   "settings.restartBanner.title": "再起動が必要です",
   "settings.search.noResults": "一致する設定が見つかりません。",
   "settings.searchPlaceholder": "設定を検索...",
-  "settings.searching": "検索中",
+  "settings.searching": "検索モード",
   "settings.section.backup": "設定のバックアップと転送",
   "settings.shelfUnlock": "シェルフのアップロード制限を解除",
   "settings.shelfUnlock.hint": "ファイルシェルフの 30 ファイル制限を解除します。",

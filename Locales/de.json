@@ -300,7 +300,7 @@
   "settings.restartBanner.title": "Neustart erforderlich",
   "settings.search.noResults": "Keine passenden Einstellungen gefunden.",
   "settings.searchPlaceholder": "Einstellungen durchsuchen...",
-  "settings.searching": "SUCHE",
+  "settings.searching": "Suchmodus",
   "settings.section.backup": "EINSTELLUNGEN SICHERN & ÜBERTRAGEN",
   "settings.shelfUnlock": "Ablagen-Limit aufheben",
   "settings.shelfUnlock.hint": "Hebt die Sicherheitsgrenze von 30 Dateien in der Ablage auf.",

@@ -33,7 +33,7 @@
         </LinearGradientBrush>
 
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="#B8B8B8"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
@@ -46,7 +46,7 @@
             <Setter Property="Height" Value="46"/>
             <Setter Property="MinWidth" Value="84"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="#F7FAFD"/>
+            <Setter Property="Foreground" Value="#B8B8B8"/>
             <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="18,0"/>
@@ -142,7 +142,7 @@
                         MinWidth="0"
                         BorderThickness="0"
                         Background="#121212"
-                        Foreground="#F3F7FB"
+                        Foreground="#B8B8B8"
                         FontFamily="{StaticResource IconFont}"
                         FontSize="11"
                         Content="&#xE711;"

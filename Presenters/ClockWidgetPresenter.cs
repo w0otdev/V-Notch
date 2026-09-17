@@ -514,7 +514,7 @@ public sealed class ClockWidgetPresenter : IDisposable
         var typeface = new Typeface(family, FontStyles.Normal, weight, FontStretches.Normal);
         double ppd = VisualTreeHelper.GetDpi(_refs.Window).PixelsPerDip;
         var ft = new FormattedText(text, Loc.GetCulture(), FlowDirection.LeftToRight,
-            typeface, fontSize, Brushes.White, ppd);
+            typeface, fontSize, VNotch.Services.UiPalette.PrimaryBrush, ppd);
         return ft.Width;
     }
 

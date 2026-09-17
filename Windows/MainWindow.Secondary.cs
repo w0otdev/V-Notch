@@ -330,7 +330,7 @@ public partial class MainWindow
         ShelfPlaceholderPanel.Visibility = shelfEmpty ? Visibility.Visible : Visibility.Collapsed;
 
         ShelfCountText.Text = _fileShelf.GetCountDisplayText();
-        ShelfCountText.Foreground = _fileShelf.IsCountWarning ? _brushShelfStatusWarning : Brushes.White;
+        ShelfCountText.Foreground = _fileShelf.IsCountWarning ? _brushShelfStatusWarning : VNotch.Services.UiPalette.PrimaryBrush;
         ShelfCountBadge.Visibility = _isSecondaryView && ShelfUnlockBanner.Visibility != Visibility.Visible
             ? Visibility.Visible
             : Visibility.Collapsed;

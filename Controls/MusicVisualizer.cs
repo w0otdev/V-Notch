@@ -620,13 +620,38 @@ namespace VNotch.Controls
         {
             if (!ShouldCaptureAudio) return;
             AcquireCaptureLease();
-            if (_capture != null) return;
 
             var now = DateTime.UtcNow;
             if (!force && (now - _lastCaptureRetryUtc).TotalMilliseconds < CaptureRetryIntervalMs) return;
 
             _lastCaptureRetryUtc = now;
+            if (AudioCaptureNeedsRestart(now)) StopAudioCapture();
             StartAudioCapture();
+        }
+
+        private static bool AudioCaptureNeedsRestart(DateTime now)
+        {
+            lock (_lockObj)
+            {
+                if (_capture == null) return false;
+                try
+                {
+                    using var expected = ResolveLoopbackDevice(_audioDeviceId);
+                    if (expected == null || expected.ID != _captureDevice?.ID ||
+                        _captureDevice.State != DeviceState.Active) return true;
+                    long lastFrame;
+                    lock (_outputLock) lastFrame = _publishedFrameTicks;
+                    // A stopped endpoint does not always raise RecordingStopped.
+                    // Allow silence, but periodically recover a stream delivering no packets.
+                    var lastActivity = lastFrame > 0 ? new DateTime(lastFrame, DateTimeKind.Utc) : _captureStartedUtc;
+                    return (now - lastActivity).TotalSeconds >= 8;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("Visualizer endpoint unavailable: " + ex.Message);
+                    return true;
+                }
+            }
         }
 
 #pragma warning disable S2696 // Multi-instance visualizers coordinate a single shared loopback audio capture lease
@@ -820,6 +845,8 @@ namespace VNotch.Controls
         #region Audio Loopback Capture
 
         private static WasapiLoopbackCapture? _capture;
+        private static MMDevice? _captureDevice;
+        private static DateTime _captureStartedUtc;
         private static readonly object _lockObj = new object();
         private static int _captureLeaseCount;
         private static string _audioDeviceId = string.Empty;
@@ -931,10 +958,11 @@ namespace VNotch.Controls
 
                 try
                 {
-                    var device = ResolveLoopbackDevice(_audioDeviceId);
-                    _capture = device != null
-                        ? new WasapiLoopbackCapture(device)
-                        : new WasapiLoopbackCapture();
+                    _captureDevice = ResolveLoopbackDevice(_audioDeviceId);
+                    if (_captureDevice == null) return;
+                    ResetAudioState();
+                    _capture = new WasapiLoopbackCapture(_captureDevice);
+                    _captureStartedUtc = DateTime.UtcNow;
                     _sampleRate = _capture.WaveFormat.SampleRate;
                     _rmsWindowSamples = Math.Max(64, (int)(_sampleRate * RmsWindowSeconds));
                     _capture.DataAvailable += OnAudioDataAvailable;
@@ -944,22 +972,38 @@ namespace VNotch.Controls
                 catch (Exception ex)
                 {
                     Debug.WriteLine("Failed to initialize audio capture: " + ex.Message);
+                    if (_capture != null)
+                    {
+                        _capture.DataAvailable -= OnAudioDataAvailable;
+                        _capture.RecordingStopped -= OnCaptureStopped;
+                        _capture.Dispose();
+                    }
                     _capture = null;
+                    _captureDevice?.Dispose();
+                    _captureDevice = null;
                 }
             }
         }
 
         private static MMDevice? ResolveLoopbackDevice(string deviceId)
         {
-            if (string.IsNullOrWhiteSpace(deviceId))
-            {
-                return null;
-            }
-
             try
             {
                 using var enumerator = new MMDeviceEnumerator();
-                return enumerator.GetDevice(deviceId);
+                if (!string.IsNullOrWhiteSpace(deviceId))
+                {
+                    try
+                    {
+                        var selected = enumerator.GetDevice(deviceId);
+                        if (selected.State == DeviceState.Active) return selected;
+                        selected.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine("Selected audio device disconnected: " + ex.Message);
+                    }
+                }
+                return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             }
             catch (Exception ex)
             {
@@ -971,11 +1015,14 @@ namespace VNotch.Controls
         private static void StopAudioCapture()
         {
             WasapiLoopbackCapture? captureToDispose = null;
+            MMDevice? deviceToDispose;
             lock (_lockObj)
             {
                 if (_capture == null) return;
                 captureToDispose = _capture;
                 _capture = null;
+                deviceToDispose = _captureDevice;
+                _captureDevice = null;
                 ResetAudioState();
             }
 
@@ -991,23 +1038,36 @@ namespace VNotch.Controls
             }
             finally
             {
-                captureToDispose.Dispose();
+                try { captureToDispose.Dispose(); }
+                finally { deviceToDispose?.Dispose(); }
             }
         }
 
         private static void OnCaptureStopped(object? sender, StoppedEventArgs e)
         {
+            WasapiLoopbackCapture? stopped = null;
+            MMDevice? device = null;
             lock (_lockObj)
             {
                 if (sender != null && ReferenceEquals(_capture, sender))
                 {
                     _capture.DataAvailable -= OnAudioDataAvailable;
                     _capture.RecordingStopped -= OnCaptureStopped;
-                    _capture.Dispose();
+                    stopped = _capture;
+                    device = _captureDevice;
+                    _captureDevice = null;
                     _capture = null;
                     ResetAudioState();
                 }
             }
+            // Dispose after the capture callback returns, outside the shared lock.
+            if (stopped != null)
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    try { stopped.Dispose(); }
+                    catch (Exception ex) { Debug.WriteLine(ex.Message); }
+                    finally { device?.Dispose(); }
+                });
         }
 
         private static void ResetAudioState()
@@ -1046,41 +1106,44 @@ namespace VNotch.Controls
 
         private static void OnAudioDataAvailable(object? sender, WaveInEventArgs e)
         {
-            var capture = _capture;
-            if (capture == null) return;
-
-            var waveFormat = capture.WaveFormat;
-            int bytesPerSample = waveFormat.BitsPerSample / 8;
-            if (bytesPerSample <= 0)
+            lock (_lockObj)
             {
-                bytesPerSample = waveFormat.Encoding is WaveFormatEncoding.IeeeFloat or WaveFormatEncoding.Extensible
-                    ? 4
-                    : 2;
-            }
-            int channels = Math.Max(1, waveFormat.Channels);
-            int bytesPerFrame = bytesPerSample * channels;
-            if (bytesPerFrame <= 0) return;
+                var capture = _capture;
+                if (capture == null || !ReferenceEquals(sender, capture)) return;
 
-            int framesRecorded = e.BytesRecorded / bytesPerFrame;
-            if (framesRecorded <= 0) return;
-
-            for (int frame = 0; frame < framesRecorded; frame++)
-            {
-                int frameOffset = frame * bytesPerFrame;
-                double mixed = 0;
-
-                for (int ch = 0; ch < channels; ch++)
+                var waveFormat = capture.WaveFormat;
+                int bytesPerSample = waveFormat.BitsPerSample / 8;
+                if (bytesPerSample <= 0)
                 {
-                    int sampleOffset = frameOffset + (ch * bytesPerSample);
-                    mixed += ReadSampleAsFloat(e.Buffer, sampleOffset, waveFormat);
+                    bytesPerSample = waveFormat.Encoding is WaveFormatEncoding.IeeeFloat or WaveFormatEncoding.Extensible
+                        ? 4
+                        : 2;
+                }
+                int channels = Math.Max(1, waveFormat.Channels);
+                int bytesPerFrame = bytesPerSample * channels;
+                if (bytesPerFrame <= 0) return;
+
+                int framesRecorded = e.BytesRecorded / bytesPerFrame;
+                if (framesRecorded <= 0) return;
+
+                for (int frame = 0; frame < framesRecorded; frame++)
+                {
+                    int frameOffset = frame * bytesPerFrame;
+                    double mixed = 0;
+
+                    for (int ch = 0; ch < channels; ch++)
+                    {
+                        int sampleOffset = frameOffset + (ch * bytesPerSample);
+                        mixed += ReadSampleAsFloat(e.Buffer, sampleOffset, waveFormat);
+                    }
+
+                    PushSample((float)(mixed / channels));
                 }
 
-                PushSample((float)(mixed / channels));
-            }
-
-            lock (_outputLock)
-            {
-                _publishedFrameTicks = DateTime.UtcNow.Ticks;
+                lock (_outputLock)
+                {
+                    _publishedFrameTicks = DateTime.UtcNow.Ticks;
+                }
             }
         }
 

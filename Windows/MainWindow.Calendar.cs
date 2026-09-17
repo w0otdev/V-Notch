@@ -35,7 +35,7 @@ public partial class MainWindow
             SmallTextStyle = (Style)FindResource("SmallText"),
             TitleTextStyle = (Style)FindResource("TitleText"),
             BrushBlack = _brushBlack,
-            BrushWhite = _brushWhite,
+            BrushWhite = VNotch.Services.UiPalette.PrimaryBrush,
             BrushTransparent = _brushTransparent,
             SettingsProvider = () => _settings,
             IsNonCalendarWidgetMode = () => IsNonCalendarWidgetMode,

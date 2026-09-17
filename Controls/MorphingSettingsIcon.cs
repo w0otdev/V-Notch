@@ -151,7 +151,7 @@ public class MorphingSettingsIcon : FrameworkElement
         }
         drawingContext.PushTransform(IsTextGeometry ? Transform.Identity :
             new ScaleTransform(ActualWidth / 56, ActualHeight / 56));
-        drawingContext.DrawGeometry(Brushes.White, null, _display);
+        drawingContext.DrawGeometry(VNotch.Services.UiPalette.PrimaryBrush, null, _display);
         drawingContext.Pop();
     }
 }

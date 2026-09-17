@@ -30,7 +30,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private static readonly FontFamily SFProBold = new("pack://application:,,,/Fonts/#SF Pro Display, SF Pro Display, Nirmala UI, Segoe UI Variable Display, Segoe UI, Inter, Roboto, Sans-serif");
     private static readonly FontFamily SFProText = SFProBold;
 
-    private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(Colors.White));
+    private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
     private static readonly SolidColorBrush BrushDimWhite = Freeze(new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)));
     private static readonly SolidColorBrush BrushMuted = Freeze(new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)));
     private static readonly SolidColorBrush BrushGreen = Freeze(new SolidColorBrush(Color.FromArgb(255, 48, 209, 88)));

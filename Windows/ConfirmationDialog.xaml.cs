@@ -139,7 +139,7 @@ public partial class ConfirmationDialog : Window
         switch (icon)
         {
             case DialogIcon.Warning:
-                DialogIconPath.Fill = Brushes.White;
+                DialogIconPath.Fill = VNotch.Services.UiPalette.PrimaryBrush;
                 DialogIconPath.Stroke = null;
                 DialogIconPath.StrokeThickness = 0;
                 DialogIconPath.Data = Geometry.Parse(WarningFilledPathData);
@@ -147,7 +147,7 @@ public partial class ConfirmationDialog : Window
 
             case DialogIcon.Trash:
             case DialogIcon.Question:
-                DialogIconPath.Fill = Brushes.White;
+                DialogIconPath.Fill = VNotch.Services.UiPalette.PrimaryBrush;
                 DialogIconPath.Stroke = null;
                 DialogIconPath.StrokeThickness = 0;
                 DialogIconPath.Data = Geometry.Parse(TrashIconPathData);
@@ -165,7 +165,7 @@ public partial class ConfirmationDialog : Window
 
             default:
                 DialogIconPath.Fill = null;
-                DialogIconPath.Stroke = Brushes.White;
+                DialogIconPath.Stroke = VNotch.Services.UiPalette.PrimaryBrush;
                 DialogIconPath.StrokeThickness = 2;
                 DialogIconPath.StrokeStartLineCap = PenLineCap.Round;
                 DialogIconPath.StrokeEndLineCap = PenLineCap.Round;

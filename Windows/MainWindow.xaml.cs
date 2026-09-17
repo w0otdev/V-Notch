@@ -196,7 +196,7 @@ public partial class MainWindow : Window
 
     private static readonly SolidColorBrush _brushCharging = CreateFrozenBrush(48, 209, 88);
     private static readonly SolidColorBrush _brushLowBattery = CreateFrozenBrush(255, 59, 48);
-    private static readonly SolidColorBrush _brushWhite = CreateFrozenBrush(255, 255, 255);
+    private static readonly SolidColorBrush _brushWhite = VNotch.Services.UiPalette.PrimaryBrush;
     private static readonly SolidColorBrush _brushBlack = CreateFrozenBrush(0, 0, 0);
     private static readonly SolidColorBrush _brushTransparent = CreateFrozenBrush(0, 0, 0, 0);
 

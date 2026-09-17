@@ -300,7 +300,7 @@
   "settings.restartBanner.title": "Restart required",
   "settings.search.noResults": "No matching settings.",
   "settings.searchPlaceholder": "Search settings...",
-  "settings.searching": "SEARCHING",
+  "settings.searching": "Search mode",
   "settings.section.backup": "SETTINGS BACKUP & TRANSFER",
   "settings.shelfUnlock": "Unlock shelf upload limit",
   "settings.shelfUnlock.hint": "Remove the 30-file safety limit on the file shelf.",

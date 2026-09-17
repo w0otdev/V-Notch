@@ -1119,7 +1119,7 @@ public partial class MainWindow
         }
         else
         {
-            TrackTitle.Foreground = Brushes.White;
+            TrackTitle.Foreground = VNotch.Services.UiPalette.PrimaryBrush;
         }
     }
 

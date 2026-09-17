@@ -42,7 +42,7 @@
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="#2A2A2A"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Foreground" Value="#B8B8B8"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -100,7 +100,7 @@
                 </Trigger>
                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="True">
                     <Setter Property="Background" Value="#1AFFFFFF"/>
-                    <Setter Property="Foreground" Value="White"/>
+                    <Setter Property="Foreground" Value="#B8B8B8"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -151,7 +151,7 @@
                                    Text="What's New"
                                    FontSize="16"
                                    FontWeight="SemiBold"
-                                   Foreground="White"/>
+                                   Foreground="#B8B8B8"/>
                         <TextBlock x:Name="SubtitleText"
                                    Text="Recent updates and changes"
                                    FontSize="11"

@@ -68,7 +68,7 @@ public partial class SettingsWindow
             case TextBlock glyph:
                 var text = new FormattedText(glyph.Text, CultureInfo.CurrentUICulture,
                     glyph.FlowDirection, new Typeface(glyph.FontFamily, glyph.FontStyle,
-                        glyph.FontWeight, glyph.FontStretch), 48, Brushes.White,
+                        glyph.FontWeight, glyph.FontStretch), 48, VNotch.Services.UiPalette.PrimaryBrush,
                     VisualTreeHelper.GetDpi(glyph).PixelsPerDip);
                 geometry.Children.Add(text.BuildGeometry(new Point()));
                 break;

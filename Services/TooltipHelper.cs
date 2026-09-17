@@ -65,7 +65,7 @@ public static class TooltipHelper
             new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(240, 30, 30, 30))));
 
         style.Setters.Add(new Setter(ToolTip.ForegroundProperty,
-            System.Windows.Media.Brushes.White));
+            VNotch.Services.UiPalette.PrimaryBrush));
 
         style.Setters.Add(new Setter(ToolTip.BorderBrushProperty,
             new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(100, 255, 255, 255))));

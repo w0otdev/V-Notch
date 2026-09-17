@@ -736,7 +736,7 @@ public partial class MainWindow
         titlePanel.Children.Add(new TextBlock
         {
             Text = title,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontSize = 15,
             FontWeight = FontWeights.Bold,
             FontFamily = AudioFont,
@@ -770,7 +770,7 @@ public partial class MainWindow
         Text = text,
         // White on the liquid glass skin (the grey header reads poorly over the
         // live refracted backdrop); default grey otherwise.
-        Foreground = IsLiquidGlassEnabled ? Brushes.White : AudioHeaderText,
+        Foreground = IsLiquidGlassEnabled ? VNotch.Services.UiPalette.PrimaryBrush : AudioHeaderText,
         FontSize = 12,
         FontWeight = FontWeights.Bold,
         FontFamily = AudioFont,
@@ -796,7 +796,7 @@ public partial class MainWindow
                 Height = 16,
                 Margin = new Thickness(0, 0, 10, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = new System.Windows.Shapes.Path { Data = iconGeometry, Fill = Brushes.White, Stretch = Stretch.Uniform }
+                Child = new System.Windows.Shapes.Path { Data = iconGeometry, Fill = VNotch.Services.UiPalette.PrimaryBrush, Stretch = Stretch.Uniform }
             });
         }
         else
@@ -806,7 +806,7 @@ public partial class MainWindow
                 Text = glyph,
                 FontFamily = SegoeSymbolFont,
                 FontSize = 16,
-                Foreground = Brushes.White,
+                Foreground = VNotch.Services.UiPalette.PrimaryBrush,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 10, 0)
             });
@@ -814,7 +814,7 @@ public partial class MainWindow
         namePanel.Children.Add(new TextBlock
         {
             Text = label,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontSize = 13.5,
             FontWeight = FontWeights.Bold,
             FontFamily = AudioFont,
@@ -853,7 +853,7 @@ public partial class MainWindow
                     Text = "\uE71D",
                     FontFamily = SegoeSymbolFont,
                     FontSize = 15,
-                    Foreground = Brushes.White,
+                    Foreground = VNotch.Services.UiPalette.PrimaryBrush,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center
                 }
@@ -863,7 +863,7 @@ public partial class MainWindow
         var nameLabel = new TextBlock
         {
             Text = session.DisplayName,
-            Foreground = Brushes.White,
+            Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontSize = 13.5,
             FontWeight = FontWeights.Bold,
             FontFamily = AudioFont,
@@ -891,7 +891,7 @@ public partial class MainWindow
         {
             // White on the liquid glass skin so the percentages stay legible over
             // the refracted backdrop; muted grey on the default skin.
-            Foreground = IsLiquidGlassEnabled ? Brushes.White : AudioMuted,
+            Foreground = IsLiquidGlassEnabled ? VNotch.Services.UiPalette.PrimaryBrush : AudioMuted,
             FontSize = 12.5,
             FontWeight = FontWeights.Bold,
             FontFamily = AudioFont,
@@ -968,7 +968,7 @@ public partial class MainWindow
         {
             Width = thumbSize,
             Height = thumbSize,
-            Fill = Brushes.White,
+            Fill = VNotch.Services.UiPalette.PrimaryBrush,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false
@@ -1140,7 +1140,7 @@ public partial class MainWindow
         var label = new TextBlock
         {
             Text = text,
-            Foreground = interactive ? Brushes.White : AudioMuted,
+            Foreground = interactive ? VNotch.Services.UiPalette.PrimaryBrush : AudioMuted,
             FontSize = 12,
             FontWeight = FontWeights.Bold,
             FontFamily = AudioFont,
@@ -1241,7 +1241,7 @@ public partial class MainWindow
             var name = new TextBlock
             {
                 Text = device.FriendlyName,
-                Foreground = Brushes.White,
+                Foreground = VNotch.Services.UiPalette.PrimaryBrush,
                 FontSize = 12,
                 FontWeight = FontWeights.Bold,
                 FontFamily = AudioFont,

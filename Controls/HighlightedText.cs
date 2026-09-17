@@ -7,7 +7,7 @@ namespace VNotch.Controls;
 
 public static class HighlightedText
 {
-    private static readonly Brush MatchBrush = Brushes.White;
+    private static readonly Brush MatchBrush = VNotch.Services.UiPalette.PrimaryBrush;
 
     public static readonly DependencyProperty TextProperty = DependencyProperty.RegisterAttached(
         "Text", typeof(string), typeof(HighlightedText),

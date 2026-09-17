@@ -34,7 +34,7 @@ public sealed class DiagnosticLogViewModel
     public string Message { get; init; } = "";
     public string FullText => $"{FormattedTime} [{Category}] {Message}";
     public Brush SeverityBackground { get; init; } = Brushes.Transparent;
-    public Brush SeverityForeground { get; init; } = Brushes.White;
+    public Brush SeverityForeground { get; init; } = VNotch.Services.UiPalette.PrimaryBrush;
 }
 
 public partial class DebugWindow : Window

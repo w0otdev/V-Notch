@@ -26,7 +26,7 @@
         </LinearGradientBrush>
 
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="#B8B8B8"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
@@ -94,7 +94,7 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="bg" Property="Background" Value="#22ffffff"/>
-                                        <Setter TargetName="txt" Property="Foreground" Value="White"/>
+                                        <Setter TargetName="txt" Property="Foreground" Value="#B8B8B8"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -125,7 +125,7 @@
                            Text="Liquid Glass Theme"
                            FontSize="22"
                            FontWeight="Bold"
-                           Foreground="White"
+                           Foreground="#B8B8B8"
                            HorizontalAlignment="Center"
                            Margin="0,20,0,10"/>
 

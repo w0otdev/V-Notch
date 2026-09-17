@@ -1031,7 +1031,7 @@ public partial class MainWindow
 
             // The default alert orange (#FFFF9B3D) turns into a muddy, dim brown
             if (CountdownCompleteText != null)
-                CountdownCompleteText.Foreground = System.Windows.Media.Brushes.White;
+                CountdownCompleteText.Foreground = VNotch.Services.UiPalette.PrimaryBrush;
 
             if (CountdownRestartBtn != null)
             {

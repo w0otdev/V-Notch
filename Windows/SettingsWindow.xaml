@@ -19,6 +19,7 @@
         <SolidColorBrush x:Key="PanelBg" Color="#F4020202"/>
         <SolidColorBrush x:Key="CardBg" Color="#F0080808"/>
         <SolidColorBrush x:Key="CardBorder" Color="#14FFFFFF"/>
+        <SolidColorBrush x:Key="SettingsTextBrush" Color="#B8B8B8"/>
         <SolidColorBrush x:Key="MutedText" Color="#8C959E"/>
         <SolidColorBrush x:Key="SoftText" Color="#D8DEE5"/>
         <SolidColorBrush x:Key="AccentBrush" Color="#F2F2F2"/>
@@ -36,7 +37,7 @@
         </LinearGradientBrush>
 
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
@@ -58,7 +59,7 @@
             <Setter Property="BorderBrush" Value="#0AFFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="18"/>
-            <Setter Property="Padding" Value="18,14"/>
+            <Setter Property="Padding" Value="18,4,18,14"/>
             <Setter Property="Margin" Value="0,0,0,10"/>
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="RenderTransform">
@@ -72,12 +73,15 @@
         </Style>
 
         <Style x:Key="SettingTitleText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="LineHeight" Value="24"/>
+            <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Bold"/>
         </Style>
 
         <Style x:Key="SettingHintText" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,4,0,0"/>
             <Setter Property="Foreground" Value="{StaticResource MutedText}"/>
             <Setter Property="FontSize" Value="11.5"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -85,7 +89,7 @@
         </Style>
 
         <Style x:Key="ValueText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#F4F4F4"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Bold"/>
         </Style>
@@ -111,24 +115,26 @@
         </Style>
 
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="0,2,0,2"/>
+            <Setter Property="Margin" Value="0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Grid MinHeight="26" SnapsToDevicePixels="True">
+                        <Grid MinHeight="24" SnapsToDevicePixels="True">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="52"/>
                             </Grid.ColumnDefinitions>
 
                             <ContentPresenter Grid.Column="0"
-                                              VerticalAlignment="Center"
-                                              Margin="0,3,12,3"
+                                              TextBlock.LineHeight="24"
+                                              TextBlock.LineStackingStrategy="BlockLineHeight"
+                                              VerticalAlignment="Top"
+                                              Margin="0,0,12,0"
                                               RecognizesAccessKey="True"/>
 
                             <Border x:Name="SwitchTrack"
@@ -145,7 +151,7 @@
                                     <Ellipse x:Name="SwitchThumb"
                                              Width="24"
                                              Height="24"
-                                             Fill="White"
+                                             Fill="#B8B8B8"
                                              Margin="0,0,0,0"
                                              HorizontalAlignment="Left"
                                              VerticalAlignment="Center">
@@ -230,7 +236,7 @@
         </Style>
 
         <Style TargetType="controls:ElasticSlider">
-            <Setter Property="Margin" Value="0,2,0,4"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
             <Setter Property="Height" Value="Auto"/>
             <Setter Property="MinHeight" Value="62"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -240,14 +246,15 @@
                     <ControlTemplate TargetType="controls:ElasticSlider">
                         <StackPanel>
                             <TextBlock x:Name="PART_Label"
-                                       Margin="2,0,0,3"
-                                       FontSize="13"
+                                       Margin="2,0,0,0"
+                                       LineHeight="24" LineStackingStrategy="BlockLineHeight"
+                                       FontSize="14"
                                        FontWeight="Bold"
-                                       Foreground="White"
+                                       Foreground="{StaticResource SettingsTextBrush}"
                                        FontFamily="{StaticResource SFProDisplay}"
                                        IsHitTestVisible="False"/>
                             <TextBlock x:Name="PART_Description"
-                                       Margin="2,0,0,7"
+                                       Margin="2,4,0,7"
                                        FontSize="11.5"
                                        FontWeight="Bold"
                                        Foreground="{StaticResource MutedText}"
@@ -274,7 +281,7 @@
                                                    Height="18"
                                                    RadiusX="1.5"
                                                    RadiusY="1.5"
-                                                   Fill="White"
+                                                   Fill="#B8B8B8"
                                                    Canvas.Top="10"
                                                    Canvas.Left="0">
                                             <Rectangle.Effect>
@@ -289,7 +296,7 @@
                                                Margin="0,0,12,0"
                                                FontSize="13"
                                                FontWeight="Bold"
-                                               Foreground="#DDFFFFFF"
+                                               Foreground="{StaticResource SettingsTextBrush}"
                                                FontFamily="{StaticResource SFProDisplay}"
                                                IsHitTestVisible="False"/>
                                     <Track x:Name="PART_Track" Visibility="Hidden"/>
@@ -302,7 +309,7 @@
         </Style>
 
         <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#F5F8FB"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
@@ -324,7 +331,7 @@
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="ItemBorder" Property="Background" Value="#22FFFFFF"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -336,7 +343,7 @@
             <Setter Property="Height" Value="44"/>
             <Setter Property="Margin" Value="0,8,0,0"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="#F5F8FB"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="BorderBrush" Value="#304051"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
@@ -363,7 +370,7 @@
                                                 <ContentPresenter Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                                   VerticalAlignment="Center"
                                                                   HorizontalAlignment="Left"
-                                                                  TextElement.Foreground="#F5F8FB"/>
+                                                                  TextElement.Foreground="{StaticResource SettingsTextBrush}"/>
                                                 <Path Data="M 0 0 L 4 4 L 8 0"
                                                       Stroke="#C8D1DD"
                                                       StrokeThickness="1.6"
@@ -445,7 +452,7 @@
             <Setter Property="Height" Value="46"/>
             <Setter Property="MinWidth" Value="84"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="#F7FAFD"/>
+            <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="18,0"/>
@@ -608,9 +615,13 @@
                     CornerRadius="24"
                     Background="#2A000000"/>
 
+            <Border Grid.RowSpan="2" Width="190" HorizontalAlignment="Left"
+                    Background="#04FFFFFF" BorderBrush="#10FFFFFF" BorderThickness="0,0,1,0"
+                    CornerRadius="24,0,0,0" IsHitTestVisible="False"/>
+
             <Border x:Name="SettingsHeader"
                     Grid.Row="0"
-                    Padding="22,20,18,18"
+                    Padding="10,16,20,16"
                     BorderBrush="#10FFFFFF"
                     BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
@@ -620,35 +631,13 @@
                 </Border.RenderTransform>
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="56"/>
+                        <ColumnDefinition Width="36"/>
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="SettingsTitleText" Text="SETTINGS"
-                                   FontSize="15"
-                                   FontWeight="Bold"
-                                   Foreground="#F8FBFF"
-                                   VerticalAlignment="Center"/>
-                        <Border x:Name="SettingsVersionBadge"
-                                Background="#C8C8C8"
-                                CornerRadius="4"
-                                Padding="8,3"
-                                Margin="10,0,0,0"
-                                VerticalAlignment="Center">
-                            <TextBlock x:Name="SettingsVersionBadgeText"
-                                       Text="v1.9.3"
-                                       FontSize="11"
-                                       FontWeight="Bold"
-                                       Foreground="#1A1A1A"
-                                       FontFamily="{StaticResource SFProDisplay}"
-                                       VerticalAlignment="Center"/>
-                        </Border>
-                        <TextBlock x:Name="SettingsSubtitleText" Visibility="Collapsed"/>
-
-                        <Border Background="#0FFFFFFF" CornerRadius="10" Padding="10,0" Margin="16,0,0,0"
-                                Height="36" MinWidth="220" VerticalAlignment="Center"
+                        <Border Background="#0FFFFFFF" CornerRadius="10" Padding="10,0" Margin="0,0,6,0"
+                                Height="36" VerticalAlignment="Center"
                                 BorderBrush="#14FFFFFF" BorderThickness="1">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -659,88 +648,47 @@
                                            Foreground="#666666" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBox x:Name="SettingsSearchBox" Grid.Column="1"
                                          Background="Transparent" BorderThickness="0"
-                                         Foreground="White" FontSize="13" FontWeight="Bold"
+                                         Foreground="{StaticResource SettingsTextBrush}" FontSize="12" FontWeight="Medium"
                                          FontFamily="{StaticResource SettingsFont}"
                                          VerticalContentAlignment="Center"
-                                         CaretBrush="White"
+                                         CaretBrush="#B8B8B8"
                                          TextChanged="SettingsSearchBox_TextChanged"
                                          GotFocus="SettingsSearchBox_GotFocus"
                                          LostFocus="SettingsSearchBox_LostFocus"/>
                                 <TextBlock x:Name="SearchPlaceholder" Grid.Column="1"
                                            Text="Search settings..."
-                                           FontSize="13" FontWeight="Bold"
-                                           Foreground="#555555"
+                                           FontSize="12" FontWeight="Medium"
+                                           Foreground="#858585"
                                            VerticalAlignment="Center"
                                            IsHitTestVisible="False"
                                            FontFamily="{StaticResource SettingsFont}"/>
                             </Grid>
                         </Border>
-                    </StackPanel>
+                    <Grid Grid.Column="1" Margin="38,0,16,0" IsHitTestVisible="False" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="30"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:MorphingSettingsIcon x:Name="SectionHeroIcon" Width="30" Height="30"/>
+                        <TextBlock x:Name="SectionHeroTitle" Grid.Column="1" Margin="12,0,0,0"
+                                   FontFamily="{StaticResource SettingsFont}" FontSize="24" FontWeight="SemiBold"
+                                   Foreground="{StaticResource SettingsTextBrush}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   TargetUpdated="SectionHeroTitle_TargetUpdated">
+                            <TextBlock.RenderTransform><TranslateTransform/></TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Grid>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                        <Button x:Name="SocialWebsite" Width="34" Height="34" MinWidth="0" Padding="0"
-                                BorderThickness="0" Background="Transparent"
-                                Cursor="Hand" Click="SocialLink_Website_Click"
-                                ToolTip="Website" Opacity="0"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Button.RenderTransform>
-                                <TranslateTransform x:Name="SocialWebsiteTranslate" Y="6"/>
-                            </Button.RenderTransform>
-                            <Viewbox Width="18" Height="18">
-                                <Canvas Width="16" Height="16">
-                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M8,1 A7,7 0 1,0 8,15 A7,7 0 1,0 8,1 Z"/>
-                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M8,1 C5.5,1 4,4.5 4,8 C4,11.5 5.5,15 8,15 C10.5,15 12,11.5 12,8 C12,4.5 10.5,1 8,1 Z"/>
-                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M1.5,5.5 L14.5,5.5"/>
-                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M1.5,10.5 L14.5,10.5"/>
-                                </Canvas>
-                            </Viewbox>
-                        </Button>
-                        <Button x:Name="SocialGitHub" Width="34" Height="34" MinWidth="0" Padding="0"
-                                BorderThickness="0" Background="Transparent"
-                                Cursor="Hand" Click="SocialLink_GitHub_Click"
-                                ToolTip="GitHub Repository" Opacity="0"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Button.RenderTransform>
-                                <TranslateTransform x:Name="SocialGitHubTranslate" Y="6"/>
-                            </Button.RenderTransform>
-                            <Viewbox Width="18" Height="18">
-                                <Path Fill="#8C959E" Data="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-                            </Viewbox>
-                        </Button>
-                        <Button x:Name="SocialFacebook" Width="34" Height="34" MinWidth="0" Padding="0"
-                                BorderThickness="0" Background="Transparent"
-                                Cursor="Hand" Click="SocialLink_Facebook_Click"
-                                ToolTip="Facebook" Opacity="0"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Button.RenderTransform>
-                                <TranslateTransform x:Name="SocialFacebookTranslate" Y="6"/>
-                            </Button.RenderTransform>
-                            <Viewbox Width="18" Height="18">
-                                <Path Fill="#8C959E" Data="M16 8.049c0-4.446-3.582-8.05-8-8.05C3.58 0 0 3.603 0 8.049c0 4.017 2.926 7.347 6.75 7.951v-5.625H4.719V8.049H6.75V6.275c0-2.017 1.195-3.131 3.022-3.131.876 0 1.791.157 1.791.157v1.98h-1.009c-.993 0-1.303.621-1.303 1.258v1.51h2.218l-.354 2.326H9.25V16c3.824-.604 6.75-3.934 6.75-7.951z"/>
-                            </Viewbox>
-                        </Button>
-                        <Button x:Name="SocialDiscord" Width="34" Height="34" MinWidth="0" Padding="0"
-                                BorderThickness="0" Background="Transparent"
-                                Cursor="Hand" Click="SocialLink_Discord_Click"
-                                ToolTip="Discord" Opacity="0"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Button.RenderTransform>
-                                <TranslateTransform x:Name="SocialDiscordTranslate" Y="6"/>
-                            </Button.RenderTransform>
-                            <Viewbox Width="18" Height="18">
-                                <Path Fill="#8C959E" Data="M13.545 2.907a13.227 13.227 0 00-3.257-1.011.05.05 0 00-.052.025c-.141.25-.297.577-.406.833a12.19 12.19 0 00-3.658 0 8.258 8.258 0 00-.412-.833.051.051 0 00-.052-.025c-1.125.194-2.22.534-3.257 1.011a.041.041 0 00-.021.018C.356 6.024-.213 9.047.066 12.032c.001.014.01.028.021.037a13.276 13.276 0 003.995 2.02.05.05 0 00.056-.019c.308-.42.582-.863.818-1.329a.05.05 0 00-.028-.07 8.735 8.735 0 01-1.248-.595.05.05 0 01-.005-.083c.084-.063.168-.129.248-.195a.05.05 0 01.051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 01.053.007c.08.066.164.132.248.195a.05.05 0 01-.004.083c-.398.232-.816.43-1.249.595a.05.05 0 00-.027.07c.24.466.514.909.817 1.329a.05.05 0 00.056.019 13.235 13.235 0 004.001-2.02.049.049 0 00.021-.037c.334-3.451-.559-6.449-2.366-9.106a.034.034 0 00-.02-.019zM5.68 10.059c-.789 0-1.438-.724-1.438-1.612 0-.889.637-1.613 1.438-1.613.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612zm5.316 0c-.788 0-1.438-.724-1.438-1.612 0-.889.637-1.613 1.438-1.613.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612z"/>
-                            </Viewbox>
-                        </Button>
-                    </StackPanel>
+
 
                     <Button x:Name="CloseSettingsButton"
                             Grid.Column="2"
-                            Width="42"
-                            Height="42"
+                            Width="34"
+                            Height="34"
                             MinWidth="0"
                             BorderThickness="0"
                             Background="#121212"
-                            Foreground="#F3F7FB"
+                            Foreground="{StaticResource SettingsTextBrush}"
                             FontFamily="{StaticResource IconFont}"
                             FontSize="11"
                             Content="&#xE711;"
@@ -754,7 +702,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" BorderBrush="#10FFFFFF" BorderThickness="0,0,1,0" Padding="10,12,6,12"
+                <Border Grid.Column="0" Padding="10,5,6,12"
                         x:Name="NavPanel" Opacity="0">
                     <Border.RenderTransform>
                         <TranslateTransform x:Name="NavPanelTranslate" Y="12"/>
@@ -778,8 +726,8 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14"
                                                    Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                        <TextBlock x:Name="NavSearchingText" Text="Searching" FontSize="13" FontWeight="Bold"
-                                                   Foreground="White" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="NavSearchingText" Text="Search mode" FontSize="13" FontWeight="Bold"
+                                                   Foreground="{StaticResource SettingsTextBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
                                 <Border x:Name="NavAppearance" Style="{StaticResource NavButton}"
@@ -787,10 +735,10 @@
                                         MouseLeftButtonDown="Nav_Click" Tag="Appearance">
                                     <StackPanel Orientation="Horizontal">
                                         <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                            <Path Fill="White" Data="M208,512a24.84,24.84,0,0,1-23.34-16l-39.84-103.6a16.06,16.06,0,0,0-9.19-9.19L32,343.34a25,25,0,0,1,0-46.68l103.6-39.84a16.06,16.06,0,0,0,9.19-9.19L184.66,144a25,25,0,0,1,46.68,0l39.84,103.6a16.06,16.06,0,0,0,9.19,9.19l103,39.63A25.49,25.49,0,0,1,400,320.52a24.82,24.82,0,0,1-16,22.82l-103.6,39.84a16.06,16.06,0,0,0-9.19,9.19L231.34,496A24.84,24.84,0,0,1,208,512Zm66.85-254.84h0Z M88,176a14.67,14.67,0,0,1-13.69-9.4L57.45,122.76a7.28,7.28,0,0,0-4.21-4.21L9.4,101.69a14.67,14.67,0,0,1,0-27.38L53.24,57.45a7.31,7.31,0,0,0,4.21-4.21L74.16,9.79A15,15,0,0,1,86.23.11,14.67,14.67,0,0,1,101.69,9.4l16.86,43.84a7.31,7.31,0,0,0,4.21,4.21L166.6,74.31a14.67,14.67,0,0,1,0,27.38l-43.84,16.86a7.28,7.28,0,0,0-4.21,4.21L101.69,166.6A14.67,14.67,0,0,1,88,176Z M400,256a16,16,0,0,1-14.93-10.26l-22.84-59.37a8,8,0,0,0-4.6-4.6l-59.37-22.84a16,16,0,0,1,0-29.86l59.37-22.84a8,8,0,0,0,4.6-4.6L384.9,42.68a16.45,16.45,0,0,1,13.17-10.57,16,16,0,0,1,16.86,10.15l22.84,59.37a8,8,0,0,0,4.6,4.6l59.37,22.84a16,16,0,0,1,0,29.86l-59.37,22.84a8,8,0,0,0-4.6,4.6l-22.84,59.37A16,16,0,0,1,400,256Z"/>
+                                            <Path Fill="#B8B8B8" Data="M208,512a24.84,24.84,0,0,1-23.34-16l-39.84-103.6a16.06,16.06,0,0,0-9.19-9.19L32,343.34a25,25,0,0,1,0-46.68l103.6-39.84a16.06,16.06,0,0,0,9.19-9.19L184.66,144a25,25,0,0,1,46.68,0l39.84,103.6a16.06,16.06,0,0,0,9.19,9.19l103,39.63A25.49,25.49,0,0,1,400,320.52a24.82,24.82,0,0,1-16,22.82l-103.6,39.84a16.06,16.06,0,0,0-9.19,9.19L231.34,496A24.84,24.84,0,0,1,208,512Zm66.85-254.84h0Z M88,176a14.67,14.67,0,0,1-13.69-9.4L57.45,122.76a7.28,7.28,0,0,0-4.21-4.21L9.4,101.69a14.67,14.67,0,0,1,0-27.38L53.24,57.45a7.31,7.31,0,0,0,4.21-4.21L74.16,9.79A15,15,0,0,1,86.23.11,14.67,14.67,0,0,1,101.69,9.4l16.86,43.84a7.31,7.31,0,0,0,4.21,4.21L166.6,74.31a14.67,14.67,0,0,1,0,27.38l-43.84,16.86a7.28,7.28,0,0,0-4.21,4.21L101.69,166.6A14.67,14.67,0,0,1,88,176Z M400,256a16,16,0,0,1-14.93-10.26l-22.84-59.37a8,8,0,0,0-4.6-4.6l-59.37-22.84a16,16,0,0,1,0-29.86l59.37-22.84a8,8,0,0,0,4.6-4.6L384.9,42.68a16.45,16.45,0,0,1,13.17-10.57,16,16,0,0,1,16.86,10.15l22.84,59.37a8,8,0,0,0,4.6,4.6l59.37,22.84a16,16,0,0,1,0,29.86l-59.37,22.84a8,8,0,0,0-4.6,4.6l-22.84,59.37A16,16,0,0,1,400,256Z"/>
                                         </Viewbox>
                                         <TextBlock x:Name="NavAppearanceText" Text="Appearance" FontSize="13" FontWeight="Bold"
-                                                   Foreground="White" VerticalAlignment="Center"/>
+                                                   Foreground="{StaticResource SettingsTextBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
 
@@ -907,14 +855,73 @@
                             </StackPanel>
                         </ScrollViewer>
 
-                        <TextBlock x:Name="SidebarBuildVersionText"
-                                   Grid.Row="1"
-                                   Text="Build 1.9.3"
-                                   FontSize="10.5"
-                                   FontWeight="Bold"
-                                   Foreground="#3D8C959E"
-                                   HorizontalAlignment="Left"
-                                   Margin="10,6,0,0"/>
+                        <Border Grid.Row="1" Margin="10,16,10,0" Padding="0,12,0,0"
+                                BorderBrush="#10FFFFFF" BorderThickness="0,1,0,0">
+                            <StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="-7,0,0,4">
+                        <Button x:Name="SocialWebsite" Width="34" Height="34" MinWidth="0" Padding="0"
+                                BorderThickness="0" Background="Transparent"
+                                Cursor="Hand" Click="SocialLink_Website_Click"
+                                ToolTip="Website" Opacity="0"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Button.RenderTransform>
+                                <TranslateTransform x:Name="SocialWebsiteTranslate" Y="6"/>
+                            </Button.RenderTransform>
+                            <Viewbox Width="16" Height="16">
+                                <Canvas Width="16" Height="16">
+                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M8,1 A7,7 0 1,0 8,15 A7,7 0 1,0 8,1 Z"/>
+                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M8,1 C5.5,1 4,4.5 4,8 C4,11.5 5.5,15 8,15 C10.5,15 12,11.5 12,8 C12,4.5 10.5,1 8,1 Z"/>
+                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M1.5,5.5 L14.5,5.5"/>
+                                    <Path Stroke="#8C959E" StrokeThickness="1.2" Fill="Transparent" Data="M1.5,10.5 L14.5,10.5"/>
+                                </Canvas>
+                            </Viewbox>
+                        </Button>
+                        <Button x:Name="SocialGitHub" Width="34" Height="34" MinWidth="0" Padding="0"
+                                BorderThickness="0" Background="Transparent"
+                                Cursor="Hand" Click="SocialLink_GitHub_Click"
+                                ToolTip="GitHub Repository" Opacity="0"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Button.RenderTransform>
+                                <TranslateTransform x:Name="SocialGitHubTranslate" Y="6"/>
+                            </Button.RenderTransform>
+                            <Viewbox Width="16" Height="16">
+                                <Path Fill="#8C959E" Data="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                            </Viewbox>
+                        </Button>
+                        <Button x:Name="SocialFacebook" Width="34" Height="34" MinWidth="0" Padding="0"
+                                BorderThickness="0" Background="Transparent"
+                                Cursor="Hand" Click="SocialLink_Facebook_Click"
+                                ToolTip="Facebook" Opacity="0"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Button.RenderTransform>
+                                <TranslateTransform x:Name="SocialFacebookTranslate" Y="6"/>
+                            </Button.RenderTransform>
+                            <Viewbox Width="16" Height="16">
+                                <Path Fill="#8C959E" Data="M16 8.049c0-4.446-3.582-8.05-8-8.05C3.58 0 0 3.603 0 8.049c0 4.017 2.926 7.347 6.75 7.951v-5.625H4.719V8.049H6.75V6.275c0-2.017 1.195-3.131 3.022-3.131.876 0 1.791.157 1.791.157v1.98h-1.009c-.993 0-1.303.621-1.303 1.258v1.51h2.218l-.354 2.326H9.25V16c3.824-.604 6.75-3.934 6.75-7.951z"/>
+                            </Viewbox>
+                        </Button>
+                        <Button x:Name="SocialDiscord" Width="34" Height="34" MinWidth="0" Padding="0"
+                                BorderThickness="0" Background="Transparent"
+                                Cursor="Hand" Click="SocialLink_Discord_Click"
+                                ToolTip="Discord" Opacity="0"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Button.RenderTransform>
+                                <TranslateTransform x:Name="SocialDiscordTranslate" Y="6"/>
+                            </Button.RenderTransform>
+                            <Viewbox Width="16" Height="16">
+                                <Path Fill="#8C959E" Data="M13.545 2.907a13.227 13.227 0 00-3.257-1.011.05.05 0 00-.052.025c-.141.25-.297.577-.406.833a12.19 12.19 0 00-3.658 0 8.258 8.258 0 00-.412-.833.051.051 0 00-.052-.025c-1.125.194-2.22.534-3.257 1.011a.041.041 0 00-.021.018C.356 6.024-.213 9.047.066 12.032c.001.014.01.028.021.037a13.276 13.276 0 003.995 2.02.05.05 0 00.056-.019c.308-.42.582-.863.818-1.329a.05.05 0 00-.028-.07 8.735 8.735 0 01-1.248-.595.05.05 0 01-.005-.083c.084-.063.168-.129.248-.195a.05.05 0 01.051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 01.053.007c.08.066.164.132.248.195a.05.05 0 01-.004.083c-.398.232-.816.43-1.249.595a.05.05 0 00-.027.07c.24.466.514.909.817 1.329a.05.05 0 00.056.019 13.235 13.235 0 004.001-2.02.049.049 0 00.021-.037c.334-3.451-.559-6.449-2.366-9.106a.034.034 0 00-.02-.019zM5.68 10.059c-.789 0-1.438-.724-1.438-1.612 0-.889.637-1.613 1.438-1.613.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612zm5.316 0c-.788 0-1.438-.724-1.438-1.612 0-.889.637-1.613 1.438-1.613.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612z"/>
+                            </Viewbox>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock x:Name="SidebarBuildVersionText"
+                               
+                               Text="Build 1.9.3"
+                               FontSize="10.5" FontWeight="Normal"
+                               Foreground="#8C959E"
+                               HorizontalAlignment="Left"
+                               Margin="0,0,0,2"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Border>
 
@@ -923,21 +930,8 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <Grid Margin="26,16,24,0" IsHitTestVisible="False">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="56"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <controls:MorphingSettingsIcon x:Name="SectionHeroIcon" Width="56" Height="56"/>
-                        <TextBlock x:Name="SectionHeroTitle" Grid.Column="1" Margin="18,0,0,0"
-                                   FontFamily="{StaticResource SettingsFont}" FontSize="28" FontWeight="Bold"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                   TargetUpdated="SectionHeroTitle_TargetUpdated">
-                            <TextBlock.RenderTransform><TranslateTransform/></TextBlock.RenderTransform>
-                        </TextBlock>
-                    </Grid>
 
-                    <Border Grid.Row="1" IsHitTestVisible="False" VerticalAlignment="Top" Height="24" Panel.ZIndex="1">
+                    <Border Grid.Row="1" IsHitTestVisible="False" VerticalAlignment="Top" Height="8" Panel.ZIndex="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="#FF000000" Offset="0"/>
@@ -959,7 +953,7 @@
                                   Grid.Row="1"
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
-                                  Padding="20,6,14,14"
+                                  Padding="20,0,14,14"
                                   CanContentScroll="False"
                                    PreviewMouseWheel="SettingsScrollViewer_PreviewMouseWheel">
                         <Grid x:Name="ContentHost">
@@ -970,11 +964,11 @@
                                         <TranslateTransform x:Name="SearchingCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="SearchingHeader" Text="SEARCHING" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+                                        <TextBlock x:Name="SearchingHeader" Text="Search mode" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
                                         <TextBlock x:Name="SearchingEmptyText"
                                                    Text="No matching settings."
                                                    Style="{StaticResource SettingHintText}"
-                                                   Margin="0,2,0,10"
+                                                   Margin="0,4,0,10"
                                                    Visibility="Collapsed"/>
                                         <StackPanel x:Name="SearchResultsStack"/>
                                     </StackPanel>
@@ -982,7 +976,7 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelAppearance" Visibility="Visible">
-                                <Border x:Name="AppearanceCard" Style="{StaticResource CardBorderStyle}" Padding="18,16,18,10" Opacity="0">
+                                <Border x:Name="AppearanceCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
                                     <Border.RenderTransform>
                                         <TranslateTransform x:Name="AppearanceCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
@@ -995,7 +989,7 @@
                                                 <TextBlock x:Name="NavTabsLabel" Text="Navigation Tabs" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="NavTabsHint" Text="Hold and drag icons in the notch to reorder tabs, or arrange them here."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <Border x:Name="NavTabsSettingsCard"
                                                         Background="{StaticResource SurfaceBrush}"
                                                         CornerRadius="14"
@@ -1017,7 +1011,7 @@
                                                 <TextBlock x:Name="ExpandedWidgetLabel" Text="Expanded widget" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="ExpandedWidgetHint" Text="Choose which widget shows in the expanded notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <ComboBox x:Name="WidgetCombo" SelectionChanged="WidgetCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
@@ -1027,7 +1021,7 @@
                                                 <TextBlock x:Name="ShelfWidgetLabel" Text="Shelf page side widget" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="ShelfWidgetHint" Text="Choose what content appears on the left side of the file shelf."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <ComboBox x:Name="ShelfWidgetCombo" SelectionChanged="ShelfWidgetCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
@@ -1037,7 +1031,7 @@
                                                 <TextBlock x:Name="ClockPageStyleLabel" Text="Clock page style" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="ClockPageStyleHint" Text="Choose the main clock display for the Clock &amp; Timer page."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <ComboBox x:Name="ClockPageStyleCombo" SelectionChanged="ClockPageStyleCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
@@ -1149,7 +1143,7 @@
                                                 <TextBlock x:Name="DynamicIslandModeHint"
                                                            Text="Detach the notch from the top edge so it floats as a fully rounded pill."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1208,7 +1202,7 @@
                                                          Checked="HoverExpandCheck_Changed" Unchecked="HoverExpandCheck_Changed"/>
                                                 <TextBlock x:Name="HoverExpandHint" Text="Open the notch automatically when the pointer lingers nearby."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1236,7 +1230,7 @@
                                                 <CheckBox x:Name="DisableMouseLeaveAutoCloseCheck" x:Uid="disableMouseLeaveAutoClose" Content="Click to close (no auto-close)"/>
                                                 <TextBlock x:Name="DisableMouseLeaveAutoCloseHint" Text="Keep the notch open when the cursor leaves; click to close it."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1245,7 +1239,7 @@
                                                 <CheckBox x:Name="ReopenLastViewCheck" x:Uid="reopenLastView" Content="Reopen last view on expand"/>
                                                 <TextBlock x:Name="ReopenLastViewHint" Text="Restore the view that was open before the last collapse the next time the notch expands."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1255,7 +1249,7 @@
                                                          Checked="IdleAutoHideCheck_Changed" Unchecked="IdleAutoHideCheck_Changed"/>
                                                 <TextBlock x:Name="IdleAutoHideHint" Text="Slide the notch out of view when it stays empty for a while. It returns on the next activity."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                                 <TextBlock x:Name="IdleAutoHideKeywords" Visibility="Collapsed"/>
                                             </StackPanel>
                                         </Border>
@@ -1288,7 +1282,7 @@
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="SkinLabel" Text="Notch skin" Style="{StaticResource SettingTitleText}" VerticalAlignment="Center"/>
+                                                    <TextBlock x:Name="SkinLabel" Text="Notch skin" Style="{StaticResource SettingTitleText}" VerticalAlignment="Top"/>
                                                     <Border CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center" Background="#C8C8C8">
                                                         <TextBlock x:Name="SkinAlphaBadge" Text="ALPHA" FontSize="11" FontWeight="Bold"
                                                                    Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
@@ -1296,7 +1290,7 @@
                                                 </StackPanel>
                                                 <TextBlock x:Name="SkinHint" Text="Choose the look of the notch body."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,4"/>
+                                                           Margin="0,4,0,4"/>
                                                 <TextBlock x:Name="SkinWarningNote"
                                                            Text="Note: High RAM &amp; memory usage. Very experimental / may not run smoothly on low-end devices."
                                                            Foreground="#E0A330"
@@ -1444,7 +1438,7 @@
                                                 <TextBlock x:Name="MonitorLabel" Text="Active Monitor" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="MonitorHint" Text="Choose which screen anchors the notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                                 <ComboBox x:Name="MonitorCombo"/>
                                             </StackPanel>
                                         </Border>
@@ -1453,7 +1447,7 @@
                                                 <TextBlock x:Name="CameraLabel" Text="Camera" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="CameraHint" Text="Choose which camera device to use for the camera view."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                                 <ComboBox x:Name="CameraCombo" SelectionChanged="CameraCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
@@ -1462,7 +1456,7 @@
                                                 <TextBlock x:Name="VisualizerAudioLabel" Text="Music Visualizer Speaker" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="VisualizerAudioHint" Text="Choose which speaker drives the music visualizer."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                                 <ComboBox x:Name="VisualizerAudioCombo" SelectionChanged="VisualizerAudioCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
@@ -1476,7 +1470,7 @@
                                         <TranslateTransform x:Name="BackupCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
-                                        <TextBlock x:Name="BackupHeader" Text="SETTINGS BACKUP &amp; TRANSFER" Style="{StaticResource SectionHeader}"/>
+                                        <TextBlock x:Name="BackupHeader" Text="SETTINGS BACKUP &amp; TRANSFER" Style="{StaticResource SettingTitleText}" Margin="0,8,0,14"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <Grid>
@@ -1546,7 +1540,7 @@
                                                 <CheckBox x:Name="AutoStartCheck" x:Uid="autoStart" Content="Start with Windows"/>
                                                 <TextBlock x:Name="AutoStartHint" Text="Launch automatically when you sign in."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1556,7 +1550,7 @@
                                                 <TextBlock x:Name="StayBehindWindowsHint"
                                                            Text="Keep V-Notch on the desktop so maximized apps and browser tab controls are never covered."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1566,7 +1560,7 @@
                                                 <CheckBox x:Name="HelloGreetingCheck" x:Uid="helloGreeting" Content="Hello greeting on startup"/>
                                                 <TextBlock x:Name="HelloGreetingHint" Text="Show handwriting 'hello' animation when the app starts."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1575,7 +1569,7 @@
                                                 <CheckBox x:Name="HideOnExclusiveFullscreenCheck" x:Uid="hideExclusiveFs" Content="Hide on exclusive fullscreen"/>
                                                 <TextBlock x:Name="HideOnExclusiveFullscreenHint" Text="Hide the notch when a true fullscreen app is detected."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1584,7 +1578,7 @@
                                                 <CheckBox x:Name="HideOnWindowedFullscreenCheck" x:Uid="hideWindowedFs" Content="Hide on windowed fullscreen"/>
                                                 <TextBlock x:Name="HideOnWindowedFullscreenHint" Text="Hide the notch when a borderless windowed fullscreen app is detected."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1593,7 +1587,7 @@
                                                 <CheckBox x:Name="MusicNotifyCheck" x:Uid="musicNotify" Content="Show music notifications"/>
                                                 <TextBlock x:Name="MusicNotifyHint" Text="Keep the media widget responsive to playback changes."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1602,7 +1596,7 @@
                                                 <CheckBox x:Name="SystemNotifyCheck" x:Uid="systemNotify" Content="Show system notifications"/>
                                                 <TextBlock x:Name="SystemNotifyHint" Text="Allow the notch to surface device and system signals."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1611,7 +1605,7 @@
                                                 <CheckBox x:Name="ShowBatteryCheck" x:Uid="showBattery" Content="Show battery indicator"/>
                                                 <TextBlock x:Name="ShowBatteryHint" Text="Display battery level in the expanded notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1620,7 +1614,7 @@
                                                 <CheckBox x:Name="ShelfUnlockCheck" x:Uid="shelfUnlock" Content="Unlock shelf upload limit"/>
                                                 <TextBlock x:Name="ShelfUnlockHint" Text="Remove the 30-file safety limit on the shelf."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1630,7 +1624,7 @@
                                                 <CheckBox x:Name="CopyShelfClipboardCheck" x:Uid="copyShelfClipboard" Content="Copy shelf files to clipboard"/>
                                                 <TextBlock x:Name="CopyShelfClipboardHint" Text="When files are added to the shelf, automatically copy all of them to the system clipboard so you can paste them into other apps."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1640,7 +1634,7 @@
                                                 <TextBlock x:Name="LanguageLabel" Text="Language" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="LanguageHint" Text="Choose the display language for V-Notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <ComboBox x:Name="LanguageCombo" SelectionChanged="LanguageCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
@@ -1655,7 +1649,7 @@
                                                 <TextBlock x:Name="EnableWeatherHint"
                                                            Text="Show current weather in the expanded notch. When enabled, your approximate location is resolved via IP."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                                 <TextBlock x:Name="ManualCityLabel"
                                                            Text="Manual city (optional)"
                                                            Style="{StaticResource SettingTitleText}"
@@ -1663,17 +1657,17 @@
                                                 <TextBlock x:Name="ManualCityHint"
                                                            Text="Enter a city name to skip IP-based location. Leave empty to auto-detect."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,6"/>
+                                                           Margin="0,4,0,6"/>
                                                 <TextBox x:Name="ManualCityTextBox"
                                                          Height="40"
                                                          Padding="12,10"
                                                          FontSize="12"
                                                          FontFamily="{StaticResource SettingsFont}"
                                                          Background="#0F0F0F"
-                                                         Foreground="#E0E0E0"
+                                                         Foreground="{StaticResource SettingsTextBrush}"
                                                          BorderBrush="#2A2A2A"
                                                          BorderThickness="1"
-                                                         CaretBrush="#FFFFFF"
+                                                         CaretBrush="#B8B8B8"
                                                          VerticalContentAlignment="Center">
                                                     <TextBox.Resources>
                                                         <Style TargetType="Border">
@@ -1697,7 +1691,7 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,10"
                                                 Background="#0AFFFFFF" BorderBrush="#1AFFFFFF" BorderThickness="1"
-                                                CornerRadius="12" Padding="14,12">
+                                                CornerRadius="12" Padding="14,7,14,12">
                                             <StackPanel>
                                                 <CheckBox x:Name="LocalOnlyModeCheck"
                                                           Content="Strict Local-Only Mode"
@@ -1707,7 +1701,7 @@
                                                 <TextBlock x:Name="LocalOnlyModeHint"
                                                            Text="Block all outbound network requests across all modules. V-Notch will operate 100% offline (no update checks, online album art scrapers, lyrics, subtitles, Canvas, or weather queries)."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1742,7 +1736,7 @@
                                                     <TextBlock x:Name="AutoCheckUpdatesHint"
                                                                Text="Check GitHub Releases periodically in the background for new V-Notch versions."
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,3,0,0"
+                                                               Margin="0,4,0,0"
                                                                TextWrapping="Wrap"/>
                                                 </StackPanel>
                                             </Border>
@@ -1756,7 +1750,7 @@
                                                     <TextBlock x:Name="EnableOnlineArtworkHint"
                                                                Text="Search online (YouTube, SoundCloud, Piped) for album art when the active player provides no embedded cover."
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,3,0,0"
+                                                               Margin="0,4,0,0"
                                                                TextWrapping="Wrap"/>
                                                 </StackPanel>
                                             </Border>
@@ -1770,7 +1764,7 @@
                                                     <TextBlock x:Name="EnableOnlineLyricsHint"
                                                                Text="Fetch synced lyrics from public providers (LRCLIB, lrc mux) for now-playing songs."
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,3,0,0"
+                                                               Margin="0,4,0,0"
                                                                TextWrapping="Wrap"/>
                                                 </StackPanel>
                                             </Border>
@@ -1788,7 +1782,7 @@
                                                 <TextBlock x:Name="EnablePrivacyIndicatorsHint"
                                                            Text="Display a colored privacy dot in the compact notch when any application is actively using your microphone, camera, or screen capture."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1802,7 +1796,7 @@
                                                 <TextBlock x:Name="EnableBrowserUrlInspectionHint"
                                                            Text="Use Windows UI Automation to read media tab URLs in supported web browsers for precise source detection."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1819,7 +1813,7 @@
                                                 <TextBlock x:Name="EnableDiagnosticLoggingHint"
                                                            Text="Record application events and diagnostic messages to vnotch-debug.log for troubleshooting."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1833,7 +1827,7 @@
                                                 <TextBlock x:Name="EnableSpotlightHistoryHint"
                                                            Text="Save your recent Spotlight application launch frequency locally in spotlight-usage.json to prioritize favorites."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -1876,7 +1870,7 @@
                                                 <TextBlock x:Name="EnableSpotlightHint"
                                                            Text="Press Alt + Space to search applications and indexed files."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"
+                                                           Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock x:Name="SpotlightHotkeyWarning"
                                                            Text="Alt + Space is currently used by another app."
@@ -1909,7 +1903,7 @@
                                                 <TextBlock x:Name="EnableDebugModeHint"
                                                            Text="Display FPS, CPU, and RAM usage on a floating draggable performance HUD window."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1923,7 +1917,7 @@
                                                 <TextBlock x:Name="EnableSpotifyLyricsHint"
                                                            Text="Display synced lyrics inside the expanded notch when listening on Spotify."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
 
                                                 <CheckBox x:Name="EnableSpotifyCanvasCheck"
                                                           Content="Show Spotify Canvas background"
@@ -1933,7 +1927,7 @@
                                                 <TextBlock x:Name="EnableSpotifyCanvasHint"
                                                            Text="Play the song's looping Canvas behind lyrics when one is available."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
 
                                                 <Border x:Name="SpotifyCanvasAccountPanel"
                                                         Background="#0F0F0F"
@@ -1950,7 +1944,7 @@
                                                                    Text="Sign in once. The Spotify session is encrypted with Windows DPAPI."
                                                                    Style="{StaticResource SettingHintText}"
                                                                    TextWrapping="Wrap"
-                                                                   Margin="0,5,0,10"/>
+                                                                   Margin="0,4,0,10"/>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
@@ -2026,7 +2020,7 @@
                                                 <TextBlock x:Name="EnableYouTubeSubtitlesHint"
                                                            Text="Display synced closed captions inside the expanded notch when watching on YouTube."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
 
                                                 <CheckBox x:Name="IgnoreYouTubeAutoSubtitlesCheck"
                                                           x:Uid="ignoreYouTubeAutoSubtitles"
@@ -2038,7 +2032,7 @@
                                                 <TextBlock x:Name="IgnoreYouTubeAutoSubtitlesHint"
                                                            Text="Only display manually uploaded captions and skip automatic speech recognition subtitles."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -2050,7 +2044,7 @@
                                                 <TextBlock x:Name="SubtitlePriorityHint"
                                                            Text="Drag to reorder priority. Subtitles are selected using the first available match."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <ItemsControl x:Name="SubtitlePriorityItems"
                                                               Background="Transparent"
                                                               AllowDrop="True"
@@ -2071,7 +2065,7 @@
                                                                     <TextBlock Text="≡" FontSize="14" Foreground="#555"
                                                                                VerticalAlignment="Center"/>
                                                                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
-                                                                               FontSize="13" Foreground="#E0E0E0"
+                                                                               FontSize="13" Foreground="{StaticResource SettingsTextBrush}"
                                                                                FontFamily="{StaticResource SFProDisplay}"
                                                                                FontWeight="Bold"
                                                                                VerticalAlignment="Center"/>
@@ -2089,7 +2083,7 @@
                                                           Checked="YouTubeApiCheck_Changed" Unchecked="YouTubeApiCheck_Changed"/>
                                                 <TextBlock x:Name="YouTubeApiHint" Text="Improve thumbnail accuracy with your own YouTube API key."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -2101,7 +2095,7 @@
                                                 <TextBlock x:Name="YouTubeApiKeyLabel" Text="API Key" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="YouTubeApiKeyHint" Text="Paste your YouTube Data API v3 key from Google Cloud Console."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
@@ -2113,10 +2107,10 @@
                                                              FontSize="12"
                                                              FontFamily="{StaticResource SettingsFont}"
                                                              Background="#0F0F0F"
-                                                             Foreground="#E0E0E0"
+                                                             Foreground="{StaticResource SettingsTextBrush}"
                                                              BorderBrush="#2A2A2A"
                                                              BorderThickness="1"
-                                                             CaretBrush="#FFFFFF"
+                                                             CaretBrush="#B8B8B8"
                                                              VerticalContentAlignment="Center"
                                                              PasswordChar="●"
                                                              PasswordChanged="YouTubeApiKeyPasswordBox_PasswordChanged">
@@ -2132,10 +2126,10 @@
                                                              FontSize="12"
                                                              FontFamily="{StaticResource SettingsFont}"
                                                              Background="#0F0F0F"
-                                                             Foreground="#E0E0E0"
+                                                             Foreground="{StaticResource SettingsTextBrush}"
                                                              BorderBrush="#2A2A2A"
                                                              BorderThickness="1"
-                                                             CaretBrush="#FFFFFF"
+                                                             CaretBrush="#B8B8B8"
                                                              VerticalContentAlignment="Center"
                                                              Visibility="Collapsed"
                                                              TextChanged="YouTubeApiKeyTextBox_TextChanged">
@@ -2178,7 +2172,7 @@
                                                 <TextBlock x:Name="ProcessPriorityLabel" Text="Process Priority" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="ProcessPriorityHint" Text="Adjust the priority of V-Notch in Windows to ensure smooth animations under heavy system load."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,8"/>
+                                                           Margin="0,4,0,8"/>
                                                 <ComboBox x:Name="ProcessPriorityCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ProcessPriorityCombo_SelectionChanged">
                                                     <ComboBoxItem Content="Normal (Default)" Tag="Normal"/>
                                                     <ComboBoxItem Content="High" Tag="High"/>
@@ -2207,7 +2201,7 @@
                                                 </StackPanel>
                                                 <TextBlock x:Name="GpuPreferenceHint" Text="Select which GPU Windows should use to render V-Notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,6,0,4"/>
+                                                           Margin="0,4,0,4"/>
                                                 <TextBlock x:Name="GpuPreferenceRestartNote"
                                                            Text="Requires restarting the app to take effect."
                                                            FontSize="11.5"
@@ -2261,7 +2255,7 @@
                                                 <TextBlock x:Name="EnableBlurEffectsHint"
                                                            Text="Use media background blur, content transition blur, and other visual blur effects."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -2274,7 +2268,7 @@
                                                 <TextBlock x:Name="MediaArtBackgroundHint"
                                                            Text="Show the blurred album-art glow behind the expanded media view. Turn off for a cleaner, flat background."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -2287,7 +2281,7 @@
                                                 <TextBlock x:Name="EnableSubjectBlurHint"
                                                            Text="Keeps media subjects clearer inside the blurred background. Disable it for a cheaper blur pass."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
@@ -2300,7 +2294,7 @@
                                                 <TextBlock x:Name="EnableSmartCropHint"
                                                            Text="Use the ONNX model to find better thumbnail crops. Disable it to avoid the heavier image-analysis path."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,3,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
@@ -2315,7 +2309,7 @@
                                     <StackPanel>
                                         <TextBlock x:Name="DonatingHeader" Text="DONATING" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
 
-                                        <Border Style="{StaticResource SettingRowBorder}" Padding="0" Margin="0">
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -2326,14 +2320,13 @@
                                                 <TextBlock x:Name="DonatingTitle"
                                                            Text="Thank you for supporting V-Notch"
                                                            Style="{StaticResource SettingTitleText}"
-                                                           FontSize="16"
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock x:Name="DonatingDescription"
                                                            Text="V-Notch is 100% non-profit. Donations help cover the costs that let me stay focused and keep maintaining this product."
                                                            Style="{StaticResource SettingHintText}"
                                                            FontSize="12.5"
                                                            LineHeight="18"
-                                                           Margin="0,8,0,0"/>
+                                                           Margin="0,4,0,0"/>
 
                                                 <Button x:Name="DonatePaypalButton"
                                                         Content="Support via PayPal"
@@ -2349,7 +2342,7 @@
                                                            Style="{StaticResource SettingHintText}"
                                                            Foreground="#A8B3C3"
                                                            TextWrapping="Wrap"
-                                                           Margin="0,8,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="1" HorizontalAlignment="Right">
@@ -2373,7 +2366,7 @@
                                                            Style="{StaticResource SettingHintText}"
                                                            Width="176"
                                                            TextAlignment="Center"
-                                                           Margin="0,8,0,0"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Grid>
                                         </Border>
@@ -2404,7 +2397,7 @@
                                                     <TextBlock x:Name="CurrentVersionText"
                                                                Text="Current version: 1.9.3"
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,6,0,0"/>
+                                                               Margin="0,4,0,0"/>
                                                 </StackPanel>
 
                                                 <Button x:Name="CheckUpdateButton"
@@ -2442,7 +2435,7 @@
                                                                Style="{StaticResource SettingTitleText}"/>
                                                     <TextBlock x:Name="ReportBugHint" Text="Found something broken? Let us know on GitHub."
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,6,0,0"/>
+                                                               Margin="0,4,0,0"/>
                                                 </StackPanel>
 
                                                 <Button x:Name="ReportBugButton"
@@ -2456,7 +2449,7 @@
                                                         Cursor="Hand">
                                                     <Viewbox Width="36" Height="36" Stretch="Uniform">
                                                         <Path Data="M198.844 64.75c-.985 0-1.974.03-2.97.094-15.915 1.015-32.046 11.534-37.78 26.937-34.072 91.532-51.085 128.865-61.5 222.876 14.633 13.49 31.63 26.45 50.25 38.125l66.406-196.467 17.688 5.968L163.28 362.5c19.51 10.877 40.43 20.234 62 27.28l75.407-201.53 17.5 6.53-74.937 200.282c19.454 5.096 39.205 8.2 58.78 8.875L381.345 225.5l17.094 7.594-75.875 170.656c21.82-1.237 43.205-5.768 63.437-14.28 43.317-53.844 72.633-109.784 84.5-172.69 5.092-26.992-14.762-53.124-54.22-54.81l-6.155-.282-2.188-5.75c-8.45-22.388-19.75-30.093-31.5-32.47-11.75-2.376-25.267 1.535-35.468 7.376l-13.064 7.47-.906-15c-.99-16.396-10.343-29.597-24.313-35.626-13.97-6.03-33.064-5.232-54.812 9.906l-10.438 7.25-3.812-12.125c-6.517-20.766-20.007-27.985-34.78-27.97zM103.28 188.344C71.143 233.448 47.728 299.56 51.407 359.656c27.54 21.84 54.61 33.693 80.063 35.438 14.155.97 27.94-1.085 41.405-6.438-35.445-17.235-67.36-39.533-92.594-63.53l-3.343-3.157.5-4.595c5.794-54.638 13.946-91.5 25.844-129.03z"
-                                                              Fill="White"/>
+                                                              Fill="#B8B8B8"/>
                                                     </Viewbox>
                                                 </Button>
                                             </Grid>
@@ -2474,7 +2467,7 @@
                                                                Style="{StaticResource SettingTitleText}"/>
                                                     <TextBlock x:Name="RequestFeatureHint" Text="I'm currently out of ideas. If you have any, don't hesitate to request!"
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,6,0,0"/>
+                                                               Margin="0,4,0,0"/>
                                                 </StackPanel>
 
                                                 <Button x:Name="RequestFeatureButton"
@@ -2488,7 +2481,7 @@
                                                         Cursor="Hand">
                                                     <Viewbox Width="36" Height="36" Stretch="Uniform">
                                                         <Path Data="M31 8.5c0 0-2.53 5.333-3.215 8.062-0.896 3.57 0.13 6.268-1.172 9.73-2.25 4.060-2.402 4.717-10.613 4.708-3.009-0.003-11.626-2.297-11.626-2.297-1.188-0.305-3.373-0.125-3.373-1.453s1.554-2.296 2.936-2.3l5.439 0.478c1.322-0.083 2.705-0.856 2.747-2.585-0.022-2.558-0.275-4.522-1.573-6.6l-5.042-7.867c-0.301-0.626-0.373-1.694 0.499-2.171s1.862 0.232 2.2 0.849l5.631 7.66c0.602 0.559 1.671 0.667 1.58-0.524l-2.487-11.401c-0.155-0.81 0.256-1.791 1.194-1.791 1.231 0 1.987 0.47 1.963 1.213l2.734 11.249c0.214 0.547 0.972 0.475 1.176-0.031l0.779-10.939c0.040-0.349 0.495-0.957 1.369-0.831s1.377 1.063 1.285 1.424l-0.253 10.809c0.177 0.958 0.93 1.098 1.517 0.563l3.827-6.843c0.232-0.574 1.143-0.693 1.67-0.466 0.491 0.32 0.81 0.748 0.81 1.351v0z"
-                                                              Fill="White"/>
+                                                              Fill="#B8B8B8"/>
                                                     </Viewbox>
                                                 </Button>
                                             </Grid>
@@ -2506,7 +2499,7 @@
                                                                Style="{StaticResource SettingTitleText}"/>
                                                     <TextBlock x:Name="ClearCacheHint" Text="Remove cached data and logs. Settings are preserved."
                                                                Style="{StaticResource SettingHintText}"
-                                                               Margin="0,6,0,0"/>
+                                                               Margin="0,4,0,0"/>
                                                 </StackPanel>
 
                                                 <Button x:Name="ClearCacheButton"
@@ -2520,7 +2513,7 @@
                                                         Cursor="Hand">
                                                     <Viewbox Width="36" Height="36" Stretch="Uniform">
                                                         <Path Data="M410.886,43.93H301.533C299.778,19.793,280.576,0.093,256.005,0c-24.598,0.093-43.8,19.793-45.556,43.93H101.115c-22.787,0-41.407,18.628-41.407,41.398v1.792v15.543v14.822c0,5.692,4.648,10.35,10.34,10.35h0.674l23.859,342.87C96.152,493.408,116.075,512,138.853,512h75.745c22.76,0,60.027,0,82.814,0h75.726c22.769,0,42.701-18.592,44.281-41.296l23.84-342.87h0.675c5.702,0,10.358-4.658,10.358-10.35v-14.822V87.12v-1.792C452.292,62.558,433.654,43.93,410.886,43.93z"
-                                                              Fill="White"/>
+                                                              Fill="#B8B8B8"/>
                                                     </Viewbox>
                                                 </Button>
                                             </Grid>
@@ -2576,7 +2569,7 @@
                                 </Viewbox>
 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
-                                    <TextBlock x:Name="RestartPromptTitle" Text="Restart required" FontSize="13.5" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                    <TextBlock x:Name="RestartPromptTitle" Text="Restart required" FontSize="13.5" FontWeight="Bold" Foreground="{StaticResource SettingsTextBrush}"/>
                                     <TextBlock x:Name="RestartPromptMessage" Text="Some settings require restarting V-Notch to take full effect. Restart now?"
                                                FontSize="11.5" FontWeight="SemiBold" Foreground="#D0A8B3C3" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                 </StackPanel>
@@ -2597,10 +2590,10 @@
             <Border x:Name="FooterBar"
                     Grid.Row="2"
                     Background="Transparent"
-                    BorderBrush="Transparent"
-                    BorderThickness="0"
+                    BorderBrush="#10FFFFFF"
+                    BorderThickness="0,1,0,0"
                     CornerRadius="0,0,24,24"
-                    Padding="18"
+                    Padding="22,14,20,16"
                     Opacity="0">
                 <Border.RenderTransform>
                     <TranslateTransform x:Name="FooterTranslate" Y="10"/>
@@ -2608,23 +2601,26 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Button x:Name="ResetButton" Grid.Column="0"
+                    <Button x:Name="ResetButton" Grid.Column="0" HorizontalAlignment="Left"
+                            Height="36" MinWidth="80" Padding="12,0" Background="Transparent" BorderThickness="0" Foreground="#AAAAAA"
                             Margin="0,0,8,0"
                             Content="Reset"
                             Click="Reset_Click"/>
-                    <Button x:Name="ApplyButton" Grid.Column="1"
+                    <Button x:Name="ApplyButton" Grid.Column="1" Height="36" MinWidth="96"
                             Margin="4,0"
                             Content="Apply"
                             Click="Apply_Click"/>
-                    <Button x:Name="SaveButton" Grid.Column="2"
+                    <Button x:Name="SaveButton" Grid.Column="2" Height="36" MinWidth="96"
+                            Background="#DCDCDC" BorderBrush="#DCDCDC"
                             Margin="8,0,0,0"
                             Content="Save"
                             Style="{StaticResource PrimaryButton}"
                             Click="Save_Click"/>
+
                 </Grid>
             </Border>
         </Grid>

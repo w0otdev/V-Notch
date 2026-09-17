@@ -300,7 +300,7 @@
   "settings.restartBanner.title": "Reinicio requerido",
   "settings.search.noResults": "No se encontraron configuraciones.",
   "settings.searchPlaceholder": "Buscar configuración...",
-  "settings.searching": "BUSCANDO",
+  "settings.searching": "Modo de búsqueda",
   "settings.section.backup": "COPIA DE SEGURIDAD Y TRANSFERENCIA",
   "settings.shelfUnlock": "Desbloquear límite de estante",
   "settings.shelfUnlock.hint": "Elimina el límite seguro de 30 archivos en el estante.",

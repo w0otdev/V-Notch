@@ -115,7 +115,7 @@ public partial class MainWindow : IClockWidgetHost
     int IClockWidgetHost.TransitionGeneration => _viewTransitionGeneration;
 
     Brush IClockWidgetHost.TransparentBrush => _brushTransparent;
-    Brush IClockWidgetHost.WhiteBrush => _brushWhite;
+    Brush IClockWidgetHost.WhiteBrush => VNotch.Services.UiPalette.PrimaryBrush;
 
     void IClockWidgetHost.SwitchToTimerView() => SwitchToTimerView();
     void IClockWidgetHost.CollapseNotch() => CollapseNotch();

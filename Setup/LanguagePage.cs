@@ -43,7 +43,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
     private static readonly SolidColorBrush BrushSelectedBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 30, 30, 36)));
     private static readonly SolidColorBrush BrushSelectedBorder = Freeze(new SolidColorBrush(Color.FromArgb(220, 255, 255, 255)));
     private static readonly SolidColorBrush BrushHoverBg = Freeze(new SolidColorBrush(Color.FromArgb(255, 28, 28, 34)));
-    private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(Colors.White));
+    private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
     private static readonly SolidColorBrush BrushDimWhite = Freeze(new SolidColorBrush(Color.FromArgb(140, 255, 255, 255)));
 
     private static SolidColorBrush Freeze(SolidColorBrush b) { b.Freeze(); return b; }

@@ -404,10 +404,7 @@ public partial class SettingsWindow : Window
     private void ApplyLocalization()
     {
         ApplySupplementalLocalization();
-        SettingsTitleText.Text = Loc.Get("settings.title");
-        SettingsSubtitleText.Text = Loc.Get("settings.subtitle");
         string appVersion = GetAppVersion();
-        if (SettingsVersionBadgeText != null) SettingsVersionBadgeText.Text = $"v{appVersion}";
         if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {appVersion}";
         SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder");
 
@@ -1734,7 +1731,7 @@ public partial class SettingsWindow : Window
             leftStack.Children.Add(check);
 
             var iconBox = new Viewbox { Width = 14, Height = 14, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            iconBox.Child = new System.Windows.Shapes.Path { Data = Geometry.Parse(meta.iconPath), Fill = Brushes.White };
+            iconBox.Child = new System.Windows.Shapes.Path { Data = Geometry.Parse(meta.iconPath), Fill = VNotch.Services.UiPalette.PrimaryBrush };
             leftStack.Children.Add(iconBox);
 
             var titleText = new TextBlock { Text = meta.title, Style = (Style)FindResource("ValueText"), VerticalAlignment = VerticalAlignment.Center };
@@ -3043,9 +3040,6 @@ public partial class SettingsWindow : Window
 
         var textUpdates = new (FrameworkElement element, Action update)[]
         {
-            (SettingsTitleText, () => SettingsTitleText.Text = Loc.Get("settings.title")),
-            (SettingsSubtitleText, () => SettingsSubtitleText.Text = Loc.Get("settings.subtitle")),
-            (SettingsVersionBadgeText, () => { if (SettingsVersionBadgeText != null) SettingsVersionBadgeText.Text = $"v{GetAppVersion()}"; }),
             (SidebarBuildVersionText, () => { if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {GetAppVersion()}"; }),
             (SearchPlaceholder, () => SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder")),
 
@@ -3796,7 +3790,7 @@ public partial class SettingsWindow : Window
     {
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "https://www.facebook.com/rain.107/",
+            FileName = "https://discord.com/users/298304189535092737",
             UseShellExecute = true
         });
     }
@@ -5136,7 +5130,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private static readonly SolidColorBrush _whiteBrush = new(Colors.White);
+    private static readonly SolidColorBrush _whiteBrush = VNotch.Services.UiPalette.PrimaryBrush;
     private static readonly SolidColorBrush _navInactiveBrush = new(Color.FromRgb(0xAA, 0xAA, 0xAA));
     private static readonly SolidColorBrush _transparentBrush = new(Colors.Transparent);
 

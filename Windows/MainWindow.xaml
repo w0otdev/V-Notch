@@ -73,7 +73,7 @@
         <FontFamily x:Key="MainSystemFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
 
         <Style x:Key="TitleText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="#B8B8B8"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
@@ -157,16 +157,16 @@
         <SolidColorBrush x:Key="MusicVisualizerBrush" Color="White"/>
 
         <LinearGradientBrush x:Key="TrackTitleGradient" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="White" Offset="0"/>
-            <GradientStop Color="White" Offset="1"/>
+            <GradientStop Color="#B8B8B8" Offset="0"/>
+            <GradientStop Color="#B8B8B8" Offset="1"/>
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="TrackTitleNextGradient" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="White" Offset="0"/>
-            <GradientStop Color="White" Offset="1"/>
+            <GradientStop Color="#B8B8B8" Offset="0"/>
+            <GradientStop Color="#B8B8B8" Offset="1"/>
         </LinearGradientBrush>
         <Style x:Key="TrayMenuItemText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="#B8B8B8"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
@@ -210,7 +210,7 @@
             <Setter Property="Height" Value="44"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="#B8B8B8"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="Template">
@@ -688,7 +688,7 @@
                                 <Viewbox Width="15" Height="15" Stretch="Uniform"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Data="M8 0L0 6V8H1V15H4V10H7V15H15V8H16V6L14 4.5V1H11V2.25L8 0ZM9 10H12V13H9V10Z"
-                                          Fill="White"/>
+                                          Fill="#B8B8B8"/>
                                 </Viewbox>
                             </Border>
                             <Border x:Name="FileShelfIconButton"
@@ -716,7 +716,7 @@
                                 <Viewbox Width="15" Height="15" Stretch="Uniform"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Data="M479.66,268.7l-32-151.81C441.48,83.77,417.68,64,384,64H128c-16.8,0-31,4.69-42.1,13.94s-18.37,22.31-21.58,38.89l-32,151.87A16.65,16.65,0,0,0,32,272V384a64,64,0,0,0,64,64H416a64,64,0,0,0,64-64V272A16.65,16.65,0,0,0,479.66,268.7Zm-384-145.4c0-.1,0-.19,0-.28,3.55-18.43,13.81-27,32.29-27H384c18.61,0,28.87,8.55,32.27,26.91,0,.13.05.26.07.39l26.93,127.88a4,4,0,0,1-3.92,4.82H320a15.92,15.92,0,0,0-16,15.82,48,48,0,1,1-96,0A15.92,15.92,0,0,0,192,256H72.65a4,4,0,0,1-3.92-4.82Z"
-                                          Fill="White"/>
+                                          Fill="#B8B8B8"/>
                                 </Viewbox>
                             </Border>
                             <Border x:Name="TimerIconButton"
@@ -744,7 +744,7 @@
                                 <Viewbox Width="15" Height="15" Stretch="Uniform"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Data="M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM15.8321 14.5547C15.5257 15.0142 14.9048 15.1384 14.4453 14.8321L11.8451 13.0986C11.3171 12.7466 11 12.1541 11 11.5196V11.5V7C11 6.44772 11.4477 6 12 6C12.5523 6 13 6.44772 13 7V11.4648L15.5547 13.1679C16.0142 13.4743 16.1384 14.0952 15.8321 14.5547Z"
-                                          Fill="White"/>
+                                          Fill="#B8B8B8"/>
                                 </Viewbox>
                             </Border>
                             <Border x:Name="AudioIconButton"
@@ -772,7 +772,7 @@
                                 <Viewbox Width="15" Height="15" Stretch="Uniform"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Data="M13.5 2.5C13.5 2.1 13.05 1.86 12.72 2.09L6.8 6.2H3.5C2.95 6.2 2.5 6.65 2.5 7.2V12.8C2.5 13.35 2.95 13.8 3.5 13.8H6.8L12.72 17.91C13.05 18.14 13.5 17.9 13.5 17.5V2.5ZM16.04 6.05C15.74 5.79 15.28 5.82 15.02 6.13C14.76 6.43 14.79 6.89 15.1 7.15C16.0 7.93 16.5 8.93 16.5 10C16.5 11.07 16.0 12.07 15.1 12.85C14.79 13.11 14.76 13.57 15.02 13.87C15.28 14.18 15.74 14.21 16.04 13.95C17.25 12.91 18 11.5 18 10C18 8.5 17.25 7.09 16.04 6.05Z"
-                                          Fill="White"/>
+                                          Fill="#B8B8B8"/>
                                 </Viewbox>
                             </Border>
                         </StackPanel>
@@ -1076,7 +1076,7 @@
                                     VerticalAlignment="Center"/>
                             <TextBlock x:Name="BluetoothDeviceName"
                                        Text=""
-                                       Foreground="White"
+                                       Foreground="#B8B8B8"
                                        FontSize="11"
                                        FontWeight="SemiBold"
                                        FontFamily="{StaticResource MainSystemFont}"
@@ -1128,7 +1128,7 @@
                                     VerticalAlignment="Center"/>
                             <TextBlock x:Name="BluetoothDisconnectDeviceName"
                                        Text=""
-                                       Foreground="White"
+                                       Foreground="#B8B8B8"
                                        FontSize="11"
                                        FontWeight="SemiBold"
                                        FontFamily="{StaticResource MainSystemFont}"
@@ -1167,7 +1167,7 @@
                             <TextBlock x:Name="ChargingStatusText"
                                        Grid.Column="0"
                                        Text="Charging"
-                                       Foreground="White"
+                                       Foreground="#B8B8B8"
                                        FontSize="11.5"
                                        FontWeight="SemiBold"
                                        FontFamily="{StaticResource MainSystemFont}"
@@ -1380,7 +1380,7 @@
                                 </TransformGroup>
                             </Canvas.RenderTransform>
                             <Path Data="M2.5,8.5 L6,12 L13.5,4.5"
-                                  Stroke="White" StrokeThickness="2.2"
+                                  Stroke="#B8B8B8" StrokeThickness="2.2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                                   StrokeLineJoin="Round"
                                   Fill="Transparent"/>
@@ -1389,7 +1389,7 @@
                         <TextBlock x:Name="ClipboardCopiedText"
                                    Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
                                    Text="Copied"
-                                   Foreground="White"
+                                   Foreground="#B8B8B8"
                                    FontSize="11"
                                    FontWeight="SemiBold"
                                    FontFamily="{StaticResource MainSystemFont}"
@@ -1526,7 +1526,7 @@
                                                       Stretch="Uniform"/>
 
                                                 <Path Data="M 13 2 L 3 14 L 8 14 L 7 22 L 17 10 L 12 10 L 13 2 Z"
-                                                      Fill="White"
+                                                      Fill="#B8B8B8"
                                                       Stretch="Uniform"/>
                                             </Grid>
                                         </Viewbox>
@@ -1981,17 +1981,17 @@
                                                     </Border.RenderTransform>
                                                 <Viewbox Width="16" Height="16" Margin="0,0,0,0" Stretch="Uniform">
                                                     <Canvas Width="512" Height="512" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="True">
-                                                        <Path x:Name="PrevArrow0" Fill="White" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z" Opacity="0">
+                                                        <Path x:Name="PrevArrow0" Fill="#B8B8B8" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z" Opacity="0">
                                                             <Path.RenderTransform>
                                                                 <TranslateTransform X="0" Y="0"/>
                                                             </Path.RenderTransform>
                                                         </Path>
-                                                        <Path x:Name="PrevArrow2" Fill="White" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z">
+                                                        <Path x:Name="PrevArrow2" Fill="#B8B8B8" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z">
                                                             <Path.RenderTransform>
                                                                 <TranslateTransform X="0" Y="0"/>
                                                             </Path.RenderTransform>
                                                         </Path>
-                                                        <Path x:Name="PrevArrow1" Fill="White" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z" Opacity="0">
+                                                        <Path x:Name="PrevArrow1" Fill="#B8B8B8" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z" Opacity="0">
                                                             <Path.RenderTransform>
                                                                 <TranslateTransform X="0" Y="0"/>
                                                             </Path.RenderTransform>
@@ -2023,7 +2023,7 @@
                                                                 <Path x:Name="PauseIconPath"
                                                                       Width="48"
                                                                       Height="45.812"
-                                                                      Fill="White"
+                                                                      Fill="#B8B8B8"
                                                                       Stretch="Fill"
                                                                       Data="{StaticResource PauseButtonSvgIcon}"
                                                                       Canvas.Left="0"
@@ -2036,7 +2036,7 @@
                                                                 <Path x:Name="PlayIconPath"
                                                                       Width="48"
                                                                       Height="45.975"
-                                                                      Fill="White"
+                                                                      Fill="#B8B8B8"
                                                                       Stretch="Fill"
                                                                       Data="{StaticResource PlayButtonSvgIcon}"
                                                                       Canvas.Left="0"
@@ -2063,17 +2063,17 @@
                                                     </Border.RenderTransform>
                                                 <Viewbox Width="16" Height="16" Margin="0,0,0,0" Stretch="Uniform">
                                                     <Canvas Width="512" Height="512" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="True">
-                                                        <Path x:Name="NextArrow0" Fill="White" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z" Opacity="0">
+                                                        <Path x:Name="NextArrow0" Fill="#B8B8B8" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z" Opacity="0">
                                                             <Path.RenderTransform>
                                                                 <TranslateTransform X="0" Y="0"/>
                                                             </Path.RenderTransform>
                                                         </Path>
-                                                        <Path x:Name="NextArrow1" Fill="White" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z">
+                                                        <Path x:Name="NextArrow1" Fill="#B8B8B8" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z">
                                                             <Path.RenderTransform>
                                                                 <TranslateTransform X="0" Y="0"/>
                                                             </Path.RenderTransform>
                                                         </Path>
-                                                        <Path x:Name="NextArrow2" Fill="White" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z" Opacity="0">
+                                                        <Path x:Name="NextArrow2" Fill="#B8B8B8" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z" Opacity="0">
                                                             <Path.RenderTransform>
                                                                 <TranslateTransform X="0" Y="0"/>
                                                             </Path.RenderTransform>
@@ -2227,20 +2227,20 @@
                                             </Border.RenderTransform>
                                             <Viewbox Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <Canvas Width="512" Height="512" ClipToBounds="True">
-                                                <Path x:Name="InlinePrevArrow0" Fill="White" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z"
+                                                <Path x:Name="InlinePrevArrow0" Fill="#B8B8B8" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z"
                                                       Opacity="0">
                                                     <Path.RenderTransform>
                                                         <TranslateTransform X="0" Y="0"/>
                                                     </Path.RenderTransform>
                                                 </Path>
 
-                                                <Path x:Name="InlinePrevArrow2" Fill="White" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z">
+                                                <Path x:Name="InlinePrevArrow2" Fill="#B8B8B8" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z">
                                                     <Path.RenderTransform>
                                                         <TranslateTransform X="0" Y="0"/>
                                                     </Path.RenderTransform>
                                                 </Path>
 
-                                                <Path x:Name="InlinePrevArrow1" Fill="White" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z"
+                                                <Path x:Name="InlinePrevArrow1" Fill="#B8B8B8" StrokeThickness="0" Data="M30.71,229.47l188.87-113a30.54,30.54,0,0,1,31.09-.39,33.74,33.74,0,0,1,16.76,29.47V224.6L448.15,116.44a30.54,30.54,0,0,1,31.09-.39A33.74,33.74,0,0,1,496,145.52v221A33.73,33.73,0,0,1,479.24,396a30.54,30.54,0,0,1-31.09-.39L267.43,287.4v79.08A33.73,33.73,0,0,1,250.67,396a30.54,30.54,0,0,1-31.09-.39l-188.87-113a31.27,31.27,0,0,1,0-53Z"
                                                       Opacity="0">
                                                     <Path.RenderTransform>
                                                         <TranslateTransform X="0" Y="0"/>
@@ -2272,7 +2272,7 @@
                                                     <Path x:Name="InlinePauseIconPath"
                                                           Width="16"
                                                           Height="16"
-                                                          Fill="White"
+                                                          Fill="#B8B8B8"
                                                           Stretch="Fill"
                                                           Data="{StaticResource PauseButtonSvgIcon}"
                                                           Canvas.Left="0"
@@ -2287,7 +2287,7 @@
                                                     <Path x:Name="InlinePlayIconPath"
                                                           Width="16"
                                                           Height="16"
-                                                          Fill="White"
+                                                          Fill="#B8B8B8"
                                                           Stretch="Fill"
                                                           Data="{StaticResource PlayButtonSvgIcon}"
                                                           Canvas.Left="0"
@@ -2311,20 +2311,20 @@
                                             <Viewbox Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <Canvas Width="512" Height="512" ClipToBounds="True">
 
-                                                <Path x:Name="InlineNextArrow0" Fill="White" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z"
+                                                <Path x:Name="InlineNextArrow0" Fill="#B8B8B8" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z"
                                                       Opacity="0">
                                                     <Path.RenderTransform>
                                                         <TranslateTransform X="0" Y="0"/>
                                                     </Path.RenderTransform>
                                                 </Path>
 
-                                                <Path x:Name="InlineNextArrow1" Fill="White" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z">
+                                                <Path x:Name="InlineNextArrow1" Fill="#B8B8B8" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z">
                                                     <Path.RenderTransform>
                                                         <TranslateTransform X="0" Y="0"/>
                                                     </Path.RenderTransform>
                                                 </Path>
 
-                                                <Path x:Name="InlineNextArrow2" Fill="White" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z"
+                                                <Path x:Name="InlineNextArrow2" Fill="#B8B8B8" StrokeThickness="0" Data="M481.29,229.47l-188.87-113a30.54,30.54,0,0,0-31.09-.39,33.74,33.74,0,0,0-16.76,29.47V224.6L63.85,116.44a30.54,30.54,0,0,0-31.09-.39A33.74,33.74,0,0,0,16,145.52v221A33.74,33.74,0,0,0,32.76,396a30.54,30.54,0,0,0,31.09-.39L244.57,287.4v79.08A33.74,33.74,0,0,0,261.33,396a30.54,30.54,0,0,0,31.09-.39l188.87-113a31.27,31.27,0,0,0,0-53Z"
                                                       Opacity="0">
                                                     <Path.RenderTransform>
                                                         <TranslateTransform X="0" Y="0"/>
@@ -2467,7 +2467,7 @@
                                                         FontWeight="Bold"
                                                         LineHeight="21"
                                                         LineStackingStrategy="BlockLineHeight"
-                                                        Foreground="White"
+                                                        Foreground="#B8B8B8"
                                                         TextWrapping="NoWrap"
                                                         HorizontalAlignment="Left"
                                                         VerticalAlignment="Center"
@@ -2491,7 +2491,7 @@
                                                            FontWeight="Heavy"
                                                            LineHeight="40"
                                                            LineStackingStrategy="BlockLineHeight"
-                                                           Foreground="White"
+                                                           Foreground="#B8B8B8"
                                                            TextWrapping="NoWrap"
                                                            HorizontalAlignment="Center"
                                                            VerticalAlignment="Center"
@@ -2574,7 +2574,7 @@
                                                        FontFamily="{StaticResource MainSystemFont}"
                                                        FontSize="31"
                                                        FontWeight="Bold"
-                                                       Foreground="White"
+                                                       Foreground="#B8B8B8"
                                                        Margin="-1,-1,0,0"
                                                        LineHeight="34"
                                                        LineStackingStrategy="BlockLineHeight"
@@ -2632,7 +2632,7 @@
                                                                FontFamily="{StaticResource MainSystemFont}"
                                                                FontSize="13"
                                                                FontWeight="Bold"
-                                                               Foreground="White"
+                                                               Foreground="#B8B8B8"
                                                                HorizontalAlignment="Right"
                                                                VerticalAlignment="Bottom"
                                                                TextOptions.TextRenderingMode="Grayscale"
@@ -2667,7 +2667,7 @@
                                                                FontFamily="{StaticResource MainSystemFont}"
                                                                FontSize="13"
                                                                FontWeight="Bold"
-                                                               Foreground="White"
+                                                               Foreground="#B8B8B8"
                                                                HorizontalAlignment="Right"
                                                                VerticalAlignment="Bottom"
                                                                TextOptions.TextRenderingMode="Grayscale"
@@ -2953,9 +2953,9 @@
                                 <Border x:Name="CameraErrorOverlay" Background="#60000000" Visibility="Collapsed">
                                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
                                         <Path Data="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 17c-.77 1.333.192 3 1.732 3z"
-                                              Stroke="White" StrokeThickness="1.5" Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center"/>
+                                              Stroke="#B8B8B8" StrokeThickness="1.5" Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center"/>
                                         <TextBlock Text="Cannot detect camera device" x:Name="CameraErrorText" Style="{StaticResource SmallText}" FontSize="9"
-                                                   Foreground="White" HorizontalAlignment="Center" Margin="0,4,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
+                                                   Foreground="#B8B8B8" HorizontalAlignment="Center" Margin="0,4,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
                                         <TextBlock Text="click to try again" x:Name="CameraRetryText" Style="{StaticResource SmallText}" FontSize="8"
                                                    Foreground="#99FFFFFF" HorizontalAlignment="Center" FontStyle="Italic"/>
                                     </StackPanel>
@@ -2976,7 +2976,7 @@
                                 <StackPanel Orientation="Vertical" Margin="0,0,0,8">
                                     <Grid Width="110">
                                         <TextBlock Text="CPU" Style="{StaticResource SmallText}" FontSize="10" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
-                                        <TextBlock x:Name="ShelfSysMonCpuText" Text="0%" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Right"/>
+                                        <TextBlock x:Name="ShelfSysMonCpuText" Text="0%" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="#B8B8B8" HorizontalAlignment="Right"/>
                                     </Grid>
                                     <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
                                         <Border x:Name="ShelfSysMonCpuBar" Width="0" Height="4" CornerRadius="2" Background="White" HorizontalAlignment="Left"/>
@@ -2985,7 +2985,7 @@
                                 <StackPanel Orientation="Vertical" Margin="0,0,0,8">
                                     <Grid Width="110">
                                         <TextBlock Text="RAM" Style="{StaticResource SmallText}" FontSize="10" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
-                                        <TextBlock x:Name="ShelfSysMonRamText" Text="—" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Right"/>
+                                        <TextBlock x:Name="ShelfSysMonRamText" Text="—" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="#B8B8B8" HorizontalAlignment="Right"/>
                                     </Grid>
                                     <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
                                         <Border x:Name="ShelfSysMonRamBar" Width="0" Height="4" CornerRadius="2" Background="White" HorizontalAlignment="Left"/>
@@ -3017,7 +3017,7 @@
                                 </StackPanel>
                                 <StackPanel x:Name="ShelfWeatherActualContent"
                                             VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
-                                    <TextBlock x:Name="ShelfWeatherTempText" Text="--°" Style="{StaticResource TitleText}" FontSize="24" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="ShelfWeatherTempText" Text="--°" Style="{StaticResource TitleText}" FontSize="24" FontWeight="Bold" Foreground="#B8B8B8" HorizontalAlignment="Center"/>
                                     <TextBlock x:Name="ShelfWeatherDescText" Text="Weather" Style="{StaticResource SmallText}" FontSize="11" Foreground="#CCFFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                     <TextBlock x:Name="ShelfWeatherCityText" Text="" Style="{StaticResource SmallText}" FontSize="9" Foreground="#88FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
@@ -3033,7 +3033,7 @@
                                 ClipToBounds="True"
                                 Visibility="Collapsed">
                             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
-                                <TextBlock x:Name="ShelfClockTimeText" Text="12:00" Style="{StaticResource TitleText}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="ShelfClockTimeText" Text="12:00" Style="{StaticResource TitleText}" FontSize="22" FontWeight="Bold" Foreground="#B8B8B8" HorizontalAlignment="Center"/>
                                 <TextBlock x:Name="ShelfClockDateText" Text="Mon, Jan 1" Style="{StaticResource SmallText}" FontSize="10" Foreground="#AAFFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                             </StackPanel>
                         </Border>
@@ -3077,7 +3077,7 @@
                                                Style="{StaticResource SmallText}"
                                                FontSize="9.5"
                                                FontWeight="Bold"
-                                               Foreground="White"
+                                               Foreground="#B8B8B8"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
                                 </Border>
@@ -3386,7 +3386,7 @@
                                         </Border.Effect>
                                         <Path x:Name="CountdownStartIcon"
                                               Data="M133,440a35.37,35.37,0,0,1-17.5-4.67c-12-6.8-17.46-20-17.46-41.73V118.4c0-21.74,5.48-34.93,17.46-41.73a35.13,35.13,0,0,1,35.77.45L399.68,225.11a38.19,38.19,0,0,1,0,61.78L151.23,435a35.77,35.77,0,0,1-18.27,5Z"
-                                              Fill="White"
+                                              Fill="#B8B8B8"
                                               Stretch="Uniform"
                                               Width="17"
                                               Height="17"
@@ -3426,7 +3426,7 @@
                                                         Typography.NumeralAlignment="Tabular"
                                                         RenderTransformOrigin="0.5,0.5">
                                                  <TextBlock.Foreground>
-                                                     <SolidColorBrush x:Name="CountdownDigitsBrush" Color="White"/>
+                                                     <SolidColorBrush x:Name="CountdownDigitsBrush" Color="#B8B8B8"/>
                                                  </TextBlock.Foreground>
                                                  <TextBlock.RenderTransform>
                                                      <TransformGroup>
@@ -3442,7 +3442,7 @@
                                                       MaxLength="16"
                                                       FontSize="26"
                                                       FontWeight="SemiBold"
-                                                      Foreground="White"
+                                                      Foreground="#B8B8B8"
                                                       Background="Transparent"
                                                       BorderThickness="0"
                                                       Margin="10,0,10,5"
@@ -3839,7 +3839,7 @@
                                             MouseLeave="TimerControlButton_MouseLeave"
                                             MouseLeftButtonDown="CountdownDismiss_Click">
                                         <Path Data="M6,6 L18,18 M18,6 L6,18"
-                                              Stroke="White"
+                                              Stroke="#B8B8B8"
                                               StrokeThickness="2.9"
                                               StrokeStartLineCap="Round"
                                               StrokeEndLineCap="Round"
@@ -3896,7 +3896,7 @@
                             <Ellipse Width="7" Height="7" Fill="#30D158" Margin="0,0,7,0" VerticalAlignment="Center"/>
                             <TextBlock x:Name="UpdateInlineTitleText"
                                        Text="Ready To Update"
-                                       Foreground="White"
+                                       Foreground="#B8B8B8"
                                        FontSize="11.5"
                                        FontWeight="SemiBold"
                                        FontFamily="{StaticResource MainSystemFont}"/>
