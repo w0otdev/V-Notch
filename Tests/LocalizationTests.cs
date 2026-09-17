@@ -15,7 +15,10 @@ public sealed class LocalizationCollectionDefinition { }
 [Collection("Localization")]
 public sealed class LocalizationTests
 {
-    private static readonly string[] Languages = { "en", "vi", "es", "fr", "de", "ja", "hi" };
+    private static readonly string[] Languages =
+    {
+        "en", "vi", "zh", "pt", "ru", "ar", "ko", "es", "fr", "de", "ja", "hi", "it", "tr", "pl", "nl", "id"
+    };
 
     [Fact]
     public void AllSupportedLanguagesHaveTheSameTranslationKeys()
@@ -136,11 +139,21 @@ public sealed class LocalizationTests
     [Theory]
     [InlineData("en", "en-US")]
     [InlineData("vi", "vi-VN")]
+    [InlineData("zh", "zh-CN")]
+    [InlineData("pt", "pt-BR")]
+    [InlineData("ru", "ru-RU")]
+    [InlineData("ar", "ar-SA")]
+    [InlineData("ko", "ko-KR")]
     [InlineData("es", "es-ES")]
     [InlineData("fr", "fr-FR")]
     [InlineData("de", "de-DE")]
     [InlineData("ja", "ja-JP")]
     [InlineData("hi", "hi-IN")]
+    [InlineData("it", "it-IT")]
+    [InlineData("tr", "tr-TR")]
+    [InlineData("pl", "pl-PL")]
+    [InlineData("nl", "nl-NL")]
+    [InlineData("id", "id-ID")]
     public void LanguageUsesTheExpectedCulture(string language, string culture)
     {
         Loc.SetLanguage(language);

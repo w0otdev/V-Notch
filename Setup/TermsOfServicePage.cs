@@ -21,13 +21,12 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private readonly StackPanel _termsContentPanel;
     private readonly Grid _footerPanel;
     private readonly TextBlock _statusText;
-    private readonly Button _scrollToBottomButton;
     private readonly CheckBox _agreeCheckBox;
 
     private bool _hasReadToBottom;
     private string _currentLoadedLanguage = string.Empty;
 
-    private static readonly FontFamily SFProBold = new("pack://application:,,,/Fonts/#SF Pro Display, SF Pro Display, Nirmala UI, Segoe UI Variable Display, Segoe UI, Inter, Roboto, Sans-serif");
+    private static readonly FontFamily SFProBold = SetupFonts.SFProDisplayFont;
     private static readonly FontFamily SFProText = SFProBold;
 
     private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
@@ -48,6 +47,10 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
 
     public TermsOfServicePage()
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var mainGrid = new Grid();
         mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -60,7 +63,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.terms.headline"),
             FontSize = 24,
             LineHeight = 30,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Bold,
             Foreground = BrushWhite,
             FontFamily = SFProBold,
             Margin = new Thickness(0, 0, 0, 10),
@@ -74,7 +77,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.terms.description"),
             FontSize = 13.5,
-            FontWeight = FontWeights.Normal,
+            FontWeight = FontWeights.Bold,
             LineHeight = 20,
             Foreground = BrushDimWhite,
             FontFamily = SFProBold,
@@ -118,78 +121,32 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         Grid.SetRow(_termsBorder, 2);
         mainGrid.Children.Add(_termsBorder);
 
-        // Row 3: Footer controls (Status, Scroll to bottom, and Agreement CheckBox)
+        // Row 3: Footer controls (Status and Agreement CheckBox)
         _footerPanel = new Grid
         {
             Margin = new Thickness(0, 12, 0, 0)
         };
         _footerPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _footerPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        _footerPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _footerPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        // Row 0 Col 0: Reading status
+        // Row 0: Reading status
         _statusText = new TextBlock
         {
             FontSize = 13,
-            FontWeight = FontWeights.Normal,
+            FontWeight = FontWeights.Bold,
             FontFamily = SFProBold,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 16, 0),
             TextWrapping = TextWrapping.Wrap
         };
         Grid.SetRow(_statusText, 0);
-        Grid.SetColumn(_statusText, 0);
         _footerPanel.Children.Add(_statusText);
 
-        // Row 0 Col 1: Scroll to bottom shortcut button
-        _scrollToBottomButton = new Button
-        {
-            Content = Loc.Get("setup.terms.scrollToBottom"),
-            FontSize = 12,
-            FontWeight = FontWeights.Normal,
-            FontFamily = SFProBold,
-            Padding = new Thickness(12, 6, 12, 6),
-            Cursor = Cursors.Hand,
-            Background = Freeze(new SolidColorBrush(Color.FromRgb(20, 20, 20))),
-            Foreground = BrushWhite,
-            BorderThickness = new Thickness(1),
-            BorderBrush = Freeze(new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)))
-        };
-
-        var btnTemplate = new ControlTemplate(typeof(Button));
-        var btnBorder = new FrameworkElementFactory(typeof(Border));
-        btnBorder.Name = "border";
-        btnBorder.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
-        btnBorder.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Button.BorderBrushProperty));
-        btnBorder.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Button.BorderThicknessProperty));
-        btnBorder.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
-        btnBorder.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Button.PaddingProperty));
-        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
-        cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-        btnBorder.AppendChild(cp);
-        btnTemplate.VisualTree = btnBorder;
-        var hover = new Trigger { Property = IsMouseOverProperty, Value = true };
-        hover.Setters.Add(new Setter(Border.BackgroundProperty,
-            Freeze(new SolidColorBrush(Color.FromRgb(30, 30, 30))), "border"));
-        btnTemplate.Triggers.Add(hover);
-        var focus = new Trigger { Property = IsKeyboardFocusedProperty, Value = true };
-        focus.Setters.Add(new Setter(Border.BorderBrushProperty, BrushWhite, "border"));
-        btnTemplate.Triggers.Add(focus);
-        _scrollToBottomButton.Template = btnTemplate;
-
-        _scrollToBottomButton.Click += ScrollToBottomButton_Click;
-        Grid.SetRow(_scrollToBottomButton, 0);
-        Grid.SetColumn(_scrollToBottomButton, 1);
-        _footerPanel.Children.Add(_scrollToBottomButton);
-
-        // Row 1 Col 0-1: Agreement CheckBox
+        // Row 1: Agreement CheckBox
         _agreeCheckBox = new CheckBox
         {
             Content = Loc.Get("setup.terms.checkbox"),
             FontSize = 13,
-            FontWeight = FontWeights.Normal,
+            FontWeight = FontWeights.Bold,
             FontFamily = SFProBold,
             Foreground = BrushWhite,
             Margin = new Thickness(0, 16, 0, 0),
@@ -200,12 +157,12 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         agreementText.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding());
         agreementText.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
         agreementText.SetValue(TextBlock.LineHeightProperty, 20.0);
+        agreementText.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+        agreementText.SetValue(TextBlock.FontFamilyProperty, SFProBold);
         _agreeCheckBox.ContentTemplate = new DataTemplate { VisualTree = agreementText };
         _agreeCheckBox.Checked += AgreeCheckBox_CheckedChanged;
         _agreeCheckBox.Unchecked += AgreeCheckBox_CheckedChanged;
         Grid.SetRow(_agreeCheckBox, 1);
-        Grid.SetColumn(_agreeCheckBox, 0);
-        Grid.SetColumnSpan(_agreeCheckBox, 2);
         _footerPanel.Children.Add(_agreeCheckBox);
 
         Grid.SetRow(_footerPanel, 3);
@@ -228,7 +185,6 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         System.Windows.Automation.AutomationProperties.SetName(_termsScrollViewer, _headline.Text);
         _description.Text = Loc.Get("setup.terms.description");
         _agreeCheckBox.Content = Loc.Get("setup.terms.checkbox");
-        _scrollToBottomButton.Content = Loc.Get("setup.terms.scrollToBottom");
 
         var currentLang = Loc.CurrentLanguage;
         if (_currentLoadedLanguage != currentLang)
@@ -288,12 +244,6 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         CanContinueChanged?.Invoke(CanContinue);
     }
 
-    private void ScrollToBottomButton_Click(object sender, RoutedEventArgs e)
-    {
-        _termsScrollViewer.ScrollToEnd();
-        // ScrollToEnd is queued by WPF. ScrollChanged confirms the actual offset.
-    }
-
     private void AgreeCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
     {
         CanContinueChanged?.Invoke(CanContinue);
@@ -305,13 +255,11 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
         {
             _statusText.Text = "✓ " + Loc.Get("setup.terms.scrollCompleted");
             _statusText.Foreground = BrushGreen;
-            _scrollToBottomButton.Visibility = Visibility.Collapsed;
         }
         else
         {
             _statusText.Text = "↓ " + Loc.Get("setup.terms.scrollHint");
             _statusText.Foreground = BrushMuted;
-            _scrollToBottomButton.Visibility = Visibility.Visible;
         }
     }
 
@@ -410,7 +358,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             var tb = new TextBlock
             {
                 FontSize = 13,
-                FontWeight = FontWeights.Normal,
+                FontWeight = FontWeights.Bold,
                 LineHeight = 22,
                 Foreground = BrushDimWhite,
                 FontFamily = SFProBold,
@@ -453,7 +401,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = line.Substring(2).Trim(),
                     FontSize = 18,
-                    FontWeight = FontWeights.SemiBold,
+                    FontWeight = FontWeights.Bold,
                     Foreground = BrushWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap,
@@ -471,7 +419,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = line.Substring(3).Trim(),
                     FontSize = 15,
-                    FontWeight = FontWeights.SemiBold,
+                    FontWeight = FontWeights.Bold,
                     Foreground = BrushWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap,
@@ -489,7 +437,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = line.Substring(4).Trim(),
                     FontSize = 13.5,
-                    FontWeight = FontWeights.SemiBold,
+                    FontWeight = FontWeights.Bold,
                     Foreground = BrushWhite,
                     FontFamily = SFProBold,
                     TextWrapping = TextWrapping.Wrap,
@@ -514,7 +462,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = "•",
                     FontSize = 14,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = FontWeights.Bold,
                     FontFamily = SFProBold,
                     Foreground = BrushWhite,
                     VerticalAlignment = VerticalAlignment.Top,
@@ -526,7 +474,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 var itemText = new TextBlock
                 {
                     FontSize = 13,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = FontWeights.Bold,
                     LineHeight = 22,
                     Foreground = BrushDimWhite,
                     FontFamily = SFProBold,
@@ -556,7 +504,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 {
                     Text = numMatch.Groups[1].Value + ".",
                     FontSize = 13,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = FontWeights.Bold,
                     FontFamily = SFProBold,
                     Foreground = BrushMuted,
                     VerticalAlignment = VerticalAlignment.Top
@@ -567,7 +515,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 var itemText = new TextBlock
                 {
                     FontSize = 13,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = FontWeights.Bold,
                     LineHeight = 22,
                     Foreground = BrushDimWhite,
                     FontFamily = SFProBold,
@@ -602,7 +550,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 string boldText = part.Substring(2, part.Length - 4);
                 textBlock.Inlines.Add(new Run(boldText)
                 {
-                    FontWeight = FontWeights.SemiBold,
+                    FontWeight = FontWeights.Bold,
                     Foreground = BrushWhite
                 });
             }
@@ -612,7 +560,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 if (Uri.TryCreate(linkMatch.Groups[2].Value, UriKind.Absolute, out var uri) &&
                     uri.Scheme == Uri.UriSchemeHttps)
                 {
-                    var link = new Hyperlink(new Run(label))
+                    var link = new Hyperlink(new Run(label) { FontWeight = FontWeights.Bold })
                     {
                         NavigateUri = uri,
                         Foreground = BrushWhite,
@@ -634,7 +582,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 }
                 else
                 {
-                    textBlock.Inlines.Add(new Run(label));
+                    textBlock.Inlines.Add(new Run(label) { FontWeight = FontWeights.Bold });
                 }
             }
             else if (part.StartsWith("`") && part.EndsWith("`") && part.Length > 2)
@@ -642,6 +590,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 textBlock.Inlines.Add(new Run(part.Substring(1, part.Length - 2))
                 {
                     FontFamily = new FontFamily("Consolas"),
+                    FontWeight = FontWeights.Bold,
                     Foreground = BrushWhite
                 });
             }
@@ -649,7 +598,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             {
                 textBlock.Inlines.Add(new Run(part)
                 {
-                    FontWeight = FontWeights.Normal
+                    FontWeight = FontWeights.Bold
                 });
             }
         }

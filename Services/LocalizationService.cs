@@ -15,7 +15,7 @@ public static class Loc
     private static string _currentLanguage = "en";
     private static readonly Dictionary<string, Dictionary<string, string>> _strings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, LocaleMetadata> _metadata = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly string[] DefaultLanguageOrder = { "en", "vi", "es", "fr", "de", "ja", "hi" };
+    private static readonly string[] DefaultLanguageOrder = { "en", "vi", "zh", "pt", "ru", "ar", "ko", "es", "fr", "de", "ja", "hi", "it", "tr", "pl", "nl", "id" };
     private static readonly Dictionary<string, IReadOnlyList<string>> TranslationsByText = InitializeTranslations();
 
     public static string CurrentLanguage => _currentLanguage;
@@ -36,11 +36,21 @@ public static class Loc
         return CultureInfo.GetCultureInfo(_currentLanguage switch
         {
             "vi" => "vi-VN",
+            "zh" => "zh-CN",
+            "pt" => "pt-BR",
+            "ru" => "ru-RU",
+            "ar" => "ar-SA",
+            "ko" => "ko-KR",
             "es" => "es-ES",
             "fr" => "fr-FR",
             "de" => "de-DE",
             "ja" => "ja-JP",
             "hi" => "hi-IN",
+            "it" => "it-IT",
+            "tr" => "tr-TR",
+            "pl" => "pl-PL",
+            "nl" => "nl-NL",
+            "id" => "id-ID",
             _ => "en-US"
         });
     }

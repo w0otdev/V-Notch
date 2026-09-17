@@ -2,6 +2,7 @@ using System;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Media;
 using Xunit;
 
 namespace VNotch.Tests;
@@ -26,6 +27,17 @@ public sealed class SetupLanguagePageTests
             page.LanguageListScrollViewer.ScrollToEnd();
             page.UpdateLayout();
             Assert.True(page.LanguageListScrollViewer.VerticalOffset > 0);
+        });
+    }
+
+    [Fact]
+    public void SetupFonts_SFProDisplayFont_ResolvesToSFProDisplay()
+    {
+        RunOnStaThread(() =>
+        {
+            if (Application.Current == null) new Application();
+            var font = SetupFonts.SFProDisplayFont;
+            Assert.Contains("SF Pro Display", font.FamilyNames.Values);
         });
     }
 

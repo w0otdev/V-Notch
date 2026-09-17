@@ -460,7 +460,7 @@ public partial class ChangelogWindow : Window
             {
                 var run = new Run(value[1..^1])
                 {
-                    FontFamily = new FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"),
+                    FontFamily = SetupFonts.SFProDisplayFont,
                     Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)),
                     Foreground = new SolidColorBrush(Color.FromRgb(230, 230, 230))
                 };

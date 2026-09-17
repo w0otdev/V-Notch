@@ -77,7 +77,7 @@ public static class TooltipHelper
         style.Setters.Add(new Setter(ToolTip.FontSizeProperty, 12.0));
 
         style.Setters.Add(new Setter(Control.FontFamilyProperty,
-            new System.Windows.Media.FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI")));
+            VNotch.SetupFonts.SFProDisplayFont));
 
         style.Setters.Add(new Setter(ToolTip.HasDropShadowProperty, true));
 

@@ -116,6 +116,23 @@
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\QR.PNG" />
     <Resource Include="Shaders\LiquidGlassRefraction.ps" />
+    <Resource Include="Assets\Flags\flag_en.png" />
+    <Resource Include="Assets\Flags\flag_vi.png" />
+    <Resource Include="Assets\Flags\flag_es.png" />
+    <Resource Include="Assets\Flags\flag_fr.png" />
+    <Resource Include="Assets\Flags\flag_de.png" />
+    <Resource Include="Assets\Flags\flag_ja.png" />
+    <Resource Include="Assets\Flags\flag_hi.png" />
+    <Resource Include="Assets\Flags\flag_zh.png" />
+    <Resource Include="Assets\Flags\flag_pt.png" />
+    <Resource Include="Assets\Flags\flag_ru.png" />
+    <Resource Include="Assets\Flags\flag_ar.png" />
+    <Resource Include="Assets\Flags\flag_ko.png" />
+    <Resource Include="Assets\Flags\flag_it.png" />
+    <Resource Include="Assets\Flags\flag_tr.png" />
+    <Resource Include="Assets\Flags\flag_pl.png" />
+    <Resource Include="Assets\Flags\flag_nl.png" />
+    <Resource Include="Assets\Flags\flag_id.png" />
     <None Include="Shaders\LiquidGlassRefraction.ps">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

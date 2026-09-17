@@ -26,7 +26,19 @@ internal interface ISetupAnimatedPage
 
 internal static class SetupFonts
 {
+    private static readonly Lazy<FontFamily> _sfProDisplayFont = new(() =>
+    {
+        if (!UriParser.IsKnownScheme("pack"))
+        {
+            _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        }
+
+        var baseUri = new Uri("pack://application:,,,/V-Notch;component/Fonts/");
+        return new FontFamily(baseUri, "./#SF Pro Display, Nirmala UI, Segoe UI");
+    });
+
     public const string SfProDisplay = "pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI";
+    public static FontFamily SFProDisplayFont => _sfProDisplayFont.Value;
 }
 
 public partial class SetupWindow : Window
@@ -1083,6 +1095,10 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
 
     public IntroductionPage()
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -1101,7 +1117,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1115,7 +1131,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontWeight = FontWeights.Bold,
             LineHeight = 21,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 18),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1157,7 +1173,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 11.5,
             FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(Color.FromArgb(224, 255, 255, 255)),
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay)
+            FontFamily = SetupFonts.SFProDisplayFont
         };
         return new Border
         {
@@ -1181,7 +1197,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 7)
         };
         stack.Children.Add(titleBlock);
@@ -1194,7 +1210,7 @@ public class IntroductionPage : UserControl, ISetupAnimatedPage
             LineHeight = 20,
             TextWrapping = TextWrapping.Wrap,
             Foreground = new SolidColorBrush(Color.FromArgb(196, 255, 255, 255)),
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay)
+            FontFamily = SetupFonts.SFProDisplayFont
         };
         stack.Children.Add(bodyBlock);
 
@@ -1221,6 +1237,10 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
 
     public DirectoryPage(string initialInstallPath)
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -1233,7 +1253,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1245,7 +1265,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             FontSize = 14,
             FontWeight = FontWeights.Bold,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 24)
         };
         Grid.SetRow(_description, 1);
@@ -1282,7 +1302,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             Text = initialInstallPath,
             FontSize = 13,
             FontWeight = FontWeights.Bold,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Background = System.Windows.Media.Brushes.Transparent,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             BorderThickness = new Thickness(0),
@@ -1299,7 +1319,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
             Margin = new Thickness(12, 0, 0, 0),
             FontSize = 13,
             FontWeight = FontWeights.Bold,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 10, 122, 255)),
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             BorderThickness = new Thickness(0),
@@ -1310,7 +1330,7 @@ public class DirectoryPage : UserControl, ISetupAnimatedPage
         {
             Text = Loc.Get("setup.directory.browse"),
             FontWeight = FontWeights.Bold,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             VerticalAlignment = VerticalAlignment.Center
         };
         browseButton.Content = _browseText;
@@ -1397,6 +1417,10 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
 
     public StartupOptionsPage(bool startWithWindows)
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -1409,7 +1433,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1421,7 +1445,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             FontSize = 14,
             FontWeight = FontWeights.Bold,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 32)
         };
         Grid.SetRow(_description, 1);
@@ -1434,7 +1458,7 @@ public class StartupOptionsPage : UserControl, ISetupAnimatedPage
             FontSize = 14,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
+            FontFamily = SetupFonts.SFProDisplayFont
         };
         Grid.SetRow(_checkbox, 2);
         grid.Children.Add(_checkbox);
@@ -1467,6 +1491,10 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
 
     public CancelSetupPage()
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -1479,7 +1507,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1492,7 +1520,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontWeight = FontWeights.Bold,
             LineHeight = 22,
             Foreground = new SolidColorBrush(Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 24),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1527,7 +1555,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontSize = 13,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 6),
             TextWrapping = TextWrapping.Wrap
         };
@@ -1540,7 +1568,7 @@ public class CancelSetupPage : UserControl, ISetupAnimatedPage
             FontWeight = FontWeights.Bold,
             LineHeight = 20,
             Foreground = new SolidColorBrush(Color.FromArgb(196, 255, 255, 255)),
-            FontFamily = new FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             TextWrapping = TextWrapping.Wrap
         };
         stack.Children.Add(bodyBlock);
@@ -1565,6 +1593,10 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
 
     public InstallProgressPage()
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -1577,7 +1609,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 0);
@@ -1591,7 +1623,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 21,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             MaxWidth = 430,
             Margin = new Thickness(0, 0, 0, 32)
         };
@@ -1664,6 +1696,10 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
 
     public FinishPage(bool launchAfterInstall)
     {
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+
         var grid = new Grid();
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
@@ -1754,7 +1790,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             FontSize = 28,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12)
         };
         Grid.SetRow(_headline, 1);
@@ -1766,7 +1802,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             FontSize = 14,
             FontWeight = FontWeights.Bold,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay),
+            FontFamily = SetupFonts.SFProDisplayFont,
             LineHeight = 22,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 24)
@@ -1781,7 +1817,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
             FontSize = 14,
             FontWeight = FontWeights.Bold,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
-            FontFamily = new System.Windows.Media.FontFamily(SetupFonts.SfProDisplay)
+            FontFamily = SetupFonts.SFProDisplayFont
         };
         Grid.SetRow(_checkbox, 3);
         grid.Children.Add(_checkbox);
