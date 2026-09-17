@@ -79,7 +79,7 @@ public partial class MainWindow
         ExpandedContent.BeginAnimation(HeightProperty, null);
         ExpandedContent.HorizontalAlignment = HorizontalAlignment.Center;
         ExpandedContent.VerticalAlignment = VerticalAlignment.Top;
-        ExpandedContent.UseLayoutRounding = true;
+        ExpandedContent.UseLayoutRounding = false;
         ExpandedContent.Width = _expandedWidth - 16;
         ExpandedContent.Height = _expandedHeight - 10;
 

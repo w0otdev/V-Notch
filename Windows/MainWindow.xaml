@@ -315,6 +315,8 @@
                   VerticalAlignment="Top"
                   Margin="0,-0.5,0,0"
                   RenderTransformOrigin="0.5,0"
+                  UseLayoutRounding="False"
+                  SnapsToDevicePixels="False"
                   Effect="{StaticResource NotchShadow}">
                 <Grid.RenderTransform>
                     <ScaleTransform x:Name="NotchShadowScale" ScaleX="1" ScaleY="1"/>
@@ -351,6 +353,8 @@
                   HorizontalAlignment="Center"
                   VerticalAlignment="Top"
                   RenderTransformOrigin="0.5,0"
+                  UseLayoutRounding="False"
+                  SnapsToDevicePixels="False"
                   Cursor="Hand"
                   PreviewMouseDown="NotchWrapper_PreviewMouseDown"
                   PreviewMouseUp="NotchWrapper_PreviewMouseUp"
@@ -386,10 +390,12 @@
                 <Border x:Name="NotchBorder"
                         Grid.Column="1"
                         Background="Transparent"
-                        CornerRadius="0,0,20,20">
+                        CornerRadius="0,0,20,20"
+                        UseLayoutRounding="False"
+                        SnapsToDevicePixels="False">
 
-                <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" ClipToBounds="True" Background="Transparent" UseLayoutRounding="True">
-                    <Grid SnapsToDevicePixels="True">
+                <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" ClipToBounds="True" Background="Transparent" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                    <Grid SnapsToDevicePixels="False">
 
                         <Border x:Name="NotchBackground"
                                 Background="{StaticResource NotchGradient}"
@@ -635,7 +641,7 @@
                         </Border>
 
                         <Grid x:Name="SpotlightReturnContentHost">
-                        <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled">
+                        <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="False" SnapsToDevicePixels="False">
                             
 
 
@@ -1420,7 +1426,9 @@
                           VerticalAlignment="Top"
                           Background="{StaticResource NotchGradient}"
                           ClipToBounds="False"
-                          RenderOptions.ClearTypeHint="Enabled">
+                          RenderOptions.ClearTypeHint="Enabled"
+                          UseLayoutRounding="False"
+                          SnapsToDevicePixels="False">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1.48*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -1834,7 +1842,7 @@
                                           Grid.Column="1"
                                           VerticalAlignment="Center"
                                           HorizontalAlignment="Stretch"
-                                          Margin="0,0,0,0"
+                                          Margin="0,-1,0,0"
                                           SizeChanged="MediaInfoSection_SizeChanged">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -1852,7 +1860,7 @@
                                             </StackPanel.OpacityMask>
 
                                             <Canvas x:Name="TitleScrollContainer" Height="20" Width="340" ClipToBounds="True">
-                                                <Grid x:Name="TitleMorphContainer" Canvas.Left="0" Canvas.Top="0">
+                                                <Grid x:Name="TitleMorphContainer" Canvas.Left="0" Canvas.Top="-2">
 
                                                     <Grid x:Name="TrackTitleLayer" Opacity="1">
                                                         <Grid.RenderTransform>
@@ -1902,8 +1910,8 @@
                                                 </Grid>
                                             </Canvas>
 
-                                            <Canvas x:Name="ArtistScrollContainer" Height="18" Width="340" ClipToBounds="True" Margin="0,2,0,0">
-                                                <Grid x:Name="ArtistMorphContainer" Canvas.Left="0" Canvas.Top="0">
+                                            <Canvas x:Name="ArtistScrollContainer" Height="18" Width="340" ClipToBounds="True" Margin="0,1,0,0">
+                                                <Grid x:Name="ArtistMorphContainer" Canvas.Left="0" Canvas.Top="-1">
 
                                                     <Grid x:Name="TrackArtistLayer" Opacity="1">
                                                         <Grid.RenderTransform>
@@ -2902,8 +2910,12 @@
                           Opacity="0"
                           Visibility="Collapsed"
                           Margin="12,6,12,12"
+                          HorizontalAlignment="Center"
+                          Width="556"
                           MouseLeftButtonDown="SecondaryContent_Click"
-                          RenderOptions.ClearTypeHint="Enabled">
+                          RenderOptions.ClearTypeHint="Enabled"
+                          UseLayoutRounding="False"
+                          SnapsToDevicePixels="False">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="28"/>
                             <RowDefinition Height="*"/>
@@ -3252,8 +3264,13 @@
                           Opacity="0"
                           Visibility="Collapsed"
                           Margin="20,34,20,14"
+                          HorizontalAlignment="Center"
+                          Width="420"
+                          Height="122"
                           MouseLeftButtonDown="SecondaryContent_Click"
-                          RenderOptions.ClearTypeHint="Enabled">
+                          RenderOptions.ClearTypeHint="Enabled"
+                          UseLayoutRounding="False"
+                          SnapsToDevicePixels="False">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
@@ -3588,14 +3605,19 @@
                     <Grid x:Name="AudioContent"
                           Opacity="0"
                           Visibility="Collapsed"
-                          Margin="22,40,16,14"
+                          Margin="19,40,19,14"
+                          HorizontalAlignment="Center"
+                          Width="682"
                           MouseLeftButtonDown="SecondaryContent_Click"
-                          UseLayoutRounding="True"
-                          SnapsToDevicePixels="True"
+                          UseLayoutRounding="False"
+                          SnapsToDevicePixels="False"
                           TextOptions.TextFormattingMode="Ideal"
                           TextOptions.TextRenderingMode="Grayscale"
                           TextOptions.TextHintingMode="Animated">
                         <ScrollViewer x:Name="AudioScrollViewer"
+                                      Width="682"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top"
                                       VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled"
                                       PanningMode="VerticalOnly"

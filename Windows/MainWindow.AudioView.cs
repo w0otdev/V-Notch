@@ -99,7 +99,40 @@ public partial class MainWindow
     {
         e.Handled = true;
         if (_isAudioView || _isAnimating) return;
-        SwitchToAudioView();
+        if (_isTimerView)
+        {
+            SwitchFromTimerToAudioView();
+        }
+        else if (_isSecondaryView)
+        {
+            SwitchFromSecondaryToAudioView();
+        }
+        else
+        {
+            SwitchToAudioView();
+        }
+    }
+
+    private void SwitchFromSecondaryToAudioView(long? transitionId = null)
+    {
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.AudioMixer, "SwitchFromSecondaryToAudioView");
+            return;
+        }
+
+        SwitchToAudioViewCore(transitionId.Value, fromSecondary: true, fromTimer: false);
+    }
+
+    private void SwitchFromTimerToAudioView(long? transitionId = null)
+    {
+        if (transitionId == null)
+        {
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.AudioMixer, "SwitchFromTimerToAudioView");
+            return;
+        }
+
+        SwitchToAudioViewCore(transitionId.Value, fromSecondary: false, fromTimer: true);
     }
 
     private void SwitchToAudioView(long? transitionId = null)
@@ -110,17 +143,20 @@ public partial class MainWindow
             return;
         }
 
+        SwitchToAudioViewCore(transitionId.Value, fromSecondary: _isSecondaryView, fromTimer: _isTimerView);
+    }
+
+    private void SwitchToAudioViewCore(long transitionId, bool fromSecondary, bool fromTimer)
+    {
         int generation = (int)transitionId;
         _viewTransitionGeneration = generation;
         CancelTimerEditingInstant();
 
         FrameworkElement outgoing;
-        bool fromPrimary = !_isSecondaryView && !_isTimerView;
-        if (_isTimerView) outgoing = TimerContent;
-        else if (_isSecondaryView) outgoing = SecondaryContent;
+        bool fromPrimary = !fromSecondary && !fromTimer;
+        if (fromTimer) outgoing = TimerContent;
+        else if (fromSecondary) outgoing = SecondaryContent;
         else outgoing = ExpandedContent;
-
-        bool fromSecondary = _isSecondaryView;
 
         _isAudioView = true;
         _isSecondaryView = false;
@@ -133,7 +169,19 @@ public partial class MainWindow
 
         if (fromSecondary)
         {
-            StopCameraPreviewForViewExit();
+            if (IsCameraPreviewLifecycleActive)
+            {
+                StopCameraPreviewForViewExit();
+            }
+            else
+            {
+                ResetCameraSectionLayoutInstant();
+            }
+            DisableKeyboardInput();
+        }
+        if (fromTimer)
+        {
+            RestoreTimerContentOpacity();
         }
         if (fromPrimary)
         {
@@ -149,18 +197,38 @@ public partial class MainWindow
         UpdateNavIconsActiveState();
         NavIconsPanel.Visibility = Visibility.Visible;
         NavIconsPanel.Opacity = 1;
-        NavIconsBackground.BeginAnimation(OpacityProperty, null);
-        NavIconsBackground.Opacity = 0;
-        NavIconsBackground.Visibility = Visibility.Visible;
-        var navBgFadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
+
+        if (fromPrimary)
         {
-            EasingFunction = _easePowerOut3,
-            BeginTime = TimeSpan.FromMilliseconds(200)
-        };
-        Timeline.SetDesiredFrameRate(navBgFadeIn, AnimationConfig.TargetFps);
-        NavIconsBackground.BeginAnimation(OpacityProperty, navBgFadeIn);
+            NavIconsBackground.BeginAnimation(OpacityProperty, null);
+            NavIconsBackground.Opacity = 0;
+            NavIconsBackground.Visibility = Visibility.Visible;
+            var navBgFadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
+            {
+                EasingFunction = _easePowerOut3,
+                BeginTime = TimeSpan.FromMilliseconds(200)
+            };
+            Timeline.SetDesiredFrameRate(navBgFadeIn, AnimationConfig.TargetFps);
+            NavIconsBackground.BeginAnimation(OpacityProperty, navBgFadeIn);
+        }
+        else
+        {
+            NavIconsBackground.BeginAnimation(OpacityProperty, null);
+            NavIconsBackground.Opacity = 1;
+            NavIconsBackground.Visibility = Visibility.Visible;
+        }
 
         bool hadSnapshot = _lastAudioSnapshot != null;
+        if (!hadSnapshot)
+        {
+            var quickSnap = SafeCall(() => ReadAudioSnapshot(includeIcons: false));
+            if (quickSnap != null)
+            {
+                _lastAudioSnapshot = quickSnap;
+                hadSnapshot = true;
+            }
+        }
+
         if (hadSnapshot)
         {
             SetAudioLoadingState(false);
@@ -172,8 +240,18 @@ public partial class MainWindow
             _audioViewHeight = _audioViewMaxHeight;
         }
 
-        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
-        double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight;
+        double fromW;
+        double fromH;
+        if (fromTimer)
+        {
+            fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
+            fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
+        }
+        else
+        {
+            fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
+            fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight;
+        }
 
         double openWindowHeight = Math.Max(fromH, _audioViewHeight);
         ResizeHostWindowHeight(openWindowHeight);
@@ -185,9 +263,13 @@ public partial class MainWindow
             {
                 if (AudioScrollViewer != null)
                 {
+                    AudioScrollViewer.Width = _audioViewWidth - 38;
+                    AudioScrollViewer.HorizontalAlignment = HorizontalAlignment.Left;
+                    AudioScrollViewer.VerticalAlignment = VerticalAlignment.Top;
                     AudioScrollViewer.BeginAnimation(OpacityProperty, null);
                     AudioScrollViewer.Visibility = Visibility.Visible;
                     AudioScrollViewer.Opacity = 1;
+                    AudioScrollViewer.ScrollToTop();
                     VNotch.Presenters.NotchContentTransitionPresenter.ClearTransformAndEffects(AudioScrollViewer);
                 }
             },
@@ -233,7 +315,7 @@ public partial class MainWindow
         CollapsedContent.Opacity = 0;
         CollapsedContent.Visibility = Visibility.Collapsed;
 
-        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
+        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _audioViewWidth;
         double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _audioViewHeight;
 
         AnimateAudioViewSwap(
@@ -278,7 +360,7 @@ public partial class MainWindow
         UpdateNavIconsActiveState();
         UpdateShelfCapacityIndicator();
 
-        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
+        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _audioViewWidth;
         double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _audioViewHeight;
 
         AnimateAudioViewSwap(
@@ -287,12 +369,16 @@ public partial class MainWindow
             prepIncoming: () =>
             {
                 EnableKeyboardInput();
+                SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
+                SecondaryContent.VerticalAlignment = VerticalAlignment.Top;
                 SecondaryContent.Width = _expandedWidth
                     - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
             },
             onComplete: () =>
             {
-                SecondaryContent.Width = double.NaN;
+                SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
+                SecondaryContent.Width = _expandedWidth
+                    - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
                 SecondaryContent.UpdateLayout();
                 RestoreExpandedWindowSize();
                 ResetCameraSectionLayoutInstant();
@@ -320,7 +406,7 @@ public partial class MainWindow
 
         UpdateTimerNavIconsState();
 
-        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth;
+        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _audioViewWidth;
         double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _audioViewHeight;
 
         AnimateAudioViewSwap(
@@ -349,9 +435,9 @@ public partial class MainWindow
         int activeGen = generation ?? _viewTransitionGeneration;
         NotchBorder.IsHitTestVisible = false;
 
-        var durOut = _dur200;
-        var durIn = _dur600;
-        var inDelay = TimeSpan.Zero;
+        var durOut = new Duration(TimeSpan.FromMilliseconds(170));
+        var durIn = new Duration(TimeSpan.FromMilliseconds(440));
+        var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = AnimationConfig.TargetFps;
 
         bool outIsAudio = ReferenceEquals(outgoing, AudioContent);
@@ -359,54 +445,49 @@ public partial class MainWindow
 
         if (outIsAudio)
         {
-            var closeGroup = new TransformGroup();
-            var closeScale = new ScaleTransform(1, 1);
             var closeTranslate = new TranslateTransform(0, 0);
-            closeGroup.Children.Add(closeScale);
-            closeGroup.Children.Add(closeTranslate);
-            outgoing.RenderTransform = closeGroup;
-            outgoing.RenderTransformOrigin = new Point(0.5, 0.4);
+            outgoing.RenderTransform = closeTranslate;
 
             var aFade = MakeAnim(1, 0, durOut, _easeAppleIn);
-            var aSlide = MakeAnim(0, 12, durOut, _easeAppleIn);
-            var aScaleX = MakeAnim(1, 0.97, durOut, _easeAppleIn);
-            var aScaleY = MakeAnim(1, 0.97, durOut, _easeAppleIn);
+            var aSlide = MakeAnim(0, 10, durOut, _easeAppleIn);
             Timeline.SetDesiredFrameRate(aSlide, fps);
-            Timeline.SetDesiredFrameRate(aScaleX, fps);
-            Timeline.SetDesiredFrameRate(aScaleY, fps);
+
+            bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+            BlurEffect? outBlur = null;
+            DoubleAnimation? blurOutAnim = null;
+            if (useContentBlur)
+            {
+                outBlur = outgoing.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
+                outgoing.Effect = outBlur;
+                blurOutAnim = MakeAnim(0, 6, durOut, _easeAppleIn);
+            }
 
             aFade.Completed += (s, e) =>
             {
                 if (activeGen != _viewTransitionGeneration) return;
                 outgoing.Visibility = Visibility.Collapsed;
                 outgoing.RenderTransform = null;
+                outgoing.Effect = null;
+                if (outBlur != null) outBlur.Radius = 0;
                 outgoing.BeginAnimation(OpacityProperty, null);
                 outgoing.Opacity = 1;
+                RestoreAudioRootChildrenVisualState();
             };
             outgoing.BeginAnimation(OpacityProperty, aFade);
             closeTranslate.BeginAnimation(TranslateTransform.YProperty, aSlide);
-            closeScale.BeginAnimation(ScaleTransform.ScaleXProperty, aScaleX);
-            closeScale.BeginAnimation(ScaleTransform.ScaleYProperty, aScaleY);
+            if (outBlur != null && blurOutAnim != null)
+                outBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
         }
         else
         {
             double outRestY = ReferenceEquals(outgoing, ExpandedContent) ? ExpandedContentRestY : 0;
 
-            var outGroup = new TransformGroup();
-            var outScale = new ScaleTransform(1, 1);
             var outTranslate = new TranslateTransform(0, outRestY);
-            outGroup.Children.Add(outScale);
-            outGroup.Children.Add(outTranslate);
-            outgoing.RenderTransform = outGroup;
-            outgoing.RenderTransformOrigin = new Point(0.5, 0.5);
+            outgoing.RenderTransform = outTranslate;
 
             var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
             var slideUp = MakeAnim(outRestY, outRestY - 10, durOut, _easeAppleIn);
-            var scaleDownX = MakeAnim(1, 0.96, durOut, _easeAppleIn);
-            var scaleDownY = MakeAnim(1, 0.96, durOut, _easeAppleIn);
             Timeline.SetDesiredFrameRate(slideUp, fps);
-            Timeline.SetDesiredFrameRate(scaleDownX, fps);
-            Timeline.SetDesiredFrameRate(scaleDownY, fps);
 
             bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
             BlurEffect? outBlur = null;
@@ -429,8 +510,6 @@ public partial class MainWindow
 
             outgoing.BeginAnimation(OpacityProperty, fadeOut);
             outTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-            outScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
-            outScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
             if (outBlur != null && blurOutAnim != null)
                 outBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
         }
@@ -445,18 +524,38 @@ public partial class MainWindow
 
         if (inIsAudio)
         {
-            incoming.RenderTransform = null;
             if (AudioScrollViewer != null)
             {
+                AudioScrollViewer.Width = _audioViewWidth - 38;
+                AudioScrollViewer.HorizontalAlignment = HorizontalAlignment.Left;
+                AudioScrollViewer.VerticalAlignment = VerticalAlignment.Top;
                 AudioScrollViewer.BeginAnimation(OpacityProperty, null);
                 AudioScrollViewer.Visibility = Visibility.Visible;
                 AudioScrollViewer.Opacity = 1;
+                AudioScrollViewer.ScrollToTop();
                 VNotch.Presenters.NotchContentTransitionPresenter.ClearTransformAndEffects(AudioScrollViewer);
             }
             incoming.InvalidateMeasure();
             incoming.InvalidateArrange();
+
+            var inTranslate = new TranslateTransform(0, 16);
+            incoming.RenderTransform = inTranslate;
+
             var aFadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
+            var springSlide = MakeAnim(16, 0, durIn, _easeAppleOut, inDelay);
             Timeline.SetDesiredFrameRate(aFadeIn, fps);
+            Timeline.SetDesiredFrameRate(springSlide, fps);
+
+            bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+            BlurEffect? inBlur = null;
+            DoubleAnimation? blurInAnim = null;
+            if (useContentBlur)
+            {
+                inBlur = incoming.Effect as BlurEffect ?? new BlurEffect { Radius = 6, RenderingBias = RenderingBias.Performance };
+                incoming.Effect = inBlur;
+                blurInAnim = MakeAnim(6, 0, durIn, _easeAppleOut, inDelay);
+            }
+
             aFadeIn.Completed += (s, e) =>
             {
                 if (activeGen != _viewTransitionGeneration) return;
@@ -465,6 +564,9 @@ public partial class MainWindow
                 NotchBorder.IsHitTestVisible = true;
                 incoming.Opacity = 1;
                 incoming.BeginAnimation(OpacityProperty, null);
+                incoming.RenderTransform = null;
+                incoming.Effect = null;
+                if (inBlur != null) inBlur.Radius = 0;
                 if (AudioScrollViewer != null)
                 {
                     AudioScrollViewer.BeginAnimation(OpacityProperty, null);
@@ -475,20 +577,16 @@ public partial class MainWindow
                 _transitionCoordinator.CompleteTransition(activeGen);
                 onComplete?.Invoke();
             };
+
             incoming.BeginAnimation(OpacityProperty, aFadeIn);
+            inTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+            if (inBlur != null && blurInAnim != null)
+                inBlur.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
+
+            StaggerAudioMixerReveal(inDelay + TimeSpan.FromMilliseconds(20));
         }
         else
         {
-            bool shrinking = notchFromW > notchToW + 0.5;
-            var savedRounding = incoming.UseLayoutRounding;
-            if (shrinking)
-            {
-                incoming.HorizontalAlignment = HorizontalAlignment.Right;
-                incoming.UseLayoutRounding = false;
-                incoming.InvalidateMeasure();
-                incoming.InvalidateArrange();
-            }
-
             if (ReferenceEquals(incoming, ExpandedContent))
                 PrepareExpandedContentLayoutForReveal();
             else
@@ -499,22 +597,13 @@ public partial class MainWindow
 
             double restY = ReferenceEquals(incoming, ExpandedContent) ? ExpandedContentRestY : 0;
 
-            var inGroup = new TransformGroup();
-            var inScale = new ScaleTransform(0.96, 0.96);
             var inTranslate = new TranslateTransform(0, 16 + restY);
-            inGroup.Children.Add(inScale);
-            inGroup.Children.Add(inTranslate);
-            incoming.RenderTransform = inGroup;
-            incoming.RenderTransformOrigin = new Point(0.5, 0.5);
+            incoming.RenderTransform = inTranslate;
 
             var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
             var springSlide = MakeAnim(16 + restY, restY, durIn, _easeAppleOut, inDelay);
-            var springScaleX = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
-            var springScaleY = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
             Timeline.SetDesiredFrameRate(fadeIn, fps);
             Timeline.SetDesiredFrameRate(springSlide, fps);
-            Timeline.SetDesiredFrameRate(springScaleX, fps);
-            Timeline.SetDesiredFrameRate(springScaleY, fps);
 
             fadeIn.Completed += (s, e) =>
             {
@@ -528,15 +617,6 @@ public partial class MainWindow
                     RestoreExpandedContentRestLayout();
                 else
                     incoming.RenderTransform = null;
-                if (shrinking && !ReferenceEquals(incoming, ExpandedContent))
-                {
-                    incoming.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    incoming.UseLayoutRounding = savedRounding;
-                    incoming.Width = double.NaN;
-                    incoming.Height = double.NaN;
-                    incoming.InvalidateMeasure();
-                    incoming.InvalidateArrange();
-                }
                 if (outIsAudio)
                     RestorePrivacyDotVisibility();
                 _transitionCoordinator.CompleteTransition(activeGen);
@@ -545,8 +625,6 @@ public partial class MainWindow
 
             incoming.BeginAnimation(OpacityProperty, fadeIn);
             inTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-            inScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
-            inScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
         }
     }
 
@@ -603,5 +681,27 @@ public partial class MainWindow
 
         NotchBorder.BeginAnimation(HeightProperty, notchAnim, HandoffBehavior.SnapshotAndReplace);
         AudioScrollViewer.BeginAnimation(HeightProperty, scrollAnim, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void PrewarmAudioSnapshot()
+    {
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var quick = ReadAudioSnapshot(includeIcons: false);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (_lastAudioSnapshot == null)
+                    {
+                        _lastAudioSnapshot = quick;
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Log("AUDIOMIXER-PREWARM", ex.Message);
+            }
+        });
     }
 }

@@ -184,9 +184,39 @@ public partial class MainWindow
         StaggerAudioMixerReveal(contentDelay);
     }
 
+    private int _audioStaggerGeneration;
+
+    private void RestoreAudioRootChildrenVisualState()
+    {
+        _audioStaggerGeneration++;
+        if (AudioRoot == null) return;
+        foreach (var child in AudioRoot.Children)
+        {
+            if (child is StackPanel rows)
+            {
+                foreach (var row in rows.Children)
+                {
+                    if (row is FrameworkElement rowEl)
+                    {
+                        rowEl.BeginAnimation(OpacityProperty, null);
+                        rowEl.Opacity = 1;
+                        rowEl.RenderTransform = null;
+                    }
+                }
+            }
+            else if (child is FrameworkElement el)
+            {
+                el.BeginAnimation(OpacityProperty, null);
+                el.Opacity = 1;
+                el.RenderTransform = null;
+            }
+        }
+    }
+
     private void StaggerAudioMixerReveal(TimeSpan baseDelay)
     {
         if (AudioRoot == null) return;
+        int activeGen = ++_audioStaggerGeneration;
 
         var targets = new List<FrameworkElement>();
         foreach (var child in AudioRoot.Children)
@@ -204,15 +234,24 @@ public partial class MainWindow
         }
         if (targets.Count == 0) return;
 
+        if (AnimationConfig.ReduceMotion)
+        {
+            RestoreAudioRootChildrenVisualState();
+            return;
+        }
+
         int fps = AnimationConfig.TargetFps;
         var ease = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
-        var dur = new Duration(TimeSpan.FromMilliseconds(320));
-        var stagger = TimeSpan.FromMilliseconds(38);
+        var dur = new Duration(TimeSpan.FromMilliseconds(300));
+        var stagger = TimeSpan.FromMilliseconds(24);
+        var maxStaggerDelay = TimeSpan.FromMilliseconds(180);
 
         for (int i = 0; i < targets.Count; i++)
         {
             var el = targets[i];
-            var delay = baseDelay + TimeSpan.FromTicks(stagger.Ticks * i);
+            var itemStagger = TimeSpan.FromTicks(stagger.Ticks * i);
+            if (itemStagger > maxStaggerDelay) itemStagger = maxStaggerDelay;
+            var delay = baseDelay + itemStagger;
 
             el.BeginAnimation(OpacityProperty, null);
             el.Opacity = 0;
@@ -228,6 +267,7 @@ public partial class MainWindow
             var capturedTranslate = translate;
             fade.Completed += (_, _) =>
             {
+                if (activeGen != _audioStaggerGeneration) return;
                 captured.BeginAnimation(OpacityProperty, null);
                 captured.Opacity = 1;
                 // Only detach the transform if the section toggle or a rebuild

@@ -196,21 +196,12 @@ public partial class MainWindow
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var primaryGroup = new TransformGroup();
-        var primaryScale = new ScaleTransform(1, 1);
         var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY);
-        primaryGroup.Children.Add(primaryScale);
-        primaryGroup.Children.Add(primaryTranslate);
-        ExpandedContent.RenderTransform = primaryGroup;
-        ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        ExpandedContent.RenderTransform = primaryTranslate;
 
         var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
         var slideUp = MakeAnim(ExpandedContentRestY, ExpandedContentRestY - 10, durOut, _easeAppleIn);
-        var scaleDownX = MakeAnim(1, 0.96, durOut, _easeAppleIn);
-        var scaleDownY = MakeAnim(1, 0.96, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
-        Timeline.SetDesiredFrameRate(scaleDownX, fps);
-        Timeline.SetDesiredFrameRate(scaleDownY, fps);
 
         var expandedBlur = ExpandedContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
         ExpandedContent.Effect = expandedBlur;
@@ -227,34 +218,26 @@ public partial class MainWindow
 
         ExpandedContent.BeginAnimation(OpacityProperty, fadeOut);
         primaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-        primaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
-        primaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         expandedBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
         SecondaryContent.Visibility = Visibility.Visible;
         SecondaryContent.BeginAnimation(OpacityProperty, null);
         SecondaryContent.Opacity = 0;
+        SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
+        SecondaryContent.VerticalAlignment = VerticalAlignment.Top;
+        SecondaryContent.Width = _expandedWidth - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
         EnableKeyboardInput();
 
-        var secondaryGroup = new TransformGroup();
-        var secondaryScale = new ScaleTransform(0.96, 0.96);
         var secondaryTranslate = new TranslateTransform(0, 16);
-        secondaryGroup.Children.Add(secondaryScale);
-        secondaryGroup.Children.Add(secondaryTranslate);
-        SecondaryContent.RenderTransform = secondaryGroup;
-        SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        SecondaryContent.RenderTransform = secondaryTranslate;
         // Prepare hidden view while transparent so animated frames contain
         // fresh content instead of cached surfaces.
         SecondaryContent.UpdateLayout();
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
         var springSlide = MakeAnim(16, 0, durIn, _easeAppleOut, inDelay);
-        var springScaleX = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
-        var springScaleY = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(springSlide, fps);
-        Timeline.SetDesiredFrameRate(springScaleX, fps);
-        Timeline.SetDesiredFrameRate(springScaleY, fps);
 
         fadeIn.Completed += (s, e) =>
         {
@@ -283,8 +266,6 @@ public partial class MainWindow
 
         SecondaryContent.BeginAnimation(OpacityProperty, fadeIn);
         secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
     }
 
     private void SwitchToPrimaryView(long? transitionId = null)
@@ -330,21 +311,12 @@ public partial class MainWindow
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var secondaryGroup = new TransformGroup();
-        var secondaryScale = new ScaleTransform(1, 1);
         var secondaryTranslate = new TranslateTransform(0, 0);
-        secondaryGroup.Children.Add(secondaryScale);
-        secondaryGroup.Children.Add(secondaryTranslate);
-        SecondaryContent.RenderTransform = secondaryGroup;
-        SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        SecondaryContent.RenderTransform = secondaryTranslate;
 
         var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
         var slideDown = MakeAnim(0, 10, durOut, _easeAppleIn);
-        var scaleDownX = MakeAnim(1, 0.96, durOut, _easeAppleIn);
-        var scaleDownY = MakeAnim(1, 0.96, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideDown, fps);
-        Timeline.SetDesiredFrameRate(scaleDownX, fps);
-        Timeline.SetDesiredFrameRate(scaleDownY, fps);
 
         var secondaryBlur = SecondaryContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
         SecondaryContent.Effect = secondaryBlur;
@@ -362,8 +334,6 @@ public partial class MainWindow
 
         SecondaryContent.BeginAnimation(OpacityProperty, fadeOut);
         secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         secondaryBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
         ExpandedContent.Visibility = Visibility.Visible;
@@ -371,24 +341,15 @@ public partial class MainWindow
         ExpandedContent.Opacity = 0;
         ExpandedContent.Effect = null;
 
-        var primaryGroup = new TransformGroup();
-        var primaryScale = new ScaleTransform(0.96, 0.96);
         var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY - 16);
-        primaryGroup.Children.Add(primaryScale);
-        primaryGroup.Children.Add(primaryTranslate);
-        ExpandedContent.RenderTransform = primaryGroup;
-        ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        ExpandedContent.RenderTransform = primaryTranslate;
 
         PrepareExpandedContentLayoutForReveal();
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
         var springSlide = MakeAnim(ExpandedContentRestY - 16, ExpandedContentRestY, durIn, _easeAppleOut, inDelay);
-        var springScaleX = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
-        var springScaleY = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(springSlide, fps);
-        Timeline.SetDesiredFrameRate(springScaleX, fps);
-        Timeline.SetDesiredFrameRate(springScaleY, fps);
 
         fadeIn.Completed += (s, e) =>
         {
@@ -416,8 +377,6 @@ public partial class MainWindow
 
         ExpandedContent.BeginAnimation(OpacityProperty, fadeIn);
         primaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-        primaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
-        primaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
     }
 
     private void AnimateNavIconOpacity(FrameworkElement? icon, double targetOpacity, bool animate)

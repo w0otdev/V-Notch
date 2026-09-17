@@ -199,21 +199,12 @@ public partial class MainWindow
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var primaryGroup = new TransformGroup();
-        var primaryScale = new ScaleTransform(1, 1);
         var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY);
-        primaryGroup.Children.Add(primaryScale);
-        primaryGroup.Children.Add(primaryTranslate);
-        ExpandedContent.RenderTransform = primaryGroup;
-        ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        ExpandedContent.RenderTransform = primaryTranslate;
 
         var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
         var slideUp = MakeAnim(ExpandedContentRestY, ExpandedContentRestY - 10, durOut, _easeAppleIn);
-        var scaleDownX = MakeAnim(1, 0.96, durOut, _easeAppleIn);
-        var scaleDownY = MakeAnim(1, 0.96, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
-        Timeline.SetDesiredFrameRate(scaleDownX, fps);
-        Timeline.SetDesiredFrameRate(scaleDownY, fps);
 
         bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
         BlurEffect? expandedBlur = null;
@@ -236,8 +227,6 @@ public partial class MainWindow
 
         ExpandedContent.BeginAnimation(OpacityProperty, fadeOut);
         primaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-        primaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
-        primaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         if (expandedBlur != null && blurOutAnim != null)
             expandedBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
@@ -260,22 +249,13 @@ public partial class MainWindow
         TimerContent.BeginAnimation(OpacityProperty, null);
         TimerContent.Opacity = 0;
 
-        var timerGroup = new TransformGroup();
-        var timerScale = new ScaleTransform(0.94, 0.94);
         var timerTranslate = new TranslateTransform(0, -22);
-        timerGroup.Children.Add(timerScale);
-        timerGroup.Children.Add(timerTranslate);
-        TimerContent.RenderTransform = timerGroup;
-        TimerContent.RenderTransformOrigin = new Point(0.5, 0.0);
+        TimerContent.RenderTransform = timerTranslate;
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
         var dropIn = MakeAnim(-22, 0, durIn, _easeExpOut6, inDelay);
-        var growX = MakeAnim(0.94, 1, durIn, _easeAppleOut, inDelay);
-        var growY = MakeAnim(0.94, 1, durIn, _easeAppleOut, inDelay);
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(dropIn, fps);
-        Timeline.SetDesiredFrameRate(growX, fps);
-        Timeline.SetDesiredFrameRate(growY, fps);
 
         fadeIn.Completed += (s, ev) =>
         {
@@ -295,8 +275,6 @@ public partial class MainWindow
         TimerContent.InvalidateArrange();
         TimerContent.BeginAnimation(OpacityProperty, fadeIn);
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, dropIn);
-        timerScale.BeginAnimation(ScaleTransform.ScaleXProperty, growX);
-        timerScale.BeginAnimation(ScaleTransform.ScaleYProperty, growY);
 
         PlayClockViewUnfoldIn(inDelay);
     }
@@ -344,35 +322,26 @@ public partial class MainWindow
         clockScale.BeginAnimation(ScaleTransform.ScaleYProperty, clockPop);
 
         // Control bar rises to meet the header from below.
-        var barGroup = new TransformGroup();
-        var barScale = new ScaleTransform(0.96, 0.96);
         var barTranslate = new TranslateTransform(0, 18);
-        barGroup.Children.Add(barScale);
-        barGroup.Children.Add(barTranslate);
-        TimerControlBar.RenderTransform = barGroup;
-        TimerControlBar.RenderTransformOrigin = new Point(0.5, 1.0);
+        TimerControlBar.RenderTransform = barTranslate;
         TimerControlBar.BeginAnimation(OpacityProperty, null);
         TimerControlBar.Opacity = 0;
 
         var barDelay = baseDelay + TimeSpan.FromMilliseconds(140);
         var barFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(340)), _easeAppleOut, barDelay);
         var barRise = MakeAnim(18, 0, new Duration(TimeSpan.FromMilliseconds(460)), _easeExpOut6, barDelay);
-        var barGrow = MakeAnim(0.96, 1, new Duration(TimeSpan.FromMilliseconds(460)), _easeAppleOut, barDelay);
         Timeline.SetDesiredFrameRate(barFade, fps);
         Timeline.SetDesiredFrameRate(barRise, fps);
-        Timeline.SetDesiredFrameRate(barGrow, fps);
 
         barFade.Completed += (_, _) =>
         {
             TimerControlBar.BeginAnimation(OpacityProperty, null);
             TimerControlBar.Opacity = 1;
-            if (ReferenceEquals(TimerControlBar.RenderTransform, barGroup))
+            if (ReferenceEquals(TimerControlBar.RenderTransform, barTranslate))
                 TimerControlBar.RenderTransform = null;
         };
         TimerControlBar.BeginAnimation(OpacityProperty, barFade);
         barTranslate.BeginAnimation(TranslateTransform.YProperty, barRise);
-        barScale.BeginAnimation(ScaleTransform.ScaleXProperty, barGrow);
-        barScale.BeginAnimation(ScaleTransform.ScaleYProperty, barGrow);
     }
 
     private void SwitchFromSecondaryToTimerView(long? transitionId = null)
@@ -413,21 +382,12 @@ public partial class MainWindow
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var secondaryGroup = new TransformGroup();
-        var secondaryScale = new ScaleTransform(1, 1);
         var secondaryTranslate = new TranslateTransform(0, 0);
-        secondaryGroup.Children.Add(secondaryScale);
-        secondaryGroup.Children.Add(secondaryTranslate);
-        SecondaryContent.RenderTransform = secondaryGroup;
-        SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        SecondaryContent.RenderTransform = secondaryTranslate;
 
         var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
         var slideUp = MakeAnim(0, -10, durOut, _easeAppleIn);
-        var scaleDownX = MakeAnim(1, 0.96, durOut, _easeAppleIn);
-        var scaleDownY = MakeAnim(1, 0.96, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
-        Timeline.SetDesiredFrameRate(scaleDownX, fps);
-        Timeline.SetDesiredFrameRate(scaleDownY, fps);
 
         bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
         BlurEffect? secondaryBlur = null;
@@ -450,8 +410,6 @@ public partial class MainWindow
 
         SecondaryContent.BeginAnimation(OpacityProperty, fadeOut);
         secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         if (secondaryBlur != null && blurOutAnim != null)
             secondaryBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
@@ -459,22 +417,13 @@ public partial class MainWindow
         TimerContent.BeginAnimation(OpacityProperty, null);
         TimerContent.Opacity = 0;
 
-        var timerGroup = new TransformGroup();
-        var timerScale = new ScaleTransform(0.96, 0.96);
         var timerTranslate = new TranslateTransform(0, 16);
-        timerGroup.Children.Add(timerScale);
-        timerGroup.Children.Add(timerTranslate);
-        TimerContent.RenderTransform = timerGroup;
-        TimerContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        TimerContent.RenderTransform = timerTranslate;
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
         var springSlide = MakeAnim(16, 0, durIn, _easeAppleOut, inDelay);
-        var springScaleX = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
-        var springScaleY = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(springSlide, fps);
-        Timeline.SetDesiredFrameRate(springScaleX, fps);
-        Timeline.SetDesiredFrameRate(springScaleY, fps);
 
         fadeIn.Completed += (s, ev) =>
         {
@@ -498,8 +447,6 @@ public partial class MainWindow
 
         TimerContent.BeginAnimation(OpacityProperty, fadeIn);
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-        timerScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
-        timerScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
 
         UpdateTimerDisplay();
     }
@@ -570,7 +517,8 @@ public partial class MainWindow
         ExpandedContent.Effect = null;
         ExpandedContent.Width = _expandedWidth - 16;
         ExpandedContent.Height = _expandedHeight - 10;
-        ExpandedContent.HorizontalAlignment = HorizontalAlignment.Right;
+        ExpandedContent.HorizontalAlignment = HorizontalAlignment.Center;
+        ExpandedContent.VerticalAlignment = VerticalAlignment.Top;
         ExpandedContent.UseLayoutRounding = false;
         ExpandedContent.UpdateLayout();
 
@@ -594,7 +542,6 @@ public partial class MainWindow
 
         var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY - 16);
         ExpandedContent.RenderTransform = primaryTranslate;
-        ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.5);
 
         var primarySlideDown = MakeAnim(ExpandedContentRestY - 16, ExpandedContentRestY, durIn, _easeAppleOut, inDelay);
         var primaryFadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
@@ -659,21 +606,12 @@ public partial class MainWindow
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var timerGroup = new TransformGroup();
-        var timerScale = new ScaleTransform(1, 1);
         var timerTranslate = new TranslateTransform(0, 0);
-        timerGroup.Children.Add(timerScale);
-        timerGroup.Children.Add(timerTranslate);
-        TimerContent.RenderTransform = timerGroup;
-        TimerContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        TimerContent.RenderTransform = timerTranslate;
 
         var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
         var slideUp = MakeAnim(0, -10, durOut, _easeAppleIn);
-        var scaleDownX = MakeAnim(1, 0.96, durOut, _easeAppleIn);
-        var scaleDownY = MakeAnim(1, 0.96, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
-        Timeline.SetDesiredFrameRate(scaleDownX, fps);
-        Timeline.SetDesiredFrameRate(scaleDownY, fps);
 
         var timerBlur = TimerContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
         TimerContent.Effect = timerBlur;
@@ -690,8 +628,6 @@ public partial class MainWindow
 
         TimerContent.BeginAnimation(OpacityProperty, fadeOut);
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-        timerScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
-        timerScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         timerBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
         double currentH2 = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
@@ -701,25 +637,19 @@ public partial class MainWindow
         SecondaryContent.Visibility = Visibility.Visible;
         SecondaryContent.BeginAnimation(OpacityProperty, null);
         SecondaryContent.Opacity = 0;
+        SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
+        SecondaryContent.VerticalAlignment = VerticalAlignment.Top;
+        SecondaryContent.Width = _expandedWidth - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
         EnableKeyboardInput();
 
-        var secondaryGroup = new TransformGroup();
-        var secondaryScale = new ScaleTransform(0.96, 0.96);
         var secondaryTranslate = new TranslateTransform(0, 16);
-        secondaryGroup.Children.Add(secondaryScale);
-        secondaryGroup.Children.Add(secondaryTranslate);
-        SecondaryContent.RenderTransform = secondaryGroup;
-        SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        SecondaryContent.RenderTransform = secondaryTranslate;
         SecondaryContent.UpdateLayout();
 
         var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
         var springSlide = MakeAnim(16, 0, durIn, _easeAppleOut, inDelay);
-        var springScaleX = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
-        var springScaleY = MakeAnim(0.96, 1, durIn, _easeAppleOut, inDelay);
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(springSlide, fps);
-        Timeline.SetDesiredFrameRate(springScaleX, fps);
-        Timeline.SetDesiredFrameRate(springScaleY, fps);
 
         fadeIn.Completed += (s, ev) =>
         {
@@ -741,8 +671,6 @@ public partial class MainWindow
 
         SecondaryContent.BeginAnimation(OpacityProperty, fadeIn);
         secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, springScaleX);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, springScaleY);
 
         UpdateShelfCapacityIndicator();
     }

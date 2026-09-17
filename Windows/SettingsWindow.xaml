@@ -12,7 +12,12 @@
         Background="Transparent"
         Loaded="Window_Loaded"
         FocusManager.FocusedElement="{Binding ElementName=MainShell}"
-        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI">
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"
+        UseLayoutRounding="False"
+        SnapsToDevicePixels="False"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated">
 
     <Window.Resources>
         <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
@@ -42,8 +47,8 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
         </Style>
 
         <Style x:Key="SectionHeader" TargetType="TextBlock">
@@ -124,7 +129,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Grid MinHeight="24" SnapsToDevicePixels="True">
+                        <Grid MinHeight="24" SnapsToDevicePixels="False">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="52"/>
@@ -265,7 +270,7 @@
                                     Height="38"
                                     CornerRadius="10"
                                     Background="#14FFFFFF"
-                                    SnapsToDevicePixels="True"
+                                    SnapsToDevicePixels="False"
                                     ClipToBounds="True">
                                 <Grid>
                                     <Border x:Name="PART_Fill"
@@ -552,12 +557,12 @@
             Background="{StaticResource WindowGlow}"
             BorderBrush="#18FFFFFF"
             BorderThickness="1"
-            SnapsToDevicePixels="True"
-            UseLayoutRounding="True"
+            SnapsToDevicePixels="False"
+            UseLayoutRounding="False"
             Opacity="0"
             Focusable="True"
             PreviewMouseLeftButtonDown="WindowSurface_PreviewMouseLeftButtonDown"
-            RenderTransformOrigin="0.5,0.5">
+            RenderTransformOrigin="0.5,0.0">
         <Border.RenderTransform>
             <TransformGroup>
                 <ScaleTransform x:Name="ShellScale" ScaleX="0.985" ScaleY="0.985"/>
@@ -565,7 +570,9 @@
             </TransformGroup>
         </Border.RenderTransform>
 
-        <Grid x:Name="ShellContent">
+        <Grid x:Name="ShellContent"
+              SnapsToDevicePixels="False"
+              UseLayoutRounding="False">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -2550,8 +2557,8 @@
                                 BorderThickness="1.25"
                                 CornerRadius="16"
                                 Padding="16,12"
-                                SnapsToDevicePixels="True"
-                                UseLayoutRounding="True">
+                                SnapsToDevicePixels="False"
+                                UseLayoutRounding="False">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>

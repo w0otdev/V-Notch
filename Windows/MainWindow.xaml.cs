@@ -507,6 +507,7 @@ public partial class MainWindow : Window
             {
                 _viewModel.Initialize();
                 StartCoreModules();
+                PrewarmAudioSnapshot();
             }
         }), DispatcherPriority.ContextIdle);
     }
@@ -732,6 +733,14 @@ public partial class MainWindow : Window
                 if (!_isExpanded)
                 {
                     ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.AudioMixer);
+                }
+                else if (_isTimerView)
+                {
+                    SwitchFromTimerToAudioView(args.TransitionId);
+                }
+                else if (_isSecondaryView)
+                {
+                    SwitchFromSecondaryToAudioView(args.TransitionId);
                 }
                 else
                 {

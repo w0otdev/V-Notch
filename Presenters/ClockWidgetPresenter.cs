@@ -412,8 +412,8 @@ public sealed class ClockWidgetPresenter : IDisposable
         TextOptions.SetTextFormattingMode(tb, TextFormattingMode.Ideal);
         TextOptions.SetTextRenderingMode(tb, TextRenderingMode.Grayscale);
         TextOptions.SetTextHintingMode(tb, TextHintingMode.Animated);
-        tb.UseLayoutRounding = true;
-        tb.SnapsToDevicePixels = true;
+        tb.UseLayoutRounding = false;
+        tb.SnapsToDevicePixels = false;
     }
 
     public bool IsCalendarBuilt => _clockViewCalendarBuilt;
@@ -521,6 +521,8 @@ public sealed class ClockWidgetPresenter : IDisposable
     public void PrepareClockViewContentSize()
     {
         if (_refs.TimerContent == null) return;
+        _refs.TimerContent.HorizontalAlignment = HorizontalAlignment.Center;
+        _refs.TimerContent.VerticalAlignment = VerticalAlignment.Top;
         _refs.TimerContent.Width = ClockViewContentWidth;
         _refs.TimerContent.Height = ClockViewContentHeight;
     }
@@ -570,7 +572,14 @@ public sealed class ClockWidgetPresenter : IDisposable
             FillBehavior = FillBehavior.HoldEnd
         };
         if (startDelay > TimeSpan.Zero)
+        {
+            widthAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromWidth, KeyTime.FromTimeSpan(TimeSpan.Zero)));
             widthAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromWidth, KeyTime.FromTimeSpan(startDelay)));
+        }
+        else
+        {
+            widthAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromWidth, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        }
         widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(toWidth, KeyTime.FromTimeSpan(startDelay + easeSpan), _easeExpOut6));
         Timeline.SetDesiredFrameRate(widthAnim, fps);
 
@@ -580,7 +589,14 @@ public sealed class ClockWidgetPresenter : IDisposable
             FillBehavior = FillBehavior.HoldEnd
         };
         if (startDelay > TimeSpan.Zero)
+        {
+            heightAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromHeight, KeyTime.FromTimeSpan(TimeSpan.Zero)));
             heightAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromHeight, KeyTime.FromTimeSpan(startDelay)));
+        }
+        else
+        {
+            heightAnim.KeyFrames.Add(new LinearDoubleKeyFrame(fromHeight, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        }
         heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(toHeight, KeyTime.FromTimeSpan(startDelay + easeSpan), _easeExpOut6));
         Timeline.SetDesiredFrameRate(heightAnim, fps);
 
@@ -599,8 +615,8 @@ public sealed class ClockWidgetPresenter : IDisposable
             onCompleted?.Invoke();
         };
 
-        notchBorder.BeginAnimation(FrameworkElement.WidthProperty, widthAnim, HandoffBehavior.SnapshotAndReplace);
-        notchBorder.BeginAnimation(FrameworkElement.HeightProperty, heightAnim, HandoffBehavior.SnapshotAndReplace);
+        notchBorder.BeginAnimation(FrameworkElement.WidthProperty, widthAnim);
+        notchBorder.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
     }
 #pragma warning restore S107
 

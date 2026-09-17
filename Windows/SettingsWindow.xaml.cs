@@ -3482,8 +3482,13 @@ public partial class SettingsWindow : Window
         MainShell.Opacity = 1.0;
         MainShell.RenderTransformOrigin = new Point(0.5, 0.0);
         MainShell.Effect = null;
+        MainShell.SnapsToDevicePixels = false;
+        MainShell.UseLayoutRounding = false;
+        this.SnapsToDevicePixels = false;
+        this.UseLayoutRounding = false;
+        ShellContent.SnapsToDevicePixels = false;
+        ShellContent.UseLayoutRounding = false;
 
-        ShellContent.CacheMode = new System.Windows.Media.BitmapCache { RenderAtScale = 1.0 };
         ShellScale.ScaleX = startScaleX;
         ShellScale.ScaleY = startScaleY;
         ShellTranslate.Y = 0;
@@ -3493,7 +3498,8 @@ public partial class SettingsWindow : Window
         double finalLeft = Left;
         double finalTop = Top;
 
-        Left = notchLeft + notchW / 2.0 - ActualWidth / 2.0;
+        double targetStartLeft = notchLeft + notchW / 2.0 - ActualWidth / 2.0;
+        Left = targetStartLeft;
         Top = notchTop;
 
         var expandX = new DoubleAnimation(startScaleX, 1.0, totalDur)
@@ -3520,12 +3526,6 @@ public partial class SettingsWindow : Window
         };
         Timeline.SetDesiredFrameRate(moveTop, fps);
 
-        var moveLeft = new DoubleAnimation(Left, finalLeft, totalDur)
-        {
-            EasingFunction = easeOutStrong
-        };
-        Timeline.SetDesiredFrameRate(moveLeft, fps);
-
         // Release the HoldEnd fill once the fly-in finishes so Top/Left track
         moveTop.Completed += (s, e) =>
         {
@@ -3533,19 +3533,30 @@ public partial class SettingsWindow : Window
             Top = finalTop;
             this.BeginAnimation(TopProperty, null);
         };
-        moveLeft.Completed += (s, e) =>
+
+        if (Math.Abs(targetStartLeft - finalLeft) >= 0.5)
         {
-            if (_isClosing) return;
+            var moveLeft = new DoubleAnimation(Left, finalLeft, totalDur)
+            {
+                EasingFunction = easeOutStrong
+            };
+            Timeline.SetDesiredFrameRate(moveLeft, fps);
+            moveLeft.Completed += (s, e) =>
+            {
+                if (_isClosing) return;
+                Left = finalLeft;
+                this.BeginAnimation(LeftProperty, null);
+            };
+            this.BeginAnimation(LeftProperty, moveLeft);
+        }
+        else
+        {
             Left = finalLeft;
-            this.BeginAnimation(LeftProperty, null);
-        };
+        }
 
         expandX.Completed += (s, e) =>
         {
             if (_isClosing) return;
-
-            ShellContent.CacheMode = null;
-            MainShell.RenderTransformOrigin = new Point(0.5, 0.5);
 
             Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
             {
@@ -3573,10 +3584,9 @@ public partial class SettingsWindow : Window
         ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, expandY);
         this.BeginAnimation(ShellCornerRadiusProperty, cornerAnim);
         this.BeginAnimation(TopProperty, moveTop);
-        this.BeginAnimation(LeftProperty, moveLeft);
 
         // Entrance: cascade top → bottom (Header → Social → Nav → Card → Footer)
-        // Items slide in from -12px (above) to 0 — opposite of the close direction.
+        // Items slide in from -10px (above) to 0 — opposite of the close direction.
         int contentDelay = 250;
         AnimateEntranceItem(SettingsHeader, HeaderTranslate, contentDelay);
 
@@ -3595,6 +3605,8 @@ public partial class SettingsWindow : Window
 
         void AnimateSocialIcon(UIElement element, TranslateTransform translate, int delayMs)
         {
+            element.Opacity = 0;
+            translate.Y = -6;
             var fade = CreateAnimation(0, 1, 320, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
@@ -3607,12 +3619,14 @@ public partial class SettingsWindow : Window
 
         void AnimateEntranceItem(UIElement element, TranslateTransform translate, int delayMs)
         {
+            element.Opacity = 0;
+            translate.Y = -10;
             var fade = CreateAnimation(0, 1, 380, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
 
-            // Slide in from above (-12px → 0) to match the top-down cascade direction
-            var slide = CreateAnimation(-12, 0, 480, itemEase);
+            // Slide in from above (-10px → 0) to match the top-down cascade direction
+            var slide = CreateAnimation(-10, 0, 480, itemEase);
             slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
         }
@@ -4024,6 +4038,10 @@ public partial class SettingsWindow : Window
 
         MainShell.SnapsToDevicePixels = false;
         MainShell.UseLayoutRounding = false;
+        this.SnapsToDevicePixels = false;
+        this.UseLayoutRounding = false;
+        ShellContent.SnapsToDevicePixels = false;
+        ShellContent.UseLayoutRounding = false;
         RenderOptions.SetBitmapScalingMode(MainShell, BitmapScalingMode.LowQuality);
 
         UIElement? activeCard = _activeNav switch
@@ -4105,11 +4123,19 @@ public partial class SettingsWindow : Window
         };
         Timeline.SetDesiredFrameRate(flyUpWindow, fps);
 
-        var flyLeftWindow = new DoubleAnimation(Left, targetLeft, totalDur)
+        if (Math.Abs(Left - targetLeft) >= 0.5)
         {
-            EasingFunction = easeInStrong
-        };
-        Timeline.SetDesiredFrameRate(flyLeftWindow, fps);
+            var flyLeftWindow = new DoubleAnimation(Left, targetLeft, totalDur)
+            {
+                EasingFunction = easeInStrong
+            };
+            Timeline.SetDesiredFrameRate(flyLeftWindow, fps);
+            this.BeginAnimation(LeftProperty, flyLeftWindow);
+        }
+        else
+        {
+            Left = targetLeft;
+        }
 
         squishX.Completed += (s, e) =>
         {
@@ -4134,11 +4160,11 @@ public partial class SettingsWindow : Window
         ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrinkY);
         this.BeginAnimation(ShellCornerRadiusProperty, cornerAnim);
         this.BeginAnimation(TopProperty, flyUpWindow);
-        this.BeginAnimation(LeftProperty, flyLeftWindow);
 
         void AnimateExitItem(UIElement element, TranslateTransform translate, int delayMs)
         {
-            var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(380))
+            double startOpacity = Math.Max(0.0, Math.Min(1.0, element.Opacity));
+            var fade = new DoubleAnimation(startOpacity, 0, TimeSpan.FromMilliseconds(380))
             {
                 EasingFunction = easeIn,
                 BeginTime = TimeSpan.FromMilliseconds(delayMs)
@@ -4148,7 +4174,8 @@ public partial class SettingsWindow : Window
 
             // Slide upward (-8px) as items disappear — the shell is collapsing up
             // toward the notch, so content should lift in the same direction.
-            var slide = new DoubleAnimation(0, -8, TimeSpan.FromMilliseconds(380))
+            double startY = translate.Y;
+            var slide = new DoubleAnimation(startY, startY - 8, TimeSpan.FromMilliseconds(380))
             {
                 EasingFunction = easeIn,
                 BeginTime = TimeSpan.FromMilliseconds(delayMs)
@@ -4701,28 +4728,21 @@ public partial class SettingsWindow : Window
 
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
-        var scale = EnsureCardScale(card, translate);
 
-        // entranceDirection=true → slide from above (-18px) to match top-down open cascade
-        // Normal nav switching uses ±direction * 18
-        double fromY = entranceDirection ? -18 : 18 * direction;
+        // entranceDirection=true → slide from above (-14px) to match top-down open cascade
+        // Normal nav switching uses ±direction * 14
+        double fromY = entranceDirection ? -14 : 14 * direction;
         card.Opacity = 0;
         translate.Y = fromY;
-        scale.ScaleX = 0.985;
-        scale.ScaleY = 0.985;
 
         var systemCardDelay = section == NavSectionSystem && BackupCard != null ? TimeSpan.FromMilliseconds(40) : TimeSpan.Zero;
         var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, BeginTime = systemCardDelay };
         var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
-        var grow = new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
         Timeline.SetDesiredFrameRate(fade, fps);
         Timeline.SetDesiredFrameRate(slide, fps);
-        Timeline.SetDesiredFrameRate(grow, fps);
 
         card.BeginAnimation(OpacityProperty, fade);
         translate.BeginAnimation(TranslateTransform.YProperty, slide);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
 
         if (section == NavSectionSystem && BackupCard != null && BackupCardTranslate != null)
         {
@@ -4735,24 +4755,17 @@ public partial class SettingsWindow : Window
             }
             else
             {
-                var backupScale = EnsureCardScale(BackupCard, BackupCardTranslate);
                 BackupCard.Opacity = 0;
                 BackupCardTranslate.Y = fromY;
-                backupScale.ScaleX = 0.985;
-                backupScale.ScaleY = 0.985;
 
                 var backupFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease };
                 var backupSlide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
-                var backupGrow = new DoubleAnimation(0.985, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
 
                 Timeline.SetDesiredFrameRate(backupFade, fps);
                 Timeline.SetDesiredFrameRate(backupSlide, fps);
-                Timeline.SetDesiredFrameRate(backupGrow, fps);
 
                 BackupCard.BeginAnimation(OpacityProperty, backupFade);
                 BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, backupSlide);
-                backupScale.BeginAnimation(ScaleTransform.ScaleXProperty, backupGrow);
-                backupScale.BeginAnimation(ScaleTransform.ScaleYProperty, backupGrow);
             }
         }
     }
