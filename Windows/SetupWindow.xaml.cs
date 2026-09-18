@@ -33,7 +33,9 @@ internal static class SetupFonts
             _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
         }
 
+#pragma warning disable S1075 // Pack URI scheme is required to access WPF embedded assembly resources
         var baseUri = new Uri("pack://application:,,,/V-Notch;component/Fonts/");
+#pragma warning restore S1075
         return new FontFamily(baseUri, "./#SF Pro Display, Nirmala UI, Segoe UI");
     });
 

@@ -336,7 +336,7 @@ public partial class MainWindow
             if (token != _audioPopulateToken) return;
             _lastAudioSnapshot = snap;
 
-            // Build empty first-boot view immediately to prevent blank animations;
+            // Build empty first-boot view immediately to prevent blank animations,
             // defer later structural updates to avoid layout stalls during transitions.
             bool hasBuiltUi = AudioRoot?.Children.Count > 0;
             if (ShouldDeferAudioSnapshotDuringTransition(_isAudioView, _isAnimating, hasBuiltUi))

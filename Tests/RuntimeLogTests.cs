@@ -52,6 +52,7 @@ public sealed class RuntimeLogTests
             }
             catch
             {
+                // Best-effort cleanup for test log files.
             }
         }
     }
@@ -69,6 +70,8 @@ public sealed class RuntimeLogTests
             RuntimeLog.Log("TEST", "Sample test log entry");
 
             RuntimeLog.ClearLog();
+
+            Assert.NotNull(RuntimeLog.LogPath);
         }
         finally
         {
@@ -81,6 +84,7 @@ public sealed class RuntimeLogTests
             }
             catch
             {
+                // Best-effort cleanup for test log files.
             }
         }
     }
@@ -127,6 +131,7 @@ public sealed class RuntimeLogTests
             }
             catch
             {
+                // Best-effort cleanup for test log files.
             }
         }
     }

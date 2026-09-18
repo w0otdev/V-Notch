@@ -141,7 +141,7 @@ public class DataProtectionSettingsTests : IDisposable
     {
         var path = Path.Combine(_directory, "settings.json");
         var original = "{\"SettingsVersion\":9,\"Width\":400}";
-        File.WriteAllText(path, original);
+        await File.WriteAllTextAsync(path, original);
         var service = new SettingsService(path, _ => { });
 
         using (var lockStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -149,7 +149,7 @@ public class DataProtectionSettingsTests : IDisposable
             await Assert.ThrowsAnyAsync<IOException>(() => service.SaveAsync(new NotchSettings { Width = 500 }));
         }
 
-        Assert.Equal(original, File.ReadAllText(path));
+        Assert.Equal(original, await File.ReadAllTextAsync(path));
         Assert.False(File.Exists(path + ".tmp"));
     }
 

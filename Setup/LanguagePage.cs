@@ -192,13 +192,6 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        // Clip the image to an ellipse for a round badge
-        var ellipseClip = new System.Windows.Media.EllipseGeometry
-        {
-            Center = new Point(21, 21),
-            RadiusX = 21,
-            RadiusY = 21
-        };
         var flagCircle = new Border
         {
             Width = 42,

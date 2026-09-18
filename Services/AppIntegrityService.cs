@@ -26,7 +26,9 @@ public static class AppIntegrityService
     private const string LogCategory = "INTEGRITY";
     private const string OfficialRepoOwner = "rainaku";
     private const string OfficialRepoName = "V-Notch";
-    private const string OfficialReleasesUrl = "https://github.com/rainaku/V-Notch/releases";
+#pragma warning disable S1075 // Official project repository releases URL
+    public const string OfficialReleasesUrl = "https://github.com/rainaku/V-Notch/releases";
+#pragma warning restore S1075
     private const string UserAgent = "V-Notch-Integrity-Checker";
 
     private static readonly HttpClient HttpClientInstance = CreateHttpClient();
@@ -62,16 +64,14 @@ public static class AppIntegrityService
             string content = File.ReadAllText(zoneIdentifierPath);
             var (hostUrl, referrerUrl) = ParseZoneIdentifier(content);
 
-            if (!string.IsNullOrWhiteSpace(hostUrl))
+            if (!string.IsNullOrWhiteSpace(hostUrl) && !IsTrustedDownloadDomain(hostUrl))
             {
-                if (!IsTrustedDownloadDomain(hostUrl))
-                    return (false, hostUrl);
+                return (false, hostUrl);
             }
 
-            if (!string.IsNullOrWhiteSpace(referrerUrl))
+            if (!string.IsNullOrWhiteSpace(referrerUrl) && !IsTrustedDownloadDomain(referrerUrl))
             {
-                if (!IsTrustedDownloadDomain(referrerUrl))
-                    return (false, referrerUrl);
+                return (false, referrerUrl);
             }
 
             return (true, null);

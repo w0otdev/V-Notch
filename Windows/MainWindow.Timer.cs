@@ -571,10 +571,12 @@ public partial class MainWindow
 
     private void UpdateTimerNavIconsState()
     {
-        HomeIconButton.Opacity = 0.4;
-        FileShelfIconButton.Opacity = 0.4;
-        TimerIconButton.Opacity = 1.0;
-        AudioIconButton.Opacity = 0.4;
+        // Expansion can call this before the local view flags are committed.
+        // Set the timer state explicitly and release any previous opacity clocks.
+        if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, 0.4, animate: false);
+        if (_navDragItem != FileShelfIconButton) AnimateNavIconOpacity(FileShelfIconButton, 0.4, animate: false);
+        if (_navDragItem != TimerIconButton) AnimateNavIconOpacity(TimerIconButton, 1.0, animate: false);
+        if (_navDragItem != AudioIconButton) AnimateNavIconOpacity(AudioIconButton, 0.4, animate: false);
         if (!_isAnimating)
         {
             ShelfCountBadge.Visibility = Visibility.Collapsed;

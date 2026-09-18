@@ -23,6 +23,8 @@ public partial class App : Application
         CrashReporter.Initialize();
     }
 
+    private const string IntegrityWarningTitleKey = "integrity.warningTitle";
+
     public static IServiceProvider Services { get; private set; } = null!;
 
     private static void SetServices(IServiceProvider services)
@@ -49,13 +51,13 @@ public partial class App : Application
                 if (e.Args.Contains("--test-hash"))
                 {
                     AppIntegrityService.ShowIntegrityAlert(
-                        Loc.Get("integrity.warningTitle"),
+                        Loc.Get(IntegrityWarningTitleKey),
                         Loc.Get("integrity.hashMismatch", AppIntegrityService.GetAppVersion()));
                 }
                 else
                 {
                     AppIntegrityService.ShowIntegrityAlert(
-                        Loc.Get("integrity.warningTitle"),
+                        Loc.Get(IntegrityWarningTitleKey),
                         Loc.Get("integrity.untrustedSource", "https://trang-web-la-chua-virus.com/V-Notch.exe"));
                 }
                 Shutdown(0);
@@ -123,7 +125,7 @@ public partial class App : Application
             if (!isTrusted && !string.IsNullOrWhiteSpace(untrustedUrl))
             {
                 var options = new ConfirmationDialog.DialogOptions(
-                    Title: Loc.Get("integrity.warningTitle"),
+                    Title: Loc.Get(IntegrityWarningTitleKey),
                     ConfirmText: Loc.Get("integrity.openOfficialRepo"),
                     CancelText: Loc.Get("integrity.ignore"),
                     Icon: ConfirmationDialog.DialogIcon.Warning,
@@ -133,7 +135,7 @@ public partial class App : Application
                 {
                     try
                     {
-                        Process.Start(new ProcessStartInfo("https://github.com/rainaku/V-Notch/releases") { UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo(AppIntegrityService.OfficialReleasesUrl) { UseShellExecute = true });
                     }
                     catch { }
                     Shutdown(0);
@@ -153,7 +155,7 @@ public partial class App : Application
                 if (status == IntegrityCheckStatus.HashMismatch)
                 {
                     var options = new ConfirmationDialog.DialogOptions(
-                        Title: Loc.Get("integrity.warningTitle"),
+                        Title: Loc.Get(IntegrityWarningTitleKey),
                         ConfirmText: Loc.Get("integrity.openOfficialRepo"),
                         CancelText: Loc.Get("integrity.ignore"),
                         Icon: ConfirmationDialog.DialogIcon.Warning,
@@ -163,7 +165,7 @@ public partial class App : Application
                     {
                         try
                         {
-                            Process.Start(new ProcessStartInfo("https://github.com/rainaku/V-Notch/releases") { UseShellExecute = true });
+                            Process.Start(new ProcessStartInfo(AppIntegrityService.OfficialReleasesUrl) { UseShellExecute = true });
                         }
                         catch { }
                         Shutdown(0);

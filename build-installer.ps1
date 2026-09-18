@@ -4,11 +4,12 @@
 # By default it produces a framework-dependent build (needs .NET 8 Desktop Runtime).
 # Use -SelfContained to bundle the runtime so the app runs on a clean machine
 # without installing .NET separately (larger installer).
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', 'CertificatePassword')]
 param(
     [switch]$SelfContained,
     # Optional code-signing certificate. In CI, pass these from protected secrets.
     [string]$CertificatePath = '',
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', 'CertificatePassword')]
     [string]$CertificatePassword = ''
 )
 

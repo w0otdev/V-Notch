@@ -238,7 +238,7 @@ public sealed class SignedUpdateManifestTests
     };
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => Task.FromResult(reply(request));
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(reply(request));
     }
     private sealed class NonSeekableStream(byte[] bytes) : MemoryStream(bytes)
     {

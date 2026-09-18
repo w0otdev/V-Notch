@@ -182,9 +182,13 @@ public partial class MainWindow : Window
     private int _viewTransitionGeneration
     {
         get => (int)_transitionCoordinator.ActiveTransitionId;
-        set { }
+        set
+        {
+            // Transition generation is centrally managed by _transitionCoordinator.ActiveTransitionId.
+            // Setter is kept for compatibility with view transition callers.
+            _ = value;
+        }
     }
-    private int NextViewTransitionGeneration() => (int)_transitionCoordinator.NextGeneration();
 
     private static readonly TimeSpan ProgressRenderInterval = TimeSpan.FromMilliseconds(16);
     private static readonly TimeSpan LyricsUpdateInterval = TimeSpan.FromMilliseconds(100);

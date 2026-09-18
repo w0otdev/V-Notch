@@ -1169,119 +1169,58 @@ public partial class MainWindow
         return VNotch.Models.NotchView.Media;
     }
 
-    private void AnimateSecondaryViewCollapse(bool wasSecondary, int generation)
+    private void AnimateAuxiliaryViewCollapse(FrameworkElement content, int generation)
     {
-        if (!wasSecondary)
-        {
-            SecondaryContent.BeginAnimation(OpacityProperty, null);
-            return;
-        }
+        if (content.Visibility != Visibility.Visible) return;
 
-        if (IsCameraPreviewLifecycleActive)
-        {
-            StopCameraPreviewForViewExit();
-        }
+        // Capture the rendered state so closing during a view transition does not jump.
+        double opacity = content.Opacity;
+        var transform = content.RenderTransform?.Value ?? Matrix.Identity;
+        double blurRadius = (content.Effect as BlurEffect)?.Radius ?? 0;
+        content.BeginAnimation(OpacityProperty, null);
+        content.Opacity = opacity;
 
-        SecondaryContent.BeginAnimation(OpacityProperty, null);
-        var secondaryGroup = new TransformGroup();
-        var secondaryScale = new ScaleTransform(1, 1);
-        var secondaryTranslate = new TranslateTransform(0, 0);
-        secondaryGroup.Children.Add(secondaryScale);
-        secondaryGroup.Children.Add(secondaryTranslate);
-        SecondaryContent.RenderTransform = secondaryGroup;
-        SecondaryContent.RenderTransformOrigin = new Point(0.5, 0.5);
+        var scale = new ScaleTransform(transform.M11, transform.M22);
+        var translate = new TranslateTransform(transform.OffsetX, transform.OffsetY);
+        var group = new TransformGroup();
+        group.Children.Add(scale);
+        group.Children.Add(translate);
+        content.RenderTransform = group;
+        content.RenderTransformOrigin = new Point(0.5, 0);
 
-        var secSlideDown = MakeAnim(0, 16, _dur250, _easeQuadIn);
-        var secScaleDown = MakeAnim(1, 0.93, _dur250, _easeQuadIn);
-        Timeline.SetDesiredFrameRate(secSlideDown, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(secScaleDown, VNotch.Services.AnimationConfig.TargetFps);
+        int fps = AnimationConfig.TargetFps;
+        var fade = MakeAnim(opacity, 0, _dur200, _easeQuadOut);
+        var shrinkX = MakeAnim(scale.ScaleX, 0.88, _dur250, _easePowerOut3);
+        var shrinkY = MakeAnim(scale.ScaleY, 0.88, _dur250, _easePowerOut3);
+        var slide = MakeAnim(translate.Y, -16, _dur250, _easePowerOut3);
+        Timeline.SetDesiredFrameRate(fade, fps);
+        Timeline.SetDesiredFrameRate(shrinkX, fps);
+        Timeline.SetDesiredFrameRate(shrinkY, fps);
+        Timeline.SetDesiredFrameRate(slide, fps);
 
-        secSlideDown.Completed += (s, e) =>
+        fade.Completed += (_, _) =>
         {
             if (generation != _viewTransitionGeneration) return;
-            SecondaryContent.RenderTransform = null;
-            SecondaryContent.Effect = null;
+            VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(content);
         };
 
-        secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, secSlideDown);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleXProperty, secScaleDown);
-        secondaryScale.BeginAnimation(ScaleTransform.ScaleYProperty, secScaleDown);
-
-        _isSecondaryView = false;
-    }
-
-    private void AnimateTimerViewCollapse(bool wasTimer, int generation)
-    {
-        if (!wasTimer) return;
-
-        if (IsCameraPreviewLifecycleActive)
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, shrinkX);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, shrinkY);
+        translate.BeginAnimation(TranslateTransform.YProperty, slide);
+        if (_settings.EnableBlurEffects)
         {
-            StopCameraPreviewForViewExit();
+            var blur = new BlurEffect { Radius = blurRadius, RenderingBias = RenderingBias.Performance };
+            content.Effect = blur;
+            var blurOut = MakeAnim(blurRadius, 10, _dur200, _easeQuadOut);
+            Timeline.SetDesiredFrameRate(blurOut, fps);
+            blur.BeginAnimation(BlurEffect.RadiusProperty, blurOut);
         }
-
-        AnimateTimerContentFadeOut();
-
-        TimerContent.BeginAnimation(OpacityProperty, null);
-
-        var timerGroup = new TransformGroup();
-        var timerScale = new ScaleTransform(1, 1);
-        var timerTranslate = new TranslateTransform(0, 0);
-        timerGroup.Children.Add(timerScale);
-        timerGroup.Children.Add(timerTranslate);
-        TimerContent.RenderTransform = timerGroup;
-        TimerContent.RenderTransformOrigin = new Point(0.5, 0.5);
-
-        var timerSlideDown = MakeAnim(0, 12, _dur250, _easeQuadIn, TimeSpan.FromMilliseconds(60));
-        var timerScaleDown = MakeAnim(1, 0.95, _dur250, _easeQuadIn, TimeSpan.FromMilliseconds(60));
-        var timerBlur = TimerContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-        TimerContent.Effect = timerBlur;
-        var timerBlurOut = MakeAnim(timerBlur.Radius, 10, _dur200, _easeQuadIn, TimeSpan.FromMilliseconds(60));
-        Timeline.SetDesiredFrameRate(timerSlideDown, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(timerScaleDown, VNotch.Services.AnimationConfig.TargetFps);
-
-        timerSlideDown.Completed += (s, e) =>
+        else
         {
-            if (generation != _viewTransitionGeneration) return;
-            TimerContent.RenderTransform = null;
-            TimerContent.Effect = null;
-            timerBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            timerBlur.Radius = 0;
-        };
-
-        timerTranslate.BeginAnimation(TranslateTransform.YProperty, timerSlideDown);
-        timerScale.BeginAnimation(ScaleTransform.ScaleXProperty, timerScaleDown);
-        timerScale.BeginAnimation(ScaleTransform.ScaleYProperty, timerScaleDown);
-        timerBlur.BeginAnimation(BlurEffect.RadiusProperty, timerBlurOut);
-
-        _isTimerView = false;
+            content.Effect = null;
+        }
+        content.BeginAnimation(OpacityProperty, fade);
     }
-
-    private void AnimateAudioViewCollapse(bool wasAudio, int generation)
-    {
-        if (!wasAudio) return;
-
-        AudioContent.BeginAnimation(OpacityProperty, null);
-        var audioBlur = AudioContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-        AudioContent.Effect = audioBlur;
-        var audioBlurOut = MakeAnim(audioBlur.Radius, 10, _dur200, _easeQuadIn);
-
-        audioBlurOut.Completed += (s, e) =>
-        {
-            if (generation != _viewTransitionGeneration) return;
-            AudioContent.RenderTransform = null;
-            AudioContent.Effect = null;
-            audioBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            audioBlur.Radius = 0;
-            if (AudioScrollViewer != null)
-            {
-                AudioScrollViewer.RenderTransform = null;
-                AudioScrollViewer.Effect = null;
-            }
-        };
-
-        audioBlur.BeginAnimation(BlurEffect.RadiusProperty, audioBlurOut);
-    }
-
     private void EnsureCollapseThumbnailAnimations(double expandedThumbWidth, double expandedThumbHeight, Duration thumbDur, IEasingFunction thumbEase, TimeSpan thumbDelay, int thumbFps)
     {
         if (_cachedThumbWidthCollapse != null &&
@@ -1541,9 +1480,6 @@ public partial class MainWindow
         _isAudioView = false;
     }
 
-    private bool CanStartCollapse() =>
-        !_isDebugViewLocked && !_isAnimating && _isExpanded && !_isGreetingActive;
-
     private void PrepareStateBeforeCollapse()
     {
         StopMainViewHorizontalStabilizer();
@@ -1656,9 +1592,8 @@ public partial class MainWindow
             _audioMixerServiceCached?.ReleaseSessionCache();
         }
 
-        AnimateSecondaryViewCollapse(wasSecondary, generation);
-        AnimateTimerViewCollapse(wasTimer, generation);
-        AnimateAudioViewCollapse(wasAudio, generation);
+        _isSecondaryView = false;
+        _isTimerView = false;
 
         ResetContentBlurAndOverlaysBeforeCollapse();
 
@@ -1778,6 +1713,11 @@ public partial class MainWindow
                 SecondaryContent.BeginAnimation(OpacityProperty, fadeOutAnim);
             }
         }
+
+        // Apply after the presenter so its general fade cannot replace the exit motion.
+        AnimateAuxiliaryViewCollapse(SecondaryContent, generation);
+        AnimateAuxiliaryViewCollapse(TimerContent, generation);
+        AnimateAuxiliaryViewCollapse(AudioContent, generation);
 
         expandedTranslate.BeginAnimation(TranslateTransform.YProperty, slideOutAnim);
         ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);

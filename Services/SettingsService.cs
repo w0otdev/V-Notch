@@ -10,7 +10,7 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
+public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 {
     private const string LogCategoryLoad = "SETTINGS-LOAD";
     private const string LogCategorySave = "SETTINGS-SAVE";
@@ -209,7 +209,16 @@ public class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 
     public void Dispose()
     {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 
     private void ThrowIfDisposed()

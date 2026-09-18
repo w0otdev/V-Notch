@@ -289,7 +289,7 @@ public sealed class LiquidGlassPacingTests
                 thread.Start();
 
                 // Allow worker thread to enter the waitable timer
-                Thread.Sleep(30);
+                Task.Delay(30).Wait();
 
                 // Stop should signal _idleWakeEvent and unblock the waitable timer immediately
                 controller.Stop();
@@ -345,11 +345,13 @@ public sealed class LiquidGlassPacingTests
                     timer = CreateWaitableTimerEx(IntPtr.Zero, null, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
                     if (timer != null && !timer.IsInvalid)
                     {
+#pragma warning disable S3869 // Benchmark mirrors Win32 WaitForMultipleObjects handle array in LiquidGlassController
                         handles = new IntPtr[2]
                         {
                             idleWake.SafeWaitHandle.DangerousGetHandle(),
                             timer.DangerousGetHandle()
                         };
+#pragma warning restore S3869
                     }
                 }
 

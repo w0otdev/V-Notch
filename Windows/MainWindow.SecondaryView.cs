@@ -383,21 +383,22 @@ public partial class MainWindow
     {
         if (icon == null) return;
 
-        if (!animate)
-        {
-            icon.BeginAnimation(UIElement.OpacityProperty, null);
-            icon.Opacity = targetOpacity;
-            return;
-        }
+        // An old HoldEnd clock overrides local opacity, even when the icon
+        // currently looks correct. Remove it before applying the new state.
+        double currentOpacity = icon.Opacity;
+        icon.BeginAnimation(UIElement.OpacityProperty, null);
+        icon.Opacity = targetOpacity;
 
-        if (Math.Abs(icon.Opacity - targetOpacity) < 0.01)
+        if (!animate || Math.Abs(currentOpacity - targetOpacity) < 0.01)
             return;
 
         var anim = new DoubleAnimation
         {
+            From = currentOpacity,
             To = targetOpacity,
             Duration = new Duration(TimeSpan.FromMilliseconds(200)),
-            EasingFunction = _easeAppleOut
+            EasingFunction = _easeAppleOut,
+            FillBehavior = FillBehavior.Stop
         };
         Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
         icon.BeginAnimation(UIElement.OpacityProperty, anim);

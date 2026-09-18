@@ -2534,8 +2534,6 @@ public partial class SettingsWindow : Window
             target.LiquidGlassCustom = _customGlassSnapshot.Clone();
     }
 
-    private void SaveLiquidGlassUi() => ReadLiquidGlassUi(_settings);
-
     private void GlassPresetCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_isLoadingSettings || _suppressGlassPresetChange) return;

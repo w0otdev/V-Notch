@@ -1373,14 +1373,11 @@ public partial class MainWindow
                     LyricsWidget.Visibility = Visibility.Visible;
                     LyricsWidget.Opacity = 1.0;
 
-                    if (_currentLyricIndex < 0 && !_isLyricsSearchVisible && LyricsPlaceholderPanel != null)
+                    if (_currentLyricIndex < 0 && !_isLyricsSearchVisible && LyricsPlaceholderPanel != null && LyricsPlaceholderPanel.Visibility != Visibility.Visible)
                     {
-                        if (LyricsPlaceholderPanel.Visibility != Visibility.Visible)
-                        {
-                            string placeholderTitle = _currentMediaInfo?.CurrentTrack ?? "";
-                            string placeholderArtist = _currentMediaInfo?.CurrentArtist ?? "";
-                            ShowLyricsPlaceholder(placeholderTitle, placeholderArtist, _lyricsProvider);
-                        }
+                        string placeholderTitle = _currentMediaInfo?.CurrentTrack ?? "";
+                        string placeholderArtist = _currentMediaInfo?.CurrentArtist ?? "";
+                        ShowLyricsPlaceholder(placeholderTitle, placeholderArtist, _lyricsProvider);
                     }
                 }
             }

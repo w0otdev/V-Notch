@@ -237,14 +237,12 @@ public partial class MainWindow
 
         // Preserve resolved "yt:{id}" key and avoid overwriting with unresolved
         // fallback when MediaChanged fires with empty videoId while subtitles are already loaded.
-        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack))
+        if (string.IsNullOrEmpty(videoId) && !string.IsNullOrEmpty(info.CurrentTrack)
+            && !force && _lyricsTrackKey.StartsWith("yt:", StringComparison.Ordinal)
+            && !_lyricsTrackKey.StartsWith("yt-lrc:", StringComparison.Ordinal)
+            && _currentLyrics != null && _currentLyrics.Count > 0)
         {
-            if (!force && _lyricsTrackKey.StartsWith("yt:", StringComparison.Ordinal)
-                && !_lyricsTrackKey.StartsWith("yt-lrc:", StringComparison.Ordinal)
-                && _currentLyrics != null && _currentLyrics.Count > 0)
-            {
-                return;
-            }
+            return;
         }
 
         string trackKey = !string.IsNullOrEmpty(videoId) ? $"yt:{videoId}" : $"yt-lrc:{info.CurrentTrack}|{info.CurrentArtist}";
@@ -742,13 +740,27 @@ public partial class MainWindow
         }
 
         // 3. Coordinate appear animation
-        double startY = transitionFromSearch ? 10 : (hasActiveLyrics ? 8 : 6);
+        double startY = 6;
+        if (transitionFromSearch)
+        {
+            startY = 10;
+        }
+        else if (hasActiveLyrics)
+        {
+            startY = 8;
+        }
         LyricsPlaceholderPanel.Opacity = 0;
         transform.Y = startY;
 
-        TimeSpan? delay = transitionFromSearch
-            ? TimeSpan.FromMilliseconds(70)
-            : (hasActiveLyrics ? TimeSpan.FromMilliseconds(60) : null);
+        TimeSpan? delay = null;
+        if (transitionFromSearch)
+        {
+            delay = TimeSpan.FromMilliseconds(70);
+        }
+        else if (hasActiveLyrics)
+        {
+            delay = TimeSpan.FromMilliseconds(60);
+        }
 
         var duration = new Duration(TimeSpan.FromMilliseconds(320));
         var easeOut = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
@@ -790,7 +802,7 @@ public partial class MainWindow
         _isLyricsPlaceholderActive = false;
         if (LyricsPlaceholderPanel.Visibility == Visibility.Collapsed && LyricsPlaceholderPanel.Opacity < 0.01) return;
 
-        int transitionVersion = ++_lyricsPlaceholderTransitionVersion;
+        ++_lyricsPlaceholderTransitionVersion;
         var transform = GetLyricsPlaceholderTransform();
 
         void FinishHide()
@@ -992,8 +1004,17 @@ public partial class MainWindow
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var outDur = new Duration(TimeSpan.FromMilliseconds(300));
         var inDur = new Duration(TimeSpan.FromMilliseconds(450));
-        var inDelay = TimeSpan.FromMilliseconds(
-            transitionFromSearch ? 75 : (transitionFromPlaceholder ? 110 : 80));
+        double delayMs = 80;
+        if (transitionFromSearch)
+        {
+            delayMs = 75;
+        }
+        else if (transitionFromPlaceholder)
+        {
+            delayMs = 110;
+        }
+
+        var inDelay = TimeSpan.FromMilliseconds(delayMs);
         var easeOut = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
         var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
 

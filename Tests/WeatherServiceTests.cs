@@ -95,7 +95,7 @@ public sealed class WeatherServiceTests
         var weather = await service.GetCurrentWeatherAsync("Harbin");
 
         Assert.NotNull(weather);
-        Assert.Equal("Harbin", weather!.City);
+        Assert.Equal("Harbin", weather.City);
         Assert.Equal(-18, weather.Temperature);
         Assert.Equal(-14, weather.High);
         Assert.Equal(-23, weather.Low);
