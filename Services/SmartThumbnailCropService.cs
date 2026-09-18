@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -29,18 +30,13 @@ public sealed class SmartThumbnailCropService : IDisposable
     private const float SubjectMarginRatio = 0.15f;
     private const float MinCropRatio = 0.45f;
 
-    private const float StabilizeCenterThreshold = 0.03f;
-    private const float StabilizeSizeThreshold = 0.04f;
-
-    private Int32Rect _lastCropRect;
-    private int _lastCropImgWidth;
-    private int _lastCropImgHeight;
-    private bool _hasLastCrop;
+    private readonly Dictionary<(ArtworkFingerprint Artwork, int Size), Int32Rect> _cropCache = new();
 
     private bool _disposed;
     private bool _modelExists;
     private bool _modelExistsChecked;
     private InferenceSession? _cachedSession;
+    private global::Windows.Media.FaceAnalysis.FaceDetector? _faceDetector;
 
     private const int MaxInferenceCacheEntries = 64;
     private readonly Dictionary<ArtworkFingerprint, InferenceCacheEntry> _inferenceCache = new();
@@ -197,14 +193,25 @@ public sealed class SmartThumbnailCropService : IDisposable
 
     public Int32Rect? GetSmartCropRect(BitmapImage source, int targetSquareSize)
     {
-        var rect = ComputeSmartCropRectCore(source, targetSquareSize);
-        if (rect.HasValue && source != null)
+        if (source == null || targetSquareSize <= 0) return null;
+        lock (_lock)
         {
-            return Stabilize(rect.Value, source.PixelWidth, source.PixelHeight);
-        }
-        return rect;
-    }
+            if (_disposed) return null;
+            var fingerprint = _fingerprintCache
+                .GetValue(source, static bitmap => new FingerprintHolder(ArtworkFingerprint.Create(bitmap))).Value;
+            var key = (fingerprint, targetSquareSize);
+            if (_cropCache.TryGetValue(key, out var cached)) return cached;
 
+            var rect = ComputeSmartCropRectCore(source, targetSquareSize);
+            if (rect.HasValue)
+            {
+                if (_cropCache.Count >= MaxInferenceCacheEntries)
+                    _cropCache.Remove(_cropCache.Keys.First());
+                _cropCache[key] = rect.Value;
+            }
+            return rect;
+        }
+    }
     private Int32Rect? ComputeSmartCropRectCore(BitmapImage source, int targetSquareSize)
     {
         if (_disposed) return null;
@@ -381,7 +388,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             const float grayVal = 114f / 255f;
             const float inv255 = 1f / 255f;
 
-            tensorBuffer.AsSpan().Fill(grayVal);
+            tensorBuffer.AsSpan(0, 3 * planeSize).Fill(grayVal);
 
             for (int y = 0; y < scaledH && (y + padYi) < ModelInputSize; y++)
             {
@@ -405,7 +412,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             ArrayPool<byte>.Shared.Return(pixels);
         }
 
-        return (scale, scale, padX, padY);
+        return (scale, scale, padXi, padYi);
     }
 
     private static List<Detection> ParseYolov8Output(Tensor<float> output, int imgWidth, int imgHeight, float scale, float padX, float padY)
@@ -494,12 +501,13 @@ public sealed class SmartThumbnailCropService : IDisposable
         return true;
     }
 
-    private static List<Detection> ApplyNms(List<Detection> detections)
+    internal static List<Detection> ApplyNms(List<Detection> detections)
     {
         var sorted = detections.OrderByDescending(d => d.Confidence).ToList();
         var result = new List<Detection>(sorted.Count);
 
-        Span<bool> suppressed = stackalloc bool[sorted.Count];
+        Span<bool> suppressed = sorted.Count <= 1024 ? stackalloc bool[sorted.Count] : new bool[sorted.Count];
+        suppressed.Clear();
         for (int i = 0; i < sorted.Count; i++)
         {
             if (suppressed[i]) continue;
@@ -508,7 +516,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             for (int j = i + 1; j < sorted.Count; j++)
             {
                 if (suppressed[j]) continue;
-                if (IoU(sorted[i], sorted[j]) > NmsThreshold)
+                if (sorted[i].ClassId == sorted[j].ClassId && IoU(sorted[i], sorted[j]) > NmsThreshold)
                     suppressed[j] = true;
             }
         }
@@ -668,6 +676,12 @@ public sealed class SmartThumbnailCropService : IDisposable
 
         if (persons.Count >= 1)
         {
+            // Weak background detections must not widen a confident portrait.
+            float bestConfidence = persons.Max(p => p.Confidence);
+            persons.RemoveAll(p => p.Confidence < bestConfidence * 0.5f);
+            if (persons.Count == 1 && TryGetPortraitCrop(source, persons[0], imgWidth, imgHeight) is Int32Rect portrait)
+                return portrait;
+
             VNotch.Services.RuntimeLog.Log(LogCategory,
                 $"person path: {persons.Count} person(s) → centered crop");
             return GetPersonCropRect(persons, imgWidth, imgHeight, targetSize);
@@ -727,7 +741,67 @@ public sealed class SmartThumbnailCropService : IDisposable
             : GetGroupPersonCropRect(persons, imgWidth, imgHeight, targetSize);
     }
 
-    private static Int32Rect GetSinglePersonCropRect(Detection p, int imgWidth, int imgHeight, int targetSize)
+    private Int32Rect? TryGetPortraitCrop(BitmapImage source, Detection person, int width, int height)
+    {
+        if (!global::Windows.Media.FaceAnalysis.FaceDetector.IsSupported) return null;
+        try
+        {
+            double scale = Math.Min(1, 640.0 / Math.Max(width, height));
+            var resized = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+            var gray = new FormatConvertedBitmap(resized, PixelFormats.Gray8, null, 0);
+            int length = gray.PixelWidth * gray.PixelHeight;
+            byte[] pixels = ArrayPool<byte>.Shared.Rent(length);
+            try
+            {
+                gray.CopyPixels(pixels, gray.PixelWidth, 0);
+                using var bitmap = new global::Windows.Graphics.Imaging.SoftwareBitmap(
+                    global::Windows.Graphics.Imaging.BitmapPixelFormat.Gray8, gray.PixelWidth, gray.PixelHeight);
+                bitmap.CopyFromBuffer(pixels.AsBuffer(0, length));
+                _faceDetector ??= global::Windows.Media.FaceAnalysis.FaceDetector.CreateAsync().AsTask().GetAwaiter().GetResult();
+                var faces = _faceDetector.DetectFacesAsync(bitmap).AsTask().GetAwaiter().GetResult();
+                Detection? best = null;
+                float bestArea = 0;
+                foreach (var face in faces)
+                {
+                    var box = face.FaceBox;
+                    var candidate = new Detection
+                    {
+                        X1 = (float)(box.X / scale), Y1 = (float)(box.Y / scale),
+                        X2 = (float)((box.X + box.Width) / scale), Y2 = (float)((box.Y + box.Height) / scale)
+                    };
+                    float cx = (candidate.X1 + candidate.X2) / 2;
+                    float cy = (candidate.Y1 + candidate.Y2) / 2;
+                    float area = (candidate.X2 - candidate.X1) * (candidate.Y2 - candidate.Y1);
+                    if (cx < person.X1 || cx > person.X2 || cy < person.Y1 || cy > person.Y2 || area <= bestArea) continue;
+                    best = candidate;
+                    bestArea = area;
+                }
+                return best is Detection detected ? GetPortraitCropRect(detected, width, height) : null;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(pixels);
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Debug(LogCategory, () => $"Face framing unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    internal static Int32Rect GetPortraitCropRect(Detection face, int width, int height)
+    {
+        float faceHeight = face.Y2 - face.Y1;
+        float faceWidth = face.X2 - face.X1;
+        int side = (int)MathF.Ceiling(Math.Clamp(Math.Max(faceHeight * 2.15f, faceWidth * 3f),
+            Math.Min(width, height) * MinCropRatio, Math.Min(width, height)));
+        // Reserve space above the face for hair, and below for shoulders/upper torso.
+        float top = face.Y1 - faceHeight * 0.45f;
+        return BuildCropRect((face.X1 + face.X2) / 2, top + side / 2f, width, height, side);
+    }
+
+    internal static Int32Rect GetSinglePersonCropRect(Detection p, int imgWidth, int imgHeight, int targetSize)
     {
         float personWidth = p.X2 - p.X1;
         float personHeight = p.Y2 - p.Y1;
@@ -736,6 +810,8 @@ public sealed class SmartThumbnailCropService : IDisposable
         float personCenterY = (p.Y1 + p.Y2) / 2f;
 
         int cropSize = ComputeAdaptiveCropSize(personWidth, personHeight, imgWidth, imgHeight, targetSize);
+        if (personHeight > cropSize)
+            personCenterY = p.Y1 - cropSize * 0.08f + cropSize / 2f;
         var crop = BuildCropRect(personCenterX, personCenterY, imgWidth, imgHeight, cropSize);
 
         VNotch.Services.RuntimeLog.Log(LogCategory,
@@ -805,37 +881,6 @@ public sealed class SmartThumbnailCropService : IDisposable
             size = Math.Max(size, Math.Min(targetSize, maxCrop));
 
         return (int)MathF.Round(size);
-    }
-
-    private Int32Rect Stabilize(Int32Rect candidate, int imgWidth, int imgHeight)
-    {
-        if (_hasLastCrop && _lastCropImgWidth == imgWidth && _lastCropImgHeight == imgHeight)
-        {
-            float minEdge = Math.Min(imgWidth, imgHeight);
-            float centerThreshold = minEdge * StabilizeCenterThreshold;
-            float sizeThreshold = minEdge * StabilizeSizeThreshold;
-
-            float oldCx = _lastCropRect.X + _lastCropRect.Width / 2f;
-            float oldCy = _lastCropRect.Y + _lastCropRect.Height / 2f;
-            float newCx = candidate.X + candidate.Width / 2f;
-            float newCy = candidate.Y + candidate.Height / 2f;
-
-            float centerShift = MathF.Sqrt((newCx - oldCx) * (newCx - oldCx) + (newCy - oldCy) * (newCy - oldCy));
-            float sizeShift = Math.Abs(candidate.Width - _lastCropRect.Width);
-
-            if (centerShift < centerThreshold && sizeShift < sizeThreshold)
-            {
-                VNotch.Services.RuntimeLog.Log(LogCategory,
-                    $"stabilize: reuse previous crop (centerShift={centerShift:F1}<{centerThreshold:F1}, sizeShift={sizeShift:F1}<{sizeThreshold:F1})");
-                return _lastCropRect;
-            }
-        }
-
-        _lastCropRect = candidate;
-        _lastCropImgWidth = imgWidth;
-        _lastCropImgHeight = imgHeight;
-        _hasLastCrop = true;
-        return candidate;
     }
 
     private static Int32Rect BuildCropRect(float centerX, float centerY, int imgWidth, int imgHeight, int cropSize)
@@ -1004,6 +1049,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             _cachedSession?.Dispose();
             _cachedSession = null;
             _inferenceCache.Clear();
+            _cropCache.Clear();
         }
     }
 
@@ -1025,7 +1071,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         public long LastAccess { get; set; }
     }
 
-    private struct Detection
+    internal struct Detection
     {
         public float X1, Y1, X2, Y2;
         public float Confidence;

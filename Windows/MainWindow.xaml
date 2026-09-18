@@ -1349,7 +1349,7 @@
                                            FontSize="10.5"
                                            FontWeight="Bold"
                                            Foreground="#EEFFFFFF"
-                                           TextOptions.TextFormattingMode="Ideal"
+                                           TextOptions.TextFormattingMode="Ideal" TextOptions.TextHintingMode="Animated"
                                            VerticalAlignment="Top"
                                            Canvas.Top="1">
                                     <TextBlock.RenderTransform>
@@ -1872,7 +1872,7 @@
                                                         </Grid.RenderTransform>
 
                                                         <TextBlock Text="{Binding Text, ElementName=TrackTitle}"
-                                                                   Style="{StaticResource TitleText}"
+                                                                   Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
                                                                    FontSize="14"
                                                                    FontWeight="Bold"
                                                                    Foreground="#80000000"
@@ -1880,7 +1880,7 @@
 
                                                         <TextBlock x:Name="TrackTitle"
                                                                    Text="No media playing"
-                                                                   Style="{StaticResource TitleText}"
+                                                                   Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
                                                                    FontSize="14"
                                                                    FontWeight="Bold"
                                                                    Foreground="{DynamicResource TrackTitleGradient}" />
@@ -1895,7 +1895,7 @@
                                                         </Grid.RenderTransform>
 
                                                         <TextBlock Text="{Binding Text, ElementName=TrackTitleNext}"
-                                                                   Style="{StaticResource TitleText}"
+                                                                   Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
                                                                    FontSize="14"
                                                                    FontWeight="Bold"
                                                                    Foreground="#80000000"
@@ -1903,7 +1903,7 @@
 
                                                         <TextBlock x:Name="TrackTitleNext"
                                                                    Text=""
-                                                                   Style="{StaticResource TitleText}"
+                                                                   Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
                                                                    FontSize="14"
                                                                    FontWeight="Bold"
                                                                    Foreground="{DynamicResource TrackTitleNextGradient}" />
@@ -2812,7 +2812,7 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    LineHeight="15"
                                                    LineStackingStrategy="BlockLineHeight"
-                                                   MaxHeight="46"
+                                                   MaxHeight="30"
                                                    TextAlignment="Right"
                                                    HorizontalAlignment="Stretch"
                                                    FontFamily="{StaticResource MainSystemFont}"

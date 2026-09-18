@@ -37,7 +37,9 @@ public partial class MainWindow
             _isPlaying = !_viewModel.IsPlaying;
             UpdatePlayPauseIcon();
 
-            if (!_isAnimating)
+            if (!_isExpanded && !_isAnimating &&
+                !_transitionCoordinator.IsTransitionActive &&
+                _transitionCoordinator.CurrentView == NotchView.Compact)
             {
                 PlayGestureMiddleClickFeedback();
             }
