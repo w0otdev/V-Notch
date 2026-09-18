@@ -1351,7 +1351,7 @@
                                            Foreground="#EEFFFFFF"
                                            TextOptions.TextFormattingMode="Ideal"
                                            VerticalAlignment="Top"
-                                           Canvas.Top="-1">
+                                           Canvas.Top="1">
                                     <TextBlock.RenderTransform>
                                         <TranslateTransform x:Name="CompactTitleMarqueeTranslate" X="0"/>
                                     </TextBlock.RenderTransform>
@@ -1859,8 +1859,9 @@
                                                 </LinearGradientBrush>
                                             </StackPanel.OpacityMask>
 
-                                            <Canvas x:Name="TitleScrollContainer" Height="20" Width="340" ClipToBounds="True">
-                                                <Grid x:Name="TitleMorphContainer" Canvas.Left="0" Canvas.Top="-2">
+                                            <!-- Leave headroom for Vietnamese accents inside the marquee clip. -->
+                                            <Canvas x:Name="TitleScrollContainer" Height="24" Width="340" ClipToBounds="True">
+                                                <Grid x:Name="TitleMorphContainer" Canvas.Left="0" Canvas.Top="1">
 
                                                     <Grid x:Name="TrackTitleLayer" Opacity="1">
                                                         <Grid.RenderTransform>
