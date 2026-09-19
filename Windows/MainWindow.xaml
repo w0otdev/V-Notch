@@ -405,6 +405,7 @@
                         <!-- Final rounded clip for material stack; kept outside blurred children
                              so post-effects cannot spread Touch Light into rectangular corners. -->
                         <Grid x:Name="GlassMaterialClipHost"
+                              Visibility="Collapsed"
                               IsHitTestVisible="False"
                               SizeChanged="GlassMaterialClipHost_SizeChanged">
                         <Border x:Name="GlassBackdropHost"
@@ -575,6 +576,7 @@
                         </Grid>
 
                         <Border x:Name="VolumeIndicatorContainer"
+                                SizeChanged="VolumeIndicator_SizeChanged"
                                 VerticalAlignment="Center"
                                 HorizontalAlignment="Stretch"
                                 Height="14"
@@ -2859,7 +2861,7 @@
                                                FontSize="12.5"
                                                FontWeight="Bold"
                                                LineHeight="17"
-                                               LineStackingStrategy="MaxHeight"
+                                               LineStackingStrategy="BlockLineHeight"
                                                Padding="0,2,0,4"
                                                TextWrapping="Wrap"
                                                TextTrimming="CharacterEllipsis"
@@ -2867,6 +2869,8 @@
                                                Margin="0,8"
                                                TextAlignment="Right"
                                                TextOptions.TextFormattingMode="Ideal"
+                                               TextOptions.TextRenderingMode="Grayscale"
+                                               TextOptions.TextHintingMode="Animated"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
@@ -2884,7 +2888,7 @@
                                                FontSize="12.5"
                                                FontWeight="Bold"
                                                LineHeight="17"
-                                               LineStackingStrategy="MaxHeight"
+                                               LineStackingStrategy="BlockLineHeight"
                                                Padding="0,2,0,4"
                                                TextWrapping="Wrap"
                                                TextTrimming="CharacterEllipsis"
@@ -2892,6 +2896,8 @@
                                                Margin="0,8"
                                                TextAlignment="Right"
                                                TextOptions.TextFormattingMode="Ideal"
+                                               TextOptions.TextRenderingMode="Grayscale"
+                                               TextOptions.TextHintingMode="Animated"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">

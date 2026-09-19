@@ -359,7 +359,7 @@ public partial class MainWindow
 
         if (_isVolumeIndicatorActive)
         {
-            DismissVolumeIndicatorImmediate();
+            DismissVolumeIndicatorImmediate(animateExit: true);
         }
 
         if (_isChargingNotificationVisible)

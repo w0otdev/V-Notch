@@ -331,6 +331,8 @@ public partial class MainWindow
 
     private void ResetCompactVolumeWheelIntent()
     {
+        ++_volumeBaselineVersion;
+        _volumeBaselinePending = false;
         _compactVolumeWheelAccumulator = 0;
         _lastCompactVolumeWheelUtc = DateTime.MinValue;
         _isCompactVolumeWheelActive = false;
@@ -388,6 +390,16 @@ public partial class MainWindow
     }
 
     private bool _volumeBaselinePending;
+    private int _volumeBaselineVersion;
+    private float _volumeIndicatorRatio;
+
+    private void VolumeIndicator_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // A hidden indicator can retain the expanded notch's measured width.
+        // Recompute throughout the resize instead of waiting for another wheel event.
+        if (VolumeIndicatorFill != null)
+            VolumeIndicatorFill.Width = Math.Max(0, e.NewSize.Width * _volumeIndicatorRatio);
+    }
 
     private void AdjustVolumeByScroll(int delta)
     {
@@ -397,13 +409,17 @@ public partial class MainWindow
             // applying volume state once known to prevent flicker.
             if (_volumeBaselinePending) return;
             _volumeBaselinePending = true;
+            int version = ++_volumeBaselineVersion;
 
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
                 bool ok = _mediaService.TryGetCurrentSessionVolume(out float vol, out bool _);
                 Dispatcher.BeginInvoke(() =>
                 {
+                    if (version != _volumeBaselineVersion) return;
                     _volumeBaselinePending = false;
+                    if (_isExpanded || _isAnimating ||
+                        DateTime.UtcNow < _suppressCompactVolumeWheelUntilUtc) return;
                     if (ok) _currentVolume = vol;
                     _volumeSynced = true;
                     ApplyVolumeStep(delta);
@@ -441,6 +457,8 @@ public partial class MainWindow
         if (!_isMusicCompactMode) return;
         if (_isExpanded || _isAnimating) return;
 
+        _volumeIndicatorRatio = Math.Clamp(volume, 0f, 1f);
+
         if (!_isVolumeIndicatorActive)
         {
             if (!TryAcquireCompactSlot(VNotch.Controllers.CompactPillSlot.Volume, out int token))
@@ -453,6 +471,9 @@ public partial class MainWindow
         if (!_isVolumeIndicatorActive)
         {
             _isVolumeIndicatorActive = true;
+            ++_volumeIndicatorExitVersion;
+            _isVolumeIndicatorExiting = false;
+            VolumeIndicatorContainer.IsHitTestVisible = true;
             int presentationToken = _volumeIndicatorToken;
 
             SuppressPrivacyDot();
@@ -582,8 +603,13 @@ public partial class MainWindow
         }
     }
 
-    private void DismissVolumeIndicatorImmediate(bool restoreMedia = false)
+    private bool _isVolumeIndicatorExiting;
+    private int _volumeIndicatorExitVersion;
+
+    private void DismissVolumeIndicatorImmediate(bool restoreMedia = false, bool animateExit = false)
     {
+        int exitVersion = ++_volumeIndicatorExitVersion;
+        _isVolumeIndicatorExiting = animateExit;
         _volumeIndicatorHideTimer?.Stop();
         ResetCompactVolumeWheelIntent();
         int token = _volumeIndicatorToken;
@@ -597,9 +623,29 @@ public partial class MainWindow
         if (VolumeIndicatorContainer != null)
         {
             VolumeIndicatorContainer.ReleaseMouseCapture();
+            double liveOpacity = VolumeIndicatorContainer.Opacity;
             VolumeIndicatorContainer.BeginAnimation(OpacityProperty, null);
             VolumeIndicatorContainer.Opacity = 0;
-            VolumeIndicatorContainer.Visibility = Visibility.Collapsed;
+            if (animateExit && VolumeIndicatorContainer.Visibility == Visibility.Visible)
+            {
+                VolumeIndicatorContainer.IsHitTestVisible = false;
+                var fadeOut = MakeAnim(liveOpacity, 0.0, _dur250, _easeQuadOut);
+                fadeOut.Completed += (_, _) =>
+                {
+                    if (exitVersion != _volumeIndicatorExitVersion) return;
+                    _isVolumeIndicatorExiting = false;
+                    VolumeIndicatorContainer.Visibility = Visibility.Collapsed;
+                    VolumeIndicatorContainer.BeginAnimation(OpacityProperty, null);
+                    VolumeIndicatorContainer.IsHitTestVisible = true;
+                };
+                VolumeIndicatorContainer.BeginAnimation(OpacityProperty, fadeOut);
+            }
+            else
+            {
+                _isVolumeIndicatorExiting = false;
+                VolumeIndicatorContainer.Visibility = Visibility.Collapsed;
+                VolumeIndicatorContainer.IsHitTestVisible = true;
+            }
         }
 
         if (CompactThumbnailBorder != null)
@@ -655,6 +701,7 @@ public partial class MainWindow
 
         float newVolume = (float)Math.Clamp(pos.X / containerWidth, 0.0, 1.0);
         _currentVolume = newVolume;
+        _volumeIndicatorRatio = newVolume;
 
         VolumeIndicatorFill.Width = Math.Max(0, containerWidth * newVolume);
 

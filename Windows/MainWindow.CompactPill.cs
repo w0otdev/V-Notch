@@ -53,7 +53,9 @@ public partial class MainWindow
                 HideCompactSurface(ClipboardCheckIcon);
                 HideCompactSurface(ClipboardCopiedText);
             }
-            if (owner != CompactPillSlot.Volume) HideCompactSurface(VolumeIndicatorContainer);
+            if (owner != CompactPillSlot.Volume &&
+                !(_isVolumeIndicatorExiting && owner == CompactPillSlot.None))
+                HideCompactSurface(VolumeIndicatorContainer);
             if (owner != CompactPillSlot.Bluetooth)
             {
                 HideCompactSurface(BluetoothNotification);

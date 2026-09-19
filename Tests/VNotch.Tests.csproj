@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\V-Notch.csproj" />
+    <Compile Include="../Tools/VisualizerBenchmark/BaselineSpectrumBands.cs" Link="Fixtures/BaselineSpectrumBands.cs" />
+    <Compile Include="../Tools/GlassCpuBenchmark/BaselineBoxBlur.cs" Link="Fixtures/BaselineBoxBlur.cs" />
+    <Compile Include="../Tools/DefaultThemeBenchmark/BaselineAnalogClock.cs" Link="Fixtures/BaselineAnalogClock.cs" />
   </ItemGroup>
 
 </Project>

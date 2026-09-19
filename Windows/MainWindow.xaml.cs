@@ -1959,11 +1959,6 @@ public partial class MainWindow : Window
             SuppressCompactVolumeWheelForClick();
         }
 
-        if (_isVolumeIndicatorActive)
-        {
-            DismissVolumeIndicatorImmediate(restoreMedia: true);
-        }
-
         if (TryBeginGesture(e))
         {
             e.Handled = true;
@@ -2429,7 +2424,7 @@ public partial class MainWindow : Window
 
     private void UpdateGlassClip()
     {
-        if (GlassMaterialClipHost == null) return;
+        if (GlassMaterialClipHost?.Visibility != Visibility.Visible) return;
 
         double w = GlassMaterialClipHost.ActualWidth;
         double h = GlassMaterialClipHost.ActualHeight;

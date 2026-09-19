@@ -76,7 +76,10 @@ public class AnalogClock : FrameworkElement
         {
             Interval = TimeSpan.FromMilliseconds(33)
         };
-        _timer.Tick += (_, _) => InvalidateVisual();
+        _timer.Tick += (_, _) =>
+        {
+            if (UpdateFrame(DateTime.Now)) InvalidateVisual();
+        };
 
         Loaded += (_, _) => UpdateRunningState();
         Unloaded += (_, _) => StopTimer();
@@ -123,7 +126,27 @@ public class AnalogClock : FrameworkElement
         _timer.Stop();
     }
 
-    protected override void OnRender(DrawingContext drawingContext)
+    protected override void OnRender(DrawingContext drawingContext) =>
+        RenderFrame(drawingContext, DateTime.Now);
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        _staticFace = null;
+        InvalidateVisual();
+    }
+
+    // The retained drawing observes these transforms. A normal clock tick only
+    // updates resource angles; it does not need a new UIElement render/layout pass.
+    internal bool UpdateFrame(DateTime now)
+    {
+        if (!_hasDrawnHands || _staticFace == null || _cachedDay != now.Day)
+            return true;
+        UpdateHandAngles(now);
+        return false;
+    }
+
+    internal void RenderFrame(DrawingContext drawingContext, DateTime now)
     {
         double w = ActualWidth;
         double h = ActualHeight;
@@ -132,8 +155,6 @@ public class AnalogClock : FrameworkElement
         double r = CalculateFaceRadius(w, h);
         if (r <= 0) return;
         var center = new Point(w / 2.0, h / 2.0);
-
-        DateTime now = DateTime.Now;
 
         double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         if (_staticFace == null || Math.Abs(_cachedR - r) > 0.001 || Math.Abs(_cachedCx - center.X) > 0.001 ||
@@ -227,36 +248,42 @@ public class AnalogClock : FrameworkElement
         dc.DrawText(text, origin);
     }
 
-    private static void DrawHands(DrawingContext dc, Point center, double r, DateTime now)
+    private bool _hasDrawnHands;
+    private readonly RotateTransform _hourRotation = new();
+    private readonly RotateTransform _minuteRotation = new();
+    private readonly RotateTransform _secondRotation = new();
+
+    private void DrawHands(DrawingContext dc, Point center, double r, DateTime now)
+    {
+        UpdateHandAngles(now);
+        DrawRetainedHand(dc, center, _hourRotation, HandBrush,
+            r * 0.52, r * 0.11, Math.Max(2.5, r * 0.085));
+        DrawRetainedHand(dc, center, _minuteRotation, HandBrush,
+            r * 0.74, r * 0.13, Math.Max(2.0, r * 0.065));
+        DrawRetainedHand(dc, center, _secondRotation, AccentBrush,
+            r * 0.82, r * 0.22, Math.Max(1.2, r * 0.022));
+        _hasDrawnHands = true;
+    }
+
+    private void UpdateHandAngles(DateTime now)
     {
         double seconds = now.Second + now.Millisecond / 1000.0;
         double minutes = now.Minute + seconds / 60.0;
         double hours = (now.Hour % 12) + minutes / 60.0;
-
-        double hourAngle = hours * 30.0;
-        double minuteAngle = minutes * 6.0;
-        double secondAngle = seconds * 6.0;
-
-        DrawHand(dc, center, hourAngle, HandBrush,
-            length: r * 0.52, tail: r * 0.11, thickness: Math.Max(2.5, r * 0.085));
-
-        DrawHand(dc, center, minuteAngle, HandBrush,
-            length: r * 0.74, tail: r * 0.13, thickness: Math.Max(2.0, r * 0.065));
-
-        DrawHand(dc, center, secondAngle, AccentBrush,
-            length: r * 0.82, tail: r * 0.22, thickness: Math.Max(1.2, r * 0.022));
+        _hourRotation.Angle = hours * 30.0;
+        _minuteRotation.Angle = minutes * 6.0;
+        _secondRotation.Angle = seconds * 6.0;
     }
 
-    private static void DrawHand(DrawingContext dc, Point center, double angleDeg, Brush brush,
-        double length, double tail, double thickness)
+    private static void DrawRetainedHand(DrawingContext dc, Point center, RotateTransform rotation,
+        Brush brush, double length, double tail, double thickness)
     {
-        dc.PushTransform(new RotateTransform(angleDeg, center.X, center.Y));
-        var rect = new Rect(
-            center.X - thickness / 2.0,
-            center.Y - length,
-            thickness,
-            length + tail);
-        dc.DrawRoundedRectangle(brush, null, rect, thickness / 2.0, thickness / 2.0);
+        rotation.CenterX = center.X;
+        rotation.CenterY = center.Y;
+        dc.PushTransform(rotation);
+        dc.DrawRoundedRectangle(brush, null,
+            new Rect(center.X - thickness / 2.0, center.Y - length, thickness, length + tail),
+            thickness / 2.0, thickness / 2.0);
         dc.Pop();
     }
 

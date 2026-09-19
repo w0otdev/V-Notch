@@ -975,8 +975,6 @@ public partial class MainWindow
         TranslateTransform outTransform = useA ? LyricTranslateA : LyricTranslateB;
         TranslateTransform inTransform = useA ? LyricTranslateB : LyricTranslateA;
 
-        incoming.Text = newText;
-
         outgoing.BeginAnimation(OpacityProperty, null);
         outTransform.BeginAnimation(TranslateTransform.YProperty, null);
         incoming.BeginAnimation(OpacityProperty, null);
@@ -987,7 +985,13 @@ public partial class MainWindow
         outgoing.Opacity = hasOutgoingText ? 1 : 0;
         outTransform.Y = 0;
         incoming.Opacity = 0;
-        inTransform.Y = startY;
+        incoming.Text = newText;
+        // Resolve wrapping and the centered multiline height while this layer is
+        // still invisible, before attaching the entrance animation clocks.
+        AnimatedLyricsLayer.UpdateLayout();
+        // Keep the base position identical to the animation endpoint. The
+        // delayed animation supplies startY without changing the resting layout.
+        inTransform.Y = 0;
 
         if (AnimationConfig.ReduceMotion)
         {
@@ -1033,7 +1037,8 @@ public partial class MainWindow
         var slideIn = new DoubleAnimation(startY, 0, inDur)
         {
             EasingFunction = easeOut,
-            BeginTime = inDelay
+            BeginTime = inDelay,
+            FillBehavior = FillBehavior.HoldEnd
         };
         fadeIn.Completed += (s, e) =>
         {

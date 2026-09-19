@@ -657,6 +657,10 @@ namespace VNotch.Controls
 #pragma warning disable S2696 // Multi-instance visualizers coordinate a single shared loopback audio capture lease
         private void AcquireCaptureLease()
         {
+            // This instance flag is owned by the WPF dispatcher. The audio
+            // callback only touches shared capture state. Do not wait behind
+            // its FFT work on every render tick when we already hold a lease.
+            if (_holdsCaptureLease) return;
             lock (_lockObj)
             {
                 if (_holdsCaptureLease) return;
@@ -897,6 +901,7 @@ namespace VNotch.Controls
         private static readonly float[] _fftInputBuffer = new float[FftLength];
         private static int _fftInputPos = 0;
         private static readonly Complex[] _fftData = new Complex[FftLength];
+        private static readonly VNotch.Services.VisualizerSpectrumBands _spectrumBands = new(FftLength);
         private static readonly double[] _hammingWindow = CreateHammingWindow(FftLength);
 
         private static double[] CreateHammingWindow(int length)
@@ -1178,17 +1183,18 @@ namespace VNotch.Controls
 
             FastFourierTransform.FFT(true, FftM, _fftData);
 
-            double subBass = NormalizeAmplitude(ComputeBandEnergy(20, 60) * (SpectralPreGain * 0.9));
-            double bass = NormalizeAmplitude(ComputeBandEnergy(60, 250) * (SpectralPreGain * 0.85));
-            double lowMid = NormalizeAmplitude(ComputeBandEnergy(250, 500) * (SpectralPreGain * 1.2));
-            double mid = NormalizeAmplitude(ComputeBandEnergy(500, 2000) * (SpectralPreGain * 1.5));
-            double highMid = NormalizeAmplitude(ComputeBandEnergy(2000, 4000) * (SpectralPreGain * 3.2));
-            double high = NormalizeAmplitude(ComputeBandEnergy(4000, 8000) * (SpectralPreGain * 3.8));
-            double kick = NormalizeAmplitude(ComputeBandEnergy(45, 130) * (SpectralPreGain * 1.0));
-            double snare = NormalizeAmplitude(ComputeBandEnergy(1400, 5000) * (SpectralPreGain * 2.8));
-            double melody = NormalizeAmplitude(ComputeBandEnergy(350, 2400) * (SpectralPreGain * 1.7));
-            double hat = NormalizeAmplitude(ComputeBandEnergy(6500, 11000) * (SpectralPreGain * 4.2));
-            double air = NormalizeAmplitude(ComputeBandEnergy(9000, 16000) * (SpectralPreGain * 5.0));
+            var energies = _spectrumBands.Compute(_fftData, _sampleRate);
+            double subBass = NormalizeAmplitude(energies[0] * (SpectralPreGain * 0.9));
+            double bass = NormalizeAmplitude(energies[1] * (SpectralPreGain * 0.85));
+            double lowMid = NormalizeAmplitude(energies[2] * (SpectralPreGain * 1.2));
+            double mid = NormalizeAmplitude(energies[3] * (SpectralPreGain * 1.5));
+            double highMid = NormalizeAmplitude(energies[4] * (SpectralPreGain * 3.2));
+            double high = NormalizeAmplitude(energies[5] * (SpectralPreGain * 3.8));
+            double kick = NormalizeAmplitude(energies[6] * (SpectralPreGain * 1.0));
+            double snare = NormalizeAmplitude(energies[7] * (SpectralPreGain * 2.8));
+            double melody = NormalizeAmplitude(energies[8] * (SpectralPreGain * 1.7));
+            double hat = NormalizeAmplitude(energies[9] * (SpectralPreGain * 4.2));
+            double air = NormalizeAmplitude(energies[10] * (SpectralPreGain * 5.0));
             double rms = _latestRmsNormalized;
 
             double peak = Math.Max(
@@ -1287,37 +1293,6 @@ namespace VNotch.Controls
             }
         }
 
-        private static double ComputeBandEnergy(int fromHz, int toHz)
-        {
-            int maxBin = (FftLength / 2) - 1;
-            if (_sampleRate <= 0 || maxBin <= 1) return 0;
-
-            int start = FrequencyToBin(fromHz);
-            int end = FrequencyToBin(toHz);
-            if (end < start) (start, end) = (end, start);
-
-            start = Math.Clamp(start, 1, maxBin);
-            end = Math.Clamp(end, start, maxBin);
-
-            double sumSquares = 0;
-            int count = 0;
-            for (int i = start; i <= end; i++)
-            {
-                double mag = Math.Sqrt((_fftData[i].X * _fftData[i].X) + (_fftData[i].Y * _fftData[i].Y));
-                double normalizedMag = mag / (FftLength * 0.5);
-                sumSquares += normalizedMag * normalizedMag;
-                count++;
-            }
-
-            return count > 0 ? Math.Sqrt(sumSquares / count) : 0;
-        }
-
-        private static int FrequencyToBin(int frequencyHz)
-        {
-            if (_sampleRate <= 0) return 1;
-            return (int)Math.Round((frequencyHz / (double)_sampleRate) * FftLength);
-        }
-
         private static double NormalizeAmplitude(double amplitude)
         {
             double db = 20 * Math.Log10(Math.Max(amplitude, 1e-9));
@@ -1398,13 +1373,13 @@ namespace VNotch.Controls
             return (expanded * (1.0 - DynamicRangeExpansionBlend)) + (clamped * DynamicRangeExpansionBlend);
         }
 
+        private static readonly double[] _roleTargets = { 0.72, 0.66, 0.62, 0.56, 0.50 };
+        private static readonly double[] _maxGains = { 1.45, 1.55, 1.35, 1.85, 2.05 };
+        private static readonly double[] _fallback = { 0.025, 0.035, 0.070, 0.030, 0.022 };
+        private static readonly double[] _caps = { 0.86, 0.82, 0.76, 0.70, 0.64 };
+
         private static void ApplyInstrumentRoleResponse(float[] targets, double rms)
         {
-            double[] roleTargets = { 0.72, 0.66, 0.62, 0.56, 0.50 };
-            double[] maxGains = { 1.45, 1.55, 1.35, 1.85, 2.05 };
-            double[] fallback = { 0.025, 0.035, 0.070, 0.030, 0.022 };
-            double[] caps = { 0.86, 0.82, 0.76, 0.70, 0.64 };
-
             double energy = Math.Clamp(rms, 0.0, 1.0);
 
             for (int i = 0; i < BarCount; i++)
@@ -1412,12 +1387,12 @@ namespace VNotch.Controls
                 double raw = Math.Clamp(targets[i], 0.0, 1.0);
                 _rolePeaks[i] = Math.Max(raw, _rolePeaks[i] * RolePeakRelease);
 
-                double gain = Math.Clamp(roleTargets[i] / Math.Max(RolePeakFloor, _rolePeaks[i]), 0.70, maxGains[i]);
+                double gain = Math.Clamp(_roleTargets[i] / Math.Max(RolePeakFloor, _rolePeaks[i]), 0.70, _maxGains[i]);
                 double adapted = raw * gain;
 
-                adapted += fallback[i] * energy * (1.0 - Math.Clamp(raw * 2.0, 0.0, 1.0));
+                adapted += _fallback[i] * energy * (1.0 - Math.Clamp(raw * 2.0, 0.0, 1.0));
 
-                targets[i] = (float)Math.Clamp(CompressRoleUpperRange(adapted, caps[i]), 0.0, caps[i]);
+                targets[i] = (float)Math.Clamp(CompressRoleUpperRange(adapted, _caps[i]), 0.0, _caps[i]);
             }
         }
 
@@ -1450,7 +1425,6 @@ namespace VNotch.Controls
             double gain = Math.Clamp(desiredGain, 0.70, VisualMaxGainLimit);
             double energy = Math.Clamp(sum / BarCount * gain, 0.0, 1.0);
             double bandFloor = VisualMaxBandFloor * energy;
-            double[] caps = { 0.86, 0.82, 0.76, 0.70, 0.64 };
 
             for (int i = 0; i < BarCount; i++)
             {
@@ -1459,7 +1433,7 @@ namespace VNotch.Controls
                     ? boosted + ((bandFloor - boosted) * VisualMaxBandLift)
                     : boosted;
 
-                targets[i] = (float)Math.Clamp(lifted, 0.0, caps[i]);
+                targets[i] = (float)Math.Clamp(lifted, 0.0, _caps[i]);
             }
         }
 
