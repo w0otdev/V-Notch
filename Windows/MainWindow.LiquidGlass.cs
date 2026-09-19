@@ -44,6 +44,7 @@ public partial class MainWindow
             bool sysTrans = IsSystemTransparencyEnabled();
             if (!sysTrans)
             {
+                GlassMaterialClipHost.Visibility = Visibility.Collapsed;
                 NotchBackground.Opacity = 1;
                 ExpandedContent.Background = (System.Windows.Media.Brush)FindResource("NotchGradient");
 
@@ -59,6 +60,7 @@ public partial class MainWindow
 
             if (needsInitialFrame)
                 GlassBackdropHost.Opacity = 0;
+            GlassMaterialClipHost.Visibility = Visibility.Visible;
             GlassBackdropHost.Visibility = Visibility.Visible;
             GlassTintOverlay.Visibility = Visibility.Visible;
             SetOpticalRimVisibility(Visibility.Visible);
@@ -99,6 +101,7 @@ public partial class MainWindow
         }
         else
         {
+            GlassMaterialClipHost.Visibility = Visibility.Collapsed;
             _glassInitialFramePending = false;
             _liquidGlass?.Stop();
             DetachGpuRefraction();
@@ -802,7 +805,7 @@ public partial class MainWindow
 
     private void SyncGlassCornerRadius(CornerRadius cr)
     {
-        if (GlassBackdropHost == null) return;
+        if (GlassBackdropHost == null || GlassMaterialClipHost?.Visibility != Visibility.Visible) return;
         GlassBackdropHost.CornerRadius = cr;
         GlassTintOverlay.CornerRadius = cr;
         if (GlassGrainOverlay != null) GlassGrainOverlay.CornerRadius = cr;
@@ -815,6 +818,7 @@ public partial class MainWindow
         GlassRimBorder.CornerRadius = cr;
         GlassSpecularBorder.CornerRadius = cr;
         if (GlassDarkOverlay != null) GlassDarkOverlay.CornerRadius = cr;
+        UpdateGlassClip();
     }
 
     private double GetGlassDpiScale()

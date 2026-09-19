@@ -30,6 +30,12 @@ task.md
 *.iss
 fix_xaml.py
 /artifacts
+# Generated test reports and machine-specific benchmark output
+TestResults/
+BenchmarkDotNet.Artifacts/
+/Tools/*Benchmark/Results/
+/Tools/*Benchmark/results.json
+/results.json
 *.v2
 *.vsidx
 build-release.ps1
@@ -42,9 +48,6 @@ build-msix.ps1
 *.key
 *-private.pem
 *.pkcs8
-youtube-api.key
-/.vs
-test-setup.ps1
 youtube-api.key
 /.vs
 test-setup.ps1

@@ -657,6 +657,55 @@ public sealed class LiquidGlassSpotlightTests
         }
     }
 
+    [Fact]
+    public void DefaultMainWindow_SkipsHiddenGlassGeometryAndResynchronizesOnReveal()
+    {
+        RunSta(() =>
+        {
+            _ = CreateApplicationResources();
+            string settingsPath = Path.Combine(Path.GetTempPath(), $"vnotch-default-theme-{Guid.NewGuid():N}.json");
+            var settingsService = new SettingsService(settingsPath, _ => { });
+            var settings = CreateMainWindowLiquidGlassSettings();
+            settings.NotchStyle = "default";
+            settingsService.Save(settings);
+            var services = new ServiceCollection();
+            var configure = typeof(App).GetMethod("ConfigureServices",
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic)!;
+            configure.Invoke(configure.IsStatic ? null : RuntimeHelpers.GetUninitializedObject(typeof(App)), [services]);
+            services.AddSingleton<ISettingsService>(settingsService);
+            using var provider = services.BuildServiceProvider();
+            var window = provider.GetRequiredService<MainWindow>();
+            try
+            {
+                Assert.Equal(Visibility.Collapsed, window.GlassMaterialClipHost.Visibility);
+                var originalRadius = window.GlassBackdropHost.CornerRadius;
+                window.CurrentCornerRadius = 35;
+                Assert.Equal(35, window.NotchBorder.CornerRadius.BottomRight);
+                Assert.Equal(originalRadius, window.GlassBackdropHost.CornerRadius);
+                Assert.Null(window.GlassMaterialClipHost.Clip);
+
+                window.GlassMaterialClipHost.Visibility = Visibility.Visible;
+                window.GlassMaterialClipHost.Measure(new Size(300, 100));
+                window.GlassMaterialClipHost.Arrange(new Rect(0, 0, 300, 100));
+                typeof(MainWindow).GetMethod("SyncGlassCornerRadius", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(window, [window.NotchBorder.CornerRadius]);
+                Assert.Equal(window.NotchBorder.CornerRadius, window.GlassBackdropHost.CornerRadius);
+                var clip = Assert.IsType<StreamGeometry>(window.GlassMaterialClipHost.Clip);
+                Assert.Equal(new Rect(0, 0, 300, 100), clip.Bounds);
+
+                window.GlassMaterialClipHost.Visibility = Visibility.Collapsed;
+                window.CurrentCornerRadius = 15;
+                Assert.Equal(35, window.GlassBackdropHost.CornerRadius.BottomRight);
+                Assert.Same(clip, window.GlassMaterialClipHost.Clip);
+            }
+            finally
+            {
+                window.Close();
+                File.Delete(settingsPath);
+            }
+        });
+    }
+
     private static Application CreateApplicationResources()
     {
         if (Application.Current != null) return Application.Current;
