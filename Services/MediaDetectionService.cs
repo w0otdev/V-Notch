@@ -77,7 +77,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private BitmapImage? _cachedThumbnail;
     private string _cachedThumbnailSource = "";
 
-    private string _pendingSessionAppId = "";
+    private string _pendingSessionInstanceKey = "";
     private DateTime _pendingSessionStartTime = DateTime.MinValue;
     private string _pendingNewTrackKey = "";
     private DateTime _pendingNewTrackSince = DateTime.MinValue;
@@ -1318,10 +1318,9 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
                 if (urlResult != null)
                 {
-                    bool videoMatchesTrack = urlResult.TitleMatches(trackDuringFetch) ||
-                                            (!string.IsNullOrEmpty(urlResult.Author) &&
-                                             !string.IsNullOrEmpty(artistDuringFetch) &&
-                                             urlResult.Author.Contains(artistDuringFetch, StringComparison.OrdinalIgnoreCase));
+                    // Multiple tabs can contain different videos by the same artist.
+                    // An author match alone does not identify the playing video.
+                    bool videoMatchesTrack = urlResult.TitleMatches(trackDuringFetch);
 
                     if (!videoMatchesTrack)
                     {
@@ -1375,7 +1374,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                         }
                     }
                 }
-                else if (shouldForceThumbFetch)
+                else
                 {
                     RuntimeLog.Debug("META-YOUTUBE-API", () =>
                         $"validation-failed: oEmbed returned null for videoId={videoId} track='{trackDuringFetch}' -> discarding unvalidated videoId");
@@ -1627,10 +1626,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                             if (pollResult == null)
                                 continue;
 
-                            bool pollMatches = pollResult.TitleMatches(trackDuringFetch) ||
-                                               (!string.IsNullOrEmpty(pollResult.Author) &&
-                                                !string.IsNullOrEmpty(artistDuringFetch) &&
-                                                pollResult.Author.Contains(artistDuringFetch, StringComparison.OrdinalIgnoreCase));
+                            bool pollMatches = pollResult.TitleMatches(trackDuringFetch);
 
                             if (!pollMatches)
                             {
@@ -1717,9 +1713,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                         videoId = null;
                         preferredThumbnailUrl = null;
 
-                        videoId = TryExtractVideoIdFromAnyBrowserUrl();
-                        if (string.IsNullOrEmpty(videoId))
-                            videoId = TryExtractVideoIdFromBrowserUrl();
+                        // The next iteration retries a track lookup. A raw browser URL
+                        // here would bypass validation and could belong to another tab.
                     }
                 }
             }
@@ -2723,7 +2718,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         if (_sessionManager == null) return (null, null);
         GlobalSystemMediaTransportControlsSession? session = null;
         string? spotifyGroundTruth = null;
-        string osCurrentId = _sessionManager.GetCurrentSession()?.SourceAppUserModelId ?? "";
+        var osCurrentSession = _sessionManager.GetCurrentSession();
 
         if (_activeDisplaySession != null && !forceRefresh && !IsSessionStillPresent(_activeDisplaySession))
         {
@@ -2739,7 +2734,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 {
                     _activeDisplaySession = null;
                 }
-                else if (string.IsNullOrEmpty(osCurrentId) || osCurrentId == _activeDisplaySession.SourceAppUserModelId)
+                // Browser sessions must be rescored: another tab can start playing
+                // while the previously selected tab still reports Playing.
+                else if (!IsBrowserSourceApp(_activeDisplaySession.SourceAppUserModelId ?? "") &&
+                         (osCurrentSession == null || ReferenceEquals(osCurrentSession, _activeDisplaySession)))
                 {
                     var playback = _activeDisplaySession.GetPlaybackInfo();
                     if (playback != null && playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
@@ -2786,6 +2784,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             try
             {
                 var sessions = _sessionManager.GetSessions();
+                var newlyPlayingSessions = new List<GlobalSystemMediaTransportControlsSession>();
+                var scanTimeUtc = DateTime.UtcNow;
 
                 foreach (var s in sessions)
                 {
@@ -2799,22 +2799,34 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                         if (!isActive) continue;
 
                         hasAnyActiveSession = true;
+                        if (!_sessionState.GetPlayingState(BuildSessionInstanceKey(s)))
+                        {
+                            newlyPlayingSessions.Add(s);
+                        }
                         if (fallbackActiveSession == null)
                         {
                             fallbackActiveSession = s;
                         }
 
-                        if (!string.IsNullOrEmpty(osCurrentId) &&
-                            string.Equals(sourceApp, osCurrentId, StringComparison.OrdinalIgnoreCase))
+                        if (ReferenceEquals(s, osCurrentSession))
                         {
                             fallbackActiveSession = s;
-                            break;
                         }
                     }
                     catch (Exception ex)
                     {
                         RuntimeLog.Error("MEDIA-DETECT-ACTIVE-SCAN", ex.ToString());
                     }
+                }
+
+                // A first scan can discover several playing tabs at once. Enumeration
+                // order is not playback recency; prefer the OS session in that case.
+                var newlyPlayingSession = MediaSessionSelectionPolicy.SelectNewlyPlayingSession(
+                    newlyPlayingSessions, osCurrentSession);
+                if (newlyPlayingSession != null)
+                {
+                    _latestPlayingSessionKey = BuildSessionInstanceKey(newlyPlayingSession);
+                    _latestPlayingSessionStartUtc = scanTimeUtc;
                 }
 
                 foreach (var s in sessions)
@@ -2835,9 +2847,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
                         if (isActive && !wasPlaying)
                         {
-                            _sessionState.SetPlayStartTime(sessionInstanceKey, nowUtc);
-                            _latestPlayingSessionKey = sessionInstanceKey;
-                            _latestPlayingSessionStartUtc = nowUtc;
+                            _sessionState.SetPlayStartTime(sessionInstanceKey, scanTimeUtc);
 
                             ClearSessionSourceOverride(sessionInstanceKey, sourceApp);
 
@@ -2865,7 +2875,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                                         sourceApp.Contains("msedge", StringComparison.OrdinalIgnoreCase) ||
                                         sourceApp.Contains("Firefox", StringComparison.OrdinalIgnoreCase);
 
-                        bool isOsCurrent = osCurrentId == sourceApp;
+                        bool isOsCurrent = ReferenceEquals(s, osCurrentSession);
 
                         bool isDedicatedMusicAppPlaying = false;
                         if (isOsCurrent && (isBrowser || isYouTube))
@@ -2892,7 +2902,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
                         if (isActive)
                         {
-                            _sessionState.SetLastPlayingTime(sourceApp, DateTime.UtcNow);
+                            _sessionState.SetLastPlayingTime(sessionInstanceKey, nowUtc);
                         }
 
                         double? playStartAge = null;
@@ -2909,7 +2919,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                         }
 
                         double? lastPlayingIdle = null;
-                        if (_sessionState.TryGetLastPlayingTime(sourceApp, out var lastPlaying))
+                        if (_sessionState.TryGetLastPlayingTime(sessionInstanceKey, out var lastPlaying))
                         {
                             lastPlayingIdle = (DateTime.UtcNow - lastPlaying).TotalSeconds;
                         }
@@ -2971,7 +2981,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
                         bool eligible = hasAnyActiveSession
                             ? isActive
-                            : (isActive || isPrevActive || osCurrentId == sourceApp);
+                            : (isActive || isPrevActive || isOsCurrent);
 
                         if (score > bestScore && eligible)
                         {
@@ -3025,11 +3035,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             if (bestSession != null && _activeDisplaySession != null && !ReferenceEquals(bestSession, _activeDisplaySession))
             {
-                string bestId = bestSession.SourceAppUserModelId ?? "";
                 string bestSessionKey = BuildSessionInstanceKey(bestSession);
-                if (bestId != _pendingSessionAppId)
+                if (bestSessionKey != _pendingSessionInstanceKey)
                 {
-                    _pendingSessionAppId = bestId;
+                    _pendingSessionInstanceKey = bestSessionKey;
                     _pendingSessionStartTime = DateTime.UtcNow;
                 }
 
@@ -3037,7 +3046,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 bool currentIsPremium = currentId.Contains(SpotifyPlatformName, StringComparison.OrdinalIgnoreCase) ||
                                       currentId.Contains("Music", StringComparison.OrdinalIgnoreCase);
 
-                bool isOsCurrent = !string.IsNullOrEmpty(osCurrentId) && bestId == osCurrentId;
+                bool isOsCurrent = ReferenceEquals(bestSession, osCurrentSession);
                 bool isRecentLatestPlayback = !string.IsNullOrEmpty(_latestPlayingSessionKey) &&
                                               bestSessionKey == _latestPlayingSessionKey &&
                                               (DateTime.UtcNow - _latestPlayingSessionStartUtc).TotalSeconds < 8;
@@ -3093,7 +3102,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             }
             else
             {
-                _pendingSessionAppId = "";
+                _pendingSessionInstanceKey = "";
             }
 
             if (bestSession != null)

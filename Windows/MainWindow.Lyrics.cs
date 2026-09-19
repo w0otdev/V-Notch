@@ -1040,10 +1040,16 @@ public partial class MainWindow
             if (transitionVersion != _lyricsLineTransitionVersion) return;
 
             AnimatedLyricsLayer.OpacityMask = null;
-            incoming.BeginAnimation(OpacityProperty, null);
             incoming.Opacity = 1;
-            inTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            incoming.BeginAnimation(OpacityProperty, null);
+        };
+        slideIn.Completed += (s, e) =>
+        {
+            if (transitionVersion != _lyricsLineTransitionVersion) return;
+
+            // Commit the resting position before removing this animation's clock.
             inTransform.Y = 0;
+            inTransform.BeginAnimation(TranslateTransform.YProperty, null);
         };
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(slideIn, fps);

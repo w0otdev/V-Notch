@@ -1394,7 +1394,10 @@ public partial class SpotlightWindow : Window
         ContentRegion.Height = reservedHeight;
         ContentRegion.HorizontalAlignment = HorizontalAlignment.Left;
         ContentRegion.ClipToBounds = true;
-        ContentRegion.Visibility = Visibility.Hidden;
+        // The outer ShellContent fade reveals this reserved layout during morph.
+        ContentRegion.Opacity = 1;
+        ContentRegionTranslate.Y = 0;
+        ContentRegion.Visibility = Visibility.Visible;
 
         RuntimeLog.Debug(
             "SPOTLIGHT-MORPH",
@@ -1405,6 +1408,7 @@ public partial class SpotlightWindow : Window
     private bool RevealEntranceContentReservation()
     {
         if (!_entranceContentReserved) return false;
+        bool alreadyVisible = ContentRegion.Visibility == Visibility.Visible;
 
         double reservedHeight = ContentRegion.Height;
         if (!double.IsFinite(reservedHeight) || reservedHeight <= 0)
@@ -1421,8 +1425,8 @@ public partial class SpotlightWindow : Window
         ContentRegion.BeginAnimation(HeightProperty, null);
         ContentRegion.BeginAnimation(OpacityProperty, null);
         ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        ContentRegion.Opacity = 0;
-        ContentRegionTranslate.Y = -6;
+        ContentRegion.Opacity = alreadyVisible ? 1 : 0;
+        ContentRegionTranslate.Y = alreadyVisible ? 0 : -6;
         ContentRegion.Visibility = Visibility.Visible;
         ContentRegion.Width = double.NaN;
         ContentRegion.Height = double.NaN;
@@ -1448,7 +1452,7 @@ public partial class SpotlightWindow : Window
             BeginContentHeightAnimation(reservedHeight, naturalHeight, generation);
         }
 
-        PlayContentReveal();
+        if (!alreadyVisible) PlayContentReveal();
         ScheduleGlideUpdate();
         return true;
     }
@@ -1758,7 +1762,6 @@ public partial class SpotlightWindow : Window
         Shell.Height = startShellHeight;
         ShellCornerRadius = startBottomRadius;
         ShellTopCornerRadius = startTopRadius;
-        if (morphsFromNotch) Shell.BorderThickness = new Thickness(0);
         if (IsLiquidGlassEnabled)
         {
             NotchMorphSnapshot.Visibility = Visibility.Collapsed;
@@ -1891,7 +1894,6 @@ public partial class SpotlightWindow : Window
         Shell.Height = current.Height;
         ShellCornerRadius = current.CornerRadius;
         ShellTopCornerRadius = current.TopCornerRadius;
-        Shell.BorderThickness = new Thickness(0);
         ShellContent.Opacity = current.ContentOpacity;
         double currentEarOpacity = ShellLeftEar?.Opacity ?? 0;
         AnimateMorphEars(currentEarOpacity, 0, TimeSpan.FromMilliseconds(200), TimeSpan.Zero);
@@ -1948,6 +1950,9 @@ public partial class SpotlightWindow : Window
 
     private Size MeasureEntranceShell()
     {
+        // Include the resting border in the target and keep it during the morph.
+        // Adding it only at handoff grows the auto-height shell by two DIPs.
+        Shell.BorderThickness = new Thickness(IsLiquidGlassEnabled ? 0 : 1);
         // ActualSize can still describe the final notch-sized frame when a
         double width = ActualWidth;
         if (!double.IsFinite(width) || width <= 0) width = Width;
@@ -2035,7 +2040,7 @@ public partial class SpotlightWindow : Window
         var contentBlur = EnsureContentBlurEffect();
         contentBlur.Radius = current.ContentBlurRadius;
 
-        // The entrance morphs a content-free shell (results reveal only after
+        // Freeze content layout while the surrounding shell contracts.
         ShellContent.Width = Math.Max(1, ShellContent.ActualWidth);
         ShellContent.HorizontalAlignment = HorizontalAlignment.Left;
 

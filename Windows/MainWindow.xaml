@@ -2768,6 +2768,7 @@
 
                             <Border x:Name="LyricsWidget"
                                     Grid.Row="0" Grid.RowSpan="2"
+                                    TextOptions.TextHintingMode="Animated"
                                     Background="Transparent"
                                     CornerRadius="16"
                                     Padding="4,2,7,2"

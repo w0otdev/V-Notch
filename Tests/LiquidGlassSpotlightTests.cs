@@ -25,6 +25,33 @@ namespace VNotch.Tests;
 [Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class LiquidGlassSpotlightTests
 {
+    [Theory]
+    [InlineData("default")]
+    [InlineData("liquidglass")]
+    public void EntranceTargetMatchesRestingShellHeight(string style)
+    {
+        RunSta(() =>
+        {
+            var window = CreateTestSpotlightWindow(new NotchSettings { NotchStyle = style });
+            try
+            {
+                var measure = typeof(SpotlightWindow).GetMethod("MeasureEntranceShell", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var complete = typeof(SpotlightWindow).GetMethod("CompleteEntrance", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var target = (Size)measure.Invoke(window, null)!;
+                window.Shell.Width = target.Width;
+                window.Shell.Height = target.Height;
+                complete.Invoke(window, new object[] { 0d, 0d });
+                window.Shell.Measure(new Size(window.Width, double.PositiveInfinity));
+                double restingHeight = window.Shell.DesiredSize.Height - window.Shell.Margin.Top - window.Shell.Margin.Bottom;
+                Assert.Equal(target.Height, restingHeight, precision: 3);
+            }
+            finally
+            {
+                window.Shutdown();
+            }
+        });
+    }
+
     [Fact]
     public void LiquidGlass_DefaultSettings_KeepsDefaultShellSkin()
     {
