@@ -197,7 +197,7 @@ public partial class MainWindow
             {
                 if (result.HasThumbnail && info.Thumbnail != null)
                 {
-                    if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || _isLyricsActive))
+                    if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || ShouldShowMediaBlurBackground))
                     {
                         AnimateLyricsBlurImageSwitch(info.Thumbnail);
                         FadeInLyricsBlurBackgroundIfActive();

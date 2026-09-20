@@ -1216,7 +1216,7 @@ public partial class MainWindow
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutLyrics, VNotch.Services.AnimationConfig.TargetFps);
             LyricsWidget.BeginAnimation(OpacityProperty, fadeOutLyrics);
 
-            if (LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
+            if (!IsNoWidgetMode && LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
             {
                 _isLyricsBlurFadeInProgress = false;
                 var fadeOutBlur = new DoubleAnimation(LyricsBlurBackground.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(400)))
@@ -1225,7 +1225,7 @@ public partial class MainWindow
                 };
                 fadeOutBlur.Completed += (s, e) =>
                 {
-                    if (_isLyricsActive) return;
+                    if (ShouldShowMediaBlurBackground) return;
                     _isLyricsBlurFadeInProgress = false;
                     LyricsBlurBackground.Visibility = Visibility.Collapsed;
                     LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
@@ -1237,7 +1237,7 @@ public partial class MainWindow
 
             SuspendSpotifyCanvasLifecycle();
 
-            CalendarWidget.Visibility = Visibility.Visible;
+            CalendarWidget.Visibility = IsNoWidgetMode ? Visibility.Collapsed : Visibility.Visible;
             CalendarWidget.Opacity = 0;
             var fadeInCalendar = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
             {
@@ -1246,6 +1246,7 @@ public partial class MainWindow
             };
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeInCalendar, VNotch.Services.AnimationConfig.TargetFps);
             CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
+            if (IsNoWidgetMode) FadeInLyricsBlurBackgroundIfActive();
 
             if (ShouldShowGreetingSection)
             {

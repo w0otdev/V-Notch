@@ -27,13 +27,24 @@ public partial class MainWindow
 
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
 
-    private bool ShouldShowGreetingSection => !_isLyricsActive && (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode);
+    private bool IsNoWidgetMode => string.Equals(_settings.ExpandedWidget, "none", StringComparison.OrdinalIgnoreCase);
+    private bool ShouldShowMediaBlurBackground => _isLyricsActive || IsNoWidgetMode;
+    private bool ShouldShowGreetingSection => !IsNoWidgetMode && !_isLyricsActive && (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode);
 
     private void ApplyExpandedWidgetMode()
     {
         if (_clockWidgetPresenter == null) InitializeClockWidgetPresenter();
         _clockWidgetPresenter?.ApplyExpandedWidgetMode();
         EnsureActiveExpandedWidgetFeatureLoaded();
+        if (ShouldShowMediaBlurBackground)
+            FadeInLyricsBlurBackgroundIfActive();
+        else if (LyricsBlurBackground != null)
+        {
+            _isLyricsBlurFadeInProgress = false;
+            LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
+            LyricsBlurBackground.Opacity = 0;
+            LyricsBlurBackground.Visibility = System.Windows.Visibility.Collapsed;
+        }
     }
 
     #endregion

@@ -468,7 +468,7 @@ public partial class MainWindow
         ExpandedContent.Opacity = 0;
         ExpandedContent.Visibility = Visibility.Visible;
 
-        if (_isLyricsActive && LyricsBlurBackground != null)
+        if (ShouldShowMediaBlurBackground && LyricsBlurBackground != null)
         {
             _isLyricsBlurFadeInProgress = false;
             LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
@@ -715,7 +715,7 @@ public partial class MainWindow
             return;
         }
 
-        if (!_settings.EnableBlurEffects || IsLiquidGlassEnabled || !_isLyricsActive || _isSpotifyCanvasMediaOpen || LyricsBlurBackground == null) return;
+        if (!_settings.EnableBlurEffects || IsLiquidGlassEnabled || !ShouldShowMediaBlurBackground || _isSpotifyCanvasMediaOpen || LyricsBlurBackground == null) return;
         if (!_isExpanded || _isTimerView || _isAudioView || _isSecondaryView) return;
 
         if (LyricsBlurImage != null)

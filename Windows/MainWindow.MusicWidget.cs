@@ -134,7 +134,7 @@ public partial class MainWindow
         {
             CalendarWidget.BeginAnimation(OpacityProperty, null);
             CalendarWidget.Opacity = 0;
-            CalendarWidget.Visibility = Visibility.Visible;
+            CalendarWidget.Visibility = IsNoWidgetMode ? Visibility.Collapsed : Visibility.Visible;
             var fadeInCalendar = MakeAnim(0d, 1d, new Duration(TimeSpan.FromMilliseconds(300)), _easePowerOut3, TimeSpan.FromMilliseconds(120));
             CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
         }

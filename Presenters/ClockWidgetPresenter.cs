@@ -96,6 +96,7 @@ public sealed class ClockWidgetPresenter : IDisposable
         string.Equals(_host.Settings.ExpandedWidget, "sysmon", StringComparison.OrdinalIgnoreCase);
 
     private bool IsAnyClockWidgetMode => IsClockWidgetMode || IsWordClockWidgetMode || IsDigitalClockWidgetMode;
+    private bool IsNoWidgetMode => string.Equals(_host.Settings.ExpandedWidget, "none", StringComparison.OrdinalIgnoreCase);
 
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
 
@@ -109,7 +110,8 @@ public sealed class ClockWidgetPresenter : IDisposable
         bool useDigitalClock = IsDigitalClockWidgetMode;
         bool useWeather = IsWeatherWidgetMode;
         bool useSystemMonitor = IsSystemMonitorWidgetMode;
-        bool useCalendar = !useAnalogClock && !useWordClock && !useDigitalClock && !useWeather && !useSystemMonitor;
+        bool useCalendar = !IsNoWidgetMode && !useAnalogClock && !useWordClock && !useDigitalClock && !useWeather && !useSystemMonitor;
+        _refs.CalendarWidget.Visibility = IsNoWidgetMode || _host.IsLyricsActive ? Visibility.Collapsed : Visibility.Visible;
 
         _refs.ClockWidget.Visibility = useAnalogClock ? Visibility.Visible : Visibility.Collapsed;
         if (_refs.WordClockWidget != null)
@@ -123,7 +125,7 @@ public sealed class ClockWidgetPresenter : IDisposable
         _refs.CalendarStripContainer.Visibility = useCalendar ? Visibility.Visible : Visibility.Collapsed;
 
         if (_refs.MonthText != null)
-            _refs.MonthText.Visibility = (useWeather || useSystemMonitor) ? Visibility.Collapsed : Visibility.Visible;
+            _refs.MonthText.Visibility = (IsNoWidgetMode || useWeather || useSystemMonitor) ? Visibility.Collapsed : Visibility.Visible;
 
         if (_refs.EventText != null && _refs.GreetingSection is FrameworkElement greetingSection)
         {
@@ -149,7 +151,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     {
         if (_refs.GreetingSection == null) return;
 
-        bool show = (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode) && !_host.IsLyricsActive;
+        bool show = !IsNoWidgetMode && (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode) && !_host.IsLyricsActive;
         _refs.GreetingSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (show && _refs.GreetingSection.Opacity < 0.01)
         {
