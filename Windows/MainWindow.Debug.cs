@@ -282,8 +282,7 @@ public partial class MainWindow
         if (elapsedSec >= 0.4) // Refresh FPS count every 400ms for stable, accurate readings
         {
             double calculatedFps = _fpsWindowFrameCount / elapsedSec;
-            double maxAllowedFps = _currentDisplayHz > 0 ? _currentDisplayHz : 240;
-            _currentMeasuredFps = Math.Min(Math.Round(calculatedFps), maxAllowedFps);
+            _currentMeasuredFps = Math.Round(calculatedFps);
             _fpsWindowFrameCount = 0;
             _fpsWindowStartTicks = now;
         }

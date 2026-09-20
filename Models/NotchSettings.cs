@@ -23,6 +23,7 @@ public class NotchSettings
     public bool EnableBlurEffects { get; set; } = true;
     public bool ShowMediaArtBackground { get; set; } = true;
     public int AnimationFps { get; set; } = 240;
+    public bool AutoAnimationFps { get; set; } = true;
 
     public int MonitorIndex { get; set; } = 0;
 

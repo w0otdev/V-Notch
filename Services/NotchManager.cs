@@ -42,7 +42,7 @@ public sealed class NotchManager : INotchManager
     {
         var oldHoverEnabled = _settings.EnableHoverExpand;
         _settings = settings;
-        AnimationConfig.Configure(settings.AnimationFps);
+        AnimationConfig.Configure(settings.AnimationFps, settings.AutoAnimationFps);
 
         if (settings.EnableHoverExpand && !oldHoverEnabled)
         {

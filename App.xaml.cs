@@ -44,7 +44,7 @@ public partial class App : Application
             using var earlySettings = new SettingsService();
             var loadedSettings = earlySettings.Load();
             Loc.SetLanguage(loadedSettings.Language);
-            AnimationConfig.Configure(loadedSettings.AnimationFps);
+            AnimationConfig.Configure(loadedSettings.AnimationFps, loadedSettings.AutoAnimationFps);
 
             if (e.Args.Contains("--test-integrity") || e.Args.Contains("--test-hash"))
             {

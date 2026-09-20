@@ -7,16 +7,15 @@ namespace VNotch.Services;
 internal static class AnimationConfig
 {
     public const int MinFps = 30;
-    // User-selectable FPS cap allowing high-refresh displays (144Hz+) to
-    // animate on every compositor refresh within display bounds.
-    public const int MaxFps = 240;
-    private const int FallbackFps = 60;
+    // User-selectable animation target, independent of display refresh rate.
+    public const int MaxFps = 550;
 
-    private static int _targetFps = DetectRefreshHz(null) ?? FallbackFps;
+    private static int _targetFps = MaxFps;
     private static int _configuredFps = MaxFps;
     private static string? _deviceName;
     private static bool _hooked;
     private static bool _reduceMotion;
+    private static bool _autoFps = true;
 
     public static int TargetFps => _targetFps;
 
@@ -31,8 +30,9 @@ internal static class AnimationConfig
         ReduceMotionChanged?.Invoke();
     }
 
-    public static void Configure(int animationFps)
+    public static void Configure(int animationFps, bool autoFps = true)
     {
+        _autoFps = autoFps;
         _configuredFps = Math.Clamp(animationFps, MinFps, MaxFps);
         Recompute();
     }
@@ -52,17 +52,14 @@ internal static class AnimationConfig
 
     private static void Recompute()
     {
-        _targetFps = ComputeTargetFps(_configuredFps, DetectRefreshHz(_deviceName) ?? DetectRefreshHz(null));
+        _targetFps = ComputeTargetFps(_configuredFps, DetectRefreshHz(_deviceName) ?? DetectRefreshHz(null), _autoFps);
     }
 
-    internal static int ComputeTargetFps(int configuredFps, int? detectedRefreshHz)
+    internal static int ComputeTargetFps(int configuredFps, int? detectedRefreshHz, bool autoFps = false)
     {
-        int configuredCap = Math.Clamp(configuredFps, MinFps, MaxFps);
-        int displayRefresh = detectedRefreshHz is >= 24 and <= 1000
-            ? detectedRefreshHz.Value
-            : FallbackFps;
-
-        return Math.Min(configuredCap, displayRefresh);
+        if (autoFps)
+            return detectedRefreshHz is >= 24 and <= 1000 ? Math.Min(detectedRefreshHz.Value, MaxFps) : 60;
+        return Math.Clamp(configuredFps, MinFps, MaxFps);
     }
 
     private static int? DetectRefreshHz(string? deviceName)

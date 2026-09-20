@@ -205,6 +205,8 @@ public partial class SettingsWindow : Window
         BlurDarkOverlaySlider.Value = _settings.MediaBlurDarkOverlay * 100;
         SpotifyCanvasBrightnessSlider.Value = _settings.SpotifyCanvasBrightness * 100;
         AnimationFpsSlider.Value = _settings.AnimationFps;
+        AutoAnimationFpsCheck.IsChecked = _settings.AutoAnimationFps;
+        AnimationFpsSlider.IsEnabled = !_settings.AutoAnimationFps;
         EnableBlurEffectsCheck.IsChecked = _settings.EnableBlurEffects;
         MediaArtBackgroundCheck.IsChecked = _settings.ShowMediaArtBackground;
 
@@ -603,6 +605,7 @@ public partial class SettingsWindow : Window
         YouTubeApiKeyHint.Text = Loc.Get("settings.youtubeApiKey.hint");
 
         AnimationFpsLabel.Text = Loc.Get(LocKeyAnimationFps);
+        AutoAnimationFpsCheck.Content = Loc.Get("settings.animationFps.auto");
         AnimationFpsSlider.Label = Loc.Get(LocKeyAnimationFps);
         AnimationFpsSlider.Description = Loc.Get("settings.animationFps.hint");
         EnableBlurEffectsCheck.Content = Loc.Get("settings.enableBlurEffects");
@@ -1153,6 +1156,14 @@ public partial class SettingsWindow : Window
     {
         if (BlurDarkOverlayValue != null)
             BlurDarkOverlayValue.Text = ((int)e.NewValue).ToString();
+        PushLivePreview();
+    }
+
+    private void AutoAnimationFps_Changed(object sender, RoutedEventArgs e)
+    {
+        if (AnimationFpsSlider != null)
+            AnimationFpsSlider.IsEnabled = AutoAnimationFpsCheck.IsChecked != true;
+        if (_isLoadingSettings) return;
         PushLivePreview();
     }
 
@@ -3184,7 +3195,7 @@ public partial class SettingsWindow : Window
             (EnableDebugModeHint, () => EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint")),
             (GlassFpsSlider, () => GlassFpsSlider.Label = Loc.Get("settings.glass.targetFps")),
 
-            (AnimationFpsLabel, () => { AnimationFpsLabel.Text = Loc.Get("settings.animationFps"); AnimationFpsSlider.Label = Loc.Get("settings.animationFps"); AnimationFpsSlider.Description = Loc.Get("settings.animationFps.hint"); }),
+            (AnimationFpsLabel, () => { AnimationFpsLabel.Text = Loc.Get("settings.animationFps"); AutoAnimationFpsCheck.Content = Loc.Get("settings.animationFps.auto"); AnimationFpsSlider.Label = Loc.Get("settings.animationFps"); AnimationFpsSlider.Description = Loc.Get("settings.animationFps.hint"); }),
             (EnableBlurEffectsHint, () => EnableBlurEffectsHint.Text = Loc.Get("settings.enableBlurEffects.hint")),
             (EnableSubjectBlurHint, () => EnableSubjectBlurHint.Text = Loc.Get("settings.enableSubjectBlur.hint")),
             (EnableSmartCropHint, () => EnableSmartCropHint.Text = Loc.Get("settings.enableSmartCrop.hint")),
@@ -3672,6 +3683,7 @@ public partial class SettingsWindow : Window
             BlurDarkOverlaySlider.Value = defaults.MediaBlurDarkOverlay * 100;
             SpotifyCanvasBrightnessSlider.Value = defaults.SpotifyCanvasBrightness * 100;
             AnimationFpsSlider.Value = defaults.AnimationFps;
+            AutoAnimationFpsCheck.IsChecked = defaults.AutoAnimationFps;
             EnableBlurEffectsCheck.IsChecked = defaults.EnableBlurEffects;
             MediaArtBackgroundCheck.IsChecked = defaults.ShowMediaArtBackground;
             _settings.NotchStyle = defaults.NotchStyle;
@@ -4218,6 +4230,7 @@ public partial class SettingsWindow : Window
         snapshot.MediaBlurDarkOverlay = BlurDarkOverlaySlider.Value / 100.0;
         snapshot.SpotifyCanvasBrightness = SpotifyCanvasBrightnessSlider.Value / 100.0;
         snapshot.AnimationFps = (int)Math.Round(AnimationFpsSlider.Value);
+        snapshot.AutoAnimationFps = AutoAnimationFpsCheck.IsChecked == true;
         snapshot.EnableBlurEffects = EnableBlurEffectsCheck.IsChecked ?? true;
         snapshot.ShowMediaArtBackground = MediaArtBackgroundCheck.IsChecked ?? true;
         ReadLiquidGlassUi(snapshot);
@@ -4289,10 +4302,10 @@ public partial class SettingsWindow : Window
 
     internal bool ApplyPreview(NotchSettings snapshot)
     {
-        if (_lastAppliedFps != snapshot.AnimationFps)
+        if (_lastAppliedFps != snapshot.AnimationFps || _appliedSettings.AutoAnimationFps != snapshot.AutoAnimationFps)
         {
             _lastAppliedFps = snapshot.AnimationFps;
-            VNotch.Services.AnimationConfig.Configure(snapshot.AnimationFps);
+            VNotch.Services.AnimationConfig.Configure(snapshot.AnimationFps, snapshot.AutoAnimationFps);
             AnimationPrimitives.ApplyFpsToTree(this);
         }
 

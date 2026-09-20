@@ -2241,11 +2241,16 @@
                                                     <Run x:Name="AnimationFpsValue" Text="120"/><Run Text=" FPS"/>
                                                 </TextBlock>
                                                 <TextBlock x:Name="AnimationFpsHint" Visibility="Collapsed"/>
+                                                <CheckBox x:Name="AutoAnimationFpsCheck"
+                                                          Content="Auto FPS — match monitor refresh rate"
+                                                          Margin="0,0,0,8"
+                                                          Checked="AutoAnimationFps_Changed"
+                                                          Unchecked="AutoAnimationFps_Changed"/>
                                                 <controls:ElasticSlider x:Name="AnimationFpsSlider"
                                                         Label="Animation FPS" Unit=" FPS"
                                                         Description="Cap UI animation frame rate. Lower values reduce render/GPU load."
                                                         Minimum="30"
-                                                        Maximum="240"
+                                                        Maximum="550"
                                                         Value="240"
                                                         TickFrequency="5"
                                                         IsSnapToTickEnabled="False"

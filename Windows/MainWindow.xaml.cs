@@ -1384,9 +1384,10 @@ public partial class MainWindow : Window
 
     private void ApplySettings(NotchSettings? oldSettings, bool animatePulse = false)
     {
-        if (oldSettings == null || oldSettings.AnimationFps != _settings.AnimationFps)
+        if (oldSettings == null || oldSettings.AnimationFps != _settings.AnimationFps ||
+            oldSettings.AutoAnimationFps != _settings.AutoAnimationFps)
         {
-            VNotch.Services.AnimationConfig.Configure(_settings.AnimationFps);
+            VNotch.Services.AnimationConfig.Configure(_settings.AnimationFps, _settings.AutoAnimationFps);
             AnimationPrimitives.ApplyFpsToTree(this);
         }
 
