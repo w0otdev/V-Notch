@@ -639,11 +639,11 @@ public partial class MainWindow
         // Ensure search panel is immediately collapsed so it cannot overlap placeholder text
         HideLyricsSearchState(immediate: true);
 
-        bool isAlreadyFullyVisible = LyricsPlaceholderPanel.Visibility == Visibility.Visible &&
-                                     LyricsPlaceholderPanel.Opacity >= 0.98;
+        bool isAlreadyShowing = _isLyricsPlaceholderActive &&
+                                LyricsPlaceholderPanel.Visibility == Visibility.Visible;
         bool isSameTrack = LyricsPlaceholderTitle.Text == title && LyricsPlaceholderArtist.Text == artist;
 
-        if (isAlreadyFullyVisible && isSameTrack)
+        if (isAlreadyShowing && isSameTrack)
         {
             _isLyricsPlaceholderActive = true;
             return;
@@ -752,7 +752,8 @@ public partial class MainWindow
         LyricsPlaceholderPanel.Opacity = 0;
         transform.Y = startY;
 
-        TimeSpan? delay = null;
+        // A null BeginTime disables a WPF animation instead of starting it immediately.
+        TimeSpan delay = TimeSpan.Zero;
         if (transitionFromSearch)
         {
             delay = TimeSpan.FromMilliseconds(70);
@@ -802,12 +803,12 @@ public partial class MainWindow
         _isLyricsPlaceholderActive = false;
         if (LyricsPlaceholderPanel.Visibility == Visibility.Collapsed && LyricsPlaceholderPanel.Opacity < 0.01) return;
 
-        ++_lyricsPlaceholderTransitionVersion;
+        int transitionVersion = ++_lyricsPlaceholderTransitionVersion;
         var transform = GetLyricsPlaceholderTransform();
 
         void FinishHide()
         {
-            if (_isLyricsPlaceholderActive) return;
+            if (_isLyricsPlaceholderActive || transitionVersion != _lyricsPlaceholderTransitionVersion) return;
             LyricsPlaceholderPanel.BeginAnimation(OpacityProperty, null);
             transform.BeginAnimation(TranslateTransform.YProperty, null);
             LyricsPlaceholderPanel.Opacity = 0;
@@ -825,7 +826,11 @@ public partial class MainWindow
         var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
 
         double currentOpacity = LyricsPlaceholderPanel.Opacity;
-        if (currentOpacity <= 0.01) currentOpacity = 1.0;
+        if (currentOpacity <= 0.01)
+        {
+            FinishHide();
+            return;
+        }
 
         var fadeOut = new DoubleAnimation(currentOpacity, 0, duration)
         {
@@ -1083,6 +1088,7 @@ public partial class MainWindow
                     };
                     fadeOutCalendar.Completed += (s, e) =>
                     {
+                        if (!_isLyricsActive) return;
                         CalendarWidget.Visibility = Visibility.Collapsed;
                         CalendarWidget.BeginAnimation(OpacityProperty, null);
                     };
@@ -1105,6 +1111,7 @@ public partial class MainWindow
                 };
                 fadeOutGreeting.Completed += (s, e) =>
                 {
+                    if (!_isLyricsActive) return;
                     GreetingSection.Visibility = Visibility.Collapsed;
                     GreetingSection.BeginAnimation(OpacityProperty, null);
                 };

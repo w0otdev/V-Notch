@@ -2353,7 +2353,10 @@
 
                     </Grid>
 
-                        <Grid Grid.Column="2" Margin="0,20,-1,0" VerticalAlignment="Center" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True" RenderOptions.ClearTypeHint="Enabled">
+                        <Grid Grid.Column="2" Margin="0,20,-1,0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True" RenderOptions.ClearTypeHint="Enabled">
+                            <!-- Center each surface independently so collapsing lyrics after a fade
+                                 cannot redistribute the calendar's Auto rows. -->
+                            <Grid VerticalAlignment="Center">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -2768,8 +2771,9 @@
                                            TextWrapping="Wrap"/>
                             </Grid>
 
+                            </Grid>
+
                             <Border x:Name="LyricsWidget"
-                                    Grid.Row="0" Grid.RowSpan="2"
                                     Height="130"
                                     TextOptions.TextHintingMode="Animated"
                                     Background="Transparent"
@@ -2778,7 +2782,7 @@
                                     Margin="0,0,10,2"
                                     Visibility="Collapsed"
                                     Opacity="0"
-                                    VerticalAlignment="Stretch"
+                                    VerticalAlignment="Center"
                                     HorizontalAlignment="Stretch"
                                     ClipToBounds="True">
                                 <Grid ClipToBounds="True" VerticalAlignment="Stretch">

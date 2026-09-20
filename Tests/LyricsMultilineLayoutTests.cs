@@ -13,6 +13,60 @@ namespace VNotch.Tests;
 
 public sealed class LyricsMultilineLayoutTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CalendarPositionStaysFixedWhenUnavailableSubtitlesFinishFading(bool showGreeting)
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            XNamespace ui = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+            XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+            var source = XDocument.Load(SourcePath());
+            var lyrics = source.Descendants(ui + "Border").Single(e => (string?)e.Attribute(x + "Name") == "LyricsWidget");
+            var calendar = source.Descendants(ui + "Border").Single(e => (string?)e.Attribute(x + "Name") == "CalendarWidget");
+            var greeting = source.Descendants(ui + "Grid").Single(e => (string?)e.Attribute(x + "Name") == "GreetingSection");
+            // Keep the production layout tree, substituting representative content sizes.
+            XElement LayoutElement(XElement element)
+            {
+                bool isLyrics = element == lyrics;
+                bool isCalendar = element == calendar;
+                bool isGreeting = element == greeting;
+                var result = new XElement(element.Name,
+                    element.Attributes().Where(a => a.Name.LocalName is "VerticalAlignment" or "Height" or "Margin" or "Grid.Row" or "Grid.RowSpan"));
+                if (isLyrics || isCalendar || isGreeting)
+                {
+                    result.SetAttributeValue(x + "Name", isLyrics ? "Lyrics" : isCalendar ? "Calendar" : "Greeting");
+                    if (!isLyrics) result.SetAttributeValue("Height", isCalendar ? "80" : "16");
+                    if (isGreeting && !showGreeting) result.SetAttributeValue("Visibility", "Collapsed");
+                }
+                else
+                    foreach (var child in element.Elements())
+                        result.Add(child.Name == ui + "Grid.RowDefinitions" ? new XElement(child) : LayoutElement(child));
+                return result;
+            }
+            var hostXaml = LayoutElement(lyrics.Parent!);
+            hostXaml.SetAttributeValue(XNamespace.Xmlns + "x", x);
+            var host = (Grid)XamlReader.Parse(hostXaml.ToString());
+            var root = new Grid();
+            root.Children.Add(host);
+            var calendarView = (FrameworkElement)host.FindName("Calendar");
+            var lyricsView = (FrameworkElement)host.FindName("Lyrics");
+            Layout();
+            var before = calendarView.TransformToAncestor(root).Transform(new Point());
+            lyricsView.Visibility = Visibility.Collapsed;
+            Layout();
+            Assert.Equal(before, calendarView.TransformToAncestor(root).Transform(new Point()));
+
+            void Layout()
+            {
+                root.Measure(new Size(190, 180));
+                root.Arrange(new Rect(0, 0, 190, 180));
+                root.UpdateLayout();
+            }
+        });
+    }
+
     [Fact]
     public void AutoRowHostDoesNotResizeWhenOldMultilineContentIsCleared()
     {
