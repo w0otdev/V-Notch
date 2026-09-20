@@ -1,5 +1,5 @@
-using VNotch.Benchmarks;
 using System.Numerics;
+using VNotch.Benchmarks;
 using VNotch.Controllers;
 using Xunit;
 

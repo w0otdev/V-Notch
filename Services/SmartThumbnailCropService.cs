@@ -766,8 +766,10 @@ public sealed class SmartThumbnailCropService : IDisposable
                     var box = face.FaceBox;
                     var candidate = new Detection
                     {
-                        X1 = (float)(box.X / scale), Y1 = (float)(box.Y / scale),
-                        X2 = (float)((box.X + box.Width) / scale), Y2 = (float)((box.Y + box.Height) / scale)
+                        X1 = (float)(box.X / scale),
+                        Y1 = (float)(box.Y / scale),
+                        X2 = (float)((box.X + box.Width) / scale),
+                        Y2 = (float)((box.Y + box.Height) / scale)
                     };
                     float cx = (candidate.X1 + candidate.X2) / 2;
                     float cy = (candidate.Y1 + candidate.Y2) / 2;

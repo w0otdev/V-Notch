@@ -32,29 +32,29 @@ public sealed class AnalogClockRenderingTests
             var time = new DateTime(2026, 9, 19, 23, 59, 59, 900);
             Assert.True(current.UpdateFrame(time));
             foreach (bool showDate in new[] { true, false, true })
-            foreach (double size in new[] { 92.0, 117.5, 184.0, 92.0 })
-            {
-                baseline.ShowDate = current.ShowDate = showDate;
-                foreach (FrameworkElement clock in new FrameworkElement[] { baseline, current })
+                foreach (double size in new[] { 92.0, 117.5, 184.0, 92.0 })
                 {
-                    clock.Measure(new Size(size, size));
-                    clock.Arrange(new Rect(0, 0, size, size));
-                }
-                using (var dc = newVisual.RenderOpen()) current.RenderFrame(dc, time);
-                for (int frame = 0; frame < 8; frame++)
-                {
-                    time = time.AddMilliseconds(33);
-                    using (var dc = oldVisual.RenderOpen()) baseline.RenderFrame(dc, time);
-                    if (current.UpdateFrame(time))
+                    baseline.ShowDate = current.ShowDate = showDate;
+                    foreach (FrameworkElement clock in new FrameworkElement[] { baseline, current })
                     {
-                        using var dc = newVisual.RenderOpen();
-                        current.RenderFrame(dc, time);
+                        clock.Measure(new Size(size, size));
+                        clock.Arrange(new Rect(0, 0, size, size));
                     }
-                    Assert.True(Pixels(oldVisual, size, dpi).AsSpan().SequenceEqual(Pixels(newVisual, size, dpi)),
-                        $"Pixels differ: dpi={dpi}, size={size}, date={showDate}, time={time:O}");
-                    Assert.False(current.UpdateFrame(time), "An ordinary tick must not request a new drawing");
+                    using (var dc = newVisual.RenderOpen()) current.RenderFrame(dc, time);
+                    for (int frame = 0; frame < 8; frame++)
+                    {
+                        time = time.AddMilliseconds(33);
+                        using (var dc = oldVisual.RenderOpen()) baseline.RenderFrame(dc, time);
+                        if (current.UpdateFrame(time))
+                        {
+                            using var dc = newVisual.RenderOpen();
+                            current.RenderFrame(dc, time);
+                        }
+                        Assert.True(Pixels(oldVisual, size, dpi).AsSpan().SequenceEqual(Pixels(newVisual, size, dpi)),
+                            $"Pixels differ: dpi={dpi}, size={size}, date={showDate}, time={time:O}");
+                        Assert.False(current.UpdateFrame(time), "An ordinary tick must not request a new drawing");
+                    }
                 }
-            }
             current.ShowDate = !current.ShowDate;
             Assert.True(current.UpdateFrame(time), "Changing date visibility requires a face redraw");
             using (var dc = newVisual.RenderOpen()) current.RenderFrame(dc, time);

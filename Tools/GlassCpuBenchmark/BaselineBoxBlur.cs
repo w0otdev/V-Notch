@@ -1,5 +1,6 @@
 // Frozen pre-optimization kernels from commit 1434db9e4760e5ffa97d2e5ccbf34afe503abd03
 namespace VNotch.Benchmarks;
+
 internal static class BaselineBoxBlur
 {
     internal static void BoxBlurHorizontal(byte[] src, byte[] dst, int w, int radius, int y0, int y1)

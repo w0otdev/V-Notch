@@ -1033,7 +1033,12 @@ public partial class MainWindow
             outTransform.BeginAnimation(TranslateTransform.YProperty, slideOut);
         }
 
-        var fadeIn = new DoubleAnimation(0, 1, inDur) { EasingFunction = easeOut, BeginTime = inDelay };
+        var fadeIn = new DoubleAnimation(0, 1, inDur)
+        {
+            EasingFunction = easeOut,
+            BeginTime = inDelay,
+            FillBehavior = FillBehavior.HoldEnd
+        };
         var slideIn = new DoubleAnimation(startY, 0, inDur)
         {
             EasingFunction = easeOut,
@@ -1045,17 +1050,10 @@ public partial class MainWindow
             if (transitionVersion != _lyricsLineTransitionVersion) return;
 
             AnimatedLyricsLayer.OpacityMask = null;
-            incoming.Opacity = 1;
-            incoming.BeginAnimation(OpacityProperty, null);
         };
-        slideIn.Completed += (s, e) =>
-        {
-            if (transitionVersion != _lyricsLineTransitionVersion) return;
-
-            // Commit the resting position before removing this animation's clock.
-            inTransform.Y = 0;
-            inTransform.BeginAnimation(TranslateTransform.YProperty, null);
-        };
+        // Keep the completed clocks at their final values. Detaching them here
+        // changes the text's rendering state on the settling frame. The next
+        // line transition (or hide) already clears both clocks before reuse.
         Timeline.SetDesiredFrameRate(fadeIn, fps);
         Timeline.SetDesiredFrameRate(slideIn, fps);
 

@@ -2770,6 +2770,7 @@
 
                             <Border x:Name="LyricsWidget"
                                     Grid.Row="0" Grid.RowSpan="2"
+                                    Height="130"
                                     TextOptions.TextHintingMode="Animated"
                                     Background="Transparent"
                                     CornerRadius="16"
@@ -2874,6 +2875,10 @@
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
+                                        <!-- Keep glyph rasterization stable during translation and at rest. -->
+                                        <TextBlock.CacheMode>
+                                            <BitmapCache EnableClearType="False" SnapsToDevicePixels="False"/>
+                                        </TextBlock.CacheMode>
                                         <TextBlock.Foreground>
                                             <SolidColorBrush Color="#BFFFFFFF"/>
                                         </TextBlock.Foreground>
@@ -2901,6 +2906,10 @@
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
+                                        <!-- Keep glyph rasterization stable during translation and at rest. -->
+                                        <TextBlock.CacheMode>
+                                            <BitmapCache EnableClearType="False" SnapsToDevicePixels="False"/>
+                                        </TextBlock.CacheMode>
                                         <TextBlock.Foreground>
                                             <SolidColorBrush Color="#BFFFFFFF"/>
                                         </TextBlock.Foreground>
