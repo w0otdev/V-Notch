@@ -1296,7 +1296,7 @@ public partial class MainWindow
             }
         }
 
-        if (_isLyricsActive && LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
+        if (ShouldShowMediaBlurBackground && LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
         {
             double currentOpacity = LyricsBlurBackground.Opacity;
             if (currentOpacity > 0.01)
@@ -1384,6 +1384,7 @@ public partial class MainWindow
             else
             {
                 CalendarWidget.BeginAnimation(OpacityProperty, null);
+                if (IsNoWidgetMode) CalendarWidget.Visibility = Visibility.Collapsed;
                 if (CalendarWidget.Visibility == Visibility.Visible)
                     CalendarWidget.Opacity = 1.0;
             }

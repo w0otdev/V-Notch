@@ -993,53 +993,54 @@
                                         <!-- Navigation Tabs Order & Visibility -->
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
-                                                <TextBlock x:Name="NavTabsLabel" Text="Navigation Tabs" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="NavTabsHint" Text="Hold and drag icons in the notch to reorder tabs, or arrange them here."
+                                                <CheckBox x:Name="DynamicIslandModeCheck"
+                                                          x:Uid="dynamicIslandMode"
+                                                          Content="Dynamic Island mode"
+                                                          Checked="DynamicIslandModeCheck_Changed"
+                                                          Unchecked="DynamicIslandModeCheck_Changed"
+                                                          Margin="0,0,0,0"/>
+                                                <TextBlock x:Name="DynamicIslandModeHint"
+                                                           Text="Detach the notch from the top edge so it floats as a fully rounded pill."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,8"/>
-                                                <Border x:Name="NavTabsSettingsCard"
-                                                        Background="{StaticResource SurfaceBrush}"
-                                                        CornerRadius="14"
-                                                        Padding="10,8"
-                                                        Margin="0,4,0,10">
-                                                    <StackPanel x:Name="NavTabsSettingsContainer"/>
-                                                </Border>
-                                                <Button x:Name="ResetTabOrderButton"
-                                                        Content="Reset to Default Order"
-                                                        HorizontalAlignment="Left"
-                                                        Padding="12,6"
-                                                        Margin="0,0,0,8"
-                                                        Click="ResetTabOrderButton_Click"/>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
-                                        <Border Style="{StaticResource SettingRowBorder}">
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
-                                                <TextBlock x:Name="ExpandedWidgetLabel" Text="Expanded widget" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="ExpandedWidgetHint" Text="Choose which widget shows in the expanded notch."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,8"/>
-                                                <ComboBox x:Name="WidgetCombo" SelectionChanged="WidgetCombo_SelectionChanged"/>
+                                                <TextBlock x:Name="DynamicIslandWidthLabel" Text="Dynamic Island Length" Style="{StaticResource SettingTitleText}" Visibility="Collapsed"/>
+                                                <TextBlock Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
+                                                    <Run x:Name="DynamicIslandWidthValue" Text="260"/><Run Text=" px"/>
+                                                </TextBlock>
+                                                <TextBlock x:Name="DynamicIslandWidthHint" Visibility="Collapsed"/>
+                                                <controls:ElasticSlider x:Name="DynamicIslandWidthSlider"
+                                                        Label="Dynamic Island Length" Unit=" px"
+                                                        Description="Adjust the floating pill length used by Dynamic Island mode."
+                                                        Minimum="100"
+                                                        Maximum="520"
+                                                        Value="260"
+                                                        TickFrequency="10"
+                                                        IsSnapToTickEnabled="True"
+                                                        ValueChanged="DynamicIslandWidthSlider_ValueChanged"/>
                                             </StackPanel>
                                         </Border>
 
-                                        <Border Style="{StaticResource SettingRowBorder}">
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
-                                                <TextBlock x:Name="ShelfWidgetLabel" Text="Shelf page side widget" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="ShelfWidgetHint" Text="Choose what content appears on the left side of the file shelf."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,8"/>
-                                                <ComboBox x:Name="ShelfWidgetCombo" SelectionChanged="ShelfWidgetCombo_SelectionChanged"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <TextBlock x:Name="ClockPageStyleLabel" Text="Clock page style" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="ClockPageStyleHint" Text="Choose the main clock display for the Clock &amp; Timer page."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,8"/>
-                                                <ComboBox x:Name="ClockPageStyleCombo" SelectionChanged="ClockPageStyleCombo_SelectionChanged"/>
+                                                <TextBlock x:Name="DynamicIslandHeightLabel" Text="Dynamic Island Width" Style="{StaticResource SettingTitleText}" Visibility="Collapsed"/>
+                                                <TextBlock Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
+                                                    <Run x:Name="DynamicIslandHeightValue" Text="40"/><Run Text=" px"/>
+                                                </TextBlock>
+                                                <TextBlock x:Name="DynamicIslandHeightHint" Visibility="Collapsed"/>
+                                                <controls:ElasticSlider x:Name="DynamicIslandHeightSlider"
+                                                        Label="Dynamic Island Width" Unit=" px"
+                                                        Description="Adjust the floating pill width/thickness used by Dynamic Island mode."
+                                                        Minimum="24"
+                                                        Maximum="80"
+                                                        Value="40"
+                                                        TickFrequency="2"
+                                                        IsSnapToTickEnabled="True"
+                                                        ValueChanged="DynamicIslandHeightSlider_ValueChanged"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1120,6 +1121,97 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="NavTabsLabel" Text="Navigation Tabs" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="NavTabsHint" Text="Hold and drag icons in the notch to reorder tabs, or arrange them here."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,8"/>
+                                                <Border x:Name="NavTabsSettingsCard"
+                                                        Background="{StaticResource SurfaceBrush}"
+                                                        CornerRadius="14"
+                                                        Padding="10,8"
+                                                        Margin="0,4,0,10">
+                                                    <StackPanel x:Name="NavTabsSettingsContainer"/>
+                                                </Border>
+                                                <Button x:Name="ResetTabOrderButton"
+                                                        Content="Reset to Default Order"
+                                                        HorizontalAlignment="Left"
+                                                        Padding="12,6"
+                                                        Margin="0,0,0,8"
+                                                        Click="ResetTabOrderButton_Click"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="ExpandedWidgetLabel" Text="Expanded widget" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="ExpandedWidgetHint" Text="Choose which widget shows in the expanded notch."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,8"/>
+                                                <ComboBox x:Name="WidgetCombo" SelectionChanged="WidgetCombo_SelectionChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="ShelfWidgetLabel" Text="Shelf page side widget" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="ShelfWidgetHint" Text="Choose what content appears on the left side of the file shelf."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,8"/>
+                                                <ComboBox x:Name="ShelfWidgetCombo" SelectionChanged="ShelfWidgetCombo_SelectionChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="ClockPageStyleLabel" Text="Clock page style" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="ClockPageStyleHint" Text="Choose the main clock display for the Clock &amp; Timer page."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,8"/>
+                                                <ComboBox x:Name="ClockPageStyleCombo" SelectionChanged="ClockPageStyleCombo_SelectionChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,4,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="MediaArtBackgroundCheck"
+                                                          Content="Media art backdrop"
+                                                          Checked="PerformanceSetting_Changed"
+                                                          Unchecked="PerformanceSetting_Changed"/>
+                                                <TextBlock x:Name="MediaArtBackgroundHint"
+                                                           Text="Show the blurred album-art glow behind the expanded media view. Turn off for a cleaner, flat background."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border x:Name="SubjectBlurRow" Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableSubjectBlurCheck"
+                                                          Content="Subject-aware media blur"
+                                                          Checked="PerformanceSetting_Changed"
+                                                          Unchecked="PerformanceSetting_Changed"/>
+                                                <TextBlock x:Name="EnableSubjectBlurHint"
+                                                           Text="Keeps media subjects clearer inside the blurred background. Disable it for a cheaper blur pass."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableSmartCropCheck"
+                                                          Content="Smart thumbnail crop"
+                                                          Checked="PerformanceSetting_Changed"
+                                                          Unchecked="PerformanceSetting_Changed"/>
+                                                <TextBlock x:Name="EnableSmartCropHint"
+                                                           Text="Use the ONNX model to find better thumbnail crops. Disable it to avoid the heavier image-analysis path."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
                                                 <TextBlock x:Name="BlurLabel" Text="Blur Brightness" Style="{StaticResource SettingTitleText}" Visibility="Collapsed"/>
@@ -1139,58 +1231,6 @@
                                             </StackPanel>
                                         </Border>
 
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="DynamicIslandModeCheck"
-                                                          x:Uid="dynamicIslandMode"
-                                                          Content="Dynamic Island mode"
-                                                          Checked="DynamicIslandModeCheck_Changed"
-                                                          Unchecked="DynamicIslandModeCheck_Changed"
-                                                          Margin="0,0,0,0"/>
-                                                <TextBlock x:Name="DynamicIslandModeHint"
-                                                           Text="Detach the notch from the top edge so it floats as a fully rounded pill."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <TextBlock x:Name="DynamicIslandWidthLabel" Text="Dynamic Island Length" Style="{StaticResource SettingTitleText}" Visibility="Collapsed"/>
-                                                <TextBlock Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
-                                                    <Run x:Name="DynamicIslandWidthValue" Text="260"/><Run Text=" px"/>
-                                                </TextBlock>
-                                                <TextBlock x:Name="DynamicIslandWidthHint" Visibility="Collapsed"/>
-                                                <controls:ElasticSlider x:Name="DynamicIslandWidthSlider"
-                                                        Label="Dynamic Island Length" Unit=" px"
-                                                        Description="Adjust the floating pill length used by Dynamic Island mode."
-                                                        Minimum="100"
-                                                        Maximum="520"
-                                                        Value="260"
-                                                        TickFrequency="10"
-                                                        IsSnapToTickEnabled="True"
-                                                        ValueChanged="DynamicIslandWidthSlider_ValueChanged"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <TextBlock x:Name="DynamicIslandHeightLabel" Text="Dynamic Island Width" Style="{StaticResource SettingTitleText}" Visibility="Collapsed"/>
-                                                <TextBlock Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
-                                                    <Run x:Name="DynamicIslandHeightValue" Text="40"/><Run Text=" px"/>
-                                                </TextBlock>
-                                                <TextBlock x:Name="DynamicIslandHeightHint" Visibility="Collapsed"/>
-                                                <controls:ElasticSlider x:Name="DynamicIslandHeightSlider"
-                                                        Label="Dynamic Island Width" Unit=" px"
-                                                        Description="Adjust the floating pill width/thickness used by Dynamic Island mode."
-                                                        Minimum="24"
-                                                        Maximum="80"
-                                                        Value="40"
-                                                        TickFrequency="2"
-                                                        IsSnapToTickEnabled="True"
-                                                        ValueChanged="DynamicIslandHeightSlider_ValueChanged"/>
-                                            </StackPanel>
-                                        </Border>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -1202,6 +1242,53 @@
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="BehaviorHeader" Text="BEHAVIOR" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="AutoStartCheck" x:Uid="autoStart" Content="Start with Windows"/>
+                                                <TextBlock x:Name="AutoStartHint" Text="Launch automatically when you sign in."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="StayBehindWindowsCheck" Content="Stay behind other windows"/>
+                                                <TextBlock x:Name="StayBehindWindowsHint"
+                                                           Text="Keep V-Notch on the desktop so maximized apps and browser tab controls are never covered."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="HelloGreetingCheck" x:Uid="helloGreeting" Content="Hello greeting on startup"/>
+                                                <TextBlock x:Name="HelloGreetingHint" Text="Show handwriting 'hello' animation when the app starts."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="HideOnExclusiveFullscreenCheck" x:Uid="hideExclusiveFs" Content="Hide on exclusive fullscreen"/>
+                                                <TextBlock x:Name="HideOnExclusiveFullscreenHint" Text="Hide the notch when a true fullscreen app is detected."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="HideOnWindowedFullscreenCheck" x:Uid="hideWindowedFs" Content="Hide on windowed fullscreen"/>
+                                                <TextBlock x:Name="HideOnWindowedFullscreenHint" Text="Hide the notch when a borderless windowed fullscreen app is detected."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
@@ -1274,6 +1361,53 @@
                                                 <TextBlock x:Name="IdleAutoHideDelayKeywords" Visibility="Collapsed"/>
                                             </StackPanel>
                                         </Border>
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="MusicNotifyCheck" x:Uid="musicNotify" Content="Show music notifications"/>
+                                                <TextBlock x:Name="MusicNotifyHint" Text="Keep the media widget responsive to playback changes."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="SystemNotifyCheck" x:Uid="systemNotify" Content="Show system notifications"/>
+                                                <TextBlock x:Name="SystemNotifyHint" Text="Allow the notch to surface device and system signals."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="ShowBatteryCheck" x:Uid="showBattery" Content="Show battery indicator"/>
+                                                <TextBlock x:Name="ShowBatteryHint" Text="Display battery level in the expanded notch."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="CopyShelfClipboardCheck" x:Uid="copyShelfClipboard" Content="Copy shelf files to clipboard"/>
+                                                <TextBlock x:Name="CopyShelfClipboardHint" Text="When files are added to the shelf, automatically copy all of them to the system clipboard so you can paste them into other apps."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="ShelfUnlockCheck" x:Uid="shelfUnlock" Content="Unlock shelf upload limit"/>
+                                                <TextBlock x:Name="ShelfUnlockHint" Text="Remove the 30-file safety limit on the shelf."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"
+                                                           TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -1472,7 +1606,65 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelSystem" Visibility="Collapsed">
-                                <Border x:Name="BackupCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10" Opacity="0">
+                                <Border x:Name="SystemCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10" Opacity="0">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="SystemCardTranslate" Y="12"/>
+                                    </Border.RenderTransform>
+                                    <StackPanel>
+                                        <TextBlock x:Name="SystemHeader" Text="SYSTEM" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <TextBlock x:Name="LanguageLabel" Text="Language" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="LanguageHint" Text="Choose the display language for V-Notch."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,8"/>
+                                                <ComboBox x:Name="LanguageCombo" SelectionChanged="LanguageCombo_SelectionChanged"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableWeatherCheck"
+                                                           x:Uid="enableWeather"
+                                                           Content="Enable weather"
+                                                           Checked="EnableWeatherCheck_Changed"
+                                                           Unchecked="EnableWeatherCheck_Changed"/>
+                                                <TextBlock x:Name="EnableWeatherHint"
+                                                           Text="Show current weather in the expanded notch. When enabled, your approximate location is resolved via IP."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                                <TextBlock x:Name="ManualCityLabel"
+                                                           Text="Manual city (optional)"
+                                                           Style="{StaticResource SettingTitleText}"
+                                                           Margin="0,12,0,0"/>
+                                                <TextBlock x:Name="ManualCityHint"
+                                                           Text="Enter a city name to skip IP-based location. Leave empty to auto-detect."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,6"/>
+                                                <TextBox x:Name="ManualCityTextBox"
+                                                         Height="40"
+                                                         Padding="12,10"
+                                                         FontSize="12"
+                                                         FontFamily="{StaticResource SettingsFont}"
+                                                         Background="#0F0F0F"
+                                                         Foreground="{StaticResource SettingsTextBrush}"
+                                                         BorderBrush="#2A2A2A"
+                                                         BorderThickness="1"
+                                                         CaretBrush="#C8C8C8"
+                                                         VerticalContentAlignment="Center">
+                                                    <TextBox.Resources>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="CornerRadius" Value="10"/>
+                                                        </Style>
+                                                    </TextBox.Resources>
+                                                </TextBox>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border x:Name="BackupCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
                                     <Border.RenderTransform>
                                         <TranslateTransform x:Name="BackupCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
@@ -1535,157 +1727,6 @@
                                     </StackPanel>
                                 </Border>
 
-                                <Border x:Name="SystemCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
-                                    <Border.RenderTransform>
-                                        <TranslateTransform x:Name="SystemCardTranslate" Y="12"/>
-                                    </Border.RenderTransform>
-                                    <StackPanel>
-                                        <TextBlock x:Name="SystemHeader" Text="SYSTEM" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="AutoStartCheck" x:Uid="autoStart" Content="Start with Windows"/>
-                                                <TextBlock x:Name="AutoStartHint" Text="Launch automatically when you sign in."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="StayBehindWindowsCheck" Content="Stay behind other windows"/>
-                                                <TextBlock x:Name="StayBehindWindowsHint"
-                                                           Text="Keep V-Notch on the desktop so maximized apps and browser tab controls are never covered."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"
-                                                           TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="HelloGreetingCheck" x:Uid="helloGreeting" Content="Hello greeting on startup"/>
-                                                <TextBlock x:Name="HelloGreetingHint" Text="Show handwriting 'hello' animation when the app starts."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="HideOnExclusiveFullscreenCheck" x:Uid="hideExclusiveFs" Content="Hide on exclusive fullscreen"/>
-                                                <TextBlock x:Name="HideOnExclusiveFullscreenHint" Text="Hide the notch when a true fullscreen app is detected."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="HideOnWindowedFullscreenCheck" x:Uid="hideWindowedFs" Content="Hide on windowed fullscreen"/>
-                                                <TextBlock x:Name="HideOnWindowedFullscreenHint" Text="Hide the notch when a borderless windowed fullscreen app is detected."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="MusicNotifyCheck" x:Uid="musicNotify" Content="Show music notifications"/>
-                                                <TextBlock x:Name="MusicNotifyHint" Text="Keep the media widget responsive to playback changes."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="SystemNotifyCheck" x:Uid="systemNotify" Content="Show system notifications"/>
-                                                <TextBlock x:Name="SystemNotifyHint" Text="Allow the notch to surface device and system signals."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="ShowBatteryCheck" x:Uid="showBattery" Content="Show battery indicator"/>
-                                                <TextBlock x:Name="ShowBatteryHint" Text="Display battery level in the expanded notch."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="ShelfUnlockCheck" x:Uid="shelfUnlock" Content="Unlock shelf upload limit"/>
-                                                <TextBlock x:Name="ShelfUnlockHint" Text="Remove the 30-file safety limit on the shelf."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"
-                                                           TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="CopyShelfClipboardCheck" x:Uid="copyShelfClipboard" Content="Copy shelf files to clipboard"/>
-                                                <TextBlock x:Name="CopyShelfClipboardHint" Text="When files are added to the shelf, automatically copy all of them to the system clipboard so you can paste them into other apps."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"
-                                                           TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <TextBlock x:Name="LanguageLabel" Text="Language" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="LanguageHint" Text="Choose the display language for V-Notch."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,8"/>
-                                                <ComboBox x:Name="LanguageCombo" SelectionChanged="LanguageCombo_SelectionChanged"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="EnableWeatherCheck"
-                                                           x:Uid="enableWeather"
-                                                           Content="Enable weather"
-                                                           Checked="EnableWeatherCheck_Changed"
-                                                           Unchecked="EnableWeatherCheck_Changed"/>
-                                                <TextBlock x:Name="EnableWeatherHint"
-                                                           Text="Show current weather in the expanded notch. When enabled, your approximate location is resolved via IP."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                                <TextBlock x:Name="ManualCityLabel"
-                                                           Text="Manual city (optional)"
-                                                           Style="{StaticResource SettingTitleText}"
-                                                           Margin="0,12,0,0"/>
-                                                <TextBlock x:Name="ManualCityHint"
-                                                           Text="Enter a city name to skip IP-based location. Leave empty to auto-detect."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,6"/>
-                                                <TextBox x:Name="ManualCityTextBox"
-                                                         Height="40"
-                                                         Padding="12,10"
-                                                         FontSize="12"
-                                                         FontFamily="{StaticResource SettingsFont}"
-                                                         Background="#0F0F0F"
-                                                         Foreground="{StaticResource SettingsTextBrush}"
-                                                         BorderBrush="#2A2A2A"
-                                                         BorderThickness="1"
-                                                         CaretBrush="#C8C8C8"
-                                                         VerticalContentAlignment="Center">
-                                                    <TextBox.Resources>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="CornerRadius" Value="10"/>
-                                                        </Style>
-                                                    </TextBox.Resources>
-                                                </TextBox>
-                                            </StackPanel>
-                                        </Border>
-                                    </StackPanel>
-                                </Border>
                             </StackPanel>
 
                             <StackPanel x:Name="PanelPrivacy" Visibility="Collapsed">
@@ -1733,20 +1774,6 @@
                                                                Foreground="#50C878"/>
                                                 </Border>
                                             </Grid>
-
-                                            <Border Style="{StaticResource SettingRowBorder}">
-                                                <StackPanel>
-                                                    <CheckBox x:Name="AutoCheckUpdatesCheck"
-                                                              Content="Automatic update checks"
-                                                              Checked="AutoCheckUpdatesCheck_Changed"
-                                                              Unchecked="AutoCheckUpdatesCheck_Changed"/>
-                                                    <TextBlock x:Name="AutoCheckUpdatesHint"
-                                                               Text="Check GitHub Releases periodically in the background for new V-Notch versions."
-                                                               Style="{StaticResource SettingHintText}"
-                                                               Margin="0,4,0,0"
-                                                               TextWrapping="Wrap"/>
-                                                </StackPanel>
-                                            </Border>
 
                                             <Border Style="{StaticResource SettingRowBorder}">
                                                 <StackPanel>
@@ -1900,19 +1927,6 @@
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="AdvancedHeader" Text="ADVANCED" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="EnableDebugModeCheck"
-                                                          Content="Enable Debug Mode"
-                                                          Checked="EnableDebugModeCheck_Changed"
-                                                          Unchecked="EnableDebugModeCheck_Changed"/>
-                                                <TextBlock x:Name="EnableDebugModeHint"
-                                                           Text="Display FPS, CPU, and RAM usage on a floating draggable performance HUD window."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
@@ -2174,52 +2188,16 @@
                                             </StackPanel>
                                          </Border>
 
-                                        <Border Style="{StaticResource SettingRowBorder}">
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
-                                                <TextBlock x:Name="ProcessPriorityLabel" Text="Process Priority" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="ProcessPriorityHint" Text="Adjust the priority of V-Notch in Windows to ensure smooth animations under heavy system load."
+                                                <CheckBox x:Name="EnableDebugModeCheck"
+                                                          Content="Enable Debug Mode"
+                                                          Checked="EnableDebugModeCheck_Changed"
+                                                          Unchecked="EnableDebugModeCheck_Changed"/>
+                                                <TextBlock x:Name="EnableDebugModeHint"
+                                                           Text="Display FPS, CPU, and RAM usage on a floating draggable performance HUD window."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,8"/>
-                                                <ComboBox x:Name="ProcessPriorityCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ProcessPriorityCombo_SelectionChanged">
-                                                    <ComboBoxItem Content="Normal (Default)" Tag="Normal"/>
-                                                    <ComboBoxItem Content="High" Tag="High"/>
-                                                    <ComboBoxItem Content="Realtime" Tag="RealTime"/>
-                                                </ComboBox>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4" BorderThickness="0">
-                                            <StackPanel>
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock x:Name="GpuPreferenceLabel" Text="GPU Render App" Style="{StaticResource SettingTitleText}"/>
-                                                    <Border Background="#26FF9F0A"
-                                                            BorderBrush="#55FF9F0A"
-                                                            BorderThickness="1"
-                                                            CornerRadius="6"
-                                                            Padding="6,2"
-                                                            Margin="8,0,0,0"
-                                                            VerticalAlignment="Center">
-                                                        <TextBlock x:Name="GpuPreferenceRestartBadge"
-                                                                   Text="RESTART REQUIRED"
-                                                                   FontSize="10"
-                                                                   FontWeight="Bold"
-                                                                   Foreground="#FF9F0A"/>
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBlock x:Name="GpuPreferenceHint" Text="Select which GPU Windows should use to render V-Notch."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,4"/>
-                                                <TextBlock x:Name="GpuPreferenceRestartNote"
-                                                           Text="Requires restarting the app to take effect."
-                                                           FontSize="11.5"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="#FF9F0A"
-                                                           Margin="0,0,0,8"/>
-                                                <ComboBox x:Name="GpuPreferenceCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="GpuPreferenceCombo_SelectionChanged">
-                                                    <ComboBoxItem Content="Let Windows Decide" Tag="0"/>
-                                                    <ComboBoxItem Content="Power Saving (iGPU)" Tag="1"/>
-                                                    <ComboBoxItem Content="High Performance (dGPU)" Tag="2"/>
-                                                </ComboBox>
+                                                           Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
@@ -2271,42 +2249,51 @@
                                             </StackPanel>
                                         </Border>
 
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,4,0,4">
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4" BorderThickness="0">
                                             <StackPanel>
-                                                <CheckBox x:Name="MediaArtBackgroundCheck"
-                                                          Content="Media art backdrop"
-                                                          Checked="PerformanceSetting_Changed"
-                                                          Unchecked="PerformanceSetting_Changed"/>
-                                                <TextBlock x:Name="MediaArtBackgroundHint"
-                                                           Text="Show the blurred album-art glow behind the expanded media view. Turn off for a cleaner, flat background."
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock x:Name="GpuPreferenceLabel" Text="GPU Render App" Style="{StaticResource SettingTitleText}"/>
+                                                    <Border Background="#26FF9F0A"
+                                                            BorderBrush="#55FF9F0A"
+                                                            BorderThickness="1"
+                                                            CornerRadius="6"
+                                                            Padding="6,2"
+                                                            Margin="8,0,0,0"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock x:Name="GpuPreferenceRestartBadge"
+                                                                   Text="RESTART REQUIRED"
+                                                                   FontSize="10"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="#FF9F0A"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock x:Name="GpuPreferenceHint" Text="Select which GPU Windows should use to render V-Notch."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
+                                                           Margin="0,4,0,4"/>
+                                                <TextBlock x:Name="GpuPreferenceRestartNote"
+                                                           Text="Requires restarting the app to take effect."
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FF9F0A"
+                                                           Margin="0,0,0,8"/>
+                                                <ComboBox x:Name="GpuPreferenceCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="GpuPreferenceCombo_SelectionChanged">
+                                                    <ComboBoxItem Content="Let Windows Decide" Tag="0"/>
+                                                    <ComboBoxItem Content="Power Saving (iGPU)" Tag="1"/>
+                                                    <ComboBoxItem Content="High Performance (dGPU)" Tag="2"/>
+                                                </ComboBox>
                                             </StackPanel>
                                         </Border>
-
-                                        <Border x:Name="SubjectBlurRow" Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                        <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
-                                                <CheckBox x:Name="EnableSubjectBlurCheck"
-                                                          Content="Subject-aware media blur"
-                                                          Checked="PerformanceSetting_Changed"
-                                                          Unchecked="PerformanceSetting_Changed"/>
-                                                <TextBlock x:Name="EnableSubjectBlurHint"
-                                                           Text="Keeps media subjects clearer inside the blurred background. Disable it for a cheaper blur pass."
+                                                <TextBlock x:Name="ProcessPriorityLabel" Text="Process Priority" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="ProcessPriorityHint" Text="Adjust the priority of V-Notch in Windows to ensure smooth animations under heavy system load."
                                                            Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
-                                            <StackPanel>
-                                                <CheckBox x:Name="EnableSmartCropCheck"
-                                                          Content="Smart thumbnail crop"
-                                                          Checked="PerformanceSetting_Changed"
-                                                          Unchecked="PerformanceSetting_Changed"/>
-                                                <TextBlock x:Name="EnableSmartCropHint"
-                                                           Text="Use the ONNX model to find better thumbnail crops. Disable it to avoid the heavier image-analysis path."
-                                                           Style="{StaticResource SettingHintText}"
-                                                           Margin="0,4,0,0"/>
+                                                           Margin="0,4,0,8"/>
+                                                <ComboBox x:Name="ProcessPriorityCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ProcessPriorityCombo_SelectionChanged">
+                                                    <ComboBoxItem Content="Normal (Default)" Tag="Normal"/>
+                                                    <ComboBoxItem Content="High" Tag="High"/>
+                                                    <ComboBoxItem Content="Realtime" Tag="RealTime"/>
+                                                </ComboBox>
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
@@ -2393,6 +2380,20 @@
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="UpdatesHeader" Text="UPDATES &amp; REPORT BUG" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+
+                                            <Border Style="{StaticResource SettingRowBorder}">
+                                                <StackPanel>
+                                                    <CheckBox x:Name="AutoCheckUpdatesCheck"
+                                                              Content="Automatic update checks"
+                                                              Checked="AutoCheckUpdatesCheck_Changed"
+                                                              Unchecked="AutoCheckUpdatesCheck_Changed"/>
+                                                    <TextBlock x:Name="AutoCheckUpdatesHint"
+                                                               Text="Check GitHub Releases periodically in the background for new V-Notch versions."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,4,0,0"
+                                                               TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Border>
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,12">
                                             <Grid>

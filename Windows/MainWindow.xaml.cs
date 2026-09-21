@@ -1733,6 +1733,7 @@ public partial class MainWindow : Window
         {
             UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
         }
+        FadeInLyricsBlurBackgroundIfActive();
     }
 
     private void DisableBlurEffectsImmediate()

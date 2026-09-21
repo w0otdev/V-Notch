@@ -4746,9 +4746,8 @@ public partial class SettingsWindow : Window
         card.Opacity = 0;
         translate.Y = fromY;
 
-        var systemCardDelay = section == NavSectionSystem && BackupCard != null ? TimeSpan.FromMilliseconds(40) : TimeSpan.Zero;
-        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, BeginTime = systemCardDelay };
-        var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = systemCardDelay };
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease };
+        var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
         Timeline.SetDesiredFrameRate(fade, fps);
         Timeline.SetDesiredFrameRate(slide, fps);
 
@@ -4769,8 +4768,8 @@ public partial class SettingsWindow : Window
                 BackupCard.Opacity = 0;
                 BackupCardTranslate.Y = fromY;
 
-                var backupFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease };
-                var backupSlide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
+                var backupFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, BeginTime = TimeSpan.FromMilliseconds(40) };
+                var backupSlide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = TimeSpan.FromMilliseconds(40) };
 
                 Timeline.SetDesiredFrameRate(backupFade, fps);
                 Timeline.SetDesiredFrameRate(backupSlide, fps);
