@@ -1,258 +1,84 @@
-# Điều Khoản Dịch Vụ — V-Notch
+# V-Notch — Điều khoản sử dụng
 
-**Ngày hiệu lực:** [CẬP NHẬT NGÀY KHI CHÍNH THỨC ĐĂNG BẢN SỬA ĐỔI NÀY] (bản gốc: 14 tháng 9, 2026)  
-**Phiên bản ứng dụng:** 1.9.2+  
-**Nhà phát triển:** rainaku  
-**Kho lưu trữ:** [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch)  
-**Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
+**Ngày hiệu lực:** 22 tháng 9 năm 2026  
+**Người duy trì:** rainaku  
+**Dự án:** https://github.com/rainaku/V-Notch  
+**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 1.9.3; phải đối chiếu với bản nhị phân thực tế phát hành.
 
----
+> **Lưu ý:** V-Notch là dự án mã nguồn mở, miễn phí và độc lập, không phải dịch vụ lưu trữ trả phí. Văn bản này không sửa đổi Apache-2.0 hoặc giấy phép bên thứ ba; không tước quyền luật định bắt buộc; không cấp quyền đối với nội dung của người khác; không chứng minh bất kỳ nền tảng nào đã cho phép tích hợp. Không điều khoản nào bảo đảm ngăn được kiện tụng.
 
-## 1. Chấp Thuận Các Điều Khoản
+## 1. Phạm vi và việc chấp thuận
 
-Chào mừng bạn đến với **V-Notch**!
+Điều khoản này mô tả kênh phân phối chính thức, liên hệ và hỗ trợ dự án, tính năng kết nối mạng tùy chọn, dấu hiệu nhận diện và việc phân chia rủi ro trong giới hạn pháp luật cho phép. Tài liệu cần được cung cấp để người dùng xem xét trước khi cài đặt/sử dụng khi hợp lý. Việc cài đặt hoặc sử dụng sau khi được thông báo đầy đủ có thể thể hiện sự chấp thuận nếu pháp luật cho phép; việc chỉ xem hoặc tải mã nguồn được cấp phép tự do không tự tạo thêm hạn chế ngoài giấy phép. Nếu không đồng ý với các điều khoản độc lập về bản phát hành chính thức, bạn có thể dừng sử dụng bản đó nhưng vẫn giữ các quyền đã được cấp riêng theo giấy phép mã nguồn mở. Ứng dụng không yêu cầu tài khoản V-Notch.
 
-Bằng việc tải xuống, cài đặt, biên dịch, khởi chạy, truy cập hoặc sử dụng V-Notch ("Ứng dụng", "Phần mềm" hoặc "Dịch vụ"), bạn ("Người dùng" hoặc "bạn") xác nhận đã đọc, hiểu rõ và đồng ý chịu sự ràng buộc của bản Điều Khoản Dịch Vụ này ("Điều khoản") cùng với [Chính Sách Bảo Mật](PRIVACY_POLICY_VI.md) của chúng tôi.
+## 2. Quyền mã nguồn mở, ghi nhận tác giả và nhận diện dự án
 
-Nếu bạn không đồng ý với bất kỳ điều khoản hoặc điều kiện nào tại đây, bạn không được phép tải xuống, cài đặt hoặc sử dụng V-Notch. Nếu bạn đã cài đặt ứng dụng, vui lòng gỡ cài đặt và ngừng sử dụng ngay lập tức.
+Mã nguồn gốc thuộc quyền cấp phép của dự án được xác định theo Apache License 2.0; xem [LICENSE](LICENSE). Bạn được sử dụng, sửa đổi, fork, phân phối lại và bán bản sao phần mã được cấp phép hợp lệ theo Apache-2.0, dạng nguồn hoặc nhị phân, nếu đáp ứng điều kiện giấy phép. Theo Điều 4, bên phân phối phải cung cấp giấy phép, đánh dấu nổi bật tệp đã sửa đổi, giữ các thông báo pháp lý liên quan trong dạng nguồn và chuyển tiếp ghi nhận trong NOTICE nếu có. Apache-2.0 **không** bắt buộc giữ nguyên tất cả ghi công trên giao diện hay một tên sản phẩm nhất định. Điều khoản này không cấm việc phân phối đã được giấy phép cho phép và không tự động hủy quyền tác giả đã cấp. Thành phần, model và tài sản bên thứ ba chịu giấy phép riêng; xem [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Bạn cam kết rằng bạn đã đủ tuổi chịu trách nhiệm pháp lý theo quy định của pháp luật hiện hành tại khu vực tài phán của bạn (tối thiểu 13 tuổi, hoặc độ tuổi tối thiểu cao hơn nếu pháp luật sở tại yêu cầu), hoặc có sự đồng ý hợp pháp của cha mẹ/người giám hộ để tham gia và chịu trách nhiệm với các điều khoản này. V-Notch không được thiết kế hướng đến và không cố ý thu thập dữ liệu của trẻ em dưới 13 tuổi. Ứng dụng không có cơ chế xác minh độ tuổi; cha mẹ hoặc người giám hộ có trách nhiệm giám sát việc sử dụng của trẻ vị thành niên thuộc quyền quản lý của mình.
+Điều 6 Apache-2.0 không cấp quyền sử dụng thương hiệu chung, ngoại trừ sử dụng hợp lý, thông thường để mô tả nguồn gốc và sao chép các thông báo bắt buộc. Nhà phát triển không tự nhận đã đăng ký nhãn hiệu khi không có chứng cứ. Không mạo danh rainaku, tác giả gốc hay bản dựng chính thức; bản sửa đổi phải phân biệt rõ với bản phát hành chính thức. Không cấm việc nhắc tên nhằm mô tả nguồn gốc hoặc việc sử dụng được pháp luật cho phép. Tranh chấp tên gọi phụ thuộc quyền thực có và pháp luật áp dụng, không chỉ vào tuyên bố tại đây.
 
-**Ngôn ngữ của Điều khoản:** Văn bản gốc và có giá trị pháp lý cao nhất của Điều khoản này được soạn thảo bằng **tiếng Việt**. Mọi bản dịch sang ngôn ngữ khác (bao gồm bản tiếng Anh, nếu có) chỉ nhằm mục đích tham khảo và hỗ trợ người dùng không thông thạo tiếng Việt. Trong trường hợp có bất kỳ sự mâu thuẫn, khác biệt hoặc cách hiểu không thống nhất nào giữa các phiên bản ngôn ngữ, **bản tiếng Việt sẽ được ưu tiên áp dụng**.
+Dự án không nhận bản quyền đối với phần mềm độc lập, nhãn hiệu nền tảng, ảnh album, lời bài hát, video, phông chữ, biểu tượng hoặc trọng số model thuộc người khác. Chỉ ghi copyright cho phần thực sự có quyền.
 
----
+## 3. Tính năng, quyền truy cập và kiểm soát
 
-## 2. Bản Chất Phần Mềm & Giấy Phép Mã Nguồn Mở
+Ứng dụng có thể đọc Windows media session, tiêu đề cửa sổ hoặc URL phát nhạc từ trình duyệt, pixel màn hình cho hiệu ứng kính, sự kiện và phần xem trước clipboard tùy chọn, khung hình camera khi kích hoạt, đường dẫn File Shelf, âm lượng, Bluetooth, tải phần cứng và metadata tìm kiếm cục bộ. Tham khảo [Chính sách bảo mật](PRIVACY_POLICY_VI.md) về đích mạng, log/cache, lưu giữ và công tắc kiểm soát. Điều khoản này không tự thay thế sự đồng ý riêng mà pháp luật yêu cầu. Chỉ dùng trên thiết bị và tài khoản bạn được phép truy cập; thận trọng khi dùng máy chung, camera, clipboard, cookie đăng nhập và nội dung nhạy cảm. Không đăng thông tin nhạy cảm trong issue công khai.
 
-### 2.1 Cấp Phép Bản Quyền (Apache License 2.0)
-V-Notch là phần mềm miễn phí và mã nguồn mở (FOSS), được phát hành theo các điều khoản của **Apache License, Phiên bản 2.0** ("Giấy phép Apache"). Bạn có quyền tự do kiểm tra mã nguồn, sửa đổi, tạo bản phân nhánh (fork), và phân phối mã nguồn cũng như các bản dựng nhị phân theo các điều kiện được quy định trong Giấy phép Apache. Nội dung giấy phép được đính kèm tại [LICENSE](LICENSE).
+File Shelf quản lý tham chiếu đường dẫn tệp; đường dẫn có thể được lưu trong cài đặt. Hãy sao lưu dữ liệu và kiểm tra thao tác tệp trước khi tin cậy công cụ. Gỡ cài đặt không đồng nghĩa xóa cache, file tạm hoặc bản sao lưu. Chấm chỉ báo camera/mic chỉ hỗ trợ tham khảo, không thay thế công cụ phát hiện xâm nhập hoặc cam kết an toàn tuyệt đối.
 
-### 2.2 Mối Quan Hệ Giữa Điều Khoản Này và Giấy Phép Apache
-Điều khoản này quy định quyền và nghĩa vụ khi sử dụng bản dựng nhị phân hoàn chỉnh của ứng dụng, các bản phát hành chính thức, tài liệu đi kèm, cũng như các tương tác mạng với các dịch vụ và nền tảng của bên thứ ba. Trong trường hợp có bất kỳ mâu thuẫn trực tiếp nào giữa Điều khoản này và Giấy phép Apache 2.0 liên quan đến vấn đề cấp phép bản quyền và phân phối mã nguồn, **Giấy phép Apache 2.0** sẽ được ưu tiên áp dụng trong phạm vi xung đột đó.
+## 4. Nền tảng và nội dung bên thứ ba
 
-### 2.3 Nghiêm Cấm Tái Phân Phối Dưới Tên Của Bạn (Quy Định Về Quyền Tác Giả)
-- **CẤM TUYỆT ĐỐI TÁI PHÂN PHỐI DƯỚI TÊN RIÊNG:** Bạn **KHÔNG ĐƯỢC PHÉP** tái phân phối, đóng gói lại (repackage), đổi tên (rebrand), bán lại hoặc phát hành lại phần mềm V-Notch (dù là toàn bộ hay một phần cấu phần chính) dưới tên cá nhân của bạn, tên công ty/tổ chức của bạn hoặc bất kỳ danh xưng nào khác nhằm tuyên bố, ngụ ý hoặc đánh lừa rằng bạn là tác giả, người sáng lập hoặc chủ sở hữu bản quyền ban đầu của V-Notch.
-- **Bắt buộc giữ nguyên toàn bộ ghi nhận tác giả (Attribution):** Toàn bộ các thông báo bản quyền (bao gồm `Copyright © 2026 rainaku`), thông tin liên kết tới kho mã nguồn chính thức [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch), và giấy phép Apache 2.0 phải được giữ nguyên vẹn trong mọi bản sao mã nguồn, bản dựng nhị phân, giao diện người dùng và tài liệu đi kèm.
-- **Quy định đối với bản phân nhánh (Forks) hoặc phát sinh:** Nếu bạn chỉnh sửa mã nguồn hoặc tạo bản phân nhánh theo quyền được cấp bởi Giấy phép Apache 2.0, bạn bắt buộc phải:
-  1. Ghi nhận rõ ràng và nổi bật tác giả ban đầu là **rainaku** và dự án gốc là **V-Notch**;
-  2. Nêu rõ toàn bộ những nội dung bạn đã sửa đổi;
-  3. Đặt một tên gọi dự án hoàn toàn khác biệt, không được sử dụng nhãn hiệu hoặc tên gọi "V-Notch" để đặt tên cho sản phẩm phái sinh của bạn hoặc gây nhầm lẫn đây là bản phân phối chính thức từ tác giả.
+Ảnh bìa, lời bài hát, phụ đề, thời tiết, cập nhật và Canvas có thể kết nối trực tiếp với GitHub, YouTube/Google, Piped/Invidious cộng đồng, SoundCloud, LRCLIB, lrc mux, Spotify, Musixmatch, ipwho.is và Open-Meteo như liệt kê trong Chính sách bảo mật. Các bên này độc lập và có thể thay đổi điều khoản, quyền nội dung và khả năng hoạt động. Dự án không có quan hệ liên kết hay chứng thực từ Apple, Microsoft, Spotify, Google/YouTube, SoundCloud và các bên tương ứng. Tên thương hiệu được nhắc tới để mô tả khả năng tương thích, không phải bằng chứng được cấp phép.
 
-### 2.4 Nhãn Hiệu "V-Notch"
-Tên gọi **"V-Notch"**, cùng với bất kỳ logo hoặc biểu trưng liên quan nào, được xem là dấu hiệu nhận diện thương mại (bao gồm quyền nhãn hiệu theo thông luật - common law trademark rights - dù chưa đăng ký chính thức) thuộc quyền sử dụng của tác giả **rainaku** để nhận diện dự án. Giấy phép Apache 2.0 cấp quyền sử dụng **mã nguồn** nhưng theo Điều 6 của Giấy phép Apache 2.0, **không** cấp quyền sử dụng tên gọi, logo, nhãn hiệu hoặc các dấu hiệu nhận diện thương mại "V-Notch" cho mục đích quảng bá các bản phân phối phái sinh, phù hợp với Điều 2.3 nêu trên.
+**Spotify Canvas:** Theo mô tả hiện có, tính năng tùy chọn mở trang đăng nhập Spotify, lưu cookie phiên `sp_dc` bằng Windows DPAPI, dùng một số endpoint web không chính thức và có thể tải bí mật luân phiên từ kho mã nguồn bên ngoài. Điều này **không chứng minh Spotify cho phép** phương pháp truy cập. Điều khoản Spotify đặt giới hạn với việc scraping, thông tin xác thực, truy cập trái phép và sao chép. Người dùng đồng ý, cookie mã hóa và tuyên bố không liên kết đều không thay thế giấy phép hoặc chấp thuận từ nền tảng. Nhà phát triển cần tự xác minh tính hợp lệ hoặc tắt/gỡ đường truy cập chưa được phép trước khi phân phối. Tuyệt đối không yêu cầu người dùng đăng cookie trong Issue. Người dùng có thể ngắt Spotify trong ứng dụng và chủ động hủy phiên qua tùy chọn bảo mật tài khoản Spotify. Nền tảng có thể hạn chế quyền truy cập theo quy định hợp lệ của họ.
 
----
+**Nội dung media:** Metadata, lời bài hát, phụ đề, ảnh thu nhỏ, Canvas vẫn thuộc quyền của chủ thể tương ứng. Tính năng hiển thị không tự cấp quyền tải, sao chép, tái phân phối, chỉnh sửa, khai thác thương mại hoặc trình diễn công khai ngoài phạm vi được phép theo luật và giấy phép. Chủ thể quyền có thể khiếu nại nội dung thực sự nằm trong repo/bản phát hành theo Mục 10.
 
-## 3. Kiến Trúc Ưu Tiên Cục Bộ & Quyền Hạn Hệ Thống
+Không nội dung nào ở đây cho phép truy cập tài khoản trái phép, vượt cơ chế bảo vệ bất hợp pháp hoặc vi phạm bản quyền; tuy nhiên không thu hẹp quyền tương tác hợp pháp hoặc quyền sử dụng mã được cấp phép.
 
-V-Notch được xây dựng theo kiến trúc **ưu tiên xử lý cục bộ (local-first)**. Ứng dụng chạy chủ yếu trên máy tính của bạn và hoàn toàn không vận hành bất kỳ máy chủ backend nào, không tạo tài khoản người dùng, không chứa công cụ theo dõi hành vi (telemetry) hay định danh từ xa.
+## 5. Cập nhật, nguồn phân phối và tính toàn vẹn
 
-Để cung cấp các tính năng tai thỏ (notch), Dynamic Island nổi, widget phát đa phương tiện và các tiện ích màn hình nền, V-Notch cần quyền truy cập vào một số API của hệ điều hành Windows:
+Khi bật, ứng dụng có thể kiểm tra GitHub Releases. Việc tải/chạy bản cập nhật cần thao tác người dùng như Chính sách bảo mật mô tả. Tài liệu gốc nêu xác thực signed manifest từ v1.9.2, nhưng điều đó không chứng minh mọi bản cũ, tải thủ công, bản mirror, quy trình build hoặc fork đều được xác thực. Kiểm tra đúng kho chính thức và bộ cài; Windows SmartScreen hoặc antivirus có cơ chế cảnh báo riêng. Không giả danh bản chỉnh sửa là bản chính thức. Nhà phát triển có thể thay đổi, tạm ngưng hoặc ngừng duy trì dự án; không mặc nhiên cam kết lịch hỗ trợ và bản vá nếu không có thỏa thuận riêng. Các nghĩa vụ bắt buộc theo luật vẫn được giữ nguyên.
 
-1. **Phiên Đa Phương Tiện (Windows SMTC):** Đọc metadata phương tiện đang phát (tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái dừng/phát) từ các trình phát nhạc/video trên máy và trình duyệt web.
-2. **Thiết Bị Âm Thanh (Core Audio):** Đọc và điều chỉnh âm lượng tổng hệ thống cũng như âm lượng phiên của từng ứng dụng riêng biệt cho bộ trộn âm thanh (mixer).
-3. **Chụp Nền Màn Hình (DirectX 11 / DXGI / Magnification):** Lấy mẫu pixel màn hình trực tiếp ngay dưới vùng notch trong bộ nhớ GPU/CPU cục bộ để kết xuất hiệu ứng khúc xạ quang học và làm mờ kính lỏng (Liquid Glass). Dữ liệu khung hình không bao giờ bị ghi lại, không lưu vào đĩa và không gửi qua mạng.
-4. **Xem Trước Camera (DirectShow / MediaFoundation):** Tính năng gương soi nhanh ngay trên notch. Khung hình camera được hiển thị trực tiếp lên màn hình và không bao giờ bị chụp lại, lưu trữ hay truyền phát.
-5. **Khay Chứa Tệp (File Shelf):** Cho phép kéo thả tệp và phím tắt cục bộ để lưu trữ tạm thời. Đường dẫn tệp được lưu cục bộ trong tệp cấu hình của ứng dụng.
-6. **Trình Tìm Kiếm & Khởi Chạy Spotlight:** Tìm kiếm ứng dụng và tệp cục bộ trên máy tính qua Windows Search hoặc Everything IPC (`Alt + Space`).
-7. **Giám Sát Phần Cứng Hệ Thống (Performance Counters / DXGI):** Đọc dữ liệu mức sử dụng CPU, RAM và GPU cục bộ theo thời gian thực.
-8. **Bluetooth & Pin Phụ Kiện:** Truy vấn trạng thái kết nối và phần trăm pin của các thiết bị Bluetooth ngoại vi.
-9. **Lắng Nghe Sự Kiện Clipboard:** Nhận diện thao tác sao chép (copy) để hiển thị thông báo xem trước nội dung trực quan trên notch. Nội dung sao chép không bao giờ bị ghi nhật ký hay gửi ra ngoài.
+## 6. Hành vi và tuân thủ pháp luật
 
-Bằng việc chạy V-Notch, bạn đồng ý cấp quyền cho ứng dụng tương tác với các API hệ thống cục bộ này để phục vụ duy nhất các tính năng tương ứng.
+Bạn chịu trách nhiệm về việc bản thân sử dụng phần mềm và nền tảng đúng pháp luật, đúng quyền truy cập được cấp. Không mạo danh dự án để phát tán malware, xâm phạm quyền bên thứ ba hoặc truy cập trái phép. Những yêu cầu này áp dụng đối với tương tác với kênh chính thức và hành vi mạo danh, **không** phủ định quyền sửa đổi/phân phối hợp pháp theo Apache-2.0 và giấy phép bên thứ ba. Người dùng không tự chịu trách nhiệm thay cho hành vi độc lập của người khác chỉ vì sử dụng V-Notch.
 
----
+## 7. Miễn phí, quyên góp và hỗ trợ
 
-## 4. Dịch Vụ Bên Thứ Ba, API & Tuyên Bố Về Thương Hiệu
+Ứng dụng chính thức được giới thiệu là miễn phí. Quyên góp tự nguyện (nếu có) không tự tạo gói thuê bao, bảo hành, ưu tiên hỗ trợ hoặc chuyển quyền sở hữu phần mềm, trừ khi có điều kiện riêng được công bố tại thời điểm quyên góp. Giao dịch trả phí, tài trợ riêng chịu điều khoản được thông báo và luật bảo vệ người tiêu dùng bắt buộc. Không bảo đảm hỗ trợ, phiên bản tương lai, khả năng tương thích liên tục hoặc tính sẵn có của dịch vụ ngoài.
 
-### 4.1 Tính Độc Lập Của Các Dịch Vụ Bên Thứ Ba
-V-Notch tích hợp các kết nối phía máy khách (client-side) tùy chọn hoặc phục vụ tính năng tới một số dịch vụ bên thứ ba. Bạn hiểu rõ và đồng ý rằng:
-- Các dịch vụ này do các bên độc lập vận hành, hoàn toàn không thuộc quyền kiểm soát, sở hữu hay quản lý của tác giả V-Notch.
-- Việc bạn sử dụng các tính năng liên quan đến bên thứ ba đồng nghĩa với việc bạn phải tuân thủ điều khoản dịch vụ và chính sách bảo mật của các bên tương ứng:
-  - **Spotify:** Điều khoản Dịch vụ, Thỏa thuận Người dùng và Điều khoản Nhà phát triển của Spotify.
-  - **YouTube & Google:** Điều khoản Dịch vụ của YouTube và Chính sách Bảo mật của Google.
-  - **LRCLIB / lrc mux:** Điều kiện dịch vụ của LRCLIB và bộ tổng hợp lrc mux.
-  - **Open-Meteo & ipwho.is:** Điều khoản dịch vụ thời tiết Open-Meteo và ipwho.is.
-  - **GitHub:** Điều khoản Dịch vụ GitHub (dùng để kiểm tra và tải cập nhật phát hành).
-  - **SoundCloud:** Điều khoản Sử dụng của SoundCloud.
+## 8. Bảo hành và quyền bắt buộc
 
-### 4.2 Tính Năng Tích Hợp Spotify Canvas
-V-Notch cung cấp tính năng tùy chọn cho phép hiển thị video nền lặp (Canvas) của Spotify bằng cách cho phép bạn đăng nhập qua Microsoft Edge WebView2 và lưu trữ cookie phiên `sp_dc` cục bộ (được mã hóa bảo vệ bằng Windows DPAPI).
-- **Tính Năng Không Chính Thức:** V-Notch là công cụ bên thứ ba không chính thức. Ứng dụng **KHÔNG ĐƯỢC** xác nhận, chứng thực hay liên kết với Spotify AB hoặc bất kỳ công ty con nào của Spotify.
-- **Trách Nhiệm Của Người Dùng:** Bạn chịu trách nhiệm hoàn toàn đối với việc sử dụng tài khoản Spotify và trích xuất Canvas. Bạn thừa nhận rằng việc truy cập dịch vụ Spotify qua các công cụ không chính thức có thể tiềm ẩn rủi ro vi phạm Quy định Người dùng của Spotify, bao gồm nguy cơ tài khoản bị giới hạn hoặc xử lý. Tác giả V-Notch hoàn toàn không chịu trách nhiệm đối với bất kỳ biện pháp xử lý, hạn chế hoặc gián đoạn dịch vụ nào phát sinh từ phía Spotify.
+Trong giới hạn pháp luật cho phép, phần mềm được cung cấp **"NGUYÊN TRẠNG" (AS IS), "TÙY TÍNH SẴN CÓ" (AS AVAILABLE)**, không có bảo đảm tự nguyện về vận hành không gián đoạn, khả năng thương mại, tính phù hợp mục đích cụ thể hoặc không xâm phạm quyền. Hiệu ứng có thể ảnh hưởng driver GPU, trình quản lý cửa sổ, âm lượng, camera và thao tác file. Hãy sao lưu dữ liệu quan trọng và tự kiểm tra độ phù hợp. Nội dung/dịch vụ ngoài không do dự án kiểm soát. **Không quy định nào loại trừ quyền, biện pháp khắc phục, nghĩa vụ an toàn sản phẩm, trách nhiệm cẩn trọng hoặc bảo hành mà luật không cho phép loại trừ**, kể cả quyền người tiêu dùng.
 
-### 4.3 Thu Thập Dữ Liệu & Ảnh Bìa YouTube
-Khi tra cứu thông tin hoặc ảnh bìa từ YouTube, V-Notch sử dụng các endpoint công khai, oEmbed hoặc khóa API YouTube Data do người dùng tự cấu hình. Người dùng cung cấp khóa API cá nhân có nghĩa vụ tự tuân thủ chính sách định ngạch (quota) và quy định nhà phát triển của Google.
+## 9. Giới hạn trách nhiệm và bồi thường
 
-### 4.4 Tính Sẵn Sàng Và Thay Đổi Của Dịch Vụ Ngoài
-Các API và dịch vụ web của bên thứ ba có thể thay đổi cấu trúc, giới hạn tần suất (rate-limit) hoặc ngừng hoạt động bất kỳ lúc nào mà không cần thông báo trước. Tác giả **không đảm bảo hay cam kết** rằng bất kỳ tính năng trực tuyến nào (như tìm lời bài hát, ảnh bìa, dự báo thời tiết, phát video Canvas) sẽ luôn hoạt động ổn định, liên tục hay không bị lỗi.
+Trong phạm vi pháp luật cho phép, nhà phát triển/người đóng góp không chịu các thiệt hại gián tiếp, ngẫu nhiên, đặc biệt, mang tính trừng phạt hoặc hệ quả khi những dạng thiệt hại đó được phép loại trừ. Việc mô tả tích hợp không khiến nhà phát triển mặc nhiên chịu trách nhiệm cho mọi sự cố của nền tảng độc lập hoặc hành vi của người khác. **Không loại trừ trách nhiệm về gian lận, hành vi cố ý, sơ suất nghiêm trọng khi luật cấm loại trừ, tử vong/thương tích khi luật cấm loại trừ, vi phạm nghĩa vụ bảo vệ dữ liệu/bảo vệ người tiêu dùng bắt buộc hoặc trách nhiệm không thể loại trừ khác.** Không áp dụng mức trần trách nhiệm bằng 0 chỉ vì ứng dụng miễn phí. Trách nhiệm và giới hạn có hiệu lực (nếu có) được xác định từ luật và sự kiện thực tế.
 
-### 4.5 Tuyên Bố Miễn Trừ Thương Hiệu
-Tất cả tên sản phẩm, logo, nhãn hiệu, thương hiệu và nhãn hiệu đã đăng ký xuất hiện trong ứng dụng, mã nguồn hoặc tài liệu đều thuộc quyền sở hữu của các chủ sở hữu tương ứng.
-- "macOS", "Dynamic Island", "Apple", "iPhone", và "Apple Music" là thương hiệu hoặc thương hiệu đã đăng ký của Apple Inc.
-- "Windows", "Microsoft", "DirectX", và "Edge" là thương hiệu hoặc thương hiệu đã đăng ký của Microsoft Corporation.
-- "Spotify" và "Canvas" là thương hiệu hoặc thương hiệu đã đăng ký của Spotify AB.
-- "YouTube" và "Google" là thương hiệu hoặc thương hiệu đã đăng ký của Google LLC.
-- "SoundCloud" là thương hiệu của SoundCloud Global Limited & Co. KG.
+Nếu bên thứ ba khiếu nại do bạn cố ý mạo danh bản chính thức trái phép hoặc vi phạm nghiêm trọng quyền sở hữu trí tuệ thông qua bản phân phối do bạn kiểm soát, bạn có thể phải chịu các tổn thất hợp pháp được xác định do hành vi của mình gây ra. Đây **không** phải nghĩa vụ bồi thường vô điều kiện cho mọi hành vi sử dụng thông thường, lỗi của nhà phát triển, hành động của nền tảng hay cáo buộc không do bạn gây ra. Nghĩa vụ theo giấy phép bên thứ ba, nếu có, được điều chỉnh riêng.
 
-Việc nhắc đến bất kỳ sản phẩm, dịch vụ hoặc thương hiệu nào ở trên **hoàn toàn nhằm mục đích mô tả chức năng, định danh tương thích kỹ thuật (nominative fair use)** và không cấu thành cũng như không ngụ ý bất kỳ sự liên kết, tài trợ, chứng thực hay bảo trợ nào từ phía các chủ sở hữu thương hiệu đó.
+## 10. Khiếu nại bản quyền, tài sản và bảo mật
 
----
+Nhà phát triển không lưu trữ tệp do người dùng đặt trong File Shelf. Với mã hoặc tài sản **thực sự nằm trong** kho/bản phát hành chính thức mà bạn cho là vi phạm, hãy cung cấp tác phẩm được bảo hộ, tư cách chủ thể quyền/đại diện, đường dẫn cụ thể hoặc số bản phát hành, nội dung bị khiếu nại, giải thích và kênh phản hồi an toàn. Dùng [GitHub Issues](https://github.com/rainaku/V-Notch/issues) khi thông báo không chứa dữ liệu nhạy cảm, hoặc quy trình báo cáo bản quyền của GitHub khi phù hợp. Không công khai mật khẩu, token, tài liệu riêng tư hoặc chi tiết khai thác lỗ hổng. Dự án sẽ xem xét khiếu nại có căn cứ và cân nhắc xóa, thay thế, ghi công, làm rõ hoặc biện pháp phù hợp; không hứa trước kết quả hay tự nhận được miễn trừ pháp lý đặc biệt. Đối với lỗ hổng, tìm kênh riêng tư đã được xác minh trên kho/hồ sơ nhà phát triển nếu có; nếu chưa có, không công khai chi tiết khai thác.
 
-## 5. Quy Định Sử Dụng & Hành Vi Bị Nghiêm Cấm
+## 11. Quyền riêng tư
 
-Bạn đồng ý chỉ sử dụng V-Notch cho các mục đích hợp pháp và tuân thủ đầy đủ Điều khoản này. Bạn cam kết **KHÔNG**:
+[Chính sách bảo mật](PRIVACY_POLICY_VI.md) mô tả xử lý dữ liệu cụ thể, bên nhận độc lập, log/caches và lựa chọn kiểm soát. Đây là thông báo, không phải văn bản tước quyền luật định. Nếu hai văn bản mâu thuẫn về hành vi dữ liệu, phải sửa sai thay vì cho rằng một văn bản hợp pháp hóa việc xử lý chưa công bố. Không gửi thông tin xác thực qua issue công khai.
 
-1. **Vi Phạm Pháp Luật:** Sử dụng Phần mềm cho bất kỳ mục đích nào vi phạm pháp luật hiện hành của địa phương, quốc gia hoặc quốc tế.
-2. **Lạm Dụng Dịch Vụ Bên Thứ Ba:** Sử dụng Phần mềm hoặc các bản dựng sửa đổi để thực hiện tấn công từ chối dịch vụ (DoS), cào dữ liệu (scrape) với tần suất bất thường mang tính phá hoại, vượt qua giới hạn tần suất hoặc cố tình làm gián đoạn hạ tầng của bên thứ ba (bao gồm GitHub, Spotify, LRCLIB, Open-Meteo, hoặc YouTube).
-3. **Phát Tán Mã Độc:** Tạo hoặc phân phối các bản dựng bị sửa đổi, chèn mã độc, trojan, spyware dưới danh nghĩa bản phát hành chính thức của V-Notch nhằm mục đích đánh lừa người dùng khác.
-4. **Xâm Phạm Quyền Sở Hữu Trí Tuệ:** Dùng khay tệp (File Shelf) hoặc các tiện ích khác của ứng dụng để truyền tải, tàng trữ hoặc phát tán tài liệu vi phạm bản quyền, bí mật thương mại hoặc quyền riêng tư của cá nhân/tổ chức khác.
-5. **Vô Hiệu Hóa Bảo Mật:** Sửa đổi mã nguồn nhằm can thiệp trái phép hoặc làm vô hiệu cơ chế kiểm tra tính toàn vẹn chữ ký số mật mã (chẳng hạn chữ ký ECDSA khi cập nhật ứng dụng) để chèn phần mềm độc hại.
-6. **Mạo Nhận Quyền Tác Giả & Tái Phân Phối Dưới Tên Của Bạn:** Tái phân phối, đổi tên hoặc phát hành lại V-Notch dưới tên của chính bạn; xóa bỏ thông tin tác giả rainaku; thay thế tên bạn hoặc tổ chức của bạn vào vị trí người sáng tạo; hoặc cố tình gây hiểu nhầm cho cộng đồng và người dùng cuối rằng bạn là tác giả ban đầu của phần mềm.
-7. **Xâm Phạm Quyền Riêng Tư Của Người Khác Qua Quyền Hệ Thống:** Sử dụng các quyền truy cập hệ thống được nêu tại Điều 3 (ví dụ: xem trước camera, lắng nghe sự kiện clipboard) để giám sát, ghi lại hoặc xâm phạm quyền riêng tư của người khác mà không có sự đồng thuận hợp pháp của họ, kể cả khi sử dụng trên thiết bị dùng chung.
-8. **Vi Phạm Luật Kiểm Soát Xuất Khẩu & Trừng Phạt Thương Mại:** Tải xuống, truy cập hoặc sử dụng Phần mềm tại các quốc gia, vùng lãnh thổ, hoặc bởi các cá nhân/tổ chức đang bị cấm vận hoặc hạn chế theo luật kiểm soát xuất khẩu và trừng phạt thương mại hiện hành (bao gồm nhưng không giới hạn ở danh sách trừng phạt của Hoa Kỳ, Liên minh Châu Âu hoặc Liên Hợp Quốc), trong phạm vi các quy định đó có thể áp dụng.
+## 12. Thay đổi và ngừng phát triển
 
----
+Bản sửa đổi sẽ ghi ngày hiệu lực mới, công bố trong kho; thay đổi đáng kể nên được thông báo trong release notes hoặc trong ứng dụng khi khả thi. Không được hồi tố tước quyền Apache-2.0 đã cấp hoặc quyền pháp luật bắt buộc. Tiếp tục sử dụng đơn thuần không thay sự đồng ý chủ động khi luật yêu cầu. Việc ngừng phát hành chính thức không làm mất các quyền mã nguồn mở còn tồn tại theo giấy phép.
 
-## 6. Cập Nhật & Tính Toàn Vẹn Hệ Thống
+## 13. Luật áp dụng và giải quyết tranh chấp
 
-### 6.1 Kiểm Tra Cập Nhật
-V-Notch có thể định kỳ gửi yêu cầu tới GitHub Releases API để kiểm tra xem có phiên bản mới hơn hay không. Việc tải xuống và chạy trình cài đặt cập nhật chỉ diễn ra khi có sự chủ động xác nhận của bạn.
+**Văn bản này không tự xác định quốc gia, thành phố, tòa án độc quyền hay trọng tài bắt buộc** khi chưa xác minh nơi cư trú/tư cách pháp lý của nhà phát triển và pháp luật liên quan. Luật áp dụng và cơ quan có thẩm quyền do các quy định xung đột pháp luật, tố tụng, bảo vệ người tiêu dùng và quy định bắt buộc tương ứng xác định theo các bên và tranh chấp. Các bên có thể tự nguyện thương lượng thiện chí qua kênh dự án thích hợp; đây không phải thời hạn chờ hay điều kiện tiên quyết để khiếu nại/khởi kiện. Quyền bảo vệ bắt buộc của người dùng tại nơi cư trú thường xuyên hoặc nơi khác vẫn được bảo lưu. Nếu sau này có điều khoản thẩm quyền được luật sư rà soát, chỉ áp dụng theo thông báo và phạm vi hợp pháp cho tương lai; bản này không suy đoán nơi cư trú tác giả.
 
-### 6.2 Xác Minh Tính Toàn Vẹn Bằng Mật Mã
-Từ phiên bản 1.9.2 trở đi, các bản phát hành chính thức đi kèm manifest cập nhật được ký điện tử bằng khóa công khai ECDSA P-256 nhúng sẵn. V-Notch tự động kiểm tra kích thước tệp, mã băm SHA-256 và chữ ký số trước khi thực thi bộ cài đặt cập nhật.
+## 14. Giải thích, tính độc lập của điều khoản
 
-### 6.3 Chế Độ Nghiêm Ngặt Chỉ Chạy Cục Bộ (Strict Local-Only Mode)
-Nếu bạn không muốn ứng dụng tạo bất kỳ kết nối mạng nào ra ngoài, V-Notch cung cấp tính năng **Strict Local-Only Mode** trong cài đặt Quyền riêng tư. Khi bật, toàn bộ các tính năng kiểm tra cập nhật, tìm lời bài hát online, tìm ảnh bìa online, tải Canvas và tra cứu thời tiết sẽ bị ngắt kết nối hoàn toàn và vô điều kiện.
+Nếu một phần vô hiệu, chỉ phần đó không áp dụng trong giới hạn luật cho phép; phần còn lại giữ hiệu lực nếu độc lập và có ý nghĩa. Không thực thi một quyền trong một trường hợp không mặc nhiên từ bỏ quyền. Văn bản không tự chuyển giao quyền sở hữu trí tuệ của người đóng góp/bên thứ ba. Apache-2.0 và giấy phép thành phần điều chỉnh vật liệu đã cấp phép; luật bắt buộc ưu tiên khi điều khoản xung đột. Không tự tuyên bố một bản ngôn ngữ luôn ưu tiên trong mọi quốc gia. Bản Anh/Việt được biên soạn nhằm tương đương thực chất; cần sửa điểm khác biệt và xác định cách giải thích theo pháp luật áp dụng. Thỏa thuận riêng có hiệu lực về dịch vụ hoặc tài trợ (nếu có) không bị văn bản này thay thế.
 
-### 6.4 Không Cam Kết Về Hỗ Trợ & Bảo Trì
-Là dự án mã nguồn mở phi lợi nhuận, Tác giả không có nghĩa vụ pháp lý phải cung cấp bất kỳ hình thức hỗ trợ kỹ thuật, bảo trì, khắc phục lỗi hay phát hành bản cập nhật nào trong tương lai. Dự án có thể ngừng phát triển, không còn được duy trì, hoặc bị gỡ bỏ khỏi kho lưu trữ bất kỳ lúc nào mà không cần thông báo trước, mà không phát sinh bất kỳ trách nhiệm nào đối với bạn.
+## 15. Liên hệ và lịch sử
 
----
-
-## 7. Tuyên Bố Miễn Trừ Bảo Hành ("AS IS")
-
-TRONG PHẠM VI TỐI ĐA ĐƯỢC PHÁP LUẬT CHO PHÉP:
-
-1. **CUNG CẤP "NGUYÊN TRẠNG":** PHẦN MỀM V-NOTCH ĐƯỢC CUNG CẤP THEO NGUYÊN TẮC "NGUYÊN TRẠNG" ("AS IS"), "CÓ THỂ CÓ LỖI" ("WITH ALL FAULTS") VÀ "TÙY THUỘC VÀO TÍNH SẴN CÓ" ("AS AVAILABLE"), HOÀN TOÀN KHÔNG CÓ BẤT KỲ BẢO HÀNH NÀO DƯỚI BẤT KỲ HÌNH THỨC NÀO, DÙ RÕ RÀNG, NGỤ Ý, THEO LUẬT ĐỊNH HAY CÁCH THỨC NÀO KHÁC.
-2. **MIỄN TRỪ BẢO HÀNH NGỤ Ý:** TÁC GIẢ, CÁC NHÀ ĐÓNG GÓP VÀ NGƯỜI DUY TRÌ TỰ ĐỘNG KHƯỚC TỪ MỌI BẢO HÀNH NGỤ Ý, BAO GỒM NHƯNG KHÔNG GIỚI HẠN Ở KHẢ NĂNG THƯƠNG MẠI, SỰ PHÙ HỢP CHO MỘT MỤC ĐÍCH CỤ THỂ, QUYỀN SỞ HỮU, TÍNH CHÍNH XÁC VÀ KHÔNG XÂM PHẠM QUYỀN CỦA BÊN THỨ BA.
-3. **KHÔNG CAM KẾT TƯƠNG THÍCH HOẶC KHÔNG CÓ LỖI:** TÁC GIẢ KHÔNG ĐẢM BẢO RẰNG:
-   - ỨNG DỤNG SẼ ĐÁP ỨNG MỌI NHU CẦU HOẶC KỲ VỌNG RIÊNG BIỆT CỦA BẠN;
-   - HOẠT ĐỘNG CỦA ỨNG DỤNG SẼ KHÔNG BỊ GIÁN ĐOẠN, LUÔN KỊP THỜI, AN TOÀN TUYỆT ĐỐI HOẶC HOÀN TOÀN KHÔNG CÓ LỖI KỸ THUẬT;
-   - MỌI XUNG ĐỘT HỆ THỐNG (VÍ DỤ VỚI TRÌNH ĐIỀU KHIỂN ĐỒ HỌA, PHẦN MỀM TÙY BIẾN GIAO DIỆN NHƯ MYDOCKFINDER, HOẶC CÁC CỬA SỔ TRÊN MÀN HÌNH) SẼ ĐƯỢC KHẮC PHỤC NGAY LẬP TỨC;
-   - CÁC DỊCH VỤ PHÁT PHƯƠNG TIỆN BÊN THỨ BA SẼ LUÔN DUY TRÌ KHẢ NĂNG TƯƠNG THÍCH TRONG TƯƠNG LAI.
-
-VIỆC SỬ DỤNG PHẦN MỀM HOÀN TOÀN THUỘC VỀ QUYẾT ĐỊNH VÀ RỦI RO CỦA CHÍNH BẠN.
-
----
-
-## 8. Giới Hạn Trách Nhiệm Pháp Lý
-
-TRONG MỨC TỐI ĐA ĐƯỢC PHÁP LUẬT HIỆN HÀNH CHO PHÉP, TRONG MỌI TRƯỜNG HỢP, TÁC GIẢ (RAINAKU), NHÀ PHÁT TRIỂN, NGƯỜI ĐÓNG GÓP HOẶC CÁC BÊN LIÊN QUAN SẼ KHÔNG PHẢI CHỊU TRÁCH NHIỆM CHO BẤT KỲ:
-
-1. **THIỆT HẠI TRỰC TIẾP, GIÁN TIẾP, NGẪU NHIÊN, HỆ QUẢ, ĐẶC BIỆT HOẶC MANG TÍNH TRỪNG PHẠT;**
-2. **TỔN THẤT VỀ LỢI NHUẬN, DOANH THU, DỮ LIỆU, DANH TIẾNG, CƠ HỘI KINH DOANH HOẶC THIỆT HẠI VẬT CHẤT/TINH THẦN;**
-3. **SỰ CỐ TREO MÁY, QUÁ NHIỆT PHẦN CỨNG, MẤT ỔN ĐỊNH HỆ ĐIỀU HÀNH, HƯ HỎNG TỆP TIN HOẶC LỖI HIỂN THỊ ĐỒ HỌA;**
-4. **CÁC BIỆN PHÁP CHẾ TÀI HOẶC XỬ LÝ DO NỀN TẢNG BÊN THỨ BA THỰC HIỆN, BAO GỒM VIỆC TẠM KHÓA, HẠN CHẾ HOẶC ĐÓNG TÀI KHOẢN SPOTIFY, YOUTUBE HOẶC DỊCH VỤ KHÁC PHÁT SINH DO VIỆC SỬ DỤNG TÍNH NĂNG KHÔNG CHÍNH THỨC CỦA ỨNG DỤNG;**
-5. **BẤT KỲ VẤN ĐỀ NÀO NẰM NGOÀI TẦM KIỂM SOÁT HỢP LÝ CỦA TÁC GIẢ.**
-
-GIỚI HẠN NÀY ĐƯỢC ÁP DỤNG BẤT KỂ CĂN CỨ PHÁP LÝ (DÙ THEO HỢP ĐỒNG, NGOÀI HỢP ĐỒNG, LỖI VÔ Ý, TRÁCH NHIỆM NGHIÊM NGẶT HAY CĂN CỨ NÀO KHÁC), NGAY CẢ KHI TÁC GIẢ ĐÃ ĐƯỢC CẢNH BÁO TRƯỚC VỀ KHẢ NĂNG XẢY RA CÁC THIỆT HẠI ĐÓ.
-
-**8.1 Mức Trách Nhiệm Tối Đa:** Trong trường hợp, bất chấp các nội dung nêu trên, Tác giả vẫn bị xác định phải chịu trách nhiệm pháp lý theo bất kỳ căn cứ nào đối với bạn, các bên đồng ý rằng tổng mức trách nhiệm tối đa của Tác giả sẽ không vượt quá số tiền bạn đã thực trả để có được Phần mềm — tức **bằng 0 (không) đồng**, do V-Notch được phân phối hoàn toàn miễn phí.
-
-**8.2 Quyền Lợi Bắt Buộc Của Người Tiêu Dùng:** Một số quốc gia hoặc vùng lãnh thổ (bao gồm các quốc gia thành viên EU, Vương quốc Anh, và một số bang tại Hoa Kỳ) không cho phép loại trừ hoặc giới hạn bảo hành ngụ ý, hoặc loại trừ trách nhiệm đối với thiệt hại phát sinh do sơ suất nghiêm trọng (gross negligence), hành vi cố ý (willful misconduct), hoặc gây tử vong/thương tích cá nhân do sơ suất của Tác giả. Trong phạm vi bất kỳ giới hạn nào tại Điều khoản này không thể được thi hành theo pháp luật bắt buộc áp dụng đối với bạn, giới hạn đó sẽ được điều chỉnh ở mức tối thiểu cần thiết để tuân thủ pháp luật, mà không ảnh hưởng đến hiệu lực của các giới hạn còn lại.
-
----
-
-## 9. Bồi Thường & Miễn Trừ Trách Nhiệm
-
-Bạn đồng ý bảo vệ, bồi thường và giữ cho tác giả, các cá nhân duy trì và người đóng góp cho dự án V-Notch không phải chịu bất kỳ tổn hại, khiếu nại, tranh chấp, thiệt hại, nghĩa vụ, mất mát, chi phí hoặc nợ nần nào (bao gồm cả chi phí pháp lý hợp lý) phát sinh từ:
-- Hành vi sử dụng hoặc truy cập Ứng dụng của bạn;
-- Việc bạn vi phạm bất kỳ điều khoản nào trong bản Điều khoản này;
-- Việc bạn vi phạm quyền của bên thứ ba, bao gồm nhưng không giới hạn ở quyền sở hữu trí tuệ, quyền riêng tư, hoặc điều khoản sử dụng của các nền tảng bên thứ ba;
-- Bất kỳ khiếu nại nào cho rằng dữ liệu, nội dung hoặc tệp bạn xử lý qua Ứng dụng gây phương hại đến bên thứ ba.
-
-Nghĩa vụ bồi thường này vẫn tiếp tục có hiệu lực sau khi bạn ngừng sử dụng Ứng dụng hoặc sau khi Điều khoản này chấm dứt vì bất kỳ lý do gì.
-
----
-
-## 10. Chấm Dứt Điều Khoản
-
-### 10.1 Chấm Dứt Do Vi Phạm
-Nếu bạn vi phạm bất kỳ điều khoản nào trong văn bản này, các quyền được cấp cho bạn theo Điều Khoản này sẽ tự động chấm dứt mà không cần thông báo trước — ngoại trừ các quyền cấp phép mã nguồn theo Giấy phép Apache 2.0, vốn được điều chỉnh độc lập theo các điều kiện chấm dứt riêng quy định tại chính Giấy phép đó. Khi Điều khoản này chấm dứt, bạn phải ngừng ngay việc sử dụng, gỡ cài đặt và xóa mọi bản sao Phần mềm dưới dạng bản dựng nhị phân chính thức mà bạn đang nắm giữ.
-
-### 10.2 Điều Khoản Còn Hiệu Lực Sau Khi Chấm Dứt
-Các quy định có bản chất cần tiếp tục ràng buộc sau khi chấm dứt — bao gồm nhưng không giới hạn ở Điều 2 (Giấy phép mã nguồn mở), Điều 7 (Miễn trừ bảo hành), Điều 8 (Giới hạn trách nhiệm), Điều 9 (Bồi thường), và Điều 15 (Luật áp dụng & giải quyết tranh chấp) — sẽ tiếp tục có hiệu lực bất kể Điều khoản này chấm dứt vì lý do gì.
-
-### 10.3 Tự Nguyện Ngừng Sử Dụng
-Bạn có thể ngừng sử dụng V-Notch bất kỳ lúc nào bằng cách gỡ cài đặt Ứng dụng. Do kiến trúc local-first không lưu trữ tài khoản trên máy chủ, việc gỡ cài đặt đồng nghĩa với việc chấm dứt hoàn toàn mối quan hệ sử dụng dịch vụ giữa bạn và Tác giả.
-
----
-
-## 11. Xử Lý Khiếu Nại Vi Phạm Quyền Sở Hữu Trí Tuệ
-
-### 11.1 Không Phải Nhà Cung Cấp Dịch Vụ Lưu Trữ
-V-Notch hoạt động theo kiến trúc cục bộ (local-first) và không vận hành máy chủ lưu trữ nội dung của người dùng. Mọi tệp tin bạn xử lý, lưu trữ hoặc chia sẻ qua tính năng Khay Chứa Tệp (File Shelf) hoàn toàn nằm trên thiết bị cá nhân của bạn và không được Tác giả lưu trữ, truy cập hay kiểm duyệt dưới bất kỳ hình thức nào. Do đó, Tác giả không có khả năng và không có nghĩa vụ xử lý các khiếu nại vi phạm bản quyền liên quan đến nội dung do người dùng tự lưu trữ cục bộ.
-
-### 11.2 Khiếu Nại Về Mã Nguồn Hoặc Bản Phát Hành Chính Thức
-Nếu bạn cho rằng mã nguồn, tài liệu, hình ảnh hoặc bất kỳ nội dung nào trong kho lưu trữ hoặc bản phát hành chính thức của V-Notch xâm phạm quyền sở hữu trí tuệ của bạn, vui lòng gửi khiếu nại chi tiết (mô tả nội dung bị xâm phạm, vị trí cụ thể, và bằng chứng về quyền sở hữu) qua [GitHub Issues](https://github.com/rainaku/V-Notch/issues) hoặc thông qua quy trình khiếu nại bản quyền tiêu chuẩn của GitHub. Tác giả cam kết xem xét và phản hồi các khiếu nại hợp lệ trong thời gian hợp lý.
-
----
-
-## 12. Chính Sách Bảo Mật
-
-Chúng tôi coi trọng việc bảo vệ quyền riêng tư của bạn. Chi tiết về cách thức ứng dụng xử lý dữ liệu được trình bày minh bạch trong [Chính Sách Bảo Mật](PRIVACY_POLICY_VI.md) (và bản tiếng Anh tại [PRIVACY_POLICY.md](PRIVACY_POLICY.md)).
-
-Bằng việc sử dụng V-Notch, bạn xác nhận đã đọc, hiểu và đồng thuận với các nguyên tắc bảo mật và giới hạn truyền nhận dữ liệu được nêu trong Chính Sách Bảo Mật.
-
----
-
-## 13. Tính Tách Rời, Không Từ Bỏ Quyền & Toàn Bộ Thỏa Thuận
-
-### 13.1 Tính Tách Rời
-Nếu bất kỳ điều khoản nào trong văn bản này bị cơ quan tư pháp có thẩm quyền tuyên bố là bất hợp pháp, vô hiệu hoặc không thể thi hành vì bất kỳ lý do gì, thì điều khoản đó sẽ được coi là tách rời khỏi văn bản và không làm ảnh hưởng đến hiệu lực, tính hợp pháp cũng như khả năng thi hành của các điều khoản còn lại. Cơ quan tài phán có thẩm quyền sẽ điều chỉnh điều khoản đó ở mức tối thiểu cần thiết để điều khoản có thể thi hành được, nhằm phản ánh đúng nhất ý định ban đầu của các bên.
-
-### 13.2 Không Từ Bỏ Quyền
-Việc Tác giả không thực hiện hoặc chậm trễ thực hiện bất kỳ quyền hoặc điều khoản nào trong văn bản này sẽ không được coi là sự từ bỏ quyền đó. Mọi sự từ bỏ quyền chỉ có hiệu lực nếu được lập thành văn bản và được xác nhận rõ ràng bởi Tác giả.
-
-### 13.3 Không Chuyển Nhượng
-Bạn không được chuyển nhượng hoặc ủy quyền bất kỳ quyền hoặc nghĩa vụ nào của mình theo Điều Khoản này cho bên thứ ba mà không có sự đồng ý trước bằng văn bản của Tác giả. Tác giả có quyền chuyển nhượng Điều Khoản này (ví dụ trong trường hợp chuyển giao quyền duy trì dự án cho một cá nhân/tổ chức khác) mà không cần sự đồng ý trước của bạn, với điều kiện bên nhận chuyển nhượng tiếp tục tuân thủ các nghĩa vụ đã cam kết trong Điều khoản này.
-
-### 13.4 Toàn Bộ Thỏa Thuận
-Điều khoản này cùng với [Chính Sách Bảo Mật](PRIVACY_POLICY_VI.md) và [Giấy Phép Apache 2.0](LICENSE) tạo thành toàn bộ thỏa thuận hoàn chỉnh giữa bạn và tác giả liên quan đến việc sử dụng ứng dụng V-Notch, thay thế mọi thỏa thuận, trao đổi hoặc cam kết trước đó (nếu có) về cùng nội dung.
-
----
-
-## 14. Thay Đổi Điều Khoản
-
-Tác giả có quyền đơn phương sửa đổi, cập nhật hoặc thay thế các Điều khoản này bất kỳ lúc nào để phù hợp với các cải tiến tính năng hoặc yêu cầu pháp lý mới. Khi có sửa đổi:
-- Mục "Ngày hiệu lực" ở đầu văn bản sẽ được cập nhật.
-- Văn bản sửa đổi sẽ được đăng tải công khai trên kho lưu trữ [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
-- Các thay đổi quan trọng có thể được thông báo tóm tắt trong nhật ký thay đổi (changelog) của bản phát hành mới.
-
-Việc bạn tiếp tục tải về, cài đặt hoặc sử dụng V-Notch sau khi các sửa đổi được đăng tải đồng nghĩa với việc bạn hoàn toàn chấp thuận và chịu ràng buộc bởi bản Điều khoản Dịch vụ cập nhật.
-
----
-
-## 15. Luật Áp Dụng & Giải Quyết Tranh Chấp
-
-### 15.1 Luật Áp Dụng
-Các Điều khoản này được giải thích và điều chỉnh theo pháp luật của **[ĐIỀN TÊN QUỐC GIA/VÙNG LÃNH THỔ NƠI TÁC GIẢ CƯ TRÚ HOẶC ĐĂNG KÝ HOẠT ĐỘNG — ví dụ: nước Cộng hòa Xã hội Chủ nghĩa Việt Nam]**, không áp dụng các nguyên tắc xung đột pháp luật (conflict of laws) và không áp dụng Công ước Liên Hợp Quốc về Hợp đồng Mua bán Hàng hóa Quốc tế (CISG).
-
-### 15.2 Thương Lượng Thiện Chí
-Các bên khuyến khích trước hết trao đổi và nỗ lực giải quyết mọi tranh chấp, vướng mắc hoặc khiếu nại phát sinh từ hoặc liên quan đến Điều khoản này trên tinh thần thiện chí thông qua trang [Issues của kho mã nguồn dự án](https://github.com/rainaku/V-Notch/issues). Việc trao đổi này mang tính khuyến khích thiện chí, **không phải là điều kiện tiên quyết bắt buộc** và không làm mất hay trì hoãn quyền khởi kiện hợp pháp của bất kỳ bên nào tại cơ quan tài phán có thẩm quyền.
-
-### 15.3 Cơ Quan Tài Phán
-Trong trường hợp tranh chấp không thể giải quyết bằng thương lượng, các bên đồng ý rằng tòa án có thẩm quyền tại **[ĐIỀN THÀNH PHỐ/QUỐC GIA NƠI TÁC GIẢ CƯ TRÚ HOẶC ĐĂNG KÝ]** sẽ có thẩm quyền giải quyết tranh chấp, trừ khi pháp luật bắt buộc áp dụng tại nơi cư trú thường xuyên của bạn (đặc biệt đối với người tiêu dùng tại Liên minh Châu Âu, Vương quốc Anh, hoặc các khu vực có quy định bảo vệ người tiêu dùng mang tính bắt buộc) quy định một thẩm quyền tài phán khác, trong trường hợp đó quy định bắt buộc đó sẽ được ưu tiên áp dụng.
-
-> **Lưu ý:** Hai vị trí được đánh dấu ở trên cần được Tác giả điền cụ thể quốc gia/vùng lãnh thổ nơi cư trú hoặc đăng ký hoạt động trước khi công bố Điều khoản chính thức — một điều khoản "luật áp dụng" không nêu rõ quốc gia cụ thể có thể bị coi là không đủ chắc chắn để thi hành và làm suy yếu đáng kể vị thế pháp lý khi xảy ra tranh chấp.
-
----
-
-## 16. Thông Tin Liên Hệ
-
-Nếu bạn có bất kỳ câu hỏi, góp ý, phản hồi lỗi hoặc yêu cầu pháp lý nào liên quan đến Điều Khoản Dịch Vụ này, vui lòng liên hệ qua:
-
-- **Trang Góp Ý & Báo Lỗi GitHub:** [https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)
-- **Website & Hồ Sơ Nhà Phát Triển:** [https://rainaku.id.vn](https://rainaku.id.vn)
-- **Kho Mã Nguồn Chính Thức:** [https://github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch)
+Kho chính thức: https://github.com/rainaku/V-Notch  
+Liên hệ chung: https://github.com/rainaku/V-Notch/issues (công khai; không đăng thông tin bí mật).  
+Có hiệu lực từ 22/09/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.

@@ -1,6 +1,7 @@
 # Chính Sách Bảo Mật — V-Notch
 
-**Ngày hiệu lực:** 9 tháng 9, 2026 (sửa đổi)
+**Ngày hiệu lực:** 22 tháng 9 năm 2026  
+**Bản công bố trước:** 9 tháng 9 năm 2026
 
 **Phiên bản ứng dụng:** 1.9.3
 
@@ -15,10 +16,14 @@ V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows
 
 Chính sách bảo mật này giải thích chi tiết: chính xác dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh đúng hành vi thực tế của mã nguồn, vốn được công khai hoàn toàn để kiểm tra tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
-**Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Các yêu cầu mạng ra ngoài chỉ phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật, lấy ảnh bìa / lời bài hát / phụ đề / Spotify Canvas cho bài hát bạn đang phát, và — nếu bạn chủ động bật — hiển thị dự báo thời tiết. Tất cả được mô tả chi tiết trong Mục 4.
+**Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Theo tài liệu hiện có, các yêu cầu mạng ra ngoài phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật, lấy ảnh bìa / lời bài hát / phụ đề / Spotify Canvas cho bài hát bạn đang phát, và — nếu bạn chủ động bật — hiển thị dự báo thời tiết. Tất cả được mô tả chi tiết trong Mục 4.
+
+Chính sách bảo mật này cần được đọc cùng với [Điều Khoản Dịch Vụ](TERMS_OF_SERVICE_VI.md) của chúng tôi, văn bản điều chỉnh việc sử dụng ứng dụng nói chung, bao gồm các tuyên bố miễn trừ trách nhiệm, giới hạn trách nhiệm pháp lý, và luật áp dụng cùng quy trình giải quyết tranh chấp áp dụng cho cả hai văn bản này.
+
+Tài liệu này mô tả hoạt động của chính ứng dụng, không cam kết rằng trang web độc lập, thành phần hệ điều hành, WebView, CDN hoặc các bản dựng do người khác sửa đổi không xử lý dữ liệu. Thông tin phiên bản 1.9.3 phải được đối chiếu với bản phát hành thực tế.
 
 Chính sách này dùng các thuật ngữ sau:
-- **"Cục bộ"** — dữ liệu ở lại trên máy của bạn và không bao giờ được gửi đi đâu.
+- **"Cục bộ"** — dữ liệu ở lại trên máy của bạn và không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ.
 - **"Tạm thời"** — dữ liệu chỉ giữ trong bộ nhớ (RAM/VRAM) trong khi cần để hiển thị hoặc xử lý, sau đó bị loại bỏ ngay lập tức; không bao giờ ghi xuống đĩa.
 - **"Tùy chọn (opt-in)"** — tính năng ở trạng thái tắt và không hoạt động cho đến khi bạn chủ động bật hoặc kích hoạt nó.
 
@@ -29,7 +34,7 @@ Chính sách này dùng các thuật ngữ sau:
 | Khả năng | Truy cập gì | Rời khỏi thiết bị? | Lưu trữ trên đĩa? |
 |---|---|---|---|
 | **Phương tiện đang phát** | Tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái (Windows SMTC) | Không (trừ tra cứu ảnh bìa/lời/phụ đề — xem §4) | Không (tạm thời trong bộ nhớ) |
-| **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có — YouTube/Google, SoundCloud, Piped/Invidious | Không (cache trong bộ nhớ và tệp cache nguồn cục bộ) |
+| **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có — YouTube/Google, SoundCloud, Piped/Invidious | Có: ánh xạ nguồn có thể lưu cục bộ (§5.3); ảnh có thể được cache bởi thành phần hiển thị |
 | **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có — lrclib.net, và api.lrcmux.dev làm nguồn tổng hợp dự phòng | Không (tạm thời trong bộ nhớ) |
 | **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề (YoutubeExplode) | Có — YouTube | Không (tạm thời trong bộ nhớ) |
 | **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có — Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
@@ -41,7 +46,7 @@ Chính sách này dùng các thuật ngữ sau:
 | **Xem trước camera (opt-in)** | Khung hình camera trực tiếp | Không | Không (không bao giờ ghi lại, chụp hay lưu) |
 | **File Shelf** | Đường dẫn tệp + metadata tệp cơ bản (tên, kích thước, loại) | Không | Đường dẫn lưu cục bộ trong cài đặt (xem §5) |
 | **Âm lượng & Audio Mixer** | Đọc/điều chỉnh âm lượng tổng và từng ứng dụng (Core Audio) | Không | Không |
-| **Phát hiện nguồn phát** | Tiêu đề cửa sổ đang hiển thị; URL trình duyệt (UI Automation) | Không | Không (tạm thời trong bộ nhớ; cache nguồn lưu cục bộ) |
+| **Phát hiện nguồn phát** | Tiêu đề cửa sổ đang hiển thị; URL trình duyệt (UI Automation) | Không | Có thể: ánh xạ tiêu đề media/nguồn trong cache (§5.3); nhật ký chẩn đoán nếu bật (§5.4) |
 | **Bluetooth & trạng thái pin** | Tên thiết bị, loại, mức pin phụ kiện, trạng thái kết nối | Không | Không (tạm thời trong bộ nhớ) |
 | **Chỉ báo & Xem trước Clipboard** | Trình lắng nghe định dạng clipboard / sự kiện copy | Không | Không (nội dung clipboard không bao giờ được tải lên hay lưu lại) |
 | **Chỉ báo quyền riêng tư** | Micro, camera, hoặc quay màn hình có đang hoạt động không | Không | Không (tạm thời trong bộ nhớ) |
@@ -66,7 +71,9 @@ Dữ liệu này được đọc liên tục khi đang phát, dùng để hiển
 - **Quét tiêu đề cửa sổ** — Liệt kê tiêu đề của các cửa sổ cấp cao đang hiển thị và chỉ giữ lại những tiêu đề chứa một trong các từ khóa nền tảng cố định: `spotify`, `youtube`, `soundcloud`, `facebook`, `tiktok`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. Các từ khóa nền tảng mạng xã hội và phát trực tuyến mở rộng dùng để hỗ trợ phát hiện việc phát video/âm thanh bên trong các tab hoặc ứng dụng đó — chúng chỉ được so khớp với văn bản tiêu đề cửa sổ, hoàn toàn không đọc nội dung trang. Các tiêu đề cửa sổ không khớp sẽ bị loại bỏ ngay lập tức và không bao giờ được giữ lại.
 - **Đọc URL trình duyệt** — Với các trình duyệt được hỗ trợ (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, Zen, Arc, Thorium, Floorp, Waterfox, và các trình duyệt nền Chromium/Gecko khác), ứng dụng dùng API trợ năng UI Automation của Windows để đọc thanh địa chỉ và các tab đang mở nhằm tìm một URL media. Chỉ những URL là liên kết media mới được xử lý.
 
-Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, không bao giờ được lưu xuống đĩa hoặc truyền đi nguyên trạng. (Một giá trị suy ra — tên bài/nghệ sĩ — có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.)
+Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, có thể xuất hiện trong nhật ký chẩn đoán cục bộ khi người dùng bật ghi log (§5.4); ứng dụng không được thiết kế để tải lên tiêu đề cửa sổ thô hoặc URL đầy đủ. (Một giá trị suy ra — tên bài/nghệ sĩ — có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.)
+
+**Lưu ý về tiêu đề cửa sổ nhạy cảm:** Vì tính năng này kiểm tra văn bản tiêu đề của các cửa sổ đang hiển thị có chứa một trong các từ khóa khớp, nó có thể vô tình đọc phải một tiêu đề cửa sổ tiết lộ ngữ cảnh không liên quan đến việc phát media — ví dụ: tiêu đề tab trình duyệt hoặc cửa sổ ứng dụng vô tình chứa tên nền tảng khớp (như "Discord" hoặc "Facebook") đi kèm với văn bản riêng tư khác. Các tiêu đề không khớp bị loại bỏ ngay lập tức, và các tiêu đề khớp chỉ được dùng tạm thời như mô tả ở trên và không bao giờ được truyền đi dưới dạng văn bản thô — nhưng nếu đây là điều bạn lo ngại, bạn có thể tắt **Đọc URL trình duyệt để nhận diện phương tiện** bất kỳ lúc nào trong cài đặt Quyền riêng tư được mô tả tại Mục 8.
 
 ### 3.3 Tìm kiếm Spotlight & Trình khởi chạy nhanh (`Alt + Space`)
 
@@ -84,7 +91,7 @@ V-Notch tích hợp trình tìm kiếm Spotlight cho phép bạn tìm ứng dụ
 V-Notch trang bị động cơ mô phỏng quang học Liquid Glass giúp tái hiện hiện tượng khúc xạ ánh sáng, tán sắc sắc sai (chromatic aberration), uốn mép (edge bend), vát cạnh (bevel) và làm mờ nền theo phong cách macOS và Dynamic Island.
 
 - Để tính toán khúc xạ quang học, V-Notch lấy mẫu một vùng pixel nhỏ của màn hình ngay phía sau notch bằng DirectX 11 (DXGI Desktop Duplication) hoặc Windows Magnification API.
-- **Cam kết bảo mật:** Việc lấy mẫu pixel chỉ diễn ra trong bộ nhớ GPU/CPU cục bộ theo từng khung hình để hiển thị hiệu ứng thị giác. Các khung hình bị loại bỏ ngay lập tức sau khi hiển thị lên màn hình. **Không có nội dung màn hình nào được lưu xuống đĩa, ghi video, chụp ảnh lưu trữ, hoặc truyền tải qua mạng.**
+- **Cam kết bảo mật:** Việc lấy mẫu pixel chỉ diễn ra trong bộ nhớ GPU/CPU cục bộ theo từng khung hình để hiển thị hiệu ứng thị giác. Các khung hình bị loại bỏ ngay lập tức sau khi hiển thị lên màn hình. **V-Notch không chủ đích ghi/lưu hoặc tải lên các khung hình được lấy mẫu; Windows và thành phần đồ họa có thể có cơ chế bộ nhớ/cache riêng.**
 
 ### 3.5 Giám sát tài nguyên phần cứng (CPU, RAM, GPU)
 
@@ -168,7 +175,7 @@ V-Notch thử nghiệm hai nhà cung cấp lời bài hát độc lập theo th�
 - **LRCLIB** — `https://lrclib.net/api/get?...` (khớp chính xác) và endpoint tìm kiếm (khớp mờ). **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch.
 - **lrc mux** — `https://api.lrcmux.dev/get?...`, dùng làm nguồn tổng hợp dự phòng khi LRCLIB không có kết quả khớp. **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. lrc mux là dịch vụ tổng hợp lời bài hát của bên thứ ba với các nguồn thượng nguồn riêng; V-Notch không kiểm soát nhà cung cấp thượng nguồn mà dịch vụ này truy vấn nội bộ.
 
-**Dữ liệu nhận về (cả hai):** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Không có dữ liệu cá nhân nào được gửi tới cả hai nhà cung cấp.
+**Dữ liệu nhận về (cả hai):** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Bên nhận thấy IP kết nối; truy vấn nghe nhạc có thể là dữ liệu cá nhân tùy ngữ cảnh.
 
 ### 4.4 Phụ đề & Captions YouTube — YoutubeExplode
 
@@ -202,7 +209,7 @@ Cả hai dịch vụ trên đều là bên thứ ba độc lập với chính s�
 
 ### 4.7 Các bên thứ ba
 
-Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Piped/Invidious, SoundCloud, LRCLIB, ipwho.is, và Open-Meteo) là các bên thứ ba độc lập với chính sách bảo mật riêng của họ. Khi V-Notch liên hệ với họ, địa chỉ IP của bạn tất yếu sẽ hiển thị với dịch vụ đó, như với mọi yêu cầu web thông thường. V-Notch không kiểm soát và không chịu trách nhiệm về cách các dịch vụ đó xử lý yêu cầu. Nếu muốn tránh các tra cứu này, bạn có thể tắt các tính năng ảnh bìa/lời bài hát/phụ đề/Canvas/thời tiết và kiểm tra cập nhật, hoặc chặn truy cập mạng của ứng dụng qua tường lửa.
+Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Piped/Invidious, SoundCloud, LRCLIB, ipwho.is, và Open-Meteo) là các bên thứ ba độc lập với chính sách bảo mật riêng của họ. Khi V-Notch liên hệ với họ, địa chỉ IP của bạn tất yếu sẽ hiển thị với dịch vụ đó, như với mọi yêu cầu web thông thường. V-Notch không kiểm soát hoạt động độc lập của các dịch vụ này; trách nhiệm pháp lý của từng bên phụ thuộc pháp luật và hoàn cảnh thực tế. Nếu muốn tránh các tra cứu này, bạn có thể tắt các tính năng ảnh bìa/lời bài hát/phụ đề/Canvas/thời tiết và kiểm tra cập nhật, hoặc chặn truy cập mạng của ứng dụng qua tường lửa.
 
 ---
 
@@ -216,7 +223,7 @@ Lưu các tùy chọn của bạn: kích thước và vị trí notch, kiểu gi
 
 ### 5.2 Lịch sử sử dụng Spotlight (`%APPDATA%\V-Notch\spotlight-usage.json`)
 
-Lưu danh sách các ứng dụng và mục bạn đã mở từ Spotlight (ID, tiêu đề, đường dẫn mục tiêu, số lần mở và mốc thời gian) để xếp hạng gợi ý nhanh. Tệp này giới hạn tối đa 100 mục, lưu cục bộ và không bao giờ được gửi đi đâu.
+Lưu danh sách các ứng dụng và mục bạn đã mở từ Spotlight (ID, tiêu đề, đường dẫn mục tiêu, số lần mở và mốc thời gian) để xếp hạng gợi ý nhanh. Tệp này giới hạn tối đa 100 mục, lưu cục bộ và không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ.
 
 ### 5.3 Bộ nhớ đệm nguồn phát (`%APPDATA%\V-Notch\source_cache.json`)
 
@@ -224,7 +231,7 @@ Lưu ánh xạ theo cơ chế LRU (tối đa 500 mục) giữa tên bài hát đ
 
 ### 5.4 Nhật ký chẩn đoán (`vnotch-debug.log`)
 
-Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi lại các sự kiện kỹ thuật và lỗi phát sinh để hỗ trợ chẩn đoán sự cố. Do tính chất ghi log, tệp này có thể vô tình chứa tên/nghệ sĩ của các bài hát bạn đã nghe, truy vấn tìm lời bài hát, và tiêu đề cửa sổ đã khớp (ví dụ tiêu đề tab trình duyệt) — đây chính là các thông tin đã được mô tả tại Mục 3 và 4, được ghi cục bộ phục vụ gỡ lỗi. Nhật ký tự động xoay vòng khi đạt kích thước khoảng 5 MB. **Nhật ký này không bao giờ được gửi đi đâu** — nó hoàn toàn nằm trên máy của bạn, không tải lên cùng báo cáo lỗi hay yêu cầu cập nhật, và bạn có thể xóa bất kỳ lúc nào.
+Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi lại các sự kiện kỹ thuật và lỗi phát sinh để hỗ trợ chẩn đoán sự cố. Do tính chất ghi log, tệp này có thể vô tình chứa tên/nghệ sĩ của các bài hát bạn đã nghe, truy vấn tìm lời bài hát, và tiêu đề cửa sổ đã khớp (ví dụ tiêu đề tab trình duyệt) — đây chính là các thông tin đã được mô tả tại Mục 3 và 4, được ghi cục bộ phục vụ gỡ lỗi. Nhật ký tự động xoay vòng khi đạt kích thước khoảng 5 MB. **Nhật ký này không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ** — nó hoàn toàn nằm trên máy của bạn, không tải lên cùng báo cáo lỗi hay yêu cầu cập nhật, và bạn có thể xóa bất kỳ lúc nào.
 
 ### 5.5 Mô hình ONNX tùy chọn
 
@@ -236,8 +243,8 @@ Bạn có thể xóa toàn bộ dữ liệu đã lưu bất cứ lúc nào bằn
 
 ## 6. Dữ liệu mà V-Notch KHÔNG thu thập
 
-V-Notch **không bao giờ**:
-- thu thập, bán, hoặc chia sẻ thông tin cá nhân với bất kỳ bên thứ ba nào;
+V-Notch **không được thiết kế để**:
+- bán dữ liệu cá nhân hoặc chia sẻ dữ liệu để quảng cáo hành vi; việc truyền dữ liệu chức năng cho nhà cung cấp độc lập được mô tả tại Mục 4;
 - chạy các công cụ analytics, telemetry, theo dõi hành vi, hay tạo dấu vân tay thiết bị (fingerprinting);
 - tự động gửi báo cáo sự cố hoặc số liệu thống kê sử dụng;
 - ghi âm thanh, quay video, hoặc chụp ảnh lưu trữ nội dung màn hình;
@@ -245,7 +252,8 @@ V-Notch **không bao giờ**:
 - truy cập tọa độ GPS chính xác của thiết bị;
 - tạo tài khoản, hồ sơ cá nhân, hay mã định danh quảng cáo;
 - lưu trữ hoặc tải lên nội dung clipboard;
-- gửi từ khóa tìm kiếm Spotlight hay dữ liệu chỉ mục tệp qua mạng.
+- gửi từ khóa tìm kiếm Spotlight hay dữ liệu chỉ mục tệp qua mạng;
+- bán, cho thuê, hoặc "chia sẻ" (theo định nghĩa của CCPA/CPRA và các luật tương tự) bất kỳ thông tin cá nhân nào — trong phạm vi xác minh được đối với ứng dụng chính thức; dữ liệu bạn tự gửi tới GitHub được xử lý theo chính sách của GitHub.
 
 ---
 
@@ -271,7 +279,7 @@ V-Notch **không bao giờ**:
 
 V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và ép buộc chế độ ngoại tuyến hoàn toàn:
 
-- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Công tắc tổng ngắt toàn bộ mọi kết nối mạng ra bên ngoài trên tất cả các mô-đun (tự động kiểm tra bản cập nhật, tìm kiếm ảnh bìa trực tuyến, tra cứu lời bài hát/phụ đề, tải video Canvas của Spotify, và truy vấn thời tiết). V-Notch sẽ hoạt động 100% ngoại tuyến.
+- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Công tắc ở cấp ứng dụng được thiết kế để chặn yêu cầu mạng do các mô-đun V-Notch khởi tạo (tự động kiểm tra bản cập nhật, tìm kiếm ảnh bìa trực tuyến, tra cứu lời bài hát/phụ đề, tải video Canvas của Spotify, và truy vấn thời tiết). Không bảo đảm chặn các kết nối do Windows, WebView, runtime hoặc ứng dụng khác tự thực hiện; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
 - **Tự động kiểm tra bản cập nhật mới:** Bật/tắt kiểm tra định kỳ bản phát hành mới trên GitHub Releases ở chế độ nền.
 - **Tìm kiếm ảnh bìa album trực tuyến:** Bật/tắt tra cứu ảnh bìa từ YouTube, SoundCloud, Piped khi trình phát không có ảnh bìa nhúng.
 - **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ LRCLIB và lrc mux cho bài hát đang phát.
@@ -287,29 +295,49 @@ V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài �
 
 V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Tất cả thông tin nhạy cảm lưu trữ (cookie `sp_dc` của Spotify, khóa YouTube API) đều được mã hóa an toàn bằng Windows DPAPI. Cập nhật trong ứng dụng từ phiên bản 1.9.2 trở đi bắt buộc xác minh manifest có chữ ký như mô tả tại Mục 4.1; cơ chế này không yêu cầu chứng chỉ Authenticode trả phí và không xác thực lần tải thủ công đầu tiên. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
+Mặc dù mã hóa DPAPI, xác minh manifest có chữ ký, và việc chạy với quyền người dùng tiêu chuẩn mang lại sự bảo vệ đáng kể, **không có phương thức lưu trữ cục bộ, mã hóa hoặc phân phối phần mềm nào có thể được đảm bảo an toàn tuyệt đối 100%.** Bạn xác nhận rằng việc sử dụng các tính năng lưu trữ, cập nhật và mạng của V-Notch là do bạn tự chịu rủi ro, phù hợp với các tuyên bố miễn trừ "NGUYÊN TRẠNG" và giới hạn trách nhiệm pháp lý trong Điều Khoản Dịch Vụ của chúng tôi.
+
 ---
 
 ## 10. Quyền riêng tư trẻ em
 
-V-Notch không thu thập dữ liệu cá nhân từ bất kỳ ai, bao gồm trẻ em, và không hướng bất kỳ nội dung nào riêng biệt tới trẻ em. Ứng dụng hoàn toàn an toàn và phù hợp cho mọi lứa tuổi.
+V-Notch là tiện ích desktop đa dụng và không hướng riêng tới trẻ em. Nhà phát triển không cố ý thu thập dữ liệu cá nhân từ trẻ em, không yêu cầu tạo tài khoản, và không bao gồm quảng cáo, lập hồ sơ (profiling), hay theo dõi hành vi dưới bất kỳ hình thức nào.
+
+Vì V-Notch không có hệ thống tài khoản, ứng dụng **không có cơ chế kỹ thuật nào để xác minh độ tuổi người dùng.** Cha mẹ hoặc người giám hộ có trách nhiệm giám sát việc sử dụng V-Notch của trẻ vị thành niên thuộc quyền quản lý của mình, đặc biệt đối với các tính năng tùy chọn như xem trước camera và Spotify Canvas. Nếu bạn cho rằng một trẻ em đã cung cấp dữ liệu cá nhân theo cách không được mô tả trong Chính sách này (ví dụ, thông qua một GitHub Issue), vui lòng liên hệ với chúng tôi qua Mục 14 để chúng tôi xử lý.
 
 ---
 
-## 11. Sử dụng quốc tế
+## 11. Quyền riêng tư của bạn (GDPR, CCPA/CPRA & luật tương tự)
 
-V-Notch xử lý dữ liệu cục bộ trên thiết bị của bạn. Dữ liệu duy nhất đi qua mạng là dữ liệu yêu cầu chức năng giới hạn được mô tả trong Mục 4, gửi tới các dịch vụ bên thứ ba công khai, vốn có thể vận hành máy chủ ở nhiều quốc gia khác nhau. Nhà phát triển không thu thập, không chuyển giao và không lưu trữ bất kỳ dữ liệu cá nhân nào của bạn.
+Vì V-Notch ưu tiên xử lý cục bộ và không yêu cầu tài khoản V-Notch, một số quyền có thể được thực hiện với dữ liệu cục bộ trên thiết bị. Điều này **không thay thế** các nghĩa vụ và quyền theo luật áp dụng, bao gồm GDPR/CCPA/CPRA hoặc Luật Bảo vệ dữ liệu cá nhân Việt Nam khi có áp dụng:
+
+- Để **xem dữ liệu nào đang được lưu**, hãy xem Mục 5 (Lưu trữ dữ liệu cục bộ) và Mục 2 (Bảng tổng quan).
+- Để **xóa dữ liệu cục bộ cụ thể**, dùng các công cụ xóa một chạm tại Mục 8 (lịch sử Spotlight, nhật ký chẩn đoán) hoặc chỉnh sửa/xóa từng mục trong `settings.json`.
+- Để **xóa dữ liệu cục bộ do ứng dụng quản lý**, hãy thoát V-Notch, ngắt kết nối Spotify trong Cài đặt (nếu có), rồi xóa `%APPDATA%\V-Notch\` và thư mục cài đặt. Cần kiểm tra riêng thư mục tạm Windows, cache WebView/trình duyệt, bản sao lưu và dữ liệu đã đăng trên GitHub; thao tác này không bảo đảm xóa các bản sao bên ngoài. Thao tác xóa sẽ làm mất cấu hình.
+
+Đối với phần dữ liệu giới hạn rời khỏi thiết bị của bạn để thực hiện một tính năng bạn đã bật (mô tả tại Mục 4), vai trò pháp lý của nhà phát triển và nhà cung cấp phải được xác định theo thực tế xử lý và luật áp dụng, không thể mặc nhiên kết luận mọi bên thứ ba là bên kiểm soát độc lập. Để thực hiện quyền đối với dữ liệu do các dịch vụ đó nắm giữ (ví dụ: một truy vấn tìm kiếm được cache bởi một instance front-end YouTube, hoặc một tra cứu dựa trên IP do `ipwho.is` thực hiện), vui lòng liên hệ trực tiếp với dịch vụ đó qua các liên kết tại Mục 4 ở trên.
+
+Nếu bạn có yêu cầu về quyền riêng tư mà các công cụ cục bộ nêu trên không giải quyết được, bạn có thể liên hệ nhà phát triển qua GitHub Issues (Mục 14). Nhà phát triển có thể xử lý thông tin bạn tự gửi trong Issues hoặc trao đổi trực tiếp; phải xem xét yêu cầu theo nghĩa vụ luật định. Không thể xóa dữ liệu do dịch vụ độc lập nắm giữ chỉ bằng việc gỡ V-Notch.
 
 ---
 
-## 12. Thay đổi chính sách
+## 12. Sử dụng quốc tế
 
-Chính sách bảo mật này có thể được cập nhật định kỳ khi ứng dụng có thêm tính năng mới. Các thay đổi quan trọng sẽ được phản ánh chi tiết trong tài liệu này, trong changelog của ứng dụng, đồng thời cập nhật ngày hiệu lực và số phiên bản ở đầu tài liệu. Việc bạn tiếp tục sử dụng ứng dụng sau khi cập nhật đồng nghĩa với việc bạn đồng ý với chính sách đã được điều chỉnh.
-
-**Ghi chú sửa đổi (bản cập nhật này):** bổ sung tài liệu chi tiết cho các nút điều khiển Quyền riêng tư & Chế độ ngoại tuyến (Chế độ hoàn toàn ngoại tuyến, các tùy chọn kiểm tra cập nhật, ảnh bìa, lời bài hát, đọc URL trình duyệt, chấm cảm biến, ghi nhật ký ổ đĩa, lịch sử Spotlight và các công cụ xóa dữ liệu).
+V-Notch xử lý dữ liệu cục bộ trên thiết bị của bạn. Dữ liệu duy nhất đi qua mạng là dữ liệu yêu cầu chức năng giới hạn được mô tả trong Mục 4, gửi tới các dịch vụ bên thứ ba công khai, vốn có thể vận hành máy chủ ở nhiều quốc gia khác nhau. Truy vấn chức năng có thể truyền thông tin tới nhà cung cấp độc lập; nhà phát triển cũng có thể nhận dữ liệu cá nhân do bạn tự gửi qua GitHub Issues hoặc báo cáo bảo mật. Việc xử lý xuyên biên giới bởi bên thứ ba phụ thuộc hoạt động của họ và pháp luật áp dụng.
 
 ---
 
-## 13. Liên hệ
+## 13. Thay đổi chính sách
 
-Mọi câu hỏi, thắc mắc hoặc yêu cầu liên quan đến chính sách và dữ liệu có thể được gửi trực tiếp bằng cách tạo issue tại:  
+Chính sách bảo mật này có thể được cập nhật định kỳ khi ứng dụng có thêm tính năng mới. Các thay đổi quan trọng sẽ được phản ánh chi tiết trong tài liệu này, trong changelog của ứng dụng, đồng thời cập nhật ngày hiệu lực và số phiên bản ở đầu tài liệu. Các thay đổi đáng kể sẽ được thông báo trước hoặc khi triển khai nếu khả thi; khi pháp luật yêu cầu sự đồng ý, việc tiếp tục sử dụng đơn thuần không được thay thế sự đồng ý hợp lệ. Có thể tra cứu bản cũ trong lịch sử Git.
+
+**Ghi chú sửa đổi (bản cập nhật này):** bổ sung tài liệu chi tiết cho các nút điều khiển Quyền riêng tư & Chế độ ngoại tuyến (Chế độ hoàn toàn ngoại tuyến, các tùy chọn kiểm tra cập nhật, ảnh bìa, lời bài hát, đọc URL trình duyệt, chấm cảm biến, ghi nhật ký ổ đĩa, lịch sử Spotlight và các công cụ xóa dữ liệu); thêm mục mới "Quyền riêng tư của bạn" (kiểu GDPR/CCPA); làm mềm tuyên bố tại mục Quyền riêng tư trẻ em; thêm tuyên bố miễn trừ bảo mật tuyệt đối; thêm cảnh báo về việc quét tiêu đề cửa sổ; thêm tuyên bố "không bán/chia sẻ" theo CCPA; và liên kết chéo với Điều Khoản Dịch Vụ.
+
+---
+
+## 14. Liên hệ
+
+Mọi câu hỏi hoặc yêu cầu liên quan đến dữ liệu có thể gửi qua Issues. **Issues là công khai: không đăng mật khẩu, cookie phiên, token, hồ sơ cá nhân hay thông tin nhạy cảm.** Với vấn đề bảo mật, chỉ sử dụng kênh riêng tư nếu đã xác minh có công bố trên repo/hồ sơ người duy trì. Liên hệ tại:  
 [https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)
+
+<!-- Publication checklist: validate network behavior, settings toggles, log paths and local deletion against the exact release binary before publication. This comment is not a representation that verification has been completed. -->

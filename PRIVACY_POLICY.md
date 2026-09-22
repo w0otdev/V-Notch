@@ -1,6 +1,7 @@
 # Privacy Policy — V-Notch
 
-**Effective Date:** September 9, 2026 (revised)
+**Effective date:** September 22, 2026  
+**Previous published version:** September 9, 2026
 
 **Application Version:** 1.9.3
 
@@ -15,10 +16,12 @@ V-Notch is a free, open-source desktop application for Windows that recreates a 
 
 This Privacy Policy explains, in detail, exactly what data the application accesses, why it accesses it, where that data goes, and how long it is kept. It reflects the actual behavior of the application source code, which is publicly available for inspection at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
-**Core principle:** V-Notch is strictly local-first. It contains no analytics, no telemetry, no advertising, no tracking identifiers, and requires no V-Notch account. It does not operate any backend server of its own. The only outbound network requests it makes are to public third-party services for specific opt-in or functional purposes: checking for application updates, fetching album artwork / lyrics / subtitles / Spotify Canvas for the media you are playing, and — if you explicitly enable it — showing the weather forecast. All of these are described in Section 4.
+**Core principle:** V-Notch is designed to be local-first. It contains no analytics, no telemetry, no advertising, no tracking identifiers, and requires no V-Notch account. It does not operate any backend server of its own. The application documentation identifies outbound network requests for to public third-party services for specific opt-in or functional purposes: checking for application updates, fetching album artwork / lyrics / subtitles / Spotify Canvas for the media you are playing, and — if you explicitly enable it — showing the weather forecast. These are described in Section 4; the list and actual requests must be checked against the shipped binary and installed web components.
+
+This document describes application-side practices and is not a representation that independent websites, operating-system components, webviews, content delivery networks, or user-installed modifications do not collect data. The references to application version 1.9.3 require verification against the released build.
 
 This policy uses the following terms:
-- **"Local"** — data that stays on your computer and is never sent anywhere.
+- **"Local"** — data processed on the computer and not intentionally transmitted by that feature, subject to the network exceptions explicitly described.
 - **"Transient"** — data held in memory only while needed for display or processing, then discarded; never written to disk.
 - **"Opt-in"** — a feature that is inactive until you explicitly enable or trigger it.
 
@@ -29,7 +32,7 @@ This policy uses the following terms:
 | Capability | What it accesses | Leaves your device? | Stored on disk? |
 |---|---|---|---|
 | **Now-playing media** | Track title, artist, album, artwork, playback position, play state (Windows SMTC) | No (except artwork/lyrics/captions lookup — see §4) | No (transient in memory) |
-| **Album artwork lookup** | Track title + artist sent as a search query | Yes — YouTube/Google, SoundCloud, Piped/Invidious | No (cached in memory and local source cache) |
+| **Album artwork lookup** | Track title + artist sent as a search query | Yes — YouTube/Google, SoundCloud, Piped/Invidious | Yes: source mapping may be stored locally (§5.3); image retention depends on component cache |
 | **Synced lyrics** | Track title + artist + duration sent as a query | Yes — lrclib.net, and api.lrcmux.dev as a fallback aggregator | No (transient in memory) |
 | **YouTube subtitles / captions** | Video ID + caption track requests (YoutubeExplode) | Yes — YouTube | No (transient in memory) |
 | **Spotify Canvas (opt-in)** | Spotify web session (`sp_dc`), track title + artist | Yes — Spotify, Musixmatch (fallback) | Session encrypted locally with Windows DPAPI |
@@ -41,7 +44,7 @@ This policy uses the following terms:
 | **Camera preview (opt-in)** | Live camera frames | No | No (never recorded, captured, or saved) |
 | **File Shelf** | File paths + basic file metadata (name, size, type) | No | File paths persisted locally in settings (see §5) |
 | **System audio & mixer** | Read/adjust master and per-app audio endpoint volume (Core Audio) | No | No |
-| **Media source detection** | Visible window titles; active browser URLs (UI Automation) | No | No (transient in memory; source cache on disk) |
+| **Media source detection** | Visible window titles; active browser URLs (UI Automation) | No | Potentially: derived media-title/source mapping in local cache (§5.3); diagnostic logs if enabled (§5.4) |
 | **Bluetooth & battery status** | Connected device name, type, battery level, state | No | No (transient in memory) |
 | **Clipboard indicator & peek** | Clipboard format listener / copy event | No | No (clipboard content is never uploaded or saved) |
 | **Privacy indicators** | Whether microphone, camera, or screen recording is active | No | No (transient in memory) |
@@ -63,10 +66,10 @@ This data is read continuously while media is playing, used to render the notch 
 
 To identify *where* media is playing (e.g. distinguishing a YouTube tab from a SoundCloud tab) and to fetch the correct artwork and lyrics, V-Notch performs two kinds of local inspection:
 
-- **Window title scanning** — It enumerates the titles of visible top-level windows and keeps only those containing one of a fixed set of platform keywords: `spotify`, `youtube`, `soundcloud`, `facebook`, `tiktok`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. The broader streaming and social-platform keywords exist to support detecting video/audio playback inside those sites' tabs or desktop clients — they are matched against the window title text only, not page content. Non-matching window titles are discarded immediately and never retained.
+- **Window title scanning** — It enumerates the titles of visible top-level windows and keeps only those containing one of a fixed set of platform keywords: `spotify`, `youtube`, `soundcloud`, `facebook`, `tiktok`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. The broader streaming and social-platform keywords exist to support detecting video/audio playback inside those sites' tabs or desktop clients — they are matched against the window title text only, not page content. Window titles may be briefly inspected; handling of matching titles and diagnostic logging is explained below and in §5.4.
 - **Browser URL reading** — For supported browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, Zen, Arc, Thorium, Floorp, Waterfox, and other Chromium/Gecko browsers), it uses the Windows UI Automation accessibility API to read the address bar and, if needed, open tabs, in order to find a media URL. Only URLs that look like media links are used.
 
-This inspection happens entirely on your device. The titles and URLs are used transiently to drive media detection and artwork lookup, are cached only briefly in memory and local source cache, and are never stored to disk or transmitted as-is. (A derived value — the track title/artist — may be sent for artwork lookup as described in Section 4.)
+This inspection happens entirely on your device. The titles and URLs are used transiently to drive media detection and artwork lookup, are cached only briefly in memory and local source cache, and may appear in a local diagnostic log when enabled (see §5.4); the application is not designed to upload raw window titles or full browser URLs. (A derived value — the track title/artist — may be sent for artwork lookup as described in Section 4.)
 
 ### 3.3 Spotlight Search & Launcher (`Alt + Space`)
 
@@ -84,7 +87,7 @@ V-Notch features a built-in Spotlight search launcher that lets you find applica
 V-Notch includes a Liquid Glass optical simulation engine that renders realistic glass refraction, chromatic aberration, edge bending, bevel, and blur effects matching macOS and Dynamic Island aesthetics.
 
 - To calculate optical refraction, V-Notch samples a small region of the screen directly beneath the notch area using DirectX 11 (DXGI Desktop Duplication) or the Windows Magnification API.
-- **Privacy safeguard:** Screen pixel sampling occurs solely inside local GPU/CPU memory on a per-frame basis to render the visual effect. Captured frames are immediately discarded once presented on screen. **No screen content is ever saved to disk, recorded, photographed, or transmitted over the network.**
+- **Privacy safeguard:** Screen pixel sampling occurs solely inside local GPU/CPU memory on a per-frame basis to render the visual effect. Captured frames are immediately discarded once presented on screen. **V-Notch does not intentionally persist or upload these sampled frames; operating-system/graphics components may manage their own memory or caches.**
 
 ### 3.5 System Hardware Monitor (CPU, RAM, GPU)
 
@@ -159,7 +162,7 @@ When SMTC does not provide embedded artwork (common for browser-based playback),
 **SoundCloud:**
 - The SoundCloud oEmbed endpoint, to retrieve the artwork URL for a SoundCloud track.
 
-**Data sent:** Track title and artist (as a search query) and standard browser-like HTTP headers. **No user-identifiable information is included.** Retrieved images are held in memory for display and are not written to disk.
+**Data sent:** Track title and artist (as a search query) and standard browser-like HTTP headers. **The recipient may see the connecting IP address; track queries may reveal listening interests.** Retrieved images are held in memory for display and are not written to disk.
 
 ### 4.3 Synced Lyrics — LRCLIB and lrc mux
 
@@ -168,13 +171,13 @@ V-Notch tries two independent lyrics providers, in order, and stops as soon as o
 - **LRCLIB** — `https://lrclib.net/api/get?...` (exact match) and its search endpoint (fuzzy match). **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch.
 - **lrc mux** — `https://api.lrcmux.dev/get?...`, used as a fallback aggregator when LRCLIB has no match. **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch. lrc mux is a third-party lyrics aggregation service with its own upstream sources; V-Notch does not control which upstream provider it queries internally.
 
-**Data received (both):** Synced lyric lines, used transiently in memory for display and never written to disk. No personal data is sent to either provider.
+**Data received (both):** Synced lyric lines, used transiently in memory for display and never written to disk. Music selections and connection IP addresses may be personal data in context and may be observable by the recipient providers.
 
 ### 4.4 YouTube Subtitles & Captions — YoutubeExplode
 
 - **Endpoint:** Public YouTube video caption endpoints via YoutubeExplode library.
 - **Why:** To fetch timed closed captions/subtitles when playing YouTube videos and subtitles are enabled.
-- **Data sent:** YouTube video ID and standard HTTP headers. No user account data or personal identifiers are sent.
+- **Data sent:** YouTube video ID and standard HTTP headers. No Spotify/V-Notch account credential is intended to be sent in this call; the recipient sees connection metadata such as IP address.
 - **Data received:** Timed caption text, used transiently in memory for display.
 
 ### 4.5 Spotify Canvas (Opt-In)
@@ -198,11 +201,11 @@ All three endpoints are third-party services with their own privacy policies:
 - [ipwho.is/privacy](https://ipwho.is/privacy)
 - [open-meteo.com/privacy](https://open-meteo.com/privacy)
 
-**Data sent:** Your IP address (to ipwho.is), or a city name (to Open-Meteo geocoding), and latitude/longitude coordinates (to Open-Meteo forecast). No other personal data is included.
+**Data sent:** Your IP address (to ipwho.is), or a city name (to Open-Meteo geocoding), and latitude/longitude coordinates (to Open-Meteo forecast). The service may receive connection metadata such as IP address; coordinates or music interests may be personal data depending on context.
 
 ### 4.7 Third Parties
 
-The services above (Spotify, GitHub, Google/YouTube, Piped/Invidious instances, SoundCloud, LRCLIB, ipwho.is, and Open-Meteo) are independent third parties with their own privacy policies. When V-Notch contacts them, your IP address is visible to that service as with any normal web request. V-Notch does not control and is not responsible for how those services handle requests. If you prefer to avoid these lookups, you can disable artwork/lyrics/Canvas/weather features and update checks, or block the app's network access.
+The services above (Spotify, GitHub, Google/YouTube, Piped/Invidious instances, SoundCloud, LRCLIB, ipwho.is, and Open-Meteo) are independent third parties with their own privacy policies. When V-Notch contacts them, your IP address is visible to that service as with any normal web request. V-Notch does not control these services; legal responsibilities must be assessed under applicable law. If you prefer to avoid these lookups, you can disable artwork/lyrics/Canvas/weather features and update checks, or block the app's network access.
 
 ---
 
@@ -212,7 +215,7 @@ All persistent data created by V-Notch lives exclusively on your local device.
 
 ### 5.1 Settings (`%APPDATA%\V-Notch\settings.json`)
 
-Stores your preferences: notch size and position, visual style and Liquid Glass options, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. Both values are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and cannot be decrypted by another user or on another machine. If DPAPI is unavailable, these sensitive values are not saved.
+Stores your preferences: notch size and position, visual style and Liquid Glass options, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. Both values are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and are protected for the Windows user by DPAPI, subject to the security of that account and operating system. If DPAPI is unavailable, these sensitive values are not saved.
 
 ### 5.2 Spotlight Usage History (`%APPDATA%\V-Notch\spotlight-usage.json`)
 
@@ -224,13 +227,13 @@ Stores an LRU mapping (up to 500 entries) between media identity titles and reso
 
 ### 5.4 Diagnostic Log (`vnotch-debug.log`)
 
-Located in the application's program folder, this log records technical application events and errors to help diagnose problems. Because of what it logs, it can incidentally contain the titles/artists of tracks you played, lyrics-provider queries, and matched window titles (e.g. a browser tab title) — this is the same information already described in Sections 3 and 4, just also written locally for debugging. It is automatically rotated when it reaches about 5 MB. **This log is never transmitted anywhere** — it stays on your machine, is not uploaded with crash or update requests, and you may delete it at any time.
+Located in the application's program folder, this log records technical application events and errors to help diagnose problems. Because of what it logs, it can incidentally contain the titles/artists of tracks you played, lyrics-provider queries, and matched window titles (e.g. a browser tab title) — this is the same information already described in Sections 3 and 4, just also written locally for debugging. It is automatically rotated when it reaches about 5 MB. **V-Notch is not designed to transmit this log automatically** — it stays on your machine, is not uploaded with crash or update requests, and you may delete it at any time.
 
 ### 5.5 Optional ONNX Model
 
 If present, the smart-crop model file (`yolo11n.onnx`) is stored locally alongside the app and is used purely for on-device image analysis.
 
-You can remove all stored data at any time by deleting the `%APPDATA%\V-Notch\` folder and the application directory.
+To remove application-managed local data, close V-Notch, disconnect Spotify within Settings where available, and remove `%APPDATA%\V-Notch\` and the installation directory. Also check Windows temporary files, WebView/browser caches, backups, and any files submitted to GitHub; removal of these is not guaranteed by deleting the app directory. Deleting the folder permanently discards preferences.
 
 ---
 
@@ -271,7 +274,7 @@ V-Notch does **not**:
 
 V-Notch provides a dedicated **Privacy** section in Settings with granular toggles to customize your privacy posture and enforce strict offline execution:
 
-- **Strict Local-Only Mode:** A master kill-switch that completely shuts down and blocks all outbound network requests across every module (automatic update checks, online album art scrapers, lyrics/subtitle lookups, Spotify Canvas video fetches, and online weather queries). V-Notch will operate 100% offline.
+- **Strict Local-Only Mode:** An application-level switch intended to prevent outbound network requests initiated by V-Notch modules (automatic update checks, online album art scrapers, lyrics/subtitle lookups, Spotify Canvas video fetches, and online weather queries). This is not a guarantee about operating-system services, third-party runtimes or other applications; verify operation using network monitoring against the released build.
 - **Automatic update checks:** Toggle periodic background checks against GitHub Releases.
 - **Online album artwork lookup:** Toggle querying YouTube, SoundCloud, or Piped for album art when the active player provides no embedded cover.
 - **Online synced lyrics lookup:** Toggle fetching synced lyrics from LRCLIB and lrc mux for now-playing songs.
@@ -285,31 +288,36 @@ V-Notch provides a dedicated **Privacy** section in Settings with granular toggl
 
 ## 9. Security
 
-V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). All sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). The documented sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 ---
 
 ## 10. Children's Privacy
 
-V-Notch does not collect personal data from anyone, including children, and does not direct any content toward children specifically. It is suitable for all ages.
+V-Notch is a general-purpose desktop utility, not directed specifically to children. It has no V-Notch accounts or age verification. Local metadata and information shared with independent service providers can nevertheless be personal data. A parent/guardian should supervise optional browser, camera, and Spotify functions. Do not post a child's information to public GitHub Issues. Contact the maintainer to request review of any information you have submitted.
 
 ---
 
-## 11. International Use
+## 11. Privacy Rights and Requests
 
-V-Notch processes data locally on your device. The only data that crosses a network is the limited request data described in Section 4, sent to the third-party services listed there, which may operate in various countries. No personal data is transferred or stored by the developer.
-
----
-
-## 12. Changes to This Policy
-
-This Privacy Policy may be updated as features change. Material changes will be reflected in this document, in the application changelog, and through an updated effective date and version number above. Continued use of the application after an update constitutes acceptance of the revised policy.
-
-**Revision notes (this update):** added comprehensive documentation for the dedicated Privacy & Local-Only controls (Strict Local-Only Mode, toggles for update checks, online artwork, lyrics, browser URL inspection, privacy dots, disk logging, Spotlight history, and data clearing tools).
+Depending on your jurisdiction and the developer's actual role, applicable law may grant rights to notice, access, rectification, erasure, objection, withdrawal of consent, portability, complaint, and other protections. This policy does not waive these rights or imply that local storage automatically fulfills them. You can use Settings to disable features and delete available local history/log files. To inspect/delete remaining application-managed files, close the app, disconnect Spotify, and review `%APPDATA%\V-Notch\`, the installation directory and relevant Windows temporary storage. Take care not to disclose private data in public Issues; use a private contact channel if provided on the repository. For information held by independent services, review their privacy notices and contact them as applicable. We will review requests concerning information under our control in accordance with applicable law; identity verification may be necessary if justified.
 
 ---
 
-## 13. Contact
+## 12. International Processing
 
-Questions, concerns, or data-related requests can be raised by opening an issue at:  
-[https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)
+External feature providers can receive IP addresses, requested song metadata, video IDs, city names or coordinates described in §4, and may process those outside your country. We do not represent that all such transfers are anonymous or exempt from data-protection law. The developer may also receive information users voluntarily submit on GitHub. See the third parties' own notices for their practices.
+
+---
+
+## 13. Policy Changes
+
+We will update this effective date and describe material changes in the document or release notes. Where applicable law requires consent for new processing, continued use by itself will not constitute that consent. Older policy versions remain available through repository history.
+
+---
+
+## 14. Contact
+
+For questions or rights requests, use [GitHub Issues](https://github.com/rainaku/V-Notch/issues); **do not post secrets, session cookies, passwords or sensitive personal information publicly**. For security-sensitive reports, seek a private contact method listed on the maintainer's GitHub profile if available. We do not promise a private contact method that has not been verified.
+
+<!-- Publication checklist: validate network behavior, settings toggles, log paths and local deletion against the exact release binary before publication. -->
