@@ -72,7 +72,7 @@
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
-      <img src="Introduction/spotify.gif" alt="Spotify and synced lyrics"><br>
+      <img src="Introduction/Spotify.gif" alt="Spotify and synced lyrics"><br>
       <b>Spotify &amp; synced lyrics</b><br>
       <sub>Real-time lyrics, dynamic color gradients, and Canvas backgrounds.</sub>
     </td>
