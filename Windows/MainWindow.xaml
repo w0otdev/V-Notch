@@ -288,11 +288,6 @@
                         </MenuItem.Header>
                     </MenuItem>
                     <Separator Style="{StaticResource TraySeparatorStyle}"/>
-                    <MenuItem Style="{StaticResource TrayMenuItemStyle}" Click="Tutorial_Click">
-                        <MenuItem.Header>
-                            <TextBlock x:Name="MenuTutorialText" Text="Take a tour" Style="{StaticResource TrayMenuItemText}"/>
-                        </MenuItem.Header>
-                    </MenuItem>
                     <MenuItem x:Name="MenuRestart" Style="{StaticResource TrayMenuItemStyle}" Click="Restart_Click">
                         <MenuItem.Header>
                             <StackPanel Orientation="Horizontal">

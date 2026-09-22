@@ -128,8 +128,6 @@ public class NotchSettings
     public string ProcessPriority { get; set; } = "Normal";
     public int GpuPreference { get; set; } = 0;
 
-    public bool HasSeenTutorial { get; set; } = false;
-
     public bool HasSeenSpotlightIntro { get; set; } = false;
 
     public bool EnableLocalOnlyMode { get; set; } = false;

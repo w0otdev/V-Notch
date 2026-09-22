@@ -88,7 +88,7 @@ public partial class App : Application
             var mainWindow = Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
 
-            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings, e.Args.Contains("--tutorial"));
+            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
             _ = AppIntegrityService.StartBackgroundCheckAsync();
 
             base.OnStartup(e);
@@ -435,7 +435,7 @@ public partial class App : Application
             or System.Runtime.InteropServices.COMException;
     }
 
-    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, SettingsService settingsService, bool showTutorial = false)
+    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, SettingsService settingsService)
     {
         try
         {
@@ -449,21 +449,6 @@ public partial class App : Application
             {
                 settings.LastRunVersion = currentVersionStr;
                 needSave = true;
-            }
-
-            if (showTutorial || !settings.HasSeenTutorial)
-            {
-                Current.Dispatcher.BeginInvoke(new System.Action(() =>
-                {
-                    try
-                    {
-                        Services.GetRequiredService<MainWindow>().ShowTutorial();
-                    }
-                    catch (System.Exception introEx)
-                    {
-                        RuntimeLog.Error("TUTORIAL", introEx, "Failed to show tutorial");
-                    }
-                }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             }
 
             if (needSave)
