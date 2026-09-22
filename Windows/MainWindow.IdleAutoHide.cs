@@ -59,7 +59,7 @@ public partial class MainWindow
 
         if (NotchWrapper.IsMouseOver)
             return false;
-        if (_hwnd != IntPtr.Zero && IsCursorInsideWindow())
+        if (_hwnd != IntPtr.Zero && IsCursorInsideNotchVisual())
             return false;
 
         return true;

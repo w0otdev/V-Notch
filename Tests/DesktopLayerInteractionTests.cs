@@ -40,4 +40,28 @@ public class DesktopLayerInteractionTests
 
         Assert.False(keepPromoted);
     }
+
+    [Theory]
+    [InlineData(false, true, true, true, false)] // Collapsed -> always false
+    [InlineData(false, true, false, false, false)] // Collapsed -> always false
+    [InlineData(true, false, true, true, false)] // Not foreground -> false
+    [InlineData(true, false, false, false, false)] // Not foreground -> false
+    [InlineData(true, true, true, false, true)] // Expanded, foreground, keyboard input enabled -> true
+    [InlineData(true, true, false, true, true)] // Expanded, foreground, text box focused -> true
+    [InlineData(true, true, false, false, false)] // Expanded, foreground, but no text box or input enabled -> false
+    public void DetermineActiveKeyboardFocusInteraction_ValidatesStateCorrectly(
+        bool isExpanded,
+        bool isForeground,
+        bool isKeyboardInputEnabled,
+        bool isTextBoxFocused,
+        bool expected)
+    {
+        bool result = MainWindow.DetermineActiveKeyboardFocusInteraction(
+            isExpanded,
+            isForeground,
+            isKeyboardInputEnabled,
+            isTextBoxFocused);
+
+        Assert.Equal(expected, result);
+    }
 }

@@ -194,8 +194,15 @@ public partial class MainWindow
         }
         catch
         {
-            return IsCursorInsideWindow();
+            return false;
         }
+    }
+
+    private bool IsCursorInsideNotchVisual()
+    {
+        if (_hwnd == IntPtr.Zero) return false;
+        if (!GetCursorPos(out var cursorPt)) return false;
+        return IsScreenPointInsideNotchVisual(new InputMonitorService.POINT { x = cursorPt.X, y = cursorPt.Y });
     }
 
     private bool IsCursorInsideWindow()

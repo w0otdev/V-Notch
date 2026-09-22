@@ -1455,6 +1455,11 @@ public partial class MainWindow
 
         FinalizeCompactModeAfterCollapse(contentToShow, suppressCompactThumbnailMotion);
         FinalizeCompactThumbnailAndVisualizerAfterCollapse(suppressCompactThumbnailMotion);
+
+        if (_settings.StayBehindWindows && _isDesktopEdgePromoted && !IsDesktopNotchInteractionActive())
+        {
+            ScheduleDesktopLayerDemotion();
+        }
     }
 
     private void ResetContentTransformAndEffectsAfterCollapse()
@@ -1483,6 +1488,8 @@ public partial class MainWindow
     private void PrepareStateBeforeCollapse()
     {
         StopMainViewHorizontalStabilizer();
+
+        System.Windows.Input.Keyboard.ClearFocus();
 
         _lastExpandedViewBeforeCollapse = DetermineCurrentExpandedView();
 

@@ -382,20 +382,22 @@ public partial class MainWindow : Window
         _hoverCollapseTimer.Tick += (s, e) =>
         {
             _hoverCollapseTimer.Stop();
+            _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
             if (_isDebugViewLocked || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_isExpanded && !NotchWrapper.IsMouseOver)
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
                 {
-                    RuntimeLog.Log(CollapseBlockedLogTag,
-                        $"HoverCollapseTimer suppressed at fire time: remaining={(_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds:F0}ms");
+                    double remaining = (_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds;
+                    _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(remaining + 50);
+                    _hoverCollapseTimer.Start();
                     return;
                 }
 
-                if (_hwnd != IntPtr.Zero && IsCursorInsideWindow())
+                if (IsCursorInsideNotchVisual())
                 {
                     RuntimeLog.Log(CollapseBlockedLogTag,
-                        $"HoverCollapseTimer: WPF says IsMouseOver=False but cursor is inside window rect — suppressing");
+                        $"HoverCollapseTimer: cursor is inside notch visual — suppressing");
                     return;
                 }
 
@@ -2033,10 +2035,10 @@ public partial class MainWindow : Window
             ExpandNotch();
         }
     }
-
     private void NotchWrapper_MouseEnter(object sender, MouseEventArgs e)
     {
         _hoverCollapseTimer.Stop();
+        _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
         AnimateNotchHover(true);
         QueueHoverExpand();
     }
@@ -2057,23 +2059,13 @@ public partial class MainWindow : Window
 
         if (_isExpanded && !_isAnimating && !_isSecondaryView)
         {
-            if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
-            {
-                RuntimeLog.Log("COLLAPSE-BLOCKED",
-                    $"MouseLeave suppressed during grace period: remaining={(_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds:F0}ms");
-                return;
-            }
-
-            if (IsCursorInsideWindow())
-            {
-                RuntimeLog.Log("COLLAPSE-BLOCKED",
-                    $"MouseLeave: WPF fired leave but cursor still inside window rect â€” ignoring");
-                return;
-            }
+            double remainingGrace = (_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds;
+            double delayMs = Math.Max(_settings.HoverCollapseDelay, remainingGrace > 0 ? remainingGrace + 50 : 0);
 
             RuntimeLog.Log("COLLAPSE-HOVER",
-                $"MouseLeave -> starting hoverCollapseTimer: interval={_hoverCollapseTimer.Interval.TotalMilliseconds}ms " +
+                $"MouseLeave -> starting hoverCollapseTimer: interval={delayMs:F0}ms " +
                 $"isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded}");
+            _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(delayMs);
             _hoverCollapseTimer.Start();
         }
         else if (!_isExpanded)
@@ -2105,14 +2097,12 @@ public partial class MainWindow : Window
             if (_settings.DisableMouseLeaveAutoClose) return;
             if (_isExpanded && !_isAnimating && !_isSecondaryView)
             {
-                if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
-                {
-                    RuntimeLog.Log(CollapseBlockedLogTag,
-                        $"HoverService_HoverLeave suppressed during grace period: remaining={(_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds:F0}ms");
-                    return;
-                }
+                double remainingGrace = (_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds;
+                double delayMs = Math.Max(_settings.HoverCollapseDelay, remainingGrace > 0 ? remainingGrace + 50 : 0);
+
                 RuntimeLog.Log("COLLAPSE-HOVER",
-                    $"HoverService_HoverLeave -> starting hoverCollapseTimer: interval={_hoverCollapseTimer.Interval.TotalMilliseconds}ms");
+                    $"HoverService_HoverLeave -> starting hoverCollapseTimer: interval={delayMs:F0}ms");
+                _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(delayMs);
                 _hoverCollapseTimer.Start();
             }
         }));

@@ -62,8 +62,11 @@ public sealed class OverlayWindowController : IDisposable
         _ensureTopmost();
     }
 
+    public bool IsKeyboardInputEnabled { get; private set; }
+
     public void SetKeyboardInput(bool enabled)
     {
+        IsKeyboardInputEnabled = enabled;
         if (_state.Hwnd == IntPtr.Zero) return;
         var exStyle = GetWindowLong(_state.Hwnd, GWL_EXSTYLE);
         SetWindowLong(_state.Hwnd, GWL_EXSTYLE,

@@ -58,18 +58,59 @@ public partial class MainWindow
 
     private bool IsDesktopNotchInteractionActive()
     {
-        bool pointerOverNotch = NotchWrapper?.IsMouseOver == true;
+        bool pointerOverNotch = NotchWrapper?.IsMouseOver == true || IsCursorInsideNotchVisual();
         bool inputCapturedWithin = IsMouseCaptureWithin
                                    || IsStylusCaptureWithin
                                    || AreAnyTouchesCapturedWithin;
         bool ownedWindowInteractionActive = HasActiveOwnedWindowInteraction();
+        bool keyboardFocusActive = HasActiveKeyboardFocusInteraction();
 
         return ShouldKeepDesktopPromotion(
             _desktopPointerInHoverZone,
             pointerOverNotch,
             inputCapturedWithin,
-            IsKeyboardFocusWithin,
+            keyboardFocusActive,
             ownedWindowInteractionActive);
+    }
+
+    private bool HasActiveKeyboardFocusInteraction() =>
+        DetermineActiveKeyboardFocusInteraction(
+            _isExpanded || _isMusicExpanded,
+            IsWindowOrOwnedWindowForeground(),
+            _overlayWindow.IsKeyboardInputEnabled,
+            System.Windows.Input.Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or
+            System.Windows.Controls.PasswordBox);
+
+    internal static bool DetermineActiveKeyboardFocusInteraction(
+        bool isExpandedOrMusicExpanded,
+        bool isForeground,
+        bool isKeyboardInputEnabled,
+        bool isTextBoxFocused)
+    {
+        if (!isExpandedOrMusicExpanded)
+            return false;
+
+        if (!isForeground)
+            return false;
+
+        return isKeyboardInputEnabled || isTextBoxFocused;
+    }
+
+    private bool IsWindowOrOwnedWindowForeground()
+    {
+        IntPtr fg = Win32Interop.GetForegroundWindow();
+        if (fg == IntPtr.Zero) return false;
+        if (_hwnd != IntPtr.Zero && fg == _hwnd) return true;
+
+        foreach (Window owned in OwnedWindows)
+        {
+            if (owned.IsVisible)
+            {
+                var helper = new System.Windows.Interop.WindowInteropHelper(owned);
+                if (helper.Handle == fg) return true;
+            }
+        }
+        return false;
     }
 
     private bool HasActiveOwnedWindowInteraction()
@@ -135,7 +176,7 @@ public partial class MainWindow
 
                 // Check live WPF input state before demotion so active panels, drags,
                 // or fields do not disappear behind foreground applications.
-                if (IsDesktopNotchInteractionActive()) return;
+                if (IsDesktopNotchInteractionActive() || _isAnimating || _isExpanded || _isMusicExpanded) return;
 
                 DemoteToDesktopLayerWithFade();
             },
