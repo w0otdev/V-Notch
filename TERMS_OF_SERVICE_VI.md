@@ -1,6 +1,6 @@
 # Điều Khoản Dịch Vụ — V-Notch
 
-**Ngày hiệu lực:** 14 tháng 9, 2026  
+**Ngày hiệu lực:** [CẬP NHẬT NGÀY KHI CHÍNH THỨC ĐĂNG BẢN SỬA ĐỔI NÀY] (bản gốc: 14 tháng 9, 2026)  
 **Phiên bản ứng dụng:** 1.9.2+  
 **Nhà phát triển:** rainaku  
 **Kho lưu trữ:** [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch)  
@@ -16,7 +16,9 @@ Bằng việc tải xuống, cài đặt, biên dịch, khởi chạy, truy cậ
 
 Nếu bạn không đồng ý với bất kỳ điều khoản hoặc điều kiện nào tại đây, bạn không được phép tải xuống, cài đặt hoặc sử dụng V-Notch. Nếu bạn đã cài đặt ứng dụng, vui lòng gỡ cài đặt và ngừng sử dụng ngay lập tức.
 
-Bạn cam kết rằng bạn đã đủ tuổi chịu trách nhiệm pháp lý theo quy định của pháp luật hiện hành tại khu vực tài phán của bạn, hoặc có sự đồng ý hợp pháp của cha mẹ/người giám hộ để tham gia và chịu trách nhiệm với các điều khoản này.
+Bạn cam kết rằng bạn đã đủ tuổi chịu trách nhiệm pháp lý theo quy định của pháp luật hiện hành tại khu vực tài phán của bạn (tối thiểu 13 tuổi, hoặc độ tuổi tối thiểu cao hơn nếu pháp luật sở tại yêu cầu), hoặc có sự đồng ý hợp pháp của cha mẹ/người giám hộ để tham gia và chịu trách nhiệm với các điều khoản này. V-Notch không được thiết kế hướng đến và không cố ý thu thập dữ liệu của trẻ em dưới 13 tuổi. Ứng dụng không có cơ chế xác minh độ tuổi; cha mẹ hoặc người giám hộ có trách nhiệm giám sát việc sử dụng của trẻ vị thành niên thuộc quyền quản lý của mình.
+
+**Ngôn ngữ của Điều khoản:** Văn bản gốc và có giá trị pháp lý cao nhất của Điều khoản này được soạn thảo bằng **tiếng Việt**. Mọi bản dịch sang ngôn ngữ khác (bao gồm bản tiếng Anh, nếu có) chỉ nhằm mục đích tham khảo và hỗ trợ người dùng không thông thạo tiếng Việt. Trong trường hợp có bất kỳ sự mâu thuẫn, khác biệt hoặc cách hiểu không thống nhất nào giữa các phiên bản ngôn ngữ, **bản tiếng Việt sẽ được ưu tiên áp dụng**.
 
 ---
 
@@ -35,6 +37,9 @@ V-Notch là phần mềm miễn phí và mã nguồn mở (FOSS), được phát
   1. Ghi nhận rõ ràng và nổi bật tác giả ban đầu là **rainaku** và dự án gốc là **V-Notch**;
   2. Nêu rõ toàn bộ những nội dung bạn đã sửa đổi;
   3. Đặt một tên gọi dự án hoàn toàn khác biệt, không được sử dụng nhãn hiệu hoặc tên gọi "V-Notch" để đặt tên cho sản phẩm phái sinh của bạn hoặc gây nhầm lẫn đây là bản phân phối chính thức từ tác giả.
+
+### 2.4 Nhãn Hiệu "V-Notch"
+Tên gọi **"V-Notch"**, cùng với bất kỳ logo hoặc biểu trưng liên quan nào, được xem là dấu hiệu nhận diện thương mại (bao gồm quyền nhãn hiệu theo thông luật - common law trademark rights - dù chưa đăng ký chính thức) thuộc quyền sử dụng của tác giả **rainaku** để nhận diện dự án. Giấy phép Apache 2.0 cấp quyền sử dụng **mã nguồn** nhưng theo Điều 6 của Giấy phép Apache 2.0, **không** cấp quyền sử dụng tên gọi, logo, nhãn hiệu hoặc các dấu hiệu nhận diện thương mại "V-Notch" cho mục đích quảng bá các bản phân phối phái sinh, phù hợp với Điều 2.3 nêu trên.
 
 ---
 
@@ -104,6 +109,8 @@ Bạn đồng ý chỉ sử dụng V-Notch cho các mục đích hợp pháp và
 4. **Xâm Phạm Quyền Sở Hữu Trí Tuệ:** Dùng khay tệp (File Shelf) hoặc các tiện ích khác của ứng dụng để truyền tải, tàng trữ hoặc phát tán tài liệu vi phạm bản quyền, bí mật thương mại hoặc quyền riêng tư của cá nhân/tổ chức khác.
 5. **Vô Hiệu Hóa Bảo Mật:** Sửa đổi mã nguồn nhằm can thiệp trái phép hoặc làm vô hiệu cơ chế kiểm tra tính toàn vẹn chữ ký số mật mã (chẳng hạn chữ ký ECDSA khi cập nhật ứng dụng) để chèn phần mềm độc hại.
 6. **Mạo Nhận Quyền Tác Giả & Tái Phân Phối Dưới Tên Của Bạn:** Tái phân phối, đổi tên hoặc phát hành lại V-Notch dưới tên của chính bạn; xóa bỏ thông tin tác giả rainaku; thay thế tên bạn hoặc tổ chức của bạn vào vị trí người sáng tạo; hoặc cố tình gây hiểu nhầm cho cộng đồng và người dùng cuối rằng bạn là tác giả ban đầu của phần mềm.
+7. **Xâm Phạm Quyền Riêng Tư Của Người Khác Qua Quyền Hệ Thống:** Sử dụng các quyền truy cập hệ thống được nêu tại Điều 3 (ví dụ: xem trước camera, lắng nghe sự kiện clipboard) để giám sát, ghi lại hoặc xâm phạm quyền riêng tư của người khác mà không có sự đồng thuận hợp pháp của họ, kể cả khi sử dụng trên thiết bị dùng chung.
+8. **Vi Phạm Luật Kiểm Soát Xuất Khẩu & Trừng Phạt Thương Mại:** Tải xuống, truy cập hoặc sử dụng Phần mềm tại các quốc gia, vùng lãnh thổ, hoặc bởi các cá nhân/tổ chức đang bị cấm vận hoặc hạn chế theo luật kiểm soát xuất khẩu và trừng phạt thương mại hiện hành (bao gồm nhưng không giới hạn ở danh sách trừng phạt của Hoa Kỳ, Liên minh Châu Âu hoặc Liên Hợp Quốc), trong phạm vi các quy định đó có thể áp dụng.
 
 ---
 
@@ -117,6 +124,9 @@ Từ phiên bản 1.9.2 trở đi, các bản phát hành chính thức đi kèm
 
 ### 6.3 Chế Độ Nghiêm Ngặt Chỉ Chạy Cục Bộ (Strict Local-Only Mode)
 Nếu bạn không muốn ứng dụng tạo bất kỳ kết nối mạng nào ra ngoài, V-Notch cung cấp tính năng **Strict Local-Only Mode** trong cài đặt Quyền riêng tư. Khi bật, toàn bộ các tính năng kiểm tra cập nhật, tìm lời bài hát online, tìm ảnh bìa online, tải Canvas và tra cứu thời tiết sẽ bị ngắt kết nối hoàn toàn và vô điều kiện.
+
+### 6.4 Không Cam Kết Về Hỗ Trợ & Bảo Trì
+Là dự án mã nguồn mở phi lợi nhuận, Tác giả không có nghĩa vụ pháp lý phải cung cấp bất kỳ hình thức hỗ trợ kỹ thuật, bảo trì, khắc phục lỗi hay phát hành bản cập nhật nào trong tương lai. Dự án có thể ngừng phát triển, không còn được duy trì, hoặc bị gỡ bỏ khỏi kho lưu trữ bất kỳ lúc nào mà không cần thông báo trước, mà không phát sinh bất kỳ trách nhiệm nào đối với bạn.
 
 ---
 
@@ -148,6 +158,10 @@ TRONG MỨC TỐI ĐA ĐƯỢC PHÁP LUẬT HIỆN HÀNH CHO PHÉP, TRONG MỌI 
 
 GIỚI HẠN NÀY ĐƯỢC ÁP DỤNG BẤT KỂ CĂN CỨ PHÁP LÝ (DÙ THEO HỢP ĐỒNG, NGOÀI HỢP ĐỒNG, LỖI VÔ Ý, TRÁCH NHIỆM NGHIÊM NGẶT HAY CĂN CỨ NÀO KHÁC), NGAY CẢ KHI TÁC GIẢ ĐÃ ĐƯỢC CẢNH BÁO TRƯỚC VỀ KHẢ NĂNG XẢY RA CÁC THIỆT HẠI ĐÓ.
 
+**8.1 Mức Trách Nhiệm Tối Đa:** Trong trường hợp, bất chấp các nội dung nêu trên, Tác giả vẫn bị xác định phải chịu trách nhiệm pháp lý theo bất kỳ căn cứ nào đối với bạn, các bên đồng ý rằng tổng mức trách nhiệm tối đa của Tác giả sẽ không vượt quá số tiền bạn đã thực trả để có được Phần mềm — tức **bằng 0 (không) đồng**, do V-Notch được phân phối hoàn toàn miễn phí.
+
+**8.2 Quyền Lợi Bắt Buộc Của Người Tiêu Dùng:** Một số quốc gia hoặc vùng lãnh thổ (bao gồm các quốc gia thành viên EU, Vương quốc Anh, và một số bang tại Hoa Kỳ) không cho phép loại trừ hoặc giới hạn bảo hành ngụ ý, hoặc loại trừ trách nhiệm đối với thiệt hại phát sinh do sơ suất nghiêm trọng (gross negligence), hành vi cố ý (willful misconduct), hoặc gây tử vong/thương tích cá nhân do sơ suất của Tác giả. Trong phạm vi bất kỳ giới hạn nào tại Điều khoản này không thể được thi hành theo pháp luật bắt buộc áp dụng đối với bạn, giới hạn đó sẽ được điều chỉnh ở mức tối thiểu cần thiết để tuân thủ pháp luật, mà không ảnh hưởng đến hiệu lực của các giới hạn còn lại.
+
 ---
 
 ## 9. Bồi Thường & Miễn Trừ Trách Nhiệm
@@ -158,9 +172,34 @@ Bạn đồng ý bảo vệ, bồi thường và giữ cho tác giả, các cá 
 - Việc bạn vi phạm quyền của bên thứ ba, bao gồm nhưng không giới hạn ở quyền sở hữu trí tuệ, quyền riêng tư, hoặc điều khoản sử dụng của các nền tảng bên thứ ba;
 - Bất kỳ khiếu nại nào cho rằng dữ liệu, nội dung hoặc tệp bạn xử lý qua Ứng dụng gây phương hại đến bên thứ ba.
 
+Nghĩa vụ bồi thường này vẫn tiếp tục có hiệu lực sau khi bạn ngừng sử dụng Ứng dụng hoặc sau khi Điều khoản này chấm dứt vì bất kỳ lý do gì.
+
 ---
 
-## 10. Chính Sách Bảo Mật
+## 10. Chấm Dứt Điều Khoản
+
+### 10.1 Chấm Dứt Do Vi Phạm
+Nếu bạn vi phạm bất kỳ điều khoản nào trong văn bản này, các quyền được cấp cho bạn theo Điều Khoản này sẽ tự động chấm dứt mà không cần thông báo trước — ngoại trừ các quyền cấp phép mã nguồn theo Giấy phép Apache 2.0, vốn được điều chỉnh độc lập theo các điều kiện chấm dứt riêng quy định tại chính Giấy phép đó. Khi Điều khoản này chấm dứt, bạn phải ngừng ngay việc sử dụng, gỡ cài đặt và xóa mọi bản sao Phần mềm dưới dạng bản dựng nhị phân chính thức mà bạn đang nắm giữ.
+
+### 10.2 Điều Khoản Còn Hiệu Lực Sau Khi Chấm Dứt
+Các quy định có bản chất cần tiếp tục ràng buộc sau khi chấm dứt — bao gồm nhưng không giới hạn ở Điều 2 (Giấy phép mã nguồn mở), Điều 7 (Miễn trừ bảo hành), Điều 8 (Giới hạn trách nhiệm), Điều 9 (Bồi thường), và Điều 15 (Luật áp dụng & giải quyết tranh chấp) — sẽ tiếp tục có hiệu lực bất kể Điều khoản này chấm dứt vì lý do gì.
+
+### 10.3 Tự Nguyện Ngừng Sử Dụng
+Bạn có thể ngừng sử dụng V-Notch bất kỳ lúc nào bằng cách gỡ cài đặt Ứng dụng. Do kiến trúc local-first không lưu trữ tài khoản trên máy chủ, việc gỡ cài đặt đồng nghĩa với việc chấm dứt hoàn toàn mối quan hệ sử dụng dịch vụ giữa bạn và Tác giả.
+
+---
+
+## 11. Xử Lý Khiếu Nại Vi Phạm Quyền Sở Hữu Trí Tuệ
+
+### 11.1 Không Phải Nhà Cung Cấp Dịch Vụ Lưu Trữ
+V-Notch hoạt động theo kiến trúc cục bộ (local-first) và không vận hành máy chủ lưu trữ nội dung của người dùng. Mọi tệp tin bạn xử lý, lưu trữ hoặc chia sẻ qua tính năng Khay Chứa Tệp (File Shelf) hoàn toàn nằm trên thiết bị cá nhân của bạn và không được Tác giả lưu trữ, truy cập hay kiểm duyệt dưới bất kỳ hình thức nào. Do đó, Tác giả không có khả năng và không có nghĩa vụ xử lý các khiếu nại vi phạm bản quyền liên quan đến nội dung do người dùng tự lưu trữ cục bộ.
+
+### 11.2 Khiếu Nại Về Mã Nguồn Hoặc Bản Phát Hành Chính Thức
+Nếu bạn cho rằng mã nguồn, tài liệu, hình ảnh hoặc bất kỳ nội dung nào trong kho lưu trữ hoặc bản phát hành chính thức của V-Notch xâm phạm quyền sở hữu trí tuệ của bạn, vui lòng gửi khiếu nại chi tiết (mô tả nội dung bị xâm phạm, vị trí cụ thể, và bằng chứng về quyền sở hữu) qua [GitHub Issues](https://github.com/rainaku/V-Notch/issues) hoặc thông qua quy trình khiếu nại bản quyền tiêu chuẩn của GitHub. Tác giả cam kết xem xét và phản hồi các khiếu nại hợp lệ trong thời gian hợp lý.
+
+---
+
+## 12. Chính Sách Bảo Mật
 
 Chúng tôi coi trọng việc bảo vệ quyền riêng tư của bạn. Chi tiết về cách thức ứng dụng xử lý dữ liệu được trình bày minh bạch trong [Chính Sách Bảo Mật](PRIVACY_POLICY_VI.md) (và bản tiếng Anh tại [PRIVACY_POLICY.md](PRIVACY_POLICY.md)).
 
@@ -168,15 +207,23 @@ Bằng việc sử dụng V-Notch, bạn xác nhận đã đọc, hiểu và đ�
 
 ---
 
-## 11. Tính Tách Rời & Toàn Bộ Thỏa Thuận
+## 13. Tính Tách Rời, Không Từ Bỏ Quyền & Toàn Bộ Thỏa Thuận
 
-Nếu bất kỳ điều khoản nào trong văn bản này bị cơ quan tư pháp có thẩm quyền tuyên bố là bất hợp pháp, vô hiệu hoặc không thể thi hành vì bất kỳ lý do gì, thì điều khoản đó sẽ được coi là tách rời khỏi văn bản và không làm ảnh hưởng đến hiệu lực, tính hợp pháp cũng như khả năng thi hành của các điều khoản còn lại.
+### 13.1 Tính Tách Rời
+Nếu bất kỳ điều khoản nào trong văn bản này bị cơ quan tư pháp có thẩm quyền tuyên bố là bất hợp pháp, vô hiệu hoặc không thể thi hành vì bất kỳ lý do gì, thì điều khoản đó sẽ được coi là tách rời khỏi văn bản và không làm ảnh hưởng đến hiệu lực, tính hợp pháp cũng như khả năng thi hành của các điều khoản còn lại. Cơ quan tài phán có thẩm quyền sẽ điều chỉnh điều khoản đó ở mức tối thiểu cần thiết để điều khoản có thể thi hành được, nhằm phản ánh đúng nhất ý định ban đầu của các bên.
 
-Điều khoản này cùng với [Chính Sách Bảo Mật](PRIVACY_POLICY_VI.md) và [Giấy Phép Apache 2.0](LICENSE) tạo thành toàn bộ thỏa thuận hoàn chỉnh giữa bạn và tác giả liên quan đến việc sử dụng ứng dụng V-Notch.
+### 13.2 Không Từ Bỏ Quyền
+Việc Tác giả không thực hiện hoặc chậm trễ thực hiện bất kỳ quyền hoặc điều khoản nào trong văn bản này sẽ không được coi là sự từ bỏ quyền đó. Mọi sự từ bỏ quyền chỉ có hiệu lực nếu được lập thành văn bản và được xác nhận rõ ràng bởi Tác giả.
+
+### 13.3 Không Chuyển Nhượng
+Bạn không được chuyển nhượng hoặc ủy quyền bất kỳ quyền hoặc nghĩa vụ nào của mình theo Điều Khoản này cho bên thứ ba mà không có sự đồng ý trước bằng văn bản của Tác giả. Tác giả có quyền chuyển nhượng Điều Khoản này (ví dụ trong trường hợp chuyển giao quyền duy trì dự án cho một cá nhân/tổ chức khác) mà không cần sự đồng ý trước của bạn, với điều kiện bên nhận chuyển nhượng tiếp tục tuân thủ các nghĩa vụ đã cam kết trong Điều khoản này.
+
+### 13.4 Toàn Bộ Thỏa Thuận
+Điều khoản này cùng với [Chính Sách Bảo Mật](PRIVACY_POLICY_VI.md) và [Giấy Phép Apache 2.0](LICENSE) tạo thành toàn bộ thỏa thuận hoàn chỉnh giữa bạn và tác giả liên quan đến việc sử dụng ứng dụng V-Notch, thay thế mọi thỏa thuận, trao đổi hoặc cam kết trước đó (nếu có) về cùng nội dung.
 
 ---
 
-## 12. Thay Đổi Điều Khoản
+## 14. Thay Đổi Điều Khoản
 
 Tác giả có quyền đơn phương sửa đổi, cập nhật hoặc thay thế các Điều khoản này bất kỳ lúc nào để phù hợp với các cải tiến tính năng hoặc yêu cầu pháp lý mới. Khi có sửa đổi:
 - Mục "Ngày hiệu lực" ở đầu văn bản sẽ được cập nhật.
@@ -187,13 +234,22 @@ Việc bạn tiếp tục tải về, cài đặt hoặc sử dụng V-Notch sau
 
 ---
 
-## 13. Luật Áp Dụng & Giải Quyết Tranh Chấp
+## 15. Luật Áp Dụng & Giải Quyết Tranh Chấp
 
-Các Điều khoản này được giải thích và điều chỉnh theo pháp luật hiện hành, không áp dụng các nguyên tắc xung đột pháp luật. Mọi tranh chấp, vướng mắc hoặc khiếu nại phát sinh từ hoặc liên quan đến Điều khoản này trước hết sẽ được giải quyết trên tinh thần thiện chí, hòa giải thông qua trao đổi trực tiếp trên trang Issues của kho mã nguồn dự án trước khi sử dụng các biện pháp pháp lý chính thức.
+### 15.1 Luật Áp Dụng
+Các Điều khoản này được giải thích và điều chỉnh theo pháp luật của **[ĐIỀN TÊN QUỐC GIA/VÙNG LÃNH THỔ NƠI TÁC GIẢ CƯ TRÚ HOẶC ĐĂNG KÝ HOẠT ĐỘNG — ví dụ: nước Cộng hòa Xã hội Chủ nghĩa Việt Nam]**, không áp dụng các nguyên tắc xung đột pháp luật (conflict of laws) và không áp dụng Công ước Liên Hợp Quốc về Hợp đồng Mua bán Hàng hóa Quốc tế (CISG).
+
+### 15.2 Thương Lượng Thiện Chí
+Các bên khuyến khích trước hết trao đổi và nỗ lực giải quyết mọi tranh chấp, vướng mắc hoặc khiếu nại phát sinh từ hoặc liên quan đến Điều khoản này trên tinh thần thiện chí thông qua trang [Issues của kho mã nguồn dự án](https://github.com/rainaku/V-Notch/issues). Việc trao đổi này mang tính khuyến khích thiện chí, **không phải là điều kiện tiên quyết bắt buộc** và không làm mất hay trì hoãn quyền khởi kiện hợp pháp của bất kỳ bên nào tại cơ quan tài phán có thẩm quyền.
+
+### 15.3 Cơ Quan Tài Phán
+Trong trường hợp tranh chấp không thể giải quyết bằng thương lượng, các bên đồng ý rằng tòa án có thẩm quyền tại **[ĐIỀN THÀNH PHỐ/QUỐC GIA NƠI TÁC GIẢ CƯ TRÚ HOẶC ĐĂNG KÝ]** sẽ có thẩm quyền giải quyết tranh chấp, trừ khi pháp luật bắt buộc áp dụng tại nơi cư trú thường xuyên của bạn (đặc biệt đối với người tiêu dùng tại Liên minh Châu Âu, Vương quốc Anh, hoặc các khu vực có quy định bảo vệ người tiêu dùng mang tính bắt buộc) quy định một thẩm quyền tài phán khác, trong trường hợp đó quy định bắt buộc đó sẽ được ưu tiên áp dụng.
+
+> **Lưu ý:** Hai vị trí được đánh dấu ở trên cần được Tác giả điền cụ thể quốc gia/vùng lãnh thổ nơi cư trú hoặc đăng ký hoạt động trước khi công bố Điều khoản chính thức — một điều khoản "luật áp dụng" không nêu rõ quốc gia cụ thể có thể bị coi là không đủ chắc chắn để thi hành và làm suy yếu đáng kể vị thế pháp lý khi xảy ra tranh chấp.
 
 ---
 
-## 14. Thông Tin Liên Hệ
+## 16. Thông Tin Liên Hệ
 
 Nếu bạn có bất kỳ câu hỏi, góp ý, phản hồi lỗi hoặc yêu cầu pháp lý nào liên quan đến Điều Khoản Dịch Vụ này, vui lòng liên hệ qua:
 
