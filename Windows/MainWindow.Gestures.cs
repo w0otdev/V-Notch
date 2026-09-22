@@ -31,20 +31,73 @@ public partial class MainWindow
     private TranslateTransform? _gestureTranslate;
     private TranslateTransform? _gestureShadowTranslate;
 
-    // Synchronize translate transforms on notch body and shadow shape so gesture
-    // drags move both together without leaving shadow artifacts behind.
+    // Synchronize translate transforms on notch wrapper and shadow wrapper so gesture
+    // drags move the entire notch (including left/right ears) and its shadow together
+    // without detaching curves or leaving shadow artifacts behind.
     private void EnsureGestureTransforms()
     {
         if (_gestureTranslate is not TranslateTransform)
         {
-            _gestureTranslate = NotchBorder.RenderTransform as TranslateTransform ?? new TranslateTransform(0, 0);
-            NotchBorder.RenderTransform = _gestureTranslate;
+            _gestureTranslate = NotchGestureTranslate ?? FindTranslateTransform(NotchWrapper.RenderTransform);
+            if (_gestureTranslate == null)
+            {
+                _gestureTranslate = new TranslateTransform(0, 0);
+                if (NotchWrapper.RenderTransform is TransformGroup tg)
+                {
+                    tg.Children.Add(_gestureTranslate);
+                }
+                else
+                {
+                    var group = new TransformGroup();
+                    group.Children.Add(NotchScale);
+                    group.Children.Add(_gestureTranslate);
+                    NotchWrapper.RenderTransform = group;
+                }
+            }
+
+            if (NotchBorder.RenderTransform is TranslateTransform)
+            {
+                NotchBorder.RenderTransform = null;
+            }
         }
+
         if (_gestureShadowTranslate is not TranslateTransform)
         {
-            _gestureShadowTranslate = NotchBorderShadow.RenderTransform as TranslateTransform ?? new TranslateTransform(0, 0);
-            NotchBorderShadow.RenderTransform = _gestureShadowTranslate;
+            _gestureShadowTranslate = NotchShadowGestureTranslate ?? FindTranslateTransform(NotchShadowWrapper.RenderTransform);
+            if (_gestureShadowTranslate == null)
+            {
+                _gestureShadowTranslate = new TranslateTransform(0, 0);
+                if (NotchShadowWrapper.RenderTransform is TransformGroup tg)
+                {
+                    tg.Children.Add(_gestureShadowTranslate);
+                }
+                else
+                {
+                    var group = new TransformGroup();
+                    group.Children.Add(NotchShadowScale);
+                    group.Children.Add(_gestureShadowTranslate);
+                    NotchShadowWrapper.RenderTransform = group;
+                }
+            }
+
+            if (NotchBorderShadow.RenderTransform is TranslateTransform)
+            {
+                NotchBorderShadow.RenderTransform = null;
+            }
         }
+    }
+
+    private static TranslateTransform? FindTranslateTransform(Transform transform)
+    {
+        if (transform is TranslateTransform tt) return tt;
+        if (transform is TransformGroup tg)
+        {
+            foreach (var child in tg.Children)
+            {
+                if (child is TranslateTransform childTt) return childTt;
+            }
+        }
+        return null;
     }
 
     private void InitializeGestureController()
@@ -314,6 +367,7 @@ public partial class MainWindow
 
     private void AnimateGestureSnapBack()
     {
+        EnsureGestureTransforms();
         if (_gestureTranslate == null) return;
 
         var snapBack = new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(350)))
