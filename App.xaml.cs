@@ -88,7 +88,7 @@ public partial class App : Application
             var mainWindow = Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
 
-            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
+            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings, e.Args.Contains("--tutorial"));
             _ = AppIntegrityService.StartBackgroundCheckAsync();
 
             base.OnStartup(e);
@@ -435,7 +435,7 @@ public partial class App : Application
             or System.Runtime.InteropServices.COMException;
     }
 
-    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, SettingsService settingsService)
+    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, SettingsService settingsService, bool showTutorial = false)
     {
         try
         {
@@ -451,28 +451,17 @@ public partial class App : Application
                 needSave = true;
             }
 
-            if (!settings.HasSeenSpotlightIntro)
+            if (showTutorial || !settings.HasSeenTutorial)
             {
-                settings.HasSeenSpotlightIntro = true;
-                needSave = true;
-
-                if (needSave)
-                {
-                    settingsService.Save(settings);
-                    needSave = false;
-                }
-
                 Current.Dispatcher.BeginInvoke(new System.Action(() =>
                 {
                     try
                     {
-                        var introWindow = new IntroducingWindow();
-                        introWindow.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-                        introWindow.ShowDialog();
+                        Services.GetRequiredService<MainWindow>().ShowTutorial();
                     }
                     catch (System.Exception introEx)
                     {
-                        RuntimeLog.Error("INTRO-WINDOW", introEx, "Failed to show introducing window");
+                        RuntimeLog.Error("TUTORIAL", introEx, "Failed to show tutorial");
                     }
                 }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             }

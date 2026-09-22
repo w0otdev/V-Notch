@@ -518,6 +518,7 @@ public partial class MainWindow : Window
 
     private void HandleAppDeactivated()
     {
+        if (_tutorialStep >= 0) return;
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
@@ -535,6 +536,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
+        if (_tutorialStep >= 0) return;
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
@@ -1817,6 +1819,7 @@ public partial class MainWindow : Window
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
         MenuResetText.Text = Loc.Get("tray.reset");
         MenuSettingsText.Text = Loc.Get("tray.settings");
+        MenuTutorialText.Text = Loc.Get("tour.replay");
         MenuRestartText.Text = Loc.Get("tray.restart");
         MenuExitText.Text = Loc.Get("tray.exit");
         _calendarPresenter?.RefreshLocale();

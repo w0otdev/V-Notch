@@ -252,6 +252,7 @@
         </Style>
     </Window.Resources>
 
+    <AdornerDecorator>
     <Grid RenderOptions.ClearTypeHint="Enabled">
 
         <tb:TaskbarIcon x:Name="TrayIcon"
@@ -287,6 +288,11 @@
                         </MenuItem.Header>
                     </MenuItem>
                     <Separator Style="{StaticResource TraySeparatorStyle}"/>
+                    <MenuItem Style="{StaticResource TrayMenuItemStyle}" Click="Tutorial_Click">
+                        <MenuItem.Header>
+                            <TextBlock x:Name="MenuTutorialText" Text="Take a tour" Style="{StaticResource TrayMenuItemText}"/>
+                        </MenuItem.Header>
+                    </MenuItem>
                     <MenuItem x:Name="MenuRestart" Style="{StaticResource TrayMenuItemStyle}" Click="Restart_Click">
                         <MenuItem.Header>
                             <StackPanel Orientation="Horizontal">
@@ -319,7 +325,10 @@
                   SnapsToDevicePixels="False"
                   Effect="{StaticResource NotchShadow}">
                 <Grid.RenderTransform>
-                    <ScaleTransform x:Name="NotchShadowScale" ScaleX="1" ScaleY="1"/>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="NotchShadowScale" ScaleX="1" ScaleY="1"/>
+                        <TranslateTransform x:Name="NotchShadowGestureTranslate"/>
+                    </TransformGroup>
                 </Grid.RenderTransform>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -370,7 +379,10 @@
                   DragLeave="NotchWrapper_DragLeave"
                   Drop="NotchWrapper_DragDrop">
                 <Grid.RenderTransform>
-                    <ScaleTransform x:Name="NotchScale" ScaleX="1" ScaleY="1"/>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="NotchScale" ScaleX="1" ScaleY="1"/>
+                        <TranslateTransform x:Name="NotchGestureTranslate"/>
+                    </TransformGroup>
                 </Grid.RenderTransform>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -2931,6 +2943,7 @@
                           Visibility="Collapsed"
                           Margin="12,6,12,12"
                           HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
                           Width="556"
                           MouseLeftButtonDown="SecondaryContent_Click"
                           RenderOptions.ClearTypeHint="Enabled"
@@ -3972,4 +3985,5 @@
         </Grid>
     </Grid>
 </Grid>
+    </AdornerDecorator>
 </Window>

@@ -1,188 +1,92 @@
 <Window x:Class="VNotch.IntroducingWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:gif="http://wpfanimatedgif.codeplex.com"
-        Title="Introducing Liquid Glass"
-        Width="860" Height="620"
-        WindowStartupLocation="CenterScreen"
-        ResizeMode="NoResize"
-        WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
-        Topmost="True"
-        Loaded="Window_Loaded"
-        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI">
-
+        Title="Get to know V-Notch" Width="430" Height="350"
+        WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent"
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated">
     <Window.Resources>
         <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
-        
-        <SolidColorBrush x:Key="PanelBg" Color="#F4020202"/>
-        <SolidColorBrush x:Key="MutedText" Color="#8C959E"/>
-        
-        <LinearGradientBrush x:Key="WindowGlow" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#090909" Offset="0"/>
-            <GradientStop Color="#030303" Offset="0.55"/>
-            <GradientStop Color="#000000" Offset="1"/>
-        </LinearGradientBrush>
-
         <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#C8C8C8"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
-            <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#C8C8C8"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#D8DEE5"/>
+            <Setter Property="Background" Value="#141414"/>
+            <Setter Property="Padding" Value="18,11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="10" BorderBrush="#18FFFFFF" BorderThickness="1" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.75"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="White"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.3"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
-
-    <Border x:Name="MainShell"
-            Margin="18"
-            CornerRadius="24"
-            Background="{StaticResource WindowGlow}"
-            BorderBrush="#18FFFFFF"
-            BorderThickness="1"
-            SnapsToDevicePixels="True"
-            Opacity="0"
-            Focusable="True"
-            RenderTransformOrigin="0.5,0.5">
-        <Border.RenderTransform>
-            <TransformGroup>
-                <ScaleTransform x:Name="ShellScale" ScaleX="0.95" ScaleY="0.95"/>
-                <TranslateTransform x:Name="ShellTranslate" Y="15"/>
-            </TransformGroup>
-        </Border.RenderTransform>
-
-        <Grid x:Name="ShellContent">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <!-- HEADER -->
-            <Border x:Name="IntroHeader"
-                    Grid.Row="0"
-                    Padding="22,20,18,18"
-                    BorderBrush="#10FFFFFF"
-                    BorderThickness="0,0,0,1"
-                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock x:Name="TitleText" Text="INTRODUCING"
-                               FontSize="15"
-                               FontWeight="Bold"
-                               Foreground="#F8FBFF"
-                               VerticalAlignment="Center"/>
-
-                    <!-- Close Button -->
-                    <Button Grid.Column="1"
-                            x:Name="CloseButton"
-                            Width="30" Height="30"
-                            Cursor="Hand"
-                            Click="CloseButton_Click"
-                            Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="Transparent" CornerRadius="15" x:Name="bg">
-                                    <TextBlock Text="✕" FontSize="14" Foreground="#88ffffff" HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="txt"/>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="bg" Property="Background" Value="#22ffffff"/>
-                                        <Setter TargetName="txt" Property="Foreground" Value="#C8C8C8"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                </Grid>
-            </Border>
-
-            <!-- CONTENT BODY -->
-            <Grid Grid.Row="1" Margin="30,20,30,20">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <!-- GIF Image -->
-                <Border Grid.Row="0" Width="580" Height="300" CornerRadius="16" ClipToBounds="True" BorderBrush="#12ffffff" BorderThickness="1" Background="#05ffffff" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Image x:Name="IntroGif"
-                           Stretch="Uniform"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"/>
-                </Border>
-
-                <!-- Headline -->
-                <TextBlock Grid.Row="1"
-                           x:Name="HeadlineText"
-                           Text="Liquid Glass Theme"
-                           FontSize="22"
-                           FontWeight="Bold"
-                           Foreground="#C8C8C8"
-                           HorizontalAlignment="Center"
-                           Margin="0,20,0,10"/>
-
-                <!-- Body Text -->
-                <TextBlock Grid.Row="2"
-                           x:Name="BodyText"
-                           Text="A new skin that turns the notch into liquid glass — refracting the desktop behind it in real time, with soft chromatic edges, depth, and a frosted blur."
-                           FontSize="14"
-                           FontWeight="Medium"
-                           Foreground="{StaticResource MutedText}"
-                           TextAlignment="Center"
-                           TextWrapping="Wrap"
-                           HorizontalAlignment="Center"
-                           MaxWidth="600"
-                           LineHeight="20"/>
+    <Border x:Name="CoachSurface" RenderTransformOrigin="0.5,0.5" Margin="12" CornerRadius="20" BorderBrush="#4291B8E5" BorderThickness="1" Padding="22">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#FD181C23" Offset="0"/>
+                <GradientStop Color="#FE090A0D" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.Background>
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="2"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid MouseLeftButtonDown="TitleBar_MouseLeftButtonDown" Margin="0,0,0,18">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="6" Height="6" Fill="#9ECBFF" Margin="0,0,9,0"/>
+                    <TextBlock x:Name="StepText" FontSize="12" FontWeight="SemiBold" Foreground="#AFBECE" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button x:Name="CloseButton" Content="×" HorizontalAlignment="Right" Padding="9,3" Click="Close_Click" AutomationProperties.Name="Close tutorial"/>
             </Grid>
-
-            <!-- FOOTER -->
-            <Border Grid.Row="2"
-                    Padding="22,18,22,22"
-                    BorderBrush="#10FFFFFF"
-                    BorderThickness="0,1,0,0">
-                <Grid>
-                    <!-- Close button in center -->
-                    <Button x:Name="GotItButton"
-                            HorizontalAlignment="Center"
-                            MinWidth="120"
-                            Height="38"
-                            Cursor="Hand"
-                            Click="GotItButton_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="White" CornerRadius="19" x:Name="border">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <ContentPresenter.Resources>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="FontSize" Value="13.5"/>
-                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                <Setter Property="Foreground" Value="Black"/>
-                                                <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
-                                            </Style>
-                                        </ContentPresenter.Resources>
-                                    </ContentPresenter>
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="border" Property="Background" Value="#E0E0E0"/>
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="border" Property="Background" Value="#C0C0C0"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                </Grid>
+            <Border Grid.Row="1" Background="#18FFFFFF" CornerRadius="1" Margin="0,0,0,0" ClipToBounds="True">
+                <Border x:Name="ProgressFill" HorizontalAlignment="Stretch" RenderTransformOrigin="0,0.5">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#73A9F3" Offset="0"/>
+                            <GradientStop Color="#C4DFFF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.RenderTransform><ScaleTransform x:Name="ProgressScale" ScaleX="0"/></Border.RenderTransform>
+                </Border>
             </Border>
+            <Grid Grid.Row="2" Margin="0,17,0,0" ClipToBounds="True">
+                <ScrollViewer x:Name="StepScroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="StepContent">
+                        <TextBlock x:Name="HeadlineText" FontSize="22" FontWeight="SemiBold" Foreground="#F2F5F9" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="BodyText" FontSize="14" FontWeight="Normal" Foreground="#B4BBC5" TextWrapping="Wrap" LineHeight="21" Margin="0,12,0,0"/>
+                        <TextBlock x:Name="HintText" FontSize="12" FontWeight="Medium" Foreground="#ADCFFF" TextWrapping="Wrap" Margin="0,14,0,4" AutomationProperties.LiveSetting="Polite"/>
+                    </StackPanel>
+                </ScrollViewer>
+                <!-- Previous page is visually overlaid; it never changes the scroll extent or incoming layout. -->
+                <Grid ClipToBounds="True" IsHitTestVisible="False">
+                    <StackPanel x:Name="OutgoingContent" Visibility="Collapsed" IsHitTestVisible="False">
+                        <TextBlock x:Name="OutgoingHeadline" FontSize="22" FontWeight="SemiBold" Foreground="#F2F5F9" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="OutgoingBody" FontSize="14" FontWeight="Normal" Foreground="#B4BBC5" TextWrapping="Wrap" LineHeight="21" Margin="0,12,0,0"/>
+                        <TextBlock x:Name="OutgoingHint" FontSize="12" FontWeight="Medium" Foreground="#ADCFFF" TextWrapping="Wrap" Margin="0,14,0,4"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+            <Grid Grid.Row="3" Margin="0,20,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button x:Name="BackButton" Click="Back_Click" Padding="8,11"/>
+                <Button x:Name="NextButton" Grid.Column="2" Background="#F2F2F2" Foreground="#080808" Click="Next_Click" Padding="8,11" IsDefault="True"/>
+            </Grid>
         </Grid>
     </Border>
 </Window>

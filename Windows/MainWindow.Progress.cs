@@ -122,11 +122,17 @@ public partial class MainWindow
         {
             // Clicks inside Spotlight window must not collapse MainWindow's hidden
             // state while Spotlight temporarily owns the notch surface.
-            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility || _tutorialStep >= 0) return;
 
             if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
             {
                 IntPtr hWndAtPoint = WindowFromPoint(new POINT { X = pt.x, Y = pt.y });
+                // Tutorial controls belong to the current guided interaction.
+                // Do not collapse and reopen the notch on every Try/Next click.
+                if (_tutorialWindow != null &&
+                    hWndAtPoint == new System.Windows.Interop.WindowInteropHelper(_tutorialWindow).Handle)
+                    return;
+
 
                 if (!IsScreenPointInsideNotchVisual(pt))
                 {

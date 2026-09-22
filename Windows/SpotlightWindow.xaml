@@ -198,6 +198,7 @@
 
     <!-- Fixed-size transparent canvas where only shell resizes to prevent
          stuttering from re-uploading the layered HWND surface during resizing. -->
+    <AdornerDecorator>
     <Grid>
         <!-- Match NotchShadowWrapper: a solid silhouette behind the shell,
              with the shadow on its wrapper and no exclusion clip. -->
@@ -786,4 +787,5 @@
         </Grid>
     </Border>
     </Grid>
+    </AdornerDecorator>
 </Window>
