@@ -370,13 +370,14 @@ public partial class MainWindow
             {
                 EnableKeyboardInput();
                 SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
-                SecondaryContent.VerticalAlignment = VerticalAlignment.Top;
+                SecondaryContent.VerticalAlignment = VerticalAlignment.Stretch;
                 SecondaryContent.Width = _expandedWidth
                     - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
             },
             onComplete: () =>
             {
                 SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
+                SecondaryContent.VerticalAlignment = VerticalAlignment.Stretch;
                 SecondaryContent.Width = _expandedWidth
                     - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
                 SecondaryContent.UpdateLayout();

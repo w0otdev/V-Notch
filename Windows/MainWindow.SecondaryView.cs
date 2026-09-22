@@ -224,7 +224,7 @@ public partial class MainWindow
         SecondaryContent.BeginAnimation(OpacityProperty, null);
         SecondaryContent.Opacity = 0;
         SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
-        SecondaryContent.VerticalAlignment = VerticalAlignment.Top;
+        SecondaryContent.VerticalAlignment = VerticalAlignment.Stretch;
         SecondaryContent.Width = _expandedWidth - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
         EnableKeyboardInput();
 
