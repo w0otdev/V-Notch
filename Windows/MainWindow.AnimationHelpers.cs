@@ -500,6 +500,14 @@ public partial class MainWindow
                 PlayGreetingAnimation();
             };
         }
+        else
+        {
+            StartStartupHold(TimeSpan.FromMilliseconds(3400));
+            opacityAnim.Completed += (s, e) =>
+            {
+                StartStartupHold(TimeSpan.FromSeconds(3));
+            };
+        }
 
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
         NotchBorder.BeginAnimation(OpacityProperty, opacityAnim);

@@ -320,6 +320,7 @@ public partial class MainWindow
         {
             _isAnimating = false;
             _isGreetingActive = false;
+            StartStartupHold(TimeSpan.FromMilliseconds(3300));
             RestorePrivacyDotVisibility();
 
             CollapsedContent.Visibility = Visibility.Visible;
@@ -329,6 +330,10 @@ public partial class MainWindow
                 To = 1,
                 Duration = TimeSpan.FromMilliseconds(300),
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            restoreFade.Completed += (_, _) =>
+            {
+                StartStartupHold(TimeSpan.FromSeconds(3));
             };
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(restoreFade, VNotch.Services.AnimationConfig.TargetFps);
             CollapsedContent.BeginAnimation(OpacityProperty, restoreFade);

@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "कोई दूसरा शब्द या छोटा खोज वाक्य आज़माएँ।",
+  "settings.search.clear": "खोज साफ़ करें",
   "_metadata": {
     "name": "हिन्दी",
     "culture": "hi-IN"

@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Spróbuj innego słowa kluczowego lub krótszego zapytania.",
+  "settings.search.clear": "Wyczyść wyszukiwanie",
   "_metadata": {
     "name": "Polski",
     "culture": "pl-PL"

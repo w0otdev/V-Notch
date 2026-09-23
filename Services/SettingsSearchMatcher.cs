@@ -5,8 +5,6 @@ namespace VNotch.Services;
 
 internal static class SettingsSearchMatcher
 {
-    private const double FuzzyMatchThreshold = 0.75;
-
     public static string Normalize(string? input)
     {
         if (string.IsNullOrWhiteSpace(input)) return string.Empty;
@@ -54,57 +52,79 @@ internal static class SettingsSearchMatcher
     public static bool IsMatch(string sourceText, string query) =>
         IsNormalizedMatch(Normalize(sourceText), Normalize(query));
 
-    public static bool IsNormalizedMatch(string normalizedSource, string normalizedQuery)
+    public static bool IsNormalizedMatch(string normalizedSource, string normalizedQuery) =>
+        GetNormalizedMatchScore(normalizedSource, normalizedQuery) > 0;
+
+    // Zero means unrelated. Exact words rank above prefixes, then minor typos.
+    public static int GetNormalizedMatchScore(string normalizedSource, string normalizedQuery, bool allowFuzzy = true)
     {
         if (normalizedSource.Length == 0 || normalizedQuery.Length == 0)
         {
-            return false;
-        }
-
-        if (normalizedSource.Contains(normalizedQuery, StringComparison.Ordinal))
-        {
-            return true;
+            return 0;
         }
 
         string[] sourceWords = normalizedSource.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        string[] queryWords = normalizedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string[] queryWords = normalizedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        if (queryWords.Length == 0) return 0;
 
-        // A multi-word query may describe different parts of one setting (for example
-        // "album blur"), so every query word may match independently and in any order.
-        return queryWords.Length > 0 && queryWords.All(queryWord =>
-            SourceContainsWord(normalizedSource, sourceWords, queryWord));
+        int weakestMatch = 3;
+        int exactMatches = 0;
+        int fuzzyMatches = 0;
+        foreach (string queryWord in queryWords)
+        {
+            int quality = GetWordMatchQuality(sourceWords, queryWord, allowFuzzy);
+            // Never let several approximate words turn an unrelated query into a result.
+            if (quality == 0 || (quality == 1 && ++fuzzyMatches > 1)) return 0;
+            if (quality == 3) exactMatches++;
+            weakestMatch = Math.Min(weakestMatch, quality);
+        }
+
+        return weakestMatch * 100 + 50 * exactMatches / queryWords.Length;
     }
 
-    private static bool SourceContainsWord(string source, string[] sourceWords, string queryWord)
+    private static int GetWordMatchQuality(string[] sourceWords, string queryWord, bool allowFuzzy)
     {
-        if (source.Contains(queryWord, StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        if (queryWord.Length < 3)
-        {
-            return false;
-        }
-
+        int bestQuality = 0;
         foreach (string sourceWord in sourceWords)
         {
-            if (sourceWord.Length < 3) continue;
+            if (sourceWord == queryWord) return 3;
 
-            if (CalculateSimilarity(queryWord, sourceWord) > FuzzyMatchThreshold)
+            // These scripts commonly omit spaces between words; preserve literal search.
+            if (queryWord.All(IsUnsegmentedScriptCharacter)
+                && sourceWord.Contains(queryWord, StringComparison.Ordinal))
             {
-                return true;
+                bestQuality = Math.Max(bestQuality, 2);
+                continue;
+            }
+
+            // Short keywords (e.g. "on" or "ai") must be whole words.
+            if (queryWord.Length >= 3 && sourceWord.StartsWith(queryWord, StringComparison.Ordinal))
+            {
+                bestQuality = Math.Max(bestQuality, 2);
+                continue;
+            }
+
+            if (allowFuzzy && bestQuality == 0
+                && queryWord.Length >= 5 && sourceWord.Length >= 5
+                && queryWord[0] == sourceWord[0]
+                && Math.Abs(queryWord.Length - sourceWord.Length) <= 1
+                && CalculateLevenshteinDistance(queryWord, sourceWord) == 1)
+            {
+                bestQuality = 1;
             }
         }
 
-        return false;
+        return bestQuality;
     }
 
-    private static double CalculateSimilarity(string source, string target)
-    {
-        int distance = CalculateLevenshteinDistance(source, target);
-        return 1.0 - (double)distance / Math.Max(source.Length, target.Length);
-    }
+    private static bool IsUnsegmentedScriptCharacter(char character) => character is
+        >= '\u3040' and <= '\u30ff' // Japanese
+        or >= '\u3400' and <= '\u9fff' // Han
+        or >= '\u1100' and <= '\u11ff' // Decomposed Hangul (FormKD)
+        or >= '\u0e00' and <= '\u0eff' // Thai and Lao
+        or >= '\u1000' and <= '\u109f' // Myanmar
+        or >= '\u1780' and <= '\u17ff'; // Khmer
 
     private static int CalculateLevenshteinDistance(string source, string target)
     {

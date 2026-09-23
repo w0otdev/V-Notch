@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Coba kata kunci lain atau pencarian yang lebih singkat.",
+  "settings.search.clear": "Hapus pencarian",
   "_metadata": {
     "name": "Indonesia",
     "culture": "id-ID"

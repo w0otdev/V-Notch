@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Try a different keyword or a shorter search.",
+  "settings.search.clear": "Clear search",
   "_metadata": {
     "name": "English",
     "culture": "en-US"

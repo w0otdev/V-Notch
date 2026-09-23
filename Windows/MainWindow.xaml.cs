@@ -499,6 +499,10 @@ public partial class MainWindow : Window
         {
             PlayAppearAnimation();
         }
+        else
+        {
+            StartStartupHold(TimeSpan.FromSeconds(3));
+        }
 
         Dispatcher.BeginInvoke(new Action(() =>
         {
@@ -614,6 +618,8 @@ public partial class MainWindow : Window
         _hoverCollapseTimer?.Stop();
         _hoverThumbnailDelayTimer?.Stop();
         _compactThumbnailHoverLeaveTimer?.Stop();
+        _startupHoldTimer?.Stop();
+        _startupHoldTimer = null;
         _desktopDemotionDelayTimer?.Stop();
         DetachDesktopTransparentFrameHandler();
         DisposeIdleAutoHide();

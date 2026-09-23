@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "다른 키워드나 더 짧은 검색어를 사용해 보세요.",
+  "settings.search.clear": "검색 지우기",
   "_metadata": {
     "name": "한국어",
     "culture": "ko-KR"

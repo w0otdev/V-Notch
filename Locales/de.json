@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Versuche ein anderes Stichwort oder eine kürzere Suche.",
+  "settings.search.clear": "Suche löschen",
   "_metadata": {
     "name": "Deutsch",
     "culture": "de-DE"

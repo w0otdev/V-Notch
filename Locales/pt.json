@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Tente outra palavra-chave ou uma busca mais curta.",
+  "settings.search.clear": "Limpar busca",
   "_metadata": {
     "name": "Português",
     "culture": "pt-BR"

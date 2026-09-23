@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Farklı bir anahtar kelime veya daha kısa bir arama deneyin.",
+  "settings.search.clear": "Aramayı temizle",
   "_metadata": {
     "name": "Türkçe",
     "culture": "tr-TR"

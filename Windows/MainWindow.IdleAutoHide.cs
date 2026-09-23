@@ -43,6 +43,9 @@ public partial class MainWindow
 
     private bool IsNotchEmptyAndIdle()
     {
+        if (IsStartupHoldActive(_isGreetingActive, _startupHoldUntilUtc, DateTime.UtcNow))
+            return false;
+
         if (_isExpanded || _isMusicExpanded || _isTimerView || _isAnimating)
             return false;
 

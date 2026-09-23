@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Probeer een ander trefwoord of een kortere zoekopdracht.",
+  "settings.search.clear": "Zoekopdracht wissen",
   "_metadata": {
     "name": "Nederlands",
     "culture": "nl-NL"

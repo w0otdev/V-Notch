@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Thử từ khóa khác hoặc rút ngắn nội dung tìm kiếm.",
+  "settings.search.clear": "Xóa tìm kiếm",
   "_metadata": {
     "name": "Tiếng Việt",
     "culture": "vi-VN"

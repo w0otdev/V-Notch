@@ -64,4 +64,23 @@ public class DesktopLayerInteractionTests
 
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData(true, 0, true)]   // Greeting is active -> hold active regardless of time
+    [InlineData(true, -10, true)] // Greeting is active -> hold active even if timestamp expired
+    [InlineData(false, 3, true)]  // Greeting false, but hold until is 3s in future -> hold active
+    [InlineData(false, -1, false)] // Greeting false, hold expired 1s ago -> hold inactive
+    [InlineData(false, 0, false)]  // Greeting false, hold at exactly current time -> hold inactive
+    public void IsStartupHoldActive_ValidatesStateCorrectly(
+        bool isGreetingActive,
+        int secondsFromNow,
+        bool expected)
+    {
+        var now = new System.DateTime(2026, 9, 22, 12, 0, 0, System.DateTimeKind.Utc);
+        var holdUntil = now.AddSeconds(secondsFromNow);
+
+        bool result = MainWindow.IsStartupHoldActive(isGreetingActive, holdUntil, now);
+
+        Assert.Equal(expected, result);
+    }
 }

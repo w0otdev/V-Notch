@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "请尝试其他关键词或缩短搜索内容。",
+  "settings.search.clear": "清除搜索",
   "_metadata": {
     "name": "中文",
     "culture": "zh-CN"

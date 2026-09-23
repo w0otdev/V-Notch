@@ -12,7 +12,7 @@ public partial class MainWindow
 {
     private static readonly TimeSpan DesktopDemotionDelay = TimeSpan.FromMilliseconds(220);
 
-    private bool _isDesktopEdgePromoted;
+    private bool _isDesktopEdgePromoted = true;
     private bool _desktopPromotionPending;
     private bool _desktopDemotionPending;
     private int _desktopRevealAnimationVersion;
@@ -20,6 +20,8 @@ public partial class MainWindow
     private EventHandler? _desktopTransparentFrameHandler;
     private int _desktopTransparentFramesObserved;
     private bool _desktopPointerInHoverZone;
+    private DateTime _startupHoldUntilUtc = DateTime.MinValue;
+    private DispatcherTimer? _startupHoldTimer;
     private bool ShouldStayOnDesktopLayer =>
         _settings.StayBehindWindows && !_isDesktopEdgePromoted;
 
@@ -58,6 +60,9 @@ public partial class MainWindow
 
     private bool IsDesktopNotchInteractionActive()
     {
+        if (IsStartupHoldActive(_isGreetingActive, _startupHoldUntilUtc, DateTime.UtcNow))
+            return true;
+
         bool pointerOverNotch = NotchWrapper?.IsMouseOver == true || IsCursorInsideNotchVisual();
         bool inputCapturedWithin = IsMouseCaptureWithin
                                    || IsStylusCaptureWithin
@@ -160,6 +165,29 @@ public partial class MainWindow
                || inputCapturedWithin
                || keyboardFocusWithin
                || ownedWindowInteractionActive;
+    }
+
+    internal static bool IsStartupHoldActive(bool isGreetingActive, DateTime startupHoldUntilUtc, DateTime nowUtc)
+    {
+        return isGreetingActive || nowUtc < startupHoldUntilUtc;
+    }
+
+    internal void StartStartupHold(TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero) return;
+
+        _startupHoldUntilUtc = DateTime.UtcNow + duration;
+        _startupHoldTimer?.Stop();
+        _startupHoldTimer = new DispatcherTimer(duration, DispatcherPriority.Background, (_, _) =>
+        {
+            _startupHoldTimer?.Stop();
+            _startupHoldTimer = null;
+            if (_settings.StayBehindWindows && _isDesktopEdgePromoted && !IsDesktopNotchInteractionActive())
+            {
+                ScheduleDesktopLayerDemotion();
+            }
+        }, Dispatcher);
+        _startupHoldTimer.Start();
     }
 
     private void ScheduleDesktopLayerDemotion()
@@ -407,6 +435,8 @@ public partial class MainWindow
     {
         if (_settings.StayBehindWindows) return;
 
+        _startupHoldTimer?.Stop();
+        _startupHoldTimer = null;
         CancelScheduledDesktopDemotion();
         DetachDesktopTransparentFrameHandler();
         _desktopPromotionPending = false;

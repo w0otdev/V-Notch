@@ -966,17 +966,51 @@
                         <Grid x:Name="ContentHost">
 
                             <StackPanel x:Name="PanelSearching" Visibility="Collapsed">
-                                <Border x:Name="SearchingCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="SearchingCard" Opacity="0">
+                                    <Border.Style>
+                                        <Style TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Visibility, ElementName=SearchingEmptyState}" Value="Visible">
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                    <Setter Property="BorderThickness" Value="0"/>
+                                                    <Setter Property="Padding" Value="0"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <Border.RenderTransform>
                                         <TranslateTransform x:Name="SearchingCardTranslate" Y="12"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="SearchingHeader" Text="Search mode" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
-                                        <TextBlock x:Name="SearchingEmptyText"
-                                                   Text="No matching settings."
-                                                   Style="{StaticResource SettingHintText}"
-                                                   Margin="0,4,0,10"
-                                                   Visibility="Collapsed"/>
+                                        <StackPanel x:Name="SearchingEmptyState"
+                                                    Visibility="Collapsed"
+                                                    Margin="28,32,28,36">
+                                            <TextBlock Text="404" FontSize="144" FontWeight="SemiBold"
+                                                       Foreground="#E8E8E8" FlowDirection="LeftToRight"
+                                                       HorizontalAlignment="Left"
+                                                       LineHeight="156" LineStackingStrategy="BlockLineHeight"
+                                                       AutomationProperties.Name="404"/>
+                                            <TextBlock x:Name="SearchingEmptyText"
+                                                       Text="No matching settings."
+                                                       Margin="4,24,0,0" FontSize="24" FontWeight="Medium"
+                                                       Foreground="{StaticResource SoftText}"
+                                                       TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="SearchingEmptyQuery"
+                                                       Margin="4,10,0,0" FontSize="14" FontWeight="Normal"
+                                                       Foreground="#B0B0B0" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                            <TextBlock x:Name="SearchingEmptyHint"
+                                                       Text="Try a different keyword or a shorter search."
+                                                       Margin="4,8,0,0" FontSize="13" FontWeight="Normal"
+                                                       Foreground="{StaticResource MutedText}"
+                                                       TextWrapping="Wrap"/>
+                                            <Button x:Name="SearchingClearButton" Content="Clear search"
+                                                    Style="{StaticResource PrimaryButton}"
+                                                    HorizontalAlignment="Left" Margin="4,30,0,0"
+                                                    MinWidth="132" Height="42"
+                                                    Click="SearchingClearButton_Click"/>
+                                        </StackPanel>
                                         <StackPanel x:Name="SearchResultsStack"/>
                                     </StackPanel>
                                 </Border>

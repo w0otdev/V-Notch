@@ -423,6 +423,8 @@ public partial class SettingsWindow : Window
         SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict");
         SearchingHeader.Text = Loc.Get(LocKeySearching);
         SearchingEmptyText.Text = Loc.Get("settings.search.noResults");
+        SearchingEmptyHint.Text = Loc.Get("settings.search.emptyHint");
+        SearchingClearButton.Content = Loc.Get("settings.search.clear");
 
         NavSearchingText.Text = Loc.Get(LocKeySearching);
         NavAppearanceText.Text = Loc.Get("settings.nav.appearance");
@@ -3062,6 +3064,8 @@ public partial class SettingsWindow : Window
             (SpotlightHeader, () => SpotlightHeader.Text = Loc.Get("settings.spotlight")),
             (SearchingHeader, () => SearchingHeader.Text = Loc.Get("settings.searching")),
             (SearchingEmptyText, () => SearchingEmptyText.Text = Loc.Get("settings.search.noResults")),
+            (SearchingEmptyHint, () => SearchingEmptyHint.Text = Loc.Get("settings.search.emptyHint")),
+            (SearchingClearButton, () => SearchingClearButton.Content = Loc.Get("settings.search.clear")),
 
             (NavSearchingText, () => NavSearchingText.Text = Loc.Get("settings.searching")),
             (NavAppearanceText, () => NavAppearanceText.Text = Loc.Get("settings.nav.appearance")),
@@ -4845,12 +4849,26 @@ public partial class SettingsWindow : Window
         if (string.IsNullOrWhiteSpace(query)) return;
 
         string normalizedQuery = SettingsSearchMatcher.Normalize(query);
-        EnterSearchMode();
+        bool enteredSearchMode = EnterSearchMode();
         SearchResultsStack.Children.Clear();
 
         var matches = _searchRows
-            .Where(row => SettingsSearchMatcher.IsNormalizedMatch(row.NormalizedSearchText, normalizedQuery))
+            .Select(row => (Row: row, Score: GetSearchRowScore(row, normalizedQuery, allowFuzzy: false)))
+            .Where(match => match.Score > 0)
+            .OrderByDescending(match => match.Score)
+            .Select(match => match.Row)
             .ToList();
+
+        // Approximate spelling is a fallback, never extra noise beside direct matches.
+        if (matches.Count == 0)
+        {
+            matches = _searchRows
+                .Select(row => (Row: row, Score: GetSearchRowScore(row, normalizedQuery, allowFuzzy: true)))
+                .Where(match => match.Score > 0)
+                .OrderByDescending(match => match.Score)
+                .Select(match => match.Row)
+                .ToList();
+        }
 
         foreach (var match in matches)
         {
@@ -4865,24 +4883,43 @@ public partial class SettingsWindow : Window
             SearchResultsStack.Children.Add(match.Row);
         }
 
-        SearchingEmptyText.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        SearchingEmptyQuery.Text = matches.Count == 0 ? $"“{query}”" : string.Empty;
+        SearchingEmptyState.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         SettingsScrollViewer.ScrollToTop();
-        AnimateActivePanel(NavSectionSearching);
+        if (enteredSearchMode)
+        {
+            AnimateActivePanel(NavSectionSearching);
+        }
     }
 
-    private void EnterSearchMode()
+    private void SearchingClearButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_isSearchMode)
-        {
-            _isSearchMode = true;
-            IndexSearchRows();
-            RefreshSearchRows();
-        }
-        else
+        SettingsSearchBox.Clear();
+        SettingsSearchBox.Focus();
+    }
+
+    private static int GetSearchRowScore(SearchRowEntry row, string query, bool allowFuzzy)
+    {
+        int contentScore = SettingsSearchMatcher.GetNormalizedMatchScore(row.NormalizedSearchText, query, allowFuzzy);
+        // Category names can qualify a query, but must not generate typo matches for
+        // every setting in that category. Prefer matches within the setting itself.
+        int categoryScore = SettingsSearchMatcher.GetNormalizedMatchScore(
+            row.NormalizedSectionText + " " + row.NormalizedSearchText, query, allowFuzzy: false);
+        return Math.Max(contentScore > 0 ? contentScore * 10 + 1 : 0, categoryScore * 10);
+    }
+
+    private bool EnterSearchMode()
+    {
+        if (_isSearchMode)
         {
             RestoreSearchRows();
+            RefreshSearchRows();
+            return false;
         }
 
+        _isSearchMode = true;
+        IndexSearchRows();
+        RefreshSearchRows();
         _activeNav = NavSectionSearching;
         UpdateSectionHeader();
 
@@ -4892,6 +4929,7 @@ public partial class SettingsWindow : Window
         }
 
         UpdateNavButtonsForSearchMode();
+        return true;
     }
 
     private void UpdateNavButtonsForSearchMode()
@@ -4916,7 +4954,8 @@ public partial class SettingsWindow : Window
     {
         RestoreSearchRows();
         SearchResultsStack.Children.Clear();
-        SearchingEmptyText.Visibility = Visibility.Collapsed;
+        SearchingEmptyState.Visibility = Visibility.Collapsed;
+        SearchingEmptyQuery.Text = string.Empty;
         _isSearchMode = false;
 
         if (_activeNav == NavSectionSearching)
@@ -4961,7 +5000,8 @@ public partial class SettingsWindow : Window
                     parent,
                     parent.Children.IndexOf(row),
                     row.Visibility,
-                    BuildSearchText(row, kvp.Key)));
+                    BuildSearchText(row),
+                    BuildSectionSearchText(kvp.Key)));
             }
         }
     }
@@ -4981,7 +5021,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private string BuildSearchText(DependencyObject root, string section)
+    private string BuildSectionSearchText(string section)
     {
         var parts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { section };
         if (_navButtons.TryGetValue(section, out var navButton))
@@ -4989,6 +5029,12 @@ public partial class SettingsWindow : Window
             CollectSearchText(navButton, parts);
         }
 
+        return string.Join(" ", parts);
+    }
+
+    private string BuildSearchText(DependencyObject root)
+    {
+        var parts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CollectSearchText(root, parts);
         return string.Join(" ", parts);
     }
@@ -5008,7 +5054,7 @@ public partial class SettingsWindow : Window
         foreach (var row in _searchRows)
         {
             row.OriginalVisibility = row.Row.Visibility;
-            row.UpdateSearchText(BuildSearchText(row.Row, row.Section));
+            row.UpdateSearchText(BuildSearchText(row.Row), BuildSectionSearchText(row.Section));
         }
     }
 
@@ -5130,14 +5176,15 @@ public partial class SettingsWindow : Window
             StackPanel originalParent,
             int originalIndex,
             Visibility originalVisibility,
-            string searchText)
+            string searchText,
+            string sectionText)
         {
             Section = section;
             Row = row;
             OriginalParent = originalParent;
             OriginalIndex = originalIndex;
             OriginalVisibility = originalVisibility;
-            UpdateSearchText(searchText);
+            UpdateSearchText(searchText, sectionText);
         }
 
         public string Section { get; }
@@ -5146,10 +5193,12 @@ public partial class SettingsWindow : Window
         public int OriginalIndex { get; }
         public Visibility OriginalVisibility { get; set; }
         public string NormalizedSearchText { get; private set; } = string.Empty;
+        public string NormalizedSectionText { get; private set; } = string.Empty;
 
-        public void UpdateSearchText(string searchText)
+        public void UpdateSearchText(string searchText, string sectionText)
         {
             NormalizedSearchText = SettingsSearchMatcher.Normalize(searchText);
+            NormalizedSectionText = SettingsSearchMatcher.Normalize(sectionText);
         }
     }
 

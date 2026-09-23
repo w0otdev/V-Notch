@@ -1,4 +1,6 @@
 {
+  "settings.search.emptyHint": "Попробуйте другое ключевое слово или более короткий запрос.",
+  "settings.search.clear": "Очистить поиск",
   "_metadata": {
     "name": "Русский",
     "culture": "ru-RU"
