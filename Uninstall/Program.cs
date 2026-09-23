@@ -117,13 +117,21 @@ internal static class Program
         Loc.SetLanguage(language);
     }
 
+    private static bool IsDriveRoot(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return true;
+        var root = Path.GetPathRoot(path);
+        return string.Equals(root?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string ResolveInstallDirectory()
     {
         var baseDir = AppContext.BaseDirectory
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        if (File.Exists(Path.Combine(baseDir, AppExeName)) ||
-            File.Exists(Path.Combine(baseDir, "uninstall.exe")))
+        if (File.Exists(Path.Combine(baseDir, AppExeName)) && !IsDriveRoot(baseDir))
         {
             return baseDir;
         }
@@ -133,7 +141,11 @@ internal static class Program
             using var key = Registry.CurrentUser.OpenSubKey(AppRegistryPath);
             if (key?.GetValue("InstallDir") is string fromReg && !string.IsNullOrWhiteSpace(fromReg))
             {
-                return fromReg.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var regDir = fromReg.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (File.Exists(Path.Combine(regDir, AppExeName)) && !IsDriveRoot(regDir))
+                {
+                    return regDir;
+                }
             }
         }
         catch
@@ -239,7 +251,13 @@ internal static class Program
 
     private static void ScheduleInstallDirRemoval(string installDirectory)
     {
-        if (string.IsNullOrWhiteSpace(installDirectory) || !Directory.Exists(installDirectory))
+        if (string.IsNullOrWhiteSpace(installDirectory) || !Directory.Exists(installDirectory) || IsDriveRoot(installDirectory))
+        {
+            return;
+        }
+
+        var safeInstallDir = installDirectory.Replace("\"", "").Replace("&", "").Replace("%", "");
+        if (!File.Exists(Path.Combine(safeInstallDir, AppExeName)))
         {
             return;
         }
@@ -254,16 +272,17 @@ internal static class Program
             "setlocal",
             "rem Wait for the uninstaller to exit, then wipe the install folder.",
             "timeout /t 2 /nobreak >nul",
-            $"rmdir /S /Q \"{installDirectory}\"",
+            $"rmdir /S /Q \"{safeInstallDir}\"",
             "rem Best-effort second pass in case files were still locked.",
             "timeout /t 2 /nobreak >nul",
-            $"if exist \"{installDirectory}\" rmdir /S /Q \"{installDirectory}\"",
+            $"if exist \"{safeInstallDir}\" rmdir /S /Q \"{safeInstallDir}\"",
             $"del /Q \"{scriptPath}\""
         });
 
         File.WriteAllText(scriptPath, script, new UTF8Encoding(false));
 
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{scriptPath}\"")
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        Process.Start(new ProcessStartInfo(cmdPath, $"/c \"\"{scriptPath}\"\"")
         {
             CreateNoWindow = true,
             UseShellExecute = false,

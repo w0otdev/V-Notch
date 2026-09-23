@@ -18,8 +18,26 @@ public partial class App : Application
     private static int _fatalUiExceptionInProgress;
     private const string MutexName = "VNotch_SingleInstance_Mutex";
 
+    private const int LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
+    private const int LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800;
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetDefaultDllDirectories(int directoryFlags);
+
     public App()
     {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_SYSTEM32);
+            }
+        }
+        catch
+        {
+            // Best effort on supported Windows platforms
+        }
+
         CrashReporter.Initialize();
     }
 
@@ -133,11 +151,7 @@ public partial class App : Application
 
                 if (ConfirmationDialog.Show(null, Loc.Get("integrity.untrustedSource", untrustedUrl), options))
                 {
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo(AppIntegrityService.OfficialReleasesUrl) { UseShellExecute = true });
-                    }
-                    catch { }
+                    SafeLauncher.TryOpenUrl(AppIntegrityService.OfficialReleasesUrl);
                     Shutdown(0);
                     return true;
                 }
@@ -163,11 +177,7 @@ public partial class App : Application
 
                     if (ConfirmationDialog.Show(null, Loc.Get("integrity.hashMismatch", version), options))
                     {
-                        try
-                        {
-                            Process.Start(new ProcessStartInfo(AppIntegrityService.OfficialReleasesUrl) { UseShellExecute = true });
-                        }
-                        catch { }
+                        SafeLauncher.TryOpenUrl(AppIntegrityService.OfficialReleasesUrl);
                         Shutdown(0);
                         return true;
                     }
@@ -409,11 +419,12 @@ public partial class App : Application
 
             if (!string.IsNullOrEmpty(exePath))
             {
+                var cleanExe = exePath.Replace("\"", "");
                 var cmdPath = System.IO.Path.Combine(Environment.SystemDirectory, "cmd.exe");
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = cmdPath,
-                    Arguments = $"/c ping -n 2 127.0.0.1 >nul & start \"\" \"{exePath}\" --restart",
+                    Arguments = $"/c ping -n 2 127.0.0.1 >nul & start \"\" \"{cleanExe}\" --restart",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden

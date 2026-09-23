@@ -821,8 +821,22 @@ public sealed class SpotifyCanvasService : IDisposable
         if (contentLength.HasValue && contentLength.Value > maxResponseBytes)
             return null;
 
-        byte[] bytes = await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
-        return bytes.Length > 0 && bytes.Length <= maxResponseBytes ? bytes : null;
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var memory = new MemoryStream(contentLength.HasValue ? (int)Math.Min(contentLength.Value, maxResponseBytes) : 8192);
+        var buffer = new byte[8192];
+        int totalRead = 0;
+
+        while (true)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
+            if (read == 0) break;
+            totalRead += read;
+            if (totalRead > maxResponseBytes)
+                return null;
+            memory.Write(buffer, 0, read);
+        }
+
+        return memory.Length > 0 ? memory.ToArray() : null;
     }
 
     private static void AddSpotifyWebHeaders(HttpRequestMessage request, string sessionCookie)
@@ -1537,11 +1551,12 @@ public sealed class SpotifyCanvasService : IDisposable
     {
         var handler = new HttpClientHandler
         {
+            AllowAutoRedirect = false,
             AutomaticDecompression = DecompressionMethods.GZip |
                                      DecompressionMethods.Deflate |
                                      DecompressionMethods.Brotli
         };
-        var client = new HttpClient(handler);
+        var client = new HttpClient(handler) { Timeout = RequestTimeout };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("V-Notch/1.8 SpotifyCanvas");
         return client;
     }

@@ -90,6 +90,18 @@ public sealed class FileShelfController : IDisposable
         UnlockPrompt
     }
 
+    internal static bool IsUncPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        if (path.StartsWith(@"\\") || path.StartsWith("//")) return true;
+        try
+        {
+            if (Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.IsUnc) return true;
+        }
+        catch { }
+        return false;
+    }
+
     public record DropValidation(DropResult Result, string[] NewFiles, string Message, int FileCount = 0);
     public DropValidation ValidateDrop(string[]? rawFiles)
     {
@@ -99,14 +111,18 @@ public sealed class FileShelfController : IDisposable
         lock (_lock)
         {
             var newFiles = rawFiles
-                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Where(f => !string.IsNullOrWhiteSpace(f) && !IsUncPath(f))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Where(f => !_filesSet.Contains(f))
                 .Where(f => !_pendingFiles.Contains(f))
                 .ToArray();
 
             if (newFiles.Length == 0)
+            {
+                if (rawFiles.Any(IsUncPath))
+                    return new DropValidation(DropResult.NoFiles, Array.Empty<string>(), "UNC/Network paths are blocked for security.");
                 return new DropValidation(DropResult.AlreadyOnShelf, Array.Empty<string>(), Loc.Get("shelf.alreadyOnShelf"));
+            }
 
             if (_settings.IsShelfUploadLimitUnlocked)
                 return new DropValidation(DropResult.Accept, newFiles, string.Empty);
@@ -212,6 +228,9 @@ public sealed class FileShelfController : IDisposable
     }
     internal bool AddFileDirect(string filePath)
     {
+        if (string.IsNullOrWhiteSpace(filePath) || IsUncPath(filePath))
+            return false;
+
         lock (_lock)
         {
             if ((_filesList.Count + _pendingFiles.Count) >= MaxFiles
@@ -519,7 +538,7 @@ public sealed class FileShelfController : IDisposable
         System.Diagnostics.Debug.Assert(_dispatcher.CheckAccess(), "WatchDirectory must be called on UI thread");
 
         var dir = Path.GetDirectoryName(filePath);
-        if (string.IsNullOrEmpty(dir) || _watchers.ContainsKey(dir)) return;
+        if (string.IsNullOrEmpty(dir) || _watchers.ContainsKey(dir) || IsUncPath(dir) || !Directory.Exists(dir)) return;
 
         try
         {

@@ -279,14 +279,30 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
             if (nameOffset < 0 || nameOffset >= byteCount) continue;
             if (pathOffset < 0 || pathOffset >= byteCount) continue;
 
-            string name = Marshal.PtrToStringUni(list + nameOffset) ?? string.Empty;
-            string parent = Marshal.PtrToStringUni(list + pathOffset) ?? string.Empty;
+            string name = ReadBoundedUniString(list, nameOffset, byteCount);
+            string parent = ReadBoundedUniString(list, pathOffset, byteCount);
             if (name.Length == 0) continue;
 
             rows.Add((name, parent, (flags & ItemFolderFlag) != 0));
         }
 
         return rows;
+    }
+
+    private static string ReadBoundedUniString(IntPtr basePtr, int offset, int totalBytes)
+    {
+        if (offset < 0 || offset >= totalBytes) return string.Empty;
+        int remainingBytes = totalBytes - offset;
+        int maxChars = remainingBytes / sizeof(char);
+        if (maxChars <= 0) return string.Empty;
+
+        int len = 0;
+        while (len < maxChars && Marshal.ReadInt16(basePtr, offset + len * sizeof(char)) != 0)
+        {
+            len++;
+        }
+
+        return Marshal.PtrToStringUni(basePtr + offset, len) ?? string.Empty;
     }
 
     private static bool SendQuery(

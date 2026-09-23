@@ -214,7 +214,8 @@ public static class RuntimeLog
     {
         if (!IsEnabled(level)) return;
 
-        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{LevelLabel(level)}] [{category}] {message}{Environment.NewLine}";
+        var sanitizedMessage = SensitiveDataScrubber.Scrub(message);
+        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{LevelLabel(level)}] [{category}] {sanitizedMessage}{Environment.NewLine}";
 
         // The lock protects only the lifecycle handoff. No formatting or file I/O
         // is performed while holding it, so UI callers return after a queue write.
@@ -228,7 +229,7 @@ public static class RuntimeLog
 
         try
         {
-            EntryWritten?.Invoke(level, category, message);
+            EntryWritten?.Invoke(level, category, sanitizedMessage);
         }
         catch (Exception)
         {

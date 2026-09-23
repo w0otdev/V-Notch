@@ -71,6 +71,18 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "      Uninstaller published (uninstall.exe)" -ForegroundColor Green
 
+if ($CertificatePath) {
+    $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign binaries." -ForegroundColor Red; exit 1 }
+    Write-Host "      Signing V-Notch.exe and uninstall.exe..." -ForegroundColor Yellow
+    & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "$publishDir\V-Notch.exe" "$publishDir\uninstall.exe"
+    if ($LASTEXITCODE -ne 0) { Write-Host "      Authenticode signing of binaries failed!" -ForegroundColor Red; exit 1 }
+    Write-Host "      V-Notch.exe and uninstall.exe signed successfully" -ForegroundColor Green
+
+    $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
+    Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+}
+
 # Step 3: Build NSIS installer
 Write-Host "[3/3] Building NSIS installer..." -ForegroundColor Yellow
 

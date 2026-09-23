@@ -105,7 +105,7 @@ public class SettingsMigratorTests
         Assert.True(migrated);
         Assert.Equal(SettingsMigrator.CurrentVersion, settings.SettingsVersion);
         Assert.True(settings.EnableBlurEffects);
-        Assert.Equal(240, settings.AnimationFps);
+        Assert.Equal(AnimationConfig.MaxFps, settings.AnimationFps);
     }
 
     [Fact]

@@ -471,20 +471,26 @@ public partial class ChangelogWindow : Window
                 var linkMatch = Regex.Match(value, @"\[(.*?)\]\((.*?)\)");
                 if (linkMatch.Success)
                 {
-                    var hyperlink = new Hyperlink(new Run(linkMatch.Groups[1].Value));
-                    hyperlink.NavigateUri = new Uri(linkMatch.Groups[2].Value);
-                    hyperlink.Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255));
-                    hyperlink.TextDecorations = null;
-                    hyperlink.RequestNavigate += (s, e) =>
+                    string linkTarget = linkMatch.Groups[2].Value;
+                    string linkText = linkMatch.Groups[1].Value;
+
+                    if (SafeLauncher.IsSafeUrl(linkTarget, out var safeUri) && safeUri != null)
                     {
-                        Process.Start(new ProcessStartInfo
+                        var hyperlink = new Hyperlink(new Run(linkText));
+                        hyperlink.NavigateUri = safeUri;
+                        hyperlink.Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255));
+                        hyperlink.TextDecorations = null;
+                        hyperlink.RequestNavigate += (s, e) =>
                         {
-                            FileName = e.Uri.AbsoluteUri,
-                            UseShellExecute = true
-                        });
-                        e.Handled = true;
-                    };
-                    textBlock.Inlines.Add(hyperlink);
+                            SafeLauncher.TryOpenUrl(e.Uri);
+                            e.Handled = true;
+                        };
+                        textBlock.Inlines.Add(hyperlink);
+                    }
+                    else
+                    {
+                        textBlock.Inlines.Add(new Run(linkText));
+                    }
                 }
             }
 

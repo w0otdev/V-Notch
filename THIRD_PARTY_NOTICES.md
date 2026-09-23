@@ -24,12 +24,8 @@ is implied. Verify **each file** against its original source URL, creator, preci
 
 | Library | License | Source |
 | --- | --- | --- |
-| AngleSharp 1.5.0 | MIT | <https://github.com/AngleSharp/AngleSharp> |
-| BlurredBackground.WPF 1.1.0 | BSD-3-Clause | <https://github.com/V4SS3UR/BlurredBackground.WPF> |
 | CommunityToolkit.Mvvm 8.4.0 | MIT | <https://github.com/CommunityToolkit/dotnet> |
-| FluentWpfChromes 1.0.1 | MIT | <https://github.com/vbobroff-app/FluentWpfChromes> |
 | Hardcodet.NotifyIcon.Wpf 1.1.0 | CPOL-1.02 | <https://github.com/hardcodet/wpf-notifyicon> |
-| MathNet.Numerics 5.0.0 | MIT | <https://numerics.mathdotnet.com/> |
 | Microsoft.Extensions.DependencyInjection 8.0.1 | MIT | <https://dot.net/> |
 | Microsoft.ML.OnnxRuntime 1.17.1 | MIT | <https://github.com/microsoft/onnxruntime> |
 | Microsoft.Web.WebView2 1.0.4078.44 | Microsoft Software License | <https://github.com/MicrosoftEdge/WebView2Feedback> |

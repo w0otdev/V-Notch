@@ -109,13 +109,30 @@ internal static class SettingsSearchMatcher
                 && queryWord.Length >= 5 && sourceWord.Length >= 5
                 && queryWord[0] == sourceWord[0]
                 && Math.Abs(queryWord.Length - sourceWord.Length) <= 1
-                && CalculateLevenshteinDistance(queryWord, sourceWord) == 1)
+                && (CalculateLevenshteinDistance(queryWord, sourceWord) == 1 || IsSingleTransposition(queryWord, sourceWord)))
             {
                 bestQuality = 1;
             }
         }
 
         return bestQuality;
+    }
+
+    private static bool IsSingleTransposition(string a, string b)
+    {
+        if (a.Length != b.Length) return false;
+        int firstDiff = -1, secondDiff = -1;
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (a[i] != b[i])
+            {
+                if (firstDiff == -1) firstDiff = i;
+                else if (secondDiff == -1) secondDiff = i;
+                else return false;
+            }
+        }
+        return firstDiff != -1 && secondDiff == firstDiff + 1 &&
+               a[firstDiff] == b[secondDiff] && a[secondDiff] == b[firstDiff];
     }
 
     private static bool IsUnsegmentedScriptCharacter(char character) => character is

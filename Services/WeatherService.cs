@@ -42,7 +42,9 @@ public sealed class WeatherService : IWeatherService
                 return null;
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var json = await ReadLimitedStringAsync(response, MaxWeatherResponseBytes, cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(json)) return null;
+
             var info = ParseForecastJson(json, city);
             if (info != null)
             {
@@ -62,14 +64,44 @@ public sealed class WeatherService : IWeatherService
         }
     }
 
+    private const int MaxWeatherResponseBytes = 512 * 1024; // 512 KB
+
+    private static async Task<string?> ReadLimitedStringAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
+    {
+        var length = response.Content.Headers.ContentLength;
+        if (length.HasValue && length.Value > maxBytes)
+            return null;
+
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var memory = new System.IO.MemoryStream(length.HasValue ? (int)Math.Min(length.Value, maxBytes) : 4096);
+        var buffer = new byte[4096];
+        int totalRead = 0;
+
+        while (true)
+        {
+            int read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
+            if (read == 0) break;
+            totalRead += read;
+            if (totalRead > maxBytes)
+                return null;
+            memory.Write(buffer, 0, read);
+        }
+
+        return memory.Length > 0 ? System.Text.Encoding.UTF8.GetString(memory.ToArray()) : null;
+    }
+
     private async Task<(double lat, double lon, string city)?> ResolveLocationAsync(string? manualCity, CancellationToken token)
     {
-        if (!string.IsNullOrWhiteSpace(manualCity))
+        string? cleanCity = string.IsNullOrWhiteSpace(manualCity)
+            ? null
+            : new string(manualCity.Where(c => !char.IsControl(c)).Take(100).ToArray()).Trim();
+
+        if (!string.IsNullOrWhiteSpace(cleanCity))
         {
-            var coords = await ResolveCityCoordinatesAsync(manualCity, token).ConfigureAwait(false);
+            var coords = await ResolveCityCoordinatesAsync(cleanCity, token).ConfigureAwait(false);
             if (coords is null)
             {
-                RuntimeLog.Log(LogCategory, $"Could not resolve manual city: {manualCity}");
+                RuntimeLog.Log(LogCategory, $"Could not resolve manual city: {cleanCity}");
                 return null;
             }
             return coords;
@@ -143,7 +175,8 @@ public sealed class WeatherService : IWeatherService
                 return null;
             }
 
-            var json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            var json = await ReadLimitedStringAsync(response, MaxWeatherResponseBytes, token).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(json)) return null;
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
@@ -185,7 +218,8 @@ public sealed class WeatherService : IWeatherService
                 return null;
             }
 
-            var json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            var json = await ReadLimitedStringAsync(response, MaxWeatherResponseBytes, token).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(json)) return null;
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 

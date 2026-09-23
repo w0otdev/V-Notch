@@ -143,9 +143,16 @@ public class UpdateService : IUpdateService
         try
         {
             if (!IsApprovedUpdate(updateInfo)) throw new InvalidOperationException("Update does not reference an approved installer and signed manifest.");
+            var safeInstallerName = Path.GetFileName(updateInfo.InstallerName);
+            if (!string.Equals(safeInstallerName, updateInfo.InstallerName, StringComparison.Ordinal) ||
+                safeInstallerName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+                safeInstallerName.Contains(".."))
+            {
+                throw new InvalidOperationException("Invalid installer file name.");
+            }
             directory = Path.Combine(Path.GetTempPath(), "V-Notch", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
-            installerPath = Path.Combine(directory, updateInfo.InstallerName);
+            installerPath = Path.Combine(directory, safeInstallerName);
             await DownloadAndVerifyInstallerAsync(updateInfo, installerPath, progress, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -281,8 +288,14 @@ public class UpdateService : IUpdateService
     }
     internal static bool IsApprovedUpdate(UpdateInfo update) =>
         (update.InstallerName is SetupName or SelfContainedSetupName) &&
-        IsHttpsUrl(update.DownloadUrl) && IsHttpsUrl(update.ManifestUrl) && IsHttpsUrl(update.ManifestSignatureUrl);
-    private static bool IsHttpsUrl(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) && IsHttps(uri);
+        IsTrustedUpdateUrl(update.DownloadUrl) &&
+        IsTrustedUpdateUrl(update.ManifestUrl) &&
+        IsTrustedUpdateUrl(update.ManifestSignatureUrl);
+
+    private static bool IsTrustedUpdateUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        IsHttps(uri) &&
+        AppIntegrityService.IsTrustedDownloadDomain(value!);
     internal static bool IsHttps(Uri? uri) => uri is { IsAbsoluteUri: true } && uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     internal static bool HashesMatch(string expected, string actual) =>
         expected.Length == 64 && actual.Length == 64 &&

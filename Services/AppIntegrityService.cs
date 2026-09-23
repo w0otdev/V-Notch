@@ -127,11 +127,11 @@ public static class AppIntegrityService
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return true;
 
-        // Localhost or loopback for automated tests
-        if (uri.IsLoopback)
-            return true;
-
         var host = uri.Host;
+
+        // Localhost, loopback or RFC 2606 reserved test domains (.test, .example) for automated testing
+        if (uri.IsLoopback || host.EndsWith(".test", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
+            return true;
 
         // Official GitHub repository and releases
         if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||

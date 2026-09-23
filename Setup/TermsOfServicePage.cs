@@ -568,14 +568,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                     };
                     link.RequestNavigate += (_, e) =>
                     {
-                        try
-                        {
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri)
-                            {
-                                UseShellExecute = true
-                            });
-                        }
-                        catch (System.ComponentModel.Win32Exception) { }
+                        SafeLauncher.TryOpenUrl(e.Uri);
                         e.Handled = true;
                     };
                     textBlock.Inlines.Add(link);

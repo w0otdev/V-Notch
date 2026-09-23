@@ -121,7 +121,7 @@ public static class CrashReporter
         sb.AppendLine($"OS            : {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
         sb.AppendLine($"Process Arch  : {RuntimeInformation.ProcessArchitecture}");
         sb.AppendLine($".NET Runtime  : {RuntimeInformation.FrameworkDescription}");
-        sb.AppendLine($"Machine / User: {Environment.MachineName} / {Environment.UserName}");
+        sb.AppendLine($"Machine / User: {Environment.MachineName} / [REDACTED]");
         sb.AppendLine($"Processors    : {Environment.ProcessorCount} logical cores");
 
         // Memory usage
@@ -170,7 +170,7 @@ public static class CrashReporter
         sb.AppendLine(new string('=', 80));
         sb.AppendLine();
 
-        return sb.ToString();
+        return SensitiveDataScrubber.Scrub(sb.ToString());
     }
 
     private static void FormatExceptionChain(StringBuilder sb, Exception rootEx)

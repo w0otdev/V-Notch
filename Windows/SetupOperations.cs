@@ -171,6 +171,20 @@ internal static class SetupOperations
     public static void RunUninstallFlow()
     {
         var installDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var driveRoot = Path.GetPathRoot(installDirectory);
+        bool isDriveRoot = string.Equals(driveRoot?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            installDirectory, StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(installDirectory) || isDriveRoot || !File.Exists(Path.Combine(installDirectory, AppExeName)))
+        {
+            MessageBox.Show(
+                "Invalid installation directory for uninstall.",
+                Loc.Get("setup.uninstall.title"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Application.Current.Shutdown(1);
+            return;
+        }
 
         var confirmation = MessageBox.Show(
             Loc.Get("setup.uninstall.confirm"),
@@ -199,6 +213,7 @@ internal static class SetupOperations
         RemoveUninstallRegistration();
         RemoveShortcuts();
 
+        var safeInstallDir = installDirectory.Replace("\"", "").Replace("&", "").Replace("%", "");
         var cleanupScriptPath = Path.Combine(
             Path.GetTempPath(),
             $"v-notch-uninstall-{Guid.NewGuid():N}.cmd");
@@ -208,7 +223,7 @@ internal static class SetupOperations
             "@echo off",
             "setlocal",
             "timeout /t 2 /nobreak >nul",
-            $"rmdir /S /Q \"{installDirectory}\"",
+            $"rmdir /S /Q \"{safeInstallDir}\"",
             $"del /Q \"{cleanupScriptPath}\"");
 
         File.WriteAllText(cleanupScriptPath, scriptContents);
@@ -216,7 +231,7 @@ internal static class SetupOperations
         var systemDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
         var cmdPath = Path.Combine(systemDir, "cmd.exe");
 
-        Process.Start(new ProcessStartInfo(cmdPath, $"/c \"{cleanupScriptPath}\"")
+        Process.Start(new ProcessStartInfo(cmdPath, $"/c \"\"{cleanupScriptPath}\"\"")
         {
             CreateNoWindow = true,
             UseShellExecute = false,

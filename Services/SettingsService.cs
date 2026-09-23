@@ -396,23 +396,68 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     {
         bool changed = false;
 
-        if (settings.DynamicIslandWidth < 100)
+        int clampedWidth = Math.Clamp(settings.Width, 100, 4000);
+        if (clampedWidth != settings.Width) { settings.Width = clampedWidth; changed = true; }
+
+        int clampedHeight = Math.Clamp(settings.Height, 20, 200);
+        if (clampedHeight != settings.Height) { settings.Height = clampedHeight; changed = true; }
+
+        int clampedRadius = Math.Clamp(settings.CornerRadius, 0, 50);
+        if (clampedRadius != settings.CornerRadius) { settings.CornerRadius = clampedRadius; changed = true; }
+
+        if (settings.DynamicIslandWidth < 100 || settings.DynamicIslandWidth > 4000)
         {
-            settings.DynamicIslandWidth = (int)Math.Round(settings.Width * 1.12 / 10.0) * 10;
+            settings.DynamicIslandWidth = Math.Clamp((int)Math.Round(settings.Width * 1.12 / 10.0) * 10, 100, 4000);
             changed = true;
         }
 
-        if (settings.DynamicIslandHeight < 24)
+        if (settings.DynamicIslandHeight < 24 || settings.DynamicIslandHeight > 300)
         {
             settings.DynamicIslandHeight = 40;
             changed = true;
         }
+
+        int clampedNotif = Math.Clamp(settings.NotificationDuration, 1000, 30000);
+        if (clampedNotif != settings.NotificationDuration) { settings.NotificationDuration = clampedNotif; changed = true; }
+
+        int clampedFps = Math.Clamp(settings.AnimationFps, AnimationConfig.MinFps, AnimationConfig.MaxFps);
+        if (clampedFps != settings.AnimationFps) { settings.AnimationFps = clampedFps; changed = true; }
 
         double canvasBrightness = Math.Clamp(settings.SpotifyCanvasBrightness, 0.2, 1.0);
         if (Math.Abs(canvasBrightness - settings.SpotifyCanvasBrightness) > double.Epsilon)
         {
             settings.SpotifyCanvasBrightness = canvasBrightness;
             changed = true;
+        }
+
+        double clampedOpacity = Math.Clamp(settings.Opacity, 0.1, 1.0);
+        if (Math.Abs(clampedOpacity - settings.Opacity) > double.Epsilon)
+        {
+            settings.Opacity = clampedOpacity;
+            changed = true;
+        }
+
+        string[] validPriorities = ["Normal", "AboveNormal", "High", "BelowNormal", "Idle"];
+        if (!validPriorities.Any(p => string.Equals(p, settings.ProcessPriority, StringComparison.OrdinalIgnoreCase)))
+        {
+            settings.ProcessPriority = "Normal";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.Language) || settings.Language.Length > 10 || settings.Language.IndexOfAny(['\0', '\r', '\n', '/', '\\']) >= 0)
+        {
+            settings.Language = "en";
+            changed = true;
+        }
+
+        if (settings.ManualCity != null)
+        {
+            var cleanCity = new string(settings.ManualCity.Where(c => !char.IsControl(c)).Take(100).ToArray()).Trim();
+            if (cleanCity != settings.ManualCity)
+            {
+                settings.ManualCity = cleanCity;
+                changed = true;
+            }
         }
 
         return changed;
@@ -473,10 +518,15 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         return ImportSettingsFromString(rawJson, currentSettings);
     }
 
+    private const int MaxImportPayloadBytes = 2 * 1024 * 1024; // 2 MB limit
+
     public static (NotchSettings Settings, bool RequiresRestart) ImportSettingsFromString(string rawJson, NotchSettings? currentSettings = null)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
             throw new JsonException("Settings file content is empty");
+
+        if (rawJson.Length > MaxImportPayloadBytes)
+            throw new InvalidOperationException("Settings payload exceeds maximum allowed size (2 MB).");
 
         var node = JsonNode.Parse(rawJson)
                    ?? throw new JsonException("Failed to parse settings JSON");
@@ -495,6 +545,12 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         }
 
         var (settings, _) = SettingsMigrator.Migrate(settingsJsonToMigrate);
+
+        // Security requirement: Treat imported settings as untrusted. Never import credentials.
+        // Keep the local user's existing credentials intact.
+        settings.YouTubeApiKey = currentSettings?.YouTubeApiKey ?? "";
+        settings.SpotifySpDc = currentSettings?.SpotifySpDc ?? "";
+
         NormalizeSettings(settings);
 
         bool requiresRestart = CheckRequiresRestart(settings, currentSettings);

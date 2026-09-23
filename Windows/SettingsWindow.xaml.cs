@@ -3787,70 +3787,17 @@ public partial class SettingsWindow : Window
         SettingsChanged?.Invoke(this, _originalSettings.Clone());
     }
 
-    private void SocialLink_Website_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://v-notch.vercel.app/",
-            UseShellExecute = true
-        });
-    }
-
-    private void SocialLink_GitHub_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://github.com/rainaku/V-Notch",
-            UseShellExecute = true
-        });
-    }
-
-    private void SocialLink_Facebook_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://www.facebook.com/rain.107/",
-            UseShellExecute = true
-        });
-    }
-
-    private void SocialLink_Discord_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://discord.com/users/298304189535092737",
-            UseShellExecute = true
-        });
-    }
-
-    private void DonatePaypal_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://www.paypal.com/paypalme/PhuocLe678",
-            UseShellExecute = true
-        });
-    }
-
-    private void ReportBug_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://github.com/rainaku/V-Notch/issues/new",
-            UseShellExecute = true
-        });
-    }
-
-    private void RequestFeature_Click(object sender, RoutedEventArgs e)
-    {
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = "https://github.com/rainaku/V-Notch/issues/new?labels=enhancement&template=feature_request.md",
-            UseShellExecute = true
-        });
-    }
-
+#pragma warning disable S1075 // External community, project and donation URLs
+    private void SocialLink_Website_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://v-notch.vercel.app/");
+    private void SocialLink_GitHub_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch");
+    private void SocialLink_Facebook_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://www.facebook.com/rain.107/");
+    private void SocialLink_Discord_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://discord.com/users/298304189535092737");
+    private void DonatePaypal_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://www.paypal.com/paypalme/PhuocLe678");
+    private void ReportBug_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new");
+    private void RequestFeature_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new?labels=enhancement&template=feature_request.md");
+#pragma warning restore S1075
     private void ClearCache_Click(object sender, RoutedEventArgs e)
+
     {
         try
         {

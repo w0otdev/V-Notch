@@ -338,15 +338,39 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
         return await Task.Run(() =>
         {
-            using var stream = new MemoryStream(bytes);
-            var image = new BitmapImage();
-            image.BeginInit();
-            image.CacheOption = BitmapCacheOption.OnLoad;
-            image.DecodePixelWidth = MaxDecodePixelWidth;
-            image.StreamSource = stream;
-            image.EndInit();
-            image.Freeze();
-            return image;
+            try
+            {
+                using var probeStream = new MemoryStream(bytes);
+                var decoder = BitmapDecoder.Create(probeStream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+                var frame = decoder.Frames.Count > 0 ? decoder.Frames[0] : null;
+                int originalWidth = frame?.PixelWidth ?? 0;
+                int originalHeight = frame?.PixelHeight ?? 0;
+
+                // Decompression bomb protection
+                if (originalWidth > 8192 || originalHeight > 8192)
+                {
+                    RuntimeLog.Warn(ArtworkLogTag, $"Rejected image with excessive dimensions: {originalWidth}x{originalHeight}");
+                    return null;
+                }
+
+                using var stream = new MemoryStream(bytes);
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                if (originalWidth > MaxDecodePixelWidth)
+                {
+                    image.DecodePixelWidth = MaxDecodePixelWidth;
+                }
+                image.StreamSource = stream;
+                image.EndInit();
+                image.Freeze();
+                return image;
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Warn(ArtworkLogTag, $"DecodeImageAsync failed: {ex.Message}");
+                return null;
+            }
         }, ct);
     }
 

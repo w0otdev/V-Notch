@@ -120,7 +120,7 @@ public sealed class SettingsTransferTests : IDisposable
     }
 
     [Fact]
-    public void ImportSettingsFromString_LegacyEnvelopeWithCredentials_ImportsAndProtectsCredentials()
+    public void ImportSettingsFromString_LegacyEnvelopeWithCredentials_DoesNotImportUntrustedCredentials()
     {
         const string legacyEnvelope = """
             {
@@ -135,11 +135,12 @@ public sealed class SettingsTransferTests : IDisposable
             }
             """;
 
-        var (imported, _) = SettingsService.ImportSettingsFromString(legacyEnvelope);
+        var current = new NotchSettings { YouTubeApiKey = "LOCAL-KEY", SpotifySpDc = "LOCAL-COOKIE" };
+        var (imported, _) = SettingsService.ImportSettingsFromString(legacyEnvelope, current);
 
         Assert.NotNull(imported);
-        Assert.Equal("LEGACY-KEY-12345", imported.YouTubeApiKey);
-        Assert.Equal("LEGACY-COOKIE-67890", imported.SpotifySpDc);
+        Assert.Equal("LOCAL-KEY", imported.YouTubeApiKey);
+        Assert.Equal("LOCAL-COOKIE", imported.SpotifySpDc);
     }
 
     [Fact]
