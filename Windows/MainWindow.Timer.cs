@@ -915,7 +915,7 @@ public partial class MainWindow
         {
             _isAudioView = false;
             StopAudioPoll();
-            _audioMixerServiceCached?.ReleaseSessionCache();
+            ReleaseAudioSessionCache();
         }
 
         if (_isSecondaryView)

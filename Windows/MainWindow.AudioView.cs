@@ -219,15 +219,8 @@ public partial class MainWindow
         }
 
         bool hadSnapshot = _lastAudioSnapshot != null;
-        if (!hadSnapshot)
-        {
-            var quickSnap = SafeCall(() => ReadAudioSnapshot(includeIcons: false));
-            if (quickSnap != null)
-            {
-                _lastAudioSnapshot = quickSnap;
-                hadSnapshot = true;
-            }
-        }
+        // A cold CoreAudio enumeration can block for hundreds of milliseconds.
+        // Let RefreshAudioData populate the loading view on its worker instead.
 
         if (hadSnapshot)
         {
@@ -298,7 +291,7 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
-        _audioMixerServiceCached?.ReleaseSessionCache();
+        ReleaseAudioSessionCache();
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
         _isScrollSessionLocked = true;
@@ -351,7 +344,7 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
-        _audioMixerServiceCached?.ReleaseSessionCache();
+        ReleaseAudioSessionCache();
         _isSecondaryView = true;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -399,7 +392,7 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
-        _audioMixerServiceCached?.ReleaseSessionCache();
+        ReleaseAudioSessionCache();
         _isTimerView = true;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;

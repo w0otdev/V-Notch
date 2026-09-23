@@ -433,6 +433,7 @@ public partial class MainWindow
 
     private void ApplyVolumeStep(int delta)
     {
+        _volumeInteractionVersion++;
         float step = (delta / 120f) * VolumeScrollStep;
         float newVolume = Math.Clamp(_currentVolume + step, 0f, 1f);
         _currentVolume = newVolume;
@@ -695,6 +696,7 @@ public partial class MainWindow
 
     private void SetVolumeFromIndicatorPosition(MouseEventArgs e)
     {
+        _volumeInteractionVersion++;
         var pos = e.GetPosition(VolumeIndicatorContainer);
         double containerWidth = VolumeIndicatorContainer.ActualWidth;
         if (containerWidth <= 0) containerWidth = _collapsedWidth - 32;
@@ -723,10 +725,18 @@ public partial class MainWindow
     private void VolumeIcon_MouseDown(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        if (_mediaService.TryToggleCurrentSessionMute())
+        int request = ++_volumeInteractionVersion;
+        // Every click is a toggle, so retain each one while serializing driver
+        // calls. Concurrent read/modify/write operations can otherwise lose clicks.
+        _audioWrites.Post($"mute:{request}", () =>
         {
-            SyncVolumeFromActiveSession();
-        }
+            if (!_mediaService.TryToggleCurrentSessionMute()) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _volumeInteractionVersion++;
+                SyncVolumeFromActiveSession();
+            }));
+        });
     }
 
     private void VolumeIcon_MouseEnter(object sender, MouseEventArgs e)
@@ -777,6 +787,7 @@ public partial class MainWindow
 
     private void SetVolumeFromMousePosition(MouseEventArgs e)
     {
+        _volumeInteractionVersion++;
         const double volumeBarWidth = 100.0;
         var pos = e.GetPosition(VolumeBarContainer);
         float newVolume = (float)Math.Clamp(pos.X / volumeBarWidth, 0.0, 1.0);
@@ -792,21 +803,39 @@ public partial class MainWindow
         });
     }
 
-    private void SyncVolumeFromActiveSession()
+    private bool _volumeReadInFlight;
+    private int _volumeInteractionVersion;
+
+    private async void SyncVolumeFromActiveSession()
     {
-        if (_isDraggingVolume) return;
+        if (_isDraggingVolume || _volumeReadInFlight) return;
 
-        Dispatcher.BeginInvoke(new Action(() =>
+        _volumeReadInFlight = true;
+        int version = _volumeInteractionVersion;
+        try
         {
-            if (_isDraggingVolume) return;
-
-            if (_mediaService.TryGetCurrentSessionVolume(out float volume, out bool isMuted))
+            var result = await Task.Run(() =>
             {
-                _currentVolume = volume;
+                bool success = _mediaService.TryGetCurrentSessionVolume(out float volume, out bool muted);
+                return (success, volume, muted);
+            });
+            if (_isDraggingVolume || version != _volumeInteractionVersion) return;
+
+            if (result.success)
+            {
+                _currentVolume = result.volume;
                 VolumeBarScale.ScaleX = _currentVolume;
-                UpdateVolumeIcon(_currentVolume, isMuted);
+                UpdateVolumeIcon(_currentVolume, result.muted);
             }
-        }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error(MediaCtrlLogTag, ex, "Read session volume failed");
+        }
+        finally
+        {
+            _volumeReadInFlight = false;
+        }
     }
 
     private void UpdateVolumeIcon(float volume, bool isMuted)

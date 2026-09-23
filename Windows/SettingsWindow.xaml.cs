@@ -4883,10 +4883,13 @@ public partial class SettingsWindow : Window
             SearchResultsStack.Children.Add(match.Row);
         }
 
-        SearchingEmptyQuery.Text = matches.Count == 0 ? $"“{query}”" : string.Empty;
-        SearchingEmptyState.Visibility = matches.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        bool wasShowingEmptyState = SearchingEmptyState.Visibility == Visibility.Visible;
+        bool showEmptyState = matches.Count == 0;
+        SearchingEmptyQuery.Text = showEmptyState ? $"“{query}”" : string.Empty;
+        SearchingEmptyState.Visibility = showEmptyState ? Visibility.Visible : Visibility.Collapsed;
         SettingsScrollViewer.ScrollToTop();
-        if (enteredSearchMode)
+        // Animate entering search or changing between results and 404, not query edits.
+        if (enteredSearchMode || wasShowingEmptyState != showEmptyState)
         {
             AnimateActivePanel(NavSectionSearching);
         }

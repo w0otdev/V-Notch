@@ -619,14 +619,66 @@ namespace VNotch.Controls
         private void EnsureAudioCaptureStarted(bool force = false)
         {
             if (!ShouldCaptureAudio) return;
+            bool newLease = !_holdsCaptureLease;
             AcquireCaptureLease();
 
             var now = DateTime.UtcNow;
-            if (!force && (now - _lastCaptureRetryUtc).TotalMilliseconds < CaptureRetryIntervalMs) return;
+            if (!force && !newLease && (now - _lastCaptureRetryUtc).TotalMilliseconds < CaptureRetryIntervalMs) return;
 
             _lastCaptureRetryUtc = now;
-            if (AudioCaptureNeedsRestart(now)) StopAudioCapture();
-            StartAudioCapture();
+            RequestCaptureUpdate();
+        }
+
+        // UI/render callbacks only publish intent. Device enumeration, driver
+        // startup and StopRecording can block, so serialize them off-dispatcher.
+        private static readonly object _captureRequestLock = new();
+        private static bool _captureWorkerRunning;
+        private static bool _captureUpdateRequested;
+        private static bool _captureRestartRequested;
+
+        private static void RequestCaptureUpdate(bool restart = false)
+        {
+            lock (_captureRequestLock)
+            {
+                _captureUpdateRequested = true;
+                _captureRestartRequested |= restart;
+                if (_captureWorkerRunning) return;
+                _captureWorkerRunning = true;
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => ProcessCaptureUpdates());
+        }
+
+        private static void ProcessCaptureUpdates()
+        {
+            while (true)
+            {
+                bool restart;
+                lock (_captureRequestLock)
+                {
+                    if (!_captureUpdateRequested)
+                    {
+                        _captureWorkerRunning = false;
+                        return;
+                    }
+                    _captureUpdateRequested = false;
+                    restart = _captureRestartRequested;
+                    _captureRestartRequested = false;
+                }
+                try
+                {
+                    if (System.Threading.Volatile.Read(ref _captureLeaseCount) == 0)
+                    {
+                        StopAudioCapture();
+                        continue;
+                    }
+                    if (restart || AudioCaptureNeedsRestart(DateTime.UtcNow)) StopAudioCapture();
+                    StartAudioCapture();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("Visualizer capture update failed: " + ex.Message);
+                }
+            }
         }
 
         private static bool AudioCaptureNeedsRestart(DateTime now)
@@ -661,30 +713,16 @@ namespace VNotch.Controls
             // callback only touches shared capture state. Do not wait behind
             // its FFT work on every render tick when we already hold a lease.
             if (_holdsCaptureLease) return;
-            lock (_lockObj)
-            {
-                if (_holdsCaptureLease) return;
-                _holdsCaptureLease = true;
-                _captureLeaseCount++;
-            }
+            _holdsCaptureLease = true;
+            System.Threading.Interlocked.Increment(ref _captureLeaseCount);
         }
 
         private void ReleaseCaptureLease()
         {
-            bool stopPhysical = false;
-            lock (_lockObj)
-            {
-                if (!_holdsCaptureLease) return;
-                _holdsCaptureLease = false;
-                _captureLeaseCount--;
-                if (_captureLeaseCount <= 0)
-                {
-                    _captureLeaseCount = 0;
-                    stopPhysical = true;
-                }
-            }
-
-            if (stopPhysical) StopAudioCapture();
+            if (!_holdsCaptureLease) return;
+            _holdsCaptureLease = false;
+            if (System.Threading.Interlocked.Decrement(ref _captureLeaseCount) == 0)
+                RequestCaptureUpdate();
         }
 #pragma warning restore S2696
 
@@ -936,30 +974,16 @@ namespace VNotch.Controls
         public static void ConfigureAudioDevice(string? deviceId)
         {
             deviceId ??= string.Empty;
-            bool shouldRestart;
-
-            lock (_lockObj)
-            {
-                if (string.Equals(_audioDeviceId, deviceId, StringComparison.Ordinal))
-                {
-                    return;
-                }
-
-                _audioDeviceId = deviceId;
-                shouldRestart = _capture != null;
-            }
-
-            if (shouldRestart)
-            {
-                StopAudioCapture();
-            }
+            string previous = System.Threading.Interlocked.Exchange(ref _audioDeviceId, deviceId);
+            if (!string.Equals(previous, deviceId, StringComparison.Ordinal))
+                RequestCaptureUpdate(restart: true);
         }
 
         private static void StartAudioCapture()
         {
             lock (_lockObj)
             {
-                if (_capture != null) return;
+                if (_capture != null || System.Threading.Volatile.Read(ref _captureLeaseCount) == 0) return;
 
                 try
                 {

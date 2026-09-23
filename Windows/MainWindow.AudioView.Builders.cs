@@ -65,13 +65,14 @@ public partial class MainWindow
 
     private AudioMixerSnapshot? _lastAudioSnapshot { get => _viewModel.AudioMixer.Snapshot; set => _viewModel.AudioMixer.Snapshot = value; }
     private AudioMixerSnapshot? _pendingAudioSnapshot;
+    private readonly CoalescingActionQueue _audioWrites = new();
     private Action? _pendingAudioAfterBuild;
     private bool _isAudioLoading;
     private int _audioLoadingTransitionVersion;
 
     internal static bool ShouldDeferAudioSnapshotDuringTransition(
         bool isAudioView, bool isAnimating, bool hasBuiltUi)
-        => isAudioView && isAnimating && hasBuiltUi;
+        => isAudioView && isAnimating;
 
     private void SetAudioLoadingState(bool isLoading)
     {
@@ -303,13 +304,15 @@ public partial class MainWindow
     private void RefreshAudioData(Action? afterBuild = null)
     {
         int token = ++_audioPopulateToken;
+        _pendingAudioSnapshot = null;
+        _pendingAudioAfterBuild = null;
 
         System.Threading.Tasks.Task.Run(() =>
         {
             // Publish lightweight mixer snapshot first so mixer is immediately usable
             // without waiting for slower icon resolution.
             var quick = ReadAudioSnapshot(includeIcons: false);
-            QueueAudioSnapshot(token, quick);
+            QueueAudioSnapshot(token, quick, afterBuild);
 
             var detailedSessions = SafeCall(() => AudioMixer.GetSessions(includeIcons: true));
             if (detailedSessions == null || token != System.Threading.Volatile.Read(ref _audioPopulateToken))
@@ -335,9 +338,10 @@ public partial class MainWindow
         {
             if (token != _audioPopulateToken) return;
             _lastAudioSnapshot = snap;
+            if (!_isAudioView) return;
 
-            // Build empty first-boot view immediately to prevent blank animations,
-            // defer later structural updates to avoid layout stalls during transitions.
+            // Keep the loading view during the first transition too. Creating all
+            // mixer rows mid-animation blocks layout precisely on a cold open.
             bool hasBuiltUi = AudioRoot?.Children.Count > 0;
             if (ShouldDeferAudioSnapshotDuringTransition(_isAudioView, _isAnimating, hasBuiltUi))
             {
@@ -529,15 +533,23 @@ public partial class MainWindow
 
             float master = snap.Master;
             systemRows.Children.Add(BuildSystemRow("\uE7F5", OutputIconGeometry, Loc.Get("audio.output"), master,
-                r => { if (MasterVolume.IsAvailable) MasterVolume.SetVolume((float)r); },
+                r => _audioWrites.Post("master", () => { if (MasterVolume.IsAvailable) MasterVolume.SetVolume((float)r); }),
                 deviceGlyph: "\uE7F5", deviceText: outName, devices: snap.Output,
                 onDevice: SelectDefaultOutputDevice,
                 out _outputSetVol, out _outputDeviceLabel));
 
             systemRows.Children.Add(BuildSystemRow("\uE720", InputIconGeometry, Loc.Get("audio.input"), snap.Capture,
-                r => { AudioMixer.SetCaptureVolume((float)r); if (_lastAudioSnapshot != null) _lastAudioSnapshot.Capture = (float)r; },
+                r =>
+                {
+                    _audioWrites.Post("capture", () => AudioMixer.SetCaptureVolume((float)r));
+                    if (_lastAudioSnapshot != null) _lastAudioSnapshot.Capture = (float)r;
+                },
                 deviceGlyph: "\uE720", deviceText: inName, devices: snap.Input,
-                onDevice: id => { if (AudioMixer.SetDefaultInputDevice(id)) RefreshAudioData(); },
+                onDevice: id => _audioWrites.Post("input-device", () =>
+                {
+                    if (AudioMixer.SetDefaultInputDevice(id))
+                        Dispatcher.BeginInvoke(new Action(() => RefreshAudioData()));
+                }),
                 out _inputSetVol, out _inputDeviceLabel));
 
             AudioRoot.Children.Add(BuildSectionHeader(Loc.Get("audio.system"), _audioSystemExpanded,
@@ -552,7 +564,7 @@ public partial class MainWindow
                 uint pid = session.ProcessId;
                 appRows.Children.Add(BuildAppRow(session, r =>
                 {
-                    AudioMixer.SetSessionVolume(pid, (float)r);
+                    _audioWrites.Post($"session:{pid}", () => AudioMixer.SetSessionVolume(pid, (float)r));
                     CacheSessionVolume(pid, (float)r);
                 }));
             }
@@ -577,13 +589,23 @@ public partial class MainWindow
 
     private void SelectDefaultOutputDevice(string deviceId)
     {
-        if (!AudioMixer.SetDefaultOutputDevice(deviceId))
-            return;
+        _audioWrites.Post("output-device", () =>
+        {
+            if (!AudioMixer.SetDefaultOutputDevice(deviceId)) return;
+            MasterVolume.RefreshDefaultDevice();
+            _mediaService.InvalidateVolumeSessionCache();
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _volumeSynced = false;
+                RefreshAudioData();
+            }));
+        });
+    }
 
-        MasterVolume.RefreshDefaultDevice();
-        _mediaService.InvalidateVolumeSessionCache();
-        _volumeSynced = false;
-        RefreshAudioData();
+    private void ReleaseAudioSessionCache()
+    {
+        var mixer = _audioMixerServiceCached;
+        if (mixer != null) _audioWrites.Post("release-cache", mixer.ReleaseSessionCache);
     }
 
     private double MeasureAudioFitHeight()

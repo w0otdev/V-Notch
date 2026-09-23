@@ -2367,33 +2367,13 @@ public partial class MainWindow : Window
         double primaryBreadth = Math.Clamp(notchBreadth * 1.24, 140.0, 220.0);
         double secondaryBreadth = primaryBreadth * 0.82;
 
-        var dur = TimeSpan.FromMilliseconds(350);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        AnimateDouble(MediaBackground, WidthProperty, primaryLength, dur, ease);
-        AnimateDouble(MediaBackground, HeightProperty, primaryBreadth, dur, ease);
-        AnimateDouble(MediaBackground2, WidthProperty, secondaryLength, dur, ease);
-        AnimateDouble(MediaBackground2, HeightProperty, secondaryBreadth, dur, ease);
-    }
-
-    private static void AnimateDouble(UIElement target, DependencyProperty prop, double to, TimeSpan duration, IEasingFunction ease)
-    {
-        var current = (double)((FrameworkElement)target).GetValue(prop);
-        if (double.IsNaN(current) || Math.Abs(current - to) < 0.5)
-        {
-            ((FrameworkElement)target).BeginAnimation(prop, null);
-            ((FrameworkElement)target).SetValue(prop, to);
-            return;
-        }
-
-        var anim = new DoubleAnimation
-        {
-            To = to,
-            Duration = duration,
-            EasingFunction = ease
-        };
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
-        ((FrameworkElement)target).BeginAnimation(prop, anim);
+        // SizeChanged already follows the animated notch geometry. Starting four
+        // new layout animations on every frame creates clock churn and a trailing
+        // layout tail after the notch has settled. Follow that geometry directly.
+        MediaBackground.Width = primaryLength;
+        MediaBackground.Height = primaryBreadth;
+        MediaBackground2.Width = secondaryLength;
+        MediaBackground2.Height = secondaryBreadth;
     }
 
     private void UpdateNotchClip()
