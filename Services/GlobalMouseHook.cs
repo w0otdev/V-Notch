@@ -57,8 +57,11 @@ public static class InputMonitorService
     {
         if (nCode >= 0 && wParam == (IntPtr)WM_LBUTTONDOWN)
         {
-            MSLLHOOKSTRUCT hookStruct = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-            MouseActionTriggered?.Invoke(null, hookStruct.pt);
+            unsafe
+            {
+                var p = (MSLLHOOKSTRUCT*)lParam;
+                MouseActionTriggered?.Invoke(null, p->pt);
+            }
         }
         return CallNextHookEx(_hookID, nCode, wParam, lParam);
     }

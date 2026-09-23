@@ -438,13 +438,25 @@ public sealed class GpuMonitorService : IDisposable
                 inst.Contains("engtype_Compute", StringComparison.OrdinalIgnoreCase) ||
                 inst.Contains("engtype_VR", StringComparison.OrdinalIgnoreCase));
 
+            const int maxOtherCounters = 32;
+            int otherCount = 0;
+
             foreach (var inst in targetInstances)
             {
+                bool isCurrentProcess = inst.StartsWith(pidPrefix, StringComparison.OrdinalIgnoreCase);
+                if (!isCurrentProcess)
+                {
+                    if (otherCount >= maxOtherCounters)
+                    {
+                        continue;
+                    }
+                    otherCount++;
+                }
+
                 try
                 {
                     var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
                     counter.NextValue();
-                    bool isCurrentProcess = inst.StartsWith(pidPrefix, StringComparison.OrdinalIgnoreCase);
                     counters.Add(new GpuCounterItem(counter, isCurrentProcess));
                 }
                 catch (Exception)

@@ -279,7 +279,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         cropped.Freeze();
 
         using var ms = new MemoryStream();
-        var encoder = new PngBitmapEncoder();
+        var encoder = new BmpBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(cropped));
         encoder.Save(ms);
         ms.Position = 0;
@@ -509,7 +509,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         try
         {
             using var ms = new MemoryStream();
-            var encoder = new PngBitmapEncoder();
+            var encoder = new BmpBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(source));
             encoder.Save(ms);
             ms.Position = 0;

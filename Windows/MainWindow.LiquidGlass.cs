@@ -1168,6 +1168,12 @@ public partial class MainWindow
             GlassBackdropHost.Opacity = _glassConfiguredOpacity;
         }
 
+        // When idle and not animating, skip redundant per-frame recalculations and DependencyProperty updates
+        if (!_isAnimating && !_glassRegionPushActive && !_glassInitialFramePending)
+        {
+            return;
+        }
+
         double curHeight = GlassBackdropHost?.ActualHeight ?? 0;
         if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
         {

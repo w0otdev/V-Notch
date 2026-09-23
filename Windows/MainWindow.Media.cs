@@ -110,7 +110,11 @@ public partial class MainWindow
                 }
                 if (!string.IsNullOrEmpty(info.YouTubeVideoId))
                     _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
-                if (info.Thumbnail != null) _currentMediaInfo.Thumbnail = info.Thumbnail;
+                if (info.Thumbnail != null)
+                {
+                    _currentMediaInfo.Thumbnail = info.Thumbnail;
+                    DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
+                }
             }
 
             var result = _mediaDisplayController.ProcessMediaUpdate(
@@ -197,6 +201,7 @@ public partial class MainWindow
             {
                 if (result.HasThumbnail && info.Thumbnail != null)
                 {
+                    DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
                     if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || ShouldShowMediaBlurBackground))
                     {
                         AnimateLyricsBlurImageSwitch(info.Thumbnail);

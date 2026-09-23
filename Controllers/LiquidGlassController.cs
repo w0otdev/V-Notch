@@ -1003,7 +1003,8 @@ public sealed class LiquidGlassController
             }
         }
 
-        if (animating || nowMs - _lastRegionFetchMs >= IdleRegionRefreshMs)
+        double minInterval = animating ? 16.0 : IdleRegionRefreshMs;
+        if (_cachedRegion == null || nowMs - _lastRegionFetchMs >= minInterval)
         {
             _cachedRegion = TryGetRegionOnUi();
             _lastRegionFetchMs = nowMs;

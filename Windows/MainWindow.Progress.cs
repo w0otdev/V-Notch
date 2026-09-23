@@ -118,7 +118,7 @@ public partial class MainWindow
 
     private void GlobalMouseHook_MouseLeftButtonDown(object? sender, InputMonitorService.POINT pt)
     {
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {
             // Clicks inside Spotlight window must not collapse MainWindow's hidden
             // state while Spotlight temporarily owns the notch surface.
@@ -166,7 +166,7 @@ public partial class MainWindow
                     }
                 }
             }
-        });
+        }));
     }
 
     private bool IsScreenPointInsideNotchVisual(InputMonitorService.POINT pt)

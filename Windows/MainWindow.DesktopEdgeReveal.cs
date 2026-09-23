@@ -219,9 +219,18 @@ public partial class MainWindow
         _desktopDemotionDelayTimer?.Stop();
     }
 
+    private long _lastNotchObscuredCheckTicks;
+    private bool _lastNotchObscuredResult;
+
     private bool IsNotchObscuredByAnyWindow()
     {
         if (_hwnd == IntPtr.Zero) return false;
+
+        long now = Environment.TickCount64;
+        if (now - _lastNotchObscuredCheckTicks < 250)
+            return _lastNotchObscuredResult;
+
+        _lastNotchObscuredCheckTicks = now;
 
         if (!GetWindowRect(_hwnd, out var notchRect))
             return false;
@@ -266,6 +275,7 @@ public partial class MainWindow
             return true;
         }, IntPtr.Zero);
 
+        _lastNotchObscuredResult = isObscured;
         return isObscured;
     }
 
@@ -298,8 +308,7 @@ public partial class MainWindow
         SetDesktopRevealOpacityImmediate(0);
         _desktopTransparentFramesObserved = 0;
 
-        // Wait for composition frame and flush DWM before altering z-order to
-        // ensure transparent pixels are committed before changing layers.
+        // Wait for composition frame and commit transparent frame before altering z-order
         _desktopTransparentFrameHandler = (_, _) =>
         {
             // Wait for subsequent composition callback to guarantee transparent frame
@@ -314,8 +323,6 @@ public partial class MainWindow
             }
 
             if (!_desktopPromotionPending || _cleanedUp) return;
-
-            DwmFlush();
 
             _desktopPromotionPending = false;
             _isDesktopEdgePromoted = true;
@@ -340,7 +347,6 @@ public partial class MainWindow
             _desktopDemotionPending = false;
             _isDesktopEdgePromoted = false;
             ConfigureOverlayWindow();
-            DwmFlush();
             SetDesktopRevealOpacityImmediate(1);
             return;
         }
@@ -357,13 +363,18 @@ public partial class MainWindow
             // expose a partially rendered frame.
             ConfigureOverlayWindow();
 
-            // Ensure DWM consumes transparent surface at new z-order before
-            // restoring opacity to prevent flashes on quick pointer reversal.
-            DwmFlush();
-
-            // It is now behind normal windows. Restore its visual state so it is
-            // immediately ready when the desktop or hot zone is shown again.
-            SetDesktopRevealOpacityImmediate(1);
+            // Offload DWM flush to a background task so UI thread is never blocked.
+            _ = Task.Run(() =>
+            {
+                DwmFlush();
+                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+                {
+                    if (!_isDesktopEdgePromoted)
+                    {
+                        SetDesktopRevealOpacityImmediate(1);
+                    }
+                }));
+            });
         });
     }
 

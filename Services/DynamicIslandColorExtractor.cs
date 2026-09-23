@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -14,36 +16,64 @@ internal static class DynamicIslandColorExtractor
 
     private const string LogTag = "COLOR-PICK";
 
-    private static WeakReference<BitmapSource>? _lastPaletteBitmap;
-    private static Palette _lastPaletteResult;
+    private sealed class BoxedPalette
+    {
+        public readonly Palette Palette;
+        public BoxedPalette(Palette palette) => Palette = palette;
+    }
+
+    private sealed class BoxedDim
+    {
+        public readonly double Dim;
+        public BoxedDim(double dim) => Dim = dim;
+    }
+
+    private static readonly ConditionalWeakTable<BitmapSource, BoxedPalette> _paletteCache = new();
+    private static readonly ConditionalWeakTable<BitmapSource, BoxedDim> _dimCache = new();
 
     #region Public entry points
 
+    public static Task<Palette> PreloadDynamicIslandPaletteAsync(BitmapSource bitmap)
+    {
+        if (bitmap == null) return Task.FromResult(new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180)));
+        if (_paletteCache.TryGetValue(bitmap, out var cachedBox))
+            return Task.FromResult(cachedBox.Palette);
+
+        if (!bitmap.IsFrozen)
+        {
+            try { bitmap.Freeze(); } catch { }
+        }
+
+        return Task.Run(() => GetDynamicIslandPalette(bitmap));
+    }
+
     public static Palette GetDynamicIslandPalette(BitmapSource bitmap)
     {
-        if (_lastPaletteBitmap != null && _lastPaletteBitmap.TryGetTarget(out var cached) && ReferenceEquals(cached, bitmap))
-            return _lastPaletteResult;
+        if (bitmap == null)
+            return new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
+
+        if (_paletteCache.TryGetValue(bitmap, out var cachedBox))
+            return cachedBox.Palette;
 
         var result = ExtractAdvancedPalette(bitmap);
         Palette palette;
         if (result.IsMonotone || result.Primary == default)
         {
-            RuntimeLog.Log(LogTag,
-                $"FALLBACK: IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
+            RuntimeLog.Debug(LogTag,
+                () => $"FALLBACK: IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
             palette = new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
         }
         else
         {
-            RuntimeLog.Log(LogTag,
-                $"OK: Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
+            RuntimeLog.Debug(LogTag,
+                () => $"OK: Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
             var main = result.Primary;
             var darkUiBackground = Colors.Black;
             var sub = EnsureTextOnDarkBackground(main, darkUiBackground, 4.5);
             palette = new Palette(main, sub);
         }
 
-        _lastPaletteBitmap = new WeakReference<BitmapSource>(bitmap);
-        _lastPaletteResult = palette;
+        _paletteCache.AddOrUpdate(bitmap, new BoxedPalette(palette));
         return palette;
     }
 
@@ -53,13 +83,13 @@ internal static class DynamicIslandColorExtractor
         var result = ExtractAdvancedPalette(bitmap);
         if (result.IsMonotone || result.Primary == default)
         {
-            RuntimeLog.Log(LogTag,
-                $"FALLBACK(bbox): IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
+            RuntimeLog.Debug(LogTag,
+                () => $"FALLBACK(bbox): IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
             return new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
         }
 
-        RuntimeLog.Log(LogTag,
-            $"OK(bbox): Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
+        RuntimeLog.Debug(LogTag,
+            () => $"OK(bbox): Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
         var main = result.Primary;
         var darkUiBackground = Colors.Black;
         var sub = EnsureTextOnDarkBackground(main, darkUiBackground, 4.5);
@@ -141,6 +171,9 @@ internal static class DynamicIslandColorExtractor
     {
         if (bitmap == null) return 0;
 
+        if (_dimCache.TryGetValue(bitmap, out var cachedDim))
+            return cachedDim.Dim;
+
         try
         {
             int sampleSize = 32;
@@ -197,7 +230,9 @@ internal static class DynamicIslandColorExtractor
                     combined = Math.Max(lumContrib, ratioContrib) + Math.Min(lumContrib, ratioContrib) * 0.3;
                 }
 
-                return Math.Clamp(combined, 0.0, 0.65);
+                double result = Math.Clamp(combined, 0.0, 0.65);
+                _dimCache.AddOrUpdate(bitmap, new BoxedDim(result));
+                return result;
             }
             finally
             {

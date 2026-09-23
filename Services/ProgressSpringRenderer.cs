@@ -27,8 +27,6 @@ internal sealed class ProgressSpringRenderer
     private readonly Func<double> _getPlaybackRate;
 
     private readonly Stopwatch _stopwatch = new();
-    private readonly TranslateTransform _fpsBoostTarget = new();
-    private DoubleAnimation? _fpsBoostAnim;
 
     private bool _hooked;
     private bool _active;
@@ -84,17 +82,6 @@ internal sealed class ProgressSpringRenderer
         _hooked = true;
         _stopwatch.Restart();
 
-        if (_fpsBoostAnim == null)
-        {
-            _fpsBoostAnim = new DoubleAnimation(0, 1, TimeSpan.FromSeconds(1))
-            {
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-            Timeline.SetDesiredFrameRate(_fpsBoostAnim, VNotch.Services.AnimationConfig.TargetFps);
-            _fpsBoostAnim.Freeze();
-        }
-
-        _fpsBoostTarget.BeginAnimation(TranslateTransform.XProperty, _fpsBoostAnim);
         CompositionTarget.Rendering += OnRendering;
     }
     public void Unhook()
@@ -104,7 +91,6 @@ internal sealed class ProgressSpringRenderer
         _stopwatch.Stop();
 
         CompositionTarget.Rendering -= OnRendering;
-        _fpsBoostTarget.BeginAnimation(TranslateTransform.XProperty, null);
     }
 
     #endregion

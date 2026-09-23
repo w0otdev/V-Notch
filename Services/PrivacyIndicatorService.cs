@@ -728,16 +728,30 @@ public sealed class PrivacyIndicatorService : IDisposable
             }
         }
 
+        [DllImport("kernel32.dll", EntryPoint = "K32EnumProcesses", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumProcesses([Out] uint[] lpidProcess, uint cb, out uint lpcbNeeded);
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)> _packageFamilyByPidCache = new();
+
         private static bool IsPackageFamilyRunning(string packageFamily)
         {
             if (string.IsNullOrWhiteSpace(packageFamily)) return false;
-            foreach (Process process in Process.GetProcesses())
+
+            uint[] pids = new uint[1024];
+            if (!EnumProcesses(pids, (uint)(pids.Length * sizeof(uint)), out uint bytesNeeded))
             {
-                using (process)
-                {
-                    if (IsPackageFamilyProcess(packageFamily, (uint)process.Id))
-                        return true;
-                }
+                return false;
+            }
+
+            int count = (int)(bytesNeeded / sizeof(uint));
+            for (int i = 0; i < count; i++)
+            {
+                uint pid = pids[i];
+                if (pid == 0) continue;
+
+                if (IsPackageFamilyProcess(packageFamily, pid))
+                    return true;
             }
             return false;
         }
@@ -746,28 +760,48 @@ public sealed class PrivacyIndicatorService : IDisposable
         {
             if (string.IsNullOrWhiteSpace(packageFamily) || processId == 0) return false;
 
+            long now = Environment.TickCount64;
+            if (_packageFamilyByPidCache.TryGetValue(processId, out var cached) && now < cached.ExpireTicks)
+            {
+                return !string.IsNullOrEmpty(cached.Family) &&
+                       string.Equals(cached.Family, packageFamily, StringComparison.OrdinalIgnoreCase);
+            }
+
             IntPtr handle = IntPtr.Zero;
             try
             {
                 handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
-                if (handle == IntPtr.Zero) return false;
-
-                uint chars = 0;
-                int result = GetPackageFamilyName(handle, ref chars, IntPtr.Zero);
-                if (result != ErrorInsufficientBuffer || chars == 0) return false;
-
-                IntPtr buffer = Marshal.AllocHGlobal(checked((int)chars * sizeof(char)));
-                try
+                if (handle == IntPtr.Zero)
                 {
-                    result = GetPackageFamilyName(handle, ref chars, buffer);
-                    if (result != 0) return false;
-                    string? family = Marshal.PtrToStringUni(buffer);
-                    return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
+                    _packageFamilyByPidCache[processId] = (string.Empty, now + 15000);
+                    return false;
                 }
-                finally
+
+                unsafe
                 {
-                    Marshal.FreeHGlobal(buffer);
+                    uint chars = 128;
+                    char* buffer = stackalloc char[128];
+                    int result = GetPackageFamilyName(handle, ref chars, (IntPtr)buffer);
+                    if (result == 0 && chars > 1)
+                    {
+                        string family = new string(buffer, 0, (int)chars - 1);
+                        _packageFamilyByPidCache[processId] = (family, now + 60000);
+                        return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
+                    }
+                    if (result == ErrorInsufficientBuffer && chars > 128 && chars <= 1024)
+                    {
+                        char* bigBuffer = stackalloc char[(int)chars];
+                        if (GetPackageFamilyName(handle, ref chars, (IntPtr)bigBuffer) == 0 && chars > 1)
+                        {
+                            string family = new string(bigBuffer, 0, (int)chars - 1);
+                            _packageFamilyByPidCache[processId] = (family, now + 60000);
+                            return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
+                        }
+                    }
                 }
+
+                _packageFamilyByPidCache[processId] = (string.Empty, now + 30000);
+                return false;
             }
             catch
             {
