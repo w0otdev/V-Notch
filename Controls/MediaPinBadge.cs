@@ -10,6 +10,17 @@ namespace VNotch.Controls;
 // Only the pin is painted; it never intercepts thumbnail gestures.
 public sealed class MediaPinBadge : FrameworkElement
 {
+    public static readonly DependencyProperty IsPinnedProperty = DependencyProperty.Register(
+        nameof(IsPinned), typeof(bool), typeof(MediaPinBadge),
+        new PropertyMetadata(false, (sender, args) =>
+            ((MediaPinBadge)sender).SetPinned((bool)args.NewValue, animate: true)));
+
+    public bool IsPinned
+    {
+        get => (bool)GetValue(IsPinnedProperty);
+        set => SetValue(IsPinnedProperty, value);
+    }
+
     private static readonly DependencyProperty RevealProperty = DependencyProperty.Register(
         nameof(Reveal), typeof(double), typeof(MediaPinBadge),
         new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));

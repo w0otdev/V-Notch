@@ -21,12 +21,14 @@ internal sealed class SpotlightSearchService
     {
         _providers = providers.ToArray();
         _usage = usage;
+        foreach (var provider in _providers.OfType<EverythingSearchProvider>())
+            provider.IsExcluded = path => _usage?.Preferences.IsExcluded(path) == true;
+        foreach (var provider in _providers.OfType<WindowsSearchProvider>())
+            provider.IsExcluded = path => _usage?.Preferences.IsExcluded(path) == true;
     }
 
     internal Task WarmupAsync() =>
-        Task.WhenAll(
-            _providers.OfType<AppSearchProvider>().Select(provider => provider.WarmupAsync())
-            .Concat(_providers.OfType<SystemFileSearchProvider>().Select(provider => provider.WarmupAsync())));
+        Task.WhenAll(_providers.OfType<AppSearchProvider>().Select(provider => provider.WarmupAsync()));
 
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
         string query,
@@ -50,19 +52,23 @@ internal sealed class SpotlightSearchService
             return Array.Empty<SpotlightSearchItem>();
 
         var results = await Task.WhenAll(_providers.Where(selector).Select(provider =>
-            SearchProviderAsync(provider, query, limit, cancellationToken))).ConfigureAwait(false);
+            SearchProviderAsync(provider, query, MaxResults, cancellationToken))).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        return Merge(results.Select(ApplyUsageBoost), limit);
+        return Merge(results.Select(items => ApplyUsageBoost(items, query))
+            .Append(_usage?.Preferences.Search(query) ?? Array.Empty<SpotlightSearchItem>())
+            .Append(ApplyUsageBoost(_usage?.GetRememberedItems(query) ?? Array.Empty<SpotlightSearchItem>(), query)), limit);
     }
 
     private IReadOnlyList<SpotlightSearchItem> ApplyUsageBoost(
-        IReadOnlyList<SpotlightSearchItem> results)
+        IReadOnlyList<SpotlightSearchItem> results, string query)
     {
         if (_usage == null) return results;
         return results
-            .Select(item => item.Score > 0
-                ? item with { Score = item.Score + _usage.GetBoost(item.Id) }
-                : item)
+            .Where(item => !_usage.Preferences.IsExcluded(item.Target))
+            .Select(item => _usage.Preferences.Decorate(item) with
+            {
+                Score = item.Score + _usage.GetBoost(item.Id, query) + (_usage.Preferences.IsPinned(item.Target) ? 150 : 0)
+            })
             .ToArray();
     }
 
@@ -75,11 +81,13 @@ internal sealed class SpotlightSearchService
             return Array.Empty<SpotlightSearchItem>();
 
         var providerTasks = _providers.Select(provider =>
-            SearchProviderAsync(provider, query, limit, cancellationToken));
+            SearchProviderAsync(provider, query, MaxResults, cancellationToken));
         var providerResults = await Task.WhenAll(providerTasks).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Merge(providerResults.Select(ApplyUsageBoost), limit);
+        return Merge(providerResults.Select(items => ApplyUsageBoost(items, query))
+            .Append(_usage?.Preferences.Search(query) ?? Array.Empty<SpotlightSearchItem>())
+            .Append(ApplyUsageBoost(_usage?.GetRememberedItems(query) ?? Array.Empty<SpotlightSearchItem>(), query)), limit);
     }
 
     internal static IReadOnlyList<SpotlightSearchItem> Merge(

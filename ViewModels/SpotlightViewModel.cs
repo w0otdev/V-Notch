@@ -22,6 +22,8 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     private static readonly SemaphoreSlim IconSlots = new(MaxIconConcurrency, MaxIconConcurrency);
     private readonly HashSet<(string Id, string? Path)> _requestedIcons = new();
     private bool _disposed;
+    private bool _publishingSelection;
+    private bool _userSelectedResult;
 
     private readonly SpotlightSearchService _search;
     private readonly SpotlightUsageStore _usage;
@@ -39,6 +41,11 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _hasNoResults;
     [ObservableProperty] private bool _isWindowsSearchUnavailable;
 
+    partial void OnSelectedResultChanged(SpotlightSearchItem? value)
+    {
+        if (!_publishingSelection) _userSelectedResult = value != null;
+    }
+
     public SpotlightViewModel(
         SpotlightSearchService search,
         SpotlightUsageStore usage,
@@ -52,6 +59,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     public async Task SearchAsync(string query)
     {
         if (_disposed) return;
+        if (!string.Equals(Query, query, StringComparison.Ordinal)) SelectedResult = null;
         Query = query;
         CancelPendingSearch();
         _searchCts = new CancellationTokenSource();
@@ -61,12 +69,18 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
         if (string.IsNullOrWhiteSpace(query))
         {
-            // An empty query shows only the bare search bar; usage history
-            // still feeds the ranking boost but is never displayed on its own.
+            // Pinned applications remain available without entering a query.
             IsSearching = false;
             HasNoResults = false;
             IsWindowsSearchUnavailable = false;
-            Publish(Array.Empty<SpotlightSearchItem>(), markNoResults: false);
+            try
+            {
+                var pinned = await Task.Run(() => _usage.Preferences.Search(""), cancellationToken);
+                if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
+                Publish(pinned.Take(ResultLimit).ToArray(), markNoResults: false);
+                StartIconHydration(Results.ToArray(), generation, cancellationToken);
+            }
+            catch (OperationCanceledException) { }
             return;
         }
 
@@ -106,7 +120,10 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         }
     }
 
-    public void RecordLaunch(SpotlightSearchItem item) => _usage.RecordLaunch(item);
+    public SpotlightPreferences Preferences => _usage.Preferences;
+    public bool HistoryEnabled { get => _usage.Enabled; set => _usage.Enabled = value; }
+
+    public void RecordLaunch(SpotlightSearchItem item, string query = "") => _usage.RecordLaunch(item, query);
 
     public void RemoveResult(SpotlightSearchItem item)
     {
@@ -126,9 +143,9 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     private void Publish(IReadOnlyList<SpotlightSearchItem> results, bool markNoResults = true)
     {
-        // Sections render in collection order, so the collection must match the
-        // visual order for index-based keyboard navigation to work.
-        var ordered = results.OrderBy(SectionRank).ToList();
+        // Keep the personalized rank order, including when file results arrive
+        // after apps. Explicit keyboard/mouse selection still wins over reranking.
+        var ordered = results.ToList();
 
         if (ordered.Count == 0)
         {
@@ -139,17 +156,21 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
             return;
         }
 
-        string? selectedId = SelectedResult?.Id;
+        string? selectedId = _userSelectedResult ? SelectedResult?.Id : null;
         int selectedIndex = SelectedResult == null ? -1 : Results.IndexOf(SelectedResult);
 
-        ApplyDiff(ordered);
-
-        SelectedResult = selectedId == null
-            ? Results.FirstOrDefault()
-            : Results.FirstOrDefault(result => result.Id == selectedId)
-              ?? (Results.Count == 0
-                  ? null
-                  : Results[Math.Clamp(selectedIndex, 0, Results.Count - 1)]);
+        _publishingSelection = true;
+        try
+        {
+            ApplyDiff(ordered);
+            SelectedResult = selectedId == null
+                ? Results.FirstOrDefault()
+                : Results.FirstOrDefault(result => result.Id == selectedId)
+                  ?? (Results.Count == 0
+                      ? null
+                      : Results[Math.Clamp(selectedIndex, 0, Results.Count - 1)]);
+        }
+        finally { _publishingSelection = false; }
         if (markNoResults) HasNoResults = Results.Count == 0;
         ResultsPublished?.Invoke(this, EventArgs.Empty);
     }
@@ -190,6 +211,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
             // Keep the old instance (and its container) when the row would look
             // the same; Score changes alone are invisible.
             if (!VisuallyEqual(Results[target], incoming)) Results[target] = incoming;
+            else Results[target].IsPinned = incoming.IsPinned;
         }
 
         while (Results.Count > ordered.Count) Results.RemoveAt(Results.Count - 1);
@@ -203,15 +225,6 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         && current.IsRecent == incoming.IsRecent
         && current.IconPath == incoming.IconPath
         && (current.Icon == null) == (incoming.Icon == null);
-
-    private static int SectionRank(SpotlightSearchItem item) => item.IsRecent
-        ? 0
-        : item.Kind switch
-        {
-            SpotlightResultKind.Calculation => 0,
-            SpotlightResultKind.Application => 1,
-            _ => 2
-        };
 
     public void Reset()
     {

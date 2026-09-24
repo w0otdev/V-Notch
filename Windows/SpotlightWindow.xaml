@@ -481,7 +481,7 @@
                                VerticalAlignment="Center"
                                IsHitTestVisible="False"
                                Visibility="Collapsed"><Run x:Name="AutocompleteTypedRun" Foreground="Transparent"/><Run x:Name="AutocompleteSuffixRun" Foreground="#48FFFFFF"/></TextBlock>
-                    <TextBox x:Name="SearchBox"
+                    <TextBox x:Name="SearchBox" ContextMenuOpening="SearchBox_ContextMenuOpening"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
                              TextChanged="SearchBox_TextChanged"
                              SelectionChanged="SearchBox_SelectionChanged"
@@ -632,7 +632,8 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid MinHeight="38"
-                                          AutomationProperties.Name="{Binding Title}"
+                                          AutomationProperties.Name="{Binding DisplayTitle}"
+                                          ToolTip="{Binding Target}"
                                           AutomationProperties.HelpText="{Binding Subtitle}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="46"/>
@@ -648,6 +649,10 @@
                                                    Width="32"
                                                    Height="32"
                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
+                                            <Path x:Name="SolidSystemIcon" Data="{Binding SolidIcon}"
+                                                  Width="22" Height="22" Stretch="Uniform"
+                                                  Fill="#AAAAAA" HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
                                             <TextBlock x:Name="FallbackGlyph"
                                                        Text="{Binding Glyph}"
                                                        FontFamily="{StaticResource IconFont}"
@@ -657,12 +662,25 @@
                                                        Visibility="Collapsed"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center"/>
+                                            <Path x:Name="ShortcutArrow" Visibility="Collapsed"
+                                                  Width="14" Height="14" Stretch="Uniform"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                  Margin="-1,0,0,-1" Fill="#FFFFFF"
+                                                  IsHitTestVisible="False"
+                                                  Data="M1 15 L1 9 Q1 4 6 4 L8 4 L8 0 L16 6 L8 12 L8 8 L6 8 Q5 8 5 10 L5 15 Z">
+                                                <Path.Effect>
+                                                    <DropShadowEffect Color="Black" BlurRadius="4"
+                                                                      ShadowDepth="1" Opacity="0.9"
+                                                                      RenderingBias="Performance"/>
+                                                </Path.Effect>
+                                            </Path>
+                                            <controls:MediaPinBadge IsPinned="{Binding IsPinned}"/>
                                         </Grid>
 
                                         <StackPanel Grid.Column="1"
                                                     Margin="4,0,16,0"
                                                     VerticalAlignment="Center">
-                                            <TextBlock controls:HighlightedText.Text="{Binding Title}"
+                                            <TextBlock controls:HighlightedText.Text="{Binding DisplayTitle}"
                                                        controls:HighlightedText.Query="{Binding DataContext.Query, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="15"
@@ -670,7 +688,7 @@
                                                        Foreground="{StaticResource TitleTextBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
                                             <TextBlock x:Name="SubtitleText"
-                                                       Text="{Binding Subtitle}"
+                                                       Text="{Binding DisplaySubtitle}"
                                                        Margin="0,2,0,0"
                                                        FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="11.5"
@@ -691,9 +709,19 @@
                                         </Border>
                                     </Grid>
                                     <DataTemplate.Triggers>
-                                        <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
-                                            <Setter TargetName="FallbackGlyph" Property="Visibility" Value="Visible"/>
+                                        <DataTrigger Binding="{Binding IsShortcut}" Value="True">
+                                            <Setter TargetName="ShortcutArrow" Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding SolidIcon}" Value="{x:Null}">
+                                            <Setter TargetName="SolidSystemIcon" Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding Icon}" Value="{x:Null}"/>
+                                                <Condition Binding="{Binding SolidIcon}" Value="{x:Null}"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter TargetName="FallbackGlyph" Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger>
                                         <DataTrigger Binding="{Binding Subtitle}" Value="">
                                             <Setter TargetName="SubtitleText" Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>

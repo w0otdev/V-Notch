@@ -1,17 +1,24 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
 internal sealed class SpotlightLauncher
 {
-    public bool TryLaunch(SpotlightSearchItem item)
+    public bool TryLaunch(SpotlightSearchItem item, bool systemActionConfirmed = false)
     {
         if (!IsValidTarget(item)) return false;
+        if (SpotlightSystemCatalog.RequiresConfirmation(item) && !systemActionConfirmed) return false;
 
         try
         {
+            if (item.Kind == SpotlightResultKind.Settings)
+                return global::Windows.System.Launcher.LaunchUriAsync(new Uri(item.Target))
+                    .AsTask().GetAwaiter().GetResult();
+            if (item.Kind == SpotlightResultKind.SystemAction)
+                return TryRunSystemAction(item.Target);
             return Process.Start(new ProcessStartInfo(item.Target) { UseShellExecute = true }) != null;
         }
         catch (Exception ex)
@@ -20,6 +27,49 @@ internal sealed class SpotlightLauncher
             return false;
         }
     }
+
+    private static bool TryRunSystemAction(string target)
+    {
+        if (target == "vnotch-action:lock") return LockWorkStation();
+        if (target == "shell:RecycleBinFolder")
+        {
+            using var explorer = Process.Start(new ProcessStartInfo(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"))
+            {
+                UseShellExecute = true,
+                ArgumentList = { "shell:RecycleBinFolder" }
+            });
+            return explorer != null;
+        }
+
+        string[]? arguments = target switch
+        {
+            "vnotch-action:restart" => ["/r", "/t", "0"],
+            "vnotch-action:shutdown" => ["/s", "/t", "0"],
+            "vnotch-action:signOut" => ["/l"],
+            "vnotch-action:hibernate" => ["/h"],
+            "vnotch-action:advancedRestart" => ["/r", "/o", "/t", "0"],
+            _ => null
+        };
+        if (arguments == null) return false;
+
+        // Never force-close applications. A nonzero timeout would implicitly
+        // enable /f, so keep /t 0 and let Windows handle unsaved-work blockers.
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "shutdown.exe"))
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (string argument in arguments) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start);
+        if (process == null) return false;
+        process.WaitForExit();
+        return process.ExitCode == 0;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool LockWorkStation();
 
     public bool TryRevealInExplorer(SpotlightSearchItem item)
     {
@@ -96,6 +146,8 @@ internal sealed class SpotlightLauncher
 
         return item.Kind switch
         {
+            SpotlightResultKind.Settings or SpotlightResultKind.SystemAction =>
+                SpotlightSystemCatalog.IsKnownTarget(item),
             SpotlightResultKind.Application =>
                 item.Target.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase)
                     && item.Target.Length > "shell:AppsFolder\\".Length

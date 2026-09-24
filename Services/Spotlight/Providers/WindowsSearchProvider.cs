@@ -8,6 +8,8 @@ namespace VNotch.Services.Spotlight.Providers;
 
 internal sealed class WindowsSearchProvider : ISpotlightProvider
 {
+    internal Func<string, bool>? IsExcluded { get; set; }
+
     private const int QueryTimeoutMilliseconds = 1500;
     private const string ConnectionString =
         "Provider=Search.CollatorDSO;Extended Properties='Application=Windows'";
@@ -35,7 +37,7 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         int limit,
         CancellationToken cancellationToken)
     {
-        if (!IsAvailable) return Array.Empty<SpotlightSearchItem>();
+        if (!IsAvailable || !SpotlightFileVisibility.ShouldSearch(query)) return Array.Empty<SpotlightSearchItem>();
 
         string sanitizedQuery = SanitizeQuery(query);
         if (sanitizedQuery.Length == 0 || limit <= 0) return Array.Empty<SpotlightSearchItem>();
@@ -46,12 +48,14 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         try
         {
             var items = await Task.Run(
-                () => ExecuteQuery(sanitizedQuery, limit, timeoutCts.Token), timeoutCts.Token)
+                () => ExecuteQuery(sanitizedQuery, query, limit, timeoutCts.Token), timeoutCts.Token)
                 .ConfigureAwait(false);
             _isAvailable = true;
             _loggedUnavailable = false;
 
             return items
+                .Where(item => IsExcluded?.Invoke(item.Target) != true)
+                .Where(item => SpotlightFileVisibility.ShouldInclude(item, query))
                 .Select(item => item with { Score = SpotlightRanker.Score(item, query) })
                 .Where(item => item.Score > 0)
                 .OrderByDescending(item => item.Score)
@@ -102,14 +106,20 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
 
     private static List<SpotlightSearchItem> ExecuteQuery(
         string sanitizedQuery,
+        string originalQuery,
         int limit,
         CancellationToken cancellationToken)
     {
         int fetch = Math.Clamp(limit * 4, 20, 100);
+        string predicate = SpotlightFileVisibility.IsExplicitPath(originalQuery)
+            ? "System.ItemPathDisplay LIKE '" + EscapeLikePattern(originalQuery.Trim().Trim('"')
+                .Replace('/', '\\').Replace("'", "''")) + "%'"
+            : BuildNamePredicate(sanitizedQuery);
         string sql =
             $"SELECT TOP {fetch} System.ItemNameDisplay, System.ItemPathDisplay, System.ItemType " +
             "FROM SystemIndex " +
-            $"WHERE SCOPE='file:' AND ({BuildNamePredicate(sanitizedQuery)}) " +
+            $"WHERE SCOPE='file:' AND ({predicate}) " +
+            SpotlightFileVisibility.BuildWindowsScope(originalQuery) + " " +
             "ORDER BY System.Search.Rank DESC";
 
         var results = new List<SpotlightSearchItem>(fetch);

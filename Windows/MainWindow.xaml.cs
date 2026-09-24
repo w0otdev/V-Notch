@@ -1350,7 +1350,7 @@ public partial class MainWindow : Window
 
             bool spotlightChanged = oldSettings.EnableSpotlight != newSettings.EnableSpotlight;
             bool glassConfigChanged = IsLiquidGlassConfigChanged(oldSettings, newSettings);
-            if (spotlightChanged || glassConfigChanged)
+            if (spotlightChanged || glassConfigChanged || oldSettings.EnableSpotlightHistory != newSettings.EnableSpotlightHistory)
             {
                 _spotlightController.ApplySettings(_settings);
                 if (spotlightChanged)

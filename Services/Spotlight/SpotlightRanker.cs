@@ -62,13 +62,21 @@ internal static class SpotlightRanker
         string normalizedQuery = SettingsSearchMatcher.Normalize(query);
         if (normalizedQuery.Length == 0) return 0;
 
-        string title = SettingsSearchMatcher.Normalize(item.Title);
-        string subtitle = SettingsSearchMatcher.Normalize(item.Subtitle);
+        string title = SettingsSearchMatcher.Normalize(item.DisplayTitle);
+        // Presentation may hide a path, but that path remains searchable.
+        string subtitle = SettingsSearchMatcher.Normalize(item.Subtitle.StartsWith("spotlight.", StringComparison.Ordinal)
+            ? item.DisplaySubtitle : item.Subtitle);
 
-        string titleWithoutExtRaw = GetTitleWithoutAnyExtension(item.Title);
+        string titleWithoutExtRaw = GetTitleWithoutAnyExtension(item.DisplayTitle);
         string titleWithoutExt = SettingsSearchMatcher.Normalize(titleWithoutExtRaw);
 
         double baseScore = CalculateLexicalScore(title, subtitle, normalizedQuery);
+        if (item.Kind is SpotlightResultKind.Application or SpotlightResultKind.File
+            && Path.IsPathFullyQualified(item.Target))
+        {
+            string fileName = SettingsSearchMatcher.Normalize(Path.GetFileName(item.Target));
+            baseScore = Math.Max(baseScore, CalculateLexicalScore(fileName, string.Empty, normalizedQuery));
+        }
         if (titleWithoutExt.Length > 0 && titleWithoutExt != title)
         {
             double extScore = CalculateLexicalScore(titleWithoutExt, subtitle, normalizedQuery);

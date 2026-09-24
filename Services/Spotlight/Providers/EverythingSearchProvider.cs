@@ -7,6 +7,8 @@ namespace VNotch.Services.Spotlight.Providers;
 
 internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 {
+    internal Func<string, bool>? IsExcluded { get; set; }
+
     private const string EverythingIpcWindowClass = "EVERYTHING_TASKBAR_NOTIFICATION";
     private const int CopyDataQueryW = 2;
     private const int WmCopyData = 0x004A;
@@ -42,7 +44,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     {
         query = query?.Trim() ?? string.Empty;
         if (_disposed) return Array.Empty<SpotlightSearchItem>();
-        if (query.Length == 0 || limit <= 0) return Array.Empty<SpotlightSearchItem>();
+        if (!SpotlightFileVisibility.ShouldSearch(query) || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
         IntPtr everythingWindow = FindWindowW(EverythingIpcWindowClass, null);
         if (everythingWindow == IntPtr.Zero)
@@ -87,7 +89,8 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
                 // Matching the path too lets "docs\report" style queries work,
                 // mirroring Flow Launcher's Everything plugin behavior.
                 uint searchFlags = query.Contains('\\') || query.Contains('/') ? MatchPath : 0;
-                if (!SendQuery(everythingWindow, replyHwnd, id, query, searchFlags, maxResults))
+                string scopedQuery = SpotlightFileVisibility.BuildEverythingQuery(query);
+                if (!SendQuery(everythingWindow, replyHwnd, id, scopedQuery, searchFlags, maxResults))
                 {
                     IsAvailable = false;
                     return Array.Empty<SpotlightSearchItem>();
@@ -127,6 +130,8 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         return rows
             .Select(row => ToSearchItem(row.Name, row.Parent, row.IsFolder))
             .OfType<SpotlightSearchItem>()
+            .Where(item => IsExcluded?.Invoke(item.Target) != true)
+            .Where(item => SpotlightFileVisibility.ShouldInclude(item, query))
             .Select(item => item with { Score = ScoreItem(item, query) })
             .OrderByDescending(item => item.Score)
             .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)

@@ -6,6 +6,10 @@ namespace VNotch.Services.Spotlight;
 
 internal sealed class SpotlightUsageStore
 {
+    public SpotlightPreferences Preferences { get; }
+    private volatile bool _enabled = true;
+    public bool Enabled { get => _enabled; set => _enabled = value; }
+
     private const string LogTag = "SPOTLIGHT-USAGE";
     private const int MaxEntries = 100;
     private const double CountBoostCap = 90;
@@ -42,20 +46,31 @@ internal sealed class SpotlightUsageStore
         Action<string>? persistSnapshot)
     {
         _path = path;
+        Preferences = new SpotlightPreferences(Path.ChangeExtension(path, ".preferences.json"));
         _utcNow = utcNow;
         _persistSnapshot = persistSnapshot ?? PersistSnapshot;
     }
 
-    public void RecordLaunch(SpotlightSearchItem item)
+    public void RecordLaunch(SpotlightSearchItem item, string query = "")
     {
-        if (item.Kind == SpotlightResultKind.Calculation) return;
+        if (!Enabled || item.Kind is SpotlightResultKind.Calculation or SpotlightResultKind.SystemAction) return;
 
         lock (_gate)
         {
             var entries = LoadEntries();
             entries.TryGetValue(item.Id, out UsageEntry? existing);
+            string normalizedQuery = SettingsSearchMatcher.Normalize(query);
+            var queries = new List<string>(existing?.Queries ?? new());
+            if (normalizedQuery.Length > 0)
+            {
+                foreach (var entry in entries.Values) entry.Queries?.Remove(normalizedQuery);
+                queries.Remove(normalizedQuery);
+                queries.Insert(0, normalizedQuery[..Math.Min(256, normalizedQuery.Length)]);
+                if (queries.Count > 20) queries.RemoveRange(20, queries.Count - 20);
+            }
             entries[item.Id] = new UsageEntry
             {
+                Queries = queries,
                 Kind = item.Kind,
                 Title = item.Title,
                 Subtitle = item.Subtitle,
@@ -117,12 +132,15 @@ internal sealed class SpotlightUsageStore
         }
     }
 
-    public double GetBoost(string id)
+    public double GetBoost(string id, string query = "")
     {
+        if (!Enabled) return 0;
         UsageEntry? entry;
+        bool remembered;
         lock (_gate)
         {
             LoadEntries().TryGetValue(id, out entry);
+            remembered = entry?.Queries?.Contains(SettingsSearchMatcher.Normalize(query)) == true;
         }
         if (entry == null) return 0;
 
@@ -136,12 +154,27 @@ internal sealed class SpotlightUsageStore
             < 30 => 5,
             _ => 0
         };
-        return countBoost + recencyBoost;
+        return countBoost + recencyBoost + (remembered ? 350 : 0);
+    }
+
+    public IReadOnlyList<SpotlightSearchItem> GetRememberedItems(string query)
+    {
+        if (!Enabled || string.IsNullOrWhiteSpace(query)) return Array.Empty<SpotlightSearchItem>();
+        string normalized = SettingsSearchMatcher.Normalize(query);
+        KeyValuePair<string, UsageEntry>[] entries;
+        lock (_gate) entries = LoadEntries().Where(pair => pair.Value.Queries?.Contains(normalized) == true).ToArray();
+        return entries.Select(pair => new SpotlightSearchItem(pair.Key, pair.Value.Kind, pair.Value.Title,
+            pair.Value.Subtitle, pair.Value.Target, pair.Value.IconPath)
+        {
+            Score = Math.Max(1500, SpotlightRanker.Score(new SpotlightSearchItem(pair.Key, pair.Value.Kind,
+                pair.Value.Title, pair.Value.Subtitle, pair.Value.Target), query))
+        }).Where(SpotlightLauncher.IsValidTarget)
+            .Where(item => ShouldShowHistoryItem(item, query)).ToArray();
     }
 
     public IReadOnlyList<SpotlightSearchItem> GetRecentItems(int limit)
     {
-        if (limit <= 0) return Array.Empty<SpotlightSearchItem>();
+        if (!Enabled || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
         List<KeyValuePair<string, UsageEntry>> snapshot;
         lock (_gate)
@@ -158,9 +191,35 @@ internal sealed class SpotlightUsageStore
                 IsRecent = true
             })
             .Where(SpotlightLauncher.IsValidTarget)
+            .Where(item => !Preferences.IsExcluded(item.Target))
+            .Where(item => ShouldShowHistoryItem(item, string.Empty))
             .Take(limit)
             .Select(SpotlightSearchService.LoadIcon)
             .ToArray();
+    }
+
+    private bool ShouldShowHistoryItem(SpotlightSearchItem item, string query)
+    {
+        if (item.Kind == SpotlightResultKind.SystemAction) return false;
+        // A document explicitly opened by the user is useful history even if
+        // it came from a temporary/download cache. Discovery filters apply to
+        // unsolicited results, not to that deliberate choice.
+        if (item.Kind == SpotlightResultKind.File
+            && !SpotlightFileVisibility.HiddenExtensions.Contains(Path.GetExtension(item.Target), StringComparer.OrdinalIgnoreCase))
+            return true;
+        if (SpotlightSystemCatalog.IsKnownTarget(item) || Preferences.IsPinned(item.Target)
+            || !string.IsNullOrWhiteSpace(Preferences.GetAlias(item.Target))) return true;
+        if (item.Kind == SpotlightResultKind.Application)
+        {
+            if (item.Target.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (var location in new[] { Environment.SpecialFolder.StartMenu, Environment.SpecialFolder.CommonStartMenu })
+            {
+                string root = Environment.GetFolderPath(location);
+                if (root.Length > 0 && item.Target.StartsWith(root + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase)) return true;
+            }
+        }
+        return SpotlightFileVisibility.ShouldInclude(item, query);
     }
 
     private Dictionary<string, UsageEntry> LoadEntries()
@@ -264,6 +323,7 @@ internal sealed class SpotlightUsageStore
 
     internal sealed class UsageEntry
     {
+        public List<string> Queries { get; set; } = new();
         public SpotlightResultKind Kind { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Subtitle { get; set; } = string.Empty;

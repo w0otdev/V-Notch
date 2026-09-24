@@ -63,12 +63,13 @@ internal sealed class SpotlightController : ISpotlightController
     public void ApplySettings(NotchSettings settings)
     {
         bool spotlightChanged = _settings == null || _settings.EnableSpotlight != settings.EnableSpotlight;
+        bool historyChanged = _settings == null || _settings.EnableSpotlightHistory != settings.EnableSpotlightHistory;
         bool glassChanged = _settings == null
             || !string.Equals(_settings.NotchStyle, settings.NotchStyle, StringComparison.OrdinalIgnoreCase)
             || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
 
         _settings = settings.Clone();
-        if (glassChanged)
+        if (glassChanged || historyChanged)
         {
             _window?.ApplySettings(_settings);
         }

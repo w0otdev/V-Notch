@@ -31,7 +31,7 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
         int limit,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(query) || limit <= 0)
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2 || limit <= 0)
             return Array.Empty<SpotlightSearchItem>();
 
         IReadOnlyList<SpotlightSearchItem> files =
@@ -39,7 +39,7 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
         cancellationToken.ThrowIfCancellationRequested();
 
         return files
-            .Select(file => file with { Score = SpotlightRanker.Score(file, query) })
+            .Select(file => file with { Score = ScoreSystemFile(file, query) })
             .Where(file => file.Score > 0)
             .OrderByDescending(file => file.Score)
             .ThenBy(file => file.Title, StringComparer.CurrentCultureIgnoreCase)
@@ -48,6 +48,21 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
     }
 
     internal Task WarmupAsync() => _index.Value;
+
+    private static double ScoreSystemFile(SpotlightSearchItem file, string query)
+    {
+        string name = Path.GetFileName(file.Target);
+        string stem = Path.GetFileNameWithoutExtension(name);
+        string requested = query.Trim().Trim('"');
+        // Exact command names remain discoverable without Everything or WSearch.
+        // Generic partial matches stay below ordinary apps and documents.
+        if (name.Equals(requested, StringComparison.OrdinalIgnoreCase)
+            || (file.Kind == SpotlightResultKind.Application && stem.Equals(requested, StringComparison.OrdinalIgnoreCase))
+            || file.Target.Equals(requested, StringComparison.OrdinalIgnoreCase)) return 1200;
+        if (file.Kind != SpotlightResultKind.Application) return 0;
+        if (stem.StartsWith(requested, StringComparison.OrdinalIgnoreCase)) return 140;
+        return requested.Length >= 3 && stem.Contains(requested, StringComparison.OrdinalIgnoreCase) ? 80 : 0;
+    }
 
     private IReadOnlyList<SpotlightSearchItem> BuildIndex()
     {
@@ -87,14 +102,14 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
             }))
             {
                 string extension = Path.GetExtension(path);
-                if (!LaunchableExtensions.Contains(extension)) continue;
+                bool launchable = LaunchableExtensions.Contains(extension);
 
                 string title = Path.GetFileName(path);
                 if (title.Length == 0 || files.ContainsKey(title)) continue;
 
                 files[title] = new SpotlightSearchItem(
                     $"system:{path}",
-                    SpotlightResultKind.Application,
+                    launchable ? SpotlightResultKind.Application : SpotlightResultKind.File,
                     title,
                     root,
                     path,

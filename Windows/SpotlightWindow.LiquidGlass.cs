@@ -71,6 +71,7 @@ public partial class SpotlightWindow
     internal void ApplySettings(NotchSettings settings)
     {
         _settings = settings.Clone();
+        _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _gpuRefractionFailed = false;
         ApplyLiquidGlassSkin();
     }

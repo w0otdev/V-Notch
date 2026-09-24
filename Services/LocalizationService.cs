@@ -214,7 +214,13 @@ public static class Loc
                 }
                 else if (!prop.Name.StartsWith('_') && prop.Value.ValueKind == JsonValueKind.String)
                 {
-                    dict[prop.Name] = prop.Value.GetString() ?? "";
+                    string? text = prop.Value.GetString();
+                    // An incomplete external locale must not overwrite bundled
+                    // translations with blanks or untranslated key placeholders.
+                    // Some bundled labels are intentionally empty (e.g. a
+                    // language that has no o'clock suffix). Keep their keys.
+                    if (text != prop.Name && (!string.IsNullOrWhiteSpace(text) || !dict.ContainsKey(prop.Name)))
+                        dict[prop.Name] = text ?? string.Empty;
                 }
             }
 

@@ -60,6 +60,9 @@ public partial class SpotlightWindow : Window
     private bool _contentShown;
     private int _contentSizeGeneration;
     private bool _contentResizeQueued;
+    private bool _searchHeightHeld;
+    private double _contentHeightTarget = double.NaN;
+    private long _contentHeightAnimationVersion;
     private bool _statusRefreshQueued;
     private bool _entranceActive;
     private bool _pendingContentReveal;
@@ -100,6 +103,7 @@ public partial class SpotlightWindow : Window
         InitializeComponent();
         if (settings != null) _settings = settings.Clone();
         _viewModel = viewModel;
+        _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _launcher = launcher;
         DataContext = viewModel;
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
@@ -585,9 +589,8 @@ public partial class SpotlightWindow : Window
             return;
         }
 
-        // Until the new query publishes, the visible rows answer the old one.
-        if (_viewModel.Results.Count > 0)
-            SetResultsDimmed(true);
+        // Keep the current rows at full opacity while the replacement query
+        // runs. Dimming and restoring on every keystroke creates a flash.
 
         var cts = new CancellationTokenSource();
         _searchDebounceCts = cts;
@@ -732,6 +735,7 @@ public partial class SpotlightWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (_personalizationOpen) return;
         // Navigation keys must be intercepted on the tunnel: the search box's
         if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
         {
@@ -818,7 +822,7 @@ public partial class SpotlightWindow : Window
         }
         else
         {
-            AddMenuItem(menu, Loc.Get("spotlight.open"), LaunchSelected);
+            AddMenuItem(menu, item.Kind == SpotlightResultKind.SystemAction ? item.Title : Loc.Get("spotlight.open"), LaunchSelected);
             if (SpotlightLauncher.CanLaunchElevated(item))
                 AddMenuItem(menu, Loc.Get("spotlight.runAsAdmin"), LaunchSelectedElevated);
             if (SpotlightLauncher.CanReveal(item))
@@ -827,6 +831,7 @@ public partial class SpotlightWindow : Window
                 AddMenuItem(menu, Loc.Get("spotlight.copyPath"), CopySelected);
         }
 
+        AddPersonalizationActions(menu, item);
         menu.IsOpen = true;
         e.Handled = true;
     }
@@ -848,7 +853,7 @@ public partial class SpotlightWindow : Window
         int generation = _animationGeneration;
         Dispatcher.BeginInvoke(() =>
         {
-            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing) return;
+            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen) return;
             HideSpotlight();
         }, DispatcherPriority.Input);
     }
@@ -892,18 +897,39 @@ public partial class SpotlightWindow : Window
             return;
         }
 
+        string launchQuery = SearchBox.Text;
         int launchGeneration = ++_launchGeneration;
         int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
         try
         {
+            bool confirmed = false;
+            if (SpotlightSystemCatalog.RequiresConfirmation(selected))
+            {
+                _personalizationOpen = true;
+                try
+                {
+                    confirmed = Windows.ConfirmationDialog.Show(this,
+                        Loc.Get("spotlight.system.confirmMessage", selected.Title),
+                        title: selected.Title, confirmText: selected.Title,
+                        style: Windows.ConfirmationDialog.DialogStyle.Danger);
+                }
+                finally { _personalizationOpen = false; }
+                if (!confirmed || !CanCompleteLaunch(launchGeneration, sessionGeneration))
+                {
+                    if (IsSpotlightOpen && !_isClosing) SearchBox.Focus();
+                    return;
+                }
+            }
             // ShellExecute can block for hundreds of ms on cold starts; keep
             // the UI thread responsive so mouse exits or clicks can still abort.
-            bool launched = await Task.Run(() => _launcher.TryLaunch(selected), CancellationToken.None);
+            bool launched = await Task.Run(() => _launcher.TryLaunch(selected, confirmed), CancellationToken.None);
+            // A successful launch can deactivate Spotlight before ShellExecute
+            // returns. Record the captured query even if its UI session closed.
+            if (launched) _viewModel.RecordLaunch(selected, launchQuery);
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
             {
-                _viewModel.RecordLaunch(selected);
                 HideSpotlight();
             }
             else
@@ -933,16 +959,19 @@ public partial class SpotlightWindow : Window
             return;
         }
 
+        string launchQuery = SearchBox.Text;
         int launchGeneration = ++_launchGeneration;
         int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
         try
         {
             bool launched = await Task.Run(() => _launcher.TryLaunchElevated(selected), CancellationToken.None);
+            // A successful launch can deactivate Spotlight before ShellExecute
+            // returns. Record the captured query even if its UI session closed.
+            if (launched) _viewModel.RecordLaunch(selected, launchQuery);
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (launched)
             {
-                _viewModel.RecordLaunch(selected);
                 HideSpotlight();
             }
             else
@@ -966,6 +995,7 @@ public partial class SpotlightWindow : Window
         }
         if (_launchInFlight || !SpotlightLauncher.CanReveal(selected)) return;
 
+        string launchQuery = SearchBox.Text;
         int launchGeneration = ++_launchGeneration;
         int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
@@ -1021,7 +1051,13 @@ public partial class SpotlightWindow : Window
         ClearLaunchFailure();
         // The target is stale (moved or uninstalled); keep Enter useful by
         _viewModel.RemoveResult(item);
-        FailureText.Text = Loc.Get("spotlight.launchFailed", item.Title);
+        ShowSpotlightMessage(Loc.Get("spotlight.launchFailed", item.DisplayTitle));
+    }
+
+    private void ShowSpotlightMessage(string message)
+    {
+        ClearLaunchFailure();
+        FailureText.Text = message;
         FailureBar.Visibility = Visibility.Visible;
         PlayShake();
         int generation = ++_failureGeneration;
@@ -1238,7 +1274,7 @@ public partial class SpotlightWindow : Window
     private void UpdateAutocomplete()
     {
         string query = SearchBox.Text;
-        string? title = _viewModel.Results.Count > 0 ? _viewModel.Results[0].Title : null;
+        string? title = _viewModel.Results.Count > 0 ? _viewModel.Results[0].DisplayTitle : null;
         if (string.IsNullOrEmpty(query)
             || title == null
             || title.Length <= query.Length
@@ -1256,6 +1292,21 @@ public partial class SpotlightWindow : Window
 
     private void RefreshStatus()
     {
+        // Instant and deferred providers publish separately. Keep the current
+        // height until the query completes instead of shrinking to partial rows.
+        if (_viewModel.IsSearching && _contentShown && !_entranceActive && !_searchHeightHeld)
+        {
+            double height = ContentRegion.ActualHeight;
+            if (height > 0)
+            {
+                ++_contentHeightAnimationVersion;
+                ContentRegion.BeginAnimation(HeightProperty, null);
+                ContentRegion.Height = height;
+                ContentRegion.ClipToBounds = true;
+                _searchHeightHeld = true;
+                _contentHeightTarget = double.NaN;
+            }
+        }
         int resultCount = _viewModel.Results.Count;
         bool hasQuery = !string.IsNullOrWhiteSpace(SearchBox.Text);
         bool hasResults = resultCount > 0;
@@ -1264,16 +1315,20 @@ public partial class SpotlightWindow : Window
         bool searchingEligible = hasQuery && !hasResults && _viewModel.IsSearching;
         UpdateSearchingGrace(searchingEligible);
         bool showSearching = searchingEligible && _searchingPanelArmed;
-        bool showStatus = showSearching
+        // Preserve an existing empty/unavailable message through a short search.
+        // Previously each keystroke collapsed it, then restored the same message.
+        bool retainStatus = searchingEligible && !showSearching
+            && StatusPanel.Visibility == Visibility.Visible;
+        bool showStatus = retainStatus || showSearching
                           || (hasQuery && !hasResults && !_viewModel.IsSearching
                               && (_viewModel.IsWindowsSearchUnavailable || _viewModel.HasNoResults));
         bool isSearchingInFlight = hasQuery && _viewModel.IsSearching && _contentShown;
         bool showContent = hasResults || showStatus || isSearchingInFlight;
 
         // Children first: the reveal/resize animations below measure the
-        ResultsList.Visibility = (hasResults || isSearchingInFlight) ? Visibility.Visible : Visibility.Collapsed;
+        ResultsList.Visibility = (hasResults || (isSearchingInFlight && !showStatus)) ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
-        if (showStatus)
+        if (showStatus && !retainStatus)
         {
             string status;
             if (_viewModel.IsSearching)
@@ -1300,7 +1355,7 @@ public partial class SpotlightWindow : Window
             StatusTitle.Text = Loc.Get($"spotlight.{status}");
             StatusHint.Text = Loc.Get($"spotlight.{status}.hint");
         }
-        SetStatusPulse(showStatus && _viewModel.IsSearching);
+        SetStatusPulse(showSearching);
 
         bool contentWasShown = _contentShown;
         SetContentShown(showContent);
@@ -1332,6 +1387,9 @@ public partial class SpotlightWindow : Window
         }
         if (_contentShown == shown) return;
         _contentShown = shown;
+        _searchHeightHeld = false;
+        _contentHeightTarget = double.NaN;
+        ++_contentHeightAnimationVersion;
         int generation = ++_contentSizeGeneration;
 
         if (AnimationConfig.ReduceMotion || (!shown && (!IsSpotlightOpen || _isClosing)))
@@ -1520,32 +1578,47 @@ public partial class SpotlightWindow : Window
 
     private void ScheduleContentResize()
     {
-        if (_contentResizeQueued || AnimationConfig.ReduceMotion) return;
+        if (_contentResizeQueued || _viewModel.IsSearching || _entranceActive) return;
         _contentResizeQueued = true;
-        // ActualHeight is still the pre-change height: the layout pass for the
-        double oldHeight = ContentRegion.ActualHeight;
         int generation = _contentSizeGeneration;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _contentResizeQueued = false;
-            if (generation != _contentSizeGeneration || !_contentShown) return;
-            ContentRegion.BeginAnimation(HeightProperty, null);
-            ContentRegion.Height = double.NaN;
-            ContentRegion.UpdateLayout();
-            double target = ContentRegion.ActualHeight;
-            if (Math.Abs(target - oldHeight) < 1) return;
+            if (generation != _contentSizeGeneration || !_contentShown || _viewModel.IsSearching || _entranceActive) return;
+            // Measure the child without releasing the visible border to Auto:
+            // UpdateLayout on the border would snap it before animating back.
+            double oldHeight = ContentRegion.ActualHeight;
+            var inset = ContentRegion.BorderThickness;
+            var padding = ContentRegion.Padding;
+            double width = Math.Max(1, ContentRegion.ActualWidth - inset.Left - inset.Right - padding.Left - padding.Right);
+            ContentRegion.Child.Measure(new Size(width, double.PositiveInfinity));
+            double target = ContentRegion.Child.DesiredSize.Height + inset.Top + inset.Bottom + padding.Top + padding.Bottom;
+            if (!double.IsFinite(target)) return;
+            if (!_searchHeightHeld && Math.Abs(target - _contentHeightTarget) < 1) return;
+            _searchHeightHeld = false;
+            if (AnimationConfig.ReduceMotion || Math.Abs(target - oldHeight) < 1)
+            {
+                ++_contentHeightAnimationVersion;
+                _contentHeightTarget = target;
+                ContentRegion.BeginAnimation(HeightProperty, null);
+                ContentRegion.Height = double.NaN;
+                ContentRegion.ClipToBounds = false;
+                return;
+            }
             BeginContentHeightAnimation(oldHeight, target, generation);
         });
     }
 
     private void BeginContentHeightAnimation(double from, double to, int generation)
     {
+        long version = ++_contentHeightAnimationVersion;
+        _contentHeightTarget = to;
         ContentRegion.ClipToBounds = true;
-        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(380),
-            new CubicBezierEase(0.18, 1.25, 0.22, 1.0) { EasingMode = EasingMode.EaseIn });
+        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(220),
+            new CubicEase { EasingMode = EasingMode.EaseOut });
         resize.Completed += (_, _) =>
         {
-            if (generation != _contentSizeGeneration) return;
+            if (generation != _contentSizeGeneration || version != _contentHeightAnimationVersion) return;
             // Back to auto-size so later content changes are never clamped.
             ContentRegion.BeginAnimation(HeightProperty, null);
             ContentRegion.Height = double.NaN;
@@ -1556,6 +1629,9 @@ public partial class SpotlightWindow : Window
 
     private void ResetContentRegion()
     {
+        ++_contentHeightAnimationVersion;
+        _searchHeightHeld = false;
+        _contentHeightTarget = double.NaN;
         ++_contentSizeGeneration;
         _contentShown = false;
         _entranceContentReserved = false;

@@ -77,7 +77,11 @@ internal static class FileIconProvider
     private const uint SHGFI_LARGEICON = 0x000000000;
     private const uint SHGFI_SMALLICON = 0x000000001;
     private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
+    private const uint SHGFI_SYSICONINDEX = 0x000004000;
     private const uint FILE_ATTRIBUTE_NORMAL = 0x000000080;
+
+    [DllImport("comctl32.dll")]
+    private static extern IntPtr ImageList_GetIcon(IntPtr imageList, int index, uint flags);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SHGetFileInfo(
@@ -269,6 +273,25 @@ internal static class FileIconProvider
         {
             var shinfo = new ShFileInfo();
             uint flags = SHGFI_ICON | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON);
+            // Extract the base image without the Shell's tiny shortcut overlay;
+            // Spotlight draws its own larger vector arrow above the artwork.
+            if (Path.GetExtension(filePath).Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                IntPtr imageList = SHGetFileInfo(filePath, 0, ref shinfo,
+                    (uint)Marshal.SizeOf(shinfo), SHGFI_SYSICONINDEX | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON));
+                IntPtr baseIcon = imageList == IntPtr.Zero ? IntPtr.Zero : ImageList_GetIcon(imageList, shinfo.iIcon, 1);
+                if (baseIcon != IntPtr.Zero)
+                {
+                    try
+                    {
+                        var baseSource = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                            baseIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                        baseSource.Freeze();
+                        return baseSource;
+                    }
+                    finally { DestroyIcon(baseIcon); }
+                }
+            }
             IntPtr res = SHGetFileInfo(
                 filePath,
                 0,
