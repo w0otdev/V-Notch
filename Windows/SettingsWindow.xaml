@@ -1373,6 +1373,14 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
+                                                <CheckBox x:Name="KeepMediaPinnedCheck" x:Uid="keepMediaPinned" Content="Keep media pinned when tracks change"/>
+                                                <TextBlock x:Name="KeepMediaPinnedHint" Text="Keep the selected playback source pinned when the next song starts."
+                                                           Style="{StaticResource SettingHintText}" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
                                                 <CheckBox x:Name="IdleAutoHideCheck" x:Uid="idleAutoHide" Content="Auto-hide when idle"
                                                          Checked="IdleAutoHideCheck_Changed" Unchecked="IdleAutoHideCheck_Changed"/>
                                                 <TextBlock x:Name="IdleAutoHideHint" Text="Slide the notch out of view when it stays empty for a while. It returns on the next activity."

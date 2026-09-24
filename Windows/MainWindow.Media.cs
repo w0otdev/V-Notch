@@ -87,10 +87,12 @@ public partial class MainWindow
 
     private void ApplyMediaUpdate(MediaInfo info)
     {
+        if (!_mediaService.AcceptsMediaUpdate(info)) return;
         bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
         if (!isThumbnailOnlyUpdate)
         {
             _currentMediaInfo = info;
+            RefreshMediaPinBadges();
         }
 
         WakeFromIdle();

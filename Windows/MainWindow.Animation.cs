@@ -299,6 +299,7 @@ public partial class MainWindow
 
     private void HandoffAnimationThumbnailToExpanded()
     {
+        SynchronizeMediaPinForTransition();
         if (ThumbnailBorder != null)
         {
             if (!_showingEmptyThumbnail && CompactThumbnail.Source != null && ThumbnailImage != null)
@@ -315,6 +316,7 @@ public partial class MainWindow
 
     private void HandoffAnimationThumbnailToCompact()
     {
+        SynchronizeMediaPinForTransition();
         if (CompactThumbnailBorder != null)
         {
             if (ThumbnailImage.Source != null && CompactThumbnail != null)
@@ -560,6 +562,7 @@ public partial class MainWindow
 
     private void AnimateThumbnailExpandOverlay((double X, double Y) compactThumbnailRestOffset)
     {
+        SynchronizeMediaPinForTransition();
         var cachedExpandTarget = EnsureCachedThumbnailExpandTarget();
         if (!cachedExpandTarget.HasValue)
         {
@@ -1256,6 +1259,7 @@ public partial class MainWindow
 
     private void AnimateThumbnailCollapseOverlay()
     {
+        SynchronizeMediaPinForTransition();
         if (CompactThumbnailBorder != null)
         {
             CompactThumbnail.Source = ThumbnailImage.Source;

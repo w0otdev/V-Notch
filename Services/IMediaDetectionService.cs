@@ -7,6 +7,8 @@ public interface IMediaDetectionService : IDisposable
 
     event EventHandler<MediaInfo>? MediaChanged;
 
+    bool AcceptsMediaUpdate(MediaInfo info) => true;
+
     void Start();
 
     void Stop();

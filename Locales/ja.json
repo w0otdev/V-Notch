@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "システムの高負荷時でも滑らかなアニメーションを維持するために、WindowsにおけるV-Notchの優先度を調整します。",
   "settings.processPriority.normal": "通常 (デフォルト)",
   "settings.processPriority.realtime": "リアルタイム",
+  "settings.keepMediaPinned": "曲が変わっても再生元を固定する",
+  "settings.keepMediaPinned.hint": "次の曲が始まっても再生元の固定を維持します。オフにすると、曲が変わったときに固定を解除します。",
   "settings.reopenLastView": "展開時に最後のビューを再開する",
   "settings.reopenLastView.hint": "ノッチ展開時に、直前に開いていた画面を復元します。",
   "settings.reportBug": "バグを報告する",

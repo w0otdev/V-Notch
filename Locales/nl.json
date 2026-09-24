@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Verhoogt de prioriteit in Windows zodat animaties ook bij zware belasting vloeiend blijven.",
   "settings.processPriority.normal": "Normaal (standaard)",
   "settings.processPriority.realtime": "Realtime",
+  "settings.keepMediaPinned": "Afspeelbron vastgezet houden bij een volgend nummer",
+  "settings.keepMediaPinned.hint": "Houd de afspeelbron vastgezet wanneer het volgende nummer begint. Schakel uit om de bron los te maken zodra het nummer verandert.",
   "settings.reopenLastView": "Laatste tabblad onthouden",
   "settings.reopenLastView.hint": "Keert bij het opnieuw uitvouwen terug naar de laatst bekeken widgetpagina.",
   "settings.reportBug": "Probleem melden",

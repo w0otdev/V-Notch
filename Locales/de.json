@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Passen Sie die Priorität von V-Notch in Windows an, um flüssige Animationen bei hoher Systemauslastung zu gewährleisten.",
   "settings.processPriority.normal": "Normal (Standard)",
   "settings.processPriority.realtime": "Echtzeit",
+  "settings.keepMediaPinned": "Wiedergabequelle beim Titelwechsel angeheftet lassen",
+  "settings.keepMediaPinned.hint": "Die Wiedergabequelle bleibt beim nächsten Titel angeheftet. Deaktivieren, um die Anheftung beim Titelwechsel aufzuheben.",
   "settings.reopenLastView": "Letzte Ansicht wieder öffnen",
   "settings.reopenLastView.hint": "Stellt die zuletzt geöffnete Ansicht beim Erweitern der Notch wieder her.",
   "settings.reportBug": "Fehler melden",

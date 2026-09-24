@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Sistem yoğunluğunda bile animasyonların akıcı kalması için Windows işlem önceliğini artırır.",
   "settings.processPriority.normal": "Normal (Varsayılan)",
   "settings.processPriority.realtime": "Gerçek Zamanlı",
+  "settings.keepMediaPinned": "Şarkı değiştiğinde kaynağı sabit tut",
+  "settings.keepMediaPinned.hint": "Sonraki şarkı başladığında oynatma kaynağını sabit tut. Şarkı değiştiğinde sabitlemeyi kaldırmak için kapatın.",
   "settings.reopenLastView": "Açıldığında son sekmeyi geri yükle",
   "settings.reopenLastView.hint": "Çentik genişletildiğinde en son açık bırakılan sekmeye otomatik döner.",
   "settings.reportBug": "Hata bildir",

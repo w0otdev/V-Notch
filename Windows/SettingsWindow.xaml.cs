@@ -256,6 +256,7 @@ public partial class SettingsWindow : Window
         HoverDelaySlider.Opacity = _settings.EnableHoverExpand ? 1.0 : 0.4;
         DisableMouseLeaveAutoCloseCheck.IsChecked = _settings.DisableMouseLeaveAutoClose;
         ReopenLastViewCheck.IsChecked = _settings.ReopenLastViewOnExpand;
+        KeepMediaPinnedCheck.IsChecked = _settings.KeepMediaPinnedOnTrackChange;
 
         RefreshMonitorChoices(preserveSelection: false);
 
@@ -555,6 +556,8 @@ public partial class SettingsWindow : Window
         DisableMouseLeaveAutoCloseHint.Text = Loc.Get("settings.disableAutoClose.hint");
         ReopenLastViewCheck.Content = Loc.Get("settings.reopenLastView");
         ReopenLastViewHint.Text = Loc.Get("settings.reopenLastView.hint");
+        KeepMediaPinnedCheck.Content = Loc.Get("settings.keepMediaPinned");
+        KeepMediaPinnedHint.Text = Loc.Get("settings.keepMediaPinned.hint");
         IdleAutoHideCheck.Content = Loc.Get("settings.idleAutoHide");
         IdleAutoHideHint.Text = Loc.Get("settings.idleAutoHide.hint");
         IdleAutoHideKeywords.Text = Loc.Get("settings.idleAutoHide.keywords");
@@ -3154,6 +3157,7 @@ public partial class SettingsWindow : Window
             (HoverExpandHint, () => HoverExpandHint.Text = Loc.Get("settings.hoverExpand.hint")),
             (ExpandDelayLabel, () => { ExpandDelayLabel.Text = Loc.Get("settings.expandDelay"); HoverDelaySlider.Label = Loc.Get("settings.expandDelay"); HoverDelaySlider.Description = Loc.Get("settings.expandDelay.hint"); }),
             (DisableMouseLeaveAutoCloseHint, () => DisableMouseLeaveAutoCloseHint.Text = Loc.Get("settings.disableAutoClose.hint")),
+            (KeepMediaPinnedHint, () => KeepMediaPinnedHint.Text = Loc.Get("settings.keepMediaPinned.hint")),
             (ReopenLastViewHint, () => ReopenLastViewHint.Text = Loc.Get("settings.reopenLastView.hint")),
             (IdleAutoHideHint, () => IdleAutoHideHint.Text = Loc.Get("settings.idleAutoHide.hint")),
             (IdleAutoHideDelaySlider, () => { IdleAutoHideDelaySlider.Label = Loc.Get("settings.idleAutoHideDelay"); IdleAutoHideDelaySlider.Description = Loc.Get("settings.idleAutoHideDelay.hint"); }),
@@ -3317,6 +3321,7 @@ public partial class SettingsWindow : Window
         staggerMs += staggerStep;
         AnimateContentChange(DisableMouseLeaveAutoCloseCheck, () => DisableMouseLeaveAutoCloseCheck.Content = Loc.Get("settings.disableAutoClose"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
+        AnimateContentChange(KeepMediaPinnedCheck, () => KeepMediaPinnedCheck.Content = Loc.Get("settings.keepMediaPinned"), staggerMs, easeOut, fps);
         AnimateContentChange(ReopenLastViewCheck, () => ReopenLastViewCheck.Content = Loc.Get("settings.reopenLastView"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(IdleAutoHideCheck, () => IdleAutoHideCheck.Content = Loc.Get("settings.idleAutoHide"), staggerMs, easeOut, fps);
@@ -3730,6 +3735,7 @@ public partial class SettingsWindow : Window
             HoverDelaySlider.Opacity = defaults.EnableHoverExpand ? 1.0 : 0.4;
             DisableMouseLeaveAutoCloseCheck.IsChecked = defaults.DisableMouseLeaveAutoClose;
             ReopenLastViewCheck.IsChecked = defaults.ReopenLastViewOnExpand;
+            KeepMediaPinnedCheck.IsChecked = defaults.KeepMediaPinnedOnTrackChange;
 
             MusicNotifyCheck.IsChecked = defaults.ShowMusicNotifications;
             SystemNotifyCheck.IsChecked = defaults.ShowSystemNotifications;
@@ -4213,6 +4219,7 @@ public partial class SettingsWindow : Window
         snapshot.EnableHoverExpand = HoverExpandCheck.IsChecked ?? true;
         snapshot.HoverExpandDelay = (int)HoverDelaySlider.Value;
         snapshot.DisableMouseLeaveAutoClose = DisableMouseLeaveAutoCloseCheck.IsChecked ?? false;
+        snapshot.KeepMediaPinnedOnTrackChange = KeepMediaPinnedCheck.IsChecked ?? true;
         snapshot.ReopenLastViewOnExpand = ReopenLastViewCheck.IsChecked ?? false;
 
         if (MonitorCombo.SelectedItem is MonitorSelection.Choice monitor)

@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Zwiększa priorytet procesu V-Notch w Windows, zapewniając płynne animacje nawet przy dużym obciążeniu systemu.",
   "settings.processPriority.normal": "Normalny (domyślny)",
   "settings.processPriority.realtime": "Czasu rzeczywistego",
+  "settings.keepMediaPinned": "Zachowaj przypięcie źródła przy zmianie utworu",
+  "settings.keepMediaPinned.hint": "Zachowaj przypięte źródło odtwarzania po rozpoczęciu następnego utworu. Wyłącz, aby odpinać źródło przy zmianie utworu.",
   "settings.reopenLastView": "Przywracaj ostatnią kartę po rozwinięciu",
   "settings.reopenLastView.hint": "Po ponownym otwarciu notcha wraca do ostatnio przeglądanego widżetu.",
   "settings.reportBug": "Zgłoś błąd",

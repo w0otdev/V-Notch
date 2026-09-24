@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "رفع أولوية V-Notch في Windows للحفاظ على سلاسة الرسوم المتحركة حتى تحت الضغط العالي.",
   "settings.processPriority.normal": "عادية (افتراضي)",
   "settings.processPriority.realtime": "الوقت الحقيقي",
+  "settings.keepMediaPinned": "إبقاء مصدر التشغيل مثبتًا عند تغيّر الأغنية",
+  "settings.keepMediaPinned.hint": "إبقاء مصدر التشغيل مثبتًا عند بدء الأغنية التالية. عطّل هذا الخيار لإلغاء التثبيت عند تغيّر الأغنية.",
   "settings.reopenLastView": "استعادة آخر شاشة عند التوسيع",
   "settings.reopenLastView.hint": "إعادة فتح آخر تبويب تم استخدامه عند توسيع النتوء مرة أخرى.",
   "settings.reportBug": "الإبلاغ عن خطأ",

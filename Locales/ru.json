@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Повышение приоритета процесса в Windows гарантирует плавные анимации даже при высокой нагрузке на ПК.",
   "settings.processPriority.normal": "Обычный (по умолчанию)",
   "settings.processPriority.realtime": "Реального времени",
+  "settings.keepMediaPinned": "Сохранять закрепление при смене трека",
+  "settings.keepMediaPinned.hint": "Оставлять источник воспроизведения закреплённым при переходе к следующему треку. Отключите, чтобы снимать закрепление при смене трека.",
   "settings.reopenLastView": "Восстанавливать последнюю вкладку",
   "settings.reopenLastView.hint": "При повторном раскрытии возвращаться к тому экрану, который был открыт перед закрытием.",
   "settings.reportBug": "Сообщить об ошибке",

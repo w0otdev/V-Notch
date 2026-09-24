@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -156,8 +155,68 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     }
     public IMediaArtworkService ArtworkService => _artworkService;
 
+    private sealed record PinnedSession(string Key, string Source, GlobalSystemMediaTransportControlsSession Session,
+        string Track, string SourceAppId, HashSet<string> OtherSessionKeys, string PreviousKey = "");
+    private volatile bool _keepPinnedOnTrackChange = true;
+
+    public bool KeepPinnedOnTrackChange
+    {
+        get => _keepPinnedOnTrackChange;
+        set => _keepPinnedOnTrackChange = value;
+    }
+    private PinnedSession? _pinnedSession;
+    private long _pinMissingSince;
+    private MediaInfo? _lastPublishedInfo;
+    private bool _pinClosedThisUpdate;
+
+    public bool IsSessionPinned(string? sessionKey)
+    {
+        var pinned = Volatile.Read(ref _pinnedSession);
+        return pinned != null && !string.IsNullOrEmpty(sessionKey)
+            && (pinned.Key == sessionKey || pinned.PreviousKey == sessionKey);
+    }
+
+    public bool AcceptsMediaUpdate(MediaInfo info)
+    {
+        var pinned = Volatile.Read(ref _pinnedSession);
+        return pinned == null || pinned.Key == info.SessionInstanceKey;
+    }
+
+    public bool ToggleSessionPin(MediaInfo info)
+    {
+        string sessionKey = info.SessionInstanceKey;
+        if (string.IsNullOrEmpty(sessionKey)) return false;
+        if (IsSessionPinned(sessionKey))
+            Interlocked.Exchange(ref _pinnedSession, null);
+        else
+        {
+            try
+            {
+                // The displayed snapshot may lag behind the detector. Resolve the
+                // clicked session from the list rather than trusting active display.
+                var sessions = _sessionManager?.GetSessions();
+                var session = sessions?.FirstOrDefault(s => BuildSessionInstanceKey(s) == sessionKey);
+                if (session == null || sessions == null) return false;
+                var others = sessions.Select(BuildSessionInstanceKey).Where(key => key != sessionKey).ToHashSet(StringComparer.Ordinal);
+                Interlocked.Exchange(ref _pinnedSession, new PinnedSession(sessionKey, info.MediaSource, session,
+                    BuildTrackIdentity(info.CurrentTrack, ""), info.SourceAppId, others));
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Warn("MEDIA-PIN", $"Unable to pin displayed session: {ex.Message}");
+                return false;
+            }
+        }
+        Interlocked.Exchange(ref _pinMissingSince, 0);
+        _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+        return true;
+    }
+
     private GlobalSystemMediaTransportControlsSession? GetActiveSession()
     {
+        var pinned = Volatile.Read(ref _pinnedSession);
+        if (pinned != null) return pinned.Session;
+
         if (_activeDisplaySession != null)
             return _activeDisplaySession;
 
@@ -542,6 +601,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
         try
         {
+            _pinClosedThisUpdate = false;
             var info = new MediaInfo();
             List<string>? windowTitles = null;
 
@@ -550,6 +610,37 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 windowTitles ??= GetAllWindowTitles();
                 return windowTitles;
             });
+
+            if (_pinClosedThisUpdate)
+            {
+                _timelineSimulator.Reset();
+                _transientSessionGapStartedUtc = DateTime.MinValue;
+                _emptyMetadataStartTime = DateTime.MinValue;
+                UpdateDetectionMode(info);
+                CommitPublishedState(info, info.GetSignature());
+                await FireMediaChangedAsync(info);
+                _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+                return;
+            }
+
+            var waitingPin = Volatile.Read(ref _pinnedSession);
+            if (waitingPin != null && Interlocked.Read(ref _pinMissingSince) != 0)
+            {
+                // Stop UI extrapolation immediately while allowing a short
+                // reconnection window for players that rebuild sessions per song.
+                if (_lastPublishedInfo is { } last && last.SessionInstanceKey == waitingPin.Key)
+                {
+                    var paused = last.Clone();
+                    paused.IsPlaying = false;
+                    paused.IsSeekEnabled = false;
+                    paused.IsThrottled = false;
+                    paused.LastUpdated = DateTimeOffset.Now;
+                    _timelineSimulator.Reset();
+                    CommitPublishedState(paused, paused.GetSignature());
+                    await FireMediaChangedAsync(paused);
+                }
+                return;
+            }
 
             if (UpdateTransientSessionGapHold(info))
                 return;
@@ -560,13 +651,18 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 return;
             }
 
-            ApplyWindowTitleFallback(info, ref windowTitles);
-            ApplyVideoTimelineRecovery(info, ref windowTitles);
+            if (!AcceptsMediaUpdate(info)) return;
+            if (Volatile.Read(ref _pinnedSession) == null)
+            {
+                ApplyWindowTitleFallback(info, ref windowTitles);
+                ApplyVideoTimelineRecovery(info, ref windowTitles);
+            }
 
             DetectPictureInPictureState(info);
 
             TrackNameChangeBookkeeping(info);
-            PreserveSoundCloudSourceIfNeeded(info, ref windowTitles);
+            if (Volatile.Read(ref _pinnedSession) == null)
+                PreserveSoundCloudSourceIfNeeded(info, ref windowTitles);
 
             info.IsThrottled = _timelineSimulator.IsThrottled;
             UpdateDetectionMode(info);
@@ -658,6 +754,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private async Task<bool> TryPublishMediaChangeAsync(MediaInfo info, string currentSignature, bool isNewTrackForThumbnail, bool forceRefresh)
     {
+        if (!AcceptsMediaUpdate(info)) return false;
         bool metadataChanged = currentSignature != _lastPublishedSignature;
         bool playbackChanged = info.IsPlaying != _lastIsPlaying;
         bool sourceChanged = info.MediaSource != _lastSource;
@@ -714,6 +811,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private void CommitPublishedState(MediaInfo info, string currentSignature)
     {
+        _lastPublishedInfo = info.Clone();
         _lastPublishedSignature = currentSignature;
         _lastTrackSignature = currentSignature;
         _lastIsPlaying = info.IsPlaying;
@@ -758,7 +856,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private async Task FireMediaChangedAsync(MediaInfo info)
     {
-        if (_disposed || (_bgCts?.IsCancellationRequested ?? true))
+        if (!AcceptsMediaUpdate(info) || _disposed || (_bgCts?.IsCancellationRequested ?? true))
             return;
 
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -783,7 +881,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             if (dispatcher.CheckAccess())
             {
-                MediaChanged?.Invoke(this, info);
+                if (AcceptsMediaUpdate(info)) MediaChanged?.Invoke(this, info);
                 return;
             }
 
@@ -792,7 +890,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 var ct = _bgCts?.Token ?? CancellationToken.None;
                 await dispatcher.InvokeAsync(() =>
                 {
-                    if (!_disposed)
+                    if (!_disposed && AcceptsMediaUpdate(info))
                     {
                         MediaChanged?.Invoke(this, info);
                     }
@@ -1916,8 +2014,18 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         string sourceApp = session.SourceAppUserModelId ?? "";
 
-        int instanceHash = RuntimeHelpers.GetHashCode(session);
-        return $"{sourceApp}|{instanceHash}";
+        // Managed WinRT wrappers can change between GetSessions calls. Compare
+        // canonical native IUnknown identity instead of the wrapper's hash code.
+        var native = ((WinRT.IWinRTObject)session).NativeObject;
+        var iid = new Guid("00000000-0000-0000-C000-000000000046");
+        System.Runtime.InteropServices.Marshal.ThrowExceptionForHR(
+            System.Runtime.InteropServices.Marshal.QueryInterface(native.ThisPtr, ref iid, out var identity));
+        try { return $"{sourceApp}|{identity.ToInt64():X}"; }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.Release(identity);
+            GC.KeepAlive(session);
+        }
     }
 
     private static bool IsSessionPlayingStatus(GlobalSystemMediaTransportControlsSessionPlaybackStatus status)
@@ -2075,6 +2183,19 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             StabilizeArtist(info);
 
             string currentTrackOnlyIdentityForThumb = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
+            var pinned = Volatile.Read(ref _pinnedSession);
+            if (pinned != null && pinned.Key == info.SessionInstanceKey && !string.IsNullOrWhiteSpace(info.CurrentTrack))
+            {
+                string track = BuildTrackIdentity(info.CurrentTrack, "");
+                if (!string.Equals(pinned.Track, track, StringComparison.Ordinal))
+                {
+                    if (_keepPinnedOnTrackChange || string.IsNullOrEmpty(pinned.Track))
+                        Interlocked.CompareExchange(ref _pinnedSession, pinned with { Track = track }, pinned);
+                    else if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, null, pinned), pinned))
+                        _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+                }
+            }
+
             bool trackChangedForThisPass = InvalidateThumbnailStateIfTrackChanged(currentTrackOnlyIdentityForThumb);
 
             ResolveBrowserMediaSource(
@@ -2389,6 +2510,13 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         Func<List<string>> windowTitleFactory,
         bool isCompletingAdTransition)
     {
+        var pinned = Volatile.Read(ref _pinnedSession);
+        if (pinned != null && pinned.Key == info.SessionInstanceKey)
+        {
+            info.MediaSource = pinned.Source;
+            return;
+        }
+
         if (info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource))
         {
 
@@ -2713,9 +2841,83 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     }
 
 #pragma warning disable S3776
+    private async Task RefreshAfterPinGapAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(4100), cancellationToken).ConfigureAwait(false);
+            if (!_disposed) _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+        }
+        catch (OperationCanceledException) { }
+    }
+
     private async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth)> ResolveActiveSessionAsync(bool forceRefresh)
     {
         if (_sessionManager == null) return (null, null);
+        var pinned = Volatile.Read(ref _pinnedSession);
+        if (pinned != null)
+        {
+            var sessions = _sessionManager.GetSessions();
+            var match = sessions.FirstOrDefault(s => BuildSessionInstanceKey(s) == pinned.Key);
+            if (match != null)
+            {
+                // Remember competing sessions so a later rebuild cannot bind the
+                // pin to a different tab that was already playing alongside it.
+                var others = new HashSet<string>(pinned.OtherSessionKeys, StringComparer.Ordinal);
+                foreach (var other in sessions)
+                {
+                    string key = BuildSessionInstanceKey(other);
+                    if (key != pinned.Key) others.Add(key);
+                }
+                if (others.Count != pinned.OtherSessionKeys.Count)
+                    Interlocked.CompareExchange(ref _pinnedSession, pinned with { OtherSessionKeys = others }, pinned);
+                Interlocked.Exchange(ref _pinMissingSince, 0);
+                return (match, null);
+            }
+            if (_keepPinnedOnTrackChange)
+            {
+                // Some players replace their SMTC session on every track. Retain
+                // the source preference and reconnect only to one unambiguous new
+                // session from that application, never to a known competing tab.
+                var replacements = sessions.Where(candidate =>
+                    string.Equals(candidate.SourceAppUserModelId, pinned.SourceAppId, StringComparison.OrdinalIgnoreCase)
+                    && !pinned.OtherSessionKeys.Contains(BuildSessionInstanceKey(candidate))).Take(2).ToArray();
+                if (replacements.Length == 1)
+                {
+                    var replacement = replacements[0];
+                    var rebound = pinned with
+                    {
+                        Key = BuildSessionInstanceKey(replacement),
+                        PreviousKey = pinned.Key,
+                        Session = replacement
+                    };
+                    if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, rebound, pinned), pinned))
+                    {
+                        Interlocked.Exchange(ref _pinMissingSince, 0);
+                        RuntimeLog.Info("MEDIA-PIN", "Reconnected pinned source after its media session was replaced.");
+                        return (replacement, null);
+                    }
+                }
+            }
+            // Session lists can briefly be empty during track changes. Keep the
+            // pinned snapshot until absence is confirmed, never select a rival.
+            long now = Environment.TickCount64;
+            long missingSince = Interlocked.CompareExchange(ref _pinMissingSince, now, 0);
+            if (missingSince == 0)
+            {
+                _ = RefreshAfterPinGapAsync(_bgCts?.Token ?? CancellationToken.None);
+                return (null, null);
+            }
+            if (now - missingSince < 4000) return (null, null);
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, null, pinned), pinned))
+            {
+                Interlocked.Exchange(ref _pinMissingSince, 0);
+                UnsubscribeFromSession();
+                _pinClosedThisUpdate = true;
+                RuntimeLog.Info("MEDIA-PIN", "Pinned session closed; restored automatic selection.");
+                return (null, null);
+            }
+        }
         GlobalSystemMediaTransportControlsSession? session = null;
         string? spotifyGroundTruth = null;
         var osCurrentSession = _sessionManager.GetCurrentSession();
@@ -3378,6 +3580,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         try
         {
+            var pinned = Volatile.Read(ref _pinnedSession);
+            if (pinned != null) return pinned.Session.SourceAppUserModelId ?? "";
             return _activeDisplaySession?.SourceAppUserModelId
                 ?? _currentSession?.SourceAppUserModelId
                 ?? _sessionManager?.GetCurrentSession()?.SourceAppUserModelId
@@ -3472,6 +3676,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         }
 
         // 3. Unsubscribe from session & session manager
+        Interlocked.Exchange(ref _pinnedSession, null);
+        Interlocked.Exchange(ref _pinMissingSince, 0);
         UnsubscribeFromSession();
         if (sessionManagerToUnsub != null)
         {

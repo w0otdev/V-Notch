@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Điều chỉnh mức ưu tiên của V-Notch trong Windows để đảm bảo hiệu ứng mượt mà khi hệ thống tải nặng.",
   "settings.processPriority.normal": "Bình thường (Mặc định)",
   "settings.processPriority.realtime": "Thời gian thực",
+  "settings.keepMediaPinned": "Giữ ghim khi chuyển bài",
+  "settings.keepMediaPinned.hint": "Giữ ghim nguồn phát khi chuyển sang bài tiếp theo. Tắt để tự bỏ ghim khi bài hát thay đổi.",
   "settings.reopenLastView": "Mở lại cửa sổ cuối khi mở rộng",
   "settings.reopenLastView.hint": "Tự động khôi phục giao diện mở gần nhất khi mở rộng notch.",
   "settings.reportBug": "Báo lỗi",

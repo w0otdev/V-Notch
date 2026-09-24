@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Ajustez la priorité de V-Notch dans Windows pour garantir des animations fluides sous forte charge système.",
   "settings.processPriority.normal": "Normale (Par défaut)",
   "settings.processPriority.realtime": "Temps réel",
+  "settings.keepMediaPinned": "Garder la source épinglée au changement de morceau",
+  "settings.keepMediaPinned.hint": "Garder la source de lecture épinglée au début du morceau suivant. Désactiver pour la détacher lors du changement de morceau.",
   "settings.reopenLastView": "Rouvrir dernière vue à l'extension",
   "settings.reopenLastView.hint": "Restaure la dernière vue ouverte lorsque le notch se développe.",
   "settings.reportBug": "Signaler un bug",

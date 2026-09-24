@@ -38,6 +38,7 @@ public class NotchSettings
     public bool EnableCursorBypass { get; set; } = false;
     public bool EnableAnimations { get; set; } = true;
     public bool DisableMouseLeaveAutoClose { get; set; } = true;
+    public bool KeepMediaPinnedOnTrackChange { get; set; } = true;
     public bool ReopenLastViewOnExpand { get; set; } = false;
 
     public double AnimationSpeed { get; set; } = 2.0;

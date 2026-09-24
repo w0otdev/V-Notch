@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "调整 V-Notch 在 Windows 中的调度优先级，保证系统高负载时界面动画依然丝滑流畅。",
   "settings.processPriority.normal": "正常（推荐）",
   "settings.processPriority.realtime": "实时（最高）",
+  "settings.keepMediaPinned": "切换歌曲时保持固定播放来源",
+  "settings.keepMediaPinned.hint": "下一首歌曲开始时仍固定当前播放来源。关闭后，切换歌曲时会自动取消固定。",
   "settings.reopenLastView": "展开时恢复上次浏览视图",
   "settings.reopenLastView.hint": "再次展开刘海时自动切回上一次使用的组件页面。",
   "settings.reportBug": "反馈问题",

@@ -72,6 +72,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     private void ApplyMediaUpdate(MediaInfo info)
     {
+        if (!_mediaService.AcceptsMediaUpdate(info)) return;
         if (info.IsThumbnailOnlyUpdate)
         {
             var current = Media.CurrentInfo;

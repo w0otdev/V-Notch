@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Imposta la priorità in Windows per garantire la massima fluidità delle animazioni anche sotto carico elevato.",
   "settings.processPriority.normal": "Normale (predefinito)",
   "settings.processPriority.realtime": "Tempo reale",
+  "settings.keepMediaPinned": "Mantieni la sorgente fissata al cambio di brano",
+  "settings.keepMediaPinned.hint": "Mantieni fissata la sorgente di riproduzione quando inizia il brano successivo. Disattiva per rimuovere il fissaggio al cambio di brano.",
   "settings.reopenLastView": "Riapri l'ultima vista all'espansione",
   "settings.reopenLastView.hint": "All'apertura del notch, torna automaticamente alla scheda visualizzata più di recente.",
   "settings.reportBug": "Segnala un bug",

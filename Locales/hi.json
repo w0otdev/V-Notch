@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "भारी सिस्टम लोड के तहत सुचारू एनिमेशन सुनिश्चित करने के लिए विंडोज में V-Notch की प्राथमिकता समायोजित करें।",
   "settings.processPriority.normal": "सामान्य (डिफ़ॉल्ट)",
   "settings.processPriority.realtime": "रीयल-टाइम",
+  "settings.keepMediaPinned": "गाना बदलने पर प्लेबैक स्रोत पिन रखें",
+  "settings.keepMediaPinned.hint": "अगला गाना शुरू होने पर प्लेबैक स्रोत पिन रखें। गाना बदलने पर पिन हटाने के लिए इसे बंद करें।",
   "settings.reopenLastView": "खोलने पर पिछला व्यू फिर दिखाएँ",
   "settings.reopenLastView.hint": "नॉच खुलने पर पिछली खुली हुई स्क्रीन को फिर से दिखाएँ।",
   "settings.reportBug": "बग रिपोर्ट करें",

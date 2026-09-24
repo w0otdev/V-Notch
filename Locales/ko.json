@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Windows 프로세스 우선순위를 높여 시스템 사용량이 많을 때도 애니메이션을 매끄럽게 유지합니다.",
   "settings.processPriority.normal": "보통 (권장)",
   "settings.processPriority.realtime": "실시간",
+  "settings.keepMediaPinned": "곡이 바뀌어도 재생 소스 고정 유지",
+  "settings.keepMediaPinned.hint": "다음 곡이 시작되어도 재생 소스를 고정합니다. 끄면 곡이 바뀔 때 고정이 해제됩니다.",
   "settings.reopenLastView": "확장 시 이전 탭 유지",
   "settings.reopenLastView.hint": "노치를 다시 열 때 가장 최근에 보던 위젯 화면으로 돌아갑니다.",
   "settings.reportBug": "버그 신고",

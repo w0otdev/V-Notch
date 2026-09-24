@@ -1433,6 +1433,7 @@ public partial class MainWindow : Window
 
     private void ApplySettings(NotchSettings? oldSettings, bool animatePulse = false)
     {
+        _mediaService.KeepPinnedOnTrackChange = _settings.KeepMediaPinnedOnTrackChange;
         if (oldSettings == null || oldSettings.AnimationFps != _settings.AnimationFps ||
             oldSettings.AutoAnimationFps != _settings.AutoAnimationFps)
         {

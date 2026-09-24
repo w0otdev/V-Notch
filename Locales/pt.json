@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Define a prioridade do V-Notch no Windows para garantir fluidez mesmo sob uso intenso do computador.",
   "settings.processPriority.normal": "Normal (Padrão)",
   "settings.processPriority.realtime": "Tempo real",
+  "settings.keepMediaPinned": "Manter a fonte fixada ao mudar de música",
+  "settings.keepMediaPinned.hint": "Manter a fonte de reprodução fixada quando a próxima música começar. Desative para desafixar ao mudar de música.",
   "settings.reopenLastView": "Reabrir última aba ao expandir",
   "settings.reopenLastView.hint": "Ao expandir o notch, retorna para a aba que você estava usando por último.",
   "settings.reportBug": "Reportar um erro",

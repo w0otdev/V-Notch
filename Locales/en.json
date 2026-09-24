@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Adjust the priority of V-Notch in Windows to ensure smooth animations under heavy system load.",
   "settings.processPriority.normal": "Normal (Default)",
   "settings.processPriority.realtime": "Realtime",
+  "settings.keepMediaPinned": "Keep media pinned when tracks change",
+  "settings.keepMediaPinned.hint": "Keep the playback source pinned when the next song starts. Turn off to unpin when the song changes.",
   "settings.reopenLastView": "Reopen last view on expand",
   "settings.reopenLastView.hint": "Restore the last opened view when the notch expands.",
   "settings.reportBug": "Report a bug",

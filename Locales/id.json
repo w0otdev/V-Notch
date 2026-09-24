@@ -289,6 +289,8 @@
   "settings.processPriority.hint": "Tingkatkan prioritas V-Notch di Windows untuk memastikan animasi tetap lancar meski sistem sedang sibuk.",
   "settings.processPriority.normal": "Normal (Default)",
   "settings.processPriority.realtime": "Realtime",
+  "settings.keepMediaPinned": "Tetap sematkan sumber saat lagu berganti",
+  "settings.keepMediaPinned.hint": "Pertahankan sumber pemutaran yang disematkan saat lagu berikutnya dimulai. Nonaktifkan untuk melepas sematan saat lagu berganti.",
   "settings.reopenLastView": "Buka kembali tampilan terakhir saat diperluas",
   "settings.reopenLastView.hint": "Kembali ke widget yang terakhir dibuka saat notch diperluas lagi.",
   "settings.reportBug": "Laporkan bug",

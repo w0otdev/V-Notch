@@ -29,7 +29,7 @@ internal static class MonitorSelection
     {
         var bounds = screen.Bounds;
         var monitor = Win32Interop.MonitorFromPoint(new Win32Interop.POINT
-            { X = bounds.Left + bounds.Width / 2, Y = bounds.Top + bounds.Height / 2 }, 2);
+        { X = bounds.Left + bounds.Width / 2, Y = bounds.Top + bounds.Height / 2 }, 2);
         return monitor != IntPtr.Zero && Win32Interop.GetDpiForMonitor(monitor, 0, out uint dpi, out _) == 0 && dpi > 0
             ? dpi / 96.0 : 1.0;
     }
