@@ -257,12 +257,6 @@ internal static class MediaSourceClassifier
 
     private static MediaPlatform DetectSocialVideoPlatformFromWindowTitle(string winTitleLower)
     {
-        if (winTitleLower.Contains("facebook") && (winTitleLower.Contains("watch") || winTitleLower.Contains("video")))
-            return MediaPlatform.Facebook;
-
-        if (winTitleLower.Contains("tiktok") && winTitleLower.Contains(" | "))
-            return MediaPlatform.TikTok;
-
         if (winTitleLower.Contains("instagram") && (winTitleLower.Contains("reel") || winTitleLower.Contains("video")))
             return MediaPlatform.Instagram;
 
@@ -290,8 +284,6 @@ internal static class MediaSourceClassifier
             case MediaPlatform.Netflix: info.IsNetflixRunning = true; break;
             case MediaPlatform.Bilibili: info.IsBilibiliRunning = true; break;
             case MediaPlatform.Vimeo: info.IsVimeoRunning = true; break;
-            case MediaPlatform.Facebook: info.IsFacebookRunning = true; break;
-            case MediaPlatform.TikTok: info.IsTikTokRunning = true; break;
             case MediaPlatform.Instagram: info.IsInstagramRunning = true; break;
             case MediaPlatform.Twitter: info.IsTwitterRunning = true; break;
             default: break;

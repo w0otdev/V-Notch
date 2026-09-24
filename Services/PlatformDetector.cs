@@ -46,8 +46,8 @@ public static class PlatformDetector
 
     private static readonly string[] TitleSeparators =
     {
-        " - YouTube", " – YouTube", " - SoundCloud", " | Facebook",
-        " - TikTok", " / X", " | TikTok", " • Instagram",
+        " - YouTube", " – YouTube", " - SoundCloud",
+        " / X", " • Instagram",
         " - Apple Music", " – Apple Music",
         " - Twitch", " – Twitch", " | Twitch", " • Twitch",
         " - Discord", " – Discord", " | Discord", " • Discord",
@@ -122,8 +122,6 @@ public static class PlatformDetector
         (s => s.Contains("netflix"), MediaPlatform.Netflix),
         (s => s.Contains("bilibili") || s.Contains("哔哩哔哩"), MediaPlatform.Bilibili),
         (s => s.Contains("vimeo"), MediaPlatform.Vimeo),
-        (s => s.Contains("facebook") && (s.Contains("watch") || s.Contains("video")), MediaPlatform.Facebook),
-        (s => s.Contains("tiktok") && s.Contains(" | "), MediaPlatform.TikTok),
         (s => s.Contains("instagram") && (s.Contains("reel") || s.Contains("video")), MediaPlatform.Instagram),
         (s => (s.Contains("twitter") || s.Contains(" / x")) && (s.Contains("video") || s.Contains("watch")), MediaPlatform.Twitter),
     };
@@ -272,9 +270,7 @@ public enum MediaPlatform
     SoundCloud,
     AppleMusic,
     Browser,
-    Facebook,
-    TikTok,
-    Instagram,
+    Instagram = 8, // Preserve existing platform IDs; 6 and 7 are retired.
     Twitter,
     Twitch,
     Discord,
@@ -294,8 +290,6 @@ public static class MediaPlatformExtensions
         MediaPlatform.SoundCloud => "SoundCloud",
         MediaPlatform.AppleMusic => "Apple Music",
         MediaPlatform.Browser => "Browser",
-        MediaPlatform.Facebook => "Facebook",
-        MediaPlatform.TikTok => "TikTok",
         MediaPlatform.Instagram => "Instagram",
         MediaPlatform.Twitter => "Twitter",
         MediaPlatform.Twitch => "Twitch",
@@ -319,8 +313,6 @@ public static class MediaPlatformExtensions
             "soundcloud" => MediaPlatform.SoundCloud,
             "apple music" => MediaPlatform.AppleMusic,
             "browser" => MediaPlatform.Browser,
-            "facebook" => MediaPlatform.Facebook,
-            "tiktok" => MediaPlatform.TikTok,
             "instagram" => MediaPlatform.Instagram,
             "twitter" => MediaPlatform.Twitter,
             "twitch" => MediaPlatform.Twitch,

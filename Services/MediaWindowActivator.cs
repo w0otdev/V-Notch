@@ -472,8 +472,6 @@ internal static class MediaWindowActivator
             MediaPlatform.Netflix when Match("netflix") => 50,
             MediaPlatform.Bilibili when titleLower.Contains("bilibili") || titleLower.Contains("哔哩哔哩") => 50,
             MediaPlatform.Vimeo when Match("vimeo") => 50,
-            MediaPlatform.Facebook when Match("facebook") => 50,
-            MediaPlatform.TikTok when Match("tiktok") => 50,
             MediaPlatform.Instagram when Match("instagram") => 50,
             MediaPlatform.Twitter when titleLower.Contains("twitter") || titleLower.Contains("x.com") || titleLower.Contains(" / x") => 50,
             _ => 0
@@ -641,8 +639,6 @@ internal static class MediaWindowActivator
             MediaPlatform.Netflix when Match("Netflix") => 90,
             MediaPlatform.Bilibili when Match("bilibili") || title.Contains("哔哩哔哩") => 90,
             MediaPlatform.Vimeo when Match("Vimeo") => 90,
-            MediaPlatform.Facebook when Match("Facebook") => 90,
-            MediaPlatform.TikTok when Match("TikTok") => 90,
             MediaPlatform.Instagram when Match("Instagram") => 90,
             MediaPlatform.Twitter when Match("Twitter") || Match(" / X") => 90,
             _ => 0

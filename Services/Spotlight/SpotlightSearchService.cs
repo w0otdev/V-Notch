@@ -88,11 +88,11 @@ internal sealed class SpotlightSearchService
     {
         var bestByTarget = new Dictionary<string, SpotlightSearchItem>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in providerResults)
-        foreach (var item in group)
-        {
-            if (!bestByTarget.TryGetValue(item.Target, out var best) || item.Score > best.Score)
-                bestByTarget[item.Target] = item;
-        }
+            foreach (var item in group)
+            {
+                if (!bestByTarget.TryGetValue(item.Target, out var best) || item.Score > best.Score)
+                    bestByTarget[item.Target] = item;
+            }
         var results = bestByTarget.Values
             .OrderByDescending(item => item.Score)
             .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)

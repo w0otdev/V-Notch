@@ -292,23 +292,21 @@ public class MediaSourceClassifierTests
     }
 
     [Fact]
-    public void DetectFromWindowTitles_FacebookWatch_ResolvesFacebook()
+    public void DetectFromWindowTitles_FacebookWatch_LeavesBrowserUnchanged()
     {
         var info = new MediaInfo { MediaSource = "Browser" };
         MediaSourceClassifier.DetectFromWindowTitles(info, new[] { "Funny clip | Facebook Watch" }, "", "", hasTrack: false);
 
-        Assert.Equal("Facebook", info.MediaSource);
-        Assert.True(info.IsFacebookRunning);
+        Assert.Equal("Browser", info.MediaSource);
     }
 
     [Fact]
-    public void DetectFromWindowTitles_TikTok_ResolvesTikTok()
+    public void DetectFromWindowTitles_TikTok_LeavesBrowserUnchanged()
     {
         var info = new MediaInfo { MediaSource = "Browser" };
         MediaSourceClassifier.DetectFromWindowTitles(info, new[] { "creator | TikTok" }, "", "", hasTrack: false);
 
-        Assert.Equal("TikTok", info.MediaSource);
-        Assert.True(info.IsTikTokRunning);
+        Assert.Equal("Browser", info.MediaSource);
     }
 
     [Fact]

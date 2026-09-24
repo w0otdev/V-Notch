@@ -41,7 +41,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private static readonly string[] _platformKeywords =
     {
-        "spotify", "youtube", "soundcloud", "facebook", "tiktok", "instagram", "twitter", " / x", "apple music", "apple", "music",
+        "spotify", "youtube", "soundcloud", "instagram", "twitter", " / x", "apple music", "apple", "music",
         "twitch", "discord", "vesktop", "netflix", "tidal", "deezer", "bandcamp", "bilibili", "哔哩哔哩", "vimeo", "crunchyroll", "prime video", "disney",
         "picture in picture", "picture-in-picture", "hình trong hình", "hinh trong hinh", "bild-in-bild", "image dans l'image",
         "pantalla en pantalla", "cuadro en cuadro", "画中画", "畫中畫", "子母画面", "子母畫面", "ピクチャー イン ピクチャー", "ピクチャーインピクチャー",
