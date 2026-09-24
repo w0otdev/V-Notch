@@ -141,7 +141,9 @@ if ($null -eq $checksum) {
 }
 
 Set-Content -Path "installers\V-Notch-Setup.exe.sha256" -Value "$checksum  V-Notch-Setup.exe" -NoNewline
-Write-Host "      SHA-256 checksum created" -ForegroundColor Green
+$exeShaName = if ($SelfContained) { "V-Notch-SelfContained.exe.sha256" } else { "V-Notch.exe.sha256" }
+Set-Content -Path "installers\$exeShaName" -Value "$appExeHash  V-Notch.exe" -NoNewline
+Write-Host "      SHA-256 checksums created (installer and application binary)" -ForegroundColor Green
 
 # Step 4: Automatically sign update manifest if ECDSA release key is available
 $privateKeyCandidates = @(

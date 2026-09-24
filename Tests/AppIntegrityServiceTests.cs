@@ -241,6 +241,77 @@ public sealed class AppIntegrityServiceTests
         });
     }
 
+    [Theory]
+    [InlineData("V-Notch.exe.sha256", false, true)]
+    [InlineData("V-Notch-SelfContained.exe.sha256", false, true)]
+    [InlineData("checksums.txt", false, true)]
+    [InlineData("SHA256SUMS.txt", false, true)]
+    [InlineData("V-Notch-Setup.exe.sha256", false, false)]
+    [InlineData("V-Notch-Setup-SelfContained.exe.sha256", false, false)]
+    [InlineData("V-Notch-Setup.exe.manifest.json", false, false)]
+    [InlineData("V-Notch-Setup.exe.sha256", true, true)]
+    [InlineData("V-Notch-Setup.exe.manifest.json", true, true)]
+    [InlineData("V-Notch.exe.sha256", true, false)]
+    [InlineData("V-Notch-SelfContained.exe.sha256", true, false)]
+    [InlineData("checksums.txt", true, true)]
+    public void IsApplicableChecksumAsset_FiltersCorrectly(string assetName, bool isInstaller, bool expected)
+    {
+        bool actual = AppIntegrityService.IsApplicableChecksumAsset(assetName, isInstaller);
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task VerifyChecksumAsync_Skips_WhenOnlySetupChecksumAssetIsPresentForAppBinary()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"V-Notch-{Guid.NewGuid():N}.exe");
+        try
+        {
+            byte[] fileBytes = Encoding.UTF8.GetBytes("Normal App Binary");
+            await File.WriteAllBytesAsync(tempFile, fileBytes);
+
+            string releaseJson = """
+            {
+              "tag_name": "v1.9.3",
+              "assets": [
+                {
+                  "name": "V-Notch-Setup.exe.sha256",
+                  "browser_download_url": "https://test.local/V-Notch-Setup.exe.sha256"
+                }
+              ]
+            }
+            """;
+
+            string installerChecksumContent = "9ffad98267616332821ec3e4ac36b08f9a03ef0f7687995e489fcd251d208ec8  V-Notch-Setup.exe\n";
+
+            var handler = new MockHttpMessageHandler((req) =>
+            {
+                if (req.RequestUri!.AbsolutePath.Contains("V-Notch-Setup.exe.sha256"))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(installerChecksumContent)
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(releaseJson)
+                };
+            });
+
+            using var client = new HttpClient(handler);
+            var status = await AppIntegrityService.VerifyChecksumAsync(tempFile, "1.9.3", client);
+
+            // Must be Skipped, not HashMismatch!
+            Assert.Equal(IntegrityCheckStatus.Skipped, status);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
     private sealed class MockHttpMessageHandler : HttpMessageHandler
     {
         private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;

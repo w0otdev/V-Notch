@@ -156,6 +156,47 @@ public static class AppIntegrityService
     }
 
     /// <summary>
+    /// Determines whether a release asset is an applicable checksum source for the target binary.
+    /// </summary>
+    public static bool IsApplicableChecksumAsset(string assetName, bool isInstaller)
+    {
+        if (string.IsNullOrWhiteSpace(assetName))
+            return false;
+
+        bool isShaFile = assetName.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase);
+        bool isChecksumList = assetName.Equals("checksums.txt", StringComparison.OrdinalIgnoreCase) ||
+                              assetName.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase);
+        bool isManifest = assetName.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase);
+
+        if (!isShaFile && !isChecksumList && !isManifest)
+            return false;
+
+        bool isSetupAsset = assetName.Contains("Setup", StringComparison.OrdinalIgnoreCase) || isManifest;
+
+        if (isInstaller)
+        {
+            // Installer should not check against binary-only checksum assets
+            if (assetName.Equals("V-Notch.exe.sha256", StringComparison.OrdinalIgnoreCase) ||
+                assetName.Equals("V-Notch-SelfContained.exe.sha256", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        }
+        else
+        {
+            // Installed application binary must not check against installer-specific checksums
+            if (isSetupAsset)
+            {
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Computes the SHA-256 hash of a file as a lowercase hex string.
     /// </summary>
     public static async Task<string> ComputeFileSha256Async(string filePath, CancellationToken cancellationToken = default)
@@ -244,35 +285,39 @@ public static class AppIntegrityService
                 return IntegrityCheckStatus.Skipped;
             }
 
+            string targetFileName = Path.GetFileName(filePath);
+            bool isInstaller = targetFileName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
+
             bool foundAnyChecksumAsset = false;
+            bool readAnyChecksumAsset = false;
             foreach (var asset in assets.EnumerateArray())
             {
                 var assetName = asset.GetProperty("name").GetString() ?? "";
-                if (assetName.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase) ||
-                    assetName.Equals("checksums.txt", StringComparison.OrdinalIgnoreCase) ||
-                    assetName.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase) ||
-                    assetName.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase))
+                if (!IsApplicableChecksumAsset(assetName, isInstaller))
                 {
-                    var downloadUrl = asset.GetProperty("browser_download_url").GetString();
-                    if (!string.IsNullOrEmpty(downloadUrl))
+                    continue;
+                }
+
+                var downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                if (!string.IsNullOrEmpty(downloadUrl))
+                {
+                    foundAnyChecksumAsset = true;
+                    try
                     {
-                        foundAnyChecksumAsset = true;
-                        try
+                        var checksumData = await client.GetStringAsync(downloadUrl, cancellationToken).ConfigureAwait(false);
+                        readAnyChecksumAsset = true;
+                        if (checksumData.Contains(actualHash, StringComparison.OrdinalIgnoreCase))
                         {
-                            var checksumData = await client.GetStringAsync(downloadUrl, cancellationToken).ConfigureAwait(false);
-                            if (checksumData.Contains(actualHash, StringComparison.OrdinalIgnoreCase))
-                            {
-                                return IntegrityCheckStatus.Verified;
-                            }
+                            return IntegrityCheckStatus.Verified;
                         }
-                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                        {
-                            throw;
-                        }
-                        catch (Exception ex)
-                        {
-                            RuntimeLog.Warn(LogCategory, $"Failed to download checksum asset {assetName}: {ex.Message}");
-                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        RuntimeLog.Warn(LogCategory, $"Failed to download checksum asset {assetName}: {ex.Message}");
                     }
                 }
             }
@@ -280,6 +325,11 @@ public static class AppIntegrityService
             if (!foundAnyChecksumAsset)
             {
                 return IntegrityCheckStatus.Skipped;
+            }
+
+            if (!readAnyChecksumAsset)
+            {
+                return IntegrityCheckStatus.NetworkError;
             }
 
             // Checksum files were found and examined, but none matched the running binary's hash
