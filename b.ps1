@@ -143,6 +143,38 @@ if ($null -eq $checksum) {
 Set-Content -Path "installers\V-Notch-Setup.exe.sha256" -Value "$checksum  V-Notch-Setup.exe" -NoNewline
 Write-Host "      SHA-256 checksum created" -ForegroundColor Green
 
+# Step 4: Automatically sign update manifest if ECDSA release key is available
+$privateKeyCandidates = @(
+    $env:VNOTCH_UPDATE_SIGNING_KEY_PEM_PATH,
+    "D:\CodeShii\VNotchReleaseKeys\update-2026-09-private.pem",
+    (Join-Path $PSScriptRoot "..\VNotchReleaseKeys\update-2026-09-private.pem")
+)
+$foundKey = $privateKeyCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
+    Write-Host "      Signing update manifest..." -ForegroundColor Yellow
+    $signScript = Join-Path $PSScriptRoot "scripts\Sign-UpdateManifest.ps1"
+    $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    $keyArg = if ($foundKey) { "-PrivateKeyPath '$foundKey'" } else { "" }
+    try {
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            $signParams = @{
+                InstallerPath = "installers\V-Notch-Setup.exe"
+                Version = $projectVersion
+            }
+            if ($foundKey) { $signParams["PrivateKeyPath"] = $foundKey }
+            & $signScript @signParams
+        } elseif ($pwshCmd) {
+            & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$projectVersion' $keyArg"
+        } else {
+            Write-Host "      PowerShell 7 (pwsh) not found; skipping update manifest signing." -ForegroundColor Yellow
+        }
+        Write-Host "      Update manifest and signature created successfully" -ForegroundColor Green
+    } catch {
+        Write-Host "      Warning: Could not sign update manifest: $_" -ForegroundColor Yellow
+    }
+}
+
 Write-Host "      Installer created successfully" -ForegroundColor Green
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
