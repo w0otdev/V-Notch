@@ -29,6 +29,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private uint _queryId;
     private TaskCompletionSource<IReadOnlyList<(string Name, string Parent, bool IsFolder)>>? _pendingReply;
     private uint _pendingReplyId;
+    private volatile bool _disposed;
 
     public bool IsAvailable { get; private set; }
 
@@ -40,6 +41,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         CancellationToken cancellationToken)
     {
         query = query?.Trim() ?? string.Empty;
+        if (_disposed) return Array.Empty<SpotlightSearchItem>();
         if (query.Length == 0 || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
         IntPtr everythingWindow = FindWindowW(EverythingIpcWindowClass, null);
@@ -60,6 +62,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         await _queryLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_disposed) return Array.Empty<SpotlightSearchItem>();
             IntPtr replyHwnd = await EnsureReplyWindowAsync(dispatcher).ConfigureAwait(false);
             if (replyHwnd == IntPtr.Zero)
             {
@@ -72,6 +75,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
             uint id;
             lock (_replyGate)
             {
+                if (_disposed) return Array.Empty<SpotlightSearchItem>();
                 id = ++_queryId;
                 _pendingReply = completion;
                 _pendingReplyId = id;
@@ -200,21 +204,25 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         {
             return await dispatcher.InvokeAsync(() =>
             {
-                if (_replyWindow != null && _replyWindow.Handle != IntPtr.Zero)
-                    return _replyWindow.Handle;
-
-                var parameters = new HwndSourceParameters("VNotchEverythingIpc")
+                lock (_replyGate)
                 {
-                    Width = 0,
-                    Height = 0,
-                    WindowStyle = 0,
-                    ExtendedWindowStyle = 0,
-                    ParentWindow = HwndMessage
-                };
-                var source = new HwndSource(parameters);
-                source.AddHook(ReplyWndProc);
-                _replyWindow = source;
-                return source.Handle;
+                    if (_disposed) return IntPtr.Zero;
+                    if (_replyWindow != null && _replyWindow.Handle != IntPtr.Zero)
+                        return _replyWindow.Handle;
+
+                    var parameters = new HwndSourceParameters("VNotchEverythingIpc")
+                    {
+                        Width = 0,
+                        Height = 0,
+                        WindowStyle = 0,
+                        ExtendedWindowStyle = 0,
+                        ParentWindow = HwndMessage
+                    };
+                    var source = new HwndSource(parameters);
+                    source.AddHook(ReplyWndProc);
+                    _replyWindow = source;
+                    return source.Handle;
+                }
             }).Task.ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -363,8 +371,17 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 
     public void Dispose()
     {
-        _queryLock.Dispose();
-        HwndSource? window = Interlocked.Exchange(ref _replyWindow, null);
+        HwndSource? window;
+        lock (_replyGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _pendingReply?.TrySetCanceled();
+            _pendingReply = null;
+            window = Interlocked.Exchange(ref _replyWindow, null);
+        }
+        // A native IPC call may still own the semaphore. Leave this managed
+        // semaphore alive for its finally/queued waiters to finish safely.
         if (window == null) return;
         try
         {

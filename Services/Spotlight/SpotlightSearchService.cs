@@ -86,10 +86,14 @@ internal sealed class SpotlightSearchService
         IEnumerable<IReadOnlyList<SpotlightSearchItem>> providerResults,
         int limit)
     {
-        var results = providerResults
-            .SelectMany(result => result)
-            .GroupBy(item => item.Target, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.OrderByDescending(item => item.Score).First())
+        var bestByTarget = new Dictionary<string, SpotlightSearchItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in providerResults)
+        foreach (var item in group)
+        {
+            if (!bestByTarget.TryGetValue(item.Target, out var best) || item.Score > best.Score)
+                bestByTarget[item.Target] = item;
+        }
+        var results = bestByTarget.Values
             .OrderByDescending(item => item.Score)
             .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(item => item.Id, StringComparer.Ordinal)
@@ -119,7 +123,11 @@ internal sealed class SpotlightSearchService
     {
         try
         {
-            return await provider.SearchAsync(query, limit, cancellationToken).ConfigureAwait(false);
+            // An async provider may run synchronously until its first incomplete
+            // await (warm indexes and native IPC in particular). Never run that
+            // prefix on the caller's UI thread.
+            return await Task.Run(() => provider.SearchAsync(query, limit, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

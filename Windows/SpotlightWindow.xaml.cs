@@ -436,6 +436,7 @@ public partial class SpotlightWindow : Window
         _lastDismissedAtUtc = DateTime.UtcNow;
         _isClosing = true;
         InvalidateLaunchAttempt();
+        CancelSearchDebounce();
         _viewModel.CancelPendingSearch();
         SearchBox.IsEnabled = false;
         int generation = ++_animationGeneration;
@@ -452,6 +453,7 @@ public partial class SpotlightWindow : Window
     {
         ++_animationGeneration;
         _allowClose = true;
+        CancelSearchDebounce();
         CancelPendingFreshEntrance();
         ClearMorphAnimations();
         ReleaseMorphSession();
@@ -557,6 +559,7 @@ public partial class SpotlightWindow : Window
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (_allowClose || _isClosing) return;
         PlayTypingAnimation();
         UpdateGlowingCaret();
         CancelSearchingGrace();
@@ -568,10 +571,9 @@ public partial class SpotlightWindow : Window
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
 
-        if (_searchDebounceCts != null)
-        {
-            await _searchDebounceCts.CancelAsync();
-        }
+        CancelSearchDebounce();
+        // Invalidate the old query immediately, not after the new debounce.
+        _viewModel.CancelPendingSearch();
 
         string currentText = SearchBox.Text;
 
@@ -594,15 +596,29 @@ public partial class SpotlightWindow : Window
         try
         {
             if (IsSpotlightOpen) await Task.Delay(120, token);
-            if (token.IsCancellationRequested) return;
+            if (token.IsCancellationRequested || _isClosing || _allowClose ||
+                !ReferenceEquals(_searchDebounceCts, cts)) return;
 
             await _viewModel.SearchAsync(currentText);
-            ScheduleStatusRefresh();
+            if (!token.IsCancellationRequested && !_isClosing && !_allowClose)
+                ScheduleStatusRefresh();
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
             // Cancelled due to rapid typing or window closure
         }
+        finally
+        {
+            if (ReferenceEquals(_searchDebounceCts, cts)) _searchDebounceCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private void CancelSearchDebounce()
+    {
+        var pending = _searchDebounceCts;
+        _searchDebounceCts = null;
+        pending?.Cancel(); // The owning handler disposes it in finally.
     }
 
     private void SearchBox_GotFocus(object sender, RoutedEventArgs e) => UpdateGlowingCaret();

@@ -17,6 +17,11 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     // on every keystroke for instant first paint.
     private const int DeferredSearchDebounceMs = 75;
     private const int MaxIconConcurrency = 2;
+    // Shared across query generations: cancellation cannot interrupt a native
+    // shell icon call that has already started.
+    private static readonly SemaphoreSlim IconSlots = new(MaxIconConcurrency, MaxIconConcurrency);
+    private readonly HashSet<(string Id, string? Path)> _requestedIcons = new();
+    private bool _disposed;
 
     private readonly SpotlightSearchService _search;
     private readonly SpotlightUsageStore _usage;
@@ -46,6 +51,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     public async Task SearchAsync(string query)
     {
+        if (_disposed) return;
         Query = query;
         CancelPendingSearch();
         _searchCts = new CancellationTokenSource();
@@ -70,12 +76,14 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         {
             var instantResults = await _search.SearchInstantAsync(query, ResultLimit, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
+            if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
             Publish(instantResults);
             StartIconHydration(instantResults, generation, cancellationToken);
 
             await Task.Delay(DeferredSearchDebounceMs, cancellationToken);
             var deferredResults = await _search.SearchDeferredAsync(query, ResultLimit, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
+            if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
             var merged = SpotlightSearchService.Merge([instantResults, deferredResults], ResultLimit);
             Publish(merged);
             StartIconHydration(merged, generation, cancellationToken);
@@ -84,9 +92,17 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
         }
+        catch (Exception ex)
+        {
+            // Search is also invoked from async-void text input handlers.
+            RuntimeLog.Error("SPOTLIGHT-SEARCH", ex, "Search could not complete");
+            if (!_disposed && generation == Interlocked.Read(ref _queryGeneration))
+                HasNoResults = Results.Count == 0;
+        }
         finally
         {
-            if (!cancellationToken.IsCancellationRequested) IsSearching = false;
+            if (!_disposed && generation == Interlocked.Read(ref _queryGeneration) &&
+                !cancellationToken.IsCancellationRequested) IsSearching = false;
         }
     }
 
@@ -181,6 +197,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     private static bool VisuallyEqual(SpotlightSearchItem current, SpotlightSearchItem incoming) =>
         current.Title == incoming.Title
+        && current.Target == incoming.Target
         && current.Subtitle == incoming.Subtitle
         && current.Kind == incoming.Kind
         && current.IsRecent == incoming.IsRecent
@@ -208,6 +225,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     public void CancelPendingSearch()
     {
+        _requestedIcons.Clear();
         Interlocked.Increment(ref _queryGeneration);
         var cts = Interlocked.Exchange(ref _searchCts, null);
         if (cts != null)
@@ -225,6 +243,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
     {
         var toHydrate = items
             .Where(item => item.Icon == null && !string.IsNullOrEmpty(item.IconPath))
+            .Where(item => _requestedIcons.Add((item.Id, item.IconPath)))
             .ToList();
 
         if (toHydrate.Count == 0) return;
@@ -246,13 +265,21 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
                     if (item.Icon != null) return;
 
-                    var icon = FileIconProvider.GetFileIcon(item.IconPath!);
-                    if (icon == null) return;
-
-                    if (icon.CanFreeze && !icon.IsFrozen)
+                    ImageSource? icon;
+                    await IconSlots.WaitAsync(ct).ConfigureAwait(false);
+                    try
                     {
-                        icon.Freeze();
+                        ct.ThrowIfCancellationRequested();
+                        if (Interlocked.Read(ref _queryGeneration) != generation) return;
+                        icon = FileIconProvider.GetFileIcon(item.IconPath!);
+                        if (icon == null) return;
+                        if (!icon.IsFrozen)
+                        {
+                            if (!icon.CanFreeze) return;
+                            icon.Freeze();
+                        }
                     }
+                    finally { IconSlots.Release(); }
 
                     if (Interlocked.Read(ref _queryGeneration) != generation || ct.IsCancellationRequested) return;
 
@@ -282,10 +309,10 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     private void ApplyLoadedIcon(SpotlightSearchItem item, ImageSource icon, long generation)
     {
-        if (Interlocked.Read(ref _queryGeneration) != generation) return;
+        if (_disposed || Interlocked.Read(ref _queryGeneration) != generation) return;
 
         var matching = Results.FirstOrDefault(r => r.Id == item.Id);
-        if (matching != null)
+        if (matching != null && string.Equals(matching.IconPath, item.IconPath, StringComparison.OrdinalIgnoreCase))
         {
             matching.Icon = icon;
         }
@@ -294,6 +321,8 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         CancelPendingSearch();
     }
 }
