@@ -146,7 +146,6 @@ Write-Host "      SHA-256 checksum created" -ForegroundColor Green
 # Step 4: Automatically sign update manifest if ECDSA release key is available
 $privateKeyCandidates = @(
     $env:VNOTCH_UPDATE_SIGNING_KEY_PEM_PATH,
-    "D:\CodeShii\VNotchReleaseKeys\update-2026-09-private.pem",
     (Join-Path $PSScriptRoot "..\VNotchReleaseKeys\update-2026-09-private.pem")
 )
 $foundKey = $privateKeyCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1

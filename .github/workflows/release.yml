@@ -42,9 +42,9 @@ jobs:
         shell: pwsh
         run: |
           if ('${{ matrix.variant }}' -eq 'self-contained') {
-            ./build-installer.ps1 -SelfContained
+            ./b.ps1 -SelfContained
           } else {
-            ./build-installer.ps1
+            ./b.ps1
           }
 
       - name: Name setup files
