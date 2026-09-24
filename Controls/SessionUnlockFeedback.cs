@@ -34,7 +34,9 @@ public sealed class SessionUnlockFeedback : Grid
         Background = Brushes.Black;
         Children.Add(new Viewbox
         {
-            Child = _icon, MaxWidth = 56, MaxHeight = 56,
+            Child = _icon,
+            MaxWidth = 56,
+            MaxHeight = 56,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         });

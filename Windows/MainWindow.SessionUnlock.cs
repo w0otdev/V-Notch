@@ -1,5 +1,5 @@
-using Microsoft.Win32;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace VNotch;
 
