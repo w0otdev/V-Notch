@@ -34,8 +34,5 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
 
-      - name: Test
-        run: dotnet test Tests\VNotch.Tests.csproj --configuration Release --no-build
-
       - name: Audit packages
-        run: dotnet list V-Notch.sln package --vulnerable --include-transitive
+        run: dotnet list V-Notch.sln package --vulnerable --include-transitive

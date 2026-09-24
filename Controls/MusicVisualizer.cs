@@ -155,6 +155,7 @@ namespace VNotch.Controls
             {
                 _currentHeights[i] = MinHeightRatio;
                 _smoothedHeights[i] = MinHeightRatio;
+                _drawHeights[i] = MinHeightRatio;
             }
         }
 
@@ -243,12 +244,16 @@ namespace VNotch.Controls
             _lastTickSeconds = totalSec;
 
             if (dt <= 0) return;
+            // A delayed UI frame must not advance the morph by a large jump.
+            dt = Math.Min(dt, 0.05);
 
             _lastDtMs = dt * 1000.0;
             double oldOpacity = _currentOpacity;
             bool isSettled = UpdateAnimation(dt, totalSec);
             double oldIconMix = _iconMix, oldCheckMix = _checkMix, oldPlayMix = _playMix;
             bool feedbackActive = UpdatePlaybackFeedback(dt, totalSec);
+            // Advance smoothing once per animation tick, never once per paint.
+            PrepareDrawHeights();
 
             bool drawSettled = true;
             for (int i = 0; i < BarCount; i++)
@@ -317,6 +322,7 @@ namespace VNotch.Controls
             {
                 for (int i = 0; i < BarCount; i++)
                 {
+                    Rect barBounds = GetBarBounds(i, height, startX, barWidth, spacing);
                     Point Corner(int corner)
                     {
                         bool right = corner == 1 || corner == 2;
@@ -342,8 +348,8 @@ namespace VNotch.Controls
                         icon += (check - icon) * _checkMix;
                         icon = new Point((width - size) / 2 + icon.X * size / 24,
                             (height - size) / 2 + icon.Y * size / 24);
-                        var bar = new Point(startX + i * (barWidth + spacing) + (right ? barWidth : 0),
-                            height / 2 + (bottom ? 1 : -1) * _drawHeights[i] * height / 2);
+                        var bar = new Point(right ? barBounds.Right : barBounds.Left,
+                            bottom ? barBounds.Bottom : barBounds.Top);
                         return bar + (icon - bar) * _iconMix;
                     }
                     path.BeginFigure(Corner(0), isFilled: true, isClosed: true);
@@ -857,39 +863,46 @@ namespace VNotch.Controls
 
             drawingContext.PushOpacity(_currentOpacity + (1 - _currentOpacity) * _iconMix);
 
-            PrepareDrawHeights();
-
-            if (_iconMix > 0)
+            // Blend the final short section into rounded bars. Switching from
+            // sharp polygons to rounded, per-bar gradients in one frame pops.
+            double morphOpacity = Math.Clamp(_iconMix / 0.18, 0, 1);
+            morphOpacity = morphOpacity * morphOpacity * (3 - 2 * morphOpacity);
+            if (morphOpacity > 0)
             {
-                DrawPlaybackMorph(drawingContext, width, height, startX, snappedW, spacing);
+                drawingContext.PushOpacity(morphOpacity);
+                DrawPlaybackMorph(drawingContext, width, height, startX, barWidth, spacing);
+                drawingContext.Pop();
+            }
+            if (morphOpacity >= 1)
+            {
                 drawingContext.Pop();
                 return;
             }
-
+            drawingContext.PushOpacity(1 - morphOpacity);
             var gradientBrush = GetBarGradientBrush();
 
             for (int i = 0; i < BarCount; i++)
             {
-                double barHeight = _drawHeights[i] * height;
-                double x = startX + i * (barWidth + spacing);
-
-                double halfHeight = barHeight / 2;
-                double top = centerY - halfHeight;
-                double bottom = centerY + halfHeight;
-
-                double snappedX = Math.Round(x * dpi.DpiScaleX) / dpi.DpiScaleX;
-                double snappedTop = Math.Round(top * dpi.DpiScaleY) / dpi.DpiScaleY;
-                double snappedBottom = Math.Round(bottom * dpi.DpiScaleY) / dpi.DpiScaleY;
-                double snappedH = snappedBottom - snappedTop;
-
                 double radius = snappedW * CornerRadiusRatio;
 
                 drawingContext.DrawRoundedRectangle(gradientBrush, null,
-                    new Rect(snappedX, snappedTop, snappedW, snappedH),
+                    GetBarBounds(i, height, startX, barWidth, spacing),
                     radius, radius);
             }
 
             drawingContext.Pop();
+            drawingContext.Pop();
+        }
+
+        private Rect GetBarBounds(int index, double height, double startX, double barWidth, double spacing)
+        {
+            DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
+            double x = startX + index * (barWidth + spacing);
+            double halfHeight = _drawHeights[index] * height / 2;
+            double top = Math.Round((height / 2 - halfHeight) * dpi.DpiScaleY) / dpi.DpiScaleY;
+            double bottom = Math.Round((height / 2 + halfHeight) * dpi.DpiScaleY) / dpi.DpiScaleY;
+            return new Rect(Math.Round(x * dpi.DpiScaleX) / dpi.DpiScaleX, top,
+                Math.Max(1, Math.Round(barWidth * dpi.DpiScaleX) / dpi.DpiScaleX), Math.Max(0, bottom - top));
         }
 
         #region Audio Loopback Capture
