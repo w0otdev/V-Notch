@@ -17,6 +17,7 @@ public sealed class NotchContentViewRefs
     public FrameworkElement? AudioContent { get; init; }
     public FrameworkElement? AudioScrollViewer { get; init; }
     public FrameworkElement? SecondaryContent { get; init; }
+    public Func<long, bool>? IsSessionCurrent { get; init; }
 }
 
 public sealed class NotchContentTransitionPresenter : IDisposable
@@ -25,6 +26,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
     private readonly NotchContentViewRefs _refs;
     private long _activeSessionId;
+    private long _animationVersion;
     private bool _disposed;
 
     public NotchContentTransitionPresenter(NotchContentViewRefs refs)
@@ -42,6 +44,8 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         long sessionId = plan.SessionId;
         _activeSessionId = sessionId;
+        long version = ++_animationVersion;
+        if (!IsCurrent(sessionId, version)) return;
 
         var targetElement = GetElementForView(plan.TargetView);
         var allElements = GetAllElements();
@@ -49,9 +53,9 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         // Nếu collapse: ẩn tất cả
         if (plan.TargetView == NotchView.Compact || targetElement == null)
         {
-            FadeOutAll(sessionId, plan.Motion.Duration, plan.Motion.Easing, plan.Motion.TargetFps, plan.Motion.ReduceMotion, () =>
+            FadeOutAll(sessionId, version, plan.Motion.Duration, plan.Motion.Easing, plan.Motion.TargetFps, plan.Motion.ReduceMotion, () =>
             {
-                if (sessionId == _activeSessionId)
+                if (IsCurrent(sessionId, version))
                 {
                     onCompleted(new TransitionExecutionResult(sessionId, TransitionExecutionStatus.Completed));
                 }
@@ -85,7 +89,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                     ResetElementVisualState(el);
                 }
             }
-            if (sessionId == _activeSessionId && plan.TargetView != NotchView.AudioMixer && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            if (IsCurrent(sessionId, version) && plan.TargetView != NotchView.AudioMixer && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
             {
                 ResetChildVisualState(_refs.AudioScrollViewer);
             }
@@ -112,7 +116,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         fadeIn.Completed += (_, _) =>
         {
-            if (sessionId != _activeSessionId) return;
+            if (!IsCurrent(sessionId, version)) return;
 
             targetElement.BeginAnimation(UIElement.OpacityProperty, null);
             targetElement.Opacity = 1.0;
@@ -160,7 +164,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 Timeline.SetDesiredFrameRate(fadeOut, fps);
                 fadeOut.Completed += (_, _) =>
                 {
-                    if (sessionId != _activeSessionId) return;
+                    if (!IsCurrent(sessionId, version)) return;
                     ResetElementVisualState(el);
                     if (ReferenceEquals(el, _refs.AudioContent) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
                     {
@@ -180,11 +184,13 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
     public long InvalidateSession()
     {
+        ++_animationVersion;
         return ++_activeSessionId;
     }
 
     public void CancelActiveTransition()
     {
+        ++_animationVersion;
         _activeSessionId++;
         foreach (var el in GetAllElements())
         {
@@ -204,6 +210,8 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
     public void SnapToView(NotchView view)
     {
+        if (_disposed) return;
+        ++_animationVersion;
         _activeSessionId++;
         var target = GetElementForView(view);
         if (view == NotchView.AudioMixer && _refs.AudioScrollViewer != null)
@@ -304,7 +312,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         el.Effect = null;
     }
 
-    private void FadeOutAll(long sessionId, Duration duration, IEasingFunction easing, int fps, bool reduceMotion, Action onCompleted)
+    private void FadeOutAll(long sessionId, long version, Duration duration, IEasingFunction easing, int fps, bool reduceMotion, Action onCompleted)
     {
         var elements = GetAllElements();
         if (reduceMotion || duration.TimeSpan <= TimeSpan.Zero)
@@ -313,7 +321,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             {
                 ResetElementVisualState(el);
             }
-            if (sessionId == _activeSessionId && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            if (IsCurrent(sessionId, version) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
             {
                 ResetChildVisualState(_refs.AudioScrollViewer);
             }
@@ -335,7 +343,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 Timeline.SetDesiredFrameRate(fade, fps);
                 fade.Completed += (_, _) =>
                 {
-                    if (sessionId != _activeSessionId) return;
+                    if (!IsCurrent(sessionId, version)) return;
                     ResetElementVisualState(el);
                     pendingCount--;
                     if (pendingCount <= 0)
@@ -357,7 +365,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         if (pendingCount == 0)
         {
-            if (sessionId == _activeSessionId && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            if (IsCurrent(sessionId, version) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
             {
                 ResetChildVisualState(_refs.AudioScrollViewer);
             }
@@ -391,6 +399,10 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _activeSessionId++;
+        CancelActiveTransition();
     }
+
+    private bool IsCurrent(long sessionId, long version) =>
+        !_disposed && version == _animationVersion && sessionId == _activeSessionId &&
+        (_refs.IsSessionCurrent?.Invoke(sessionId) ?? true);
 }

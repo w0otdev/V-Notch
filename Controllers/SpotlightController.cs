@@ -136,11 +136,10 @@ internal sealed class SpotlightController : ISpotlightController
     {
         if (_keyboardHook != IntPtr.Zero) return true;
         _keyboardProc = KeyboardHookProc;
-        string? moduleName = Process.GetCurrentProcess().MainModule?.ModuleName;
         _keyboardHook = SetWindowsHookEx(
             WH_KEYBOARD_LL,
             _keyboardProc,
-            GetModuleHandle(moduleName),
+            GetModuleHandle(null),
             0);
         if (_keyboardHook != IntPtr.Zero) return true;
 

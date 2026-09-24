@@ -55,6 +55,7 @@ public sealed class AudioMixerService : IDisposable
         public DateTime? ProcessStartTimeUtc { get; init; }
         public string? ExePath { get; init; }
         public DateTime LastAccessedUtc { get; set; }
+        public long LastValidatedTicks { get; set; } = Environment.TickCount64;
     }
 
     private void SetCacheEntry(uint pid, CachedProcessMetadata entry)
@@ -98,6 +99,8 @@ public sealed class AudioMixerService : IDisposable
 
     private static bool IsCachedProcessValid(uint pid, CachedProcessMetadata cached)
     {
+        long now = Environment.TickCount64;
+        if (now - cached.LastValidatedTicks < 3000) return true;
         try
         {
             using var proc = Process.GetProcessById((int)pid);
@@ -124,6 +127,7 @@ public sealed class AudioMixerService : IDisposable
                 if (!string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
                     return false;
             }
+            cached.LastValidatedTicks = now;
             return true;
         }
         catch

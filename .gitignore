@@ -36,6 +36,17 @@ BenchmarkDotNet.Artifacts/
 /Tools/*Benchmark/Results/
 /Tools/*Benchmark/results.json
 /results.json
+# Local benchmark/stress measurements (keep the runners and source baselines)
+/Tools/ReportBenchmark/Measurements/
+/Tools/StressRunner/Measurements/
+# Python tooling caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+# Local crash-reporting state
+/.sentry-native/
 *.v2
 *.vsidx
 build-release.ps1
@@ -67,4 +78,7 @@ update_loc.py
 update_settings.ps1
 /docs
 /.agents
-/Tools
+# Ignore ad-hoc tools, retaining the reproducible benchmark/stress runners
+/Tools/*
+!/Tools/ReportBenchmark/
+!/Tools/StressRunner/

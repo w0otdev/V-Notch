@@ -22,6 +22,27 @@ namespace VNotch;
 
 public partial class SettingsWindow : Window
 {
+    private static readonly SolidColorBrush ConfirmationGreenBrush = CreateSettingsBrush(Color.FromRgb(0x50, 0xC8, 0x78));
+    private static readonly SolidColorBrush CardBackgroundBrush = CreateSettingsBrush(Color.FromArgb(12, 255, 255, 255));
+    private static readonly SolidColorBrush CardBorderBrush = CreateSettingsBrush(Color.FromArgb(18, 255, 255, 255));
+    private static readonly SolidColorBrush DragHandleBackgroundBrush = CreateSettingsBrush(Color.FromArgb(16, 255, 255, 255));
+    private static readonly SolidColorBrush DragHandleGlyphBrush = CreateSettingsBrush(Color.FromArgb(160, 255, 255, 255));
+    private static readonly SolidColorBrush DragHandleHoverBrush = CreateSettingsBrush(Color.FromArgb(40, 255, 255, 255));
+    private static readonly SolidColorBrush DraggingBackgroundBrush = CreateSettingsBrush(Color.FromArgb(50, 255, 255, 255));
+    private static readonly SolidColorBrush DraggingBorderBrush = CreateSettingsBrush(Color.FromArgb(80, 255, 255, 255));
+    private static readonly SolidColorBrush BackupSuccessBrush = CreateSettingsBrush(Color.FromRgb(48, 209, 88));
+    private static readonly SolidColorBrush StatusMutedBrush = CreateSettingsBrush(Color.FromRgb(107, 114, 128));
+    private static readonly SolidColorBrush StatusErrorBrush = CreateSettingsBrush(Color.FromRgb(239, 68, 68));
+    private static readonly SolidColorBrush StatusSuccessBrush = CreateSettingsBrush(Color.FromRgb(74, 222, 128));
+    private static readonly SolidColorBrush StatusWarningBrush = CreateSettingsBrush(Color.FromRgb(234, 179, 8));
+
+    private static SolidColorBrush CreateSettingsBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
     private const string LogCategory = "SETTINGS";
     private const string DefaultNavTabs = "Media,Secondary,Timer,AudioMixer";
     private const string SubtitlePriorityDataFormat = "SubtitlePriorityItem";
@@ -987,7 +1008,7 @@ public partial class SettingsWindow : Window
         fadeOut.Completed += (_, _) =>
         {
             button.Content = successText;
-            button.Foreground = new SolidColorBrush(Color.FromRgb(0x50, 0xC8, 0x78));
+            button.Foreground = ConfirmationGreenBrush;
 
             var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(160)) { EasingFunction = ease };
 
@@ -1699,8 +1720,8 @@ public partial class SettingsWindow : Window
             {
                 Tag = token,
                 Height = 38,
-                Background = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255)),
+                Background = CardBackgroundBrush,
+                BorderBrush = CardBorderBrush,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(10, 0, 10, 0),
@@ -1758,7 +1779,7 @@ public partial class SettingsWindow : Window
             {
                 Width = 34,
                 Height = 26,
-                Background = new SolidColorBrush(Color.FromArgb(16, 255, 255, 255)),
+                Background = DragHandleBackgroundBrush,
                 CornerRadius = new CornerRadius(6),
                 Cursor = Cursors.SizeNS,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -1778,19 +1799,19 @@ public partial class SettingsWindow : Window
             gripIcon.Child = new System.Windows.Shapes.Path
             {
                 Data = Geometry.Parse("M2 2.2h16v1.6H2zm0 3.8h16v1.6H2zm0 3.8h16v1.6H2z"),
-                Fill = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255))
+                Fill = DragHandleGlyphBrush
             };
             dragHandle.Child = gripIcon;
 
             dragHandle.MouseEnter += (s, e) =>
             {
                 if (!_isSettingsNavRowDragging)
-                    dragHandle.Background = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+                    dragHandle.Background = DragHandleHoverBrush;
             };
             dragHandle.MouseLeave += (s, e) =>
             {
                 if (!_isSettingsNavRowDragging)
-                    dragHandle.Background = new SolidColorBrush(Color.FromArgb(16, 255, 255, 255));
+                    dragHandle.Background = DragHandleBackgroundBrush;
             };
 
             rowGrid.Children.Add(dragHandle);
@@ -1873,8 +1894,8 @@ public partial class SettingsWindow : Window
 
         if (_settingsNavDragRow is Border border)
         {
-            border.Background = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255));
-            border.BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255));
+            border.Background = DraggingBackgroundBrush;
+            border.BorderBrush = DraggingBorderBrush;
             border.Effect = new DropShadowEffect
             {
                 Color = Colors.Black,
@@ -2083,8 +2104,8 @@ public partial class SettingsWindow : Window
 
         if (row is Border border)
         {
-            border.Background = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255));
-            border.BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255));
+            border.Background = CardBackgroundBrush;
+            border.BorderBrush = CardBorderBrush;
             border.Effect = null;
         }
 
@@ -2163,8 +2184,8 @@ public partial class SettingsWindow : Window
 
             if (child is Border border)
             {
-                border.Background = new SolidColorBrush(Color.FromArgb(12, 255, 255, 255));
-                border.BorderBrush = new SolidColorBrush(Color.FromArgb(18, 255, 255, 255));
+                border.Background = CardBackgroundBrush;
+                border.BorderBrush = CardBorderBrush;
                 border.Effect = null;
             }
         }
@@ -2780,7 +2801,7 @@ public partial class SettingsWindow : Window
                 if (BackupStatusText != null)
                 {
                     BackupStatusText.Text = Loc.Get("settings.export.success");
-                    BackupStatusText.Foreground = new SolidColorBrush(Color.FromRgb(48, 209, 88));
+                    BackupStatusText.Foreground = BackupSuccessBrush;
                     BackupStatusText.Visibility = Visibility.Visible;
 
                     var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -2830,7 +2851,7 @@ public partial class SettingsWindow : Window
                 if (BackupStatusText != null)
                 {
                     BackupStatusText.Text = Loc.Get("settings.import.success");
-                    BackupStatusText.Foreground = new SolidColorBrush(Color.FromRgb(48, 209, 88));
+                    BackupStatusText.Foreground = BackupSuccessBrush;
                     BackupStatusText.Visibility = Visibility.Visible;
 
                     var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -3014,27 +3035,27 @@ public partial class SettingsWindow : Window
         if (string.IsNullOrEmpty(key))
         {
             YouTubeApiKeyStatus.Text = "";
-            YouTubeApiKeyStatus.Foreground = new SolidColorBrush(Color.FromRgb(107, 114, 128));
+            YouTubeApiKeyStatus.Foreground = StatusMutedBrush;
         }
         else if (key.Length < 30)
         {
             YouTubeApiKeyStatus.Text = Loc.Get("settings.youtubeApi.statusTooShort");
-            YouTubeApiKeyStatus.Foreground = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+            YouTubeApiKeyStatus.Foreground = StatusErrorBrush;
         }
         else if (!key.StartsWith("AIza", StringComparison.Ordinal))
         {
             YouTubeApiKeyStatus.Text = Loc.Get("settings.youtubeApi.statusMustStart");
-            YouTubeApiKeyStatus.Foreground = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+            YouTubeApiKeyStatus.Foreground = StatusErrorBrush;
         }
         else if (key.Length >= 35 && key.Length <= 45)
         {
             YouTubeApiKeyStatus.Text = Loc.Get("settings.youtubeApi.statusValid");
-            YouTubeApiKeyStatus.Foreground = new SolidColorBrush(Color.FromRgb(74, 222, 128));
+            YouTubeApiKeyStatus.Foreground = StatusSuccessBrush;
         }
         else
         {
             YouTubeApiKeyStatus.Text = Loc.Get("settings.youtubeApi.statusUnexpectedLength");
-            YouTubeApiKeyStatus.Foreground = new SolidColorBrush(Color.FromRgb(234, 179, 8));
+            YouTubeApiKeyStatus.Foreground = StatusWarningBrush;
         }
     }
 

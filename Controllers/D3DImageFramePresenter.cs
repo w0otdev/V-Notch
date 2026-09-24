@@ -32,6 +32,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private int _lastDirtyWidth;
     private int _lastDirtyHeight;
     private bool _pendingFrame;
+    internal bool HasPendingFrame => Volatile.Read(ref _pendingFrame);
     private bool _presentQueued;
     private int _retryScheduled;
     private readonly DispatcherTimer _retryTimer;

@@ -13,6 +13,7 @@ public sealed class NotchShellViewRefs
     public FrameworkElement? NotchContainer { get; init; }
     public Action<double, TimeSpan>? AnimateCornerRadius { get; init; }
     public Func<double, CornerRadius>? CornerRadiusBuilder { get; init; }
+    public Func<long, bool>? IsSessionCurrent { get; init; }
 }
 
 /// <summary>
@@ -25,6 +26,7 @@ public sealed class NotchShellPresenter : IDisposable
 
     private readonly NotchShellViewRefs _refs;
     private long _activeSessionId;
+    private long _animationVersion;
     private bool _disposed;
 
     public NotchShellPresenter(NotchShellViewRefs refs)
@@ -42,13 +44,15 @@ public sealed class NotchShellPresenter : IDisposable
 
         long sessionId = plan.SessionId;
         _activeSessionId = sessionId;
+        long version = ++_animationVersion;
+        if (!IsCurrent(sessionId, version)) return;
 
         var border = _refs.NotchBorder;
 
         // Quy tắc ngắt animation D3 (implement.md):
         // 1. Ghi nhận giá trị hình ảnh hiện tại
-        double currentWidth = border.ActualWidth > 0 ? border.ActualWidth : (double.IsNaN(border.Width) ? plan.TargetWidth : border.Width);
-        double currentHeight = border.ActualHeight > 0 ? border.ActualHeight : (double.IsNaN(border.Height) ? plan.TargetHeight : border.Height);
+        double currentWidth = ReadExtent(border.Width, border.ActualWidth, plan.TargetWidth);
+        double currentHeight = ReadExtent(border.Height, border.ActualHeight, plan.TargetHeight);
 
         // 2 & 3. Dừng animation clock mà phiên cũ sở hữu
         border.BeginAnimation(FrameworkElement.WidthProperty, null);
@@ -109,7 +113,7 @@ public sealed class NotchShellPresenter : IDisposable
             if (completedCount < 2) return;
 
             // 6. Chỉ phiên mới nhất được xác nhận hoàn tất
-            if (sessionId != _activeSessionId)
+            if (!IsCurrent(sessionId, version))
             {
                 RuntimeLog.Debug(LogTag, () => $"Shell animation #{sessionId} completed but was superseded by #{_activeSessionId}");
                 return;
@@ -136,6 +140,8 @@ public sealed class NotchShellPresenter : IDisposable
 
     public void SnapTo(double width, double height, double cornerRadius)
     {
+        if (_disposed) return;
+        ++_animationVersion;
         _activeSessionId++;
         var border = _refs.NotchBorder;
         border.BeginAnimation(FrameworkElement.WidthProperty, null);
@@ -150,10 +156,11 @@ public sealed class NotchShellPresenter : IDisposable
 
     public void CancelCurrentAnimation()
     {
+        ++_animationVersion;
         _activeSessionId++;
         var border = _refs.NotchBorder;
-        double currentWidth = border.ActualWidth > 0 ? border.ActualWidth : border.Width;
-        double currentHeight = border.ActualHeight > 0 ? border.ActualHeight : border.Height;
+        double currentWidth = ReadExtent(border.Width, border.ActualWidth, 0);
+        double currentHeight = ReadExtent(border.Height, border.ActualHeight, 0);
 
         border.BeginAnimation(FrameworkElement.WidthProperty, null);
         border.BeginAnimation(FrameworkElement.HeightProperty, null);
@@ -167,4 +174,12 @@ public sealed class NotchShellPresenter : IDisposable
         _disposed = true;
         CancelCurrentAnimation();
     }
+
+    private bool IsCurrent(long sessionId, long version) =>
+        !_disposed && version == _animationVersion && sessionId == _activeSessionId &&
+        (_refs.IsSessionCurrent?.Invoke(sessionId) ?? true);
+
+    private static double ReadExtent(double effective, double actual, double fallback) =>
+        double.IsFinite(effective) && effective >= 0 ? effective :
+        double.IsFinite(actual) && actual > 0 ? actual : fallback;
 }

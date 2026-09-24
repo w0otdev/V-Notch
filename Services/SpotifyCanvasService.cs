@@ -1540,6 +1540,13 @@ public sealed class SpotifyCanvasService : IDisposable
 
     private void TrimCacheIfNeeded()
     {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in _cache)
+        {
+            if (entry.Value.ExpiresAtUtc <= now)
+                ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(entry);
+        }
+
         if (_cache.Count < MaxCacheEntries)
             return;
 

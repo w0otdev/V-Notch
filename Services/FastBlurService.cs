@@ -23,7 +23,7 @@ public static class FastBlurService
                 if (height < 1) height = 1;
                 blurRadius = Math.Clamp(blurRadius, 1, 20);
 
-                var formattedBitmap = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+                var formattedBitmap = ArtworkAnalysisSource.GetBgra32(source);
 
                 var smallBitmap = new TransformedBitmap(formattedBitmap, new ScaleTransform((double)width / formattedBitmap.PixelWidth, (double)height / formattedBitmap.PixelHeight));
 

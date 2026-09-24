@@ -98,6 +98,7 @@ public partial class MainWindow
             ApplyGlassPanelMaterial(true);
             UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
             HideLyricsBlurBackground();
+            UpdateEarVisibility();
         }
         else
         {
@@ -131,6 +132,7 @@ public partial class MainWindow
             NotchBackground.Opacity = 1;
             ExpandedContent.Background = (System.Windows.Media.Brush)FindResource("NotchGradient");
             RestoreNotchShadowDefaults();
+            UpdateEarVisibility();
         }
     }
 

@@ -39,15 +39,17 @@ public class NotchStateManager
     public bool CanTransitionTo(NotchState target)
     {
         var current = CurrentState;
+        if (current == target) return true;
         return target switch
         {
-            NotchState.Expanding => current == NotchState.Collapsed,
+            // A newer coordinator request may reverse an unfinished animation.
+            NotchState.Expanding => current is NotchState.Collapsed or NotchState.Collapsing or NotchState.MusicCollapsing,
             NotchState.Expanded => current == NotchState.Expanding || current == NotchState.SecondaryView || current == NotchState.CameraExpanded,
-            NotchState.Collapsing => current == NotchState.Expanded || current == NotchState.SecondaryView || current == NotchState.CameraExpanded,
+            NotchState.Collapsing => current is NotchState.Expanded or NotchState.SecondaryView or NotchState.CameraExpanded or NotchState.Expanding or NotchState.MusicExpanding or NotchState.MusicExpanded,
             NotchState.Collapsed => current == NotchState.Collapsing || current == NotchState.MusicCollapsing,
             NotchState.SecondaryView => current == NotchState.Expanded,
             NotchState.CameraExpanded => current == NotchState.SecondaryView,
-            NotchState.MusicExpanding => current == NotchState.Collapsed,
+            NotchState.MusicExpanding => current is NotchState.Collapsed or NotchState.Collapsing or NotchState.MusicCollapsing,
             NotchState.MusicExpanded => current == NotchState.MusicExpanding,
             NotchState.MusicCollapsing => current == NotchState.MusicExpanded || current == NotchState.MusicExpanding,
             NotchState.Hidden => true,
@@ -58,6 +60,8 @@ public class NotchStateManager
     {
         lock (_stateLock)
         {
+            // Reaffirming the current state is a no-op, not a rejected transition.
+            if (_currentState == target) return true;
             if (!CanTransitionTo(target))
             {
                 RuntimeLog.Warn("STATE", $"Invalid transition: {_currentState} → {target}");

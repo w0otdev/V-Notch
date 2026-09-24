@@ -91,6 +91,7 @@ public sealed class LiquidGlassController
     private readonly Func<CaptureRegion?> _regionProvider;
 
     private double _activeIntervalMs;
+    private double _frameWorkMs;
     private long _nextDisplayRefreshProbe;
     private int _displayRefreshHz;
     private volatile bool _animating;
@@ -583,7 +584,6 @@ public sealed class LiquidGlassController
         _hasPresentedCpuFrame = false;
         _forceRefreshNeeded = true;
         _idleWakeEvent.Set();
-        RequestRenderTimerPeriod();
 
         _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
         if (!_exactBitBltCapture && _mag == null)
@@ -756,6 +756,9 @@ public sealed class LiquidGlassController
         double frameStart = clock.Elapsed.TotalMilliseconds;
         RefreshDisplayCadence();
         double frameIntervalMs = ChooseLockedFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
+        // Preserve headroom when capture/processing cannot sustain the requested
+        // cadence. Recover gradually once work becomes cheap again.
+        frameIntervalMs = Math.Max(frameIntervalMs, Math.Min(100, _frameWorkMs * 1.25));
 
         if (HandleCaptureOverlay(frameIntervalMs))
             return true;
@@ -782,15 +785,19 @@ public sealed class LiquidGlassController
         if (!ShouldContinueWorker(generation)) return false;
 
         TrackDiagnostics(frameStart);
+        double workMs = clock.Elapsed.TotalMilliseconds - frameStart;
+        _frameWorkMs = _frameWorkMs == 0 ? workMs : _frameWorkMs * 0.8 + workMs * 0.2;
         nextFrameAtMs = AdvanceFrameDeadline(nextFrameAtMs, frameIntervalMs, clock.Elapsed.TotalMilliseconds);
         return true;
     }
 
     private bool IsPresentationBlocked(double frameIntervalMs, ref double nextFrameAtMs, Stopwatch clock)
     {
-        if (!_gpuMode && _presentInFlight)
+        if ((_gpuMode && _d3dPresenter?.HasPendingFrame == true) || (!_gpuMode && _presentInFlight))
         {
-            WaitForIdleOrEvent((int)Math.Max(1, frameIntervalMs));
+            // Do not keep capturing/uploading over a frame the UI has not consumed.
+            WaitForIdleOrEvent(2);
+            nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
             return true;
         }
 
@@ -823,6 +830,7 @@ public sealed class LiquidGlassController
         _lastRegionFetchMs = double.NegativeInfinity;
         _dbgFrameCount = 0;
         _dbgLastLogMs = 0;
+        _frameWorkMs = 0;
         _frameHistory.Clear();
         ReleaseGdiResources();
         _outBuffer = _blurTmp = Array.Empty<byte>();
@@ -838,7 +846,6 @@ public sealed class LiquidGlassController
             _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
             {
                 _worker = null;
-                if (_isActive) RequestRenderTimerPeriod();
                 StartWorkerIfNeeded();
             }));
         }
@@ -949,9 +956,11 @@ public sealed class LiquidGlassController
         nextFrameAtMs += frameIntervalMs;
         if (nextFrameAtMs <= nowMs)
         {
-            // Discard timing debt but start the next capture immediately. Waiting
-            // for another slot here adds latency precisely when capture is slow.
-            return nowMs;
+            // Discard timing debt and yield instead of running continuously when
+            // overloaded. Input/render work needs time to drain as well.
+            double recoveryDelayMs = Math.Max(2, Math.Min(16, frameIntervalMs * 0.2));
+            SleepUntilRenderDeadline(recoveryDelayMs);
+            return nowMs + recoveryDelayMs;
         }
         if (nextFrameAtMs > nowMs)
         {
@@ -1179,6 +1188,8 @@ public sealed class LiquidGlassController
             long dueTime = -Math.Max(1L, (long)(waitMs * 10_000.0));
             if (SetWaitableTimer(timer, in dueTime, 0, IntPtr.Zero, IntPtr.Zero, false))
             {
+                if (Volatile.Read(ref _renderTimerPeriodRequested) != 0)
+                    ReleaseRenderTimerPeriod();
                 uint timeout = (uint)Math.Ceiling(waitMs) + 100;
                 uint waitResult = WaitForMultipleObjects(2, handles, false, timeout);
 
@@ -1201,6 +1212,7 @@ public sealed class LiquidGlassController
 
         // Fallback when high-resolution waitable timer is not available:
         // Wait on _idleWakeEvent with timeout to remain interruptible.
+        RequestRenderTimerPeriod();
         int fallbackMs = (int)Math.Max(1, Math.Round(waitMs));
         bool signaled = _idleWakeEvent.WaitOne(fallbackMs);
         if (signaled)
@@ -1296,11 +1308,12 @@ public sealed class LiquidGlassController
     private static bool DetectCaptureOverlay()
     {
         bool found = false;
+        var className = new StringBuilder(128);
         try
         {
             EnumWindows((hwnd, _) =>
             {
-                if (IsCaptureOverlayWindow(hwnd))
+                if (IsCaptureOverlayWindow(hwnd, className))
                 {
                     found = true;
                     return false;
@@ -1315,7 +1328,7 @@ public sealed class LiquidGlassController
         return found;
     }
 
-    private static bool IsCaptureOverlayWindow(IntPtr hwnd)
+    private static bool IsCaptureOverlayWindow(IntPtr hwnd, StringBuilder sb)
     {
         if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var r))
             return false;
@@ -1325,7 +1338,7 @@ public sealed class LiquidGlassController
         if (w < 400 || h < 400)
             return false;
 
-        var sb = new StringBuilder(128);
+        sb.Clear();
         if (GetClassName(hwnd, sb, sb.Capacity) > 0 &&
             sb.ToString().IndexOf("ScreenClipping", StringComparison.OrdinalIgnoreCase) >= 0)
         {

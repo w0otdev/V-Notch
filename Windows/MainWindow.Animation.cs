@@ -804,11 +804,10 @@ public partial class MainWindow
 
     private void OnExpandCompleted(int generation, bool suppressCompactThumbnailMotion, VNotch.Models.NotchView effectiveTarget = VNotch.Models.NotchView.Media)
     {
-        if (generation != _viewTransitionGeneration) return;
+        if (generation != _viewTransitionGeneration || generation != _transitionCoordinator.ActiveTransitionId) return;
         StopMainViewHorizontalStabilizer();
         _isAnimating = false;
         _isExpanded = true;
-        _notchState.TryTransitionTo(NotchState.Expanded);
         NotchBorder.IsHitTestVisible = true;
 
         if (effectiveTarget == VNotch.Models.NotchView.Timer)
@@ -946,9 +945,19 @@ public partial class MainWindow
         }
         CancelThumbnailSwitchForExpand();
 
+        // Read effective animated values before detaching clocks. ActualWidth may
+        // still describe the previous layout pass when an animation reverses.
+        double currentWidth = double.IsFinite(NotchBorder.Width) && NotchBorder.Width > 0
+            ? NotchBorder.Width : NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth;
+        double currentHeight = double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0
+            ? NotchBorder.Height : NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight;
+        double currentCornerRadius = CurrentCornerRadius;
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
         this.BeginAnimation(CurrentCornerRadiusProperty, null);
+        NotchBorder.Width = currentWidth;
+        NotchBorder.Height = currentHeight;
+        CurrentCornerRadius = currentCornerRadius;
 
         DismissStateBeforeExpand();
 
@@ -959,12 +968,6 @@ public partial class MainWindow
         }
 
         EnsureTopmost();
-
-        double currentWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth;
-        double currentHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight;
-
-        NotchBorder.Width = currentWidth;
-        NotchBorder.Height = currentHeight;
 
         ResetNotchScaleBounce();
 
@@ -1426,10 +1429,9 @@ public partial class MainWindow
         FrameworkElement contentToShow,
         bool suppressCompactThumbnailMotion)
     {
-        if (generation != _viewTransitionGeneration) return;
+        if (generation != _viewTransitionGeneration || generation != _transitionCoordinator.ActiveTransitionId) return;
         _isAnimating = false;
         _isExpanded = false;
-        _notchState.TryTransitionTo(NotchState.Collapsed);
         NotchBorder.IsHitTestVisible = true;
         _transitionCoordinator.CompleteTransition(generation);
         UpdateSpotifyCanvasPresentationContext();
@@ -1573,11 +1575,8 @@ public partial class MainWindow
             return;
         }
 
-        if (_isDebugViewLocked)
-        {
-            _transitionCoordinator.CancelTransition(transitionId.Value, "DebugViewLocked");
-            return;
-        }
+        // Debug-lock permission was checked when the coordinator accepted this
+        // request. Debug view selection temporarily unlocks only that request.
         if (_isGreetingActive)
         {
             _transitionCoordinator.CancelTransition(transitionId.Value, "GreetingActive");

@@ -229,6 +229,12 @@ public sealed class NotchTransitionCoordinator
 
         RuntimeLog.Log(LogTag, $"Transition #{requestArgs.TransitionId} requested: {requestArgs.FromView} -> {requestArgs.TargetView} (Shape: {requestArgs.TargetShape}, Reason: {requestArgs.Reason})");
         StateChanged?.Invoke(this, newSnapshot);
+        // State listeners may synchronously cancel or supersede this request.
+        lock (_lock)
+        {
+            if (_isDisposed || !_isTransitionActive || requestArgs.TransitionId != _activeTransitionId)
+                return false;
+        }
         TransitionRequested?.Invoke(this, requestArgs);
         return true;
     }
@@ -339,7 +345,7 @@ public sealed class NotchTransitionCoordinator
         lock (_lock)
         {
             // Quy tắc: Callback phiên cũ đến muộn -> Bỏ qua, không được sửa state
-            if (transitionId != _activeTransitionId)
+            if (_isDisposed || !_isTransitionActive || transitionId != _activeTransitionId)
             {
                 RuntimeLog.Debug(LogTag, () => $"CompleteTransition ignored for stale transition #{transitionId} (active is #{_activeTransitionId})");
                 return;
@@ -372,13 +378,15 @@ public sealed class NotchTransitionCoordinator
 
         lock (_lock)
         {
-            if (transitionId != _activeTransitionId)
+            if (_isDisposed || !_isTransitionActive || transitionId != _activeTransitionId)
             {
                 RuntimeLog.Debug(LogTag, () => $"CancelTransition ignored for stale transition #{transitionId}");
                 return;
             }
 
             _isTransitionActive = false;
+            // Invalidate every delayed callback belonging to the canceled session.
+            ++_activeTransitionId;
             // Roll back shape state to match current stable view
             _shapeState = _currentView == NotchView.Compact ? NotchShapeState.Collapsed : NotchShapeState.Expanded;
             _targetView = _currentView;

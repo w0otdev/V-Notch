@@ -115,8 +115,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
             if (ms.Length == 0) return null;
 
-            var bytes = ms.ToArray();
-            return await DecodeImageAsync(bytes, timeoutCts.Token);
+            return await DecodeImageAsync(ms.GetBuffer(), timeoutCts.Token, checked((int)ms.Length));
         }
         catch (Exception ex)
         {
@@ -332,7 +331,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         }
     }
 
-    private static async Task<BitmapImage?> DecodeImageAsync(byte[] bytes, CancellationToken ct = default)
+    private static async Task<BitmapImage?> DecodeImageAsync(byte[] bytes, CancellationToken ct = default, int? length = null)
     {
         if (bytes == null || bytes.Length == 0) return null;
 
@@ -340,7 +339,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         {
             try
             {
-                using var probeStream = new MemoryStream(bytes);
+                using var probeStream = new MemoryStream(bytes, 0, length ?? bytes.Length, writable: false);
                 var decoder = BitmapDecoder.Create(probeStream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
                 var frame = decoder.Frames.Count > 0 ? decoder.Frames[0] : null;
                 int originalWidth = frame?.PixelWidth ?? 0;
@@ -353,7 +352,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                     return null;
                 }
 
-                using var stream = new MemoryStream(bytes);
+                using var stream = new MemoryStream(bytes, 0, length ?? bytes.Length, writable: false);
                 var image = new BitmapImage();
                 image.BeginInit();
                 image.CacheOption = BitmapCacheOption.OnLoad;

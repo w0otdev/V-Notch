@@ -10,6 +10,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IMediaDetectionService _mediaService;
     private readonly IDispatcherService _dispatcher;
+    private readonly MediaUpdateQueue _mediaUpdates;
 
     [ObservableProperty] private NotchView _currentView = NotchView.Compact;
     [ObservableProperty] private bool _isExpanded;
@@ -46,12 +47,14 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         Secondary = new(batteryService);
         AudioMixer = new(volumeService);
         Settings = new(settingsService);
+        _mediaUpdates = new(dispatcher.BeginInvokeBackground, ApplyMediaUpdate);
         _mediaService.MediaChanged += OnMediaChanged;
 
         if (_coordinator != null)
         {
             _coordinator.StateChanged += (_, snapshot) => _dispatcher.BeginInvoke(() =>
             {
+                if (snapshot != _coordinator.Snapshot) return;
                 CurrentView = snapshot.CurrentView;
                 IsExpanded = snapshot.CurrentView != NotchView.Compact;
             });
@@ -65,14 +68,28 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         Secondary.UpdateCalendar();
     }
 
-    private void OnMediaChanged(object? sender, MediaInfo info) => _dispatcher.BeginInvoke(() =>
+    private void OnMediaChanged(object? sender, MediaInfo info) => _mediaUpdates.Enqueue(info);
+
+    private void ApplyMediaUpdate(MediaInfo info)
     {
+        if (info.IsThumbnailOnlyUpdate)
+        {
+            var current = Media.CurrentInfo;
+            if (current == null || !MediaUpdateQueue.SameTrack(current, info)) return;
+            // Artwork completion can arrive after play/pause or a seek. Preserve
+            // the latest playback snapshot rather than restoring its old timeline.
+            var merged = current.Clone();
+            merged.IsThumbnailOnlyUpdate = true;
+            if (info.Thumbnail != null) merged.Thumbnail = info.Thumbnail;
+            if (!string.IsNullOrEmpty(info.YouTubeVideoId)) merged.YouTubeVideoId = info.YouTubeVideoId;
+            info = merged;
+        }
         Media.Update(info);
         Progress.Update(info);
         IsMusicCompactMode = info.IsAnyMediaPlaying && !string.IsNullOrEmpty(info.CurrentTrack) &&
             !(info.Platform == MediaPlatform.Browser && string.IsNullOrEmpty(info.CurrentTrack));
         MediaInfoUpdated?.Invoke(this, info);
-    });
+    }
 
     [RelayCommand]
     private void OpenMedia()
@@ -139,5 +156,9 @@ public partial class ShellViewModel : ObservableObject, IDisposable
     public void UpdateBatteryInfo(BatteryInfo battery) => Secondary.UpdateBattery(battery);
     public void UpdateCalendarInfo() => Secondary.UpdateCalendar();
 
-    public void Dispose() => _mediaService.MediaChanged -= OnMediaChanged;
+    public void Dispose()
+    {
+        _mediaService.MediaChanged -= OnMediaChanged;
+        _mediaUpdates.Dispose();
+    }
 }

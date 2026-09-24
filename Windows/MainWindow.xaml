@@ -1330,6 +1330,7 @@
                                         BorderBrush="Transparent"
                                         CornerRadius="6"
                                         IsHitTestVisible="False"/>
+                                <ctrl:SessionUnlockFeedback x:Name="CompactUnlockFeedback"/>
                             </Grid>
                         </Border>
 
@@ -1844,6 +1845,7 @@
                                                            FontWeight="Bold"
                                                            Foreground="#F2FFFFFF"/>
                                             </Border>
+                                            <ctrl:SessionUnlockFeedback x:Name="ExpandedUnlockFeedback"/>
                                         </Grid>
                                     </Border>
 

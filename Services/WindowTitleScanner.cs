@@ -56,6 +56,8 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     };
 
     private readonly object _cacheLock = new();
+    // All title enumerations are serialized by _cacheLock.
+    private readonly StringBuilder _titleBuffer = new(256);
     private List<string> _cachedWindowTitles = new();
     private DateTime _lastWindowEnumTime = DateTime.MinValue;
 
@@ -84,19 +86,21 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                     return true;
                 }
 
-                var sb = new StringBuilder(length + 1);
-                GetWindowText(hWnd, sb, sb.Capacity);
-                var title = sb.ToString();
+                _titleBuffer.Clear();
+                _titleBuffer.EnsureCapacity(length + 1);
+                GetWindowText(hWnd, _titleBuffer, _titleBuffer.Capacity);
+                var title = _titleBuffer.ToString();
 
                 if (string.IsNullOrWhiteSpace(title))
                 {
                     return true;
                 }
 
-                string lowerTitle = title.ToLowerInvariant();
-                if (_platformKeywords.Any(k => lowerTitle.Contains(k, StringComparison.Ordinal)))
+                foreach (string keyword in _platformKeywords)
                 {
+                    if (!title.Contains(keyword, StringComparison.OrdinalIgnoreCase)) continue;
                     titles.Add(title);
+                    break;
                 }
 
                 return true;

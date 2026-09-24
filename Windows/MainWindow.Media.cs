@@ -15,6 +15,7 @@ namespace VNotch;
 public partial class MainWindow
 {
     private const string ThumbAnimLogTag = "THUMB-ANIM";
+    private readonly MediaUpdateQueue _mediaUpdates;
 
     private string _lastAnimatedTrackSignature = "";
     private ImageSource? _pendingFlipThumbnail;
@@ -82,7 +83,9 @@ public partial class MainWindow
     #region Media Changed Handler
 
 #pragma warning disable S3776 // Cognitive complexity is inherent to dispatching rich media UI states
-    private void OnMediaChanged(MediaInfo info)
+    private void OnMediaChanged(MediaInfo info) => _mediaUpdates.Enqueue(info);
+
+    private void ApplyMediaUpdate(MediaInfo info)
     {
         bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
         if (!isThumbnailOnlyUpdate)
@@ -90,229 +93,222 @@ public partial class MainWindow
             _currentMediaInfo = info;
         }
 
-        Dispatcher.BeginInvoke(() =>
+        WakeFromIdle();
+
+        if (isThumbnailOnlyUpdate)
         {
-            WakeFromIdle();
-
-            if (!isThumbnailOnlyUpdate && !ReferenceEquals(info, _currentMediaInfo)) return;
-
-            if (isThumbnailOnlyUpdate)
+            if (_currentMediaInfo == null || string.IsNullOrEmpty(_currentMediaInfo.CurrentTrack)) return;
+            string incomingTrack = info.CurrentTrack ?? "";
+            string currentTrack = _currentMediaInfo.CurrentTrack ?? "";
+            if (!MediaUpdateQueue.SameTrack(info, _currentMediaInfo))
             {
-                if (_currentMediaInfo == null || string.IsNullOrEmpty(_currentMediaInfo.CurrentTrack)) return;
-                string incomingTrack = info.CurrentTrack ?? "";
-                string currentTrack = _currentMediaInfo.CurrentTrack ?? "";
-                if (!string.Equals(incomingTrack, currentTrack, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(info.CurrentArtist, _currentMediaInfo.CurrentArtist, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(info.MediaSource, _currentMediaInfo.MediaSource, StringComparison.OrdinalIgnoreCase))
-                {
-                    VNotch.Services.RuntimeLog.Log("MEDIA-THUMB", $"Rejected stale thumbnail: incoming='{incomingTrack}' current='{currentTrack}'");
-                    return;
-                }
-                if (!string.IsNullOrEmpty(info.YouTubeVideoId))
-                    _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
-                if (info.Thumbnail != null)
-                {
-                    _currentMediaInfo.Thumbnail = info.Thumbnail;
-                    DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
-                }
-            }
-
-            var result = _mediaDisplayController.ProcessMediaUpdate(
-                info, _isExpanded, _isMusicExpanded, _isMusicCompactMode, _isAnimating);
-
-            UpdateSpotifyCanvasPlaybackState(info);
-
-            if (result.Action == MediaDisplayAction.Ignore)
+                VNotch.Services.RuntimeLog.Log("MEDIA-THUMB", $"Rejected stale thumbnail: incoming='{incomingTrack}' current='{currentTrack}'");
                 return;
-
-            if (_showingEmptyThumbnail && (result.HasRealTrack || info.IsAnyMediaPlaying))
-            {
-                _showingEmptyThumbnail = false;
-                ++_emptyThumbnailGeneration;
-                ResetEmptyThumbnailAnimation();
             }
-
-            _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
-            _thumbnailShownForCurrentTrack = _mediaDisplayController.ThumbnailShownForCurrentTrack;
-
-            string renderedSource = result.RenderedSource;
-
-            if (result.IsNewTrack)
+            if (!string.IsNullOrEmpty(info.YouTubeVideoId))
+                _currentMediaInfo.YouTubeVideoId = info.YouTubeVideoId;
+            if (info.Thumbnail != null)
             {
-                TransitionTrackText(result.DisplayText.Title, result.DisplayText.Artist);
+                _currentMediaInfo.Thumbnail = info.Thumbnail;
+                DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
+            }
+        }
+
+        var result = _mediaDisplayController.ProcessMediaUpdate(
+            info, _isExpanded, _isMusicExpanded, _isMusicCompactMode, _isAnimating);
+
+        UpdateSpotifyCanvasPlaybackState(info);
+
+        if (result.Action == MediaDisplayAction.Ignore)
+            return;
+
+        if (_showingEmptyThumbnail && (result.HasRealTrack || info.IsAnyMediaPlaying))
+        {
+            _showingEmptyThumbnail = false;
+            ++_emptyThumbnailGeneration;
+            ResetEmptyThumbnailAnimation();
+        }
+
+        _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
+        _thumbnailShownForCurrentTrack = _mediaDisplayController.ThumbnailShownForCurrentTrack;
+
+        string renderedSource = result.RenderedSource;
+
+        if (result.IsNewTrack)
+        {
+            TransitionTrackText(result.DisplayText.Title, result.DisplayText.Artist);
+        }
+        else
+        {
+            UpdateTitleText(result.DisplayText.Title);
+            UpdateArtistText(result.DisplayText.Artist);
+        }
+        CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
+        UpdatePictureInPictureBadge(info.IsPictureInPicture && (result.HasRealTrack || info.IsAnyMediaPlaying));
+
+        bool isSpotify = result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify;
+        bool isYouTube = result.HasRealTrack && (
+            MediaPlatformExtensions.ParsePlatform(renderedSource) is MediaPlatform.YouTube or MediaPlatform.Browser ||
+            !string.IsNullOrEmpty(info.YouTubeVideoId) ||
+            info.Platform == MediaPlatform.YouTube ||
+            MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) == MediaPlatform.YouTube ||
+            (info.CurrentArtist != null && info.CurrentArtist.Contains("YouTube", StringComparison.OrdinalIgnoreCase))
+        );
+
+        if (result.IsNewTrack)
+        {
+            if (isSpotify)
+            {
+                FetchLyricsForTrack(info).SafeFireAndForget("LYRICS");
+            }
+            else if (isYouTube)
+            {
+                FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
             }
             else
             {
-                UpdateTitleText(result.DisplayText.Title);
-                UpdateArtistText(result.DisplayText.Artist);
+                ClearLyrics();
             }
-            CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
-            UpdatePictureInPictureBadge(info.IsPictureInPicture && (result.HasRealTrack || info.IsAnyMediaPlaying));
-
-            bool isSpotify = result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify;
-            bool isYouTube = result.HasRealTrack && (
-                MediaPlatformExtensions.ParsePlatform(renderedSource) is MediaPlatform.YouTube or MediaPlatform.Browser ||
-                !string.IsNullOrEmpty(info.YouTubeVideoId) ||
-                info.Platform == MediaPlatform.YouTube ||
-                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) == MediaPlatform.YouTube ||
-                (info.CurrentArtist != null && info.CurrentArtist.Contains("YouTube", StringComparison.OrdinalIgnoreCase))
-            );
-
-            if (result.IsNewTrack)
+        }
+        else
+        {
+            if (isYouTube && !string.IsNullOrEmpty(info.YouTubeVideoId))
             {
-                if (isSpotify)
-                {
-                    FetchLyricsForTrack(info).SafeFireAndForget("LYRICS");
-                }
-                else if (isYouTube)
+                // Re-fetch if the resolved video ID has changed, or if subtitles were not loaded and lyrics are inactive.
+                string targetKey = $"yt:{info.YouTubeVideoId}";
+                if (targetKey != _lyricsTrackKey || (!_isLyricsActive && (_currentLyrics == null || _currentLyrics.Count == 0)))
                 {
                     FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
                 }
+            }
+        }
+
+        QueueCompactMarqueeRefresh();
+
+        if (!result.HasRealTrack && !info.IsAnyMediaPlaying)
+        {
+            StartTitleShimmer();
+        }
+        else
+        {
+            StopTitleShimmer();
+        }
+
+        if (result.HasRealTrack)
+        {
+            if (result.HasThumbnail && info.Thumbnail != null)
+            {
+                DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
+                if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || ShouldShowMediaBlurBackground))
+                {
+                    AnimateLyricsBlurImageSwitch(info.Thumbnail);
+                    FadeInLyricsBlurBackgroundIfActive();
+                }
+                else if (LyricsBlurImage != null)
+                {
+                    LyricsBlurImage.Source = info.Thumbnail;
+                }
+
+                switch (result.ThumbnailAction)
+                {
+                    case ThumbnailAction.RevealFirst:
+                        ThumbnailImage.Source = info.Thumbnail;
+                        CompactThumbnail.Source = info.Thumbnail;
+                        PlayThumbnailRevealAnimation();
+                        break;
+
+                    case ThumbnailAction.AnimateSwitch:
+                        AnimateThumbnailSwitchOnly(info.Thumbnail, force: true);
+                        PlayTrackChangeBounce();
+                        break;
+
+                    case ThumbnailAction.AnimateUpdate:
+                        AnimateThumbnailSwitchOnly(info.Thumbnail, force: true);
+                        break;
+
+                    case ThumbnailAction.None:
+                        break;
+                }
+
+                ThumbnailImage.Visibility = Visibility.Visible;
+                ThumbnailFallback.Visibility = Visibility.Collapsed;
+
+                if (result.NeedsBackgroundUpdate)
+                {
+                    UpdateMediaBackground(info);
+                    if (_isExpanded)
+                    {
+                        ScheduleMediaBackgroundRecovery();
+                    }
+                }
+            }
+            else if (result.IsNewTrack)
+            {
+                if (ThumbnailImage.Source == null)
+                {
+                    ThumbnailImage.Visibility = Visibility.Collapsed;
+                    ThumbnailFallback.Visibility = Visibility.Visible;
+                }
                 else
                 {
-                    ClearLyrics();
-                }
-            }
-            else
-            {
-                if (isYouTube && !string.IsNullOrEmpty(info.YouTubeVideoId))
-                {
-                    // Re-fetch if the resolved video ID has changed, or if subtitles were not loaded and lyrics are inactive.
-                    string targetKey = $"yt:{info.YouTubeVideoId}";
-                    if (targetKey != _lyricsTrackKey || (!_isLyricsActive && (_currentLyrics == null || _currentLyrics.Count == 0)))
+                    double transitionBlurRadius = _settings.EnableBlurEffects ? 12 : 0;
+                    var transitionBlur = new DoubleAnimation(0, transitionBlurRadius, TimeSpan.FromMilliseconds(300))
                     {
-                        FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
-                    }
-                }
-            }
-
-            QueueCompactMarqueeRefresh();
-
-            if (!result.HasRealTrack && !info.IsAnyMediaPlaying)
-            {
-                StartTitleShimmer();
-            }
-            else
-            {
-                StopTitleShimmer();
-            }
-
-            if (result.HasRealTrack)
-            {
-                if (result.HasThumbnail && info.Thumbnail != null)
-                {
-                    DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
-                    if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || ShouldShowMediaBlurBackground))
-                    {
-                        AnimateLyricsBlurImageSwitch(info.Thumbnail);
-                        FadeInLyricsBlurBackgroundIfActive();
-                    }
-                    else if (LyricsBlurImage != null)
-                    {
-                        LyricsBlurImage.Source = info.Thumbnail;
-                    }
-
-                    switch (result.ThumbnailAction)
-                    {
-                        case ThumbnailAction.RevealFirst:
-                            ThumbnailImage.Source = info.Thumbnail;
-                            CompactThumbnail.Source = info.Thumbnail;
-                            PlayThumbnailRevealAnimation();
-                            break;
-
-                        case ThumbnailAction.AnimateSwitch:
-                            AnimateThumbnailSwitchOnly(info.Thumbnail, force: true);
-                            PlayTrackChangeBounce();
-                            break;
-
-                        case ThumbnailAction.AnimateUpdate:
-                            AnimateThumbnailSwitchOnly(info.Thumbnail, force: true);
-                            break;
-
-                        case ThumbnailAction.None:
-                            break;
-                    }
-
-                    ThumbnailImage.Visibility = Visibility.Visible;
-                    ThumbnailFallback.Visibility = Visibility.Collapsed;
-
-                    if (result.NeedsBackgroundUpdate)
-                    {
-                        UpdateMediaBackground(info);
-                        if (_isExpanded)
-                        {
-                            ScheduleMediaBackgroundRecovery();
-                        }
-                    }
-                }
-                else if (result.IsNewTrack)
-                {
-                    if (ThumbnailImage.Source == null)
-                    {
-                        ThumbnailImage.Visibility = Visibility.Collapsed;
-                        ThumbnailFallback.Visibility = Visibility.Visible;
-                    }
-                    else
-                    {
-                        double transitionBlurRadius = _settings.EnableBlurEffects ? 12 : 0;
-                        var transitionBlur = new DoubleAnimation(0, transitionBlurRadius, TimeSpan.FromMilliseconds(300))
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(transitionBlur, VNotch.Services.AnimationConfig.TargetFps);
+                    ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, transitionBlur);
+                    CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty,
+                        new DoubleAnimation(0, _settings.EnableBlurEffects ? 6 : 0, TimeSpan.FromMilliseconds(300))
                         {
                             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                        };
-                        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(transitionBlur, VNotch.Services.AnimationConfig.TargetFps);
-                        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, transitionBlur);
-                        CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty,
-                            new DoubleAnimation(0, _settings.EnableBlurEffects ? 6 : 0, TimeSpan.FromMilliseconds(300))
-                            {
-                                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                            });
+                        });
 
-                        if (CompactThumbnail.Source == null)
-                        {
-                            CompactThumbnail.Source = ThumbnailImage.Source;
-                        }
-                        ThumbnailImage.Visibility = Visibility.Visible;
-                        ThumbnailFallback.Visibility = Visibility.Collapsed;
+                    if (CompactThumbnail.Source == null)
+                    {
+                        CompactThumbnail.Source = ThumbnailImage.Source;
                     }
+                    ThumbnailImage.Visibility = Visibility.Visible;
+                    ThumbnailFallback.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+        else
+        {
+            if (info.IsAnyMediaPlaying)
+            {
+                if (ThumbnailImage.Source != null)
+                {
+                    ThumbnailImage.Visibility = Visibility.Visible;
+                    ThumbnailFallback.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    ThumbnailImage.Visibility = Visibility.Collapsed;
+                    ThumbnailFallback.Visibility = Visibility.Visible;
                 }
             }
             else
             {
-                if (info.IsAnyMediaPlaying)
-                {
-                    if (ThumbnailImage.Source != null)
-                    {
-                        ThumbnailImage.Visibility = Visibility.Visible;
-                        ThumbnailFallback.Visibility = Visibility.Collapsed;
-                    }
-                    else
-                    {
-                        ThumbnailImage.Visibility = Visibility.Collapsed;
-                        ThumbnailFallback.Visibility = Visibility.Visible;
-                    }
-                }
-                else
-                {
-                    _thumbnailSwitchGeneration = _mediaDisplayController.ThumbnailSwitchGeneration;
-                    TransitionToEmptyThumbnail();
-                    HideMediaBackground();
-                    ClearLyrics();
-                    UpdatePictureInPictureBadge(false, animate: false);
-                }
+                _thumbnailSwitchGeneration = _mediaDisplayController.ThumbnailSwitchGeneration;
+                TransitionToEmptyThumbnail();
+                HideMediaBackground();
+                ClearLyrics();
+                UpdatePictureInPictureBadge(false, animate: false);
             }
+        }
 
-            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds > 500 && _isPlaying != info.IsPlaying)
-            {
-                _isPlaying = info.IsPlaying;
-                UpdatePlayPauseIcon();
-            }
+        if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds > 500 && _isPlaying != info.IsPlaying)
+        {
+            _isPlaying = info.IsPlaying;
+            UpdatePlayPauseIcon();
+        }
 
-            UpdateProgressTracking(info);
-            UpdateMusicCompactMode(info);
+        UpdateProgressTracking(info);
+        UpdateMusicCompactMode(info);
 
-            MusicViz.TrackId = info?.GetSignature() ?? "";
-            MusicViz.IsPlaying = info?.IsPlaying ?? false;
-        });
+        MusicViz.TrackId = info?.GetSignature() ?? "";
+        MusicViz.IsPlaying = info?.IsPlaying ?? false;
     }
 #pragma warning restore S3776
 

@@ -127,6 +127,10 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private async Task WorkerLoopAsync(int generation, CancellationToken token)
     {
+        using var userChanges = new RegistryChangeMonitor(Registry.CurrentUser, ConsentRoot);
+        using var machineChanges = new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot);
+        IReadOnlyList<CapabilityUsage>[]? capabilities = null;
+        long nextFullScan = 0;
         while (!token.IsCancellationRequested)
         {
             PrivacyScanResult? result = null;
@@ -139,7 +143,19 @@ public sealed class PrivacyIndicatorService : IDisposable
                         break;
 
                     DateTime utcNow = DateTime.UtcNow;
-                    result = ExecuteBackgroundScan(utcNow);
+                    bool registryChanged = userChanges.ConsumeChange() | machineChanges.ConsumeChange();
+                    long now = Environment.TickCount64;
+                    if (capabilities == null || registryChanged || now >= nextFullScan)
+                    {
+                        capabilities = new[]
+                        {
+                            ScanCapability("microphone"), ScanCapability("webcam"),
+                            ScanCapability("graphicsCaptureProgrammatic"), ScanCapability("graphicsCaptureWithoutBorder")
+                        };
+                        nextFullScan = now + 30_000;
+                    }
+                    // Process exits and recording-duration thresholds still need reconciliation.
+                    result = ExecuteBackgroundScan(utcNow, capabilities);
                 }
                 finally
                 {
@@ -175,12 +191,12 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
     }
 
-    private static PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow)
+    private static PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage>[]? capabilities = null)
     {
-        var micUsage = ScanCapability("microphone");
-        var camUsage = ScanCapability("webcam");
-        var programmaticCapture = ScanCapability("graphicsCaptureProgrammatic");
-        var borderlessCapture = ScanCapability("graphicsCaptureWithoutBorder");
+        var micUsage = capabilities?[0] ?? ScanCapability("microphone");
+        var camUsage = capabilities?[1] ?? ScanCapability("webcam");
+        var programmaticCapture = capabilities?[2] ?? ScanCapability("graphicsCaptureProgrammatic");
+        var borderlessCapture = capabilities?[3] ?? ScanCapability("graphicsCaptureWithoutBorder");
 
         var running = new ConsumerProcessProbe();
         var microphoneCandidates = GetRelevantConsumerUsages(

@@ -14,6 +14,8 @@ public class MorphingSettingsIcon : FrameworkElement
     private const int Samples = 96;
     private Geometry? _target;
     private Geometry? _display;
+    private Func<double, Geometry>? _geometryAtProgress;
+    private Transform _morphTransform = Transform.Identity;
     private Point[][] _from = Array.Empty<Point[]>();
     private Point[][] _to = Array.Empty<Point[]>();
     private static readonly DependencyProperty ProgressProperty = DependencyProperty.Register(
@@ -27,13 +29,16 @@ public class MorphingSettingsIcon : FrameworkElement
             BeginAnimation(ProgressProperty, null);
             SetValue(ProgressProperty, 1d);
             _display = _target;
+            _geometryAtProgress = null;
         };
     }
 
-    public void MorphTo(Geometry geometry)
+    public void MorphTo(Geometry geometry, bool animate = true, Rect? viewport = null,
+        TimeSpan? duration = null, IEasingFunction? easing = null,
+        Func<double, Geometry>? geometryAtProgress = null)
     {
         var next = geometry.Clone();
-        Rect bounds = next.Bounds;
+        Rect bounds = viewport ?? next.Bounds;
         if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0) return;
         double scale = 48 / Math.Max(bounds.Width, bounds.Height);
         var matrix = Matrix.Identity;
@@ -46,20 +51,26 @@ public class MorphingSettingsIcon : FrameworkElement
         normalized.Freeze();
 
         var previous = _display;
+        _geometryAtProgress = null;
         _target = normalized;
         BeginAnimation(ProgressProperty, null);
         SetValue(ProgressProperty, 1d);
-        if (!IsLoaded || previous == null || AnimationConfig.ReduceMotion)
+        if (!animate || !IsLoaded || previous == null || AnimationConfig.ReduceMotion)
         {
             _display = _target;
             InvalidateVisual();
             return;
         }
-        _from = Sample(previous);
-        _to = Sample(normalized);
-        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(420))
+        _geometryAtProgress = geometryAtProgress;
+        _morphTransform = normalized.Transform;
+        if (geometryAtProgress == null)
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            _from = Sample(previous);
+            _to = Sample(normalized);
+        }
+        var animation = new DoubleAnimation(0, 1, duration ?? TimeSpan.FromMilliseconds(420))
+        {
+            EasingFunction = easing ?? new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
         BeginAnimation(ProgressProperty, animation);
@@ -124,7 +135,17 @@ public class MorphingSettingsIcon : FrameworkElement
         if (_target == null) return;
         double progress = (double)GetValue(ProgressProperty);
         if (progress >= 1)
+        {
             _display = _target;
+            _geometryAtProgress = null;
+        }
+        else if (_geometryAtProgress != null)
+        {
+            var shape = new GeometryGroup { Transform = _morphTransform };
+            shape.Children.Add(_geometryAtProgress(progress));
+            shape.Freeze();
+            _display = shape;
+        }
         else
         {
             var shape = new StreamGeometry { FillRule = FillRule.Nonzero };

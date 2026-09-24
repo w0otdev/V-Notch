@@ -87,8 +87,25 @@ public partial class MainWindow
         _isSeekSpringActive = Spring.IsActive;
     }
 
-    private void ProgressTimer_Tick(object? sender, EventArgs e)
+    private bool _progressRenderingActive;
+    private TimeSpan _lastProgressRenderTime = TimeSpan.MinValue;
+
+    private void SetProgressRenderingEnabled(bool enabled)
     {
+        if (_progressRenderingActive == enabled) return;
+        _progressRenderingActive = enabled;
+        _lastProgressRenderTime = TimeSpan.MinValue;
+        if (enabled) CompositionTarget.Rendering += OnProgressRendering;
+        else CompositionTarget.Rendering -= OnProgressRendering;
+    }
+
+    private void OnProgressRendering(object? sender, EventArgs e)
+    {
+        if (e is RenderingEventArgs frame)
+        {
+            if (_lastProgressRenderTime == frame.RenderingTime) return;
+            _lastProgressRenderTime = frame.RenderingTime;
+        }
         if ((_isExpanded || _isMusicExpanded) && _currentMediaInfo != null)
         {
             RenderProgressBar();
@@ -1108,7 +1125,7 @@ public partial class MainWindow
         bool shouldRunLyrics = _isExpanded && !_isMusicExpanded;
         bool shouldRunVolumeSync = _isExpanded && _isMusicExpanded;
 
-        SetTimerEnabled(_progressTimer, shouldRunProgress);
+        SetProgressRenderingEnabled(shouldRunProgress);
         SetTimerEnabled(_lyricsTimer, shouldRunLyrics);
         SetTimerEnabled(_volumeSyncTimer, shouldRunVolumeSync);
 

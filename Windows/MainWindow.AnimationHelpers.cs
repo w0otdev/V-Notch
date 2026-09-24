@@ -611,10 +611,13 @@ public partial class MainWindow
 
         _isModeTransitioning = true;
 
-        if (LeftEar != null) LeftEar.Visibility = Visibility.Visible;
-        if (RightEar != null) RightEar.Visibility = Visibility.Visible;
-        if (LeftShadowEar != null) LeftShadowEar.Visibility = Visibility.Visible;
-        if (RightShadowEar != null) RightShadowEar.Visibility = Visibility.Visible;
+        bool showEars = !toIsland && !IsLiquidGlassEnabled;
+        var earVisStart = showEars ? Visibility.Visible : Visibility.Collapsed;
+        double earOpacityStart = showEars ? 1.0 : 0.0;
+        if (LeftEar != null) { LeftEar.Visibility = earVisStart; LeftEar.Opacity = earOpacityStart; }
+        if (RightEar != null) { RightEar.Visibility = earVisStart; RightEar.Opacity = earOpacityStart; }
+        if (LeftShadowEar != null) { LeftShadowEar.Visibility = earVisStart; LeftShadowEar.Opacity = earOpacityStart; }
+        if (RightShadowEar != null) { RightShadowEar.Visibility = earVisStart; RightShadowEar.Opacity = earOpacityStart; }
 
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
@@ -660,10 +663,11 @@ public partial class MainWindow
             }
         }
 
-        if (LeftEar != null) LeftEar.Opacity = earOpacity;
-        if (RightEar != null) RightEar.Opacity = earOpacity;
-        if (LeftShadowEar != null) LeftShadowEar.Opacity = earOpacity;
-        if (RightShadowEar != null) RightShadowEar.Opacity = earOpacity;
+        double effectiveEarOpacity = IsLiquidGlassEnabled ? 0.0 : earOpacity;
+        if (LeftEar != null) LeftEar.Opacity = effectiveEarOpacity;
+        if (RightEar != null) RightEar.Opacity = effectiveEarOpacity;
+        if (LeftShadowEar != null) LeftShadowEar.Opacity = effectiveEarOpacity;
+        if (RightShadowEar != null) RightShadowEar.Opacity = effectiveEarOpacity;
 
         UpdateNotchClip();
     }
@@ -690,11 +694,7 @@ public partial class MainWindow
             NotchContainer.Margin = new Thickness(m.Left, toIsland ? DynamicIslandTopMargin : 0, m.Right, m.Bottom);
         }
 
-        var earVis = toIsland ? Visibility.Collapsed : Visibility.Visible;
-        if (LeftEar != null) { LeftEar.Opacity = 1; LeftEar.Visibility = earVis; }
-        if (RightEar != null) { RightEar.Opacity = 1; RightEar.Visibility = earVis; }
-        if (LeftShadowEar != null) { LeftShadowEar.Opacity = 1; LeftShadowEar.Visibility = earVis; }
-        if (RightShadowEar != null) { RightShadowEar.Opacity = 1; RightShadowEar.Visibility = earVis; }
+        UpdateEarVisibility();
 
         UpdateNotchClip();
         UpdateMediaBackgroundFootprint();

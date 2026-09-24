@@ -20,8 +20,8 @@ public sealed class PerformanceDiagnosticService
     private readonly Process _currentProcess = Process.GetCurrentProcess();
     private readonly IntPtr _currentProcessHandle = Win32Interop.GetCurrentProcess();
     private readonly int _processorCount;
-    private readonly List<DiagnosticLogEntry> _diagnosticLogs = new(64);
-    private readonly List<DiagnosticLogEntry> _serviceLogs = new(256);
+    private readonly Queue<DiagnosticLogEntry> _diagnosticLogs = new(200);
+    private readonly Queue<DiagnosticLogEntry> _serviceLogs = new(500);
     private readonly object _lock = new();
 
     // CPU Tracking
@@ -510,9 +510,9 @@ public sealed class PerformanceDiagnosticService
         {
             if (_diagnosticLogs.Count >= 200)
             {
-                _diagnosticLogs.RemoveAt(0);
+                _diagnosticLogs.Dequeue();
             }
-            _diagnosticLogs.Add(new DiagnosticLogEntry(DateTime.Now, severity, category, message));
+            _diagnosticLogs.Enqueue(new DiagnosticLogEntry(DateTime.Now, severity, category, message));
         }
     }
 
@@ -522,9 +522,9 @@ public sealed class PerformanceDiagnosticService
         {
             if (_serviceLogs.Count >= 500)
             {
-                _serviceLogs.RemoveAt(0);
+                _serviceLogs.Dequeue();
             }
-            _serviceLogs.Add(new DiagnosticLogEntry(DateTime.Now, severity, category, message));
+            _serviceLogs.Enqueue(new DiagnosticLogEntry(DateTime.Now, severity, category, message));
         }
     }
 

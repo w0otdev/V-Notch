@@ -245,10 +245,17 @@ namespace VNotch.Controls
             if (dt <= 0) return;
 
             _lastDtMs = dt * 1000.0;
+            double oldOpacity = _currentOpacity;
             bool isSettled = UpdateAnimation(dt, totalSec);
+            double oldIconMix = _iconMix, oldCheckMix = _checkMix, oldPlayMix = _playMix;
             bool feedbackActive = UpdatePlaybackFeedback(dt, totalSec);
 
-            if (isSettled && !feedbackActive && _state == VisualizerState.Paused)
+            bool drawSettled = true;
+            for (int i = 0; i < BarCount; i++)
+                drawSettled &= Math.Abs(_smoothedHeights[i] - _currentHeights[i]) <= MinHeightChangeThreshold;
+            bool opacityChanged = Math.Abs(oldOpacity - _currentOpacity) > 0.0001;
+
+            if (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused)
             {
                 InvalidateVisual();
                 StopRendering();
@@ -256,7 +263,8 @@ namespace VNotch.Controls
                 return;
             }
 
-            InvalidateVisual();
+            if (!isSettled || !drawSettled || opacityChanged || oldIconMix != _iconMix || oldCheckMix != _checkMix || oldPlayMix != _playMix)
+                InvalidateVisual();
         }
 
         private void ResetPlaybackFeedback()

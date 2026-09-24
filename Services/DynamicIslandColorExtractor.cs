@@ -177,7 +177,7 @@ internal static class DynamicIslandColorExtractor
         try
         {
             int sampleSize = 32;
-            var formatted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+            var formatted = ArtworkAnalysisSource.GetBgra32(bitmap);
             var scaled = new TransformedBitmap(formatted,
                 new ScaleTransform((double)sampleSize / formatted.PixelWidth, (double)sampleSize / formatted.PixelHeight));
 
@@ -261,7 +261,7 @@ internal static class DynamicIslandColorExtractor
 
         try
         {
-            var formattedBitmap = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+            var formattedBitmap = ArtworkAnalysisSource.GetBgra32(bitmap);
 
             double scaleX = (double)analysisSize / formattedBitmap.PixelWidth;
             double scaleY = (double)analysisSize / formattedBitmap.PixelHeight;
@@ -281,13 +281,20 @@ internal static class DynamicIslandColorExtractor
                 small.CopyPixels(pixels, stride, 0);
 
                 const int NUM_BUCKETS = 36;
-                float[] bucketSatSum = new float[NUM_BUCKETS];
-                float[] bucketValSum = new float[NUM_BUCKETS];
-                float[] bucketWeight = new float[NUM_BUCKETS];
-                int[] bucketCount = new int[NUM_BUCKETS];
-                float[] bucketPeakS = new float[NUM_BUCKETS];
-                float[] bucketPeakH = new float[NUM_BUCKETS];
-                float[] bucketPeakV = new float[NUM_BUCKETS];
+                Span<float> bucketSatSum = stackalloc float[NUM_BUCKETS];
+                bucketSatSum.Clear();
+                Span<float> bucketValSum = stackalloc float[NUM_BUCKETS];
+                bucketValSum.Clear();
+                Span<float> bucketWeight = stackalloc float[NUM_BUCKETS];
+                bucketWeight.Clear();
+                Span<int> bucketCount = stackalloc int[NUM_BUCKETS];
+                bucketCount.Clear();
+                Span<float> bucketPeakS = stackalloc float[NUM_BUCKETS];
+                bucketPeakS.Clear();
+                Span<float> bucketPeakH = stackalloc float[NUM_BUCKETS];
+                bucketPeakH.Clear();
+                Span<float> bucketPeakV = stackalloc float[NUM_BUCKETS];
+                bucketPeakV.Clear();
 
                 float centerX = width / 2f, centerY = height / 2f;
                 int totalColorPixels = 0;
@@ -512,15 +519,21 @@ internal static class DynamicIslandColorExtractor
         return p;
     }
 
-    public static double GetRelativeLuminance(Color c)
+    private static readonly double[] LinearChannel = CreateLinearChannelTable();
+
+    private static double[] CreateLinearChannelTable()
     {
-        static double Linear(byte v)
+        var table = new double[256];
+        for (int v = 0; v < table.Length; v++)
         {
             double x = v / 255.0;
-            return x <= 0.03928 ? x / 12.92 : Math.Pow((x + 0.055) / 1.055, 2.4);
+            table[v] = x <= 0.03928 ? x / 12.92 : Math.Pow((x + 0.055) / 1.055, 2.4);
         }
-        return 0.2126 * Linear(c.R) + 0.7152 * Linear(c.G) + 0.0722 * Linear(c.B);
+        return table;
     }
+
+    public static double GetRelativeLuminance(Color c) =>
+        0.2126 * LinearChannel[c.R] + 0.7152 * LinearChannel[c.G] + 0.0722 * LinearChannel[c.B];
 
     public static double GetContrastRatio(Color a, Color b)
     {
@@ -546,6 +559,27 @@ internal static class DynamicIslandColorExtractor
 
         if (GetContrastRatio(best, background) >= minRatio && GetRelativeLuminance(best) >= 0.18)
             return best;
+
+        // Search the original discrete steps, preserving the selected RGB value.
+        // Dark backgrounds give a monotone predicate; retain the general path below.
+        double backgroundLuminance = GetRelativeLuminance(background);
+        if (backgroundLuminance <= 0.18)
+        {
+            int low = 0, high = 101;
+            while (low < high)
+            {
+                int step = low + (high - low) / 2;
+                double l = hsl.L + (1.0 - hsl.L) * (step / 100.0);
+                var candidate = HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(l, 0.55, 0.72));
+                double luminance = GetRelativeLuminance(candidate);
+                if (luminance >= 0.18 && (luminance + 0.05) / (backgroundLuminance + 0.05) >= minRatio)
+                    high = step;
+                else
+                    low = step + 1;
+            }
+            if (low > 100) return Colors.White;
+            return HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(hsl.L + (1.0 - hsl.L) * (low / 100.0), 0.55, 0.72));
+        }
 
         for (int step = 0; step <= 100; step++)
         {

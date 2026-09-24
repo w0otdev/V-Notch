@@ -39,7 +39,7 @@ public static class SubjectAwareBlurService
             backgroundBlurRadius = Math.Clamp(backgroundBlurRadius, 1, 32);
             subjectBlurRadius = Math.Clamp(subjectBlurRadius, 0, backgroundBlurRadius);
 
-            var formatted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+            var formatted = ArtworkAnalysisSource.GetBgra32(source);
             var small = new TransformedBitmap(formatted,
                 new ScaleTransform((double)width / formatted.PixelWidth, (double)height / formatted.PixelHeight));
 

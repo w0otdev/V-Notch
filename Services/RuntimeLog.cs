@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -90,12 +91,56 @@ public static class RuntimeLog
 
     public static void Trace(string category, string message) => WriteEntry(LogLevel.Trace, category, message);
 
+    public static void Trace(string category, [InterpolatedStringHandlerArgument("category")] ref TraceMessageHandler message)
+    {
+        if (message.Enabled) WriteEntry(LogLevel.Trace, category, message.GetText());
+    }
+
     public static void Trace(string category, Func<string> messageFactory)
     {
         if (IsEnabled(LogLevel.Trace)) WriteEntry(LogLevel.Trace, category, messageFactory());
     }
 
     public static void Debug(string category, string message) => WriteEntry(LogLevel.Debug, category, message);
+
+    public static void Debug(string category, [InterpolatedStringHandlerArgument("category")] ref DebugMessageHandler message)
+    {
+        if (message.Enabled) WriteEntry(LogLevel.Debug, category, message.GetText());
+    }
+
+    [InterpolatedStringHandler]
+    public ref struct DebugMessageHandler
+    {
+        private DefaultInterpolatedStringHandler _builder;
+        public bool Enabled { get; }
+        public DebugMessageHandler(int literalLength, int formattedCount, string category, out bool enabled)
+        {
+            Enabled = enabled = IsEnabled(LogLevel.Debug);
+            _builder = enabled ? new(literalLength, formattedCount) : default;
+        }
+        public void AppendLiteral(string value) => _builder.AppendLiteral(value);
+        public void AppendFormatted<T>(T value) => _builder.AppendFormatted(value);
+        public void AppendFormatted<T>(T value, string? format) => _builder.AppendFormatted(value, format);
+        public void AppendFormatted<T>(T value, int alignment, string? format = null) => _builder.AppendFormatted(value, alignment, format);
+        internal string GetText() => _builder.ToStringAndClear();
+    }
+
+    [InterpolatedStringHandler]
+    public ref struct TraceMessageHandler
+    {
+        private DefaultInterpolatedStringHandler _builder;
+        public bool Enabled { get; }
+        public TraceMessageHandler(int literalLength, int formattedCount, string category, out bool enabled)
+        {
+            Enabled = enabled = IsEnabled(LogLevel.Trace);
+            _builder = enabled ? new(literalLength, formattedCount) : default;
+        }
+        public void AppendLiteral(string value) => _builder.AppendLiteral(value);
+        public void AppendFormatted<T>(T value) => _builder.AppendFormatted(value);
+        public void AppendFormatted<T>(T value, string? format) => _builder.AppendFormatted(value, format);
+        public void AppendFormatted<T>(T value, int alignment, string? format = null) => _builder.AppendFormatted(value, alignment, format);
+        internal string GetText() => _builder.ToStringAndClear();
+    }
 
     public static void Debug(string category, Func<string> messageFactory)
     {

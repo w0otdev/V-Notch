@@ -190,11 +190,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private static readonly TimeSpan ProgressRenderInterval = TimeSpan.FromMilliseconds(16);
     private static readonly TimeSpan LyricsUpdateInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan VolumeSyncInterval = TimeSpan.FromMilliseconds(500);
 
-    private readonly DispatcherTimer _progressTimer;
     private readonly DispatcherTimer _lyricsTimer;
     private readonly DispatcherTimer _volumeSyncTimer;
 
@@ -244,6 +242,7 @@ public partial class MainWindow : Window
         VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null)
     {
         InitializeComponent();
+        _mediaUpdates = new(action => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, action), ApplyMediaUpdate);
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
         _transitionCoordinator.CanInitiateTransition = (target, reason) =>
@@ -261,7 +260,8 @@ public partial class MainWindow : Window
             NotchBorder = NotchBorder,
             NotchContainer = NotchContainer,
             AnimateCornerRadius = (radius, dur) => AnimateCornerRadius(radius, dur),
-            CornerRadiusBuilder = MakeNotchCornerRadius
+            CornerRadiusBuilder = MakeNotchCornerRadius,
+            IsSessionCurrent = sessionId => !_cleanedUp && sessionId == _transitionCoordinator.ActiveTransitionId
         });
         _notchContentPresenter = new VNotch.Presenters.NotchContentTransitionPresenter(new VNotch.Presenters.NotchContentViewRefs
         {
@@ -269,7 +269,8 @@ public partial class MainWindow : Window
             TimerContent = TimerContent,
             AudioContent = AudioContent,
             AudioScrollViewer = AudioScrollViewer,
-            SecondaryContent = SecondaryContent
+            SecondaryContent = SecondaryContent,
+            IsSessionCurrent = sessionId => !_cleanedUp && sessionId == _transitionCoordinator.ActiveTransitionId
         });
         _viewModel = viewModel;
         DataContext = _viewModel;
@@ -355,12 +356,6 @@ public partial class MainWindow : Window
             },
             _clipboardListener.NotifyClipboardUpdated);
         _overlayWindow.IsPointInteractive = IsPointInteractive;
-
-        _progressTimer = new DispatcherTimer(DispatcherPriority.Normal)
-        {
-            Interval = ProgressRenderInterval
-        };
-        _progressTimer.Tick += ProgressTimer_Tick;
 
         _lyricsTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -461,6 +456,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        InitializeSessionUnlockFeedback();
         _overlayWindow.Initialize();
         _spotlightController.Initialize(this, _settings);
         _clipboardListener.Start();
@@ -583,6 +579,8 @@ public partial class MainWindow : Window
     {
         if (_cleanedUp) return;
         _cleanedUp = true;
+        DisposeSessionUnlockFeedback();
+        _mediaUpdates.Dispose();
 
         _notchManager.HoverService.HoverEnter -= HoverService_HoverEnter;
         _notchManager.HoverService.HoverLeave -= HoverService_HoverLeave;
@@ -604,7 +602,7 @@ public partial class MainWindow : Window
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
         StopTitleGradientShift();
-        _progressTimer?.Stop();
+        SetProgressRenderingEnabled(false);
         _lyricsTimer?.Stop();
         _volumeSyncTimer?.Stop();
         _mediaService?.Dispose();
@@ -654,6 +652,7 @@ public partial class MainWindow : Window
 
     private void ApplyCoordinatorSnapshot(VNotch.Controllers.NotchTransitionSnapshot snapshot)
     {
+        if (_cleanedUp || snapshot != _transitionCoordinator.Snapshot) return;
         _localAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
         _localSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
         _notchState.IsTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
@@ -675,20 +674,43 @@ public partial class MainWindow : Window
         // Managed through TransitionRequested with Reason="CountdownCompletion"
     }
 
+    private readonly object _transitionRequestGate = new();
+    private VNotch.Controllers.TransitionRequestEventArgs? _pendingTransitionRequest;
+    private bool _transitionRequestQueued;
+
     private void OnTransitionRequested(object? sender, VNotch.Controllers.TransitionRequestEventArgs args)
     {
-        if (Dispatcher.CheckAccess())
+        lock (_transitionRequestGate)
         {
-            ExecuteTransitionRequest(args);
+            if (_cleanedUp || args.TransitionId != _transitionCoordinator.ActiveTransitionId ||
+                (_pendingTransitionRequest != null && args.TransitionId < _pendingTransitionRequest.TransitionId)) return;
+            _pendingTransitionRequest = args;
+            if (_transitionRequestQueued) return;
+            _transitionRequestQueued = true;
         }
-        else
+        // Several requests can arrive before the next UI turn. Animate only the
+        // newest target, at input priority, so render/layout can finish first.
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, (Action)(() =>
         {
-            Dispatcher.BeginInvoke(() => ExecuteTransitionRequest(args));
-        }
+            VNotch.Controllers.TransitionRequestEventArgs? latest;
+            lock (_transitionRequestGate)
+            {
+                latest = _pendingTransitionRequest;
+                _pendingTransitionRequest = null;
+                _transitionRequestQueued = false;
+            }
+            if (latest != null) ExecuteTransitionRequest(latest);
+        }));
     }
 
     private void ExecuteTransitionRequest(VNotch.Controllers.TransitionRequestEventArgs args)
     {
+        if (_cleanedUp || !_transitionCoordinator.IsTransitionActive ||
+            args.TransitionId != _transitionCoordinator.ActiveTransitionId) return;
+        // Direct view switches do not always start another presenter animation.
+        // Detach its old clocks first so HoldEnd cannot override the new view.
+        _notchShellPresenter?.CancelCurrentAnimation();
+        _notchContentPresenter?.CancelActiveTransition();
         switch (args.TargetView)
         {
             case VNotch.Models.NotchView.Compact:
@@ -1860,14 +1882,22 @@ public partial class MainWindow : Window
                 }
             }
 
-            var earVisibility = islandMode ? Visibility.Collapsed : Visibility.Visible;
-            if (LeftEar != null) LeftEar.Visibility = earVisibility;
-            if (RightEar != null) RightEar.Visibility = earVisibility;
-            if (LeftShadowEar != null) LeftShadowEar.Visibility = earVisibility;
-            if (RightShadowEar != null) RightShadowEar.Visibility = earVisibility;
+            UpdateEarVisibility();
         }
 
         ApplyDynamicIslandContentAlignment(islandMode);
+    }
+
+    private void UpdateEarVisibility()
+    {
+        bool showEars = !_settings.EnableDynamicIslandMode && !IsLiquidGlassEnabled;
+        var earVisibility = showEars ? Visibility.Visible : Visibility.Collapsed;
+        double earOpacity = showEars ? 1.0 : 0.0;
+
+        if (LeftEar != null) { LeftEar.Visibility = earVisibility; LeftEar.Opacity = earOpacity; }
+        if (RightEar != null) { RightEar.Visibility = earVisibility; RightEar.Opacity = earOpacity; }
+        if (LeftShadowEar != null) { LeftShadowEar.Visibility = earVisibility; LeftShadowEar.Opacity = earOpacity; }
+        if (RightShadowEar != null) { RightShadowEar.Visibility = earVisibility; RightShadowEar.Opacity = earOpacity; }
     }
 
     private void ApplyDynamicIslandContentAlignment(bool islandMode)
