@@ -64,12 +64,13 @@ internal sealed class SpotlightController : ISpotlightController
     {
         bool spotlightChanged = _settings == null || _settings.EnableSpotlight != settings.EnableSpotlight;
         bool historyChanged = _settings == null || _settings.EnableSpotlightHistory != settings.EnableSpotlightHistory;
+        bool languageChanged = _settings == null || !string.Equals(_settings.Language, settings.Language, StringComparison.Ordinal);
         bool glassChanged = _settings == null
             || !string.Equals(_settings.NotchStyle, settings.NotchStyle, StringComparison.OrdinalIgnoreCase)
             || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
 
         _settings = settings.Clone();
-        if (glassChanged || historyChanged)
+        if (glassChanged || historyChanged || languageChanged)
         {
             _window?.ApplySettings(_settings);
         }

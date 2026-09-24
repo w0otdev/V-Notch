@@ -1350,7 +1350,7 @@ public partial class MainWindow : Window
 
             bool spotlightChanged = oldSettings.EnableSpotlight != newSettings.EnableSpotlight;
             bool glassConfigChanged = IsLiquidGlassConfigChanged(oldSettings, newSettings);
-            if (spotlightChanged || glassConfigChanged || oldSettings.EnableSpotlightHistory != newSettings.EnableSpotlightHistory)
+            if (spotlightChanged || glassConfigChanged || oldSettings.EnableSpotlightHistory != newSettings.EnableSpotlightHistory || languageChanged)
             {
                 _spotlightController.ApplySettings(_settings);
                 if (spotlightChanged)
@@ -1874,6 +1874,7 @@ public partial class MainWindow : Window
         RefreshAudioLocalization();
         RefreshClockViewLocale();
         WordClockWidget.RefreshLocalization();
+        _spotlightController?.ApplySettings(_settings);
         if (_isUpdateAvailable && _availableUpdate != null)
         {
             UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");

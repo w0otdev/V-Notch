@@ -82,3 +82,4 @@ update_settings.ps1
 /Tools/*
 !/Tools/ReportBenchmark/
 !/Tools/StressRunner/
+/changes

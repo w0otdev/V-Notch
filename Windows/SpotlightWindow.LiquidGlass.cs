@@ -73,6 +73,7 @@ public partial class SpotlightWindow
         _settings = settings.Clone();
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _gpuRefractionFailed = false;
+        RefreshLocalization();
         ApplyLiquidGlassSkin();
     }
 

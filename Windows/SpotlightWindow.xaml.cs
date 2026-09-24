@@ -106,9 +106,7 @@ public partial class SpotlightWindow : Window
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _launcher = launcher;
         DataContext = viewModel;
-        Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
-        PlaceholderText.Text = Loc.Get("spotlight.placeholder");
-        SearchBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("spotlight.placeholder"));
+        RefreshLocalization();
         ApplyLiquidGlassSkin();
 
         // Activation from the global hotkey can land after ShowSpotlight has
@@ -163,6 +161,24 @@ public partial class SpotlightWindow : Window
         };
     }
 
+    internal void RefreshLocalization()
+    {
+        Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
+        if (PlaceholderText != null)
+        {
+            PlaceholderText.Text = Loc.Get("spotlight.placeholder");
+        }
+        if (SearchBox != null)
+        {
+            SearchBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("spotlight.placeholder"));
+        }
+        RefreshStatus();
+        if (IsSpotlightOpen && !_isClosing && SearchBox != null)
+        {
+            _ = _viewModel.SearchAsync(SearchBox.Text);
+        }
+    }
+
     private bool _preparingGlassEntrance;
 
     internal void ShowSpotlight()
@@ -201,7 +217,7 @@ public partial class SpotlightWindow : Window
         SetMorphSessionActive(true);
         try
         {
-            RefreshStatus();
+            RefreshLocalization();
             if (_isParked) UnparkWindow();
             else if (!IsVisible) Show();
             IntPtr hwnd = EnsureHwnd();
