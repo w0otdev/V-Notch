@@ -123,6 +123,7 @@
   "settings.display": "THIẾT BỊ",
   "settings.display.name": "Màn hình {0}",
   "settings.display.primary": " (Chính)",
+  "settings.display.disconnected": "Màn hình đã lưu (đã ngắt kết nối — tạm dùng màn hình chính)",
   "settings.donating": "ỦNG HỘ",
   "settings.donating.bank": "MB Bank nội địa",
   "settings.donating.bank.hint": "Quét mã QR để ủng hộ trong nước.",

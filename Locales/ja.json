@@ -123,6 +123,7 @@
   "settings.display": "デバイス",
   "settings.display.name": "ディスプレイ {0}",
   "settings.display.primary": " (メイン)",
+  "settings.display.disconnected": "保存済みの画面（未接続 — 一時的にメイン画面を使用）",
   "settings.donating": "寄付",
   "settings.donating.bank": "国内MB銀行 QRコード",
   "settings.donating.bank.hint": "国内の銀行振込支援用のQRコードです。",

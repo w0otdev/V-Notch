@@ -123,6 +123,7 @@
   "settings.display": "PÉRIPHÉRIQUES",
   "settings.display.name": "Écran {0}",
   "settings.display.primary": " (Principal)",
+  "settings.display.disconnected": "Écran enregistré (déconnecté — écran principal temporaire)",
   "settings.donating": "FAIRE UN DON",
   "settings.donating.bank": "QR MB Bank domestique",
   "settings.donating.bank.hint": "Scannez ce QR pour un soutien bancaire domestique.",

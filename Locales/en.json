@@ -123,6 +123,7 @@
   "settings.display": "DEVICES",
   "settings.display.name": "Display {0}",
   "settings.display.primary": " (Primary)",
+  "settings.display.disconnected": "Saved monitor (disconnected — temporarily using primary)",
   "settings.donating": "DONATE",
   "settings.donating.bank": "Domestic MB Bank QR",
   "settings.donating.bank.hint": "Scan this QR for domestic bank support.",

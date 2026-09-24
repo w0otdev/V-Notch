@@ -123,6 +123,7 @@
   "settings.display": "硬件与设备",
   "settings.display.name": "显示器 {0}",
   "settings.display.primary": "（主显示器）",
+  "settings.display.disconnected": "已保存的显示器（未连接 — 暂时使用主显示器）",
   "settings.donating": "赞助支持",
   "settings.donating.bank": "国内银行收款码",
   "settings.donating.bank.hint": "扫描二维码支持作者开发。",

@@ -123,6 +123,7 @@
   "settings.display": "DISPOSITIVOS",
   "settings.display.name": "Monitor {0}",
   "settings.display.primary": " (Principal)",
+  "settings.display.disconnected": "Tela salva (desconectada — usando a principal temporariamente)",
   "settings.donating": "DOAR",
   "settings.donating.bank": "QR Code MB Bank",
   "settings.donating.bank.hint": "Escaneie para transferências bancárias diretas.",

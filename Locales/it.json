@@ -123,6 +123,7 @@
   "settings.display": "DISPOSITIVI",
   "settings.display.name": "Schermo {0}",
   "settings.display.primary": " (Principale)",
+  "settings.display.disconnected": "Schermo salvato (disconnesso — temporaneamente sul principale)",
   "settings.donating": "DONAZIONI",
   "settings.donating.bank": "QR Code bancario",
   "settings.donating.bank.hint": "Scansiona per sostenere direttamente lo sviluppo.",

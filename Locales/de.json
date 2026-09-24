@@ -123,6 +123,7 @@
   "settings.display": "GERÄTE",
   "settings.display.name": "Anzeige {0}",
   "settings.display.primary": " (Hauptbildschirm)",
+  "settings.display.disconnected": "Gespeicherter Bildschirm (getrennt – vorübergehend Hauptbildschirm)",
   "settings.donating": "SPENDEN",
   "settings.donating.bank": "Inländischer MB Bank QR-Code",
   "settings.donating.bank.hint": "Scannen Sie diesen QR-Code für inländische Bankunterstützung.",

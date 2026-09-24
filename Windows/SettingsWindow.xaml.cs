@@ -123,6 +123,7 @@ public partial class SettingsWindow : Window
 
         InitializeNavigation();
         LoadSettings();
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnMonitorConfigurationChanged;
         _appliedSettings = ReadSettingsFromUi();
         _settings = _appliedSettings.Clone();
         CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
@@ -256,9 +257,7 @@ public partial class SettingsWindow : Window
         DisableMouseLeaveAutoCloseCheck.IsChecked = _settings.DisableMouseLeaveAutoClose;
         ReopenLastViewCheck.IsChecked = _settings.ReopenLastViewOnExpand;
 
-        var monitors = NotchManager.GetMonitorNames();
-        MonitorCombo.ItemsSource = monitors;
-        MonitorCombo.SelectedIndex = Math.Min(_settings.MonitorIndex, monitors.Length - 1);
+        RefreshMonitorChoices(preserveSelection: false);
 
         LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
         SetVisualizerAudioDevicePlaceholder();
@@ -577,10 +576,7 @@ public partial class SettingsWindow : Window
 
         MonitorLabel.Text = Loc.Get("settings.activeMonitor");
         MonitorHint.Text = Loc.Get("settings.activeMonitor.hint");
-        int monitorIdx = MonitorCombo.SelectedIndex;
-        var monitors = NotchManager.GetMonitorNames();
-        MonitorCombo.ItemsSource = monitors;
-        MonitorCombo.SelectedIndex = Math.Min(monitorIdx < 0 ? _settings.MonitorIndex : monitorIdx, monitors.Length - 1);
+        RefreshMonitorChoices();
 
         CameraLabel.Text = Loc.Get("settings.camera");
         CameraHint.Text = Loc.Get("settings.camera.hint");
@@ -3175,10 +3171,7 @@ public partial class SettingsWindow : Window
             (MonitorHint, () =>
             {
                 MonitorHint.Text = Loc.Get("settings.activeMonitor.hint");
-                int monitorIdx = MonitorCombo.SelectedIndex;
-                var monitors = NotchManager.GetMonitorNames();
-                MonitorCombo.ItemsSource = monitors;
-                MonitorCombo.SelectedIndex = Math.Min(monitorIdx < 0 ? _settings.MonitorIndex : monitorIdx, monitors.Length - 1);
+                RefreshMonitorChoices();
             }),
             (CameraLabel, () => CameraLabel.Text = Loc.Get("settings.camera")),
             (CameraHint, () =>
@@ -4222,7 +4215,11 @@ public partial class SettingsWindow : Window
         snapshot.DisableMouseLeaveAutoClose = DisableMouseLeaveAutoCloseCheck.IsChecked ?? false;
         snapshot.ReopenLastViewOnExpand = ReopenLastViewCheck.IsChecked ?? false;
 
-        snapshot.MonitorIndex = MonitorCombo.SelectedIndex;
+        if (MonitorCombo.SelectedItem is MonitorSelection.Choice monitor)
+        {
+            snapshot.MonitorIndex = monitor.Index;
+            snapshot.MonitorDeviceId = monitor.Id;
+        }
         if (CameraCombo.SelectedItem is CameraDeviceItem selectedCamera)
             snapshot.CameraDeviceId = selectedCamera.Id;
         if (VisualizerAudioCombo.SelectedItem is AudioDeviceItem selectedAudioDevice)
@@ -5576,8 +5573,46 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private bool _monitorChoicesClosed;
+
+    private void OnMonitorConfigurationChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_monitorChoicesClosed) RefreshMonitorChoices();
+        }));
+    }
+
+    private void RefreshMonitorChoices(bool preserveSelection = true)
+    {
+        var previous = preserveSelection ? MonitorCombo.SelectedItem as MonitorSelection.Choice : null;
+        string id = previous?.Id ?? _settings.MonitorDeviceId;
+        int index = previous?.Index ?? _settings.MonitorIndex;
+        var choices = MonitorSelection.GetChoices().ToList();
+        var selected = string.IsNullOrEmpty(id)
+            ? choices.FirstOrDefault(c => c.Index == index) ?? choices.FirstOrDefault()
+            : choices.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (selected == null && !string.IsNullOrEmpty(id))
+        {
+            selected = new MonitorSelection.Choice(id,
+                Loc.Get("settings.display.disconnected"), index, null);
+            choices.Add(selected);
+        }
+        bool wasLoading = _isLoadingSettings;
+        _isLoadingSettings = true;
+        try
+        {
+            MonitorCombo.ItemsSource = choices;
+            MonitorCombo.SelectedItem = selected;
+        }
+        finally { _isLoadingSettings = wasLoading; }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        _monitorChoicesClosed = true;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnMonitorConfigurationChanged;
         base.OnClosed(e);
         CompositionTarget.Rendering -= OnGlassRegionRendering;
         _liquidGlass?.Stop();

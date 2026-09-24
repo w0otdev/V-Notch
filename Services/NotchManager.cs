@@ -65,8 +65,10 @@ public sealed class NotchManager : INotchManager
 
         AnimationConfig.Refresh(_currentScreen.DeviceName);
 
-        double notchLeft = workingArea.Left + (workingArea.Width - _settings.Width) / 2;
-        _hoverService.UpdateNotchBounds(notchLeft, workingArea.Top, _settings.Width, _settings.Height);
+        double scale = MonitorSelection.GetScale(_currentScreen);
+        double width = _settings.Width * scale;
+        double notchLeft = workingArea.Left + (workingArea.Width - width) / 2;
+        _hoverService.UpdateNotchBounds(notchLeft, workingArea.Top, width, _settings.Height * scale);
 
         UpdateSafeArea();
 
@@ -78,8 +80,9 @@ public sealed class NotchManager : INotchManager
         if (_currentScreen == null) return;
 
         var workingArea = _currentScreen.Bounds;
-        double notchWidth = _settings.Width;
-        double notchHeight = _settings.Height;
+        double scale = MonitorSelection.GetScale(_currentScreen);
+        double notchWidth = _settings.Width * scale;
+        double notchHeight = _settings.Height * scale;
 
         double margin = 4;
         double notchLeft = workingArea.Left + (workingArea.Width - notchWidth) / 2;
@@ -96,14 +99,7 @@ public sealed class NotchManager : INotchManager
 
     private Screen GetTargetScreen()
     {
-        var screens = Screen.AllScreens;
-
-        if (_settings.MonitorIndex >= 0 && _settings.MonitorIndex < screens.Length)
-        {
-            return screens[_settings.MonitorIndex];
-        }
-
-        return Screen.PrimaryScreen ?? screens[0];
+        return MonitorSelection.Resolve(_settings);
     }
 
     public static int GetMonitorCount()

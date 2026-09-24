@@ -123,6 +123,7 @@
   "settings.display": "DISPOSITIVOS",
   "settings.display.name": "Pantalla {0}",
   "settings.display.primary": " (Principal)",
+  "settings.display.disconnected": "Pantalla guardada (desconectada — usando la principal temporalmente)",
   "settings.donating": "DONAR",
   "settings.donating.bank": "QR Banco doméstico MB",
   "settings.donating.bank.hint": "Escanea este QR para apoyo bancario doméstico.",

@@ -123,6 +123,7 @@
   "settings.display": "PERANGKAT",
   "settings.display.name": "Layar {0}",
   "settings.display.primary": " (Utama)",
+  "settings.display.disconnected": "Monitor tersimpan (terputus — sementara memakai monitor utama)",
   "settings.donating": "DONASI",
   "settings.donating.bank": "QR Bank MB",
   "settings.donating.bank.hint": "Pindai kode QR untuk dukungan transfer bank langsung.",

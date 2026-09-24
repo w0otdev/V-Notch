@@ -26,6 +26,7 @@ public class NotchSettings
     public bool AutoAnimationFps { get; set; } = true;
 
     public int MonitorIndex { get; set; } = 0;
+    public string MonitorDeviceId { get; set; } = "";
 
     public string CameraDeviceId { get; set; } = "";
     public string VisualizerAudioDeviceId { get; set; } = "";

@@ -123,6 +123,7 @@
   "settings.display": "URZĄDZENIA",
   "settings.display.name": "Ekran {0}",
   "settings.display.primary": " (Główny)",
+  "settings.display.disconnected": "Zapisany ekran (odłączony — tymczasowo ekran główny)",
   "settings.donating": "WESPRZYJ PROJEKT",
   "settings.donating.bank": "Kod QR przelewu bankowego",
   "settings.donating.bank.hint": "Zeskanuj, aby przekazać darowiznę na rozwój projektu.",

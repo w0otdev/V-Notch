@@ -123,6 +123,7 @@
   "settings.display": "AYGITLAR",
   "settings.display.name": "Ekran {0}",
   "settings.display.primary": " (Birincil)",
+  "settings.display.disconnected": "Kayıtlı ekran (bağlı değil — geçici olarak ana ekran kullanılıyor)",
   "settings.donating": "BAĞIŞ YAP",
   "settings.donating.bank": "MB Bank QR Kodu",
   "settings.donating.bank.hint": "Doğrudan banka havalesiyle destek olmak için tarayın.",

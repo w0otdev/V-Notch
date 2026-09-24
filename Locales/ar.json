@@ -123,6 +123,7 @@
   "settings.display": "الأجهزة",
   "settings.display.name": "شاشة العرض {0}",
   "settings.display.primary": " (الرئيسية)",
+  "settings.display.disconnected": "الشاشة المحفوظة (غير متصلة — تُستخدم الرئيسية مؤقتًا)",
   "settings.donating": "التبرع",
   "settings.donating.bank": "رمز الاستجابة السريعة للبنك",
   "settings.donating.bank.hint": "امسح الرمز للدعم المصرفي المباشر.",

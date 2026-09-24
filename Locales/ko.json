@@ -123,6 +123,7 @@
   "settings.display": "장치 관리",
   "settings.display.name": "디스플레이 {0}",
   "settings.display.primary": " (주 모니터)",
+  "settings.display.disconnected": "저장된 모니터 (연결 해제 — 임시로 주 모니터 사용)",
   "settings.donating": "후원하기",
   "settings.donating.bank": "MB Bank 후원 QR",
   "settings.donating.bank.hint": "QR 코드를 스캔하여 개발자를 후원할 수 있습니다.",

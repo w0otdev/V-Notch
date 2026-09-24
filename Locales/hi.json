@@ -123,6 +123,7 @@
   "settings.display": "डिवाइस",
   "settings.display.name": "डिस्प्ले {0}",
   "settings.display.primary": " (मुख्य)",
+  "settings.display.disconnected": "सहेजा गया मॉनिटर (डिस्कनेक्ट — अस्थायी रूप से मुख्य मॉनिटर)",
   "settings.donating": "सहयोग दें",
   "settings.donating.bank": "घरेलू MB Bank QR",
   "settings.donating.bank.hint": "घरेलू बैंक सहयोग के लिए यह QR स्कैन करें।",

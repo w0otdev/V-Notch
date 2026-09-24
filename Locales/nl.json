@@ -123,6 +123,7 @@
   "settings.display": "APPARATEN",
   "settings.display.name": "Beeldscherm {0}",
   "settings.display.primary": " (Primair)",
+  "settings.display.disconnected": "Opgeslagen scherm (niet verbonden — tijdelijk hoofdscherm)",
   "settings.donating": "DONEREN",
   "settings.donating.bank": "MB Bank QR-code",
   "settings.donating.bank.hint": "Scan de code voor directe ondersteuning.",

@@ -18,6 +18,8 @@ public sealed class OverlayWindowController : IDisposable
     private readonly Action _onDisplayChanged;
     private readonly Action _onClipboardUpdated;
     private HwndSource? _source;
+    private bool _displayUpdatePending;
+    public Func<System.Windows.Forms.Screen>? TargetScreen { get; set; }
 
 #pragma warning disable S107 // Component wiring constructor delegates lifecycle and placement actions
     public OverlayWindowController(
@@ -76,33 +78,18 @@ public sealed class OverlayWindowController : IDisposable
 
     public void PositionAtTop(double surfaceWidth, double expandedHeight)
     {
-        double dpiScale = GetDpiScale();
+        var screen = TargetScreen?.Invoke() ?? System.Windows.Forms.Screen.FromHandle(_state.Hwnd);
+        double dpiScale = MonitorSelection.GetScale(screen);
         double widthDip = surfaceWidth + HorizontalPadding;
         double heightDip = expandedHeight + 80;
-
-        int screenLeft = 0;
-        int screenWidth = (int)Math.Round(SystemParameters.PrimaryScreenWidth * dpiScale);
-
-        if (_state.Hwnd != IntPtr.Zero)
-        {
-            IntPtr hMonitor = MonitorFromWindow(_state.Hwnd, MONITOR_DEFAULTTONEAREST);
-            if (hMonitor != IntPtr.Zero)
-            {
-                MONITORINFO mi = new MONITORINFO();
-                mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
-                if (GetMonitorInfo(hMonitor, ref mi))
-                {
-                    screenLeft = mi.rcMonitor.Left;
-                    screenWidth = mi.rcMonitor.Right - mi.rcMonitor.Left;
-                }
-            }
-        }
+        int screenLeft = screen.Bounds.Left;
+        int screenWidth = screen.Bounds.Width;
 
         var bounds = CalculateCenteredBounds(
             screenLeft, screenWidth, widthDip, heightDip, dpiScale);
 
         _state.FixedX = bounds.X;
-        _state.FixedY = 0;
+        _state.FixedY = screen.Bounds.Top;
         _state.WindowWidth = bounds.Width;
         _state.WindowHeight = bounds.Height;
         _state.HasFixedBounds = true;
@@ -326,7 +313,15 @@ public sealed class OverlayWindowController : IDisposable
                 break;
             case WM_DISPLAYCHANGE:
             case WM_DPICHANGED:
-                _window.Dispatcher.BeginInvoke(_onDisplayChanged);
+                if (!_displayUpdatePending)
+                {
+                    _displayUpdatePending = true;
+                    _window.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        _displayUpdatePending = false;
+                        if (_source != null) _onDisplayChanged();
+                    }), System.Windows.Threading.DispatcherPriority.Background);
+                }
                 break;
             case WM_CLIPBOARDUPDATE:
                 _onClipboardUpdated();

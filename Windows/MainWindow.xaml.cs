@@ -279,6 +279,19 @@ public partial class MainWindow : Window
         AnimationPrimitives.ApplyFpsToTree(this);
         _settingsService = (SettingsService)settingsService;
         _settings = _settingsService.Load();
+        if (string.IsNullOrEmpty(_settings.MonitorDeviceId))
+        {
+            var monitors = MonitorSelection.GetChoices();
+            var preferred = monitors.FirstOrDefault(m => m.Index == _settings.MonitorIndex)
+                ?? monitors.FirstOrDefault(m => m.Screen?.Primary == true)
+                ?? monitors.FirstOrDefault();
+            if (preferred != null)
+            {
+                _settings.MonitorDeviceId = preferred.Id;
+                _settings.MonitorIndex = preferred.Index;
+                _settingsService.Save(_settings);
+            }
+        }
         _notchManager = new NotchManager(this, _settings);
         _mediaService = (MediaDetectionService)mediaService;
         _updateService = updateService;
@@ -355,6 +368,7 @@ public partial class MainWindow : Window
                 PositionAtTop();
             },
             _clipboardListener.NotifyClipboardUpdated);
+        _overlayWindow.TargetScreen = () => MonitorSelection.Resolve(_settings);
         _overlayWindow.IsPointInteractive = IsPointInteractive;
 
         _lyricsTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -1323,11 +1337,16 @@ public partial class MainWindow : Window
 
             if (oldSettings.EnableHoverExpand != newSettings.EnableHoverExpand
                 || oldSettings.MonitorIndex != newSettings.MonitorIndex
+                || oldSettings.MonitorDeviceId != newSettings.MonitorDeviceId
                 || oldSettings.Height != newSettings.Height
                 || oldSettings.AnimationFps != newSettings.AnimationFps)
             {
                 _notchManager.UpdateSettings(_settings);
             }
+
+            if (oldSettings.MonitorIndex != newSettings.MonitorIndex
+                || oldSettings.MonitorDeviceId != newSettings.MonitorDeviceId)
+                PositionAtTop();
 
             bool spotlightChanged = oldSettings.EnableSpotlight != newSettings.EnableSpotlight;
             bool glassConfigChanged = IsLiquidGlassConfigChanged(oldSettings, newSettings);

@@ -123,6 +123,7 @@
   "settings.display": "УСТРОЙСТВА",
   "settings.display.name": "Монитор {0}",
   "settings.display.primary": " (Основной)",
+  "settings.display.disconnected": "Сохранённый монитор (отключён — временно используется основной)",
   "settings.donating": "ПОДДЕРЖАТЬ",
   "settings.donating.bank": "QR-код MB Bank",
   "settings.donating.bank.hint": "Отсканируйте для прямого перевода.",
