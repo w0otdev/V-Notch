@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Ek ekran görüntüsü klasörleri (her satıra bir tane)",
+  "screenshot.title": "Ekran görüntüsü",
+  "screenshot.drag": "Önizlemeyi başka bir uygulamaya sürükleyin.",
+  "screenshot.keep": "Rafta tut",
+  "screenshot.dismiss": "Kapat",
+  "screenshot.full": "Raf dolu. Yer açıp tekrar deneyin.",
+  "screenshot.error": "Görüntü kaydedilemedi. Tekrar deneyin.",
+  "settings.screenshotTray": "Ekran görüntüsü tepsisi",
+  "settings.screenshotTray.hint": "Yakalama araçlarından görüntüleri önizleyin. Başka bir uygulamaya sürükleyin veya rafta tutun.",
   "settings.search.emptyHint": "Farklı bir anahtar kelime veya daha kısa bir arama deneyin.",
   "settings.search.clear": "Aramayı temizle",
   "_metadata": {

@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "추가 스크린샷 폴더 (한 줄에 하나)",
+  "screenshot.title": "스크린샷",
+  "screenshot.drag": "미리보기를 다른 앱으로 드래그하세요.",
+  "screenshot.keep": "선반에 보관",
+  "screenshot.dismiss": "닫기",
+  "screenshot.full": "선반이 가득 찼습니다. 공간을 확보한 후 다시 시도하세요.",
+  "screenshot.error": "이미지를 저장할 수 없습니다. 다시 시도하세요.",
+  "settings.screenshotTray": "스크린샷 트레이",
+  "settings.screenshotTray.hint": "캡처 도구의 스크린샷을 미리 봅니다. 다른 앱으로 드래그하거나 선반에 보관하세요.",
   "settings.search.emptyHint": "다른 키워드나 더 짧은 검색어를 사용해 보세요.",
   "settings.search.clear": "검색 지우기",
   "_metadata": {

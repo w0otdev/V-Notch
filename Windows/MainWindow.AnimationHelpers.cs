@@ -44,9 +44,9 @@ public partial class MainWindow
 
         if (!isHovered && _isGestureActive) return;
 
-        ResetAnimationThumbnailOverlay();
+        if (!IsScreenshotPillActive) ResetAnimationThumbnailOverlay();
 
-        if (!_isThumbnailSwitchActive)
+        if (!IsScreenshotPillActive && !_isThumbnailSwitchActive)
         {
             ResetCompactThumbnailNextLayer();
         }
@@ -83,6 +83,20 @@ public partial class MainWindow
         // Same as AnimateNotchHover: keep the glass at full rate for the resize.
 
         BeginGlassHoverMotion(widthAnim);
+        if (IsScreenshotPillActive)
+        {
+            // Screenshot hover uses the compact thumbnail's geometry and spring,
+            // without entering an expanded view or replacing the pill content.
+            _screenshotCompact!.BeginAnimation(HeightProperty,
+                MakeAnim(notchHeight, duration, isHovered ? _easeExpOut6 : _easeQuadOut, animFps));
+            _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                MakeAnim(thumbScale, duration, easing, animFps));
+            _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                MakeAnim(thumbScale, duration, easing, animFps));
+            double screenshotRadius = isHovered ? (islandMode ? notchHeight / 2.0 : 24) : _cornerRadiusCollapsed;
+            AnimateCornerRadius(screenshotRadius, duration.TimeSpan);
+            return;
+        }
         if (isHovered)
         {
             ApplyCompactTitleContainerWidth(notchWidth);

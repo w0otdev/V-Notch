@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Folder tangkapan layar tambahan (satu per baris)",
+  "screenshot.title": "Tangkapan layar",
+  "screenshot.drag": "Seret pratinjau ke aplikasi lain.",
+  "screenshot.keep": "Simpan di rak",
+  "screenshot.dismiss": "Tutup",
+  "screenshot.full": "Rak penuh. Kosongkan tempat lalu coba lagi.",
+  "screenshot.error": "Gambar tidak dapat disimpan. Coba lagi.",
+  "settings.screenshotTray": "Baki tangkapan layar",
+  "settings.screenshotTray.hint": "Pratinjau gambar dari alat tangkapan layar. Seret ke aplikasi lain atau simpan di rak.",
   "settings.search.emptyHint": "Coba kata kunci lain atau pencarian yang lebih singkat.",
   "settings.search.clear": "Hapus pencarian",
   "_metadata": {

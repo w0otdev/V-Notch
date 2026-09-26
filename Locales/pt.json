@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Pastas adicionais de capturas (uma por linha)",
+  "screenshot.title": "Captura de tela",
+  "screenshot.drag": "Arraste a prévia para outro aplicativo.",
+  "screenshot.keep": "Manter na prateleira",
+  "screenshot.dismiss": "Fechar",
+  "screenshot.full": "A prateleira está cheia. Libere espaço e tente novamente.",
+  "screenshot.error": "Não foi possível salvar a imagem. Tente novamente.",
+  "settings.screenshotTray": "Bandeja de capturas",
+  "settings.screenshotTray.hint": "Veja capturas de ferramentas de captura. Arraste para outro aplicativo ou mantenha na prateleira.",
   "settings.search.emptyHint": "Tente outra palavra-chave ou uma busca mais curta.",
   "settings.search.clear": "Limpar busca",
   "_metadata": {

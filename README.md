@@ -162,6 +162,14 @@
 
 </details>
 
+### Screenshot tray
+
+Capture with Windows Snipping Tool (`Win + Shift + S`), `Print Screen`, `Alt + Print Screen`, or any tool that publishes bitmap/PNG clipboard output. The compact pill temporarily replaces its content with the screenshot thumbnail and a waiting ring. Hover to expand the notch into an image preview, using the same compact 304-DIP-wide layout and 136-DIP-high image viewport for every capture, preserving aspect ratio without cropping. Drag the preview into another app, choose **Keep on shelf**, or dismiss it. Leaving the preview collapses it back to the pill. The eight-second timeout pauses while hovered or focused and during a drag; dismissal restores normal compact content. New captures wait briefly while the notch is expanded or busy.
+
+The tray can be disabled in Settings. It respects notch visibility and stays hidden on the desktop layer. Clipboard images from any app are accepted, including ordinary copied images, because Windows does not consistently distinguish these from screenshots. Disk-only captures such as `Win + Print Screen` and Game Bar are detected in Pictures/Screenshots, Videos/Captures, their Windows redirected locations, and Documents/ShareX/Screenshots. Add other tools' output folders in Settings, one per line. Only new PNG, JPEG, BMP, and TIFF files are imported, including subfolders. Existing history is not scanned. Clipboard and disk copies with identical pixels within five seconds are deduplicated. Images over 64 million pixels and disk files over 100 MB are skipped. Tools that expose neither a clipboard image nor a supported file in a watched folder cannot be detected.
+
+Unclaimed previews stay in memory. Explicitly kept PNGs are stored in `%LOCALAPPDATA%\V-Notch\Screenshots\Saved`. Drag exports are stored in the adjacent `Temporary` directory and exports older than 24 hours are cleaned on the next app launch. Removing an item from the shelf does not delete its saved PNG.
+
 ---
 
 <div id="installation"></div>

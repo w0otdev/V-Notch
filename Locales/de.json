@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Weitere Screenshot-Ordner (einer pro Zeile)",
+  "screenshot.title": "Screenshot",
+  "screenshot.drag": "Vorschau in eine andere App ziehen.",
+  "screenshot.keep": "In der Ablage behalten",
+  "screenshot.dismiss": "Schließen",
+  "screenshot.full": "Die Ablage ist voll. Schaffe Platz und versuche es erneut.",
+  "screenshot.error": "Bild konnte nicht gespeichert werden. Erneut versuchen.",
+  "settings.screenshotTray": "Screenshot-Ablage",
+  "settings.screenshotTray.hint": "Bilder aus Screenshot-Tools ansehen. In eine andere App ziehen oder in der Ablage behalten.",
   "settings.search.emptyHint": "Versuche ein anderes Stichwort oder eine kürzere Suche.",
   "settings.search.clear": "Suche löschen",
   "_metadata": {

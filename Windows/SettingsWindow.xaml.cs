@@ -275,6 +275,8 @@ public partial class SettingsWindow : Window
         MusicNotifyCheck.IsChecked = _settings.ShowMusicNotifications;
         SystemNotifyCheck.IsChecked = _settings.ShowSystemNotifications;
         ShelfUnlockCheck.IsChecked = _settings.IsShelfUploadLimitUnlocked;
+        ScreenshotTrayCheck.IsChecked = _settings.EnableScreenshotTray;
+        ScreenshotFoldersBox.Text = _settings.ScreenshotFolders;
         CopyShelfClipboardCheck.IsChecked = _settings.CopyShelfFilesToClipboard;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
         EnableDebugModeCheck.IsChecked = _settings.EnableDebugMode;
@@ -614,6 +616,9 @@ public partial class SettingsWindow : Window
         SystemNotifyHint.Text = Loc.Get("settings.systemNotify.hint");
         ShelfUnlockCheck.Content = Loc.Get("settings.shelfUnlock");
         ShelfUnlockHint.Text = Loc.Get("settings.shelfUnlock.hint");
+        ScreenshotTrayCheck.Content = Loc.Get("settings.screenshotTray");
+        ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
+        ScreenshotFoldersLabel.Text = Loc.Get("settings.screenshotFolders");
         CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard");
         CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         ShowBatteryCheck.Content = Loc.Get("settings.showBattery");
@@ -1068,6 +1073,8 @@ public partial class SettingsWindow : Window
         SpotifyCanvasAccountHint.Text = Loc.Get("settings.spotifyCanvasAccount.hint");
         SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect");
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
+        ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
+        ScreenshotFoldersLabel.Text = Loc.Get("settings.screenshotFolders");
         CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         if (YouTubeSubtitlesAlphaBadge != null)
             YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
@@ -3309,6 +3316,9 @@ public partial class SettingsWindow : Window
         staggerMs += staggerStep;
         AnimateContentChange(ShelfUnlockCheck, () => ShelfUnlockCheck.Content = Loc.Get("settings.shelfUnlock"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
+        ScreenshotTrayCheck.Content = Loc.Get("settings.screenshotTray");
+        ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
+        ScreenshotFoldersLabel.Text = Loc.Get("settings.screenshotFolders");
         AnimateContentChange(CopyShelfClipboardCheck, () => CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps);
@@ -3741,6 +3751,8 @@ public partial class SettingsWindow : Window
             SystemNotifyCheck.IsChecked = defaults.ShowSystemNotifications;
             StayBehindWindowsCheck.IsChecked = defaults.StayBehindWindows;
             ShelfUnlockCheck.IsChecked = defaults.IsShelfUploadLimitUnlocked;
+            ScreenshotTrayCheck.IsChecked = defaults.EnableScreenshotTray;
+            ScreenshotFoldersBox.Text = defaults.ScreenshotFolders;
             CopyShelfClipboardCheck.IsChecked = defaults.CopyShelfFilesToClipboard;
             EnableSpotlightCheck.IsChecked = defaults.EnableSpotlight;
             EnableDebugModeCheck.IsChecked = defaults.EnableDebugMode;
@@ -4243,6 +4255,8 @@ public partial class SettingsWindow : Window
         snapshot.ShowMusicNotifications = MusicNotifyCheck.IsChecked ?? true;
         snapshot.ShowSystemNotifications = SystemNotifyCheck.IsChecked ?? true;
         snapshot.IsShelfUploadLimitUnlocked = ShelfUnlockCheck.IsChecked ?? false;
+        snapshot.EnableScreenshotTray = ScreenshotTrayCheck.IsChecked ?? true;
+        snapshot.ScreenshotFolders = ScreenshotFoldersBox.Text.Trim();
         snapshot.CopyShelfFilesToClipboard = CopyShelfClipboardCheck.IsChecked ?? false;
         snapshot.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;
 

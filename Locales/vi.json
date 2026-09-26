@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Thư mục ảnh chụp bổ sung (mỗi dòng một thư mục)",
+  "screenshot.title": "Ảnh chụp màn hình",
+  "screenshot.drag": "Kéo ảnh sang ứng dụng khác.",
+  "screenshot.keep": "Giữ vào khay",
+  "screenshot.dismiss": "Đóng",
+  "screenshot.full": "Khay đã đầy. Bỏ bớt tệp rồi thử lại.",
+  "screenshot.error": "Không thể lưu ảnh. Hãy thử lại.",
+  "settings.screenshotTray": "Khay ảnh chụp màn hình",
+  "settings.screenshotTray.hint": "Xem trước ảnh từ công cụ chụp màn hình. Kéo sang ứng dụng khác hoặc giữ vào khay.",
   "settings.search.emptyHint": "Thử từ khóa khác hoặc rút ngắn nội dung tìm kiếm.",
   "settings.search.clear": "Xóa tìm kiếm",
   "_metadata": {

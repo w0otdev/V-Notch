@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Dodatkowe foldery zrzutów (jeden w wierszu)",
+  "screenshot.title": "Zrzut ekranu",
+  "screenshot.drag": "Przeciągnij podgląd do innej aplikacji.",
+  "screenshot.keep": "Zachowaj na półce",
+  "screenshot.dismiss": "Zamknij",
+  "screenshot.full": "Półka jest pełna. Zwolnij miejsce i spróbuj ponownie.",
+  "screenshot.error": "Nie udało się zapisać obrazu. Spróbuj ponownie.",
+  "settings.screenshotTray": "Tacka zrzutów ekranu",
+  "settings.screenshotTray.hint": "Wyświetlaj obrazy z narzędzi do zrzutów. Przeciągaj do innej aplikacji lub zachowuj na półce.",
   "settings.search.emptyHint": "Spróbuj innego słowa kluczowego lub krótszego zapytania.",
   "settings.search.clear": "Wyczyść wyszukiwanie",
   "_metadata": {

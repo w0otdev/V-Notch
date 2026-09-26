@@ -266,6 +266,7 @@ public partial class MainWindow : Window
         _notchContentPresenter = new VNotch.Presenters.NotchContentTransitionPresenter(new VNotch.Presenters.NotchContentViewRefs
         {
             ExpandedContent = ExpandedContent,
+            ExpandedContentOverride = () => IsScreenshotPillActive ? _screenshotTray : null,
             TimerContent = TimerContent,
             AudioContent = AudioContent,
             AudioScrollViewer = AudioScrollViewer,
@@ -348,6 +349,7 @@ public partial class MainWindow : Window
             isSuspended: () => _isTrayMenuOpen || _isUpdateTooltipOpen || DateTime.UtcNow < _suspendTopmostUntilUtc,
             stayBehindWindows: () => ShouldStayOnDesktopLayer,
             onForegroundChanged: OnForegroundWindowChanged);
+        InitializeScreenshotTray();
         _clipboardListener = new ClipboardListenerController(
             () => _hwnd,
             () =>
@@ -367,7 +369,7 @@ public partial class MainWindow : Window
                 InvalidateGlassDpiScale();
                 PositionAtTop();
             },
-            _clipboardListener.NotifyClipboardUpdated);
+            HandleScreenshotClipboardUpdated);
         _overlayWindow.TargetScreen = () => MonitorSelection.Resolve(_settings);
         _overlayWindow.IsPointInteractive = IsPointInteractive;
 
@@ -392,6 +394,12 @@ public partial class MainWindow : Window
         {
             _hoverCollapseTimer.Stop();
             _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
+            if (IsScreenshotPillActive)
+            {
+                if (!_settings.DisableMouseLeaveAutoClose && !IsCursorInsideNotchVisual())
+                    CollapseScreenshotPreview();
+                return;
+            }
             if (_isDebugViewLocked || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_isExpanded && !NotchWrapper.IsMouseOver)
             {
@@ -424,6 +432,11 @@ public partial class MainWindow : Window
         _hoverThumbnailDelayTimer.Tick += (s, e) =>
         {
             _hoverThumbnailDelayTimer.Stop();
+            if (IsScreenshotPillActive)
+            {
+                if (IsCursorInsideCompactThumbnailExitZone()) ExpandScreenshotPreview();
+                return;
+            }
             if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
             {
                 ExpandNotch();
@@ -440,7 +453,7 @@ public partial class MainWindow : Window
         };
         _compactThumbnailHoverLeaveTimer.Tick += (s, e) =>
         {
-            if (!_isExpanded && !_isAnimating && _isMusicCompactMode && IsCursorInsideCompactThumbnailExitZone())
+            if (!_isExpanded && !_isAnimating && (_isMusicCompactMode || IsScreenshotPillActive) && IsCursorInsideCompactThumbnailExitZone())
             {
                 return;
             }
@@ -534,6 +547,7 @@ public partial class MainWindow : Window
 
     private void HandleAppDeactivated()
     {
+        if (IsScreenshotPillActive) { ReturnScreenshotToWaiting(); return; }
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
@@ -551,6 +565,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
+        if (IsScreenshotPillActive) { ReturnScreenshotToWaiting(); return; }
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
@@ -611,6 +626,7 @@ public partial class MainWindow : Window
 
         InputMonitorService.MouseActionTriggered -= GlobalMouseHook_MouseLeftButtonDown;
 
+        DisposeScreenshotTray();
         _clipboardListener.Dispose();
         _spotlightController.Dispose();
         _overlayWindow.Dispose();
@@ -1986,6 +2002,14 @@ public partial class MainWindow : Window
 
     private void NotchBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsScreenshotPillActive)
+        {
+            if (_isAnimating) { e.Handled = true; return; }
+            if (_isExpanded) CollapseScreenshotPreview(fromClick: true);
+            else ExpandNotch();
+            e.Handled = true;
+            return;
+        }
         if (_isDebugDraggable)
         {
             var hit = e.OriginalSource as DependencyObject;
@@ -2102,6 +2126,7 @@ public partial class MainWindow : Window
 
     private void NotchWrapper_MouseLeave(object sender, MouseEventArgs e)
     {
+        if (IsScreenshotPillActive) { LeaveScreenshotHover(); return; }
         _hoverThumbnailDelayTimer.Stop();
         if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
@@ -2133,6 +2158,7 @@ public partial class MainWindow : Window
 
     private void QueueHoverExpand()
     {
+        if (IsScreenshotPillActive) return;
         if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
         {
             _hoverThumbnailDelayTimer.Stop();
@@ -2167,7 +2193,7 @@ public partial class MainWindow : Window
 
     private void CompactThumbnailBorder_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (!_isExpanded && !_isAnimating && _isMusicCompactMode)
+        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode || IsScreenshotPillActive))
         {
             _compactThumbnailHoverLeaveTimer.Stop();
             _hoverThumbnailDelayTimer.Stop();
@@ -2178,7 +2204,7 @@ public partial class MainWindow : Window
     private void CompactThumbnailBorder_MouseLeave(object sender, MouseEventArgs e)
     {
         _hoverThumbnailDelayTimer.Stop();
-        if (!_isExpanded && !_isAnimating && _isMusicCompactMode)
+        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode || IsScreenshotPillActive))
         {
             _compactThumbnailHoverLeaveTimer.Stop();
             _compactThumbnailHoverLeaveTimer.Start();
@@ -2199,16 +2225,17 @@ public partial class MainWindow : Window
 
     private bool IsCursorInsideCompactThumbnailExitZone()
     {
-        if (CompactThumbnailBorder == null || NotchBorder == null) return false;
+        FrameworkElement? thumbnail = IsScreenshotPillActive ? _screenshotThumbnail : CompactThumbnailBorder;
+        if (thumbnail == null || NotchBorder == null) return false;
 
         Point cursor = Mouse.GetPosition(NotchBorder);
 
         Rect thumbnailBounds;
         try
         {
-            thumbnailBounds = CompactThumbnailBorder
+            thumbnailBounds = thumbnail
                 .TransformToVisual(NotchBorder)
-                .TransformBounds(new Rect(0, 0, CompactThumbnailBorder.ActualWidth, CompactThumbnailBorder.ActualHeight));
+                .TransformBounds(new Rect(0, 0, thumbnail.ActualWidth, thumbnail.ActualHeight));
         }
         catch
         {
@@ -2429,6 +2456,8 @@ public partial class MainWindow : Window
 
     private void UpdateNotchClip()
     {
+        if (_screenshotHost != null)
+            _screenshotHost.Clip = BuildNotchClipGeometry(_screenshotHost.ActualWidth, _screenshotHost.ActualHeight);
         if (NotchContent == null || NotchBorder == null) return;
 
         double w = NotchContent.ActualWidth;

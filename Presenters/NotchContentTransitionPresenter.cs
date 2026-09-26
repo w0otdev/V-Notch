@@ -13,6 +13,7 @@ namespace VNotch.Presenters;
 public sealed class NotchContentViewRefs
 {
     public required FrameworkElement ExpandedContent { get; init; }
+    public Func<FrameworkElement?>? ExpandedContentOverride { get; init; }
     public FrameworkElement? TimerContent { get; init; }
     public FrameworkElement? AudioContent { get; init; }
     public FrameworkElement? AudioScrollViewer { get; init; }
@@ -377,7 +378,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     {
         return view switch
         {
-            NotchView.Media => _refs.ExpandedContent,
+            NotchView.Media => _refs.ExpandedContentOverride?.Invoke() ?? _refs.ExpandedContent,
             NotchView.Timer => _refs.TimerContent,
             NotchView.AudioMixer => _refs.AudioContent ?? _refs.AudioScrollViewer,
             NotchView.Secondary => _refs.SecondaryContent,
@@ -388,6 +389,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     private List<FrameworkElement> GetAllElements()
     {
         var list = new List<FrameworkElement> { _refs.ExpandedContent };
+        if (_refs.ExpandedContentOverride?.Invoke() is { } content && !list.Contains(content)) list.Add(content);
         if (_refs.TimerContent != null) list.Add(_refs.TimerContent);
         if (_refs.AudioContent != null) list.Add(_refs.AudioContent);
         else if (_refs.AudioScrollViewer != null) list.Add(_refs.AudioScrollViewer);

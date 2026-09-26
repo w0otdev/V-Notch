@@ -1432,6 +1432,18 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
+                                                <CheckBox x:Name="ScreenshotTrayCheck" x:Uid="screenshotTray" Content="Screenshot tray"/>
+                                                <TextBlock x:Name="ScreenshotTrayHint" Text="Preview new screenshots, drag them into another app, or keep them on the shelf."
+                                                           Style="{StaticResource SettingHintText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                                <TextBlock x:Name="ScreenshotFoldersLabel" Text="Additional screenshot folders (one per line)"
+                                                           Style="{StaticResource SettingHintText}" Margin="0,10,0,4" TextWrapping="Wrap"/>
+                                                <TextBox x:Name="ScreenshotFoldersBox" AcceptsReturn="True" MinHeight="54"
+                                                         MaxHeight="110" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
                                                 <CheckBox x:Name="CopyShelfClipboardCheck" x:Uid="copyShelfClipboard" Content="Copy shelf files to clipboard"/>
                                                 <TextBlock x:Name="CopyShelfClipboardHint" Text="When files are added to the shelf, automatically copy all of them to the system clipboard so you can paste them into other apps."
                                                            Style="{StaticResource SettingHintText}"

@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Extra schermafbeeldingenmappen (één per regel)",
+  "screenshot.title": "Schermafbeelding",
+  "screenshot.drag": "Sleep het voorbeeld naar een andere app.",
+  "screenshot.keep": "Op de plank bewaren",
+  "screenshot.dismiss": "Sluiten",
+  "screenshot.full": "De plank is vol. Maak ruimte vrij en probeer opnieuw.",
+  "screenshot.error": "Opslaan van de afbeelding mislukt. Probeer opnieuw.",
+  "settings.screenshotTray": "Schermafbeeldingenvak",
+  "settings.screenshotTray.hint": "Bekijk afbeeldingen van opnamehulpmiddelen. Sleep ze naar een andere app of bewaar ze op de plank.",
   "settings.search.emptyHint": "Probeer een ander trefwoord of een kortere zoekopdracht.",
   "settings.search.clear": "Zoekopdracht wissen",
   "_metadata": {

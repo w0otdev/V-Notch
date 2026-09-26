@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "其他截图文件夹（每行一个）",
+  "screenshot.title": "屏幕截图",
+  "screenshot.drag": "将预览拖到其他应用。",
+  "screenshot.keep": "保留在文件架",
+  "screenshot.dismiss": "关闭",
+  "screenshot.full": "文件架已满。请移除文件后重试。",
+  "screenshot.error": "无法保存图片，请重试。",
+  "settings.screenshotTray": "截图托盘",
+  "settings.screenshotTray.hint": "预览截图工具中的图片，拖到其他应用或保留在文件架。",
   "settings.search.emptyHint": "请尝试其他关键词或缩短搜索内容。",
   "settings.search.clear": "清除搜索",
   "_metadata": {

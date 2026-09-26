@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Дополнительные папки снимков (по одной в строке)",
+  "screenshot.title": "Снимок экрана",
+  "screenshot.drag": "Перетащите изображение в другое приложение.",
+  "screenshot.keep": "Оставить на полке",
+  "screenshot.dismiss": "Закрыть",
+  "screenshot.full": "Полка заполнена. Освободите место и повторите попытку.",
+  "screenshot.error": "Не удалось сохранить изображение. Повторите попытку.",
+  "settings.screenshotTray": "Лоток снимков экрана",
+  "settings.screenshotTray.hint": "Просматривайте снимки из программ захвата. Перетаскивайте в другое приложение или сохраняйте на полке.",
   "settings.search.emptyHint": "Попробуйте другое ключевое слово или более короткий запрос.",
   "settings.search.clear": "Очистить поиск",
   "_metadata": {

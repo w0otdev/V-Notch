@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "مجلدات لقطات إضافية (مجلد في كل سطر)",
+  "screenshot.title": "لقطة شاشة",
+  "screenshot.drag": "اسحب المعاينة إلى تطبيق آخر.",
+  "screenshot.keep": "الاحتفاظ على الرف",
+  "screenshot.dismiss": "إغلاق",
+  "screenshot.full": "الرف ممتلئ. أفرغ مساحة وحاول مجددًا.",
+  "screenshot.error": "تعذر حفظ الصورة. حاول مجددًا.",
+  "settings.screenshotTray": "صينية لقطات الشاشة",
+  "settings.screenshotTray.hint": "عاين الصور من أدوات التقاط الشاشة. اسحبها إلى تطبيق آخر أو احتفظ بها على الرف.",
   "settings.search.emptyHint": "جرّب كلمة أخرى أو عبارة بحث أقصر.",
   "settings.search.clear": "مسح البحث",
   "_metadata": {

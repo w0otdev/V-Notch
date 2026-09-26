@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Additional screenshot folders (one per line)",
+  "screenshot.title": "Screenshot",
+  "screenshot.drag": "Drag the preview into another app.",
+  "screenshot.keep": "Keep on shelf",
+  "screenshot.dismiss": "Dismiss",
+  "screenshot.full": "The shelf is full. Free a slot and try again.",
+  "screenshot.error": "Could not save the image. Try again.",
+  "settings.screenshotTray": "Screenshot tray",
+  "settings.screenshotTray.hint": "Preview screenshots from capture tools. Drag to another app or keep on the shelf.",
   "settings.search.emptyHint": "Try a different keyword or a shorter search.",
   "settings.search.clear": "Clear search",
   "_metadata": {

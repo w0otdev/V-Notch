@@ -111,6 +111,7 @@ public partial class MainWindow
 
     private async void NotchWrapper_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsScreenshotPillActive) return;
         if (e.ChangedButton != MouseButton.Middle) return;
         if (!_settings.EnableGestureControls) return;
         if (_isDraggingVolumeIndicator || _isDraggingNotchDebug) return;
@@ -122,6 +123,7 @@ public partial class MainWindow
 
     private void NotchWrapper_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (IsScreenshotPillActive) return;
         if (e.ChangedButton == MouseButton.Middle)
         {
             e.Handled = true;

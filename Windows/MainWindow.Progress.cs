@@ -141,6 +141,13 @@ public partial class MainWindow
             // state while Spotlight temporarily owns the notch surface.
             if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
+            if (IsScreenshotPillActive)
+            {
+                if ((_isExpanded || _isAnimating) && !IsScreenPointInsideNotchVisual(pt))
+                    ReturnScreenshotToWaiting();
+                return;
+            }
+
             if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
             {
                 IntPtr hWndAtPoint = WindowFromPoint(new POINT { X = pt.x, Y = pt.y });

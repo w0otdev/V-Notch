@@ -383,7 +383,7 @@ public partial class MainWindow
             BluetoothDisconnectNotification.Visibility = Visibility.Collapsed;
             _isBluetoothNotificationVisible = false;
         }
-        _compactPillArbiter.ForceClear();
+        if (!IsScreenshotPillActive) _compactPillArbiter.ForceClear();
 
         if (_isCompactThumbnailHovered)
         {
@@ -855,7 +855,7 @@ public partial class MainWindow
         _transitionCoordinator.CompleteTransition(generation);
         UpdateSpotifyCanvasPresentationContext();
 
-        if (effectiveTarget == VNotch.Models.NotchView.Media)
+        if (effectiveTarget == VNotch.Models.NotchView.Media && !IsScreenshotPillActive)
         {
             RestoreExpandedContentOpacity();
             UpdateProgressTimerState();
@@ -914,7 +914,7 @@ public partial class MainWindow
         CollapsedContent.Visibility = Visibility.Collapsed;
         MusicCompactContent.Visibility = Visibility.Collapsed;
 
-        if (effectiveTarget == VNotch.Models.NotchView.Media)
+        if (effectiveTarget == VNotch.Models.NotchView.Media && !IsScreenshotPillActive)
         {
             ReopenLastViewIfConfigured();
         }
@@ -941,7 +941,7 @@ public partial class MainWindow
 
         var effectiveTarget = targetView ?? VNotch.Models.NotchView.Media;
 
-        bool suppressCompactThumbnailMotion = IsCountdownCompletionVisualActive;
+        bool suppressCompactThumbnailMotion = IsCountdownCompletionVisualActive || IsScreenshotPillActive;
         if (suppressCompactThumbnailMotion)
         {
             SuppressCompactMediaChromeForCountdownCompletion();
@@ -977,7 +977,20 @@ public partial class MainWindow
         double targetWidth = _expandedWidth;
         double targetHeight = _expandedHeight;
 
-        if (effectiveTarget == VNotch.Models.NotchView.Timer)
+        if (IsScreenshotPillActive && effectiveTarget == VNotch.Models.NotchView.Media)
+        {
+            VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(NavIconsPanel);
+            VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(NavIconsBackground);
+            var previewSize = _screenshotTray!.ConfigureInline();
+            targetWidth = previewSize.Width;
+            targetHeight = previewSize.Height;
+            ResizeHostWindowHeight(targetHeight);
+            VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(_screenshotCompact!);
+            _screenshotCompact.IsHitTestVisible = false;
+            _screenshotSpinner?.BeginAnimation(RotateTransform.AngleProperty, null);
+            _screenshotTray.IsHitTestVisible = true;
+        }
+        else if (effectiveTarget == VNotch.Models.NotchView.Timer)
         {
             VNotch.Presenters.NotchContentTransitionPresenter.ClearTransformAndEffects(TimerContent);
             targetHeight = _timerViewHeight;
@@ -1133,7 +1146,7 @@ public partial class MainWindow
             }
         }
 
-        if (effectiveTarget == VNotch.Models.NotchView.Media)
+        if (effectiveTarget == VNotch.Models.NotchView.Media && !IsScreenshotPillActive)
         {
             double contentTargetY = ExpandedContentRestY;
             var expandedGroup = new TransformGroup();
@@ -1162,6 +1175,7 @@ public partial class MainWindow
 
     private VNotch.Models.NotchView DetermineTargetExpandedView()
     {
+        if (IsScreenshotPillActive) return VNotch.Models.NotchView.Media;
         if (_settings.ReopenLastViewOnExpand)
         {
             return _lastExpandedViewBeforeCollapse switch
@@ -1348,7 +1362,7 @@ public partial class MainWindow
             BluetoothDisconnectNotification.Visibility = Visibility.Collapsed;
             _isBluetoothNotificationVisible = false;
         }
-        _compactPillArbiter.ForceClear();
+        if (!IsScreenshotPillActive) _compactPillArbiter.ForceClear();
 
         NavIconsPanel.BeginAnimation(OpacityProperty, null);
         NavIconsPanel.Opacity = 0;
@@ -1459,6 +1473,15 @@ public partial class MainWindow
 
         ResetContentTransformAndEffectsAfterCollapse();
 
+        if (IsScreenshotPillActive)
+        {
+            RestoreExpandedWindowSize();
+            VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(_screenshotTray!);
+            if (_screenshotClosing) FinishScreenshotDismissal();
+            else ShowScreenshotCompactContent();
+            return;
+        }
+
         FinalizeCompactModeAfterCollapse(contentToShow, suppressCompactThumbnailMotion);
         FinalizeCompactThumbnailAndVisualizerAfterCollapse(suppressCompactThumbnailMotion);
 
@@ -1497,7 +1520,8 @@ public partial class MainWindow
 
         System.Windows.Input.Keyboard.ClearFocus();
 
-        _lastExpandedViewBeforeCollapse = DetermineCurrentExpandedView();
+        if (!IsScreenshotPillActive)
+            _lastExpandedViewBeforeCollapse = DetermineCurrentExpandedView();
 
         if (_isSecondaryView)
         {
@@ -1629,7 +1653,7 @@ public partial class MainWindow
         MediaBackground.BeginAnimation(OpacityProperty, fadeOutBlurAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, fadeOutBlurAnim);
 
-        FrameworkElement contentToShow = _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
+        FrameworkElement contentToShow = IsScreenshotPillActive ? _screenshotCompact! : _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
         FrameworkElement contentToHide = _isMusicCompactMode ? CollapsedContent : MusicCompactContent;
 
         contentToHide.BeginAnimation(OpacityProperty, null);
@@ -1643,7 +1667,7 @@ public partial class MainWindow
         contentToShow.RenderTransform = showGroup;
         contentToShow.RenderTransformOrigin = new Point(0.5, 0.5);
 
-        var fadeInAnim = MakeAnim(1, _dur400, _easePowerOut3);
+        var fadeInAnim = MakeAnim(IsScreenshotPillActive && _screenshotClosing ? 0 : 1, _dur400, _easePowerOut3);
         var springShow = MakeAnim(skipContentZoom ? 1.0 : 0.8, 1, _dur400, _easeMenuSpring);
 
         var glowAnim = MakeAnim(0, _dur150);
@@ -1655,7 +1679,7 @@ public partial class MainWindow
         CollapsedContentBlur.Radius = contentBlurRadius;
         MusicCompactContentBlur.Radius = contentBlurRadius;
 
-        bool suppressCompactThumbnailMotion = IsCountdownCompletionVisualActive;
+        bool suppressCompactThumbnailMotion = IsCountdownCompletionVisualActive || IsScreenshotPillActive;
         if (_isMusicCompactMode && ThumbnailImage.Source != null && !suppressCompactThumbnailMotion)
         {
             AnimateThumbnailCollapseOverlay();
@@ -1732,8 +1756,17 @@ public partial class MainWindow
         expandedTranslate.BeginAnimation(TranslateTransform.YProperty, slideOutAnim);
         ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
-        contentToShow.Visibility = Visibility.Visible;
-        contentToShow.BeginAnimation(OpacityProperty, fadeInAnim);
+        if (IsScreenshotPillActive)
+        {
+            // The preview owns the surface until collapse completes. Reveal the
+            // thumbnail in OnCollapseCompleted, after the preview is removed.
+            VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(contentToShow);
+        }
+        else
+        {
+            contentToShow.Visibility = Visibility.Visible;
+            contentToShow.BeginAnimation(OpacityProperty, fadeInAnim);
+        }
         showScale.BeginAnimation(ScaleTransform.ScaleXProperty, springShow);
         showScale.BeginAnimation(ScaleTransform.ScaleYProperty, springShow);
 

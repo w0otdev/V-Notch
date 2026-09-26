@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Dossiers de captures supplémentaires (un par ligne)",
+  "screenshot.title": "Capture d’écran",
+  "screenshot.drag": "Glissez l’aperçu vers une autre application.",
+  "screenshot.keep": "Garder sur l’étagère",
+  "screenshot.dismiss": "Fermer",
+  "screenshot.full": "L’étagère est pleine. Libérez une place et réessayez.",
+  "screenshot.error": "Impossible d’enregistrer l’image. Réessayez.",
+  "settings.screenshotTray": "Plateau de captures",
+  "settings.screenshotTray.hint": "Prévisualisez les images des outils de capture. Glissez-les vers une autre application ou gardez-les sur l’étagère.",
   "settings.search.emptyHint": "Essayez un autre mot-clé ou une recherche plus courte.",
   "settings.search.clear": "Effacer la recherche",
   "_metadata": {

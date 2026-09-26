@@ -109,6 +109,9 @@ public class NotchSettings
 
     public bool CopyShelfFilesToClipboard { get; set; } = false;
 
+    public bool EnableScreenshotTray { get; set; } = true;
+    public string ScreenshotFolders { get; set; } = string.Empty;
+
     public bool EnableWeather { get; set; } = false;
     public string ManualCity { get; set; } = string.Empty;
 

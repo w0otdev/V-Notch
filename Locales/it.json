@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "Cartelle aggiuntive delle schermate (una per riga)",
+  "screenshot.title": "Schermata",
+  "screenshot.drag": "Trascina l’anteprima in un’altra app.",
+  "screenshot.keep": "Conserva sullo scaffale",
+  "screenshot.dismiss": "Chiudi",
+  "screenshot.full": "Lo scaffale è pieno. Libera spazio e riprova.",
+  "screenshot.error": "Impossibile salvare l’immagine. Riprova.",
+  "settings.screenshotTray": "Vassoio schermate",
+  "settings.screenshotTray.hint": "Visualizza le immagini degli strumenti di cattura. Trascinale in un’altra app o conservale sullo scaffale.",
   "settings.search.emptyHint": "Prova un'altra parola chiave o una ricerca più breve.",
   "settings.search.clear": "Cancella ricerca",
   "_metadata": {

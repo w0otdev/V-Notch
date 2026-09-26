@@ -14,6 +14,7 @@ public partial class MainWindow
 {
     private void NotchWrapper_MouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (IsScreenshotPillActive) { e.Handled = true; return; }
         if (_isAudioView && e.OriginalSource is Visual v && AudioScrollViewer != null && v.IsDescendantOf(AudioScrollViewer))
         {
             return;

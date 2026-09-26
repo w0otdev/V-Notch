@@ -18,6 +18,7 @@ public partial class MainWindow
 
     private void PlayClipboardPeek()
     {
+        if (IsScreenshotPillActive) return;
         if (!_isExpanded && !_isAnimating)
         {
             NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);

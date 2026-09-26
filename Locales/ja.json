@@ -1,4 +1,13 @@
 {
+  "settings.screenshotFolders": "追加のスクリーンショットフォルダー（1行に1つ）",
+  "screenshot.title": "スクリーンショット",
+  "screenshot.drag": "プレビューを他のアプリにドラッグ。",
+  "screenshot.keep": "シェルフに保存",
+  "screenshot.dismiss": "閉じる",
+  "screenshot.full": "シェルフがいっぱいです。空きを作って再試行してください。",
+  "screenshot.error": "画像を保存できませんでした。再試行してください。",
+  "settings.screenshotTray": "スクリーンショットトレイ",
+  "settings.screenshotTray.hint": "キャプチャツールの画像をプレビュー。他のアプリにドラッグするか、シェルフに保存できます。",
   "settings.search.emptyHint": "別のキーワードや短い検索語を試してください。",
   "settings.search.clear": "検索をクリア",
   "_metadata": {
