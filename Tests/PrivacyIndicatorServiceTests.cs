@@ -5,6 +5,42 @@ namespace VNotch.Tests;
 
 public sealed class PrivacyIndicatorServiceTests
 {
+    [Fact]
+    public void DotColor_AllActivityCombinationsFollowPriority()
+    {
+        for (int flags = 0; flags < 16; flags++)
+        {
+            var state = new PrivacyIndicatorState(
+                (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0,
+                Array.Empty<string>(), Array.Empty<string>())
+            {
+                LocationInUse = (flags & 8) != 0
+            };
+            string expected = state.ScreenRecordingActive ? "#FFFF3B30"
+                : state.MicrophoneInUse ? "#FFFF9500"
+                : state.CameraInUse ? "#FF30D158"
+                : state.LocationInUse ? "#FF00AEEF" : "#00FFFFFF";
+            Assert.Equal(expected, MainWindow.GetPrivacyDotColor(state).ToString());
+            Assert.Equal(flags != 0, state.AnyInUse);
+        }
+    }
+
+    [Fact]
+    public void LocationChangesParticipateInStateEquality()
+    {
+        var active = PrivacyIndicatorState.Empty with
+        {
+            LocationInUse = true,
+            LocationConsumers = new[] { "Maps.exe" }
+        };
+        Assert.NotEqual(PrivacyIndicatorState.Empty, active);
+        Assert.NotEqual(active, active with { LocationInUse = false });
+        Assert.NotEqual(active, active with { LocationConsumers = new[] { "Weather.exe" } });
+        var equivalent = active with { LocationConsumers = new[] { "MAPS.EXE" } };
+        Assert.Equal(active, equivalent);
+        Assert.Equal(active.GetHashCode(), equivalent.GetHashCode());
+    }
+
     [Theory]
     [InlineData(1L, 0L, true)]
     [InlineData(0L, 0L, false)]

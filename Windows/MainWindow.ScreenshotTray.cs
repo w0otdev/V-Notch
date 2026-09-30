@@ -25,22 +25,22 @@ public partial class MainWindow
     private BitmapSource? _activeScreenshot;
     private int _screenshotSlotToken;
 
-    private bool _screenshotWasBusy;
     private readonly ScaleTransform _screenshotThumbnailScale = new();
     private Point? _screenshotDragStart;
-    private bool _screenshotWaitingAfterInteraction;
 
     private bool IsScreenshotPillActive => _screenshotSlotToken != 0;
     private DispatcherTimer? _screenshotTimer;
     private BitmapSource? _pendingScreenshot;
+    private string? _pendingScreenshotHash;
+    private string? _activeScreenshotHash;
     private DateTime _pendingScreenshotAt;
     private DateTime _screenshotExpiresAt;
     private bool _screenshotClosing;
 
     private readonly ScreenshotFileStore _screenshotStore = new();
-    private string? _lastScreenshotHash;
-    private DateTime _lastScreenshotAt;
+    private readonly ScreenshotContentDeduplicator _screenshotDeduplicator = new();
     private int _screenshotReadToken;
+    private int _lastAcceptedScreenshotReadToken;
 
     private void InitializeScreenshotTray()
     {
@@ -70,23 +70,18 @@ public partial class MainWindow
         string hash;
         try
         {
-            hash = await Task.Run(() =>
-            {
-                var normalized = new FormatConvertedBitmap(image, System.Windows.Media.PixelFormats.Bgra32, null, 0);
-                int stride = checked(normalized.PixelWidth * 4);
-                var pixels = new byte[checked(stride * normalized.PixelHeight)];
-                normalized.CopyPixels(pixels, stride, 0);
-                return $"{image.PixelWidth}:{image.PixelHeight}:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(pixels));
-            });
+            hash = await Task.Run(() => ScreenshotContentDeduplicator.Fingerprint(image));
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OverflowException or NotSupportedException)
         { return; }
-        if (_cleanedUp || token != _screenshotReadToken || !_settings.EnableScreenshotTray || !IsEffectivelyNotchVisible) return;
-        // Snipping Tool may publish the same capture to both clipboard and disk.
-        if (hash == _lastScreenshotHash && DateTime.UtcNow - _lastScreenshotAt < TimeSpan.FromSeconds(5)) return;
-        _lastScreenshotHash = hash;
-        _lastScreenshotAt = DateTime.UtcNow;
+        if (_cleanedUp || !_settings.EnableScreenshotTray || !IsEffectivelyNotchVisible) return;
+        // A duplicate finishing later must not invalidate an earlier distinct capture.
+        bool fresh = _screenshotDeduplicator.TryAccept(hash, DateTime.UtcNow);
+        if (!fresh || hash == _activeScreenshotHash || hash == _pendingScreenshotHash ||
+            token <= _lastAcceptedScreenshotReadToken) return;
+        _lastAcceptedScreenshotReadToken = token;
         _pendingScreenshot = image;
+        _pendingScreenshotHash = hash;
         _pendingScreenshotAt = DateTime.UtcNow;
         _screenshotTimer?.Start();
         ScreenshotTimer_Tick(null, EventArgs.Empty);
@@ -97,30 +92,28 @@ public partial class MainWindow
         if (_cleanedUp || !_settings.EnableScreenshotTray || !IsEffectivelyNotchVisible || ShouldStayOnDesktopLayer)
         {
             _pendingScreenshot = null;
+            _pendingScreenshotHash = null;
             CloseScreenshotTray(immediate: true);
             _screenshotTimer?.Stop();
             return;
         }
         if (_screenshotTray?.IsBusy == true)
         {
-            _screenshotWasBusy = true;
             _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
             return;
         }
-        if (_screenshotWasBusy)
-        {
-            _screenshotWasBusy = false;
-            if (IsScreenshotPillActive && _screenshotHost?.IsMouseOver != true) LeaveScreenshotHover();
-        }
         if (_pendingScreenshot != null && DateTime.UtcNow - _pendingScreenshotAt > TimeSpan.FromSeconds(15))
+        {
             _pendingScreenshot = null;
+            _pendingScreenshotHash = null;
+        }
         if (IsScreenshotPillActive && !_screenshotClosing)
         {
             if (_screenshotHost!.IsMouseOver || _screenshotTray!.IsKeyboardFocusWithin)
             {
                 _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
             }
-            else if (!_screenshotWaitingAfterInteraction && DateTime.UtcNow >= _screenshotExpiresAt)
+            else if (DateTime.UtcNow >= _screenshotExpiresAt)
                 CloseScreenshotTray();
         }
         if (_pendingScreenshot != null && !_screenshotClosing && !_isExpanded && !_isAnimating &&
@@ -138,8 +131,9 @@ public partial class MainWindow
                 AnimateNotchHover(false);
             }
             _activeScreenshot = _pendingScreenshot;
-            _screenshotWaitingAfterInteraction = false;
+            _activeScreenshotHash = _pendingScreenshotHash;
             _pendingScreenshot = null;
+            _pendingScreenshotHash = null;
             _screenshotThumbnail!.Source = _activeScreenshot;
             _screenshotTray!.Present(_activeScreenshot);
             _screenshotHost!.Visibility = Visibility.Visible;
@@ -218,6 +212,7 @@ public partial class MainWindow
             Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Top };
         _screenshotTray.DismissRequested += () => CloseScreenshotTray();
+        _screenshotTray.DragCancelled += () => CloseScreenshotTray();
         _screenshotHost.Children.Add(_screenshotTray);
         _screenshotHost.MouseEnter += (_, _) => _hoverCollapseTimer.Stop();
         _screenshotHost.MouseLeave += (_, _) => LeaveScreenshotHover();
@@ -233,15 +228,18 @@ public partial class MainWindow
     private void ReturnScreenshotToWaiting()
     {
         if (!IsScreenshotPillActive || _screenshotClosing || _screenshotTray?.IsBusy == true) return;
-        _screenshotWaitingAfterInteraction = true;
+        _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
         _hoverThumbnailDelayTimer.Stop();
         _hoverCollapseTimer.Stop();
+        _compactThumbnailHoverLeaveTimer.Stop();
         if (_screenshotTray?.IsKeyboardFocusWithin == true) Keyboard.ClearFocus();
         if (_isExpanded || _isAnimating) CollapseNotch();
+        else if (_isCompactThumbnailHovered) SetCompactThumbnailHover(false);
     }
 
     private void LeaveScreenshotHover()
     {
+        if (!IsScreenshotPillActive || _screenshotClosing) return;
         _hoverThumbnailDelayTimer.Stop();
         if (!_isExpanded)
         {
@@ -318,6 +316,11 @@ public partial class MainWindow
         _screenshotClosing = true;
         _hoverThumbnailDelayTimer.Stop();
         _hoverCollapseTimer.Stop();
+        _compactThumbnailHoverLeaveTimer.Stop();
+        _screenshotDragStart = null;
+        _screenshotThumbnail?.ReleaseMouseCapture();
+        if (_screenshotTray?.IsKeyboardFocusWithin == true) Keyboard.ClearFocus();
+        _screenshotHost!.IsHitTestVisible = false;
         _screenshotSpinner?.BeginAnimation(RotateTransform.AngleProperty, null);
         if (!_cleanedUp && (_isExpanded || _isAnimating))
         {
@@ -352,6 +355,20 @@ public partial class MainWindow
             _screenshotTray!.Clear();
             _screenshotThumbnail!.Source = null;
             _activeScreenshot = null;
+            _activeScreenshotHash = null;
+            _isCompactThumbnailHovered = false;
+            _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            _screenshotThumbnailScale.ScaleX = _screenshotThumbnailScale.ScaleY = 1;
+            _screenshotCompact!.BeginAnimation(HeightProperty, null);
+            _screenshotCompact.Height = _collapsedHeight;
+
+            // Settle the image layers while screenshot ownership still hides media.
+            // Resetting only the border leaves a paused morph transparent/blurred,
+            // and screenshot collapse skips the normal pending-thumbnail handoff.
+            CancelThumbnailSwitchAnimations(_pendingFlipThumbnail);
+            _pendingFlipThumbnail = null;
+            ResetAnimationThumbnailOverlay();
             _compactPillArbiter.Release(token);
             _screenshotSlotToken = 0;
             _screenshotClosing = false;
@@ -359,6 +376,12 @@ public partial class MainWindow
             MusicCompactContent.BeginAnimation(OpacityProperty, null);
             CollapsedContent.BeginAnimation(OpacityProperty, null);
             MusicCompactContent.Opacity = CollapsedContent.Opacity = 1;
+            MusicCompactContent.RenderTransform = CollapsedContent.RenderTransform = null;
+            MusicCompactContentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, null);
+            CollapsedContentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, null);
+            MusicCompactContentBlur.Radius = CollapsedContentBlur.Radius = 0;
+            ResetCompactThumbnailRestingState();
+            HideCompactSurface(CompactHoverInfo);
             MusicCompactContent.Visibility = _isMusicCompactMode ? Visibility.Visible : Visibility.Collapsed;
             CollapsedContent.Visibility = _isMusicCompactMode ? Visibility.Collapsed : Visibility.Visible;
             RestoreCompactMediaPresentation();
@@ -370,6 +393,7 @@ public partial class MainWindow
             }
             EnforceCompactPresentationOwner();
             if (!_cleanedUp && _pendingScreenshot != null) _screenshotTimer?.Start();
+            else _screenshotTimer?.Stop();
         }
 
         if (!animate || (_screenshotCompact!.Visibility != Visibility.Visible &&
@@ -394,6 +418,7 @@ public partial class MainWindow
         _screenshotTimer?.Stop();
         if (_screenshotTimer != null) _screenshotTimer.Tick -= ScreenshotTimer_Tick;
         _pendingScreenshot = null;
+        _pendingScreenshotHash = null;
         CloseScreenshotTray(immediate: true);
     }
 }

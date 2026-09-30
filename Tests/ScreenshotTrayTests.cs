@@ -22,6 +22,155 @@ public sealed class ScreenshotTrayTests
         return image;
     }
 
+    [Fact]
+    public void SuccessfulKeepDismissesOnlyAfterBusyStateIsReleased() => SharedStaTestRunner.Run(() =>
+    {
+        var tray = new ScreenshotTray();
+        tray.Present(Image());
+        tray.KeepRequested = _ =>
+        {
+            Assert.True(tray.IsBusy);
+            return Task.FromResult(true);
+        };
+        int dismissals = 0;
+        tray.DismissRequested += () =>
+        {
+            Assert.False(tray.IsBusy);
+            Assert.True(((Button)tray.FindName("KeepButton")).IsEnabled);
+            Assert.True(((Button)tray.FindName("DismissButton")).IsEnabled);
+            dismissals++;
+        };
+        ((Button)tray.FindName("KeepButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(1, dismissals);
+    });
+
+    [Fact]
+    public void PendingKeepRejectsDoubleClicksAndCannotDismissAReopenedPreview() => SharedStaTestRunner.Run(() =>
+    {
+        var tray = new ScreenshotTray();
+        var image = Image();
+        tray.Present(image);
+        var completion = new TaskCompletionSource<bool>();
+        int keeps = 0, dismissals = 0;
+        tray.KeepRequested = _ => { keeps++; return completion.Task; };
+        tray.DismissRequested += () => dismissals++;
+        var button = (Button)tray.FindName("KeepButton");
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(tray.IsBusy);
+        Assert.Equal(1, keeps);
+        tray.Clear();
+        tray.Present(image); // The same bitmap can belong to a new presentation.
+        completion.SetResult(true);
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        tray.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle,
+            new Action(() => frame.Continue = false));
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        Assert.False(tray.IsBusy);
+        Assert.Equal(0, dismissals);
+        Assert.Same(image, ((Image)tray.FindName("PreviewImage")).Source);
+    });
+
+    [Fact]
+    public void FailedKeepAllowsRetryAndThenDismisses() => SharedStaTestRunner.Run(() =>
+    {
+        var tray = new ScreenshotTray();
+        tray.Present(Image());
+        int attempts = 0, dismissals = 0;
+        tray.KeepRequested = _ => ++attempts == 1
+            ? Task.FromException<bool>(new IOException("Export failed"))
+            : Task.FromResult(true);
+        tray.DismissRequested += () => dismissals++;
+        var button = (Button)tray.FindName("KeepButton");
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.False(tray.IsBusy);
+        Assert.Equal(0, dismissals);
+        Assert.Equal(Loc.Get("screenshot.error"), ((TextBlock)tray.FindName("HintText")).Text);
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.False(tray.IsBusy);
+        Assert.Equal(1, dismissals);
+    });
+
+    [Fact]
+    public void FullShelfKeepsThePreviewAvailable() => SharedStaTestRunner.Run(() =>
+    {
+        var tray = new ScreenshotTray();
+        var image = Image();
+        tray.Present(image);
+        tray.KeepRequested = _ => Task.FromResult(false);
+        tray.DismissRequested += () => Assert.Fail("A failed keep must remain available for retry.");
+        ((Button)tray.FindName("KeepButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.False(tray.IsBusy);
+        Assert.Same(image, ((Image)tray.FindName("PreviewImage")).Source);
+        Assert.Equal(Loc.Get("screenshot.full"), ((TextBlock)tray.FindName("HintText")).Text);
+    });
+
+    [Fact]
+    public void CancelledDragRestoresOpacityAndReleasesBusyBeforeNotifyingHost() => SharedStaTestRunner.Run(() =>
+    {
+        var tray = new ScreenshotTray();
+        tray.Present(Image());
+        var source = (Image)tray.FindName("PreviewImage");
+        source.Opacity = 0.8;
+        int cancellations = 0;
+        tray.DragCancelled += () =>
+        {
+            Assert.False(tray.IsBusy);
+            Assert.False(tray.IsDragging);
+            Assert.Equal(0.8, source.Opacity);
+            cancellations++;
+        };
+        // An invisible source cancels before entering the native drag loop.
+        var task = tray.DragImageAsync(source);
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        var timeout = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        timeout.Tick += (_, _) => frame.Continue = false;
+        task.GetAwaiter().OnCompleted(() => frame.Continue = false);
+        timeout.Start();
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+        timeout.Stop();
+        Assert.True(task.IsCompleted);
+        task.GetAwaiter().GetResult();
+        Assert.Equal(1, cancellations);
+    });
+
+    [Fact]
+    public void DeduplicationRemembersInterleavedImagesAndLateFolderPublications()
+    {
+        var cache = new ScreenshotContentDeduplicator();
+        var now = new DateTime(2026, 9, 30, 0, 0, 0, DateTimeKind.Utc);
+        Assert.True(cache.TryAccept("A", now));
+        Assert.True(cache.TryAccept("B", now.AddSeconds(1)));
+        Assert.False(cache.TryAccept("A", now.AddSeconds(12)));
+        Assert.False(cache.TryAccept("B", now.AddSeconds(20)));
+        Assert.True(cache.TryAccept("A", now.AddSeconds(43)));
+    }
+
+    [Fact]
+    public void DeduplicationHistoryIsBounded()
+    {
+        var cache = new ScreenshotContentDeduplicator();
+        var now = DateTime.UtcNow;
+        for (int i = 0; i < 33; i++) Assert.True(cache.TryAccept(i.ToString(), now.AddMilliseconds(i)));
+        Assert.False(cache.TryAccept("32", now.AddMilliseconds(34)));
+        Assert.True(cache.TryAccept("0", now.AddMilliseconds(35)));
+    }
+
+    [Fact]
+    public void FingerprintIgnoresDpiAndPixelEncodingButDistinguishesContent() => SharedStaTestRunner.Run(() =>
+    {
+        string original = ScreenshotContentDeduplicator.Fingerprint(Image());
+        var equivalent = BitmapSource.Create(2, 1, 144, 144, PixelFormats.Bgr24, null,
+            new byte[] { 12, 34, 56, 78, 90, 123 }, 6);
+        Assert.Equal(original, ScreenshotContentDeduplicator.Fingerprint(equivalent));
+        var changed = BitmapSource.Create(2, 1, 96, 96, PixelFormats.Bgra32, null,
+            new byte[] { 13, 34, 56, 255, 78, 90, 123, 255 }, 8);
+        Assert.NotEqual(original, ScreenshotContentDeduplicator.Fingerprint(changed));
+        var reshaped = BitmapSource.Create(1, 2, 96, 96, PixelFormats.Bgra32, null,
+            new byte[] { 12, 34, 56, 255, 78, 90, 123, 255 }, 4);
+        Assert.NotEqual(original, ScreenshotContentDeduplicator.Fingerprint(reshaped));
+    });
+
     [Theory]
     [InlineData("SnippingTool", true)]
     [InlineData("ScreenClippingHost", true)]

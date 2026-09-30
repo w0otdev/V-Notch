@@ -41,7 +41,7 @@
 </p>
 
 <p align="center">
-  V-Notch puts a notch at the top of your screen that shows what you need: media controls, synced lyrics, system stats, privacy indicators, and a Spotlight launcher. It runs as a compact pill or expands into a floating Dynamic Island. Compatible with MyDockFinder.
+  V-Notch adds media controls, synced lyrics, system stats, privacy indicators, and a Spotlight launcher to the top of your screen. Use it as a compact pill or expand it into a floating Dynamic Island. It works with MyDockFinder.
 </p>
 
 <p align="center">
@@ -49,11 +49,10 @@
 </p>
 
 <p align="center">
-  V-Notch is crafted independently with care and passion.<br>
-  If it elevates your daily workflow, consider <a href="https://www.paypal.me/PhuocLe678"><b>supporting development via PayPal</b></a>.
+  V-Notch is an independent project.<br>
+  If you use it regularly, you can <a href="https://www.paypal.me/PhuocLe678"><b>support development via PayPal</b></a>.
 </p>
 
----
 
 <div align="center">
 
@@ -62,74 +61,73 @@
     <td align="center" valign="top" width="50%">
       <img src="Introduction/dynamic.gif" alt="Dynamic Island mode"><br>
       <b>Dynamic Island mode</b><br>
-      <sub>Floating pill with spring physics and Liquid Glass refraction.</sub>
+      <sub>A floating pill with spring animations and Liquid Glass refraction.</sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/media-control.gif" alt="Media controls"><br>
       <b>Media controls</b><br>
-      <sub>Playback controls, album art, volume, and real-time seek bar.</sub>
+      <sub>Control playback and volume, view album art, and seek through the current track.</sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/Spotify.gif" alt="Spotify and synced lyrics"><br>
       <b>Spotify &amp; synced lyrics</b><br>
-      <sub>Real-time lyrics, dynamic color gradients, and Canvas backgrounds.</sub>
+      <sub>Follow synced lyrics over changing color gradients or Canvas backgrounds.</sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/volume.gif" alt="Volume and audio mixer"><br>
       <b>Volume &amp; audio mixer</b><br>
-      <sub>Per-app volume mixer alongside master slider matching album art.</sub>
+      <sub>Adjust each app’s volume or use the master slider, styled to match the album art.</sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/file-shelf.gif" alt="File shelf"><br>
       <b>File shelf</b><br>
-      <sub>Drop files onto notch to stage, drag back out to any app when ready.</sub>
+      <sub>Drop files onto the notch, then drag them into another app when you need them.</sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/gesture.gif" alt="Gestures"><br>
       <b>Gestures</b><br>
-      <sub>Swipe to skip tracks, scroll to switch views, swipe down for shelf.</sub>
+      <sub>Swipe left or right to change tracks. Scroll to switch views, or swipe down to open the shelf.</sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" colspan="2">
       <img src="Introduction/copy.gif" alt="Clipboard notification" width="50%"><br>
       <b>Clipboard notification</b><br>
-      <sub>Instant visual feedback and content preview when copying text or images.</sub>
+      <sub>See a notification and preview when you copy text or images.</sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/liquid-glass.gif" alt="Liquid Glass optics"><br>
       <b>Liquid Glass optics</b><br>
-      <sub>DirectX 11 rendering with chromatic aberration and edge refraction.</sub>
+      <sub>Glass rendered with DirectX 11, including chromatic aberration and refraction at the edges.</sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/staybehind.gif" alt="Stay behind windows"><br>
       <b>Stay behind windows</b><br>
-      <sub>Keeps notch on desktop layer so maximized apps are never covered.</sub>
+      <sub>Keep the notch on the desktop layer, below maximized apps.</sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/spotlight.gif" alt="Spotlight search"><br>
       <b>Spotlight search</b><br>
-      <sub>Fast app and file launcher (Alt+Space) with math calculator.</sub>
+      <sub>Press Alt+Space to find apps and files or calculate an expression.</sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/settings.gif" alt="Settings"><br>
       <b>Settings</b><br>
-      <sub>Config and custom the Notch however you like.</sub>
+      <sub>Adjust the notch’s appearance and behavior in Settings.</sub>
     </td>
   </tr>
 </table>
 
 </div>
 
----
 
 <div id="usage"></div>
 
@@ -137,7 +135,7 @@
 
 | Action                     | Result                        |
 | -------------------------- | ----------------------------- |
-| Hover                      | Expands the notch             |
+| Hover                      | Expand the notch             |
 | Click                      | Toggle pill / expanded view   |
 | Middle click               | Play / pause media            |
 | Scroll down                | Switch to file shelf          |
@@ -164,19 +162,25 @@
 
 ### Screenshot tray
 
-Capture with Windows Snipping Tool (`Win + Shift + S`), `Print Screen`, `Alt + Print Screen`, or any tool that publishes bitmap/PNG clipboard output. The compact pill temporarily replaces its content with the screenshot thumbnail and a waiting ring. Hover to expand the notch into an image preview, using the same compact 304-DIP-wide layout and 136-DIP-high image viewport for every capture, preserving aspect ratio without cropping. Drag the preview into another app, choose **Keep on shelf**, or dismiss it. Leaving the preview collapses it back to the pill. The eight-second timeout pauses while hovered or focused and during a drag; dismissal restores normal compact content. New captures wait briefly while the notch is expanded or busy.
+Use Windows Snipping Tool (`Win + Shift + S`), `Print Screen`, `Alt + Print Screen`, or any tool that puts a bitmap or PNG on the clipboard. The compact pill briefly shows the image thumbnail and a waiting ring. Hover over it to open a preview, then drag the image into another app, choose **Keep on shelf**, or dismiss it.
 
-The tray can be disabled in Settings. It respects notch visibility and stays hidden on the desktop layer. Clipboard images from any app are accepted, including ordinary copied images, because Windows does not consistently distinguish these from screenshots. Disk-only captures such as `Win + Print Screen` and Game Bar are detected in Pictures/Screenshots, Videos/Captures, their Windows redirected locations, and Documents/ShareX/Screenshots. Add other tools' output folders in Settings, one per line. Only new PNG, JPEG, BMP, and TIFF files are imported, including subfolders. Existing history is not scanned. Clipboard and disk copies with identical pixels within five seconds are deduplicated. Images over 64 million pixels and disk files over 100 MB are skipped. Tools that expose neither a clipboard image nor a supported file in a watched folder cannot be detected.
+Every preview uses a 304-DIP-wide layout with a 136-DIP-high image area. Images keep their aspect ratio and are not cropped. Moving away collapses the preview back to the pill. The eight-second timeout pauses while you hover, focus the preview, or drag an image. Dismissing the preview restores the pill’s usual content. If the notch is expanded or busy, new captures wait briefly.
 
-Unclaimed previews stay in memory. Explicitly kept PNGs are stored in `%LOCALAPPDATA%\V-Notch\Screenshots\Saved`. Drag exports are stored in the adjacent `Temporary` directory and exports older than 24 hours are cleaned on the next app launch. Removing an item from the shelf does not delete its saved PNG.
+You can turn the tray off in Settings. It follows the notch’s visibility and stays hidden on the desktop layer. Copied images also appear in the tray because Windows does not reliably distinguish them from screenshots.
 
----
+For tools that save directly to disk, such as `Win + Print Screen` and Game Bar, V-Notch watches Pictures/Screenshots, Videos/Captures, their Windows redirected locations, and Documents/ShareX/Screenshots. Add other capture folders in Settings, one per line. The tray imports new PNG, JPEG, BMP, and TIFF files from these folders and their subfolders. It does not scan existing files.
+
+Clipboard and disk images with identical pixels count as one capture if they arrive within five seconds. Images over 64 million pixels and disk files over 100 MB are skipped. A tool must provide a clipboard image or a supported file in a watched folder for the tray to detect it.
+
+Previews stay in memory until you keep or drag them. Kept PNGs are saved in `%LOCALAPPDATA%\V-Notch\Screenshots\Saved`. Drag exports go into the adjacent `Temporary` directory; exports older than 24 hours are cleaned up when the app next starts. Removing an item from the shelf leaves its saved PNG on disk.
+
+
 
 <div id="installation"></div>
 
 ## Installation
 
-Windows 10 build 19041 or later, or Windows 11 (64-bit). Requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The Self-Contained installer bundles the runtime, so you can skip that step if you use it. A dedicated GPU is recommended for Liquid Glass at 60-120 FPS.
+V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The self-contained installer includes the runtime. A dedicated GPU is recommended for Liquid Glass at 60-120 FPS.
 
 1. Download `V-Notch-Setup.exe` from [Releases](https://github.com/rainaku/V-Notch/releases). Use `V-Notch-Setup-SelfContained.exe` to skip the .NET install.
 2. Run the installer.
@@ -184,47 +188,45 @@ Windows 10 build 19041 or later, or Windows 11 (64-bit). Requires [.NET 8 Deskto
 4. Optionally enable "Start with Windows" in Settings.
 
 <details>
-<summary><strong>Building from GitHub Actions</strong></summary>
+<summary><strong>Build with GitHub Actions</strong></summary>
 
-Go to the Actions tab, select Release Installer, and click Run workflow. Choose `framework-dependent` (smaller, requires .NET runtime) or `self-contained` (standalone). Download the installer from Artifacts when the build finishes, or from the automated `nightly` release tag.
+Open the Actions tab, select Release Installer, and click Run workflow. Choose `framework-dependent` (smaller, requires .NET runtime) or `self-contained` (standalone). Download the installer from Artifacts when the build finishes, or from the automated `nightly` release tag.
 
 </details>
 
----
 
 <div id="privacy"></div>
 
 ## Privacy
 
-No telemetry, analytics, or tracking of any kind. Network requests are limited to:
+V-Notch does not collect telemetry or analytics, or track you. It makes network requests to the following services:
 
 | Service               | Purpose                                                                 |
 | --------------------- | ----------------------------------------------------------------------- |
 | GitHub Releases API   | Update checks                                                           |
 | LRCLIB / lrc mux      | Synced lyrics                                                           |
 | YouTube / SoundCloud  | Public thumbnails and captions                                          |
-| Spotify Web Services  | Canvas backgrounds — optional, credentials encrypted with Windows DPAPI |
-| Open-Meteo / ipwho.is | Weather — optional                                                      |
+| Spotify Web Services  | Optional Canvas backgrounds; credentials encrypted with Windows DPAPI |
+| Open-Meteo / ipwho.is | Optional weather                                                      |
 
 All settings and caches are stored locally at `%APPDATA%\V-Notch\`.
 
+Privacy dots use capture reports from Windows and recording signals from Bandicam, OBS Studio, and FFmpeg. See [recording detection coverage and limitations](RECORDING_DETECTION.md).
+
 [Privacy Policy](PRIVACY_POLICY.md) · [Tiếng Việt](PRIVACY_POLICY_VI.md) · [Terms of Service](TERMS_OF_SERVICE.md) · [Tiếng Việt](TERMS_OF_SERVICE_VI.md)
 
----
 
 ## Star history
 
-A heartfelt thank you to everyone who starred and supported V-Notch from the very early days. Your early belief, feedback, and stars gave this project life and continue to inspire every single update! ⭐
+Thank you to everyone who has supported V-Notch since the early releases. Your feedback and GitHub stars help keep the project going.
 
 [![Star History Chart](https://api.star-history.com/svg?repos=rainaku/v-notch&type=Date)](https://star-history.com/#rainaku/v-notch&Date)
 
----
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE). Third-party notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
----
 
 <p align="center">
   Made by <a href="https://rainaku.id.vn">rainaku</a> ·

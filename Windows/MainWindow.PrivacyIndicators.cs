@@ -21,7 +21,7 @@ public partial class MainWindow
 
     private static readonly Color _micColor = Color.FromRgb(0xFF, 0x95, 0x00);
     private static readonly Color _camColor = Color.FromRgb(0x30, 0xD1, 0x58);
-    private static readonly Color _bothColor = Color.FromRgb(0x00, 0x4E, 0x92);
+    private static readonly Color _locationColor = Color.FromRgb(0x00, 0xAE, 0xEF);
     private static readonly Color _screenRecColor = Color.FromRgb(0xFF, 0x3B, 0x30);
 
     internal static bool ShouldSuppressPrivacyDot(
@@ -141,7 +141,7 @@ public partial class MainWindow
         StartBreathingAnimation(PrivacyDot);
 
         RuntimeLog.Log("PRIVACY",
-            $"Dot shown — Mic: {state.MicrophoneInUse}, Cam: {state.CameraInUse}, Screen: {state.ScreenRecordingActive}");
+            $"Dot shown — Mic: {state.MicrophoneInUse}, Cam: {state.CameraInUse}, Screen: {state.ScreenRecordingActive}, Location: {state.LocationInUse}");
     }
 
     private void HidePrivacyIndicators()
@@ -154,6 +154,7 @@ public partial class MainWindow
         var fadeOut = MakeAnim(1d, 0d, _dur250, _easePowerIn2, null);
         fadeOut.Completed += (_, _) =>
         {
+            if (_privacyIndicatorsVisible) return;
             PrivacyIndicatorPanel.Visibility = Visibility.Collapsed;
             PrivacyDot.Visibility = Visibility.Collapsed;
         };
@@ -226,17 +227,21 @@ public partial class MainWindow
         }
     }
 
+    // A single dot prioritizes capture, mic, camera, then location.
+    internal static Color GetPrivacyDotColor(PrivacyIndicatorState state)
+    {
+        if (state.ScreenRecordingActive)
+            return _screenRecColor;
+        if (state.MicrophoneInUse)
+            return _micColor;
+        if (state.CameraInUse)
+            return _camColor;
+        return state.LocationInUse ? _locationColor : Colors.Transparent;
+    }
+
     private void ApplyDotColor(PrivacyIndicatorState state, bool animate)
     {
-        Color targetColor;
-        if (state.ScreenRecordingActive)
-            targetColor = _screenRecColor;
-        else if (state.MicrophoneInUse && state.CameraInUse)
-            targetColor = _bothColor;
-        else if (state.CameraInUse)
-            targetColor = _camColor;
-        else
-            targetColor = _micColor;
+        Color targetColor = GetPrivacyDotColor(state);
 
         if (animate)
         {

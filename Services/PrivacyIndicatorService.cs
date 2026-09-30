@@ -46,6 +46,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         MicrophoneSignalThreshold,
         MicrophoneSignalHoldDuration);
     private readonly MicrophoneFlowProbe _microphoneFlowProbe = new();
+    private readonly ScreenRecordingProbe _screenRecordingProbe = new();
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _micFlowGate = new(1, 1);
     private readonly object _lifecycleLock = new();
@@ -63,6 +64,8 @@ public sealed class PrivacyIndicatorService : IDisposable
     private IReadOnlyList<string> _cameraConsumers = Array.Empty<string>();
     private bool _cameraInUse;
     private bool _screenRecordingActive;
+    private bool _locationInUse;
+    private IReadOnlyList<string> _locationConsumers = Array.Empty<string>();
     private bool _disposed;
     private bool _started;
 
@@ -150,7 +153,8 @@ public sealed class PrivacyIndicatorService : IDisposable
                         capabilities = new[]
                         {
                             ScanCapability("microphone"), ScanCapability("webcam"),
-                            ScanCapability("graphicsCaptureProgrammatic"), ScanCapability("graphicsCaptureWithoutBorder")
+                            ScanCapability("graphicsCaptureProgrammatic"), ScanCapability("graphicsCaptureWithoutBorder"),
+                            ScanCapability("location")
                         };
                         nextFullScan = now + 30_000;
                     }
@@ -191,12 +195,13 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
     }
 
-    private static PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage>[]? capabilities = null)
+    private PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage>[]? capabilities = null)
     {
         var micUsage = capabilities?[0] ?? ScanCapability("microphone");
         var camUsage = capabilities?[1] ?? ScanCapability("webcam");
         var programmaticCapture = capabilities?[2] ?? ScanCapability("graphicsCaptureProgrammatic");
         var borderlessCapture = capabilities?[3] ?? ScanCapability("graphicsCaptureWithoutBorder");
+        var locationUsage = capabilities?[4] ?? ScanCapability("location");
 
         var running = new ConsumerProcessProbe();
         var microphoneCandidates = GetRelevantConsumerUsages(
@@ -208,8 +213,10 @@ public sealed class PrivacyIndicatorService : IDisposable
         var cam = GetRelevantConsumerUsages(camUsage, running);
         var cameraConsumers = GetConsumerNames(cam);
         bool cameraInUse = cameraConsumers.Count > 0;
+        var locationConsumers = GetConsumerNames(GetRelevantConsumerUsages(locationUsage, running));
         bool screenRecordingActive = DetectScreenRecording(
-            programmaticCapture.Concat(borderlessCapture), running, utcNow);
+            programmaticCapture.Concat(borderlessCapture), running, utcNow) ||
+            _screenRecordingProbe.IsRecording();
 
         return new PrivacyScanResult(
             MicrophoneCandidates: microphoneCandidates,
@@ -217,6 +224,7 @@ public sealed class PrivacyIndicatorService : IDisposable
             CameraConsumers: cameraConsumers,
             CameraInUse: cameraInUse,
             ScreenRecordingActive: screenRecordingActive,
+            LocationConsumers: locationConsumers,
             UtcNow: utcNow);
     }
 
@@ -258,6 +266,8 @@ public sealed class PrivacyIndicatorService : IDisposable
         _cameraConsumers = result.CameraConsumers;
         _cameraInUse = result.CameraInUse;
         _screenRecordingActive = result.ScreenRecordingActive;
+        _locationConsumers = result.LocationConsumers;
+        _locationInUse = _locationConsumers.Count > 0;
 
         if (_microphoneCandidates.Count > 0)
         {
@@ -419,7 +429,11 @@ public sealed class PrivacyIndicatorService : IDisposable
             MicrophoneConsumers: microphoneInUse
                 ? _microphoneCandidateNames
                 : Array.Empty<string>(),
-            CameraConsumers: _cameraConsumers);
+            CameraConsumers: _cameraConsumers)
+        {
+            LocationInUse = _locationInUse,
+            LocationConsumers = _locationConsumers
+        };
 
         if (next.Equals(CurrentState)) return;
 
@@ -445,6 +459,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         IReadOnlyList<string> CameraConsumers,
         bool CameraInUse,
         bool ScreenRecordingActive,
+        IReadOnlyList<string> LocationConsumers,
         DateTime UtcNow);
 
     private static IReadOnlyList<CapabilityUsage> GetRelevantConsumerUsages(
@@ -1245,10 +1260,13 @@ public sealed record PrivacyIndicatorState(
     IReadOnlyList<string> MicrophoneConsumers,
     IReadOnlyList<string> CameraConsumers)
 {
+    public bool LocationInUse { get; init; }
+    public IReadOnlyList<string> LocationConsumers { get; init; } = Array.Empty<string>();
+
     public static readonly PrivacyIndicatorState Empty = new(
         false, false, false, Array.Empty<string>(), Array.Empty<string>());
 
-    public bool AnyInUse => MicrophoneInUse || CameraInUse || ScreenRecordingActive;
+    public bool AnyInUse => MicrophoneInUse || CameraInUse || ScreenRecordingActive || LocationInUse;
 
     public bool Equals(PrivacyIndicatorState? other)
     {
@@ -1256,15 +1274,18 @@ public sealed record PrivacyIndicatorState(
         if (MicrophoneInUse != other.MicrophoneInUse) return false;
         if (CameraInUse != other.CameraInUse) return false;
         if (ScreenRecordingActive != other.ScreenRecordingActive) return false;
+        if (LocationInUse != other.LocationInUse) return false;
         return SequenceEquals(MicrophoneConsumers, other.MicrophoneConsumers)
-            && SequenceEquals(CameraConsumers, other.CameraConsumers);
+            && SequenceEquals(CameraConsumers, other.CameraConsumers)
+            && SequenceEquals(LocationConsumers, other.LocationConsumers);
     }
 
     public override int GetHashCode()
     {
-        var hash = HashCode.Combine(MicrophoneInUse, CameraInUse, ScreenRecordingActive);
-        foreach (var s in MicrophoneConsumers) hash = HashCode.Combine(hash, s);
-        foreach (var s in CameraConsumers) hash = HashCode.Combine(hash, s);
+        var hash = HashCode.Combine(MicrophoneInUse, CameraInUse, ScreenRecordingActive, LocationInUse);
+        foreach (var s in MicrophoneConsumers) hash = HashCode.Combine(hash, StringComparer.OrdinalIgnoreCase.GetHashCode(s));
+        foreach (var s in CameraConsumers) hash = HashCode.Combine(hash, StringComparer.OrdinalIgnoreCase.GetHashCode(s));
+        foreach (var s in LocationConsumers) hash = HashCode.Combine(hash, StringComparer.OrdinalIgnoreCase.GetHashCode(s));
         return hash;
     }
 

@@ -22,7 +22,7 @@
             <Setter Property="FontFamily" Value="{DynamicResource SFProDisplay}"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Foreground" Value="#C8C8C8"/>
-            <Setter Property="Background" Value="#333333"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="Padding" Value="12,7"/>
             <Setter Property="FontSize" Value="11"/>
@@ -36,9 +36,9 @@
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#444444"/></Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="#FFFFFF"/></Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="#EEEEEE"/></Trigger>
-                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#454545"/></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter Property="Foreground" Value="#A0A0A0"/></Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.5"/></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

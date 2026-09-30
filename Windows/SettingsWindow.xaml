@@ -1864,11 +1864,11 @@
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
                                                 <CheckBox x:Name="EnablePrivacyIndicatorsCheck"
-                                                          Content="Privacy indicators (Mic / Camera / Screen Recording)"
+                                                          Content="Privacy indicators"
                                                           Checked="EnablePrivacyIndicatorsCheck_Changed"
                                                           Unchecked="EnablePrivacyIndicatorsCheck_Changed"/>
                                                 <TextBlock x:Name="EnablePrivacyIndicatorsHint"
-                                                           Text="Display a colored privacy dot in the compact notch when any application is actively using your microphone, camera, or screen capture."
+                                                           Text="Orange: microphone; green: camera; red: detected recording or screen capture; blue: location. Priority: red, orange, green, then blue. Detection combines Windows reporting with supported recorder signals."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>

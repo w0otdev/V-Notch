@@ -12,11 +12,13 @@ namespace VNotch.Controls;
 public partial class ScreenshotTray : UserControl
 {
     private BitmapSource? _image;
+    private int _presentationVersion;
     private Point? _dragStart;
     private readonly ScreenshotFileStore _store = new();
     public bool IsBusy { get; private set; }
     public bool IsDragging { get; private set; }
     public event Action? DismissRequested;
+    public event Action? DragCancelled;
     public Func<BitmapSource, Task<bool>>? KeepRequested { get; set; }
 
     public ScreenshotTray()
@@ -58,6 +60,7 @@ public partial class ScreenshotTray : UserControl
 
     public void Present(BitmapSource image)
     {
+        ++_presentationVersion;
         _image = image;
         _dragStart = null;
         PreviewImage.Source = image;
@@ -82,8 +85,10 @@ public partial class ScreenshotTray : UserControl
 
     public void Clear()
     {
+        ++_presentationVersion;
         _image = null;
         _dragStart = null;
+        PreviewFrame.ReleaseMouseCapture();
         PreviewImage.Source = null;
     }
 
@@ -96,17 +101,22 @@ public partial class ScreenshotTray : UserControl
     private async void Keep_Click(object sender, RoutedEventArgs e)
     {
         if (_image == null || IsBusy || KeepRequested == null) return;
+        var image = _image;
+        int version = _presentationVersion;
+        bool kept = false;
         SetBusy(true);
         try
         {
-            if (await KeepRequested(_image)) DismissRequested?.Invoke();
-            else HintText.Text = Loc.Get("screenshot.full");
+            kept = await KeepRequested(image);
+            if (!kept && version == _presentationVersion) HintText.Text = Loc.Get("screenshot.full");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
         {
-            HintText.Text = Loc.Get("screenshot.error");
+            if (version == _presentationVersion) HintText.Text = Loc.Get("screenshot.error");
         }
         finally { SetBusy(false); }
+        // The host can collapse/release ownership only after the operation has settled.
+        if (kept && version == _presentationVersion) DismissRequested?.Invoke();
     }
 
     private void Preview_MouseDown(object sender, MouseButtonEventArgs e)
@@ -132,12 +142,15 @@ public partial class ScreenshotTray : UserControl
     {
         if (_image == null || IsBusy) return;
         var image = _image;
+        int version = _presentationVersion;
         SetBusy(true);
         double sourceOpacity = source.Opacity;
+        bool dropped = false;
+        bool failed = false;
         try
         {
             string path = await Task.Run(() => _store.Save(image, keep: false));
-            if (Mouse.LeftButton != MouseButtonState.Pressed || !source.IsVisible) return;
+            if (version != _presentationVersion || Mouse.LeftButton != MouseButtonState.Pressed || !source.IsVisible) return;
             var data = new DataObject();
             data.SetData(DataFormats.FileDrop, new[] { path });
             data.SetData(DataFormats.Bitmap, image);
@@ -156,16 +169,22 @@ public partial class ScreenshotTray : UserControl
                 IsDragging = false;
                 source.GiveFeedback -= feedback;
             }
-            if (result != DragDropEffects.None) DismissRequested?.Invoke();
+            dropped = result != DragDropEffects.None;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
         {
-            HintText.Text = Loc.Get("screenshot.error");
+            failed = true;
+            if (version == _presentationVersion) HintText.Text = Loc.Get("screenshot.error");
         }
         finally
         {
             source.Opacity = sourceOpacity;
             SetBusy(false);
+            if (version == _presentationVersion)
+            {
+                if (dropped) DismissRequested?.Invoke();
+                else if (!failed) DragCancelled?.Invoke();
+            }
         }
     }
 
