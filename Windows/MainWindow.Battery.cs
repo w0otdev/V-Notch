@@ -178,10 +178,10 @@ public partial class MainWindow
 
         PlayChargingBounce();
 
-        var fadeIn = MakeAnim(0d, 1d, _dur350, _easeExpOut7, TimeSpan.FromMilliseconds(100));
+        var fadeIn = MakeCompactNotificationEntrance(0, 1);
         ChargingNotification.BeginAnimation(OpacityProperty, fadeIn);
 
-        var slideUp = MakeAnim(6d, 0d, _dur350, _easeExpOut7, TimeSpan.FromMilliseconds(100));
+        var slideUp = MakeCompactNotificationEntrance(6, 0);
         ChargingNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
 
         var iconScale = MakeAnim(0.6d, 1d, _dur400, _easeSpring, TimeSpan.FromMilliseconds(150));
@@ -219,7 +219,7 @@ public partial class MainWindow
 
         AnimateCompactWidth(_collapsedWidth, TimeSpan.FromMilliseconds(400), _easeExpOut6, token);
 
-        var fadeOut = MakeAnim(1d, 0d, _dur250, _easePowerIn2, null);
+        var fadeOut = MakeCompactNotificationExit(1, 0);
         fadeOut.Completed += (s, e) =>
         {
             if (token != _chargingGlanceToken) return;
@@ -235,21 +235,21 @@ public partial class MainWindow
             {
                 MusicCompactContent.Visibility = Visibility.Visible;
                 MusicCompactContent.Opacity = 0;
-                var fadeInMusic = MakeAnim(0d, 1d, _dur250, _easePowerOut3, null);
+                var fadeInMusic = MakeCompactContentRestore();
                 MusicCompactContent.BeginAnimation(OpacityProperty, fadeInMusic);
             }
             else
             {
                 CollapsedContent.Visibility = Visibility.Visible;
                 CollapsedContent.Opacity = 0;
-                var fadeInCollapsed = MakeAnim(0d, 1d, _dur250, _easePowerOut3, null);
+                var fadeInCollapsed = MakeCompactContentRestore();
                 CollapsedContent.BeginAnimation(OpacityProperty, fadeInCollapsed);
             }
         };
 
         ChargingNotification.BeginAnimation(OpacityProperty, fadeOut);
 
-        var slideDown = MakeAnim(0d, -4d, _dur250, _easePowerIn2, null);
+        var slideDown = MakeCompactNotificationExit(0, -4);
         ChargingNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
     }
 

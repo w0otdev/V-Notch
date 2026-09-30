@@ -58,6 +58,15 @@ internal static class AnimationPrimitives
 
     #region Animation Factories
 
+    public static DoubleAnimation MakeCompactNotificationEntrance(double from, double to) =>
+        MakeAnim(from, to, _dur350, _easeExpOut7, TimeSpan.FromMilliseconds(100));
+
+    public static DoubleAnimation MakeCompactNotificationExit(double from, double to) =>
+        MakeAnim(from, to, _dur250, _easePowerIn2, null);
+
+    public static DoubleAnimation MakeCompactContentRestore() =>
+        MakeAnim(0d, 1d, _dur250, _easePowerOut3, null);
+
     public static T WithFps<T>(T timeline) where T : Timeline
     {
         try

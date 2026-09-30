@@ -25,19 +25,32 @@ internal sealed class ScreenshotDragPreview : IDisposable
         var scale = new ScaleTransform(1, 1);
         var visual = new Border
         {
-            Width = width, Height = height, CornerRadius = new CornerRadius(8),
-            Background = Brushes.Black, RenderTransform = scale,
+            Width = width,
+            Height = height,
+            CornerRadius = new CornerRadius(8),
+            Background = Brushes.Black,
+            RenderTransform = scale,
             RenderTransformOrigin = new Point(0, 0),
-            Child = new Image { Source = image, Stretch = Stretch.Uniform,
-                Clip = new RectangleGeometry(new Rect(0, 0, width, height), 8, 8) }
+            Child = new Image
+            {
+                Source = image,
+                Stretch = Stretch.Uniform,
+                Clip = new RectangleGeometry(new Rect(0, 0, width, height), 8, 8)
+            }
         };
         _window = new Window
         {
-            Width = width + 16, Height = height + 16,
-            WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
-            AllowsTransparency = true, Background = Brushes.Transparent,
-            ShowActivated = false, ShowInTaskbar = false, Topmost = true,
-            IsHitTestVisible = false, Focusable = false,
+            Width = width + 16,
+            Height = height + 16,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            ShowActivated = false,
+            ShowInTaskbar = false,
+            Topmost = true,
+            IsHitTestVisible = false,
+            Focusable = false,
             Content = new Grid { Children = { visual } }
         };
         visual.HorizontalAlignment = HorizontalAlignment.Left;

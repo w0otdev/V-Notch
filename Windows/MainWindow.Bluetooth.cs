@@ -113,10 +113,10 @@ public partial class MainWindow
             MusicCompactContent.Visibility = Visibility.Collapsed;
         }
 
-        var fadeIn = MakeAnim(0d, 1d, _dur350, _easeExpOut7, TimeSpan.FromMilliseconds(100));
+        var fadeIn = MakeCompactNotificationEntrance(0, 1);
         activeGrid.BeginAnimation(OpacityProperty, fadeIn);
 
-        var slideUp = MakeAnim(6d, 0d, _dur350, _easeExpOut7, TimeSpan.FromMilliseconds(100));
+        var slideUp = MakeCompactNotificationEntrance(6, 0);
         activeTranslate.BeginAnimation(
             TranslateTransform.YProperty, slideUp, HandoffBehavior.SnapshotAndReplace);
 
@@ -131,7 +131,7 @@ public partial class MainWindow
         var activeTranslate = ActiveBluetoothTranslate;
         int token = _bluetoothNotificationToken;
 
-        var fadeOut = MakeAnim(1d, 0d, _dur250, _easePowerIn2, null);
+        var fadeOut = MakeCompactNotificationExit(1, 0);
         fadeOut.Completed += (s, e) =>
         {
             if (token != _bluetoothNotificationToken) return;
@@ -149,20 +149,20 @@ public partial class MainWindow
             if (_isMusicCompactMode && _currentMediaInfo != null)
             {
                 MusicCompactContent.Visibility = Visibility.Visible;
-                var fadeInMusic = MakeAnim(0d, 1d, _dur250, _easePowerOut3, null);
+                var fadeInMusic = MakeCompactContentRestore();
                 MusicCompactContent.BeginAnimation(OpacityProperty, fadeInMusic);
             }
             else
             {
                 CollapsedContent.Visibility = Visibility.Visible;
-                var fadeInCollapsed = MakeAnim(0d, 1d, _dur250, _easePowerOut3, null);
+                var fadeInCollapsed = MakeCompactContentRestore();
                 CollapsedContent.BeginAnimation(OpacityProperty, fadeInCollapsed);
             }
         };
 
         activeGrid.BeginAnimation(OpacityProperty, fadeOut);
 
-        var slideDown = MakeAnim(0d, -4d, _dur250, _easePowerIn2, null);
+        var slideDown = MakeCompactNotificationExit(0, -4);
         activeTranslate.BeginAnimation(
             TranslateTransform.YProperty, slideDown, HandoffBehavior.SnapshotAndReplace);
     }

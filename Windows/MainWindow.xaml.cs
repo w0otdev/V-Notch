@@ -247,6 +247,8 @@ public partial class MainWindow : Window
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
         _transitionCoordinator.CanInitiateTransition = (target, reason) =>
         {
+            if (IsScreenshotPillActive && (_screenshotReturnPending || _screenshotMorphReturning) &&
+                target != VNotch.Models.NotchView.Compact && reason != "ScreenshotExplicitOpen") return false;
             if (_isGreetingActive) return false;
             if (_isDebugViewLocked && target == VNotch.Models.NotchView.Compact) return false;
             return true;
@@ -748,7 +750,8 @@ public partial class MainWindow : Window
                 break;
 
             case VNotch.Models.NotchView.Media:
-                if (args.FromView == VNotch.Models.NotchView.Compact || !_isExpanded)
+                if (args.FromView == VNotch.Models.NotchView.Compact || !_isExpanded ||
+                    args.Reason == "ScreenshotExplicitOpen")
                 {
                     ExpandNotch(args.TransitionId);
                 }
@@ -1949,6 +1952,7 @@ public partial class MainWindow : Window
             double islandTop = Math.Max(0, (GetCollapsedHeight() - 22) / 2.0);
             MusicCompactContent.VerticalAlignment = VerticalAlignment.Top;
             MusicCompactContent.Margin = islandMode ? new Thickness(12, islandTop, 12, 0) : new Thickness(8, 4, 8, 4);
+            AlignScreenshotCompactThumbnail();
         }
 
         if (CompactHoverInfo != null)
@@ -2006,7 +2010,7 @@ public partial class MainWindow : Window
         {
             if (_isAnimating) { e.Handled = true; return; }
             if (_isExpanded) CollapseScreenshotPreview(fromClick: true);
-            else ExpandNotch();
+            else OpenScreenshotFromClick();
             e.Handled = true;
             return;
         }

@@ -135,6 +135,11 @@ public partial class MainWindow
 
     private void GlobalMouseHook_MouseLeftButtonDown(object? sender, InputMonitorService.POINT pt)
     {
+        // Capture against the visible shell at mouse-down, before queued layout
+        // or animation work can move/resize it under this click.
+        bool screenshotClick = IsScreenshotPillActive;
+        bool outsideScreenshot = screenshotClick && !IsScreenPointInsideScreenshotShell(pt);
+        bool screenshotWasAnimating = screenshotClick && (_isAnimating || _screenshotMorphRunning || _transitionCoordinator.IsTransitionActive);
         Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
         {
             // Clicks inside Spotlight window must not collapse MainWindow's hidden
@@ -143,8 +148,15 @@ public partial class MainWindow
 
             if (IsScreenshotPillActive)
             {
-                if ((_isExpanded || _isAnimating) && !IsScreenPointInsideNotchVisual(pt))
+                if (screenshotClick && outsideScreenshot)
                     ReturnScreenshotToWaiting();
+                else if (screenshotWasAnimating)
+                {
+                    if (_screenshotReturnPending || _screenshotMorphReturning)
+                        OpenScreenshotFromClick();
+                    else
+                        ReturnScreenshotToWaiting();
+                }
                 return;
             }
 
@@ -191,6 +203,35 @@ public partial class MainWindow
                 }
             }
         }));
+    }
+
+    private bool IsScreenPointInsideScreenshotShell(InputMonitorService.POINT pt)
+    {
+        if (_hwnd == IntPtr.Zero || NotchBorder.ActualWidth <= 0 || NotchBorder.ActualHeight <= 0)
+            return false;
+        try
+        {
+            var local = NotchBorder.PointFromScreen(new Point(pt.x, pt.y));
+            return ScreenshotShellContains(local, new Size(NotchBorder.ActualWidth, NotchBorder.ActualHeight),
+                NotchBorder.CornerRadius);
+        }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    internal static bool ScreenshotShellContains(Point point, Size size, CornerRadius corners)
+    {
+        if (!new Rect(size).Contains(point)) return false;
+        double limit = Math.Min(size.Width, size.Height) / 2;
+        bool InCorner(double x, double y, double radius)
+        {
+            radius = Math.Min(radius, limit);
+            if (x >= radius || y >= radius) return true;
+            return (x - radius) * (x - radius) + (y - radius) * (y - radius) <= radius * radius;
+        }
+        return InCorner(point.X, point.Y, corners.TopLeft) &&
+            InCorner(size.Width - point.X, point.Y, corners.TopRight) &&
+            InCorner(point.X, size.Height - point.Y, corners.BottomLeft) &&
+            InCorner(size.Width - point.X, size.Height - point.Y, corners.BottomRight);
     }
 
     private bool IsScreenPointInsideNotchVisual(InputMonitorService.POINT pt)

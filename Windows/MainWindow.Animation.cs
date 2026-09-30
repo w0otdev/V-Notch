@@ -855,6 +855,14 @@ public partial class MainWindow
         _transitionCoordinator.CompleteTransition(generation);
         UpdateSpotifyCanvasPresentationContext();
 
+        // The screenshot preview uses the Media route but has its own layout.
+        // Do not hand off hidden media images or cache thumbnail coordinates here.
+        if (IsScreenshotPillActive)
+        {
+            EndScreenshotThumbnailMorph();
+            return;
+        }
+
         if (effectiveTarget == VNotch.Models.NotchView.Media && !IsScreenshotPillActive)
         {
             RestoreExpandedContentOpacity();
@@ -979,9 +987,11 @@ public partial class MainWindow
 
         if (IsScreenshotPillActive && effectiveTarget == VNotch.Models.NotchView.Media)
         {
+            ClearScreenshotCompactHandoff();
             VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(NavIconsPanel);
             VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(NavIconsBackground);
             var previewSize = _screenshotTray!.ConfigureInline();
+            BeginScreenshotThumbnailExpand();
             targetWidth = previewSize.Width;
             targetHeight = previewSize.Height;
             ResizeHostWindowHeight(targetHeight);
@@ -1053,7 +1063,7 @@ public partial class MainWindow
         }
 
         var motion = new VNotch.Models.TransitionMotionConfig(
-            Duration: _dur500,
+            Duration: IsScreenshotPillActive ? ScreenshotThumbnailDuration : _dur500,
             Easing: _easeExpOut6,
             TargetFps: animFps,
             ReduceMotion: false
@@ -1103,7 +1113,10 @@ public partial class MainWindow
 
         if (_notchContentPresenter != null)
         {
-            _notchContentPresenter.TransitionContent(plan, _ => { });
+            var contentPlan = IsScreenshotPillActive
+                ? plan with { Motion = motion with { ReduceMotion = AnimationConfig.ReduceMotion } }
+                : plan;
+            _notchContentPresenter.TransitionContent(contentPlan, _ => { });
         }
         else
         {
@@ -1615,6 +1628,7 @@ public partial class MainWindow
         _isAnimating = true;
 
         PrepareStateBeforeCollapse();
+        BeginScreenshotThumbnailCollapse();
 
         bool wasSecondary = _isSecondaryView;
         bool wasTimer = _isTimerView;
@@ -1686,7 +1700,7 @@ public partial class MainWindow
         }
 
         var motion = new VNotch.Models.TransitionMotionConfig(
-            Duration: _dur500,
+            Duration: IsScreenshotPillActive ? ScreenshotThumbnailDuration : _dur500,
             Easing: _easeExpOut6,
             TargetFps: animFps,
             ReduceMotion: false
@@ -1737,7 +1751,10 @@ public partial class MainWindow
 
         if (_notchContentPresenter != null)
         {
-            _notchContentPresenter.TransitionContent(plan, _ => { });
+            var contentPlan = IsScreenshotPillActive
+                ? plan with { Motion = motion with { ReduceMotion = AnimationConfig.ReduceMotion } }
+                : plan;
+            _notchContentPresenter.TransitionContent(contentPlan, _ => { });
         }
         else
         {

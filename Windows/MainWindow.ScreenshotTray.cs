@@ -1,15 +1,15 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using VNotch.Controllers;
-using static VNotch.Services.AnimationPrimitives;
-using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using VNotch.Controllers;
 using VNotch.Controls;
 using VNotch.Services;
+using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch;
 
@@ -20,7 +20,9 @@ public partial class MainWindow
     private ScreenshotTray? _screenshotTray;
     private Grid? _screenshotHost;
     private Grid? _screenshotCompact;
-    private Image? _screenshotThumbnail;
+    private Image? _screenshotOutgoingContent;
+    private int _screenshotHandoffVersion;
+    private System.Windows.Shapes.Rectangle? _screenshotThumbnail;
     private RotateTransform? _screenshotSpinner;
     private BitmapSource? _activeScreenshot;
     private int _screenshotSlotToken;
@@ -36,6 +38,7 @@ public partial class MainWindow
     private DateTime _pendingScreenshotAt;
     private DateTime _screenshotExpiresAt;
     private bool _screenshotClosing;
+    private bool _screenshotReturnPending;
 
     private readonly ScreenshotFileStore _screenshotStore = new();
     private readonly ScreenshotContentDeduplicator _screenshotDeduplicator = new();
@@ -102,6 +105,7 @@ public partial class MainWindow
             _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
             return;
         }
+        if (_screenshotReturnPending) ReturnScreenshotToWaiting();
         if (_pendingScreenshot != null && DateTime.UtcNow - _pendingScreenshotAt > TimeSpan.FromSeconds(15))
         {
             _pendingScreenshot = null;
@@ -122,6 +126,9 @@ public partial class MainWindow
             _screenshotHost?.IsMouseOver != true && _screenshotTray?.IsKeyboardFocusWithin != true)
         {
             EnsureScreenshotSurface();
+            // Capture before acquiring ownership: the arbiter immediately hides
+            // the live media controls, but their last frame can fade out safely.
+            var outgoingContent = CaptureScreenshotCompactHandoff();
             if (!IsScreenshotPillActive)
             {
                 if (!TryAcquireCompactSlot(CompactPillSlot.Screenshot, out _screenshotSlotToken)) return;
@@ -134,10 +141,11 @@ public partial class MainWindow
             _activeScreenshotHash = _pendingScreenshotHash;
             _pendingScreenshot = null;
             _pendingScreenshotHash = null;
-            _screenshotThumbnail!.Source = _activeScreenshot;
+            _screenshotThumbnail!.Fill = new ImageBrush(_activeScreenshot) { Stretch = Stretch.UniformToFill };
             _screenshotTray!.Present(_activeScreenshot);
             _screenshotHost!.Visibility = Visibility.Visible;
             ShowScreenshotCompactContent();
+            StartScreenshotCompactHandoff(outgoingContent);
             _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
             SuppressPrivacyDot();
         }
@@ -152,16 +160,43 @@ public partial class MainWindow
         NotchWrapper.PreviewDragOver += SuppressScreenshotSelfDrop;
         NotchWrapper.PreviewDragLeave += SuppressScreenshotSelfDrop;
         NotchWrapper.PreviewDrop += SuppressScreenshotSelfDrop;
-        _screenshotHost = new Grid { Visibility = Visibility.Collapsed, Background = Brushes.Transparent,
-            ClipToBounds = true };
+        _screenshotHost = new Grid
+        {
+            Visibility = Visibility.Collapsed,
+            Background = Brushes.Transparent,
+            ClipToBounds = true
+        };
         _screenshotHost.SizeChanged += (_, _) => UpdateNotchClip();
         Panel.SetZIndex(_screenshotHost, 1000);
         NotchContent.Children.Add(_screenshotHost);
-        _screenshotCompact = new Grid { Margin = new Thickness(12, 0, 12, 0),
-            Height = _collapsedHeight, VerticalAlignment = VerticalAlignment.Top };
-        _screenshotThumbnail = new Image { Width = 22, Height = 22, Stretch = Stretch.UniformToFill,
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-        _screenshotThumbnail.Clip = new RectangleGeometry(new Rect(0, 0, 22, 22), 6, 6);
+        _screenshotOutgoingContent = new Image
+        {
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Stretch = Stretch.Fill
+        };
+        _screenshotHost.Children.Add(_screenshotOutgoingContent);
+        _screenshotCompact = new Grid
+        {
+            Margin = new Thickness(12, 0, 12, 0),
+            Height = _collapsedHeight,
+            VerticalAlignment = VerticalAlignment.Top
+        };
+        _screenshotThumbnail = new System.Windows.Shapes.Rectangle
+        {
+            Width = 22,
+            Height = 22,
+            RadiusX = 6,
+            RadiusY = 6,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        // Match the moving overlay and expanded preview at the final handoff.
+        // WPF's default low-quality downsampling otherwise changes sharpness here.
+        RenderOptions.SetBitmapScalingMode(_screenshotThumbnail, BitmapScalingMode.HighQuality);
+
         _screenshotThumbnail.RenderTransform = _screenshotThumbnailScale;
         _screenshotThumbnail.RenderTransformOrigin = new Point(0, 0.5);
         _screenshotThumbnail.MouseEnter += CompactThumbnailBorder_MouseEnter;
@@ -195,22 +230,37 @@ public partial class MainWindow
             _screenshotThumbnail.ReleaseMouseCapture();
             e.Handled = true;
             if (click && _screenshotThumbnail.IsMouseOver && !_isAnimating && !_screenshotClosing)
-                ExpandNotch();
+                OpenScreenshotFromClick();
         };
         _screenshotThumbnail.LostMouseCapture += (_, _) => _screenshotDragStart = null;
         _screenshotCompact.Children.Add(_screenshotThumbnail);
-        var ring = new Grid { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center, RenderTransformOrigin = new Point(.5, .5) };
+        var ring = new Grid
+        {
+            Width = 18,
+            Height = 18,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransformOrigin = new Point(.5, .5)
+        };
         ring.Children.Add(new System.Windows.Shapes.Ellipse { Stroke = new SolidColorBrush(Color.FromArgb(45, 255, 255, 255)), StrokeThickness = 2 });
-        ring.Children.Add(new System.Windows.Shapes.Ellipse { Stroke = UiPalette.PrimaryBrush, StrokeThickness = 2,
-            StrokeDashArray = new DoubleCollection { 7, 20 }, StrokeDashCap = PenLineCap.Round });
+        ring.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Stroke = UiPalette.PrimaryBrush,
+            StrokeThickness = 2,
+            StrokeDashArray = new DoubleCollection { 7, 20 },
+            StrokeDashCap = PenLineCap.Round
+        });
         _screenshotSpinner = new RotateTransform();
         ring.RenderTransform = _screenshotSpinner;
         _screenshotCompact.Children.Add(ring);
         _screenshotHost.Children.Add(_screenshotCompact);
-        _screenshotTray = new ScreenshotTray { KeepRequested = KeepScreenshotAsync,
-            Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top };
+        _screenshotTray = new ScreenshotTray
+        {
+            KeepRequested = KeepScreenshotAsync,
+            Visibility = Visibility.Collapsed,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top
+        };
         _screenshotTray.DismissRequested += () => CloseScreenshotTray();
         _screenshotTray.DragCancelled += () => CloseScreenshotTray();
         _screenshotHost.Children.Add(_screenshotTray);
@@ -225,16 +275,39 @@ public partial class MainWindow
         e.Handled = true;
     }
 
-    private void ReturnScreenshotToWaiting()
+    private void OpenScreenshotFromClick()
     {
         if (!IsScreenshotPillActive || _screenshotClosing || _screenshotTray?.IsBusy == true) return;
+        _screenshotReturnPending = false;
+        _hoverCollapseTimer.Stop();
+        _compactThumbnailHoverLeaveTimer.Stop();
+        _transitionCoordinator.RequestView(VNotch.Models.NotchView.Media, "ScreenshotExplicitOpen");
+    }
+
+    private void ReturnScreenshotToWaiting()
+    {
+        if (!IsScreenshotPillActive || _screenshotClosing) return;
+        // Keep the dismissal intent until compact is reached, including while a
+        // drag/export is finishing. Late hover or mouse-up events cannot reopen it.
+        _screenshotReturnPending = true;
+        _screenshotDragStart = null;
+        _screenshotThumbnail?.ReleaseMouseCapture();
         _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
         _hoverThumbnailDelayTimer.Stop();
         _hoverCollapseTimer.Stop();
         _compactThumbnailHoverLeaveTimer.Stop();
+        if (_screenshotTray?.IsBusy == true) return;
         if (_screenshotTray?.IsKeyboardFocusWithin == true) Keyboard.ClearFocus();
-        if (_isExpanded || _isAnimating) CollapseNotch();
-        else if (_isCompactThumbnailHovered) SetCompactThumbnailHover(false);
+        // A request can still be queued at input priority before the visual flags
+        // change. Supersede that opening request on the first outside click too.
+        // The coordinator is authoritative: visual flags can already be compact
+        // while a queued/reversed transition still owns the expanded view.
+        bool requested = _transitionCoordinator.RequestCollapse("ScreenshotOutsideClick");
+        if (!requested && !_transitionCoordinator.IsTransitionActive && !_screenshotMorphReturning)
+        {
+            if (_isCompactThumbnailHovered) SetCompactThumbnailHover(false);
+            _screenshotReturnPending = false;
+        }
     }
 
     private void LeaveScreenshotHover()
@@ -266,13 +339,23 @@ public partial class MainWindow
 
     private void ExpandScreenshotPreview()
     {
-        if (!IsScreenshotPillActive || _screenshotClosing || _isExpanded || _isAnimating ||
+        if (!IsScreenshotPillActive || _screenshotClosing || _screenshotReturnPending || _screenshotMorphReturning || _isExpanded || _isAnimating ||
             _isCompactThumbnailHovered || Mouse.LeftButton == MouseButtonState.Pressed) return;
         SetCompactThumbnailHover(true);
     }
 
     private void ShowScreenshotCompactContent()
     {
+        if (_screenshotMorphReturning && _screenshotMorphRunning)
+        {
+            _screenshotCompactHandoffPending = true;
+            return;
+        }
+        bool returningFromPreview = _screenshotMorphReturning;
+        AlignScreenshotCompactThumbnail();
+        _screenshotReturnPending = false;
+        EndScreenshotThumbnailMorph();
+        ClearScreenshotCompactHandoff();
         VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(_screenshotTray!);
         _isCompactThumbnailHovered = false;
         _compactThumbnailHoverLeaveTimer.Stop();
@@ -284,14 +367,70 @@ public partial class MainWindow
         _screenshotCompact.BeginAnimation(OpacityProperty, null);
         _screenshotCompact.Visibility = Visibility.Visible;
         _screenshotCompact.Opacity = 1;
-        if (!AnimationConfig.ReduceMotion)
-            _screenshotCompact.BeginAnimation(OpacityProperty, MakeAnim(0, 1, _dur200, _easeQuadOut));
+        _screenshotCompact.RenderTransform = null;
+        if (!AnimationConfig.ReduceMotion && !returningFromPreview)
+            AnimateScreenshotContentArrival(_screenshotCompact);
         _screenshotCompact.IsHitTestVisible = true;
         _screenshotSpinner!.BeginAnimation(RotateTransform.AngleProperty, null);
         if (!AnimationConfig.ReduceMotion)
             _screenshotSpinner.BeginAnimation(RotateTransform.AngleProperty, WithFps(new DoubleAnimation(0, 360,
-                TimeSpan.FromMilliseconds(1600)) { RepeatBehavior = RepeatBehavior.Forever }));
+                TimeSpan.FromMilliseconds(1600))
+            { RepeatBehavior = RepeatBehavior.Forever }));
         EnforceCompactPresentationOwner();
+    }
+
+    private BitmapSource? CaptureScreenshotCompactHandoff()
+    {
+        if (AnimationConfig.ReduceMotion || _cleanedUp) return null;
+        var size = NotchContent.RenderSize;
+        if (size.Width <= 0 || size.Height <= 0) return null;
+        var dpi = VisualTreeHelper.GetDpi(NotchContent);
+        double width = Math.Ceiling(size.Width * dpi.DpiScaleX);
+        double height = Math.Ceiling(size.Height * dpi.DpiScaleY);
+        if (!double.IsFinite(width * height) || width * height > 4_000_000) return null;
+        try
+        {
+            var snapshot = new RenderTargetBitmap((int)width, (int)height,
+                96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+            snapshot.Render(NotchContent);
+            snapshot.Freeze();
+            return snapshot;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private void StartScreenshotCompactHandoff(BitmapSource? snapshot)
+    {
+        ClearScreenshotCompactHandoff();
+        if (snapshot == null || AnimationConfig.ReduceMotion) return;
+        int version = _screenshotHandoffVersion;
+        var outgoing = _screenshotOutgoingContent!;
+        outgoing.Source = snapshot;
+        outgoing.Width = snapshot.Width;
+        outgoing.Height = snapshot.Height;
+        outgoing.Opacity = 1;
+        outgoing.Visibility = Visibility.Visible;
+        // Fade both layers on the same accelerating/decelerating curve so the
+        // old content remains present while the screenshot gently picks up speed.
+        var fade = MakeScreenshotEntrance(1, 0);
+        fade.Completed += (_, _) =>
+        {
+            if (version == _screenshotHandoffVersion) ClearScreenshotCompactHandoff();
+        };
+        outgoing.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private void ClearScreenshotCompactHandoff()
+    {
+        ++_screenshotHandoffVersion;
+        if (_screenshotOutgoingContent == null) return;
+        _screenshotOutgoingContent.BeginAnimation(OpacityProperty, null);
+        _screenshotOutgoingContent.Opacity = 0;
+        _screenshotOutgoingContent.Visibility = Visibility.Collapsed;
+        _screenshotOutgoingContent.Source = null;
     }
     private async Task<bool> KeepScreenshotAsync(BitmapSource image)
     {
@@ -333,8 +472,24 @@ public partial class MainWindow
 
     private int _screenshotDismissVersion;
 
+    private static DoubleAnimation MakeScreenshotEntrance(double from, double to) =>
+        MakeAnim(from, to, _dur500, _easeAppleInOut);
+
+    private static void AnimateScreenshotContentArrival(FrameworkElement content)
+    {
+        // Keep the notification slide, with a gradual start rather than the
+        // fast initial velocity used by Bluetooth/charging feedback.
+        var translate = new TranslateTransform(0, 6);
+        content.RenderTransform = translate;
+        content.Opacity = 0;
+        content.BeginAnimation(OpacityProperty, MakeScreenshotEntrance(0, 1));
+        translate.BeginAnimation(TranslateTransform.YProperty, MakeScreenshotEntrance(6, 0));
+    }
+
     private void FinishScreenshotDismissal(bool animate = true)
     {
+        _screenshotReturnPending = false;
+        EndScreenshotThumbnailMorph();
         int version = ++_screenshotDismissVersion;
         int token = _screenshotSlotToken;
         animate &= !AnimationConfig.ReduceMotion && !_cleanedUp;
@@ -346,14 +501,16 @@ public partial class MainWindow
         void CompleteDismissal()
         {
             if (version != _screenshotDismissVersion || token != _screenshotSlotToken) return;
+            ClearScreenshotCompactHandoff();
             _screenshotHost.Visibility = Visibility.Collapsed;
             _screenshotHost.BeginAnimation(OpacityProperty, null);
             _screenshotHost.Opacity = 1;
+            _screenshotHost.RenderTransform = null;
             _screenshotHost.IsHitTestVisible = true;
             VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(_screenshotCompact!);
             VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(_screenshotTray!);
             _screenshotTray!.Clear();
-            _screenshotThumbnail!.Source = null;
+            _screenshotThumbnail!.Fill = null;
             _activeScreenshot = null;
             _activeScreenshotHash = null;
             _isCompactThumbnailHovered = false;
@@ -369,6 +526,11 @@ public partial class MainWindow
             CancelThumbnailSwitchAnimations(_pendingFlipThumbnail);
             _pendingFlipThumbnail = null;
             ResetAnimationThumbnailOverlay();
+            // Re-measure the actual media layout on its next expansion; the tray
+            // can have a different width/height from the last media surface.
+            _cachedThumbnailExpandTarget = null;
+            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            ThumbnailBorder.Opacity = 1;
             _compactPillArbiter.Release(token);
             _screenshotSlotToken = 0;
             _screenshotClosing = false;
@@ -389,7 +551,7 @@ public partial class MainWindow
             if (animate && !_isExpanded && !_isAnimating && _compactPillArbiter.ActiveSlot == CompactPillSlot.None)
             {
                 FrameworkElement compact = _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
-                compact.BeginAnimation(OpacityProperty, MakeAnim(0, 1, _dur200, _easePowerOut3));
+                compact.BeginAnimation(OpacityProperty, MakeCompactContentRestore());
             }
             EnforceCompactPresentationOwner();
             if (!_cleanedUp && _pendingScreenshot != null) _screenshotTimer?.Start();
@@ -403,7 +565,10 @@ public partial class MainWindow
             return;
         }
 
-        var fadeOut = MakeAnim(_screenshotHost.Opacity, 0, _dur200, _easeQuadOut);
+        var exitTranslate = new TranslateTransform();
+        _screenshotHost.RenderTransform = exitTranslate;
+        exitTranslate.BeginAnimation(TranslateTransform.YProperty, MakeCompactNotificationExit(0, -4));
+        var fadeOut = MakeCompactNotificationExit(_screenshotHost.Opacity, 0);
         fadeOut.Completed += (_, _) => CompleteDismissal();
         _screenshotHost.BeginAnimation(OpacityProperty, fadeOut);
     }

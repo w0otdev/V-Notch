@@ -50,6 +50,7 @@ public partial class ScreenshotTray : UserControl
                 Visibility = Visibility.Hidden;
             InvalidateMeasure();
             Measure(new Size(Surface.Width, double.PositiveInfinity));
+            Arrange(new Rect(0, 0, Surface.Width, DesiredSize.Height));
             return new Size(Surface.Width, DesiredSize.Height);
         }
         finally
@@ -57,6 +58,21 @@ public partial class ScreenshotTray : UserControl
             Visibility = previousVisibility;
         }
     }
+
+    internal Rect PreviewBounds
+    {
+        get
+        {
+            var size = PreviewImage.RenderSize;
+            if (_image == null || size.Width <= 0 || size.Height <= 0) return Rect.Empty;
+            double scale = Math.Min(size.Width / _image.Width, size.Height / _image.Height);
+            var fitted = new Rect((size.Width - _image.Width * scale) / 2,
+                (size.Height - _image.Height * scale) / 2, _image.Width * scale, _image.Height * scale);
+            return PreviewImage.TransformToAncestor(this).TransformBounds(fitted);
+        }
+    }
+
+    internal void SetPreviewMorphing(bool morphing) => PreviewImage.Opacity = morphing ? 0 : 1;
 
     public void Present(BitmapSource image)
     {
