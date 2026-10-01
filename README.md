@@ -53,7 +53,6 @@
   If you use it regularly, you can <a href="https://www.paypal.me/PhuocLe678"><b>support development via PayPal</b></a>.
 </p>
 
-
 <div align="center">
 
 <table align="center">
@@ -128,14 +127,13 @@
 
 </div>
 
-
 <div id="usage"></div>
 
 ## Usage
 
 | Action                     | Result                        |
 | -------------------------- | ----------------------------- |
-| Hover                      | Expand the notch             |
+| Hover                      | Expand the notch              |
 | Click                      | Toggle pill / expanded view   |
 | Middle click               | Play / pause media            |
 | Scroll down                | Switch to file shelf          |
@@ -160,22 +158,6 @@
 
 </details>
 
-### Screenshot tray
-
-Use Windows Snipping Tool (`Win + Shift + S`), `Print Screen`, `Alt + Print Screen`, or any tool that puts a bitmap or PNG on the clipboard. The compact pill briefly shows the image thumbnail and a waiting ring. Hover over it to open a preview, then drag the image into another app, choose **Keep on shelf**, or dismiss it.
-
-Every preview uses a 304-DIP-wide layout with a 136-DIP-high image area. Images keep their aspect ratio and are not cropped. Moving away collapses the preview back to the pill. The eight-second timeout pauses while you hover, focus the preview, or drag an image. Dismissing the preview restores the pill’s usual content. If the notch is expanded or busy, new captures wait briefly.
-
-You can turn the tray off in Settings. It follows the notch’s visibility and stays hidden on the desktop layer. Copied images also appear in the tray because Windows does not reliably distinguish them from screenshots.
-
-For tools that save directly to disk, such as `Win + Print Screen` and Game Bar, V-Notch watches Pictures/Screenshots, Videos/Captures, their Windows redirected locations, and Documents/ShareX/Screenshots. Add other capture folders in Settings, one per line. The tray imports new PNG, JPEG, BMP, and TIFF files from these folders and their subfolders. It does not scan existing files.
-
-Clipboard and disk images with identical pixels count as one capture if they arrive within five seconds. Images over 64 million pixels and disk files over 100 MB are skipped. A tool must provide a clipboard image or a supported file in a watched folder for the tray to detect it.
-
-Previews stay in memory until you keep or drag them. Kept PNGs are saved in `%LOCALAPPDATA%\V-Notch\Screenshots\Saved`. Drag exports go into the adjacent `Temporary` directory; exports older than 24 hours are cleaned up when the app next starts. Removing an item from the shelf leaves its saved PNG on disk.
-
-
-
 <div id="installation"></div>
 
 ## Installation
@@ -194,18 +176,17 @@ Open the Actions tab, select Release Installer, and click Run workflow. Choose `
 
 </details>
 
-
 <div id="privacy"></div>
 
 ## Privacy
 
 V-Notch does not collect telemetry or analytics, or track you. It makes network requests to the following services:
 
-| Service               | Purpose                                                                 |
-| --------------------- | ----------------------------------------------------------------------- |
-| GitHub Releases API   | Update checks                                                           |
-| LRCLIB / lrc mux      | Synced lyrics                                                           |
-| YouTube / SoundCloud  | Public thumbnails and captions                                          |
+| Service               | Purpose                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| GitHub Releases API   | Update checks                                                         |
+| LRCLIB / lrc mux      | Synced lyrics                                                         |
+| YouTube / SoundCloud  | Public thumbnails and captions                                        |
 | Spotify Web Services  | Optional Canvas backgrounds; credentials encrypted with Windows DPAPI |
 | Open-Meteo / ipwho.is | Optional weather                                                      |
 
@@ -215,18 +196,15 @@ Privacy dots use capture reports from Windows and recording signals from Bandica
 
 [Privacy Policy](PRIVACY_POLICY.md) · [Tiếng Việt](PRIVACY_POLICY_VI.md) · [Terms of Service](TERMS_OF_SERVICE.md) · [Tiếng Việt](TERMS_OF_SERVICE_VI.md)
 
-
 ## Star history
 
 Thank you to everyone who has supported V-Notch since the early releases. Your feedback and GitHub stars help keep the project going.
 
 [![Star History Chart](https://api.star-history.com/svg?repos=rainaku/v-notch&type=Date)](https://star-history.com/#rainaku/v-notch&Date)
 
-
 ## License
 
 V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
 
 <p align="center">
   Made by <a href="https://rainaku.id.vn">rainaku</a> ·

@@ -996,7 +996,7 @@ public partial class MainWindow
             targetHeight = previewSize.Height;
             ResizeHostWindowHeight(targetHeight);
             VNotch.Presenters.NotchContentTransitionPresenter.ResetElementVisualState(_screenshotCompact!);
-            _screenshotCompact.IsHitTestVisible = false;
+            _screenshotCompact!.IsHitTestVisible = false;
             _screenshotSpinner?.BeginAnimation(RotateTransform.AngleProperty, null);
             _screenshotTray.IsHitTestVisible = true;
         }
