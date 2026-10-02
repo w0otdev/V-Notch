@@ -1,9 +1,9 @@
 # Privacy Policy — V-Notch
 
-**Effective date:** September 22, 2026  
-**Previous published version:** September 9, 2026
+**Effective date:** October 2, 2026  
+**Previous published version:** September 22, 2026
 
-**Application Version:** 1.9.3
+**Scope:** Current source tree as of October 2, 2026; feature availability depends on the installed build.
 
 **Developer:** rainaku  
 **Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -16,9 +16,9 @@ V-Notch is a free, open-source desktop application for Windows that recreates a 
 
 This Privacy Policy explains, in detail, exactly what data the application accesses, why it accesses it, where that data goes, and how long it is kept. It reflects the actual behavior of the application source code, which is publicly available for inspection at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
-**Core principle:** V-Notch is designed to be local-first. It contains no analytics, no telemetry, no advertising, no tracking identifiers, and requires no V-Notch account. It does not operate any backend server of its own. The application documentation identifies outbound network requests for to public third-party services for specific opt-in or functional purposes: checking for application updates, fetching album artwork / lyrics / subtitles / Spotify Canvas for the media you are playing, and — if you explicitly enable it — showing the weather forecast. These are described in Section 4; the list and actual requests must be checked against the shipped binary and installed web components.
+**Core principle:** V-Notch is designed to be local-first. It contains no analytics, no telemetry, no advertising, no tracking identifiers, and requires no V-Notch account. It does not operate any backend server of its own. The application documentation identifies outbound network requests to third-party services for specific opt-in or functional purposes: checking for application updates, fetching album artwork / lyrics / subtitles / Spotify Canvas for the media you are playing, and — if you explicitly enable it — showing the weather forecast. Optional Spotlight AI sends messages and conversation context to your selected AI provider and can retrieve a DeepSeek balance on request. These are described in Section 4; the list and actual requests must be checked against the shipped binary and installed web components.
 
-This document describes application-side practices and is not a representation that independent websites, operating-system components, webviews, content delivery networks, or user-installed modifications do not collect data. The references to application version 1.9.3 require verification against the released build.
+This document describes application-side practices and is not a representation that independent websites, operating-system components, webviews, content delivery networks, or user-installed modifications do not collect data. Verify feature availability and behavior against your installed build.
 
 This policy uses the following terms:
 - **"Local"** — data processed on the computer and not intentionally transmitted by that feature, subject to the network exceptions explicitly described.
@@ -38,6 +38,7 @@ This policy uses the following terms:
 | **Spotify Canvas (opt-in)** | Spotify web session (`sp_dc`), track title + artist | Yes — Spotify, Musixmatch (fallback) | Session encrypted locally with Windows DPAPI |
 | **Weather (opt-in)** | Approximate IP-based location (`ipwho.is`) or manual city name | Yes — `ipwho.is`, Open-Meteo | No (transient in memory) |
 | **Update check & download** | Standard HTTP headers only | Yes — GitHub Releases API | Version info in memory; installer in temp directory on update |
+| **Spotlight AI (opt-in)** | Submitted messages, recent context, API key, selected model | Yes — selected AI provider (§4.8) | Keys and chat history encrypted locally (§5.6) |
 | **Spotlight search & launcher** | Local app names, local file metadata (Windows Search / Everything), math expressions | No | Recent launch frequency stored locally (max 100 entries, see §5) |
 | **Liquid Glass backdrop capture** | Screen pixels directly under the notch area (DXGI / Magnification API) | No | No (processed per-frame on GPU/CPU and discarded immediately) |
 | **System hardware monitor** | CPU usage, RAM usage, GPU utilization (Windows performance counters / DXGI) | No | No (transient in memory) |
@@ -80,7 +81,7 @@ V-Notch features a built-in Spotlight search launcher that lets you find applica
 - **Inline Calculator** — Evaluates arithmetic and algebraic math expressions on-device using MathNet.Numerics.
 - **Launch Ranking** — To provide quick access to frequent apps, V-Notch maintains a local ranking file (`%APPDATA%\V-Notch\spotlight-usage.json`) storing the last launched item ID, launch count, and timestamp (capped at 100 entries).
 
-**All searches, queries, file paths, results, and calculations run 100% locally on your computer.** No search term or indexing data is ever sent to any external server.
+**Spotlight Search processes app/file queries and calculations locally.** The separate AI mode sends messages you explicitly submit and conversation context as described in §4.8.
 
 ### 3.4 Liquid Glass & Screen Backdrop Capture
 
@@ -205,9 +206,27 @@ All three endpoints are third-party services with their own privacy policies:
 
 ### 4.7 Third Parties
 
-The services above (Spotify, GitHub, Google/YouTube, Piped/Invidious instances, SoundCloud, LRCLIB, ipwho.is, and Open-Meteo) are independent third parties with their own privacy policies. When V-Notch contacts them, your IP address is visible to that service as with any normal web request. V-Notch does not control these services; legal responsibilities must be assessed under applicable law. If you prefer to avoid these lookups, you can disable artwork/lyrics/Canvas/weather features and update checks, or block the app's network access.
+The services above (Spotify, GitHub, Google/YouTube, Piped/Invidious instances, SoundCloud, LRCLIB, ipwho.is, and Open-Meteo) are independent third parties with their own privacy policies. When V-Notch contacts them, your IP address is visible to that service as with any normal web request. V-Notch does not control these services; legal responsibilities must be assessed under applicable law. If you prefer to avoid these lookups, you can disable artwork/lyrics/Canvas/weather features and update checks, avoid sending AI messages or refreshing balances (§4.8), or block the app's network access.
 
 ---
+
+### 4.8 Spotlight AI (Opt-In)
+
+When you send an AI message, V-Notch sends your prompt, recent conversation context, and selected model directly over HTTPS to the selected provider. Authentication uses your API key in request headers. AI requests do not pass through a V-Notch backend, and automatic redirects are disabled for this client.
+
+| Provider | API destination | Purpose |
+| --- | --- | --- |
+| OpenAI | `api.openai.com/v1/chat/completions` | AI responses |
+| Google Gemini | `generativelanguage.googleapis.com/v1beta/models/…` | AI responses |
+| Anthropic Claude | `api.anthropic.com/v1/messages` | AI responses |
+| DeepSeek | `api.deepseek.com/chat/completions` | AI responses |
+| DeepSeek | `api.deepseek.com/user/balance` | Balance lookup when you request a refresh |
+
+Opening Spotlight, selecting AI as the default mode, or typing without sending does not itself submit an AI prompt. Local Search remains local. AI does not automatically attach files, clipboard contents, or screen captures; anything you paste and send becomes part of the submitted message. Restored conversations may include provider-specific Gemini response metadata used to continue that conversation.
+
+The selected provider receives your submitted content, authentication information, IP address, and ordinary HTTP metadata. Its retention, training, international processing, and account controls depend on its current policies and your service tier or account settings. Local encryption does not prevent the provider from processing submitted content. Review [OpenAI's policies](https://openai.com/policies/), [Gemini API terms](https://ai.google.dev/gemini-api/terms), [Anthropic's commercial terms](https://www.anthropic.com/legal/commercial-terms), and [DeepSeek's privacy policy](https://platform.deepseek.com/downloads/DeepSeek%20Privacy%20Policy.html) before sending sensitive information.
+
+The usage display holds provider-reported data in memory: latest-request token counts, rate-limit quota snapshots from supported OpenAI/Claude response headers, and DeepSeek balance results obtained on request. It is not an account-wide usage ledger or monthly budget. Unknown values are hidden; interrupted responses may have incomplete counts. These usage snapshots are not persisted to chat history. To avoid AI network requests, do not send AI messages or request a balance refresh; other privacy switches do not disable an explicitly submitted AI request.
 
 ## 5. Local Data Storage
 
@@ -215,7 +234,7 @@ All persistent data created by V-Notch lives exclusively on your local device.
 
 ### 5.1 Settings (`%APPDATA%\V-Notch\settings.json`)
 
-Stores your preferences: notch size and position, visual style and Liquid Glass options, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. Both values are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and are protected for the Windows user by DPAPI, subject to the security of that account and operating system. If DPAPI is unavailable, these sensitive values are not saved.
+Stores your preferences: notch size and position, visual style and Liquid Glass options, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. These credentials, including optional AI provider keys (§5.6), are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and are protected for the Windows user by DPAPI, subject to the security of that account and operating system. If DPAPI is unavailable, these sensitive values are not saved.
 
 ### 5.2 Spotlight Usage History (`%APPDATA%\V-Notch\spotlight-usage.json`)
 
@@ -237,6 +256,16 @@ To remove application-managed local data, close V-Notch, disconnect Spotify with
 
 ---
 
+### 5.6 Spotlight AI Keys and Conversation History
+
+AI provider keys are stored in `%APPDATA%\V-Notch\settings.json` using Windows DPAPI for the current Windows user. They are excluded from settings exports, and importing settings does not replace your local AI keys. Settings also store provider/model choices, default Spotlight mode, and reveal speed. Rolling settings backups may retain older encrypted keys; removing a key from current settings does not revoke it or erase those backups. Revoke a compromised or unwanted key in the provider's dashboard.
+
+AI history is stored separately at `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. The encrypted file contains saved conversations, provider/model identifiers, drafts, timestamps, message contents, incomplete-response markers, and any saved Gemini response metadata. An encrypted temporary file may exist during saving. Windows DPAPI encrypts the history for the current Windows user; if existing history cannot be decrypted, the app preserves it instead of overwriting it. No automatic age-based expiry is configured.
+
+Deleting a conversation rewrites local history when saving succeeds. Starting a new chat does not delete previous chats, and clearing Spotlight launch history does not clear AI conversations. Local deletion is not secure erasure and does not remove operating-system backups or provider-held records. After closing the app, you can remove the history file and any associated temporary copy to clear that local store. Include this separate directory when reviewing local data under §11.
+
+DPAPI protects data at rest, not against software running as you or a compromised account/device. Keys and chat contents must be available in memory while used. This is not end-to-end encryption against the AI provider. AI diagnostic messages are designed to record provider/status/error type rather than prompts or raw provider error bodies; credential redaction is a safeguard, not a guarantee that every diagnostic file is free of sensitive information.
+
 ## 6. Data V-Notch Does NOT Collect
 
 V-Notch does **not**:
@@ -248,7 +277,7 @@ V-Notch does **not**:
 - access precise device GPS location;
 - create user accounts, profiles, or advertising identifiers;
 - store or upload clipboard contents;
-- send local Spotlight search queries or file index data over any network.
+- send local Spotlight Search queries or file index data over a network; explicitly submitted AI messages are a separate feature (§4.8).
 
 ---
 
@@ -274,7 +303,8 @@ V-Notch does **not**:
 
 V-Notch provides a dedicated **Privacy** section in Settings with granular toggles to customize your privacy posture and enforce strict offline execution:
 
-- **Strict Local-Only Mode:** An application-level switch intended to prevent outbound network requests initiated by V-Notch modules (automatic update checks, online album art scrapers, lyrics/subtitle lookups, Spotify Canvas video fetches, and online weather queries). This is not a guarantee about operating-system services, third-party runtimes or other applications; verify operation using network monitoring against the released build.
+- **Spotlight AI:** Delete saved chats from AI history and remove keys in Spotlight settings. These controls are separate from clearing launcher history. Provider records and key revocation require provider controls (§5.6).
+- **Strict Local-Only Mode:** An application-level switch intended to prevent outbound network requests initiated by V-Notch modules (automatic update checks, online album art scrapers, lyrics/subtitle lookups, Spotify Canvas video fetches, and online weather queries). This switch does not gate explicitly submitted Spotlight AI requests or balance refreshes (§4.8). This is not a guarantee about operating-system services, third-party runtimes or other applications; verify operation using network monitoring against the released build.
 - **Automatic update checks:** Toggle periodic background checks against GitHub Releases.
 - **Online album artwork lookup:** Toggle querying YouTube, SoundCloud, or Piped for album art when the active player provides no embedded cover.
 - **Online synced lyrics lookup:** Toggle fetching synced lyrics from LRCLIB and lrc mux for now-playing songs.
@@ -288,7 +318,7 @@ V-Notch provides a dedicated **Privacy** section in Settings with granular toggl
 
 ## 9. Security
 
-V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). The documented sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). The documented sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key, and AI provider keys) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 ---
 

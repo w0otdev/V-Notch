@@ -131,19 +131,20 @@
 
 ## Usage
 
-| Action                     | Result                        |
-| -------------------------- | ----------------------------- |
-| Hover                      | Expand the notch              |
-| Click                      | Toggle pill / expanded view   |
-| Middle click               | Play / pause media            |
-| Scroll down                | Switch to file shelf          |
-| Scroll up                  | Switch back to media controls |
-| Swipe left / right         | Previous / next track         |
-| Swipe down                 | Open file shelf               |
-| `Alt + Space`              | Open or close Spotlight       |
-| `Up` / `Down` in Spotlight | Move through results          |
-| `Enter`                    | Launch selected item          |
-| `Esc`                      | Close Spotlight               |
+| Action                     | Result                                              |
+| -------------------------- | --------------------------------------------------- |
+| Hover                      | Expand the notch                                    |
+| Click                      | Toggle pill / expanded view                         |
+| Middle click               | Play / pause media                                  |
+| Scroll down                | Switch to file shelf                                |
+| Scroll up                  | Switch back to media controls                       |
+| Swipe left / right         | Previous / next track                               |
+| Swipe down                 | Open file shelf                                     |
+| `Alt + Space`              | Open or close Spotlight                             |
+| `Up` / `Down` in Spotlight | Move through results                                |
+| `Tab` in Spotlight         | Switch between Search and AI                        |
+| `Enter`                    | Launch selected item or send an AI message          |
+| `Esc`                      | Stop an AI response, leave AI mode, or close Search |
 
 <details>
 <summary><strong>File shelf actions</strong></summary>
@@ -157,6 +158,12 @@
 | `Delete`        | Remove selected files        |
 
 </details>
+
+### Spotlight AI
+
+In **Settings → Spotlight**, choose a default opening mode (Search or AI). Press `Alt + Space` to open Spotlight and `Tab` to switch modes.
+Opening AI mode does not send a request; sending a message transmits it and recent conversation context directly to the selected provider.
+API keys are encrypted in local settings with Windows DPAPI and excluded from settings exports. AI conversations are also encrypted locally; see the [Privacy Policy](PRIVACY_POLICY.md#48-spotlight-ai-opt-in) for storage, recipients, and deletion details.
 
 <div id="installation"></div>
 
@@ -182,15 +189,19 @@ Open the Actions tab, select Release Installer, and click Run workflow. Choose `
 
 V-Notch does not collect telemetry or analytics, or track you. It makes network requests to the following services:
 
-| Service               | Purpose                                                               |
-| --------------------- | --------------------------------------------------------------------- |
-| GitHub Releases API   | Update checks                                                         |
-| LRCLIB / lrc mux      | Synced lyrics                                                         |
-| YouTube / SoundCloud  | Public thumbnails and captions                                        |
-| Spotify Web Services  | Optional Canvas backgrounds; credentials encrypted with Windows DPAPI |
-| Open-Meteo / ipwho.is | Optional weather                                                      |
+| Service                                              | Purpose                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| GitHub Releases API                                  | Update checks                                                                      |
+| LRCLIB / lrc mux                                     | Synced lyrics                                                                      |
+| YouTube / SoundCloud                                 | Public thumbnails and captions                                                     |
+| Spotify Web Services                                 | Optional Canvas backgrounds; credentials encrypted with Windows DPAPI              |
+| Open-Meteo / ipwho.is                                | Optional weather                                                                   |
+| OpenAI / Google Gemini / Anthropic Claude / DeepSeek | Optional AI messages and conversation context; DeepSeek balance refresh on request |
 
-All settings and caches are stored locally at `%APPDATA%\V-Notch\`.
+Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted AI chat history is stored separately at `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. Other component caches and temporary files are described in the Privacy Policy. Local Spotlight Search does not upload queries; Spotlight AI sends the content you submit to your selected provider.
+
+> [!NOTE]
+> **API Key Safety:** User-provided API credentials (OpenAI, Gemini, Claude, DeepSeek, YouTube) are encrypted locally with Windows DPAPI. V-Notch maintains no intermediary servers. Maintainers assume no liability for third-party billing, quota exhaustion, or credentials leaked from user environments or pre-release testing builds. Please configure spending caps on your provider accounts.
 
 Privacy dots use capture reports from Windows and recording signals from Bandicam, OBS Studio, and FFmpeg. See [recording detection coverage and limitations](RECORDING_DETECTION.md).
 

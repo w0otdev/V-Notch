@@ -1,6 +1,6 @@
 # V-Notch — Điều khoản sử dụng
 
-**Ngày hiệu lực:** 22 tháng 9 năm 2026  
+**Ngày hiệu lực:** 2 tháng 10 năm 2026  
 **Người duy trì:** rainaku  
 **Dự án:** https://github.com/rainaku/V-Notch  
 **Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 1.9.3; phải đối chiếu với bản nhị phân thực tế phát hành.
@@ -35,6 +35,22 @@ File Shelf quản lý tham chiếu đường dẫn tệp; đường dẫn có th
 
 Không nội dung nào ở đây cho phép truy cập tài khoản trái phép, vượt cơ chế bảo vệ bất hợp pháp hoặc vi phạm bản quyền; tuy nhiên không thu hẹp quyền tương tác hợp pháp hoặc quyền sử dụng mã được cấp phép.
 
+### 4.1 Spotlight AI và tài khoản API của bạn
+
+Spotlight AI là tính năng tùy chọn, kết nối trực tiếp đến OpenAI, Google Gemini, Anthropic Claude hoặc DeepSeek bằng khóa API và model bạn chọn. Bạn phải có quyền sử dụng tài khoản đó và tuân thủ điều khoản, điều kiện sử dụng và chính sách của nhà cung cấp. V-Notch không bán tín dụng API và không bao gồm gói thuê bao của nhà cung cấp. Phí, hạn mức và model khả dụng do nhà cung cấp quyết định; dừng phản hồi không đảm bảo việc xử lý hoặc tính phí dừng ngay lập tức.
+
+Khi bạn gửi tin nhắn, ứng dụng gửi nội dung cùng ngữ cảnh hội thoại gần đây tới nhà cung cấp đã chọn như mô tả trong Chính sách quyền riêng tư. Chỉ gửi nội dung bạn có quyền chia sẻ. Nhà phát triển không nhận quyền sở hữu đối với câu hỏi hoặc phản hồi của bạn thông qua Điều khoản này; quyền của bên thứ ba và điều khoản nhà cung cấp vẫn áp dụng. Phản hồi AI có thể sai hoặc thiếu. Hãy kiểm tra trước khi sử dụng, đặc biệt với tư vấn chuyên môn, lệnh máy tính hoặc quyết định có hậu quả đáng kể.
+
+Thanh usage chỉ cung cấp thông tin tại một thời điểm, không phải hóa đơn hay công cụ giới hạn chi tiêu. Token là số liệu của yêu cầu gần nhất khi được cung cấp; quota từ header phản hồi là hạn mức tốc độ. Truy vấn số dư hiện chỉ hỗ trợ DeepSeek. Thông tin thiếu được ẩn và phản hồi bị ngắt có thể không có số liệu đầy đủ. Bảng điều khiển của nhà cung cấp là nguồn chính thức về thanh toán và mức sử dụng tài khoản.
+
+Khóa và lịch sử chat được bảo vệ cục bộ bằng Windows DPAPI, phụ thuộc vào bảo mật thiết bị và tài khoản. Xóa khóa cục bộ không thu hồi khóa; xóa hội thoại cục bộ không xóa bản ghi phía nhà cung cấp. Hãy dùng công cụ tài khoản của nhà cung cấp để thu hồi khóa hoặc yêu cầu xử lý dữ liệu họ giữ. Tham khảo quy định của [OpenAI](https://openai.com/policies/), [Gemini](https://ai.google.dev/gemini-api/terms), [Anthropic](https://www.anthropic.com/legal/commercial-terms) và [DeepSeek](https://platform.deepseek.com/).
+
+**Tuyên bố miễn trừ trách nhiệm về khóa API (Bản Pre-release và Release chính thức):**
+Mọi khóa API (bao gồm YouTube Data API, OpenAI, Gemini, Claude, DeepSeek) hoặc thông tin xác thực do bạn nhập vào đều được mã hóa và lưu trữ cục bộ trên máy của bạn (DPAPI). V-Notch không vận hành máy chủ trung gian và không thu thập hay lưu trữ các khóa này.
+- **Đối với các bản phát hành thử nghiệm (Pre-release, Alpha, Beta, Nightly, Canary):** Đây là các bản dựng phục vụ mục đích kiểm thử, có thể chứa mã gỡ lỗi (debug symbols), cơ chế ghi log chi tiết hoặc lỗi phần mềm chưa hoàn thiện. Bạn hoàn toàn tự chịu rủi ro khi cài đặt và sử dụng các bản thử nghiệm này.
+- **Miễn trừ trách nhiệm về rò rỉ khóa và chi phí phát sinh:** Trong phạm vi tối đa mà pháp luật cho phép, nhà phát triển và những người đóng góp (contributors) được miễn trừ hoàn toàn khỏi mọi trách nhiệm pháp lý, khiếu nại hoặc bồi thường thiệt hại đối với: (a) chi phí sử dụng dịch vụ vượt hạn mức (quota overage / billing charges) do khóa bị sử dụng ngoài ý muốn; (b) việc khóa API bị lộ do phần mềm độc hại, mã gián điệp, chia sẻ công khai tệp log/cấu hình/ảnh chụp màn hình/video của người dùng; (c) việc trích xuất bộ nhớ từ tài khoản máy tính bị xâm phạm; hoặc (d) các bản phân phối đã bị chỉnh sửa (forks/modifications) không chính thức.
+- **Trách nhiệm của người dùng:** Bạn có trách nhiệm tự bảo vệ tài khoản API bằng cách thiết lập hạn mức chi tiêu/tốc độ (usage/spending limits) tại bảng điều khiển của nhà cung cấp và lập tức thu hồi (revoke) khóa nếu phát hiện hoặc nghi ngờ bị rò rỉ.
+
 ## 5. Cập nhật, nguồn phân phối và tính toàn vẹn
 
 Khi bật, ứng dụng có thể kiểm tra GitHub Releases. Việc tải/chạy bản cập nhật cần thao tác người dùng như Chính sách bảo mật mô tả. Tài liệu gốc nêu xác thực signed manifest từ v1.9.2, nhưng điều đó không chứng minh mọi bản cũ, tải thủ công, bản mirror, quy trình build hoặc fork đều được xác thực. Kiểm tra đúng kho chính thức và bộ cài; Windows SmartScreen hoặc antivirus có cơ chế cảnh báo riêng. Không giả danh bản chỉnh sửa là bản chính thức. Nhà phát triển có thể thay đổi, tạm ngưng hoặc ngừng duy trì dự án; không mặc nhiên cam kết lịch hỗ trợ và bản vá nếu không có thỏa thuận riêng. Các nghĩa vụ bắt buộc theo luật vẫn được giữ nguyên.
@@ -53,7 +69,7 @@ Trong giới hạn pháp luật cho phép, phần mềm được cung cấp **"N
 
 ## 9. Giới hạn trách nhiệm và bồi thường
 
-Trong phạm vi pháp luật cho phép, nhà phát triển/người đóng góp không chịu các thiệt hại gián tiếp, ngẫu nhiên, đặc biệt, mang tính trừng phạt hoặc hệ quả khi những dạng thiệt hại đó được phép loại trừ. Việc mô tả tích hợp không khiến nhà phát triển mặc nhiên chịu trách nhiệm cho mọi sự cố của nền tảng độc lập hoặc hành vi của người khác. **Không loại trừ trách nhiệm về gian lận, hành vi cố ý, sơ suất nghiêm trọng khi luật cấm loại trừ, tử vong/thương tích khi luật cấm loại trừ, vi phạm nghĩa vụ bảo vệ dữ liệu/bảo vệ người tiêu dùng bắt buộc hoặc trách nhiệm không thể loại trừ khác.** Không áp dụng mức trần trách nhiệm bằng 0 chỉ vì ứng dụng miễn phí. Trách nhiệm và giới hạn có hiệu lực (nếu có) được xác định từ luật và sự kiện thực tế.
+Trong phạm vi pháp luật cho phép, nhà phát triển/người đóng góp không chịu các thiệt hại gián tiếp, ngẫu nhiên, đặc biệt, mang tính trừng phạt hoặc hệ quả khi những dạng thiệt hại đó được phép loại trừ (bao gồm nhưng không giới hạn ở: chi phí hóa đơn API bên thứ ba, cạn kiệt số dư tài khoản, tổn thất do lộ mã xác thực trên môi trường người dùng hoặc các sự cố phát sinh từ việc thử nghiệm các bản pre-release). Việc mô tả tích hợp không khiến nhà phát triển mặc nhiên chịu trách nhiệm cho mọi sự cố của nền tảng độc lập hoặc hành vi của người khác. **Không loại trừ trách nhiệm về gian lận, hành vi cố ý, sơ suất nghiêm trọng khi luật cấm loại trừ, tử vong/thương tích khi luật cấm loại trừ, vi phạm nghĩa vụ bảo vệ dữ liệu/bảo vệ người tiêu dùng bắt buộc hoặc trách nhiệm không thể loại trừ khác.** Không áp dụng mức trần trách nhiệm bằng 0 chỉ vì ứng dụng miễn phí. Trách nhiệm và giới hạn có hiệu lực (nếu có) được xác định từ luật và sự kiện thực tế.
 
 Nếu bên thứ ba khiếu nại do bạn cố ý mạo danh bản chính thức trái phép hoặc vi phạm nghiêm trọng quyền sở hữu trí tuệ thông qua bản phân phối do bạn kiểm soát, bạn có thể phải chịu các tổn thất hợp pháp được xác định do hành vi của mình gây ra. Đây **không** phải nghĩa vụ bồi thường vô điều kiện cho mọi hành vi sử dụng thông thường, lỗi của nhà phát triển, hành động của nền tảng hay cáo buộc không do bạn gây ra. Nghĩa vụ theo giấy phép bên thứ ba, nếu có, được điều chỉnh riêng.
 
@@ -81,4 +97,4 @@ Nếu một phần vô hiệu, chỉ phần đó không áp dụng trong giới 
 
 Kho chính thức: https://github.com/rainaku/V-Notch  
 Liên hệ chung: https://github.com/rainaku/V-Notch/issues (công khai; không đăng thông tin bí mật).  
-Có hiệu lực từ 22/09/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.
+Có hiệu lực từ 02/10/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.

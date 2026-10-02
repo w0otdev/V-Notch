@@ -1,6 +1,6 @@
 # V-Notch — Terms of Use
 
-**Effective date:** September 22, 2026  
+**Effective date:** October 2, 2026  
 **Maintainer:** rainaku  
 **Project:** https://github.com/rainaku/V-Notch  
 **Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 1.9.3; confirm the version of the actual released binary.
@@ -35,6 +35,22 @@ Optional media artwork, lyrics, subtitles, weather and updates may connect direc
 
 **No circumvention:** Neither these Terms nor the open-source grant authorizes unlawful account access, security circumvention or copyright infringement. This statement does not narrow lawful interoperability rights or the separate rights granted by applicable software licenses.
 
+### 4.1 Spotlight AI and your API account
+
+Spotlight AI is optional and connects directly to OpenAI, Google Gemini, Anthropic Claude, or DeepSeek using your own API key and selected model. You must be authorized to use that account and comply with the provider's applicable terms, eligibility requirements, and usage policies. V-Notch does not sell API credits or include a provider subscription. Provider charges, account limits, and model availability are determined by that provider; stopping a response does not guarantee that processing or billing stops immediately.
+
+When you send a message, the app sends your prompt and recent conversation context to the selected provider as described in the Privacy Policy. Submit only content you are entitled to share. The maintainer claims no ownership of your prompts or responses through these Terms; third-party rights and provider terms still apply. AI output may be inaccurate or incomplete. Review it before acting, especially for professional advice, commands, or decisions with significant consequences.
+
+Usage indicators are informational snapshots, not billing statements or spending caps. Token counts refer to the latest request when supplied; available quota headers describe rate limits. Balance retrieval currently supports DeepSeek only. Missing information is hidden, and interrupted responses may have incomplete usage. Your provider's dashboard is the authoritative source for billing and account usage.
+
+Keys and chat history are protected locally with Windows DPAPI, subject to device and account security. Deleting a local key does not revoke it; deleting a local conversation does not delete provider records. Use the provider's account controls for revocation and provider-held data requests. Provider rules are available through [OpenAI](https://openai.com/policies/), [Gemini](https://ai.google.dev/gemini-api/terms), [Anthropic](https://www.anthropic.com/legal/commercial-terms), and [DeepSeek](https://platform.deepseek.com/).
+
+**API Key Disclaimer and Limitation of Liability (Pre-release and Official Releases):**
+All API keys (including YouTube Data API, OpenAI, Google Gemini, Anthropic Claude, and DeepSeek) or authentication credentials provided by you are encrypted and stored strictly locally on your machine via Windows DPAPI. V-Notch maintains no intermediary servers, analytics, or telemetry regarding these credentials.
+- **Pre-release & Experimental Builds (Pre-release, Alpha, Beta, Nightly, Canary):** These versions are distributed exclusively for testing and debugging. They may contain verbose debug logging, diagnostic dumps, or unvetted experimental code. You test and use pre-release builds entirely at your own risk.
+- **Disclaimer of Key Leakage & Financial Liability:** To the maximum extent permitted by applicable law, the maintainer and contributors are fully disclaimed from any liability, claims, or damages arising from: (a) unexpected provider billing charges, credit depletion, or quota exhaustion; (b) credentials exposed via user-side malware, spyware, screen-sharing, or public sharing of log files, settings dumps, or screenshots; (c) memory scraping or local system compromise; or (d) unauthorized third-party distributions or modified forks.
+- **User Obligation:** You bear sole responsibility for securing your API accounts by configuring spending limits and rate ceilings within your provider's developer console, and revoking any exposed or compromised keys immediately.
+
 ## 5. Updates and distribution integrity
 
 The app may check GitHub Releases for updates if enabled. Downloads/installation require user action as described in the Privacy Policy. The supplied documentation reports signed-manifest verification starting with v1.9.2, but this statement does not prove that every historic binary, manual download, mirror, build pipeline or third-party fork is authenticated. Verify the official repository and installer; Windows SmartScreen and antivirus may provide separate warnings. Do not misrepresent modified builds as official. The maintainer may change, suspend or discontinue future maintenance; no continuing support service or security-update schedule is promised unless separately agreed. This does not waive any duty imposed by applicable law.
@@ -53,7 +69,7 @@ To the fullest extent legally permitted, material provided by the maintainer is 
 
 ## 9. Liability and indemnification
 
-To the maximum extent allowed by applicable law, the maintainer and contributors are not liable for indirect, incidental, special, exemplary or consequential losses arising from use of official distributions, where exclusion of these categories is legally permitted. The maintainer does not assume responsibility for independent provider outages or another party's acts solely by describing integration. **This does not exclude liability for fraud, deliberate misconduct, gross negligence where exclusion is forbidden, death/personal injury where exclusion is forbidden, violation of mandatory data-protection or consumer rights, or any liability that applicable law makes non-excludable.** There is no claim that liability is automatically zero merely because the software is free. Any enforceable liability limits must be determined by the governing law and circumstances; these Terms set no blanket zero-currency cap.
+To the maximum extent allowed by applicable law, the maintainer and contributors are not liable for indirect, incidental, special, exemplary or consequential losses arising from use of official distributions, where exclusion of these categories is legally permitted (including, without limitation, third-party API billing charges, quota depletion, credentials exposed in user environments, or liabilities stemming from testing pre-release software). The maintainer does not assume responsibility for independent provider outages or another party's acts solely by describing integration. **This does not exclude liability for fraud, deliberate misconduct, gross negligence where exclusion is forbidden, death/personal injury where exclusion is forbidden, violation of mandatory data-protection or consumer rights, or any liability that applicable law makes non-excludable.** There is no claim that liability is automatically zero merely because the software is free. Any enforceable liability limits must be determined by the governing law and circumstances; these Terms set no blanket zero-currency cap.
 
 For a third-party claim caused by your intentional unlawful impersonation of the official project or your material infringement through a redistribution under your control, you may be responsible for losses legally attributable to your conduct as determined by applicable law. This provision is **not** a blanket duty to defend or indemnify the maintainer for ordinary use, the maintainer's negligence, a platform's actions or allegations not caused by your conduct. Nothing alters third-party license indemnity provisions, if any.
 
@@ -81,4 +97,4 @@ If a provision is unenforceable, only the affected part is disregarded to the ex
 
 Official repository: https://github.com/rainaku/V-Notch  
 General contact: https://github.com/rainaku/V-Notch/issues (public; do not share secrets).  
-Effective September 22, 2026. Review earlier versions using repository history. This document is a project publication draft, not a representation of legal counsel's approval or audited binary behavior.
+Effective October 2, 2026. Review earlier versions using repository history. This document is a project publication draft, not a representation of legal counsel's approval or audited binary behavior.

@@ -1,9 +1,9 @@
 # Chính Sách Bảo Mật — V-Notch
 
-**Ngày hiệu lực:** 22 tháng 9 năm 2026  
-**Bản công bố trước:** 9 tháng 9 năm 2026
+**Ngày hiệu lực:** 2 tháng 10 năm 2026  
+**Bản công bố trước:** 22 tháng 9 năm 2026
 
-**Phiên bản ứng dụng:** 1.9.3
+**Phạm vi:** Mã nguồn hiện tại ngày 2 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
 
 **Nhà phát triển:** rainaku  
 **Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -16,11 +16,11 @@ V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows
 
 Chính sách bảo mật này giải thích chi tiết: chính xác dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh đúng hành vi thực tế của mã nguồn, vốn được công khai hoàn toàn để kiểm tra tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
-**Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Theo tài liệu hiện có, các yêu cầu mạng ra ngoài phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật, lấy ảnh bìa / lời bài hát / phụ đề / Spotify Canvas cho bài hát bạn đang phát, và — nếu bạn chủ động bật — hiển thị dự báo thời tiết. Tất cả được mô tả chi tiết trong Mục 4.
+**Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Theo tài liệu hiện có, các yêu cầu mạng ra ngoài phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật, lấy ảnh bìa / lời bài hát / phụ đề / Spotify Canvas cho bài hát bạn đang phát, và — nếu bạn chủ động bật — hiển thị dự báo thời tiết. Spotlight AI tùy chọn gửi tin nhắn và ngữ cảnh hội thoại tới nhà cung cấp bạn chọn, đồng thời có thể tra cứu số dư DeepSeek khi bạn yêu cầu. Tất cả được mô tả chi tiết trong Mục 4.
 
 Chính sách bảo mật này cần được đọc cùng với [Điều Khoản Dịch Vụ](TERMS_OF_SERVICE_VI.md) của chúng tôi, văn bản điều chỉnh việc sử dụng ứng dụng nói chung, bao gồm các tuyên bố miễn trừ trách nhiệm, giới hạn trách nhiệm pháp lý, và luật áp dụng cùng quy trình giải quyết tranh chấp áp dụng cho cả hai văn bản này.
 
-Tài liệu này mô tả hoạt động của chính ứng dụng, không cam kết rằng trang web độc lập, thành phần hệ điều hành, WebView, CDN hoặc các bản dựng do người khác sửa đổi không xử lý dữ liệu. Thông tin phiên bản 1.9.3 phải được đối chiếu với bản phát hành thực tế.
+Tài liệu này mô tả hoạt động của chính ứng dụng, không cam kết rằng trang web độc lập, thành phần hệ điều hành, WebView, CDN hoặc các bản dựng do người khác sửa đổi không xử lý dữ liệu. Cần đối chiếu tính năng và hành vi với bản cài đặt thực tế.
 
 Chính sách này dùng các thuật ngữ sau:
 - **"Cục bộ"** — dữ liệu ở lại trên máy của bạn và không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ.
@@ -40,6 +40,7 @@ Chính sách này dùng các thuật ngữ sau:
 | **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có — Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
 | **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có — `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
 | **Kiểm tra & tải cập nhật** | Chỉ header HTTP tiêu chuẩn | Có — GitHub Releases API | Thông tin phiên bản trong bộ nhớ; bộ cài tải vào thư mục tạm khi cập nhật |
+| **Spotlight AI (tùy chọn)** | Tin nhắn gửi, ngữ cảnh gần đây, khóa API, model | Có — nhà cung cấp AI được chọn (§4.8) | Khóa và lịch sử chat mã hóa cục bộ (§5.6) |
 | **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (Windows Search / Everything), biểu thức toán | Không | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
 | **Chụp nền hiệu ứng Liquid Glass** | Pixel màn hình ngay dưới vùng notch (DXGI / Magnification API) | Không | Không (xử lý theo từng frame trên GPU/CPU và giải phóng ngay) |
 | **Giám sát phần cứng hệ thống** | Tỷ lệ dùng CPU, mức RAM, tải GPU (Windows performance counters / DXGI) | Không | Không (tạm thời trong bộ nhớ) |
@@ -84,7 +85,7 @@ V-Notch tích hợp trình tìm kiếm Spotlight cho phép bạn tìm ứng dụ
 - **Máy tính số học tích hợp** — Tính toán các biểu thức số học và đại số trực tiếp trên máy bằng MathNet.Numerics.
 - **Bảng xếp hạng tần suất khởi chạy** — Để hiển thị nhanh các mục bạn hay mở, V-Notch lưu một tệp xếp hạng cục bộ (`%APPDATA%\V-Notch\spotlight-usage.json`) chứa ID mục, tên, số lần mở và thời gian gần nhất (giới hạn tối đa 100 mục).
 
-**Toàn bộ quá trình tìm kiếm, truy vấn, đường dẫn tệp, kết quả và phép tính chạy 100% cục bộ trên máy tính của bạn.** Không có từ khóa tìm kiếm hay dữ liệu chỉ mục nào được gửi tới bất kỳ máy chủ bên ngoài nào.
+**Spotlight Search xử lý truy vấn ứng dụng/tệp và phép tính cục bộ.** Chế độ AI riêng biệt gửi tin nhắn bạn chủ động gửi và ngữ cảnh hội thoại như mô tả tại §4.8.
 
 ### 3.4 Hiệu ứng Liquid Glass & Chụp nền màn hình
 
@@ -209,9 +210,27 @@ Cả hai dịch vụ trên đều là bên thứ ba độc lập với chính s�
 
 ### 4.7 Các bên thứ ba
 
-Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Piped/Invidious, SoundCloud, LRCLIB, ipwho.is, và Open-Meteo) là các bên thứ ba độc lập với chính sách bảo mật riêng của họ. Khi V-Notch liên hệ với họ, địa chỉ IP của bạn tất yếu sẽ hiển thị với dịch vụ đó, như với mọi yêu cầu web thông thường. V-Notch không kiểm soát hoạt động độc lập của các dịch vụ này; trách nhiệm pháp lý của từng bên phụ thuộc pháp luật và hoàn cảnh thực tế. Nếu muốn tránh các tra cứu này, bạn có thể tắt các tính năng ảnh bìa/lời bài hát/phụ đề/Canvas/thời tiết và kiểm tra cập nhật, hoặc chặn truy cập mạng của ứng dụng qua tường lửa.
+Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Piped/Invidious, SoundCloud, LRCLIB, ipwho.is, và Open-Meteo) là các bên thứ ba độc lập với chính sách bảo mật riêng của họ. Khi V-Notch liên hệ với họ, địa chỉ IP của bạn tất yếu sẽ hiển thị với dịch vụ đó, như với mọi yêu cầu web thông thường. V-Notch không kiểm soát hoạt động độc lập của các dịch vụ này; trách nhiệm pháp lý của từng bên phụ thuộc pháp luật và hoàn cảnh thực tế. Nếu muốn tránh các tra cứu này, bạn có thể tắt các tính năng ảnh bìa/lời bài hát/phụ đề/Canvas/thời tiết và kiểm tra cập nhật, không gửi tin nhắn AI hoặc làm mới số dư (§4.8), hoặc chặn truy cập mạng của ứng dụng qua tường lửa.
 
 ---
+
+### 4.8 Spotlight AI (Tùy chọn)
+
+Khi bạn gửi tin nhắn AI, V-Notch gửi nội dung, ngữ cảnh hội thoại gần đây và model đã chọn trực tiếp qua HTTPS tới nhà cung cấp. Khóa API được gửi trong header xác thực. Yêu cầu AI không đi qua máy chủ V-Notch và client này không tự động đi theo chuyển hướng HTTP.
+
+| Nhà cung cấp | Địa chỉ API | Mục đích |
+| --- | --- | --- |
+| OpenAI | `api.openai.com/v1/chat/completions` | Phản hồi AI |
+| Google Gemini | `generativelanguage.googleapis.com/v1beta/models/…` | Phản hồi AI |
+| Anthropic Claude | `api.anthropic.com/v1/messages` | Phản hồi AI |
+| DeepSeek | `api.deepseek.com/chat/completions` | Phản hồi AI |
+| DeepSeek | `api.deepseek.com/user/balance` | Tra cứu số dư khi bạn yêu cầu làm mới |
+
+Mở Spotlight, chọn AI làm chế độ mặc định hoặc nhập chữ mà chưa gửi không tự gửi câu hỏi AI. Chế độ Search vẫn xử lý cục bộ. AI không tự đính kèm tệp, clipboard hay ảnh màn hình; nội dung bạn dán rồi gửi sẽ trở thành một phần tin nhắn. Hội thoại được mở lại có thể bao gồm metadata phản hồi riêng của Gemini để tiếp tục cuộc trò chuyện.
+
+Nhà cung cấp được chọn nhận nội dung gửi, thông tin xác thực, địa chỉ IP và metadata HTTP thông thường. Việc lưu giữ, huấn luyện, xử lý quốc tế và các quyền kiểm soát tài khoản phụ thuộc chính sách hiện hành, gói dịch vụ hoặc cài đặt tài khoản của họ. Mã hóa cục bộ không ngăn nhà cung cấp xử lý nội dung đã gửi. Trước khi gửi thông tin nhạy cảm, hãy xem [chính sách OpenAI](https://openai.com/policies/), [điều khoản Gemini API](https://ai.google.dev/gemini-api/terms), [điều khoản thương mại Anthropic](https://www.anthropic.com/legal/commercial-terms) và [chính sách quyền riêng tư DeepSeek](https://platform.deepseek.com/downloads/DeepSeek%20Privacy%20Policy.html).
+
+Thanh usage giữ số liệu do nhà cung cấp trả về trong bộ nhớ: token của yêu cầu gần nhất, quota tốc độ tại thời điểm phản hồi từ header OpenAI/Claude được hỗ trợ và số dư DeepSeek khi bạn yêu cầu tra cứu. Đây không phải tổng sử dụng tài khoản hay ngân sách tháng. Thông tin không có được ẩn; phản hồi bị ngắt có thể thiếu số liệu. Các số liệu này không được lưu vào lịch sử chat. Để tránh yêu cầu mạng AI, không gửi tin nhắn AI hoặc làm mới số dư; các nút quyền riêng tư khác không chặn yêu cầu AI bạn chủ động gửi.
 
 ## 5. Lưu trữ dữ liệu cục bộ
 
@@ -219,7 +238,7 @@ Toàn bộ dữ liệu lưu trữ lâu dài do V-Notch tạo ra chỉ nằm duy 
 
 ### 5.1 Cài đặt (`%APPDATA%\V-Notch\settings.json`)
 
-Lưu các tùy chọn của bạn: kích thước và vị trí notch, kiểu giao diện và tùy chỉnh Liquid Glass, bật/tắt thông báo, ngôn ngữ, hành vi khởi động cùng Windows, đường dẫn tệp trong File Shelf và các cờ tính năng. Tệp cài đặt có thể chứa YouTube API key nếu bạn tự cung cấp và phiên Spotify nếu bạn chọn Kết nối Spotify. Cả hai giá trị nhạy cảm này đều được mã hóa bằng Windows DPAPI (Data Protection API) trước khi ghi xuống đĩa, gắn chặt với tài khoản người dùng Windows hiện tại và không thể bị giải mã bởi người dùng khác hoặc trên máy tính khác. Nếu DPAPI không khả dụng, các giá trị nhạy cảm này sẽ không được lưu.
+Lưu các tùy chọn của bạn: kích thước và vị trí notch, kiểu giao diện và tùy chỉnh Liquid Glass, bật/tắt thông báo, ngôn ngữ, hành vi khởi động cùng Windows, đường dẫn tệp trong File Shelf và các cờ tính năng. Tệp cài đặt có thể chứa YouTube API key nếu bạn tự cung cấp và phiên Spotify nếu bạn chọn Kết nối Spotify. Các thông tin xác thực này, bao gồm khóa nhà cung cấp AI tùy chọn (§5.6), được mã hóa bằng Windows DPAPI (Data Protection API) trước khi ghi xuống đĩa cho tài khoản Windows hiện tại, phụ thuộc bảo mật tài khoản và hệ điều hành. Nếu DPAPI không khả dụng, các giá trị nhạy cảm này sẽ không được lưu.
 
 ### 5.2 Lịch sử sử dụng Spotlight (`%APPDATA%\V-Notch\spotlight-usage.json`)
 
@@ -241,6 +260,16 @@ Bạn có thể xóa toàn bộ dữ liệu đã lưu bất cứ lúc nào bằn
 
 ---
 
+### 5.6 Khóa API và lịch sử hội thoại Spotlight AI
+
+Khóa API được lưu trong `%APPDATA%\V-Notch\settings.json`, mã hóa bằng Windows DPAPI cho tài khoản Windows hiện tại. Khóa được loại khỏi bản xuất cài đặt; nhập cài đặt không thay thế khóa AI đang lưu trên máy. Cài đặt cũng lưu nhà cung cấp/model, chế độ Spotlight mặc định và tốc độ hiện chữ. Bản sao lưu cài đặt luân phiên có thể giữ khóa mã hóa cũ; xóa khóa khỏi cài đặt hiện tại không thu hồi khóa hoặc xóa các bản sao này. Hãy thu hồi khóa không còn dùng hoặc bị lộ tại bảng điều khiển nhà cung cấp.
+
+Lịch sử AI được lưu riêng tại `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. Tệp mã hóa chứa hội thoại, nhà cung cấp/model, bản nháp, thời gian cập nhật, nội dung tin nhắn, trạng thái phản hồi chưa hoàn tất và metadata Gemini đã lưu nếu có. Trong lúc lưu có thể tồn tại tệp tạm đã mã hóa. Windows DPAPI mã hóa lịch sử cho tài khoản Windows hiện tại; nếu không giải mã được lịch sử cũ, ứng dụng giữ lại thay vì ghi đè. Không có thời hạn tự động xóa theo tuổi dữ liệu.
+
+Xóa hội thoại sẽ ghi lại lịch sử cục bộ khi thao tác lưu thành công. Tạo chat mới không xóa chat cũ; xóa lịch sử khởi chạy Spotlight không xóa hội thoại AI. Xóa cục bộ không phải xóa an toàn và không xóa bản sao lưu hệ điều hành hoặc dữ liệu phía nhà cung cấp. Sau khi đóng ứng dụng, bạn có thể xóa tệp lịch sử và bản tạm liên quan để dọn kho dữ liệu này. Khi kiểm tra dữ liệu theo Mục 11, hãy kiểm tra cả thư mục riêng này.
+
+DPAPI bảo vệ dữ liệu khi lưu trên đĩa, không bảo vệ trước phần mềm chạy dưới tài khoản của bạn hoặc thiết bị/tài khoản đã bị xâm nhập. Khóa và nội dung chat phải có trong bộ nhớ khi sử dụng. Đây không phải mã hóa đầu cuối đối với nhà cung cấp AI. Nhật ký AI được thiết kế để ghi nhà cung cấp, trạng thái và loại lỗi thay vì câu hỏi hay toàn bộ nội dung lỗi từ nhà cung cấp; che thông tin xác thực là biện pháp giảm rủi ro, không đảm bảo mọi nhật ký đều không có dữ liệu nhạy cảm.
+
 ## 6. Dữ liệu mà V-Notch KHÔNG thu thập
 
 V-Notch **không được thiết kế để**:
@@ -252,7 +281,7 @@ V-Notch **không được thiết kế để**:
 - truy cập tọa độ GPS chính xác của thiết bị;
 - tạo tài khoản, hồ sơ cá nhân, hay mã định danh quảng cáo;
 - lưu trữ hoặc tải lên nội dung clipboard;
-- gửi từ khóa tìm kiếm Spotlight hay dữ liệu chỉ mục tệp qua mạng;
+- gửi từ khóa Spotlight Search hay dữ liệu chỉ mục tệp qua mạng; tin nhắn AI bạn chủ động gửi thuộc tính năng riêng (§4.8);
 - bán, cho thuê, hoặc "chia sẻ" (theo định nghĩa của CCPA/CPRA và các luật tương tự) bất kỳ thông tin cá nhân nào — trong phạm vi xác minh được đối với ứng dụng chính thức; dữ liệu bạn tự gửi tới GitHub được xử lý theo chính sách của GitHub.
 
 ---
@@ -277,9 +306,10 @@ V-Notch **không được thiết kế để**:
 
 ## 8. Quyền kiểm soát riêng tư & Chế độ ngoại tuyến
 
-V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và ép buộc chế độ ngoại tuyến hoàn toàn:
+V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và hạn chế các kết nối mạng:
 
-- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Công tắc ở cấp ứng dụng được thiết kế để chặn yêu cầu mạng do các mô-đun V-Notch khởi tạo (tự động kiểm tra bản cập nhật, tìm kiếm ảnh bìa trực tuyến, tra cứu lời bài hát/phụ đề, tải video Canvas của Spotify, và truy vấn thời tiết). Không bảo đảm chặn các kết nối do Windows, WebView, runtime hoặc ứng dụng khác tự thực hiện; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
+- **Spotlight AI:** Xóa hội thoại trong lịch sử AI và xóa khóa trong cài đặt Spotlight. Các thao tác này riêng biệt với xóa lịch sử khởi chạy. Dữ liệu phía nhà cung cấp và thu hồi khóa cần công cụ của nhà cung cấp (§5.6).
+- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Công tắc ở cấp ứng dụng được thiết kế để chặn yêu cầu mạng do các mô-đun V-Notch khởi tạo (tự động kiểm tra bản cập nhật, tìm kiếm ảnh bìa trực tuyến, tra cứu lời bài hát/phụ đề, tải video Canvas của Spotify, và truy vấn thời tiết). Công tắc này không chặn yêu cầu Spotlight AI hoặc làm mới số dư bạn chủ động gửi (§4.8). Không bảo đảm chặn các kết nối do Windows, WebView, runtime hoặc ứng dụng khác tự thực hiện; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
 - **Tự động kiểm tra bản cập nhật mới:** Bật/tắt kiểm tra định kỳ bản phát hành mới trên GitHub Releases ở chế độ nền.
 - **Tìm kiếm ảnh bìa album trực tuyến:** Bật/tắt tra cứu ảnh bìa từ YouTube, SoundCloud, Piped khi trình phát không có ảnh bìa nhúng.
 - **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ LRCLIB và lrc mux cho bài hát đang phát.
@@ -293,7 +323,7 @@ V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài �
 
 ## 9. Bảo mật
 
-V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Tất cả thông tin nhạy cảm lưu trữ (cookie `sp_dc` của Spotify, khóa YouTube API) đều được mã hóa an toàn bằng Windows DPAPI. Cập nhật trong ứng dụng từ phiên bản 1.9.2 trở đi bắt buộc xác minh manifest có chữ ký như mô tả tại Mục 4.1; cơ chế này không yêu cầu chứng chỉ Authenticode trả phí và không xác thực lần tải thủ công đầu tiên. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Các thông tin xác thực được mô tả (cookie `sp_dc` của Spotify, khóa YouTube API và khóa nhà cung cấp AI) được mã hóa bằng Windows DPAPI. Cập nhật trong ứng dụng từ phiên bản 1.9.2 trở đi bắt buộc xác minh manifest có chữ ký như mô tả tại Mục 4.1; cơ chế này không yêu cầu chứng chỉ Authenticode trả phí và không xác thực lần tải thủ công đầu tiên. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
 
 Mặc dù mã hóa DPAPI, xác minh manifest có chữ ký, và việc chạy với quyền người dùng tiêu chuẩn mang lại sự bảo vệ đáng kể, **không có phương thức lưu trữ cục bộ, mã hóa hoặc phân phối phần mềm nào có thể được đảm bảo an toàn tuyệt đối 100%.** Bạn xác nhận rằng việc sử dụng các tính năng lưu trữ, cập nhật và mạng của V-Notch là do bạn tự chịu rủi ro, phù hợp với các tuyên bố miễn trừ "NGUYÊN TRẠNG" và giới hạn trách nhiệm pháp lý trong Điều Khoản Dịch Vụ của chúng tôi.
 
@@ -331,7 +361,7 @@ V-Notch xử lý dữ liệu cục bộ trên thiết bị của bạn. Dữ li�
 
 Chính sách bảo mật này có thể được cập nhật định kỳ khi ứng dụng có thêm tính năng mới. Các thay đổi quan trọng sẽ được phản ánh chi tiết trong tài liệu này, trong changelog của ứng dụng, đồng thời cập nhật ngày hiệu lực và số phiên bản ở đầu tài liệu. Các thay đổi đáng kể sẽ được thông báo trước hoặc khi triển khai nếu khả thi; khi pháp luật yêu cầu sự đồng ý, việc tiếp tục sử dụng đơn thuần không được thay thế sự đồng ý hợp lệ. Có thể tra cứu bản cũ trong lịch sử Git.
 
-**Ghi chú sửa đổi (bản cập nhật này):** bổ sung tài liệu chi tiết cho các nút điều khiển Quyền riêng tư & Chế độ ngoại tuyến (Chế độ hoàn toàn ngoại tuyến, các tùy chọn kiểm tra cập nhật, ảnh bìa, lời bài hát, đọc URL trình duyệt, chấm cảm biến, ghi nhật ký ổ đĩa, lịch sử Spotlight và các công cụ xóa dữ liệu); thêm mục mới "Quyền riêng tư của bạn" (kiểu GDPR/CCPA); làm mềm tuyên bố tại mục Quyền riêng tư trẻ em; thêm tuyên bố miễn trừ bảo mật tuyệt đối; thêm cảnh báo về việc quét tiêu đề cửa sổ; thêm tuyên bố "không bán/chia sẻ" theo CCPA; và liên kết chéo với Điều Khoản Dịch Vụ.
+**Ghi chú sửa đổi (bản cập nhật này):** bổ sung Spotlight AI cho bốn nhà cung cấp, phạm vi dữ liệu gửi, giới hạn thông tin usage, mã hóa khóa và lịch sử chat, đường dẫn lưu trữ, cách xóa dữ liệu và giới hạn các công tắc ngoại tuyến.
 
 ---
 
