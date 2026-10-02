@@ -92,6 +92,22 @@ public class NotchSettings
     public bool EnableHelloGreeting { get; set; } = true;
 
     public bool EnableSpotlight { get; set; } = true;
+    public bool SpotlightDefaultAi { get; set; } = false;
+    public int SpotlightAiWordsPerSecond { get; set; } = 9;
+    public string SpotlightAiProvider { get; set; } = "OpenAI";
+    [JsonConverter(typeof(VNotch.Services.DpapiJsonConverter))]
+    public string SpotlightOpenAIApiKey { get; set; } = "";
+    public string SpotlightOpenAIModel { get; set; } = "";
+    [JsonConverter(typeof(VNotch.Services.DpapiJsonConverter))]
+    public string SpotlightGeminiApiKey { get; set; } = "";
+    public string SpotlightGeminiModel { get; set; } = "";
+    [JsonConverter(typeof(VNotch.Services.DpapiJsonConverter))]
+    public string SpotlightClaudeApiKey { get; set; } = "";
+    public string SpotlightClaudeModel { get; set; } = "";
+    [JsonConverter(typeof(VNotch.Services.DpapiJsonConverter))]
+    public string SpotlightDeepSeekApiKey { get; set; } = "";
+    public string SpotlightDeepSeekModel { get; set; } = "";
+
 
     public bool EnableSpotifyLyrics { get; set; } = true;
 
@@ -110,6 +126,7 @@ public class NotchSettings
     public bool CopyShelfFilesToClipboard { get; set; } = false;
 
     public bool EnableScreenshotTray { get; set; } = true;
+    public int ScreenshotTrayDurationSeconds { get; set; } = 8;
     public string ScreenshotFolders { get; set; } = string.Empty;
 
     public bool EnableWeather { get; set; } = false;

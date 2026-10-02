@@ -1,8 +1,9 @@
-<Window x:Class="VNotch.SpotlightWindow"
+﻿<Window x:Class="VNotch.SpotlightWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
         xmlns:controls="clr-namespace:VNotch.Controls"
+        xmlns:local="clr-namespace:VNotch"
         Title="V-Notch Spotlight"
         Width="768"
         Height="650"
@@ -21,9 +22,8 @@
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">
     <Window.Resources>
-        <FontFamily x:Key="SFProDisplay">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
-        <FontFamily x:Key="SFProText">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
-        <FontFamily x:Key="IconFont">Segoe MDL2 Assets</FontFamily>
+        <FontFamily x:Key="SFProDisplay">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI, Arial</FontFamily>
+        <FontFamily x:Key="SFProText">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI, Arial</FontFamily>
         <controls:SpotlightHotkeyConverter x:Key="HotkeyConverter"/>
 
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F4FFFFFF"/>
@@ -38,12 +38,148 @@
         <SolidColorBrush x:Key="SelectedItemBrush" Color="#24FFFFFF"/>
         <SolidColorBrush x:Key="HoverItemBrush" Color="#10FFFFFF"/>
 
+        <Style x:Key="AiActionStyle" TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#C8C8C8"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Padding" Value="13,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}"
+                                BorderThickness="0" CornerRadius="0" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#1AFFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.6"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AiToolbarStyle" TargetType="Button">
+            <Setter Property="Width" Value="28"/><Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="5" Background="Transparent" BorderThickness="0">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="#1AFFFFFF"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Opacity" Value="0.6"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.35"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AiSuggestionStyle" TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#8C959E"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Padding" Value="0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="Transparent" BorderThickness="0" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#C8C8C8"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.7"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AiSendButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="5" Background="Transparent" BorderThickness="0">
+                            <Path x:Name="ArrowIcon" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Stroke="{x:Static local:SpotlightWindow.ChatActiveIconBrush}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Data="M 4,9 L 4,1 M 1,4 L 4,1 L 7,4" Width="9" Height="11"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1AFFFFFF"/>
+                                <Setter TargetName="ArrowIcon" Property="Stroke" Value="{x:Static local:SpotlightWindow.ChatActiveIconBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Opacity" Value="0.6"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ArrowIcon" Property="Stroke" Value="#44FFFFFF"/>
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AiStopButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="5" Background="Transparent" BorderThickness="0">
+                            <Rectangle x:Name="StopGlyph" Width="8" Height="8" RadiusX="1.5" RadiusY="1.5" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1AFFFFFF"/>
+                                <Setter TargetName="StopGlyph" Property="Fill" Value="{x:Static local:SpotlightWindow.ChatActiveIconBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Opacity" Value="0.6"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="KeyBadgeStyle" TargetType="Border">
-            <Setter Property="Background" Value="#14FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#1CFFFFFF"/>
+            <Setter Property="Background" Value="#222228"/>
+            <Setter Property="BorderBrush" Value="#3C3C46"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="5"/>
-            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="9,3.5"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
@@ -539,32 +675,33 @@
                 </Grid>
 
                 <Border x:Name="EscBadge"
+                        MouseLeftButtonDown="AiToggle_Click" Cursor="Hand"
                         Grid.Column="1"
                         Margin="0,0,14,0"
                         Style="{StaticResource KeyBadgeStyle}">
-                    <TextBlock Text="ESC"
+                    <TextBlock x:Name="EscBadgeText"
+                               Text="TAB · AI"
                                FontFamily="{StaticResource SFProDisplay}"
-                               FontSize="9"
+                               FontSize="9.5"
                                FontWeight="Bold"
-                               Foreground="#72FFFFFF"/>
+                               Foreground="#D0D0D8"/>
                 </Border>
 
-                <TextBlock x:Name="SearchIcon"
-                           Grid.Column="2"
-                           Text="&#xE721;"
-                           FontFamily="{StaticResource IconFont}"
-                           FontSize="19"
-                           FontWeight="Normal"
-                           Foreground="#7DFFFFFF"
-                           VerticalAlignment="Center"
-                           RenderTransformOrigin="0.5,0.5">
-                    <TextBlock.RenderTransform>
+                <controls:MorphingSettingsIcon x:Name="SearchIcon"
+                                               Grid.Column="2"
+                                               Width="19" Height="19"
+                                               Brush="#C0C0C8"
+                                               VerticalAlignment="Center"
+                                               Cursor="Hand"
+                                               MouseLeftButtonDown="AiToggle_Click"
+                                               RenderTransformOrigin="0.5,0.5">
+                    <controls:MorphingSettingsIcon.RenderTransform>
                         <TransformGroup>
                             <ScaleTransform x:Name="SearchIconScale" ScaleX="1" ScaleY="1"/>
                             <RotateTransform x:Name="SearchIconRotate" Angle="0"/>
                         </TransformGroup>
-                    </TextBlock.RenderTransform>
-                </TextBlock>
+                    </controls:MorphingSettingsIcon.RenderTransform>
+                </controls:MorphingSettingsIcon>
             </Grid>
 
             <!-- Results appear only after the user starts searching. -->
@@ -583,6 +720,113 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="0,6,0,7">
+                        <StackPanel x:Name="AiPanel" Visibility="Collapsed" Margin="20,10,20,4" TextElement.FontFamily="{StaticResource SFProDisplay}" TextElement.FontWeight="Bold">
+                            <!-- Unified macOS Header Toolbar -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Left: Back button + Model Pill -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="AiBackButton" Style="{StaticResource AiToolbarStyle}" Click="AiBack_Click" Margin="0,0,10,0">
+                                        <Path Data="{x:Static local:SpotlightWindow.AiArrowLeftGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="11" Height="11"/>
+                                    </Button>
+                                    <StackPanel x:Name="AiModelPill" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock x:Name="AiModeLabel" Foreground="#C8C8C8" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11.5" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Right: Metadata + Action buttons -->
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="AiMetadata" Foreground="#8C959E" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <Button x:Name="AiCopyButton" Style="{StaticResource AiToolbarStyle}" Click="AiCopy_Click" Margin="0,0,6,0">
+                                        <Path Data="{x:Static local:SpotlightWindow.AiCopyGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="10" Height="10"/>
+                                    </Button>
+                                    <Button x:Name="AiHistoryButton" Style="{StaticResource AiToolbarStyle}" Click="AiHistory_Click" Margin="0,0,6,0">
+                                        <Path Data="{x:Static local:SpotlightWindow.AiHistoryGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="11.5" Height="11.5"/>
+                                    </Button>
+                                    <Button x:Name="AiNewChatButton" Style="{StaticResource AiToolbarStyle}" Click="AiNewChat_Click">
+                                        <Path Data="{x:Static local:SpotlightWindow.AiPlusGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="9" Height="9"/>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Welcome Screen (Monochrome Gray Aesthetic) -->
+                            <Border x:Name="AiWelcome" Padding="22,22" Margin="0,0,0,6" Background="Transparent">
+                                <StackPanel>
+                                    <TextBlock Text="✦" FontFamily="{StaticResource SFProDisplay}" FontSize="28" FontWeight="Bold" Foreground="{x:Static local:SpotlightWindow.ChatIconBrush}" HorizontalAlignment="Center" Margin="0,4,0,14"/>
+                                    <TextBlock x:Name="AiWelcomeTitle" FontFamily="{StaticResource SFProDisplay}" Foreground="#C8C8C8" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="AiWelcomeHint" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#8C959E" FontSize="12" Margin="0,6,0,16" TextAlignment="Center" TextWrapping="Wrap"/>
+                                    <WrapPanel HorizontalAlignment="Center">
+                                        <Button x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,6"/>
+                                        <Button x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,6"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer x:Name="AiHistoryPanel" Visibility="Collapsed" MaxHeight="310" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>
+                                <StackPanel x:Name="AiHistoryItems" Margin="0,2,8,0" HorizontalAlignment="Stretch"/>
+                            </ScrollViewer>
+
+                            <Grid ClipToBounds="True">
+                            <ScrollViewer x:Name="AiTranscriptScroll" ScrollChanged="AiTranscript_ScrollChanged" MaxHeight="310" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>
+                                <StackPanel x:Name="AiTranscript" Margin="0,0,8,0"/>
+                            </ScrollViewer>
+                            <Border x:Name="AiTopEdge" Height="22" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0">
+                                <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#F0000000" Offset="0"/><GradientStop Color="#00000000" Offset="1"/></LinearGradientBrush></Border.Background>
+                                <Border.OpacityMask><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="White" Offset="0"/><GradientStop Color="Transparent" Offset="1"/></LinearGradientBrush></Border.OpacityMask>
+                                <Rectangle>
+                                    <Rectangle.Fill><VisualBrush x:Name="AiTopEdgeBrush" Visual="{Binding ElementName=AiTranscriptScroll}" ViewboxUnits="RelativeToBoundingBox" Viewbox="0,0,1,0.07" Stretch="Fill"/></Rectangle.Fill>
+                                    <Rectangle.Effect><BlurEffect Radius="5"/></Rectangle.Effect>
+                                </Rectangle>
+                            </Border>
+                            <Border x:Name="AiBottomEdge" Height="22" VerticalAlignment="Bottom" IsHitTestVisible="False" Opacity="0">
+                                <Border.Background><LinearGradientBrush StartPoint="0,1" EndPoint="0,0"><GradientStop Color="#F0000000" Offset="0"/><GradientStop Color="#00000000" Offset="1"/></LinearGradientBrush></Border.Background>
+                                <Border.OpacityMask><LinearGradientBrush StartPoint="0,1" EndPoint="0,0"><GradientStop Color="White" Offset="0"/><GradientStop Color="Transparent" Offset="1"/></LinearGradientBrush></Border.OpacityMask>
+                                <Rectangle>
+                                    <Rectangle.Fill><VisualBrush x:Name="AiBottomEdgeBrush" Visual="{Binding ElementName=AiTranscriptScroll}" ViewboxUnits="RelativeToBoundingBox" Viewbox="0,0,1,0.07" Stretch="Fill"/></Rectangle.Fill>
+                                    <Rectangle.Effect><BlurEffect Radius="5"/></Rectangle.Effect>
+                                </Rectangle>
+                            </Border>
+                            </Grid>
+
+                            <Grid x:Name="AiUsageRow" Margin="0,5,0,2" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock x:Name="AiUsageText" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="10" Foreground="#AAAAAA" TextWrapping="Wrap"/>
+                                    <ProgressBar x:Name="AiQuotaBar" Height="3" Margin="0,5,8,0" Minimum="0" Maximum="100" Foreground="#C8C8C8" Background="#252525" Visibility="Collapsed"/>
+                                </StackPanel>
+                                <Button x:Name="AiUsageRefresh" Grid.Column="1" Style="{StaticResource AiToolbarStyle}" Click="AiUsageRefresh_Click" Content="↻" Foreground="#C8C8C8"/>
+                            </Grid>
+
+                            <!-- Bottom Status and Action Bar (Separator Line Removed) -->
+                            <Border x:Name="AiBottomActionRow" Margin="0,2,0,0" Padding="0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <!-- Hidden activity elements (used by code-behind for state tracking) -->
+                                        <Grid Width="0" Height="0" Visibility="Collapsed">
+                                            <Ellipse x:Name="AiActivityHalo" Width="14" Height="14" Fill="#20FFFFFF" Opacity="0" RenderTransformOrigin="0.5,0.5">
+                                                <Ellipse.RenderTransform>
+                                                    <ScaleTransform x:Name="AiActivityHaloScale" ScaleX="1" ScaleY="1"/>
+                                                </Ellipse.RenderTransform>
+                                            </Ellipse>
+                                            <Ellipse x:Name="AiActivityDot" Width="6" Height="6" Fill="#90959E" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <TextBlock x:Name="AiStatus" TextWrapping="Wrap" MaxWidth="400" Foreground="#A8ACB6" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="AiStopButton" Style="{StaticResource AiStopButtonStyle}" Click="AiStop_Click" Margin="0,0,8,0" Visibility="Collapsed"/>
+                                        <Button x:Name="AiSendButton" Style="{StaticResource AiSendButtonStyle}" Click="AiSend_Click"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
                         <ListBox x:Name="ResultsList"
                                  ItemsSource="{Binding Results}"
                                  SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
@@ -811,6 +1055,25 @@
                                 AlignmentX="Center"
                                 AlignmentY="Top"/>
                 </Border.Background>
+            </Border>
+            <!-- AI Focus Ambient Rim (Monochrome Gray) -->
+            <Border x:Name="AiGlowBorder"
+                    Margin="-1"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    CornerRadius="14"
+                    BorderThickness="1"
+                    BorderBrush="#26FFFFFF"
+                    IsHitTestVisible="False"
+                    Opacity="0"
+                    Visibility="Collapsed">
+                <Border.Effect>
+                    <DropShadowEffect x:Name="AiGlowEffect"
+                                      Color="#000000"
+                                      BlurRadius="16"
+                                      ShadowDepth="0"
+                                      Opacity="0.6"/>
+                </Border.Effect>
             </Border>
         </Grid>
     </Border>

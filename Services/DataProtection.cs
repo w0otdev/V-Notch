@@ -13,18 +13,19 @@ public static class DataProtection
     public static string Protect(string? plaintext)
     {
         if (string.IsNullOrEmpty(plaintext)) return "";
+        byte[] data = Encoding.UTF8.GetBytes(plaintext);
         try
         {
-            byte[] data = Encoding.UTF8.GetBytes(plaintext);
             byte[] encrypted = ProtectBytes(data);
             return Prefix + Convert.ToBase64String(encrypted);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // Never log the value that was submitted for protection.
             RuntimeLog.Warn("DPAPI", "Protect failed.");
-            throw new CryptographicException("DPAPI encryption failed.", ex);
+            throw new CryptographicException("DPAPI encryption failed.");
         }
+        finally { CryptographicOperations.ZeroMemory(data); }
     }
 
     public static string Unprotect(string? stored)
@@ -37,7 +38,8 @@ public static class DataProtection
         {
             byte[] encrypted = Convert.FromBase64String(stored.Substring(Prefix.Length));
             byte[] data = ProtectedData.Unprotect(encrypted, optionalEntropy: null, scope: DataProtectionScope.CurrentUser);
-            return Encoding.UTF8.GetString(data);
+            try { return Encoding.UTF8.GetString(data); }
+            finally { CryptographicOperations.ZeroMemory(data); }
         }
         catch (FormatException ex)
         {

@@ -69,7 +69,8 @@ public class DataProtectionSettingsTests : IDisposable
         string? warning = null;
         DataProtection.ProtectBytes = _ => throw new CryptographicException("simulated DPAPI failure");
 
-        new SettingsService(path, message => warning = message).Save(new NotchSettings { YouTubeApiKey = key });
+        using var service = new SettingsService(path, message => warning = message);
+        Assert.Throws<CryptographicException>(() => service.Save(new NotchSettings { YouTubeApiKey = key }));
 
         Assert.Equal(original, File.ReadAllText(path));
         Assert.Contains("API key", warning);
@@ -206,7 +207,8 @@ public class DataProtectionSettingsTests : IDisposable
         string? warning = null;
         DataProtection.ProtectBytes = _ => throw new CryptographicException("simulated DPAPI failure");
 
-        new SettingsService(path, message => warning = message).Save(new NotchSettings { SpotifySpDc = cookie });
+        using var service = new SettingsService(path, message => warning = message);
+        Assert.Throws<CryptographicException>(() => service.Save(new NotchSettings { SpotifySpDc = cookie }));
 
         Assert.Equal(original, File.ReadAllText(path));
         Assert.NotNull(warning);

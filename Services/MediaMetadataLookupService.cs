@@ -18,6 +18,21 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private const string DurationPropertyName = "duration";
 
     private static readonly HttpClient _httpClient = new();
+    private static readonly HttpClient KeyClient = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+
+    internal static HttpRequestMessage CreateYouTubeApiRequest(string url, string apiKey)
+    {
+        var uri = new Uri(url, UriKind.Absolute);
+        if (uri.Scheme != "https" || uri.Host != "www.googleapis.com" || !uri.IsDefaultPort ||
+            uri.UserInfo.Length != 0 || !uri.AbsolutePath.StartsWith("/youtube/v3/", StringComparison.Ordinal))
+            throw new ArgumentException("Invalid YouTube API endpoint.");
+        apiKey = apiKey.Trim();
+        if (apiKey.Length == 0 || apiKey.Length > 4096 || apiKey.Any(c => c < '!' || c > '~'))
+            throw new ArgumentException("Invalid API key format.");
+        var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Add("x-goog-api-key", apiKey);
+        return request;
+    }
 
     static MediaMetadataLookupService()
     {
@@ -105,12 +120,13 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     {
         try
         {
-            string url = $"https://www.googleapis.com/youtube/v3/search?part=snippet&q={Uri.EscapeDataString(query)}&type=video&maxResults=3&fields=items(id/videoId,snippet(title,channelTitle))&key={apiKey}";
+            string url = $"https://www.googleapis.com/youtube/v3/search?part=snippet&q={Uri.EscapeDataString(query)}&type=video&maxResults=3&fields=items(id/videoId,snippet(title,channelTitle))";
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
 
-            var response = await _httpClient.GetAsync(url, timeoutCts.Token);
+            using var request = CreateYouTubeApiRequest(url, apiKey);
+            using var response = await KeyClient.SendAsync(request, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
                 string body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
@@ -665,12 +681,13 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
         try
         {
-            string url = $"https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={Uri.EscapeDataString(videoId)}&fields=items(snippet(title,channelTitle,thumbnails),contentDetails/duration)&key={apiKey}";
+            string url = $"https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={Uri.EscapeDataString(videoId)}&fields=items(snippet(title,channelTitle,thumbnails),contentDetails/duration)";
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(2500);
 
-            using var response = await _httpClient.GetAsync(url, timeoutCts.Token);
+            using var request = CreateYouTubeApiRequest(url, apiKey);
+            using var response = await KeyClient.SendAsync(request, timeoutCts.Token);
             string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
             if (!response.IsSuccessStatusCode)
@@ -802,12 +819,15 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             if (string.IsNullOrEmpty(result.Id))
                 return result;
 
-            string url = $"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id={result.Id}&fields=items/contentDetails/duration&key={apiKey}";
+            string url = $"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id={result.Id}&fields=items/contentDetails/duration";
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(2000);
 
-            string json = await _httpClient.GetStringAsync(url, timeoutCts.Token);
+            using var request = CreateYouTubeApiRequest(url, apiKey);
+            using var response = await KeyClient.SendAsync(request, timeoutCts.Token);
+            response.EnsureSuccessStatusCode();
+            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
             if (string.IsNullOrWhiteSpace(json))
                 return result;
 

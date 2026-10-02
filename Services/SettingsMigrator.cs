@@ -186,6 +186,11 @@ public static class SettingsMigrator
         foreach (string keyName in new[]
                  {
                      nameof(NotchSettings.YouTubeApiKey),
+                    nameof(NotchSettings.SpotlightOpenAIApiKey),
+                    nameof(NotchSettings.SpotlightGeminiApiKey),
+                    nameof(NotchSettings.SpotlightClaudeApiKey),
+                    nameof(NotchSettings.SpotlightDeepSeekApiKey),
+
                      nameof(NotchSettings.SpotifySpDc),
                  })
         {

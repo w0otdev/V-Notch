@@ -276,9 +276,10 @@ public partial class SettingsWindow : Window
         SystemNotifyCheck.IsChecked = _settings.ShowSystemNotifications;
         ShelfUnlockCheck.IsChecked = _settings.IsShelfUploadLimitUnlocked;
         ScreenshotTrayCheck.IsChecked = _settings.EnableScreenshotTray;
-        ScreenshotFoldersBox.Text = _settings.ScreenshotFolders;
+        ScreenshotTrayDurationSlider.Value = _settings.ScreenshotTrayDurationSeconds;
         CopyShelfClipboardCheck.IsChecked = _settings.CopyShelfFilesToClipboard;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
+        LoadSpotlightAiSettings(_settings);
         EnableDebugModeCheck.IsChecked = _settings.EnableDebugMode;
         UpdateSpotlightHotkeyWarning();
         ShowBatteryCheck.IsChecked = _settings.ShowBatteryIndicator;
@@ -443,6 +444,7 @@ public partial class SettingsWindow : Window
         SpotlightHeader.Text = Loc.Get("settings.spotlight");
         EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight");
         EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint");
+        LocalizeSpotlightAiSettings();
         SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict");
         SearchingHeader.Text = Loc.Get(LocKeySearching);
         SearchingEmptyText.Text = Loc.Get("settings.search.noResults");
@@ -618,7 +620,8 @@ public partial class SettingsWindow : Window
         ShelfUnlockHint.Text = Loc.Get("settings.shelfUnlock.hint");
         ScreenshotTrayCheck.Content = Loc.Get("settings.screenshotTray");
         ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
-        ScreenshotFoldersLabel.Text = Loc.Get("settings.screenshotFolders");
+        ScreenshotTrayDurationSlider.Label = Loc.Get("settings.screenshotTrayDuration");
+        ScreenshotTrayDurationSlider.Description = Loc.Get("settings.screenshotTrayDuration.hint");
         CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard");
         CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         ShowBatteryCheck.Content = Loc.Get("settings.showBattery");
@@ -1074,7 +1077,8 @@ public partial class SettingsWindow : Window
         SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect");
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
         ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
-        ScreenshotFoldersLabel.Text = Loc.Get("settings.screenshotFolders");
+        ScreenshotTrayDurationSlider.Label = Loc.Get("settings.screenshotTrayDuration");
+        ScreenshotTrayDurationSlider.Description = Loc.Get("settings.screenshotTrayDuration.hint");
         CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         if (YouTubeSubtitlesAlphaBadge != null)
             YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
@@ -3208,6 +3212,7 @@ public partial class SettingsWindow : Window
             (CopyShelfClipboardHint, () => CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint")),
             (ShowBatteryHint, () => ShowBatteryHint.Text = Loc.Get("settings.showBattery.hint")),
             (EnableSpotlightHint, () => EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint")),
+            (SpotlightAiHint, LocalizeSpotlightAiSettings),
             (SpotlightHotkeyWarning, () => SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict")),
             (LanguageLabel, () => LanguageLabel.Text = Loc.Get("settings.language")),
             (LanguageHint, () => LanguageHint.Text = Loc.Get("settings.language.hint")),
@@ -3318,7 +3323,8 @@ public partial class SettingsWindow : Window
         staggerMs += staggerStep;
         ScreenshotTrayCheck.Content = Loc.Get("settings.screenshotTray");
         ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
-        ScreenshotFoldersLabel.Text = Loc.Get("settings.screenshotFolders");
+        ScreenshotTrayDurationSlider.Label = Loc.Get("settings.screenshotTrayDuration");
+        ScreenshotTrayDurationSlider.Description = Loc.Get("settings.screenshotTrayDuration.hint");
         AnimateContentChange(CopyShelfClipboardCheck, () => CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps);
@@ -3752,9 +3758,10 @@ public partial class SettingsWindow : Window
             StayBehindWindowsCheck.IsChecked = defaults.StayBehindWindows;
             ShelfUnlockCheck.IsChecked = defaults.IsShelfUploadLimitUnlocked;
             ScreenshotTrayCheck.IsChecked = defaults.EnableScreenshotTray;
-            ScreenshotFoldersBox.Text = defaults.ScreenshotFolders;
+            ScreenshotTrayDurationSlider.Value = defaults.ScreenshotTrayDurationSeconds;
             CopyShelfClipboardCheck.IsChecked = defaults.CopyShelfFilesToClipboard;
             EnableSpotlightCheck.IsChecked = defaults.EnableSpotlight;
+            LoadSpotlightAiSettings(defaults);
             EnableDebugModeCheck.IsChecked = defaults.EnableDebugMode;
             ShowBatteryCheck.IsChecked = defaults.ShowBatteryIndicator;
             _settings.BatteryDeviceId = defaults.BatteryDeviceId;
@@ -4247,6 +4254,7 @@ public partial class SettingsWindow : Window
         snapshot.StayBehindWindows = StayBehindWindowsCheck.IsChecked ?? false;
         snapshot.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
         snapshot.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;
+        ReadSpotlightAiSettings(snapshot);
         snapshot.EnableDebugMode = EnableDebugModeCheck.IsChecked ?? false;
         snapshot.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
         snapshot.HideOnWindowedFullscreen = HideOnWindowedFullscreenCheck.IsChecked ?? true;
@@ -4256,7 +4264,7 @@ public partial class SettingsWindow : Window
         snapshot.ShowSystemNotifications = SystemNotifyCheck.IsChecked ?? true;
         snapshot.IsShelfUploadLimitUnlocked = ShelfUnlockCheck.IsChecked ?? false;
         snapshot.EnableScreenshotTray = ScreenshotTrayCheck.IsChecked ?? true;
-        snapshot.ScreenshotFolders = ScreenshotFoldersBox.Text.Trim();
+        snapshot.ScreenshotTrayDurationSeconds = Math.Clamp((int)Math.Round(ScreenshotTrayDurationSlider.Value), 2, 120);
         snapshot.CopyShelfFilesToClipboard = CopyShelfClipboardCheck.IsChecked ?? false;
         snapshot.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;
 
@@ -5192,7 +5200,7 @@ public partial class SettingsWindow : Window
     }
 
     private static readonly SolidColorBrush _whiteBrush = VNotch.Services.UiPalette.PrimaryBrush;
-    private static readonly SolidColorBrush _navInactiveBrush = new(Color.FromRgb(0xAA, 0xAA, 0xAA));
+    private static readonly SolidColorBrush _navInactiveBrush = VNotch.Services.UiPalette.IconBrush;
     private static readonly SolidColorBrush _transparentBrush = new(Colors.Transparent);
 
     static SettingsWindow()

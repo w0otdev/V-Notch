@@ -1,4 +1,4 @@
-<Window x:Class="VNotch.SettingsWindow"
+﻿<Window x:Class="VNotch.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:VNotch.Controls"
@@ -1435,10 +1435,13 @@
                                                 <CheckBox x:Name="ScreenshotTrayCheck" x:Uid="screenshotTray" Content="Screenshot tray"/>
                                                 <TextBlock x:Name="ScreenshotTrayHint" Text="Preview new screenshots, drag them into another app, or keep them on the shelf."
                                                            Style="{StaticResource SettingHintText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                                <TextBlock x:Name="ScreenshotFoldersLabel" Text="Additional screenshot folders (one per line)"
-                                                           Style="{StaticResource SettingHintText}" Margin="0,10,0,4" TextWrapping="Wrap"/>
-                                                <TextBox x:Name="ScreenshotFoldersBox" AcceptsReturn="True" MinHeight="54"
-                                                         MaxHeight="110" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                                                <controls:ElasticSlider x:Name="ScreenshotTrayDurationSlider"
+                                                        Label="Screenshot display time" Unit=" s"
+                                                        Description="Hide the preview after this idle time. Screenshot files are not deleted."
+                                                        Minimum="2" Maximum="120" Value="8"
+                                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                                        Margin="0,10,0,0"
+                                                        IsEnabled="{Binding IsChecked, ElementName=ScreenshotTrayCheck}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -1969,6 +1972,34 @@
                                                            Visibility="Collapsed"
                                                            AutomationProperties.LiveSetting="Polite"/>
                                             </StackPanel>
+                                        </Border>
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="SpotlightDefaultModeLabel" Style="{StaticResource SettingTitleText}"/>
+                                                <ComboBox x:Name="SpotlightDefaultModeCombo" MinHeight="40" Margin="0,8,0,0" SelectionChanged="SpotlightDefaultMode_Changed">
+                                                    <ComboBoxItem Content="Spotlight Search"/>
+                                                    <ComboBoxItem Content="Spotlight AI"/>
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="SpotlightAiTitle" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="SpotlightAiHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,18"/>
+                                                <TextBlock x:Name="SpotlightAiProviderLabel" Style="{StaticResource SettingHintText}"/>
+                                                <ComboBox x:Name="SpotlightAiProviderCombo" MinHeight="40" Margin="0,6,0,16" SelectionChanged="SpotlightAiProvider_Changed"/>
+                                                <TextBlock x:Name="SpotlightAiModelLabel" Style="{StaticResource SettingHintText}"/>
+                                                <Border Background="#141414" BorderBrush="#2A2A2A" BorderThickness="1" CornerRadius="10" MinHeight="40" Padding="12,8" Margin="0,6,0,16">
+                                                    <TextBox x:Name="SpotlightAiModelBox" TextChanged="SpotlightAiModel_Changed" Background="Transparent" Foreground="{StaticResource SettingsTextBrush}" CaretBrush="#C8C8C8" BorderThickness="0" FontSize="13" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" VerticalContentAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock x:Name="SpotlightAiKeyLabel" Style="{StaticResource SettingHintText}"/>
+                                                <Border Background="#141414" BorderBrush="#2A2A2A" BorderThickness="1" CornerRadius="10" MinHeight="40" Padding="12,8" Margin="0,6,0,0">
+                                                    <PasswordBox x:Name="SpotlightAiKeyBox" PasswordChanged="SpotlightAiInput_Changed" FontFamily="{StaticResource SFProDisplay}" FontSize="13" FontWeight="Bold" PasswordChar="•" Background="Transparent" Foreground="{StaticResource SettingsTextBrush}" CaretBrush="#C8C8C8" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <controls:ElasticSlider x:Name="SpotlightAiSpeedSlider" Minimum="2" Maximum="30" Value="9" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,4" ValueChanged="SpotlightAiSpeed_Changed"/>
                                         </Border>
                                     </StackPanel>
                                 </Border>

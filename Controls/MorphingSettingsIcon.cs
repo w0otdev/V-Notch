@@ -22,6 +22,32 @@ public class MorphingSettingsIcon : FrameworkElement
         "Progress", typeof(double), typeof(MorphingSettingsIcon),
         new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
 
+    public static readonly DependencyProperty BrushProperty = DependencyProperty.Register(
+        nameof(Brush), typeof(Brush), typeof(MorphingSettingsIcon),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public Brush? Brush
+    {
+        get => (Brush?)GetValue(BrushProperty);
+        set => SetValue(BrushProperty, value);
+    }
+
+    public static readonly DependencyProperty GeometryProperty = DependencyProperty.Register(
+        nameof(Geometry), typeof(Geometry), typeof(MorphingSettingsIcon),
+        new FrameworkPropertyMetadata(null, (d, e) =>
+        {
+            if (d is MorphingSettingsIcon icon && e.NewValue is Geometry g)
+            {
+                icon.MorphTo(g, animate: icon.IsLoaded && !AnimationConfig.ReduceMotion);
+            }
+        }));
+
+    public Geometry? Geometry
+    {
+        get => (Geometry?)GetValue(GeometryProperty);
+        set => SetValue(GeometryProperty, value);
+    }
+
     public MorphingSettingsIcon()
     {
         Unloaded += (_, _) =>
@@ -46,7 +72,7 @@ public class MorphingSettingsIcon : FrameworkElement
         matrix.Scale(scale, scale);
         matrix.Translate(28, 28);
         if (IsTextGeometry) matrix = Matrix.Identity;
-        var normalized = new GeometryGroup { Transform = new MatrixTransform(matrix) };
+        var normalized = new GeometryGroup { FillRule = FillRule.Nonzero, Transform = new MatrixTransform(matrix) };
         normalized.Children.Add(next);
         normalized.Freeze();
 
@@ -172,7 +198,7 @@ public class MorphingSettingsIcon : FrameworkElement
         }
         drawingContext.PushTransform(IsTextGeometry ? Transform.Identity :
             new ScaleTransform(ActualWidth / 56, ActualHeight / 56));
-        drawingContext.DrawGeometry(VNotch.Services.UiPalette.PrimaryBrush, null, _display);
+        drawingContext.DrawGeometry(Brush ?? VNotch.Services.UiPalette.PrimaryBrush, null, _display);
         drawingContext.Pop();
     }
 }

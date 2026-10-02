@@ -5,6 +5,14 @@ namespace VNotch.Services;
 
 public static class SensitiveDataScrubber
 {
+    private static readonly Regex AiApiKeyRegex = new(
+        @"\bsk-[A-Za-z0-9_-]{8,}",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NamedApiKeyRegex = new(
+        @"(?i)((?:[a-z0-9_-]*api[_-]?key|x-goog-api-key)[""']?\s*[:=]\s*[""']?)[^&\s,""';}\]]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex SpDcRegex = new(
         @"(?i)(sp_dc=)[^\s;,\r\n""]+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -35,6 +43,8 @@ public static class SensitiveDataScrubber
             return string.Empty;
 
         string scrubbed = SpDcRegex.Replace(input, "$1[REDACTED]");
+        scrubbed = AiApiKeyRegex.Replace(scrubbed, "[REDACTED]");
+        scrubbed = NamedApiKeyRegex.Replace(scrubbed, "$1[REDACTED]");
         scrubbed = GoogleApiKeyRegex.Replace(scrubbed, "AIza[REDACTED]");
         scrubbed = DpapiRegex.Replace(scrubbed, "enc:[REDACTED]");
         scrubbed = UrlSecretParamRegex.Replace(scrubbed, "$1[REDACTED]");

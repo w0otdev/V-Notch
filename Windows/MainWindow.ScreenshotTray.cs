@@ -102,7 +102,7 @@ public partial class MainWindow
         }
         if (_screenshotTray?.IsBusy == true)
         {
-            _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
+            _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(Math.Clamp(_settings.ScreenshotTrayDurationSeconds, 2, 120));
             return;
         }
         if (_screenshotReturnPending) ReturnScreenshotToWaiting();
@@ -115,7 +115,7 @@ public partial class MainWindow
         {
             if (_screenshotHost!.IsMouseOver || _screenshotTray!.IsKeyboardFocusWithin)
             {
-                _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
+                _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(Math.Clamp(_settings.ScreenshotTrayDurationSeconds, 2, 120));
             }
             else if (DateTime.UtcNow >= _screenshotExpiresAt)
                 CloseScreenshotTray();
@@ -146,7 +146,7 @@ public partial class MainWindow
             _screenshotHost!.Visibility = Visibility.Visible;
             ShowScreenshotCompactContent();
             StartScreenshotCompactHandoff(outgoingContent);
-            _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
+            _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(Math.Clamp(_settings.ScreenshotTrayDurationSeconds, 2, 120));
             SuppressPrivacyDot();
         }
         if (_pendingScreenshot == null && !IsScreenshotPillActive) _screenshotTimer?.Stop();
@@ -292,7 +292,7 @@ public partial class MainWindow
         _screenshotReturnPending = true;
         _screenshotDragStart = null;
         _screenshotThumbnail?.ReleaseMouseCapture();
-        _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(8);
+        _screenshotExpiresAt = DateTime.UtcNow.AddSeconds(Math.Clamp(_settings.ScreenshotTrayDurationSeconds, 2, 120));
         _hoverThumbnailDelayTimer.Stop();
         _hoverCollapseTimer.Stop();
         _compactThumbnailHoverLeaveTimer.Stop();

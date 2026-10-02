@@ -70,6 +70,21 @@ public partial class SpotlightWindow
 
     internal void ApplySettings(NotchSettings settings)
     {
+        bool aiSelectionChanged = !string.Equals(_settings.SpotlightAiProvider, settings.SpotlightAiProvider, StringComparison.Ordinal)
+            || VNotch.Services.Spotlight.SpotlightAiService.Configuration(_settings, _settings.SpotlightAiProvider).Model
+                != VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider).Model;
+        if (aiSelectionChanged)
+        {
+            CancelAiRequest();
+            SaveAiHistory();
+            _chatId = Guid.NewGuid().ToString("N");
+            _aiHistory.Clear();
+            _aiConversationProvider = settings.SpotlightAiProvider;
+            _aiConversationModel = VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider).Model;
+            _aiDraftToRestore = null;
+            CloseAiHistory();
+            RenderAiHistory();
+        }
         _settings = settings.Clone();
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _gpuRefractionFailed = false;

@@ -1368,14 +1368,12 @@ public partial class MainWindow : Window
                 PositionAtTop();
 
             bool spotlightChanged = oldSettings.EnableSpotlight != newSettings.EnableSpotlight;
-            bool glassConfigChanged = IsLiquidGlassConfigChanged(oldSettings, newSettings);
-            if (spotlightChanged || glassConfigChanged || oldSettings.EnableSpotlightHistory != newSettings.EnableSpotlightHistory || languageChanged)
+            // Forward every settings snapshot. SpotlightController owns change detection,
+            // including provider, model and credentials; filtering here leaves it stale.
+            _spotlightController.ApplySettings(_settings);
+            if (spotlightChanged)
             {
-                _spotlightController.ApplySettings(_settings);
-                if (spotlightChanged)
-                {
-                    settingsWindow.SetSpotlightHotkeyStatus(_spotlightController.IsHotkeyRegistered);
-                }
+                settingsWindow.SetSpotlightHotkeyStatus(_spotlightController.IsHotkeyRegistered);
             }
 
             ApplySettings(oldSettings, sizeChanged);

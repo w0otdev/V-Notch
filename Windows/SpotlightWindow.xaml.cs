@@ -19,6 +19,9 @@ namespace VNotch;
 
 public partial class SpotlightWindow : Window
 {
+    public static Brush ChatIconBrush => UiPalette.PrimaryBrush;
+    public static Brush ChatActiveIconBrush => UiPalette.PrimaryBrush;
+
     private const double ExpandedCornerRadius = 14;
     private const double NotchShadowBlurRadius = 20;
     private const double NotchShadowDepth = 4;
@@ -106,8 +109,10 @@ public partial class SpotlightWindow : Window
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _launcher = launcher;
         DataContext = viewModel;
+        LoadAiHistory();
         RefreshLocalization();
         ApplyLiquidGlassSkin();
+        SyncSearchIconState(animate: false);
 
         // Activation from the global hotkey can land after ShowSpotlight has
         Activated += (_, _) =>
@@ -172,8 +177,9 @@ public partial class SpotlightWindow : Window
         {
             SearchBox.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("spotlight.placeholder"));
         }
+        LocalizeAi();
         RefreshStatus();
-        if (IsSpotlightOpen && !_isClosing && SearchBox != null)
+        if (IsSpotlightOpen && !_isClosing && SearchBox != null && !_aiMode)
         {
             _ = _viewModel.SearchAsync(SearchBox.Text);
         }
@@ -185,6 +191,17 @@ public partial class SpotlightWindow : Window
     {
         if (_isClosing) return;
 
+        // A reopened surface must not inherit request ownership from its hidden session.
+        CancelAiRequest();
+        bool modeChanged = _aiMode != _settings.SpotlightDefaultAi;
+        _aiMode = _settings.SpotlightDefaultAi;
+        if (modeChanged) _lastDismissedQuery = string.Empty;
+        AiPanel.Visibility = _aiMode ? Visibility.Visible : Visibility.Collapsed;
+        LocalizeAi();
+        UpdateAiAmbientGlow(_aiMode);
+        SearchBox.IsEnabled = true;
+        if (_aiMode) RenderAiHistory();
+        SyncSearchIconState(animate: false);
         _glassResourceExpiry?.Stop();
         PlaySpotlightClickSfx();
 
@@ -204,7 +221,7 @@ public partial class SpotlightWindow : Window
             && DateTime.UtcNow - _lastDismissedAtUtc < QueryRestoreWindow;
         SearchBox.Text = restoreQuery ? _lastDismissedQuery : string.Empty;
         if (restoreQuery) SearchBox.SelectAll();
-        else _ = _viewModel.SearchAsync(string.Empty);
+        else if (!_aiMode) _ = _viewModel.SearchAsync(string.Empty);
 
         _preparingGlassEntrance = true;
         ApplyLiquidGlassSkin();
@@ -437,6 +454,7 @@ public partial class SpotlightWindow : Window
     internal void HandleGlobalEscape()
     {
         if (!IsSpotlightOpen) return;
+        if (_aiMode) { EscapeAiMode(); return; }
         _pendingLaunchQuery = null;
         if (!_isClosing && !string.IsNullOrEmpty(SearchBox.Text))
         {
@@ -452,6 +470,9 @@ public partial class SpotlightWindow : Window
     internal void HideSpotlight()
     {
         if (!IsSpotlightOpen || _isClosing) return;
+        CancelAiRequest();
+        SaveAiHistory();
+        StopAiActivity();
         _lastDismissedQuery = SearchBox.Text;
         _lastDismissedAtUtc = DateTime.UtcNow;
         _isClosing = true;
@@ -473,6 +494,9 @@ public partial class SpotlightWindow : Window
     {
         ++_animationGeneration;
         _allowClose = true;
+        CancelAiRequest();
+        SaveAiHistory();
+        StopAiActivity();
         CancelSearchDebounce();
         CancelPendingFreshEntrance();
         ClearMorphAnimations();
@@ -580,6 +604,15 @@ public partial class SpotlightWindow : Window
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_allowClose || _isClosing) return;
+        if (_aiMode)
+        {
+            PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+            AutocompleteText.Visibility = Visibility.Collapsed;
+            UpdateGlowingCaret();
+            PlayTypingAnimation();
+            UpdateAiSendButtonState();
+            return;
+        }
         PlayTypingAnimation();
         UpdateGlowingCaret();
         CancelSearchingGrace();
@@ -656,6 +689,9 @@ public partial class SpotlightWindow : Window
 
         try
         {
+            CaretGlow.Color = Colors.White;
+            GlowingCaret.Background = Brushes.White;
+
             Rect rect = SearchBox.GetRectFromCharacterIndex(SearchBox.CaretIndex, true);
             double left = (!rect.IsEmpty && double.IsFinite(rect.Left)) ? Math.Max(2, rect.Left) : 2;
             GlowingCaret.Margin = new Thickness(left, 0, 0, 0);
@@ -693,37 +729,6 @@ public partial class SpotlightWindow : Window
     {
         if (AnimationConfig.ReduceMotion) return;
 
-        // 1. Search box scale pop & horizontal recoil
-        var scaleYAnim = new DoubleAnimationUsingKeyFrames();
-        scaleYAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.025, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
-        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-        Timeline.SetDesiredFrameRate(scaleYAnim, AnimationConfig.TargetFps);
-
-        var scaleXAnim = new DoubleAnimationUsingKeyFrames();
-        scaleXAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.018, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
-        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-        Timeline.SetDesiredFrameRate(scaleXAnim, AnimationConfig.TargetFps);
-
-        var recoilAnim = new DoubleAnimationUsingKeyFrames();
-        recoilAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        recoilAnim.KeyFrames.Add(new EasingDoubleKeyFrame(-1.5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(40)), new CubicEase { EasingMode = EasingMode.EaseOut }));
-        recoilAnim.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-        Timeline.SetDesiredFrameRate(recoilAnim, AnimationConfig.TargetFps);
-
-        SearchBoxScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
-        SearchBoxScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYAnim);
-        SearchBoxTranslate.BeginAnimation(TranslateTransform.XProperty, recoilAnim);
-
-        // 2. Caret height pop & glowing flash burst
-        var caretHeightScale = new DoubleAnimationUsingKeyFrames();
-        caretHeightScale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        caretHeightScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.25, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
-        caretHeightScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-        Timeline.SetDesiredFrameRate(caretHeightScale, AnimationConfig.TargetFps);
-        CaretScale.BeginAnimation(ScaleTransform.ScaleYProperty, caretHeightScale);
-
         var caretGlowBurst = new DoubleAnimationUsingKeyFrames();
         caretGlowBurst.KeyFrames.Add(new LinearDoubleKeyFrame(10, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
         caretGlowBurst.KeyFrames.Add(new EasingDoubleKeyFrame(18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(35)), new CubicEase { EasingMode = EasingMode.EaseOut }));
@@ -731,27 +736,12 @@ public partial class SpotlightWindow : Window
         Timeline.SetDesiredFrameRate(caretGlowBurst, AnimationConfig.TargetFps);
         CaretGlow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, caretGlowBurst);
 
-        // 3. Search icon pulse & subtle rotation wiggle
-        var iconScale = new DoubleAnimationUsingKeyFrames();
-        iconScale.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        iconScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50)), new CubicEase { EasingMode = EasingMode.EaseOut }));
-        iconScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-        Timeline.SetDesiredFrameRate(iconScale, AnimationConfig.TargetFps);
-
-        var iconRotate = new DoubleAnimationUsingKeyFrames();
-        iconRotate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        iconRotate.KeyFrames.Add(new EasingDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(50)), new CubicEase { EasingMode = EasingMode.EaseOut }));
-        iconRotate.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(130)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
-        Timeline.SetDesiredFrameRate(iconRotate, AnimationConfig.TargetFps);
-
-        SearchIconScale.BeginAnimation(ScaleTransform.ScaleXProperty, iconScale);
-        SearchIconScale.BeginAnimation(ScaleTransform.ScaleYProperty, iconScale);
-        SearchIconRotate.BeginAnimation(RotateTransform.AngleProperty, iconRotate);
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_personalizationOpen) return;
+        if (HandleAiKey(e)) return;
         // Navigation keys must be intercepted on the tunnel: the search box's
         if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
         {
@@ -869,7 +859,7 @@ public partial class SpotlightWindow : Window
         int generation = _animationGeneration;
         Dispatcher.BeginInvoke(() =>
         {
-            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen) return;
+            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen || _aiMode) return;
             HideSpotlight();
         }, DispatcherPriority.Input);
     }
@@ -1289,6 +1279,7 @@ public partial class SpotlightWindow : Window
 
     private void UpdateAutocomplete()
     {
+        if (_aiMode) { AutocompleteText.Visibility = Visibility.Collapsed; return; }
         string query = SearchBox.Text;
         string? title = _viewModel.Results.Count > 0 ? _viewModel.Results[0].DisplayTitle : null;
         if (string.IsNullOrEmpty(query)
@@ -1308,6 +1299,7 @@ public partial class SpotlightWindow : Window
 
     private void RefreshStatus()
     {
+        if (_aiMode) { RefreshAiPanel(); return; }
         // Instant and deferred providers publish separately. Keep the current
         // height until the query completes instead of shrinking to partial rows.
         if (_viewModel.IsSearching && _contentShown && !_entranceActive && !_searchHeightHeld)
@@ -1426,16 +1418,18 @@ public partial class SpotlightWindow : Window
             ContentRegion.Visibility = Visibility.Visible;
             ContentRegion.BeginAnimation(HeightProperty, null);
             ContentRegion.Height = double.NaN;
-            ContentRegion.UpdateLayout();
-            BeginContentHeightAnimation(from, ContentRegion.ActualHeight, generation);
-            PlayContentReveal();
+            ContentRegion.Measure(new Size(Math.Max(1, Shell.ActualWidth), double.PositiveInfinity));
+            double targetHeight = ContentRegion.DesiredSize.Height;
+            ContentRegion.Height = from;
+            BeginContentHeightAnimation(from, targetHeight, generation);
+            if (from < 1) PlayContentReveal();
         }
         else
         {
             ContentRegion.ClipToBounds = true;
             var collapse = CreateAnimation(ContentRegion.ActualHeight, 0,
-                TimeSpan.FromMilliseconds(340),
-                new CubicBezierEase(0.36, -0.15, 0.64, 1.15) { EasingMode = EasingMode.EaseIn });
+                TimeSpan.FromMilliseconds(180),
+                CreateContentResizeEase());
             collapse.Completed += (_, _) =>
             {
                 if (generation != _contentSizeGeneration) return;
@@ -1630,8 +1624,9 @@ public partial class SpotlightWindow : Window
         long version = ++_contentHeightAnimationVersion;
         _contentHeightTarget = to;
         ContentRegion.ClipToBounds = true;
-        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(220),
-            new CubicEase { EasingMode = EasingMode.EaseOut });
+        // The lower edge leads; text stays at its natural size as it is revealed.
+        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(to > from ? 360 : 180),
+            CreateContentResizeEase());
         resize.Completed += (_, _) =>
         {
             if (generation != _contentSizeGeneration || version != _contentHeightAnimationVersion) return;
@@ -1728,15 +1723,21 @@ public partial class SpotlightWindow : Window
         EscBadge.BeginAnimation(OpacityProperty, fade);
     }
 
+    private static IEasingFunction CreateContentResizeEase() =>
+        new CubicBezierEase(0.32, 0.72, 0, 1) { EasingMode = EasingMode.EaseIn };
+
     private void PlayContentReveal()
     {
+        ContentRegion.BeginAnimation(OpacityProperty, null);
+        ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        ContentRegion.Opacity = 1;
+        ContentRegionTranslate.Y = 0;
         if (AnimationConfig.ReduceMotion) return;
 
-        var ease = new CubicBezierEase(0.18, 1.2, 0.22, 1.0) { EasingMode = EasingMode.EaseIn };
-        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(300), ease);
-        var slide = CreateAnimation(-10, 0, TimeSpan.FromMilliseconds(340), ease);
+        // Reveal through the expanding viewport without moving the result rows.
+        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(180),
+            CreateContentResizeEase());
         ContentRegion.BeginAnimation(OpacityProperty, fade);
-        ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
     private void SetStatusPulse(bool active)
@@ -2052,7 +2053,7 @@ public partial class SpotlightWindow : Window
         SetNotchMorphActive(true);
 
         string query = SearchBox.Text;
-        if (!string.IsNullOrWhiteSpace(query)) _ = _viewModel.SearchAsync(query);
+        if (!_aiMode && !string.IsNullOrWhiteSpace(query)) _ = _viewModel.SearchAsync(query);
         FocusSearchBox(generation);
     }
 

@@ -1,0 +1,381 @@
+using System.Windows;
+using System.Windows.Input;
+using VNotch.Services;
+using VNotch.Services.Spotlight;
+
+namespace VNotch;
+
+public partial class SpotlightWindow
+{
+    private static readonly TimeSpan AiRequestTimeout = TimeSpan.FromSeconds(60);
+    private bool _aiMode;
+    private readonly List<SpotlightAiMessage> _aiHistory = new();
+    private readonly SpotlightAiService _aiService = new();
+    private CancellationTokenSource? _aiRequest;
+    private string _aiConversationProvider = "";
+    private string _aiConversationModel = "";
+
+    internal static bool IsAiToggle(Key key, ModifierKeys modifiers) => key == Key.Tab && modifiers == ModifierKeys.None;
+
+    private bool HandleAiKey(KeyEventArgs e)
+    {
+        if (IsAiToggle(e.Key, Keyboard.Modifiers))
+        {
+            if (!e.IsRepeat) ToggleAiMode();
+            e.Handled = true;
+            return true;
+        }
+        if (!_aiMode) return false;
+        // Keep all search launch/navigation shortcuts out of the AI surface.
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            if (!e.IsRepeat) _ = SendAiAsync();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            EscapeAiMode();
+            e.Handled = true;
+        }
+        return true;
+    }
+
+    private void EscapeAiMode()
+    {
+        if (_aiRequest != null) CancelAiRequest();
+        else ToggleAiMode();
+    }
+
+    private void ToggleAiMode()
+    {
+        CancelAiRequest();
+        CancelSearchDebounce();
+        CancelSearchingGrace();
+        _pendingLaunchQuery = null;
+        _viewModel.CancelPendingSearch();
+        ClearLaunchFailure();
+        _aiMode = !_aiMode;
+        if (_aiMode && _aiDraftToRestore != null) { SearchBox.Text = _aiDraftToRestore; _aiDraftToRestore = null; }
+        AiPanel.Visibility = _aiMode ? Visibility.Visible : Visibility.Collapsed;
+        AutocompleteText.Visibility = Visibility.Collapsed;
+        LocalizeAi();
+        AnimateSearchIconToAi(_aiMode);
+        UpdateAiAmbientGlow(_aiMode);
+        UpdateGlowingCaret();
+        if (_aiMode)
+        {
+            EscBadgeText.Text = "TAB · " + Loc.Get("spotlight.searchMode");
+            EscBadge.ToolTip = Loc.Get("spotlight.ai.back");
+            RefreshAiPanel();
+            AnimateAiArrival(AiPanel, 8, 350);
+        }
+        else
+        {
+            EscBadgeText.Text = "TAB · AI";
+            EscBadge.ToolTip = null;
+            StopAiActivity();
+            _ = _viewModel.SearchAsync(SearchBox.Text);
+            AnimateAiArrival(ResultsList, 6, 240);
+        }
+        RefreshStatus();
+        SearchBox.Focus();
+    }
+
+    private void LocalizeAi()
+    {
+        EscBadgeText.Text = "TAB · " + (_aiMode ? Loc.Get("spotlight.searchMode") : "AI");
+        PlaceholderText.Text = Loc.Get(_aiMode ? "spotlight.ai.placeholder" : "spotlight.placeholder");
+        System.Windows.Automation.AutomationProperties.SetName(SearchBox, PlaceholderText.Text);
+        AiModeLabel.Text = Loc.Get("spotlight.ai.agent", _aiHistory.Count > 0 ? _aiConversationProvider : _settings.SpotlightAiProvider);
+        SetAiToolLabel(AiNewChatButton, "spotlight.ai.newChat");
+        SetAiToolLabel(AiBackButton, "spotlight.ai.back");
+        SetAiToolLabel(AiCopyButton, "spotlight.ai.copy");
+        AiHistoryButton.ToolTip = Loc.Get("spotlight.ai.history");
+        System.Windows.Automation.AutomationProperties.SetName(AiHistoryButton, Loc.Get("spotlight.ai.history"));
+        AiWelcomeTitle.Text = Loc.Get("spotlight.ai.welcome");
+        AiWelcomeHint.Text = Loc.Get("spotlight.ai.welcomeHint");
+        AiPromptOne.Content = Loc.Get("spotlight.ai.promptOne");
+        AiPromptTwo.Content = Loc.Get("spotlight.ai.promptTwo");
+        AiSendButton.ToolTip = Loc.Get("spotlight.ai.send");
+        System.Windows.Automation.AutomationProperties.SetName(AiSendButton, Loc.Get("spotlight.ai.send"));
+        AiStopButton.ToolTip = Loc.Get("spotlight.ai.stop");
+        System.Windows.Automation.AutomationProperties.SetName(AiStopButton, Loc.Get("spotlight.ai.stop"));
+        if (_aiRequest == null) SetAiStatus(Loc.Get("spotlight.ai.hint"));
+    }
+
+    private void SetAiStatus(string text)
+    {
+        AiStatus.Text = text;
+        AiStatus.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void UpdateAiSendButtonState()
+    {
+        UpdateAiUsage();
+        AiSendButton.IsEnabled = _aiRequest == null && !string.IsNullOrWhiteSpace(SearchBox.Text);
+        AiSendButton.Visibility = AiSendButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+        var rowVisibility = SearchBox.Text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (AiBottomActionRow.Visibility != rowVisibility)
+        {
+            AiBottomActionRow.Visibility = rowVisibility;
+            ScheduleContentResize();
+        }
+    }
+
+    private void RefreshAiPanel()
+    {
+        ResultsList.Visibility = Visibility.Collapsed;
+        StatusPanel.Visibility = Visibility.Collapsed;
+        AiPanel.Visibility = Visibility.Visible;
+        SetStatusPulse(false);
+        UpdateAiActivity();
+        UpdateAiSendButtonState();
+        UpdateAiUsage();
+        AiStopButton.Visibility = _aiRequest == null ? Visibility.Collapsed : Visibility.Visible;
+        bool shown = _contentShown;
+        SetContentShown(true);
+        if (shown) ScheduleContentResize();
+        UpdateAiWelcome();
+        AiModeLabel.Text = Loc.Get("spotlight.ai.agent", _aiHistory.Count > 0 ? _aiConversationProvider : _settings.SpotlightAiProvider);
+        SetEscBadgeVisible(true);
+        EscBadgeText.Text = "TAB · " + Loc.Get("spotlight.searchMode");
+    }
+
+    private void RenderAiHistory()
+    {
+        UpdateAiWelcome();
+        UpdateAiMetadata();
+        AiTranscript.Children.Clear();
+        foreach (var message in _aiHistory) AddAiMessage(message, animate: false);
+        AiTranscriptScroll.ScrollToEnd();
+    }
+
+    private System.Windows.Controls.RichTextBox CreateMarkdownView(string text)
+    {
+        var font = (System.Windows.Media.FontFamily?)TryFindResource("SFProDisplay")
+            ?? new System.Windows.Media.FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI, Arial");
+        return new System.Windows.Controls.RichTextBox
+        {
+            Document = VNotch.Controls.AiMarkdown.Render(text, font),
+            IsReadOnly = true,
+            IsDocumentEnabled = false,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            FontFamily = font,
+            FontWeight = FontWeights.Bold,
+            VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled
+        };
+    }
+
+    private async Task SendAiAsync()
+    {
+        if (!_aiMode || _aiRequest != null || string.IsNullOrWhiteSpace(SearchBox.Text)) return;
+        CloseAiHistory();
+        var settings = _settings.Clone();
+        if (_aiHistory.Count > 0)
+        {
+            settings.SpotlightAiProvider = _aiConversationProvider;
+            var savedConfig = SpotlightAiService.Configuration(settings, _aiConversationProvider);
+            SpotlightAiService.Configure(settings, _aiConversationProvider, savedConfig.Key, _aiConversationModel);
+        }
+        var config = SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider);
+        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Model))
+        {
+            SetAiStatus(Loc.Get("spotlight.ai.configure"));
+            RefreshAiPanel();
+            return;
+        }
+        if (_aiConversationProvider != settings.SpotlightAiProvider || _aiConversationModel != config.Model)
+        {
+            _aiHistory.Clear();
+            _aiConversationProvider = settings.SpotlightAiProvider;
+            _aiConversationModel = config.Model;
+        }
+        string prompt = SearchBox.Text.Trim();
+        if (prompt.Length > 16000)
+        {
+            SetAiStatus(Loc.Get("spotlight.ai.tooLong"));
+            return;
+        }
+        // Keep complete conversation turns and bound the request size.
+        // Keep the full transcript on disk; only the API context is bounded below.
+        var pending = new SpotlightAiMessage("user", prompt);
+        _aiHistory.Add(pending);
+        AddAiMessage(pending, animate: true);
+        SearchBox.Clear();
+        UpdateAiSendButtonState();
+        UpdateAiWelcome();
+        UpdateAiMetadata();
+        ShowAiThinking();
+        using var cts = new CancellationTokenSource();
+        _aiRequest = cts;
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var progressTimer = new System.Windows.Threading.DispatcherTimer
+        { Interval = TimeSpan.FromSeconds(1) };
+        progressTimer.Tick += (_, _) =>
+        {
+            if (ReferenceEquals(_aiRequest, cts) && _aiHistory.LastOrDefault()?.Role != "assistant")
+                SetAiStatus(Loc.Get("spotlight.ai.waiting", (int)started.Elapsed.TotalSeconds));
+        };
+        SetAiStatus(Loc.Get("spotlight.ai.waiting", 0));
+        progressTimer.Start();
+        System.Windows.Controls.RichTextBox? liveView = null;
+        string receivedText = "";
+        int revealedLength = 0;
+        bool revealCaughtUp = false;
+        var revealTimer = new System.Windows.Threading.DispatcherTimer
+        { Interval = TimeSpan.FromMilliseconds(110) };
+        void RevealText(bool finish = false)
+        {
+            if (!ReferenceEquals(_aiRequest, cts) || liveView == null) return;
+            revealTimer.Interval = TimeSpan.FromMilliseconds(1000d / Math.Clamp(_settings.SpotlightAiWordsPerSecond, 2, 30));
+            bool follow = AiTranscriptScroll.ScrollableHeight - AiTranscriptScroll.VerticalOffset < 32;
+            if (finish || AnimationConfig.ReduceMotion)
+            {
+                liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText);
+                revealCaughtUp = true;
+            }
+            else
+            {
+                var doc = VNotch.Controls.AiMarkdown.RenderWords(receivedText, revealedLength + 1,
+                    out int shown, out revealCaughtUp, Math.Min(240, revealTimer.Interval.TotalMilliseconds));
+                if (shown == revealedLength) return;
+                revealedLength = shown;
+                liveView.Document = doc;
+            }
+            if (follow) AiTranscriptScroll.ScrollToEnd();
+            ScheduleContentResize();
+        }
+        revealTimer.Tick += (_, _) => RevealText();
+        revealTimer.Start();
+        try
+        {
+            // Interrupted responses stay visible but are not replayed as completed turns.
+            var history = new List<SpotlightAiMessage>();
+            for (int i = 0; i < _aiHistory.Count; i++)
+            {
+                if (i + 1 < _aiHistory.Count && _aiHistory[i + 1].IsIncomplete) { i++; continue; }
+                history.Add(_aiHistory[i]);
+            }
+            while (history.Count > 21 || (history.Count > 2 && history.Sum(m => m.Content.Length) > 64000))
+                history.RemoveRange(0, 2);
+            var geminiParts = new List<System.Text.Json.JsonElement>();
+            var response = new System.Text.StringBuilder();
+            cts.CancelAfter(AiRequestTimeout);
+            await foreach (string delta in _aiService.StreamAsync(settings, history, cts.Token, parts => geminiParts.AddRange(parts), usage => Dispatcher.BeginInvoke(() =>
+            {
+                if (!ReferenceEquals(_aiRequest, cts)) return;
+                _usageSnapshot = usage;
+                _usageIdentity = UsageIdentity(settings);
+                UpdateAiUsage();
+            })))
+            {
+                if (!ReferenceEquals(_aiRequest, cts) || cts.IsCancellationRequested) return;
+                cts.CancelAfter(AiRequestTimeout); // Timeout means no new text, not total generation time.
+                response.Append(delta);
+                if (liveView == null)
+                {
+                    HideAiThinking();
+                    _aiHistory.Add(new SpotlightAiMessage("assistant", "") { IsIncomplete = true });
+                    liveView = AddAiMessage(new SpotlightAiMessage("assistant", ""), animate: true);
+                }
+                _aiHistory[^1] = new SpotlightAiMessage("assistant", response.ToString()) { IsIncomplete = true };
+                receivedText = response.ToString();
+                revealCaughtUp = false;
+                if (AnimationConfig.ReduceMotion) RevealText(finish: true);
+                UpdateAiMetadata();
+                SetAiStatus(Loc.Get("spotlight.ai.streaming"));
+            }
+            cts.CancelAfter(Timeout.InfiniteTimeSpan);
+            while (!revealCaughtUp && ReferenceEquals(_aiRequest, cts))
+                await Task.Delay(32, cts.Token);
+            if (!ReferenceEquals(_aiRequest, cts) || cts.IsCancellationRequested) return;
+            if (_aiHistory.LastOrDefault()?.Role == "assistant")
+                _aiHistory[^1] = _aiHistory[^1] with
+                {
+                    IsIncomplete = false,
+                    GeminiParts = settings.SpotlightAiProvider == "Gemini" ? geminiParts.ToArray() : null
+                };
+            SetAiStatus(Loc.Get("spotlight.ai.hint"));
+        }
+        catch (Exception ex)
+        {
+            HideAiThinking();
+            if (!ReferenceEquals(_aiRequest, cts)) return;
+            cts.Cancel();
+            RuntimeLog.Warn("SPOTLIGHT-AI", $"{settings.SpotlightAiProvider} request ended after {started.Elapsed.TotalSeconds:F0}s ({ex.GetType().Name}; {(ex as SpotlightAiException)?.Diagnostic ?? "no provider status"})");
+            // Failed/cancelled requests are retryable without duplicate user turns.
+            if (_aiHistory.LastOrDefault()?.Role == "user")
+            {
+                _aiHistory.Remove(pending);
+                if (string.IsNullOrEmpty(SearchBox.Text)) SearchBox.Text = prompt;
+            }
+            SetAiStatus(Loc.Get(ex is SpotlightAiException ? ex.Message :
+                ex is TimeoutException or OperationCanceledException ? "spotlight.ai.timeout" : "spotlight.ai.networkError") +
+                (ex is SpotlightAiException { Diagnostic: { } diagnostic } ? $" ({diagnostic})" : ""));
+        }
+        finally
+        {
+            HideAiThinking();
+            progressTimer.Stop();
+            revealTimer.Stop();
+            RevealText(finish: true);
+            if (ReferenceEquals(_aiRequest, cts) && liveView != null)
+                liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText);
+            if (ReferenceEquals(_aiRequest, cts))
+            {
+                _aiRequest = null;
+                SaveAiHistory();
+                if (liveView == null) RenderAiHistory();
+                else { UpdateAiWelcome(); UpdateAiMetadata(); }
+                if (_aiMode) RefreshAiPanel();
+            }
+        }
+    }
+
+    private void CancelAiRequest()
+    {
+        HideAiThinking();
+        var cts = _aiRequest;
+        if (cts == null) return;
+        _aiRequest = null;
+        cts.Cancel();
+        if (_aiHistory.LastOrDefault() is { Role: "user" } pending)
+        {
+            _aiHistory.RemoveAt(_aiHistory.Count - 1);
+            if (string.IsNullOrEmpty(SearchBox.Text)) SearchBox.Text = pending.Content;
+        }
+        SaveAiHistory();
+        SetAiStatus(Loc.Get("spotlight.ai.cancelled"));
+        RenderAiHistory();
+        if (_aiMode) RefreshAiPanel();
+    }
+
+    private void AiToggle_Click(object sender, MouseButtonEventArgs e)
+    {
+        ToggleAiMode();
+        e.Handled = true;
+    }
+
+    private void AiSend_Click(object sender, RoutedEventArgs e) => _ = SendAiAsync();
+    private void AiStop_Click(object sender, RoutedEventArgs e) => CancelAiRequest();
+    private async void AiNewChat_Click(object sender, RoutedEventArgs e)
+    {
+        await TransitionAiPageAsync(CreateNewAiChat);
+    }
+
+    private void CreateNewAiChat()
+    {
+        CancelAiRequest();
+        SaveAiHistory();
+        _chatId = Guid.NewGuid().ToString("N");
+        CloseAiHistory();
+        _aiHistory.Clear();
+        RenderAiHistory();
+        SearchBox.Clear();
+        SetAiStatus(Loc.Get("spotlight.ai.hint"));
+        RefreshAiPanel();
+        SearchBox.Focus();
+    }
+}

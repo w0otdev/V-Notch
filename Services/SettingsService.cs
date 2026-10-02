@@ -261,6 +261,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             // user that API keys could not be saved.
             RuntimeLog.Error(LogCategorySave, "DPAPI encryption failed — settings were not saved.");
             DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
+            throw;
         }
         catch (Exception ex)
         {
@@ -318,6 +319,11 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
                 bool hasPlaintextKey = new[]
                 {
                     nameof(NotchSettings.YouTubeApiKey),
+                    nameof(NotchSettings.SpotlightOpenAIApiKey),
+                    nameof(NotchSettings.SpotlightGeminiApiKey),
+                    nameof(NotchSettings.SpotlightClaudeApiKey),
+                    nameof(NotchSettings.SpotlightDeepSeekApiKey),
+
                     nameof(NotchSettings.SpotifySpDc),
                     "PaxSenixApiKey",
                 }.Any(keyName =>
@@ -417,6 +423,9 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             changed = true;
         }
 
+        int clampedScreenshotDuration = Math.Clamp(settings.ScreenshotTrayDurationSeconds, 2, 120);
+        if (clampedScreenshotDuration != settings.ScreenshotTrayDurationSeconds) { settings.ScreenshotTrayDurationSeconds = clampedScreenshotDuration; changed = true; }
+
         int clampedNotif = Math.Clamp(settings.NotificationDuration, 1000, 30000);
         if (clampedNotif != settings.NotificationDuration) { settings.NotificationDuration = clampedNotif; changed = true; }
 
@@ -483,6 +492,10 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         var clone = settings.Clone();
         clone.SettingsVersion = SettingsMigrator.CurrentVersion;
 
+        clone.SpotlightOpenAIApiKey = "";
+        clone.SpotlightGeminiApiKey = "";
+        clone.SpotlightClaudeApiKey = "";
+        clone.SpotlightDeepSeekApiKey = "";
         clone.YouTubeApiKey = "";
         clone.SpotifySpDc = "";
 
@@ -494,6 +507,10 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
         // Exclude sensitive credentials from export to prevent accidental leakage;
         // users re-authenticate on destination machines.
+        settingsObj.Remove(nameof(NotchSettings.SpotlightOpenAIApiKey));
+        settingsObj.Remove(nameof(NotchSettings.SpotlightGeminiApiKey));
+        settingsObj.Remove(nameof(NotchSettings.SpotlightClaudeApiKey));
+        settingsObj.Remove(nameof(NotchSettings.SpotlightDeepSeekApiKey));
         settingsObj.Remove(nameof(NotchSettings.YouTubeApiKey));
         settingsObj.Remove(nameof(NotchSettings.SpotifySpDc));
 
@@ -548,6 +565,10 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
         // Security requirement: Treat imported settings as untrusted. Never import credentials.
         // Keep the local user's existing credentials intact.
+        settings.SpotlightOpenAIApiKey = currentSettings?.SpotlightOpenAIApiKey ?? "";
+        settings.SpotlightGeminiApiKey = currentSettings?.SpotlightGeminiApiKey ?? "";
+        settings.SpotlightClaudeApiKey = currentSettings?.SpotlightClaudeApiKey ?? "";
+        settings.SpotlightDeepSeekApiKey = currentSettings?.SpotlightDeepSeekApiKey ?? "";
         settings.YouTubeApiKey = currentSettings?.YouTubeApiKey ?? "";
         settings.SpotifySpDc = currentSettings?.SpotifySpDc ?? "";
 

@@ -69,8 +69,14 @@ internal sealed class SpotlightController : ISpotlightController
             || !string.Equals(_settings.NotchStyle, settings.NotchStyle, StringComparison.OrdinalIgnoreCase)
             || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
 
+        bool aiChanged = _settings == null
+            || !string.Equals(_settings.SpotlightAiProvider, settings.SpotlightAiProvider, StringComparison.Ordinal)
+            || VNotch.Services.Spotlight.SpotlightAiService.Providers.Any(provider =>
+                VNotch.Services.Spotlight.SpotlightAiService.Configuration(_settings, provider)
+                != VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, provider));
+
         _settings = settings.Clone();
-        if (glassChanged || historyChanged || languageChanged)
+        if (glassChanged || historyChanged || languageChanged || aiChanged)
         {
             _window?.ApplySettings(_settings);
         }
