@@ -2386,7 +2386,7 @@
                                     HorizontalAlignment="Left"
                                     Background="{StaticResource CardGradient}"
                                     CornerRadius="16"
-                                    Padding="10,8"
+                                    Padding="6,8"
                                     RenderTransformOrigin="0.5,0.5"
                                     MouseEnter="CalendarWidget_MouseEnter"
                                     MouseLeave="CalendarWidget_MouseLeave"
@@ -2415,7 +2415,7 @@
                                                FontSize="15"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Left"
-                                               Margin="-3,0,12,0"
+                                               Margin="-1,0,5,0"
                                                RenderTransformOrigin="0,0.5"
                                                Panel.ZIndex="10"
                                                TextOptions.TextRenderingMode="Grayscale"
@@ -2479,7 +2479,7 @@
                                     <ctrl:AnalogClock x:Name="ClockWidget"
                                                       Grid.Column="1"
                                                       Width="92" Height="92"
-                                                      Margin="0,0,4,0"
+                                                      Margin="0"
                                                       HorizontalAlignment="Center"
                                                       VerticalAlignment="Center"
                                                       Visibility="Collapsed"/>
@@ -2774,7 +2774,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <Border Grid.Column="0" Margin="0,0,12,0"/>
+                                <Border Grid.Column="0" Margin="0,0,5,0"/>
 
                                 <TextBlock x:Name="EventText"
                                            Grid.Column="1"
