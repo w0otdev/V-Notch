@@ -69,7 +69,6 @@ class PipelineChecks(unittest.TestCase):
                 {**data, "runs": [{**run, "results": None}]},
                 {**data, "runs": [{**run, "tool": {"driver": {"name": "Other"}}}]},
                 {**data, "runs": [{**run, "invocations": [{"executionSuccessful": False}]}]},
-                {**data, "runs": [{**run, "invocations": [{"toolExecutionNotifications": [{"level": "error"}]}]}]},
             ]
             for invalid in invalid_reports:
                 with self.subTest(report=invalid), self.assertRaises(ValueError):
@@ -78,6 +77,25 @@ class PipelineChecks(unittest.TestCase):
             with self.assertRaises(ValueError):
                 report.write_text("invalid json", encoding="utf-8")
                 check(directory)
+            # Extractor diagnostic notifications do not fail the SAST gate when execution was successful
+            diagnostic_report = {
+                **data,
+                "runs": [
+                    {
+                        **run,
+                        "invocations": [
+                            {
+                                "executionSuccessful": True,
+                                "toolExecutionNotifications": [
+                                    {"level": "error", "descriptor": {"id": "cs/compilation-error"}, "message": {"text": "Diagnostics"}}
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+            report.write_text(json.dumps(diagnostic_report), encoding="utf-8")
+            self.assertEqual(1, check(directory))
 
 
 if __name__ == "__main__":

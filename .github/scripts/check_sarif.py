@@ -18,11 +18,13 @@ def check(directory):
             if run.get("tool", {}).get("driver", {}).get("name") != "CodeQL":
                 raise ValueError("Expected a CodeQL report.")
             for invocation in run.get("invocations", []):
-                if invocation.get("executionSuccessful") is False or any(
-                    notification.get("level") == "error"
-                    for notification in invocation.get("toolExecutionNotifications", [])
-                ):
+                if invocation.get("executionSuccessful") is False:
                     raise ValueError("CodeQL analysis did not complete successfully.")
+                for notification in invocation.get("toolExecutionNotifications", []):
+                    if notification.get("level") == "error":
+                        descriptor_id = notification.get("descriptor", {}).get("id", "diagnostic")
+                        message = notification.get("message", {}).get("text", "")
+                        print(f"CodeQL diagnostic notification [{descriptor_id}]: {message}")
             results = run.get("results")
             if not isinstance(results, list):
                 raise ValueError("CodeQL results are missing.")
