@@ -20,11 +20,13 @@ public sealed class ColorExtractionService : IColorExtractionService
         try
         {
             const int sampleDimension = 64;
-            var formatConvertedBitmap = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0);
+            var formatConvertedBitmap = ArtworkAnalysisSource.GetBgra32(image);
 
             double scaleX = (double)sampleDimension / formatConvertedBitmap.PixelWidth;
             double scaleY = (double)sampleDimension / formatConvertedBitmap.PixelHeight;
-            var smallBitmap = new TransformedBitmap(formatConvertedBitmap, new ScaleTransform(scaleX, scaleY));
+            BitmapSource smallBitmap = formatConvertedBitmap.PixelWidth == sampleDimension && formatConvertedBitmap.PixelHeight == sampleDimension
+                ? formatConvertedBitmap
+                : new TransformedBitmap(formatConvertedBitmap, new ScaleTransform(scaleX, scaleY));
 
             int width = smallBitmap.PixelWidth;
             int height = smallBitmap.PixelHeight;
@@ -36,45 +38,7 @@ public sealed class ColorExtractionService : IColorExtractionService
             {
                 smallBitmap.CopyPixels(pixels, stride, 0);
 
-                var sampledColors = new List<Color>(300);
-#pragma warning disable S2245 // Pseudo-random generator is used solely for deterministic pixel sampling of images, not security or cryptography
-                var random = new Random(42);
-#pragma warning restore S2245
-
-                for (int i = 0; i < 300; i++)
-                {
-                    int x = random.Next(0, width);
-                    int y = random.Next(0, height);
-                    int index = (y * stride) + (x * 4);
-
-                    byte b = pixels[index];
-                    byte g = pixels[index + 1];
-                    byte r = pixels[index + 2];
-                    byte a = pixels[index + 3];
-
-                    int brightness = (r + g + b) / 3;
-
-                    bool isTooDark = brightness < 60;
-                    bool isTooBright = brightness > 245;
-                    bool isTransparent = a < 100;
-
-                    if (!isTooDark && !isTooBright && !isTransparent)
-                    {
-                        sampledColors.Add(Color.FromArgb(a, r, g, b));
-                    }
-                }
-
-                if (sampledColors.Count == 0)
-                {
-                    return Color.FromRgb(255, 255, 255);
-                }
-
-                var dominantColor = FindMostCommonColor(sampledColors);
-
-                dominantColor = EnhanceSaturation(dominantColor, 1.3);
-                dominantColor = EnsureMinimumBrightness(dominantColor, 100);
-
-                return dominantColor;
+                return ExtractSampledColor(pixels, width, height);
             }
             finally
             {
@@ -87,70 +51,64 @@ public sealed class ColorExtractionService : IColorExtractionService
         }
     }
 
+    // Random(42) uses the same samples on every call. Generate them once;
+    // immutable coordinates and stack-local buckets also allow concurrent calls.
+    private static readonly double[] SampleCoordinates = CreateSampleCoordinates();
+
+    private static double[] CreateSampleCoordinates()
+    {
+#pragma warning disable S2245 // Deterministic artwork sampling, not cryptography
+        var random = new Random(42);
+#pragma warning restore S2245
+        var coordinates = new double[600];
+        for (int i = 0; i < coordinates.Length; i++) coordinates[i] = random.NextDouble();
+        return coordinates;
+    }
+
     private struct ColorBucket
     {
         public int Count;
-        public long SumR;
-        public long SumG;
-        public long SumB;
+        public int SumR;
+        public int SumG;
+        public int SumB;
     }
 
-    private static Color FindMostCommonColor(List<Color> colors)
+    internal static Color ExtractSampledColor(ReadOnlySpan<byte> pixels, int width, int height)
     {
-        if (colors == null || colors.Count == 0)
-            return Color.FromRgb(255, 255, 255);
-
-        const int tolerance = 50;
-        var colorGroups = new Dictionary<int, ColorBucket>();
-
-        foreach (var color in colors)
+        // 0..255 / 50 produces six bins per channel, or 216 buckets total.
+        Span<ColorBucket> buckets = stackalloc ColorBucket[216];
+        buckets.Clear();
+        Span<int> order = stackalloc int[216];
+        int used = 0;
+        for (int i = 0; i < SampleCoordinates.Length; i += 2)
         {
-            int rBucket = (color.R / tolerance) * tolerance;
-            int gBucket = (color.G / tolerance) * tolerance;
-            int bBucket = (color.B / tolerance) * tolerance;
+            int x = (int)(SampleCoordinates[i] * width);
+            int y = (int)(SampleCoordinates[i + 1] * height);
+            int index = (y * width + x) * 4;
+            byte b = pixels[index], g = pixels[index + 1], r = pixels[index + 2];
+            int brightness = (r + g + b) / 3;
+            if (brightness < 60 || brightness > 245 || pixels[index + 3] < 100) continue;
 
-            int key = (rBucket << 16) | (gBucket << 8) | bBucket;
-
-            if (colorGroups.TryGetValue(key, out var bucket))
-            {
-                bucket.Count++;
-                bucket.SumR += color.R;
-                bucket.SumG += color.G;
-                bucket.SumB += color.B;
-                colorGroups[key] = bucket;
-            }
-            else
-            {
-                colorGroups[key] = new ColorBucket
-                {
-                    Count = 1,
-                    SumR = color.R,
-                    SumG = color.G,
-                    SumB = color.B
-                };
-            }
+            int key = (r / 50 * 6 + g / 50) * 6 + b / 50;
+            ref ColorBucket bucket = ref buckets[key];
+            if (bucket.Count == 0) order[used++] = key;
+            bucket.Count++;
+            bucket.SumR += r;
+            bucket.SumG += g;
+            bucket.SumB += b;
         }
 
-        ColorBucket bestBucket = default;
-        int maxCount = -1;
-
-        foreach (var bucket in colorGroups.Values)
+        ColorBucket best = default;
+        // Preserve the previous dictionary's first-seen tie-breaking order.
+        for (int i = 0; i < used; i++)
         {
-            if (bucket.Count > maxCount)
-            {
-                maxCount = bucket.Count;
-                bestBucket = bucket;
-            }
+            ref ColorBucket bucket = ref buckets[order[i]];
+            if (bucket.Count > best.Count) best = bucket;
         }
-
-        if (bestBucket.Count <= 0)
-            return Color.FromRgb(255, 255, 255);
-
-        int avgR = (int)(bestBucket.SumR / bestBucket.Count);
-        int avgG = (int)(bestBucket.SumG / bestBucket.Count);
-        int avgB = (int)(bestBucket.SumB / bestBucket.Count);
-
-        return Color.FromRgb((byte)avgR, (byte)avgG, (byte)avgB);
+        if (best.Count == 0) return Color.FromRgb(255, 255, 255);
+        var color = Color.FromRgb((byte)(best.SumR / best.Count),
+            (byte)(best.SumG / best.Count), (byte)(best.SumB / best.Count));
+        return EnsureMinimumBrightness(EnhanceSaturation(color, 1.3), 100);
     }
 
     private static Color EnhanceSaturation(Color color, double factor)

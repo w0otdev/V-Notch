@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.14.0" />
+    <!-- Match the application's resolved JSON dependency. -->
+    <PackageReference Include="System.Text.Json" Version="10.0.2" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
+    <!-- BenchmarkDotNet changes IntermediateOutputPath for generated builds.
+         Reference the prebuilt Release assembly so those builds do not rebuild
+         the WPF application and download its unrelated Copilot CLI assets. -->
+    <Reference Include="V-Notch">
+      <HintPath>../../bin/Release/net8.0-windows10.0.19041.0/win-x64/V-Notch.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequireReleaseApplication" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../bin/Release/net8.0-windows10.0.19041.0/win-x64/V-Notch.dll')"
+           Text="Build V-Notch.csproj in Release first, or use Tools/VNotch.Benchmarks/run.ps1." />
+  </Target>
+</Project>

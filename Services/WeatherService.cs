@@ -35,17 +35,18 @@ public sealed class WeatherService : IWeatherService
                 "&daily=temperature_2m_max,temperature_2m_min" +
                 "&timezone=auto&forecast_days=1";
 
-            using var response = await _http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            using var requestCts = CreateRequestCancellation(cancellationToken);
+            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, requestCts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 RuntimeLog.Log(LogCategory, $"Open-Meteo HTTP {(int)response.StatusCode}");
                 return null;
             }
 
-            var json = await ReadLimitedStringAsync(response, MaxWeatherResponseBytes, cancellationToken).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(json)) return null;
+            using var doc = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestCts.Token).ConfigureAwait(false);
+            if (doc is null) return null;
 
-            var info = ParseForecastJson(json, city);
+            var info = ParseForecastJson(doc.RootElement, city);
             if (info != null)
             {
                 RuntimeLog.Log(LogCategory, $"{info.City} {info.Temperature}° {info.Condition} (H:{info.High} L:{info.Low})");
@@ -66,35 +67,63 @@ public sealed class WeatherService : IWeatherService
 
     private const int MaxWeatherResponseBytes = 512 * 1024; // 512 KB
 
-    private static async Task<string?> ReadLimitedStringAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
+    private CancellationTokenSource CreateRequestCancellation(CancellationToken token)
+    {
+        // ResponseHeadersRead stops HttpClient's timeout at the headers. Keep
+        // the same timeout covering the bounded body read as well.
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cts.CancelAfter(_http.Timeout);
+        return cts;
+    }
+
+    internal static async Task<JsonDocument?> ReadLimitedJsonAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
     {
         var length = response.Content.Headers.ContentLength;
-        if (length.HasValue && length.Value > maxBytes)
-            return null;
+        if (length.HasValue && length.Value > maxBytes) return null;
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var memory = new System.IO.MemoryStream(length.HasValue ? (int)Math.Min(length.Value, maxBytes) : 4096);
-        var buffer = new byte[4096];
-        int totalRead = 0;
-
-        while (true)
+        using var memory = new System.IO.MemoryStream(length.HasValue ? (int)length.Value : 4096);
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
+        try
         {
-            int read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
-            if (read == 0) break;
-            totalRead += read;
-            if (totalRead > maxBytes)
-                return null;
-            await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
-        }
+            int totalRead = 0;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maxBytes - totalRead + 1)), token).ConfigureAwait(false);
+                if (read == 0) break;
+                totalRead += read;
+                if (totalRead > maxBytes) return null;
+                memory.Write(buffer, 0, read);
+            }
 
-        return memory.Length > 0 ? System.Text.Encoding.UTF8.GetString(memory.ToArray()) : null;
+            // This is MemoryStream-owned storage, NOT a rented array. The document
+            // retains it safely after the stream is disposed until its own disposal.
+            return totalRead == 0 ? null : JsonDocument.Parse(memory.GetBuffer().AsMemory(0, totalRead));
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    internal static string? CleanCity(string? city)
+    {
+        if (string.IsNullOrWhiteSpace(city)) return null;
+        Span<char> buffer = stackalloc char[100];
+        int count = 0;
+        foreach (char c in city)
+        {
+            if (char.IsControl(c)) continue;
+            buffer[count++] = c;
+            if (count == buffer.Length) break;
+        }
+        return new string(buffer[..count].Trim());
     }
 
     private async Task<(double lat, double lon, string city)?> ResolveLocationAsync(string? manualCity, CancellationToken token)
     {
-        string? cleanCity = string.IsNullOrWhiteSpace(manualCity)
-            ? null
-            : new string(manualCity.Where(c => !char.IsControl(c)).Take(100).ToArray()).Trim();
+        string? cleanCity = CleanCity(manualCity);
 
         if (!string.IsNullOrWhiteSpace(cleanCity))
         {
@@ -116,10 +145,8 @@ public sealed class WeatherService : IWeatherService
         return location;
     }
 
-    private static WeatherInfo? ParseForecastJson(string json, string city)
+    private static WeatherInfo? ParseForecastJson(JsonElement root, string city)
     {
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
 
         if (!root.TryGetProperty("current", out var current))
         {
@@ -168,16 +195,16 @@ public sealed class WeatherService : IWeatherService
                          $"?name={Uri.EscapeDataString(city)}" +
                          "&count=1&language=en&format=json";
 
-            using var response = await _http.GetAsync(url, token).ConfigureAwait(false);
+            using var requestCts = CreateRequestCancellation(token);
+            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, requestCts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 RuntimeLog.Log(LogCategory, $"Geocoding HTTP {(int)response.StatusCode}");
                 return null;
             }
 
-            var json = await ReadLimitedStringAsync(response, MaxWeatherResponseBytes, token).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(json)) return null;
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestCts.Token).ConfigureAwait(false);
+            if (doc is null) return null;
             var root = doc.RootElement;
 
             if (!root.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
@@ -211,16 +238,16 @@ public sealed class WeatherService : IWeatherService
         token.ThrowIfCancellationRequested();
         try
         {
-            using var response = await _http.GetAsync("https://ipwho.is/", token).ConfigureAwait(false);
+            using var requestCts = CreateRequestCancellation(token);
+            using var response = await _http.GetAsync("https://ipwho.is/", HttpCompletionOption.ResponseHeadersRead, requestCts.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 RuntimeLog.Log(LogCategory, $"ipwho.is HTTP {(int)response.StatusCode}");
                 return null;
             }
 
-            var json = await ReadLimitedStringAsync(response, MaxWeatherResponseBytes, token).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(json)) return null;
-            using var doc = JsonDocument.Parse(json);
+            using var doc = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestCts.Token).ConfigureAwait(false);
+            if (doc is null) return null;
             var root = doc.RootElement;
 
             if (root.TryGetProperty("success", out var successProp) &&
