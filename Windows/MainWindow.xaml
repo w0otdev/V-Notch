@@ -1270,7 +1270,8 @@
                                                FontSize="12"
                                                Foreground="#CCFFFFFF"
                                                FontWeight="Bold"
-                                               Margin="0,1.5,0,0"
+                                               Margin="0,1,0,0"
+                                               TextOptions.TextHintingMode="Animated"
                                                VerticalAlignment="Center"/>
                                     <Grid Margin="4.51,0,0,0"
                                           SnapsToDevicePixels="True"
@@ -2197,7 +2198,7 @@
                                                Margin="-1,0,5,0"
                                                RenderTransformOrigin="0,0.5"
                                                Panel.ZIndex="10"
-                                               TextOptions.TextRenderingMode="Grayscale"
+                                               TextOptions.TextRenderingMode="ClearType"
                                                TextOptions.TextHintingMode="Animated">
                                         <TextBlock.RenderTransform>
                                             <TransformGroup>

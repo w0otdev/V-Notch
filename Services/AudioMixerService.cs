@@ -50,7 +50,8 @@ public sealed class AudioMixerService : IDisposable
     private sealed class CachedProcessMetadata
     {
         public required string Name { get; init; }
-        public ImageSource? Icon { get; init; }
+        public ImageSource? Icon { get; set; }
+        public bool IconResolved { get; set; }
         public string? ProcessName { get; init; }
         public DateTime? ProcessStartTimeUtc { get; init; }
         public string? ExePath { get; init; }
@@ -198,34 +199,35 @@ public sealed class AudioMixerService : IDisposable
                         {
                             name = "System Sounds";
                         }
-                        else if (includeIcons)
-                        {
-                            if (_iconCache.TryGetValue(pid, out var cached) && IsCachedProcessValid(pid, cached))
-                            {
-                                cached.LastAccessedUtc = DateTime.UtcNow;
-                                name = cached.Name;
-                                icon = cached.Icon;
-                            }
-                            else
-                            {
-                                ResolveProcess(pid, session, out name, out icon, out var procName, out var startTime, out var exePath);
-                                if (!string.IsNullOrWhiteSpace(name))
-                                {
-                                    SetCacheEntry(pid, new CachedProcessMetadata
-                                    {
-                                        Name = name,
-                                        Icon = icon,
-                                        ProcessName = procName,
-                                        ProcessStartTimeUtc = startTime,
-                                        ExePath = exePath,
-                                        LastAccessedUtc = DateTime.UtcNow
-                                    });
-                                }
-                            }
-                        }
                         else
                         {
-                            name = ResolveProcessNameFast(pid, session);
+                            if (!_iconCache.TryGetValue(pid, out var cached) || !IsCachedProcessValid(pid, cached))
+                            {
+                                // Resolve the final name in the first background snapshot.
+                                // Only shell icon extraction is deferred to the detailed pass.
+                                ResolveProcess(pid, session, out name, out var procName, out var startTime, out var exePath);
+                                cached = new CachedProcessMetadata
+                                {
+                                    Name = name,
+                                    ProcessName = procName,
+                                    ProcessStartTimeUtc = startTime,
+                                    ExePath = exePath
+                                };
+                                if (!string.IsNullOrWhiteSpace(name)) SetCacheEntry(pid, cached);
+                            }
+
+                            cached.LastAccessedUtc = DateTime.UtcNow;
+                            name = cached.Name;
+                            if (includeIcons && !cached.IconResolved)
+                            {
+                                cached.IconResolved = true;
+                                if (!string.IsNullOrEmpty(cached.ExePath))
+                                {
+                                    try { cached.Icon = FileIconProvider.GetAppIcon(cached.ExePath, small: true); }
+                                    catch (Exception) { /* Icon extraction failed */ }
+                                }
+                            }
+                            icon = cached.Icon;
                         }
 
                         if (string.IsNullOrWhiteSpace(name))
@@ -263,47 +265,16 @@ public sealed class AudioMixerService : IDisposable
     }
 #pragma warning restore S3776
 
-    private static string ResolveProcessNameFast(uint pid, AudioSessionControl session)
-    {
-        try
-        {
-            string display = session.DisplayName;
-            if (!string.IsNullOrWhiteSpace(display) && !display.StartsWith('@'))
-                return display;
-        }
-        catch (Exception)
-        {
-            // Session display name retrieval may fail if session is disconnected
-        }
-
-        // ProcessName does not open the executable or invoke the shell, so it is
-        // suitable for the first lightweight mixer snapshot.
-        try
-        {
-            using var process = Process.GetProcessById((int)pid);
-            if (!string.IsNullOrWhiteSpace(process.ProcessName))
-                return process.ProcessName;
-        }
-        catch (Exception)
-        {
-            // Process may have terminated or be inaccessible
-        }
-
-        return "App";
-    }
-
 #pragma warning disable S3776 // Resolves process metadata, description, and icon from executable file info
     private static void ResolveProcess(
         uint pid,
         AudioSessionControl session,
         out string name,
-        out ImageSource? icon,
         out string? processName,
         out DateTime? startTimeUtc,
         out string? resolvedExePath)
     {
         name = "";
-        icon = null;
         processName = null;
         startTimeUtc = null;
         resolvedExePath = null;
@@ -355,11 +326,6 @@ public sealed class AudioMixerService : IDisposable
             }
         }
 
-        if (!string.IsNullOrEmpty(exePath))
-        {
-            try { icon = FileIconProvider.GetAppIcon(exePath, small: true); }
-            catch (Exception) { /* Icon extraction failed */ }
-        }
     }
 #pragma warning restore S3776
 
