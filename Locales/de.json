@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Zeigt FPS-, CPU- und RAM-Werte in einem verschiebbaren Leistungs-HUD-Fenster an.",
   "settings.enableSmartCrop": "Intelligenter Zuschnitt",
   "settings.enableSmartCrop.hint": "Nutzt ein ONNX-Modell, um Albumcover automatisch zu zentrieren. Deaktivieren, um Rechenleistung zu sparen.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (experimentell)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Experimentell und standardmäßig aus. Verwendet Ihr lokal verschlüsseltes Spotify-Sitzungscookie und inoffizielle Schnittstellen. Spotify schränkt Scraping ein; Zugriff oder Konto können gesperrt werden. Zustimmung erteilt keine Erlaubnis. Nur für erlaubte Nutzung aktivieren.",
   "settings.enableSpotifyLyrics": "Spotify-Songtexte anzeigen",
   "settings.enableSpotifyLyrics.hint": "Zeigt synchronisierte Songtexte in der erweiterten Notch bei Spotify-Wiedergabe.",

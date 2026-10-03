@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Toont een zwevend, versleepbaar paneel met FPS, CPU- en RAM-gebruik.",
   "settings.enableSmartCrop": "Slim bijsnijden van miniaturen",
   "settings.enableSmartCrop.hint": "Gebruikt een ONNX-model om albumhoezen automatisch te centreren. Schakel uit om systeembronnen te sparen.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (experimenteel)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Experimenteel en standaard uit. Gebruikt uw lokaal versleutelde Spotify-sessiecookie en onofficiële toegangspunten. Spotify beperkt scraping; toegang of account kan worden opgeschort. Toestemming verleent geen gebruiksrechten. Alleen inschakelen voor toegestaan gebruik.",
   "settings.enableSpotifyLyrics": "Spotify-songteksten weergeven",
   "settings.enableSpotifyLyrics.hint": "Toont gesynchroniseerde songteksten in de uitgevouwen notch tijdens het luisteren op Spotify.",

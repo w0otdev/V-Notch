@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Отображать плавающее окно с показателями FPS, нагрузки на процессор и ОЗУ.",
   "settings.enableSmartCrop": "Умная обрезка обложек",
   "settings.enableSmartCrop.hint": "Использует модель ONNX для автоцентрирования обложек альбомов. Отключите для экономии ресурсов.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (экспериментально)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Экспериментальная функция, по умолчанию выключена. Использует локально зашифрованный cookie сеанса Spotify и неофициальные точки доступа. Spotify ограничивает автоматический сбор; доступ или аккаунт могут быть приостановлены. Согласие не даёт разрешения. Включайте только для разрешённого использования.",
   "settings.enableSpotifyLyrics": "Текст песен из Spotify",
   "settings.enableSpotifyLyrics.hint": "Показывать синхронизированный текст в развёрнутой шторке при прослушивании в Spotify.",

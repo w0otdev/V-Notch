@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "फ़्लोटिंग HUD विंडो पर FPS, CPU और RAM उपयोग की जानकारी दिखाएँ।",
   "settings.enableSmartCrop": "स्मार्ट थंबनेल क्रॉप",
   "settings.enableSmartCrop.hint": "एल्बम आर्ट को बेहतर तरीक़े से क्रॉप करने के लिए ONNX मॉडल का उपयोग करता है। प्रोसेसिंग लोड कम करने के लिए इसे बंद करें।",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (प्रयोगात्मक)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "प्रयोगात्मक सुविधा, डिफ़ॉल्ट रूप से बंद। यह स्थानीय रूप से एन्क्रिप्ट किए गए Spotify सत्र कुकी और अनौपचारिक एंडपॉइंट का उपयोग करती है। Spotify स्वचालित संग्रह पर रोक लगाता है; पहुँच या खाता निलंबित हो सकता है। सहमति से अनुमति नहीं मिलती। केवल अधिकृत उपयोग के लिए चालू करें।",
   "settings.enableSpotifyLyrics": "Spotify के बोल दिखाएँ",
   "settings.enableSpotifyLyrics.hint": "Spotify सुनते समय खुले नॉच में समय के साथ चलने वाले गीत के बोल दिखाएँ।",

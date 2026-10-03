@@ -1055,8 +1055,11 @@ public partial class SettingsWindow
         staggerMs += staggerStep;
         AnimateContentChange(EnableSpotifyLyricsCheck, () => EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics"), staggerMs, easeOut, fps);
         AnimateContentChange(BrightenDarkLyricsBackgroundCheck, () => BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableSpotifyCanvasCheck, () => EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas"), staggerMs, easeOut, fps);
+        AnimateContentChange(EnableSpotifyCanvasCheck, () =>
+        {
+            if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
+            if (SpotifyCanvasAlphaBadge != null) SpotifyCanvasAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+        }, staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(SpotifyConnectButton, () => SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;

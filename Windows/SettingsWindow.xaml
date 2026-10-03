@@ -2029,10 +2029,18 @@
                                                            Margin="0,4,0,0"/>
 
                                                 <CheckBox x:Name="EnableSpotifyCanvasCheck"
-                                                          Content="Spotify Canvas (experimental)"
+                                                          x:Uid="enableSpotifyCanvas"
                                                           Checked="EnableSpotifyCanvasCheck_Changed"
                                                           Unchecked="EnableSpotifyCanvasCheck_Changed"
-                                                          Margin="0,14,0,0"/>
+                                                          Margin="0,14,0,0">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock x:Name="EnableSpotifyCanvasLabel" Text="Spotify Canvas" VerticalAlignment="Center"/>
+                                                        <Border Background="#C8C8C8" CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                            <TextBlock x:Name="SpotifyCanvasAlphaBadge" Text="ALPHA" FontSize="11" FontWeight="Bold"
+                                                                       Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </CheckBox>
                                                 <TextBlock x:Name="EnableSpotifyCanvasHint"
                                                            Text="Experimental and off by default. Uses your Spotify session cookie and unofficial endpoints. Spotify restricts scraping; access may be suspended. Consent does not grant permission. Enable only for authorized use."
                                                            TextWrapping="Wrap"

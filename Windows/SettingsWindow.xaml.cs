@@ -536,8 +536,8 @@ public partial class SettingsWindow : Window
         EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint");
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
         BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground");
-        EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint");
-        EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas");
+        if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
+        if (SpotifyCanvasAlphaBadge != null) SpotifyCanvasAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
         EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint");
         SpotifyCanvasBrightnessSlider.Label = Loc.Get("settings.spotifyCanvasBrightness");
         SpotifyCanvasBrightnessSlider.Description = Loc.Get("settings.spotifyCanvasBrightness.hint");
@@ -1087,7 +1087,8 @@ public partial class SettingsWindow : Window
         GpuRefractionCheck.Content = Loc.Get("settings.gpuRefraction");
         GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
 
-        EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas");
+        if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
+        if (SpotifyCanvasAlphaBadge != null) SpotifyCanvasAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
         EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint");
         SpotifyCanvasAccountLabel.Text = Loc.Get("settings.spotifyCanvasAccount");
         SpotifyCanvasAccountHint.Text = Loc.Get("settings.spotifyCanvasAccount.hint");

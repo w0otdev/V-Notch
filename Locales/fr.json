@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Affiche l'utilisation des FPS, du CPU et de la RAM dans une fenêtre flottante de performances.",
   "settings.enableSmartCrop": "Rognage intelligent des miniatures",
   "settings.enableSmartCrop.hint": "Utilise un modèle ONNX pour centrer les pochettes intelligemment. Désactivez pour économiser les ressources.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (expérimental)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Expérimental et désactivé par défaut. Utilise votre cookie de session Spotify, chiffré localement, et des points d’accès non officiels. Spotify limite la collecte automatisée ; l’accès ou le compte peut être suspendu. Le consentement ne vaut pas autorisation. Activez uniquement pour un usage autorisé.",
   "settings.enableSpotifyLyrics": "Afficher les paroles Spotify",
   "settings.enableSpotifyLyrics.hint": "Afficher les paroles synchronisées dans le notch étendu avec Spotify.",

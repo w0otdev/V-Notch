@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Wyświetla pływające okienko z informacją o klatkach na sekundę (FPS) oraz użyciu procesora i pamięci RAM.",
   "settings.enableSmartCrop": "Inteligentne kadrowanie miniatur",
   "settings.enableSmartCrop.hint": "Automatycznie centruje okładki albumów za pomocą sieci neuronowej ONNX. Wyłącz, aby zmniejszyć zużycie zasobów.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (eksperymentalne)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Funkcja eksperymentalna, domyślnie wyłączona. Używa lokalnie zaszyfrowanego pliku cookie sesji Spotify i nieoficjalnych punktów dostępu. Spotify ogranicza automatyczne pobieranie; dostęp lub konto mogą zostać zawieszone. Zgoda nie udziela uprawnień. Włączaj tylko do dozwolonego użytku.",
   "settings.enableSpotifyLyrics": "Pokazuj teksty piosenek ze Spotify",
   "settings.enableSpotifyLyrics.hint": "Wyświetla zsynchronizowany tekst w rozwiniętym notchu podczas słuchania w Spotify.",

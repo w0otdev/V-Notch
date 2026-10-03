@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "عرض نافذة عائمة وقابلة للسحب توضح معدل الإطارات واستهلاك المعالج والذاكرة.",
   "settings.enableSmartCrop": "القص الذكي للصور المصغرة",
   "settings.enableSmartCrop.hint": "استخدام نموذج ONNX لتوسيط غلاف الألبوم تلقائياً. قم بتعطيله لتخفيف العبء على النظام.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (تجريبي)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "ميزة تجريبية معطّلة افتراضيًا. تستخدم ملف ارتباط جلسة Spotify المشفّر محليًا ونقاط وصول غير رسمية. يقيّد Spotify الجمع الآلي؛ قد يُعلّق الوصول أو الحساب. الموافقة لا تمنح إذنًا. فعّلها فقط للاستخدام المصرّح به.",
   "settings.enableSpotifyLyrics": "عرض كلمات أغاني Spotify",
   "settings.enableSpotifyLyrics.hint": "عرض الكلمات المتزامنة داخل النتوء الموسع عند الاستماع عبر Spotify.",

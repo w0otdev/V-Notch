@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "在屏幕上显示包含 FPS、CPU 和内存占用的可拖动悬浮性能面板。",
   "settings.enableSmartCrop": "智能缩略图裁切",
   "settings.enableSmartCrop.hint": "使用 ONNX 神经网络模型自动居中裁切专辑封面。关闭可降低图像处理开销。",
-  "settings.enableSpotifyCanvas": "Spotify Canvas（实验性功能）",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "实验性功能，默认关闭。使用在本机加密的 Spotify 会话 Cookie 和非官方接口。Spotify 限制自动抓取，访问权限或账号可能被暂停。用户同意不等于获得授权。仅在有权使用时启用。",
   "settings.enableSpotifyLyrics": "显示 Spotify 歌词",
   "settings.enableSpotifyLyrics.hint": "播放 Spotify 音乐时在展开刘海中显示同步歌词。",

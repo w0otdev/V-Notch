@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Ekranda FPS, CPU ve RAM kullanımını gösteren sürüklenebilir bir panel görüntüler.",
   "settings.enableSmartCrop": "Akıllı küçük resim kırpma",
   "settings.enableSmartCrop.hint": "Albüm kapağını otomatik ortalamak için ONNX modelini kullanır. Sistem yükünü azaltmak için kapatabilirsiniz.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (deneysel)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Deneyseldir ve varsayılan olarak kapalıdır. Yerel olarak şifrelenen Spotify oturum çerezini ve resmî olmayan erişim noktalarını kullanır. Spotify otomatik veri toplamayı kısıtlar; erişim veya hesap askıya alınabilir. Onay, kullanım izni vermez. Yalnızca izin verilen kullanım için etkinleştirin.",
   "settings.enableSpotifyLyrics": "Spotify şarkı sözlerini göster",
   "settings.enableSpotifyLyrics.hint": "Spotify dinlerken genişletilmiş çentikte senkronize şarkı sözlerini görüntüler.",

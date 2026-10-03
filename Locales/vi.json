@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Hiển thị thông số FPS, CPU và RAM trên cửa sổ nổi để theo dõi hiệu năng.",
   "settings.enableSmartCrop": "Smart crop thumbnail",
   "settings.enableSmartCrop.hint": "Dùng mô hình ONNX để tự động căn chỉnh ảnh bìa. Tắt để giảm tải xử lý hình ảnh.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (thử nghiệm)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Tính năng thử nghiệm, mặc định tắt. Dùng cookie phiên Spotify, mã hóa trên máy, và các điểm truy cập không chính thức. Spotify hạn chế thu thập tự động; quyền truy cập hoặc tài khoản có thể bị đình chỉ. Sự đồng ý không thay thế giấy phép. Chỉ bật khi có quyền sử dụng.",
   "settings.enableSpotifyLyrics": "Hiện lời bài hát Spotify",
   "settings.enableSpotifyLyrics.hint": "Hiển thị lời bài hát đồng bộ trong notch khi đang nghe nhạc trên Spotify.",

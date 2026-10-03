@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Tampilkan jendela melayang yang menampilkan informasi FPS serta beban CPU dan RAM.",
   "settings.enableSmartCrop": "Pemotongan cerdas gambar mini",
   "settings.enableSmartCrop.hint": "Menggunakan model ONNX untuk memusatkan sampul album secara otomatis. Matikan untuk menghemat daya pemrosesan.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (eksperimental)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Eksperimental dan nonaktif secara bawaan. Menggunakan cookie sesi Spotify yang dienkripsi secara lokal dan titik akses tidak resmi. Spotify membatasi pengambilan otomatis; akses atau akun dapat ditangguhkan. Persetujuan tidak memberikan izin. Aktifkan hanya untuk penggunaan yang diizinkan.",
   "settings.enableSpotifyLyrics": "Tampilkan lirik Spotify",
   "settings.enableSpotifyLyrics.hint": "Tampilkan lirik tersinkronisasi di notch saat mendengarkan musik di Spotify.",

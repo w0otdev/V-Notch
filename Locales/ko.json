@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "FPS, CPU, RAM 점유율을 보여주는 이동 가능한 플로팅 패널을 띄웁니다.",
   "settings.enableSmartCrop": "스마트 썸네일 자동 크롭",
   "settings.enableSmartCrop.hint": "ONNX 신경망 모델을 활용해 앨범 아트를 정중앙에 자동 맞춤합니다. 끄면 처리 부하가 줄어듭니다.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (실험 기능)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "실험 기능으로 기본값은 꺼짐입니다. 로컬에서 암호화한 Spotify 세션 쿠키와 비공식 접속 경로를 사용합니다. Spotify는 자동 수집을 제한하며 접근이나 계정이 정지될 수 있습니다. 동의가 사용 허가를 부여하지는 않습니다. 허가된 용도로만 켜세요.",
   "settings.enableSpotifyLyrics": "Spotify 실시간 가사 표시",
   "settings.enableSpotifyLyrics.hint": "Spotify 청취 중 확장된 노치에 싱크 가사를 표시합니다.",

@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "ドラッグ可能なフローティング HUD ウィンドウに FPS、CPU、RAM 使用率を表示します。",
   "settings.enableSmartCrop": "スマートサムネイル切り抜き",
   "settings.enableSmartCrop.hint": "ONNX モデルを使用してアルバムアートを自動で最適にトリミングします。無効にすると処理負荷を軽減できます。",
-  "settings.enableSpotifyCanvas": "Spotify Canvas（実験的機能）",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "実験的機能で、初期設定はオフです。ローカルで暗号化したSpotifyのセッションCookieと非公式の接続先を使用します。Spotifyは自動収集を制限しており、アクセスやアカウントが停止される可能性があります。同意は利用許可を与えません。許可された用途に限り有効にしてください。",
   "settings.enableSpotifyLyrics": "Spotifyの歌詞を表示する",
   "settings.enableSpotifyLyrics.hint": "Spotifyで音楽再生時、展開されたノッチ内に同期された歌詞を表示します。",

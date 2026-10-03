@@ -181,7 +181,7 @@
   "settings.enableDebugMode.hint": "Display FPS, CPU, and RAM usage on a floating draggable performance HUD window.",
   "settings.enableSmartCrop": "Smart thumbnail crop",
   "settings.enableSmartCrop.hint": "Uses an ONNX model to center album art automatically. Disable to reduce image processing load.",
-  "settings.enableSpotifyCanvas": "Spotify Canvas (experimental)",
+  "settings.enableSpotifyCanvas": "Spotify Canvas",
   "settings.enableSpotifyCanvas.hint": "Experimental and off by default. Uses your Spotify session cookie, encrypted locally, and unofficial endpoints. Spotify restricts scraping; access or your account may be suspended. Consent does not grant permission. Enable only for authorized use.",
   "settings.enableSpotifyLyrics": "Show Spotify lyrics",
   "settings.enableSpotifyLyrics.hint": "Display synced lyrics inside the expanded notch when listening on Spotify.",
