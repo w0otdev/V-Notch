@@ -103,6 +103,9 @@ public partial class MainWindow
             Duration = TimeSpan.FromMilliseconds(420),
             EasingFunction = _easeQuadOut
         };
+        var iconInkAnim = uiColorAnim.Clone();
+        iconInkAnim.To = UiPalette.PrimaryColor;
+        Timeline.SetDesiredFrameRate(iconInkAnim, AnimationConfig.TargetFps);
 
         double targetOpacity = 0;
         if (!suppressBackdrop && _isExpanded && (!_isAnimating || forceRefresh))
@@ -149,8 +152,8 @@ public partial class MainWindow
         MediaBackground.BeginAnimation(OpacityProperty, opacityAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, opacityAnim);
         EnsureUnfrozen(IndeterminateProgress.Background, c => IndeterminateProgress.Background = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
-        EnsureUnfrozen(CurrentTimeText.Foreground, c => CurrentTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(173, 173, 173)));
-        EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? Color.FromRgb(173, 173, 173)));
+        EnsureUnfrozen(CurrentTimeText.Foreground, c => CurrentTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
+        EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
         EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
 
         var progressDarkColor = Color.FromArgb(
@@ -196,8 +199,8 @@ public partial class MainWindow
             visualizerBrush.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
         }
 
-        EnsureUnfrozen(VolumeIcon.Foreground, c => VolumeIcon.Foreground = new SolidColorBrush(c ?? Color.FromRgb(173, 173, 173)));
-        ((SolidColorBrush)VolumeIcon.Foreground).BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        EnsureUnfrozen(VolumeIcon.Foreground, c => VolumeIcon.Foreground = new SolidColorBrush(c ?? UiPalette.TertiaryColor));
+        ((SolidColorBrush)VolumeIcon.Foreground).BeginAnimation(SolidColorBrush.ColorProperty, iconInkAnim);
 
         var volStartAnim = new ColorAnimation
         {
@@ -240,7 +243,7 @@ public partial class MainWindow
         {
             var brush = shape.Fill as SolidColorBrush;
             if (brush == null || brush.IsFrozen) shape.Fill = new SolidColorBrush(brush?.Color ?? VNotch.Services.UiPalette.PrimaryColor);
-            ((SolidColorBrush)shape.Fill).BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+            ((SolidColorBrush)shape.Fill).BeginAnimation(SolidColorBrush.ColorProperty, iconInkAnim);
         }
 
         EnsureUnfrozenFill(InlinePrevArrow0);
@@ -342,7 +345,7 @@ public partial class MainWindow
         };
         var defaultTextAnim = new ColorAnimation
         {
-            To = Color.FromRgb(173, 173, 173),
+            To = UiPalette.SecondaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
 
@@ -350,7 +353,7 @@ public partial class MainWindow
         ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, defaultColorAnim);
         var defaultGradientEndAnim = new ColorAnimation
         {
-            To = Color.FromRgb(140, 140, 140),
+            To = UiPalette.SecondaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultGradientEndAnim, VNotch.Services.AnimationConfig.TargetFps);
@@ -365,18 +368,20 @@ public partial class MainWindow
 
         ResetTitleGradientToWhite();
 
-        if (VolumeIcon.Foreground is SolidColorBrush volIco && !volIco.IsFrozen) volIco.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
+        var defaultIconAnim = defaultTextAnim.Clone();
+        defaultIconAnim.To = UiPalette.PrimaryColor;
+        if (VolumeIcon.Foreground is SolidColorBrush volIco && !volIco.IsFrozen) volIco.BeginAnimation(SolidColorBrush.ColorProperty, defaultIconAnim);
         VolumeBarGradientStart.BeginAnimation(GradientStop.ColorProperty, defaultColorAnim);
         var defaultVolEndAnim = new ColorAnimation
         {
-            To = Color.FromRgb(140, 140, 140),
+            To = UiPalette.SecondaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultVolEndAnim, VNotch.Services.AnimationConfig.TargetFps);
         VolumeBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, defaultVolEndAnim);
         var defaultVolIndEndAnim = new ColorAnimation
         {
-            To = Color.FromRgb(204, 204, 204),
+            To = UiPalette.SecondaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
         VolumeIndicatorGradientStart.BeginAnimation(GradientStop.ColorProperty, defaultColorAnim);
@@ -386,7 +391,7 @@ public partial class MainWindow
         void ResetUnfrozenFill(System.Windows.Shapes.Shape shape)
         {
             if (shape.Fill is SolidColorBrush brush && !brush.IsFrozen)
-                brush.BeginAnimation(SolidColorBrush.ColorProperty, defaultColorAnim);
+                brush.BeginAnimation(SolidColorBrush.ColorProperty, defaultIconAnim);
         }
 
         ResetUnfrozenFill(InlinePrevArrow0);
@@ -800,22 +805,26 @@ public partial class MainWindow
 
     #region Title Gradient Animation
 
-    private void AnimateTitleGradient(Color vibrantColor)
+    private void AnimateTitleGradient(Color? vibrantColor = null)
     {
-        const double tintStrength = 0.15;
-        var tintedWhite = Color.FromRgb(
-            (byte)(255 - (255 - vibrantColor.R) * tintStrength),
-            (byte)(255 - (255 - vibrantColor.G) * tintStrength),
-            (byte)(255 - (255 - vibrantColor.B) * tintStrength));
+        Color titleColor = UiPalette.PrimaryColor;
+        Color artistColor = UiPalette.SecondaryColor;
+        if (vibrantColor is Color accent)
+        {
+            const double tintStrength = 0.15;
+            titleColor = Color.FromRgb(
+                (byte)(255 - (255 - accent.R) * tintStrength),
+                (byte)(255 - (255 - accent.G) * tintStrength),
+                (byte)(255 - (255 - accent.B) * tintStrength));
+            artistColor = Color.FromArgb(191, titleColor.R, titleColor.G, titleColor.B);
+        }
 
-        var tintedArtist = Color.FromArgb(
-            191,
-            tintedWhite.R, tintedWhite.G, tintedWhite.B);
-
-        var colorAnim = new ColorAnimation { To = tintedWhite, Duration = TimeSpan.FromMilliseconds(500), EasingFunction = _easeQuadOut };
-        var artistColorAnim = new ColorAnimation { To = tintedArtist, Duration = TimeSpan.FromMilliseconds(500), EasingFunction = _easeQuadOut };
+        var colorAnim = new ColorAnimation { To = titleColor, Duration = TimeSpan.FromMilliseconds(500), EasingFunction = _easeQuadOut };
+        var artistColorAnim = new ColorAnimation { To = artistColor, Duration = TimeSpan.FromMilliseconds(500), EasingFunction = _easeQuadOut };
+        var iconAnim = new ColorAnimation { To = titleColor, Duration = TimeSpan.FromMilliseconds(500), EasingFunction = _easeQuadOut };
         Timeline.SetDesiredFrameRate(colorAnim, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(artistColorAnim, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(iconAnim, AnimationConfig.TargetFps);
 
         if (Resources["TrackTitleGradient"] is LinearGradientBrush titleBrush)
         {
@@ -837,14 +846,14 @@ public partial class MainWindow
         AnimateForegroundColor(LyricTextA, artistColorAnim);
         AnimateForegroundColor(LyricTextB, artistColorAnim);
 
-        AnimatePathFillAndStroke(PrevArrow0, colorAnim);
-        AnimatePathFillAndStroke(PrevArrow1, colorAnim);
-        AnimatePathFillAndStroke(PrevArrow2, colorAnim);
-        AnimatePathFillAndStroke(NextArrow0, colorAnim);
-        AnimatePathFillAndStroke(NextArrow1, colorAnim);
-        AnimatePathFillAndStroke(NextArrow2, colorAnim);
-        AnimatePathFill(PauseIconPath, colorAnim);
-        AnimatePathFill(PlayIconPath, colorAnim);
+        AnimatePathFillAndStroke(PrevArrow0, iconAnim);
+        AnimatePathFillAndStroke(PrevArrow1, iconAnim);
+        AnimatePathFillAndStroke(PrevArrow2, iconAnim);
+        AnimatePathFillAndStroke(NextArrow0, iconAnim);
+        AnimatePathFillAndStroke(NextArrow1, iconAnim);
+        AnimatePathFillAndStroke(NextArrow2, iconAnim);
+        AnimatePathFill(PauseIconPath, iconAnim);
+        AnimatePathFill(PlayIconPath, iconAnim);
     }
 
     private static void AnimateForegroundColor(System.Windows.Controls.TextBlock tb, ColorAnimation anim)
@@ -933,49 +942,7 @@ public partial class MainWindow
     private void ResetTitleGradientToWhite()
     {
         StopTitleGradientShift();
-
-        var whiteAnim = new ColorAnimation
-        {
-            To = VNotch.Services.UiPalette.PrimaryColor,
-            Duration = TimeSpan.FromMilliseconds(400)
-        };
-
-        var artistWhiteAnim = new ColorAnimation
-        {
-            To = Color.FromRgb(173, 173, 173),
-            Duration = TimeSpan.FromMilliseconds(400)
-        };
-        Timeline.SetDesiredFrameRate(whiteAnim, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(artistWhiteAnim, VNotch.Services.AnimationConfig.TargetFps);
-
-        if (Resources["TrackTitleGradient"] is LinearGradientBrush titleBrush)
-        {
-            foreach (var stop in titleBrush.GradientStops)
-            {
-                stop.BeginAnimation(GradientStop.ColorProperty, whiteAnim);
-            }
-        }
-
-        if (Resources["TrackTitleNextGradient"] is LinearGradientBrush titleNextBrush)
-        {
-            foreach (var stop in titleNextBrush.GradientStops)
-                stop.BeginAnimation(GradientStop.ColorProperty, whiteAnim);
-        }
-
-        AnimateForegroundColor(TrackArtist, artistWhiteAnim);
-        AnimateForegroundColor(TrackArtistNext, artistWhiteAnim);
-
-        AnimateForegroundColor(LyricTextA, artistWhiteAnim);
-        AnimateForegroundColor(LyricTextB, artistWhiteAnim);
-
-        AnimatePathFillAndStroke(PrevArrow0, whiteAnim);
-        AnimatePathFillAndStroke(PrevArrow1, whiteAnim);
-        AnimatePathFillAndStroke(PrevArrow2, whiteAnim);
-        AnimatePathFillAndStroke(NextArrow0, whiteAnim);
-        AnimatePathFillAndStroke(NextArrow1, whiteAnim);
-        AnimatePathFillAndStroke(NextArrow2, whiteAnim);
-        AnimatePathFill(PauseIconPath, whiteAnim);
-        AnimatePathFill(PlayIconPath, whiteAnim);
+        AnimateTitleGradient();
     }
 
     #endregion

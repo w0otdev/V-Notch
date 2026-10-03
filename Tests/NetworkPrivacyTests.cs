@@ -111,6 +111,63 @@ public sealed class NetworkPrivacyTests
         Assert.Equal("spotlight.ai.privacyBlocked", error.Message);
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    public async Task CanvasTransportRequiresCurrentNoticeAcknowledgement(int noticeVersion, bool allowed)
+    {
+        var policy = new NetworkPrivacy();
+        policy.Apply(new NotchSettings
+        {
+            EnableSpotifyCanvas = true,
+            AllowOnlineCanvas = true,
+            SpotifyCanvasConsentVersion = noticeVersion
+        });
+        int calls = 0;
+        using var client = new HttpClient(new NetworkPrivacy.PrivacyHandler(policy, NetworkFeature.Canvas,
+            new Handler((_, _) => { calls++; return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)); })));
+        if (allowed)
+        {
+            using var response = await client.GetAsync("https://example.invalid");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(1, calls);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("https://example.invalid"));
+            Assert.Equal(0, calls);
+        }
+    }
+
+    [Fact]
+    public async Task RevokingCanvasConsentCancelsTransportEvenWhenLegacyFlagsRemainTrue()
+    {
+        var policy = new NetworkPrivacy();
+        var settings = new NotchSettings
+        {
+            EnableSpotifyCanvas = true,
+            AllowOnlineCanvas = true,
+            SpotifyCanvasConsentVersion = SpotifyCanvasConsent.CurrentNoticeVersion
+        };
+        policy.Apply(settings);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = new HttpClient(new NetworkPrivacy.PrivacyHandler(policy, NetworkFeature.Canvas,
+            new Handler(async (_, token) =>
+            {
+                started.SetResult();
+                await Task.Delay(Timeout.Infinite, token);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            })));
+        var request = client.GetAsync("https://example.invalid");
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        settings.SpotifyCanvasConsentVersion = 0;
+        policy.Apply(settings);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
+        Assert.False(policy.IsAllowed(NetworkFeature.Canvas));
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync("https://example.invalid"));
+    }
+
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => send(request, token);

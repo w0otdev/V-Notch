@@ -411,10 +411,10 @@ public partial class MainWindow
             return;
 
         var showShelfCountBadge = false;
-        double homeTarget = 0.4;
-        double shelfTarget = 0.4;
-        double timerTarget = 0.4;
-        double audioTarget = 0.4;
+        double homeTarget = 0.45;
+        double shelfTarget = 0.45;
+        double timerTarget = 0.45;
+        double audioTarget = 0.45;
 
         if (_isAudioView)
         {

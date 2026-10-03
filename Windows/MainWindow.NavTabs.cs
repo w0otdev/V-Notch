@@ -423,7 +423,7 @@ public partial class MainWindow
         }
 
         // Determine target resting opacity for the dropped item based on active view state
-        double targetOpacity = 0.4;
+        double targetOpacity = 0.45;
         if ((_isAudioView && item == AudioIconButton) ||
             (_isTimerView && item == TimerIconButton) ||
             (_isSecondaryView && item == FileShelfIconButton) ||

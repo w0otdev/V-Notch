@@ -39,7 +39,10 @@ public partial class SettingsWindow
 
     private void AdditionalPrivacyChanged(object sender, RoutedEventArgs e)
     {
-        if (!_isLoadingSettings) PushLivePreview();
+        if (_isLoadingSettings || _isUpdatingSpotifyCanvasOptIn) return;
+        if (_privacyOptions.TryGetValue("canvas", out var option) && ReferenceEquals(sender, option.Check))
+            SetSpotifyCanvasOptIn(option.Check.IsChecked == true, ConfirmSpotifyCanvasOptIn);
+        else PushLivePreview();
     }
 
     private void ReadAdditionalPrivacy(NotchSettings settings)

@@ -435,6 +435,7 @@ public partial class SettingsWindow : Window
 
     private void ApplyLocalization()
     {
+        LocalizedPresentation.Apply(this);
         ApplySupplementalLocalization();
         string appVersion = GetAppVersion();
         if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {appVersion}";

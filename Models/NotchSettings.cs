@@ -113,7 +113,8 @@ public class NotchSettings
 
     public bool EnableSpotifyLyrics { get; set; } = true;
 
-    public bool EnableSpotifyCanvas { get; set; } = true;
+    public bool EnableSpotifyCanvas { get; set; } = false;
+    public int SpotifyCanvasConsentVersion { get; set; } = 0;
 
     public double SpotifyCanvasBrightness { get; set; } = 0.7;
 
@@ -158,7 +159,7 @@ public class NotchSettings
     public bool AllowOnlineAi { get; set; } = true;
     public bool AllowCopilot { get; set; } = true;
     public bool AllowOnlineSubtitles { get; set; } = true;
-    public bool AllowOnlineCanvas { get; set; } = true;
+    public bool AllowOnlineCanvas { get; set; } = false;
     public bool AllowOnlineWeather { get; set; } = true;
     public bool SaveAiChatHistory { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;

@@ -125,6 +125,7 @@ public sealed class LyricsMultilineLayoutTests
             var resources = source.Descendants(ui + "Window.Resources").Single();
             var host = new XElement(ui + "Grid",
                 new XAttribute(XNamespace.Xmlns + "x", x),
+                new XAttribute(XNamespace.Xmlns + "svc", "clr-namespace:VNotch.Services;assembly=V-Notch"),
                 new XElement(ui + "Grid.Resources",
                     resources.Elements().Where(e => (string?)e.Attribute(x + "Key") is "MainSystemFont" or "SubtitleText")));
             foreach (string name in new[] { "LyricTextA", "LyricTextB" })

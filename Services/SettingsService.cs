@@ -498,6 +498,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         clone.SpotlightDeepSeekApiKey = "";
         clone.YouTubeApiKey = "";
         clone.SpotifySpDc = "";
+        SpotifyCanvasConsent.Revoke(clone);
 
         var jsonNode = JsonSerializer.SerializeToNode(clone, new JsonSerializerOptions { WriteIndented = true });
         if (jsonNode is not JsonObject settingsObj)
@@ -571,6 +572,9 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         settings.SpotlightDeepSeekApiKey = currentSettings?.SpotlightDeepSeekApiKey ?? "";
         settings.YouTubeApiKey = currentSettings?.YouTubeApiKey ?? "";
         settings.SpotifySpDc = currentSettings?.SpotifySpDc ?? "";
+
+        // Consent belongs to the local interaction, never to the imported file.
+        SpotifyCanvasConsent.Revoke(settings);
 
         NormalizeSettings(settings);
 

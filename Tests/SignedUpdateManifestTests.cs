@@ -201,7 +201,7 @@ public sealed class SignedUpdateManifestTests
             try { await process.WaitForExitAsync(timeout.Token); }
             catch { process.Kill(entireProcessTree: true); throw; }
             await Task.WhenAll(output, error);
-            Assert.True(process.ExitCode == 0, "Signing script failed: " + await error);
+            Assert.True(process.ExitCode == 0, $"Signing script failed (exit {process.ExitCode}): {await error}{await output}");
             var verified = SignedUpdateManifest.Verify(
                 await File.ReadAllBytesAsync(installerPath + SignedUpdateManifest.ManifestSuffix),
                 await File.ReadAllBytesAsync(installerPath + SignedUpdateManifest.SignatureSuffix),

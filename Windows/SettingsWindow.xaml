@@ -251,6 +251,7 @@
                     <ControlTemplate TargetType="controls:ElasticSlider">
                         <StackPanel>
                             <TextBlock x:Name="PART_Label"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Label, RelativeSource={RelativeSource TemplatedParent}}"
                                        Margin="2,0,0,0"
                                        LineHeight="24" LineStackingStrategy="BlockLineHeight"
                                        FontSize="14"
@@ -2028,12 +2029,13 @@
                                                            Margin="0,4,0,0"/>
 
                                                 <CheckBox x:Name="EnableSpotifyCanvasCheck"
-                                                          Content="Show Spotify Canvas background"
+                                                          Content="Spotify Canvas (experimental)"
                                                           Checked="EnableSpotifyCanvasCheck_Changed"
                                                           Unchecked="EnableSpotifyCanvasCheck_Changed"
                                                           Margin="0,14,0,0"/>
                                                 <TextBlock x:Name="EnableSpotifyCanvasHint"
-                                                           Text="Play the song's looping Canvas behind lyrics when one is available."
+                                                           Text="Experimental and off by default. Uses your Spotify session cookie and unofficial endpoints. Spotify restricts scraping; access may be suspended. Consent does not grant permission. Enable only for authorized use."
+                                                           TextWrapping="Wrap"
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,0"/>
 
@@ -2132,7 +2134,8 @@
                                                     </StackPanel>
                                                 </CheckBox>
                                                 <TextBlock x:Name="EnableYouTubeSubtitlesHint"
-                                                           Text="Display synced closed captions inside the expanded notch when watching on YouTube."
+                                                           Text="Only use captions you are entitled to access under YouTube's terms and applicable law. Fair use is assessed case by case; this notice grants no permission for automated collection."
+                                                           TextWrapping="Wrap"
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,0"/>
 

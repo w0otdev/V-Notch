@@ -141,6 +141,7 @@ public partial class SetupWindow : Window
 
     private void ApplyLocalizationToSetupUi()
     {
+        LocalizedPresentation.Apply(this);
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         Title = Loc.Get(LocKeyWindowTitle);
         SetupAssistantText.Text = Loc.Get("setup.assistant");

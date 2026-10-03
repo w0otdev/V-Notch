@@ -104,6 +104,7 @@ public partial class SpotlightWindow : Window
     internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null)
     {
         InitializeComponent();
+        LocalizedPresentation.Apply(this);
         if (settings != null) _settings = settings.Clone();
         _viewModel = viewModel;
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;

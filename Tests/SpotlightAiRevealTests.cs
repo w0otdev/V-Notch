@@ -45,12 +45,22 @@ public sealed class SpotlightAiRevealTests
                     Assert.True(element.HasAnimatedProperties);
                     Assert.Equal(1d, element.Opacity);
 
-                    method.Invoke(null, methodName == "AnimateAiPageReveal"
-                        ? new object[] { element } : new object[] { element, 6d, 240 });
-                    element.UpdateLayout();
-                    Pump(TimeSpan.FromMilliseconds(80));
-                    Assert.True(element.Opacity < 1, $"Reveal {attempt + 1} did not fade in.");
-                    Pump(TimeSpan.FromMilliseconds(350));
+                    // Observe the fade whenever WPF publishes it. A fixed 80ms
+                    // sample can arrive after completion on an instrumented runner.
+                    double minimumOpacity = 1;
+                    var descriptor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(UIElement.OpacityProperty, typeof(Border));
+                    EventHandler observe = (_, _) => minimumOpacity = Math.Min(minimumOpacity, element.Opacity);
+                    descriptor.AddValueChanged(element, observe);
+                    try
+                    {
+                        method.Invoke(null, methodName == "AnimateAiPageReveal"
+                            ? new object[] { element } : new object[] { element, 6d, 240 });
+                        observe(null, EventArgs.Empty);
+                        element.UpdateLayout();
+                        Pump(TimeSpan.FromMilliseconds(450));
+                    }
+                    finally { descriptor.RemoveValueChanged(element, observe); }
+                    Assert.True(minimumOpacity < 1, $"Reveal {attempt + 1} never published a fade-in value.");
                     Assert.Equal(1d, element.Opacity);
                 }
             }

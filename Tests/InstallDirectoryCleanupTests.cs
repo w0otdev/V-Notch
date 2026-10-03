@@ -62,7 +62,8 @@ public sealed class InstallDirectoryCleanupTests
         File.WriteAllText(sentinel, "must survive cleanup");
         var ownerStart = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
         {
-            UseShellExecute = false, CreateNoWindow = true
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 3" })
             ownerStart.ArgumentList.Add(argument);
@@ -99,7 +100,8 @@ public sealed class InstallDirectoryCleanupTests
         Directory.CreateDirectory(target);
         var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
         {
-            UseShellExecute = false, CreateNoWindow = true
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command",
             "$null = New-Item -ItemType Junction -Path $env:VNOTCH_TEST_LINK -Target $env:VNOTCH_TEST_TARGET" })

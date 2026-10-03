@@ -10,6 +10,21 @@ namespace VNotch.Tests;
 
 public sealed class SettingsTransferTests : IDisposable
 {
+    [Fact]
+    public void ImportAndExportCannotCarryCanvasConsent()
+    {
+        var settings = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
+        SpotifyCanvasConsent.TryEnable(settings, () => true);
+        string directJson = JsonSerializer.Serialize(settings);
+        var (imported, _) = SettingsService.ImportSettingsFromString(directJson, settings);
+        Assert.False(NetworkPrivacy.Allows(imported, NetworkFeature.Canvas));
+        Assert.Equal(0, imported.SpotifyCanvasConsentVersion);
+        var exported = JsonNode.Parse(_settingsService.ExportSettingsToString(settings))!["settings"]!;
+        Assert.False(exported[nameof(NotchSettings.EnableSpotifyCanvas)]!.GetValue<bool>());
+        Assert.Equal(0, exported[nameof(NotchSettings.SpotifyCanvasConsentVersion)]!.GetValue<int>());
+        Assert.True(SpotifyCanvasConsent.HasAccepted(settings));
+    }
+
     private readonly string _tempFolder;
     private readonly SettingsService _settingsService;
 

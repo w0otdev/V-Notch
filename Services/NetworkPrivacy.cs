@@ -22,7 +22,7 @@ internal sealed class NetworkPrivacy
         NetworkFeature.Artwork => s.EnableOnlineArtworkLookup,
         NetworkFeature.Lyrics => s.EnableOnlineLyrics,
         NetworkFeature.Subtitles => s.AllowOnlineSubtitles,
-        NetworkFeature.Canvas => s.AllowOnlineCanvas,
+        NetworkFeature.Canvas => s.AllowOnlineCanvas && s.EnableSpotifyCanvas && SpotifyCanvasConsent.HasAccepted(s),
         NetworkFeature.Weather => s.AllowOnlineWeather,
         NetworkFeature.Ai => s.AllowOnlineAi,
         NetworkFeature.Copilot => s.AllowOnlineAi && s.AllowCopilot,

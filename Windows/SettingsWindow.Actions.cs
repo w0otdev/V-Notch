@@ -63,6 +63,7 @@ public partial class SettingsWindow
             UpdatePerformanceDependentControls(defaults.EnableBlurEffects);
             EnableSpotifyLyricsCheck.IsChecked = defaults.EnableSpotifyLyrics;
             BrightenDarkLyricsBackgroundCheck.IsChecked = defaults.BrightenDarkLyricsBackground;
+            SpotifyCanvasConsent.Revoke(_settings);
             EnableSpotifyCanvasCheck.IsChecked = defaults.EnableSpotifyCanvas;
             EnableYouTubeSubtitlesCheck.IsChecked = defaults.EnableYouTubeSubtitles;
             IgnoreYouTubeAutoSubtitlesCheck.IsChecked = defaults.IgnoreYouTubeAutoSubtitles;
@@ -563,7 +564,7 @@ public partial class SettingsWindow
         snapshot.EnableSmartCrop = EnableSmartCropCheck.IsChecked ?? true;
         snapshot.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
         snapshot.BrightenDarkLyricsBackground = BrightenDarkLyricsBackgroundCheck.IsChecked == true;
-        snapshot.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked ?? true;
+        snapshot.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked == true && SpotifyCanvasConsent.HasAccepted(snapshot);
         snapshot.EnableYouTubeSubtitles = EnableYouTubeSubtitlesCheck.IsChecked ?? true;
         snapshot.IgnoreYouTubeAutoSubtitles = IgnoreYouTubeAutoSubtitlesCheck.IsChecked ?? false;
 

@@ -113,9 +113,34 @@ public partial class SettingsWindow
 
     private void EnableSpotifyCanvasCheck_Changed(object sender, RoutedEventArgs e)
     {
-        if (_isLoadingSettings) return;
+        if (_isLoadingSettings || _isUpdatingSpotifyCanvasOptIn) return;
+        SetSpotifyCanvasOptIn(EnableSpotifyCanvasCheck.IsChecked == true, ConfirmSpotifyCanvasOptIn);
+    }
+
+    private bool _isUpdatingSpotifyCanvasOptIn;
+
+    private bool ConfirmSpotifyCanvasOptIn() => MessageBox.Show(this,
+        Loc.Get("settings.enableSpotifyCanvas.hint") + "\n\nhttps://www.spotify.com/us/legal/user-guidelines/",
+        Loc.Get("settings.enableSpotifyCanvas"), MessageBoxButton.YesNo, MessageBoxImage.Warning,
+        MessageBoxResult.No, Loc.GetCulture().TextInfo.IsRightToLeft
+            ? MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading
+            : MessageBoxOptions.None) == MessageBoxResult.Yes;
+
+    internal bool SetSpotifyCanvasOptIn(bool enabled, Func<bool> confirm)
+    {
+        bool accepted = enabled && SpotifyCanvasConsent.TryEnable(_settings, confirm);
+        if (!accepted) SpotifyCanvasConsent.Revoke(_settings);
+        _isUpdatingSpotifyCanvasOptIn = true;
+        try
+        {
+            EnableSpotifyCanvasCheck.IsChecked = accepted;
+            if (_privacyOptions.TryGetValue("canvas", out var option)) option.Check.IsChecked = accepted;
+        }
+        finally { _isUpdatingSpotifyCanvasOptIn = false; }
         UpdateSpotifyCanvasDependentControls(animate: true);
-        PushLivePreview();
+        // Consent must take effect before sign-in, and revocation must cancel immediately.
+        ApplyPreview(ReadSettingsFromUi());
+        return accepted;
     }
 
     private void SpotifyCanvasBrightnessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -125,6 +150,7 @@ public partial class SettingsWindow
 
     private void SpotifyConnectButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!NetworkPrivacy.Allows(ReadSettingsFromUi(), NetworkFeature.Canvas)) return;
         var loginWindow = new SpotifyLoginWindow
         {
             Owner = this
@@ -151,7 +177,7 @@ public partial class SettingsWindow
             return;
 
         bool lyricsEnabled = EnableSpotifyLyricsCheck?.IsChecked ?? true;
-        bool canvasEnabled = EnableSpotifyCanvasCheck.IsChecked ?? true;
+        bool canvasEnabled = EnableSpotifyCanvasCheck.IsChecked == true && SpotifyCanvasConsent.HasAccepted(_settings);
 
         AnimateDependentElement(EnableSpotifyCanvasCheck, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(EnableSpotifyCanvasHint, lyricsEnabled, 0.45, animate);

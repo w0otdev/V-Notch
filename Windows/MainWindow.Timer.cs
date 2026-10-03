@@ -547,10 +547,10 @@ public partial class MainWindow
     {
         // Expansion can call this before the local view flags are committed.
         // Set the timer state explicitly and release any previous opacity clocks.
-        if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, 0.4, animate: false);
-        if (_navDragItem != FileShelfIconButton) AnimateNavIconOpacity(FileShelfIconButton, 0.4, animate: false);
+        if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, 0.45, animate: false);
+        if (_navDragItem != FileShelfIconButton) AnimateNavIconOpacity(FileShelfIconButton, 0.45, animate: false);
         if (_navDragItem != TimerIconButton) AnimateNavIconOpacity(TimerIconButton, 1.0, animate: false);
-        if (_navDragItem != AudioIconButton) AnimateNavIconOpacity(AudioIconButton, 0.4, animate: false);
+        if (_navDragItem != AudioIconButton) AnimateNavIconOpacity(AudioIconButton, 0.45, animate: false);
         if (!_isAnimating)
         {
             ShelfCountBadge.Visibility = Visibility.Collapsed;
@@ -1703,6 +1703,9 @@ public partial class MainWindow
             AnimateStepHighlightOpacity(highlight, e is MouseButtonEventArgs ? 0.08 : 0.0, 200);
         }
     }
+
+    private void CountdownBtn_MouseLeave(object sender, MouseEventArgs e) => CountdownBtn_MouseLeaveOrUp(sender, e);
+    private void CountdownBtn_MouseUp(object sender, MouseButtonEventArgs e) => CountdownBtn_MouseLeaveOrUp(sender, e);
 
     private void CountdownStart_Click(object sender, MouseButtonEventArgs e)
     {

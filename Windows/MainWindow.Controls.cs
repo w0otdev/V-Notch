@@ -116,6 +116,7 @@ public partial class MainWindow
 
     private void UpdatePlayPauseIcon()
     {
+        RefreshPlaybackAccessibleNames();
         var duration = TimeSpan.FromMilliseconds(180);
 
         if (_isPlaying)
@@ -701,7 +702,8 @@ public partial class MainWindow
         double containerWidth = VolumeIndicatorContainer.ActualWidth;
         if (containerWidth <= 0) containerWidth = _collapsedWidth - 32;
 
-        float newVolume = (float)Math.Clamp(pos.X / containerWidth, 0.0, 1.0);
+        double position = FlowDirection == FlowDirection.RightToLeft ? containerWidth - pos.X : pos.X;
+        float newVolume = (float)Math.Clamp(position / containerWidth, 0.0, 1.0);
         _currentVolume = newVolume;
         _volumeIndicatorRatio = newVolume;
 

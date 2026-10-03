@@ -8,6 +8,42 @@ namespace VNotch.Tests;
 public class SettingsMigratorTests
 {
     [Fact]
+    public void CanvasIsOffOnNewInstall()
+    {
+        var settings = new NotchSettings();
+        Assert.False(settings.EnableSpotifyCanvas);
+        Assert.False(settings.AllowOnlineCanvas);
+        Assert.False(SpotifyCanvasConsent.HasAccepted(settings));
+    }
+
+    [Theory]
+    [InlineData(13, 1)] // Even an injected consent field in a legacy file is reset.
+    [InlineData(14, 0)]
+    [InlineData(14, 2)]
+    public void MigrationNeverInfersConsentFromEnabledFlags(int version, int consentVersion)
+    {
+        string json = $$"""
+            { "SettingsVersion": {{version}}, "EnableSpotifyCanvas": true,
+              "AllowOnlineCanvas": true, "SpotifyCanvasConsentVersion": {{consentVersion}} }
+            """;
+        var (settings, migrated) = SettingsMigrator.Migrate(json);
+        Assert.True(migrated);
+        Assert.False(settings.EnableSpotifyCanvas);
+        Assert.False(settings.AllowOnlineCanvas);
+        Assert.Equal(0, settings.SpotifyCanvasConsentVersion);
+    }
+
+    [Fact]
+    public void AcceptedCanvasSettingsSurviveLocalSaveAndReload()
+    {
+        var settings = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
+        Assert.True(SpotifyCanvasConsent.TryEnable(settings, () => true));
+        var (loaded, migrated) = SettingsMigrator.Migrate(JsonSerializer.Serialize(settings));
+        Assert.False(migrated);
+        Assert.True(NetworkPrivacy.Allows(loaded, NetworkFeature.Canvas));
+    }
+
+    [Fact]
     public void Migrate_Version3_AddsDynamicIslandWidthFromExistingWidth()
     {
         const string rawJson = """

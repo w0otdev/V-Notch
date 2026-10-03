@@ -45,7 +45,7 @@ public partial class MainWindow
         AnimationConfig.SetReduceMotion(battery.IsBatterySaver);
 
         const double batteryFillWidth = 22.8;
-        double targetWidth = Math.Max(1.08, battery.Percentage / 100.0 * 23.0);
+        double targetWidth = Math.Clamp(battery.Percentage / 100.0 * batteryFillWidth, 1.08, batteryFillWidth);
         double targetScale = targetWidth / batteryFillWidth;
         var scaleAnimation = new DoubleAnimation
         {

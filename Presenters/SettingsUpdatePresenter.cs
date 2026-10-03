@@ -113,7 +113,8 @@ public sealed class SettingsUpdatePresenter : IDisposable
         {
             new ChangelogWindow(_service)
             {
-                Owner = _refs.Owner, WindowStartupLocation = WindowStartupLocation.CenterOwner
+                Owner = _refs.Owner,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
             }.ShowDialog();
         }
         catch (Exception ex)

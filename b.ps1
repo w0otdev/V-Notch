@@ -7,10 +7,20 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', 'CertificatePassword')]
 param(
     [switch]$SelfContained,
+    [string]$NsisPath = '',
+    [switch]$LockedRestore,
     # Optional code-signing certificate. In CI, pass these from protected secrets.
     [string]$CertificatePath = '',
-    [string]$CertificatePassword = ''
+    [string]$CertificatePassword = '',
+    [string]$CertificateThumbprint = '',
+    [switch]$RequireAuthenticode
 )
+
+$ErrorActionPreference = 'Stop'
+$restoreArguments = if ($LockedRestore) { @('-p:RestoreLockedMode=true') } else { @() }
+if ($RequireAuthenticode -and -not $CertificateThumbprint) {
+    throw 'A trusted certificate thumbprint is required for a public release.'
+}
 
 $projectVersion = ([xml](Get-Content -Raw .\V-Notch.csproj)).Project.PropertyGroup.Version |
     Where-Object { $_ } |
@@ -38,7 +48,10 @@ $publishDir = "release"
 # Step 1: Clean previous publish
 Write-Host "[1/3] Cleaning previous publish..." -ForegroundColor Yellow
 if (Test-Path $publishDir) {
-    Remove-Item -Path $publishDir -Recurse -Force
+    $resolvedPublish = (Resolve-Path -LiteralPath $publishDir).Path
+    $expectedPublish = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'release'))
+    if ($resolvedPublish -ne $expectedPublish) { throw 'Publish cleanup must stay inside this repository release directory.' }
+    Remove-Item -LiteralPath $resolvedPublish -Recurse -Force
     Write-Host "      Cleaned $publishDir" -ForegroundColor Green
 }
 
@@ -46,10 +59,10 @@ if (Test-Path $publishDir) {
 Write-Host "[2/3] Publishing to $publishDir..." -ForegroundColor Yellow
 if ($SelfContained) {
     # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
-    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir
+    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments
 } else {
     # Framework-dependent single file - requires .NET 8 runtime.
-    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir
+    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      Publish failed!" -ForegroundColor Red
@@ -64,14 +77,21 @@ Write-Host "      Published successfully (v$exeVersion, SHA256: $appExeHash)" -F
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.
 Write-Host "[2b/3] Publishing uninstaller..." -ForegroundColor Yellow
-dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:Version=$projectVersion -p:AssemblyVersion=$installerVersion -p:FileVersion=$installerVersion -p:InformationalVersion=$projectVersion -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir
+dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:Version=$projectVersion -p:AssemblyVersion=$installerVersion -p:FileVersion=$installerVersion -p:InformationalVersion=$projectVersion -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      Uninstaller publish failed!" -ForegroundColor Red
     exit 1
 }
 Write-Host "      Uninstaller published (uninstall.exe)" -ForegroundColor Green
 
-if ($CertificatePath) {
+./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir
+if ($CertificateThumbprint) {
+    ./scripts/Sign-ReleaseBinary.ps1 -Path "$publishDir\V-Notch.exe", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
+    $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
+    Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+}
+
+if ($CertificatePath -and -not $CertificateThumbprint) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign binaries." -ForegroundColor Red; exit 1 }
     Write-Host "      Signing V-Notch.exe and uninstall.exe..." -ForegroundColor Yellow
@@ -86,10 +106,12 @@ if ($CertificatePath) {
 # Step 3: Build NSIS installer
 Write-Host "[3/3] Building NSIS installer..." -ForegroundColor Yellow
 
-# Check if NSIS is installed
-$nsisPath = "C:\Program Files (x86)\NSIS\makensis.exe"
-if (-not (Test-Path $nsisPath)) {
-    $nsisPath = "C:\Program Files\NSIS\makensis.exe"
+# Accept the verified portable compiler from CI, retaining installed NSIS for developers.
+if (-not $NsisPath) {
+    $NsisPath = "C:\Program Files (x86)\NSIS\makensis.exe"
+    if (-not (Test-Path -LiteralPath $NsisPath)) {
+        $NsisPath = "C:\Program Files\NSIS\makensis.exe"
+    }
 }
 
 if (-not (Test-Path $nsisPath)) {
@@ -117,7 +139,9 @@ if ($LASTEXITCODE -ne 0) {
 
 # Authenticode is optional. The release workflow separately signs update manifests
 # using the free ECDSA key; the updater always requires those manifests.
-if ($CertificatePath) {
+if ($CertificateThumbprint) {
+    ./scripts/Sign-ReleaseBinary.ps1 -Path 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
+} elseif ($CertificatePath) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign installer." -ForegroundColor Red; exit 1 }
     & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "installers\V-Notch-Setup.exe"

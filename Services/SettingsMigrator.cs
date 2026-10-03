@@ -9,7 +9,7 @@ namespace VNotch.Services;
 public static class SettingsMigrator
 {
 
-    public const int CurrentVersion = 13;
+    public const int CurrentVersion = 14;
 
     private static readonly IReadOnlyDictionary<int, Func<JsonObject, JsonObject>> _migrations =
         new Dictionary<int, Func<JsonObject, JsonObject>>
@@ -27,6 +27,7 @@ public static class SettingsMigrator
             [10] = MigrateV10,
             [11] = MigrateV11,
             [12] = MigrateV12,
+            [13] = MigrateV13,
         };
 
     private static void EnsureProperty(JsonObject root, string propertyName, JsonNode? defaultValue)
@@ -140,6 +141,15 @@ public static class SettingsMigrator
         return root;
     }
 
+    private static JsonObject MigrateV13(JsonObject root)
+    {
+        // Existing enabled flags predate the experimental notice; require a fresh opt-in.
+        root[nameof(NotchSettings.EnableSpotifyCanvas)] = false;
+        root[nameof(NotchSettings.AllowOnlineCanvas)] = false;
+        root[nameof(NotchSettings.SpotifyCanvasConsentVersion)] = 0;
+        return root;
+    }
+
     public static (NotchSettings settings, bool migrated) Migrate(string rawJson)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
@@ -208,6 +218,13 @@ public static class SettingsMigrator
         var normalizedJson = root.ToJsonString();
         var settings = JsonSerializer.Deserialize<NotchSettings>(normalizedJson) ?? new NotchSettings();
         settings.SettingsVersion = CurrentVersion;
+
+        if (!SpotifyCanvasConsent.HasAccepted(settings) &&
+            (settings.EnableSpotifyCanvas || settings.AllowOnlineCanvas || settings.SpotifyCanvasConsentVersion != 0))
+        {
+            SpotifyCanvasConsent.Revoke(settings);
+            migrated = true;
+        }
 
         if (startVersion != CurrentVersion)
         {

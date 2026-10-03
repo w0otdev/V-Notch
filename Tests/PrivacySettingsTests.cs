@@ -53,7 +53,7 @@ public sealed class PrivacySettingsTests
     }
 
     [Fact]
-    public void Migration_V12ToV13_PopulatesPrivacyDefaults()
+    public void Migration_V12ToCurrent_PopulatesPrivacyDefaults()
     {
         const string rawJson = """
             {
@@ -65,7 +65,7 @@ public sealed class PrivacySettingsTests
         var (settings, migrated) = SettingsMigrator.Migrate(rawJson);
 
         Assert.True(migrated);
-        Assert.Equal(13, settings.SettingsVersion);
+        Assert.Equal(SettingsMigrator.CurrentVersion, settings.SettingsVersion);
         Assert.False(settings.EnableLocalOnlyMode);
         Assert.True(settings.AutoCheckUpdates);
         Assert.True(settings.EnableOnlineArtworkLookup);

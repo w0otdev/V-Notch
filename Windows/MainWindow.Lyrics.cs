@@ -44,11 +44,7 @@ public partial class MainWindow
                         if (Dispatcher.CheckAccess()) action();
                         else Dispatcher.BeginInvoke(action);
                     });
-                _spotifyCanvasController.UpdateSettings(
-                    _settings.EnableSpotifyCanvas,
-                    _settings.SpotifySpDc,
-                    _settings.SpotifyCanvasBrightness,
-                    _settings.EnableLocalOnlyMode);
+                _spotifyCanvasController.UpdateSettings(_settings);
                 _spotifyCanvasController.UpdatePresentationContext(
                     canFadeIn: _isLyricsActive && _isExpanded && !_isAnimating,
                     blurFallbackEnabled: _settings.EnableBlurEffects && !IsLiquidGlassEnabled,
@@ -187,11 +183,7 @@ public partial class MainWindow
 
     private void ApplySpotifyCanvasBrightness()
     {
-        _spotifyCanvasController?.UpdateSettings(
-            _settings.EnableSpotifyCanvas,
-            _settings.SpotifySpDc,
-            _settings.SpotifyCanvasBrightness,
-            _settings.EnableLocalOnlyMode);
+        _spotifyCanvasController?.UpdateSettings(_settings);
         UpdateSpotifyCanvasPresentationContext();
     }
 

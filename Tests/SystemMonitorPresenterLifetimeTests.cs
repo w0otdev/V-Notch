@@ -24,8 +24,15 @@ public sealed class SystemMonitorPresenterLifetimeTests
             new TextBlock(), new Border(), new TextBlock(), new TextBlock());
         var refs = CreateRefs() with { Shelf = shelf };
         using var presenter = new SystemMonitorPresenter(module, dispatcher, refs);
-        Publish(module, new SystemMonitorInfo { CpuPercent = 42, RamUsedBytes = 1024UL * 1024 * 1024,
-            RamTotalBytes = 8UL * 1024 * 1024 * 1024, RamPercent = 12.5, NetDownBytesPerSec = 2048, NetUpBytesPerSec = 16 });
+        Publish(module, new SystemMonitorInfo
+        {
+            CpuPercent = 42,
+            RamUsedBytes = 1024UL * 1024 * 1024,
+            RamTotalBytes = 8UL * 1024 * 1024 * 1024,
+            RamPercent = 12.5,
+            NetDownBytesPerSec = 2048,
+            NetUpBytesPerSec = 16
+        });
         Assert.Equal("42%", refs.CpuValueText.Text);
         Assert.Equal(refs.CpuValueText.Text, shelf.CpuValueText.Text);
         Assert.EndsWith(" GB", shelf.RamValueText.Text);

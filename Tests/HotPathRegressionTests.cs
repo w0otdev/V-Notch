@@ -69,6 +69,25 @@ public sealed class HotPathRegressionTests(ITestOutputHelper output)
         Assert.Equal("target", Assert.Single(runs.Where(r => r.FontWeight == FontWeights.Bold)).Text);
     });
 
+    [Theory]
+    [InlineData(30)]
+    [InlineData(24)]
+    public void HeadingIconFitsLayoutBeforeSizeChangedNotification(double size) => SharedStaTestRunner.Run(() =>
+    {
+        var icon = new RenderProbe();
+        icon.MorphTo(Geometry.Parse("M0,0 L48,0 48,48 0,48 Z"), false);
+        icon.Measure(new Size(size, size));
+        icon.Arrange(new Rect(0, 0, size, size));
+        // Simulate a render before the deferred size notification updates the cache.
+        typeof(MorphingSettingsIcon).GetField("_renderTransform", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(icon, Transform.Identity);
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen()) icon.Render(dc);
+        Assert.False(visual.ContentBounds.IsEmpty);
+        Assert.True(visual.ContentBounds.Left >= 0 && visual.ContentBounds.Top >= 0);
+        Assert.True(visual.ContentBounds.Right <= size && visual.ContentBounds.Bottom <= size);
+    });
+
     [Fact]
     public void MorphGeometryMatchesBaselineAcrossContourCountsAndInterruptedAnimations() => SharedStaTestRunner.Run(() =>
     {
@@ -79,8 +98,11 @@ public sealed class HotPathRegressionTests(ITestOutputHelper output)
         host.Children.Add(baseline);
         using var source = new HwndSource(new HwndSourceParameters("Morph regression")
         {
-            Width = 56, Height = 112, WindowStyle = 0
-        }) { RootVisual = host };
+            Width = 56,
+            Height = 112,
+            WindowStyle = 0
+        })
+        { RootVisual = host };
         host.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
         Assert.True(optimized.IsLoaded && baseline.IsLoaded);
         var shapes = new[]
@@ -162,8 +184,11 @@ public sealed class HotPathRegressionTests(ITestOutputHelper output)
     {
         using var source = new HwndSource(new HwndSourceParameters("Morph benchmark")
         {
-            Width = 56, Height = 56, WindowStyle = 0
-        }) { RootVisual = icon };
+            Width = 56,
+            Height = 56,
+            WindowStyle = 0
+        })
+        { RootVisual = icon };
         icon.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
         icon.Measure(new Size(56, 56));
         icon.Arrange(new Rect(0, 0, 56, 56));

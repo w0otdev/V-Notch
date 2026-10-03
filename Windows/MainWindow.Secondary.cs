@@ -1040,6 +1040,16 @@ public partial class MainWindow
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _isExpanded && !_isAnimating &&
+            e.OriginalSource is not System.Windows.Controls.Primitives.TextBoxBase)
+        {
+            _focusNotchAfterExpand = false;
+            DisableKeyboardInput();
+            Keyboard.ClearFocus();
+            CollapseNotch();
+            e.Handled = true;
+            return;
+        }
         bool isCtrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
         bool isShift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
 

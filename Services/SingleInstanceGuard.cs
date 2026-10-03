@@ -1,6 +1,6 @@
 using System;
-using System.Threading;
 using System.Security.Principal;
+using System.Threading;
 
 namespace VNotch.Services;
 

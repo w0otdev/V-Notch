@@ -180,6 +180,44 @@ public class SettingsWindowDecouplingTests
         Assert.Equal(380, fakeService.AppliedSettings.Width);
     }
 
+    [Fact]
+    public void CanvasOptIn_DeclineAcceptAndRevokeUpdateBothSettingsControls()
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            EnsureApplicationResources();
+            var window = new SettingsWindow(new NotchSettings(), new FakeSettingsAppService());
+            try
+            {
+                var policy = new NetworkPrivacy();
+                policy.Apply(window.ReadSettingsFromUi());
+                window.SettingsChanged += (_, settings) => policy.Apply(settings);
+                int prompts = 0;
+                Assert.False(window.SetSpotifyCanvasOptIn(true, () => { prompts++; return false; }));
+                Assert.False(window.EnableSpotifyCanvasCheck.IsChecked);
+                Assert.False(NetworkPrivacy.Allows(window.ReadSettingsFromUi(), NetworkFeature.Canvas));
+                Assert.True(window.SetSpotifyCanvasOptIn(true, () => { prompts++; return true; }));
+                var enabled = window.ReadSettingsFromUi();
+                Assert.True(enabled.EnableSpotifyCanvas);
+                Assert.True(enabled.AllowOnlineCanvas);
+                Assert.True(NetworkPrivacy.Allows(enabled, NetworkFeature.Canvas));
+                Assert.True(policy.IsAllowed(NetworkFeature.Canvas));
+                var permission = policy.Acquire(NetworkFeature.Canvas);
+                Assert.True(window.SetSpotifyCanvasOptIn(true, () => throw new Exception("Already accepted")));
+                Assert.False(window.SetSpotifyCanvasOptIn(false, () => throw new Exception("Revocation must not prompt")));
+                var revoked = window.ReadSettingsFromUi();
+                Assert.False(revoked.EnableSpotifyCanvas);
+                Assert.False(revoked.AllowOnlineCanvas);
+                Assert.Equal(0, revoked.SpotifyCanvasConsentVersion);
+                Assert.True(permission.IsCancellationRequested);
+                Assert.False(policy.IsAllowed(NetworkFeature.Canvas));
+                Assert.False(window.SetSpotifyCanvasOptIn(true, () => { prompts++; return false; }));
+                Assert.Equal(3, prompts);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     private sealed class FakeSettingsAppService : ISettingsApplicationService
     {
         public NotchSettings? ExportedSettings { get; private set; }

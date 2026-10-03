@@ -242,6 +242,7 @@ public partial class MainWindow : Window
         VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null)
     {
         InitializeComponent();
+        LocalizedPresentation.Apply(this);
         _mediaUpdates = new(action => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, action), ApplyMediaUpdate);
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
@@ -395,6 +396,7 @@ public partial class MainWindow : Window
         _hoverCollapseTimer.Tick += (s, e) =>
         {
             _hoverCollapseTimer.Stop();
+            if (IsKeyboardFocusWithin) return;
             _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
             if (IsScreenshotPillActive)
             {
@@ -1339,6 +1341,9 @@ public partial class MainWindow : Window
             bool languageChanged = !string.Equals(newSettings.Language, oldSettings.Language, StringComparison.Ordinal);
             bool spotifyCanvasSettingsChanged =
                 newSettings.EnableSpotifyCanvas != oldSettings.EnableSpotifyCanvas ||
+                newSettings.AllowOnlineCanvas != oldSettings.AllowOnlineCanvas ||
+                newSettings.SpotifyCanvasConsentVersion != oldSettings.SpotifyCanvasConsentVersion ||
+                newSettings.EnableLocalOnlyMode != oldSettings.EnableLocalOnlyMode ||
                 !string.Equals(newSettings.SpotifySpDc, oldSettings.SpotifySpDc, StringComparison.Ordinal);
             _modeTransitionPending = newSettings.EnableDynamicIslandMode != oldSettings.EnableDynamicIslandMode;
             bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
@@ -1392,11 +1397,7 @@ public partial class MainWindow : Window
             if (spotifyCanvasSettingsChanged)
             {
                 _spotifyCanvasController?.ClearCache();
-                _spotifyCanvasController?.UpdateSettings(
-                    _settings.EnableSpotifyCanvas,
-                    _settings.SpotifySpDc,
-                    _settings.SpotifyCanvasBrightness,
-                    _settings.EnableLocalOnlyMode);
+                _spotifyCanvasController?.UpdateSettings(_settings);
             }
 
             bool priorityChanged = !string.Equals(oldSubtitlePriority, _settings.SubtitlePriority, StringComparison.Ordinal);
@@ -1879,7 +1880,8 @@ public partial class MainWindow : Window
 
     private void RefreshNotchLocalization()
     {
-        Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
+        LocalizedPresentation.Apply(this);
+        RefreshAccessibleNames();
         UpdateShelfCapacityIndicator();
         EventText.Text = Loc.Get("greeting.enjoyDay");
         ChargingStatusText.Text = Loc.Get("battery.charging");
@@ -1895,6 +1897,7 @@ public partial class MainWindow : Window
         MenuSettingsText.Text = Loc.Get("tray.settings");
         MenuRestartText.Text = Loc.Get("tray.restart");
         MenuExitText.Text = Loc.Get("tray.exit");
+        MenuOpenText.Text = Loc.Get("tooltip.expand");
         _calendarPresenter?.RefreshLocale();
         _weatherModule.RefreshLocalization();
         RefreshAudioLocalization();

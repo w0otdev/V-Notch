@@ -1,4 +1,4 @@
-// Frozen clock rendering baseline before retained hand drawings.
+// Clock geometry baseline before retained hand drawings, using current theme ink.
 using System;
 using System.Globalization;
 using System.Windows;
@@ -9,8 +9,8 @@ namespace VNotch.Benchmarks;
 
 public class BaselineAnalogClock : FrameworkElement
 {
-    private static readonly Brush HandBrush = CreateFrozenBrush(0xC8, 0xC8, 0xC8);
-    private static readonly Brush MajorTickBrush = CreateFrozenBrush(0xC8, 0xC8, 0xC8);
+    private static readonly Brush HandBrush = VNotch.Services.UiPalette.PrimaryBrush;
+    private static readonly Brush MajorTickBrush = VNotch.Services.UiPalette.PrimaryBrush;
     private static readonly Brush MinorTickBrush = CreateFrozenBrush(0x6E, 0x6E, 0x73);
     private static readonly Brush AccentBrush = CreateFrozenBrush(0xE0, 0x23, 0x1F);
     private static readonly Brush HubHoleBrush = CreateFrozenBrush(0x0A, 0x0A, 0x0A);
