@@ -55,9 +55,7 @@ public class UpdateService : IUpdateService
 
         if (version.Revision > 0)
             return $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
-        if (version.Build > 0)
-            return $"{version.Major}.{version.Minor}.{version.Build}";
-        return $"{version.Major}.{version.Minor}";
+        return $"{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
     }
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync()

@@ -125,6 +125,7 @@ jobs:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       # actions/setup-dotnet@v4.3.1
@@ -164,6 +165,10 @@ jobs:
       - name: Test release security gates
         shell: pwsh
         run: ./Tests/ReleaseGateTests.ps1
+
+      - name: Verify updates remain compatible with the installed 1.9.3 client
+        shell: pwsh
+        run: ./Tools/Assert-UpdateCompatibility.ps1
 
       - name: Retain test and coverage evidence
         if: ${{ !cancelled() }}

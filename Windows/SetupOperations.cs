@@ -30,15 +30,42 @@ internal static class SetupOperations
 #pragma warning disable S1075 // Official project repository URL for Windows uninstall registry
     private const string AppUrl = "https://github.com/rainaku/V-Notch";
 #pragma warning restore S1075
-    private const string Version = "1.8.1";
     private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\V-Notch";
 
     public static string GetDefaultInstallDirectory()
     {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Programs",
-            AppName);
+        using var uninstallKey = Registry.CurrentUser.OpenSubKey(UninstallRegistryPath);
+        using var appKey = Registry.CurrentUser.OpenSubKey($@"Software\{AppName}");
+        return SelectInstallDirectory(
+            [uninstallKey?.GetValue("InstallLocation") as string, appKey?.GetValue("InstallDir") as string],
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Programs",
+                AppName));
+    }
+
+    internal static string SelectInstallDirectory(IEnumerable<string?> candidates, string fallback)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
+            try
+            {
+                var directory = InstallDirectoryCleanup.ValidateDirectory(candidate);
+                if (File.Exists(Path.Combine(directory, AppExeName))) return directory;
+            }
+            catch (ArgumentException) { }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return fallback;
+    }
+
+    internal static bool GetInitialStartupPreference(string installDirectory)
+    {
+        if (!File.Exists(Path.Combine(installDirectory, AppExeName))) return true;
+        using var runKey = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+        return runKey?.GetValue(AppName) is string command && !string.IsNullOrWhiteSpace(command);
     }
 
     public static bool IsRunningAsAdministrator()
@@ -296,29 +323,26 @@ internal static class SetupOperations
             Directory.CreateDirectory(appFolder);
 
             var settingsPath = Path.Combine(appFolder, "settings.json");
-            Models.NotchSettings settings;
-
-            if (File.Exists(settingsPath))
-            {
-                var existingJson = File.ReadAllText(settingsPath);
-                settings = System.Text.Json.JsonSerializer.Deserialize<Models.NotchSettings>(existingJson) ?? new Models.NotchSettings();
-            }
-            else
-            {
-                settings = new Models.NotchSettings();
-            }
-
-            settings.Language = language;
-
-            var json = System.Text.Json.JsonSerializer.Serialize(settings,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(settingsPath, json);
+            InitializeSettingsFile(settingsPath, language);
         }
         catch (Exception ex)
         {
             // Non-fatal: if initial settings file cannot be written, the app will generate default settings on first launch.
             Debug.WriteLine($"[Setup] Failed to write initial settings: {ex.Message}");
         }
+    }
+
+    internal static void InitializeSettingsFile(string settingsPath, string language)
+    {
+        // Let SettingsService perform its versioned migration and DPAPI handling
+        // after launch. Setup must preserve an existing user's file byte for byte.
+        if (File.Exists(settingsPath)) return;
+        var settings = new Models.NotchSettings { Language = language, SettingsVersion = SettingsMigrator.CurrentVersion };
+        var json = System.Text.Json.JsonSerializer.Serialize(settings,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        using var file = new FileStream(settingsPath, FileMode.CreateNew, FileAccess.Write);
+        using var writer = new StreamWriter(file);
+        writer.Write(json);
     }
 
     private static void RegisterUninstall(string installedExePath, string installDirectory)
@@ -331,7 +355,7 @@ internal static class SetupOperations
         }
 
         uninstallKey.SetValue("DisplayName", AppName);
-        uninstallKey.SetValue("DisplayVersion", Version);
+        uninstallKey.SetValue("DisplayVersion", AppIntegrityService.GetAppVersion());
         uninstallKey.SetValue("Publisher", Publisher);
         uninstallKey.SetValue("URLInfoAbout", AppUrl);
         uninstallKey.SetValue("DisplayIcon", installedExePath);

@@ -89,8 +89,9 @@ public partial class SetupWindow : Window
         _introductionPage = new IntroductionPage();
         _languagePage = new LanguagePage(initialLanguage);
         _termsPage = new TermsOfServicePage();
-        _directoryPage = new DirectoryPage(SetupOperations.GetDefaultInstallDirectory());
-        _startupOptionsPage = new StartupOptionsPage(startWithWindows: true);
+        var installDirectory = SetupOperations.GetDefaultInstallDirectory();
+        _directoryPage = new DirectoryPage(installDirectory);
+        _startupOptionsPage = new StartupOptionsPage(SetupOperations.GetInitialStartupPreference(installDirectory));
         _installProgressPage = new InstallProgressPage();
         _finishPage = new FinishPage(launchAfterInstall: true);
         _cancelSetupPage = new CancelSetupPage();
