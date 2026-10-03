@@ -213,7 +213,7 @@ public partial class SpotlightWindow
             SpotlightAiService.Configure(settings, _aiConversationProvider, savedConfig.Key, _aiConversationModel);
         }
         var config = SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider);
-        if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Model))
+        if (!SpotlightAiService.IsConfigured(settings))
         {
             SetAiStatus("spotlight.ai.configure");
             RefreshAiPanel();

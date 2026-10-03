@@ -1986,6 +1986,7 @@
                                             <StackPanel>
                                                 <TextBlock x:Name="SpotlightAiTitle" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="SpotlightAiHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,18"/>
+                                                <TextBlock x:Name="SpotlightAiDisclaimer" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,18"/>
                                                 <TextBlock x:Name="SpotlightAiProviderLabel" Style="{StaticResource SettingHintText}"/>
                                                 <ComboBox x:Name="SpotlightAiProviderCombo" MinHeight="40" Margin="0,6,0,16" SelectionChanged="SpotlightAiProvider_Changed"/>
                                                 <TextBlock x:Name="SpotlightAiModelLabel" Style="{StaticResource SettingHintText}"/>

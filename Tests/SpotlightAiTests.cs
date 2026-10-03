@@ -124,7 +124,8 @@ public sealed class SpotlightAiTests
         string exported = service.ExportSettingsToString(settings);
         foreach (string provider in SpotlightAiService.Providers)
         {
-            Assert.Equal("test-secret-" + provider, SpotlightAiService.Configuration(restored, provider).Key);
+            Assert.Equal(provider == SpotlightAiService.CopilotProvider ? "" : "test-secret-" + provider,
+                SpotlightAiService.Configuration(restored, provider).Key);
             Assert.DoesNotContain("Spotlight" + provider + "ApiKey", exported);
         }
     }

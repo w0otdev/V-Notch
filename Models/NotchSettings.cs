@@ -96,6 +96,7 @@ public class NotchSettings
     public bool SpotlightDefaultAi { get; set; } = false;
     public int SpotlightAiWordsPerSecond { get; set; } = 9;
     public string SpotlightAiProvider { get; set; } = "OpenAI";
+    public string SpotlightCopilotModel { get; set; } = "";
     [JsonConverter(typeof(VNotch.Services.DpapiJsonConverter))]
     public string SpotlightOpenAIApiKey { get; set; } = "";
     public string SpotlightOpenAIModel { get; set; } = "";

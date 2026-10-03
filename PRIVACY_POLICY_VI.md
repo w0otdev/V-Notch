@@ -216,7 +216,11 @@ Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Pipe
 
 ### 4.8 Spotlight AI (Tùy chọn)
 
-Khi bạn gửi tin nhắn AI, V-Notch gửi nội dung, ngữ cảnh hội thoại gần đây và model đã chọn trực tiếp qua HTTPS tới nhà cung cấp. Khóa API được gửi trong header xác thực. Yêu cầu AI không đi qua máy chủ V-Notch và client này không tự động đi theo chuyển hướng HTTP.
+Với OpenAI, Gemini, Claude và DeepSeek, khi bạn gửi tin nhắn AI, V-Notch gửi nội dung, ngữ cảnh hội thoại gần đây và model đã chọn trực tiếp qua HTTPS tới nhà cung cấp. Khóa API được gửi trong header xác thực. Yêu cầu không đi qua máy chủ V-Notch và HTTP client này không tự động đi theo chuyển hướng.
+
+**GitHub Copilot:** V-Notch chuyển hội thoại gần đây tới SDK chính thức và CLI runtime cục bộ qua stdio. Runtime quản lý xác thực bằng đăng nhập CLI trong hồ sơ người dùng mặc định, rồi kết nối dịch vụ Copilot. V-Notch không lưu API key Copilot. V-Notch không truyền biến môi trường kế thừa để thay API token, BYOK, proxy hoặc TLS, đồng thời cố định executable và kết nối stdio; giới hạn chuyển hướng của HTTP client ở trên không áp dụng cho runtime riêng. Phiên Spotlight tắt công cụ, file hooks, skills, tự tìm cấu hình, ngữ cảnh git, bộ nhớ/kho liên phiên và telemetry phiên. Yêu cầu tính vào hạn mức Copilot. Việc xử lý dữ liệu và tùy chọn huấn luyện chịu [chính sách riêng tư GitHub](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement), [điều khoản AI](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#j-ai-features-training-and-your-data) hoặc hợp đồng tổ chức.
+
+V-Notch cố gắng xóa phiên Copilot sau khi hoàn tất/hủy. Copilot có thể lưu riêng phiên, nhật ký và thông tin đăng nhập trong thư mục dữ liệu của nó (thường là `~/.copilot`; không truyền `COPILOT_HOME` kế thừa), nhất là sau sự cố hoặc dọn dẹp thất bại. V-Notch không mã hóa hay xóa các tệp này bằng chức năng lịch sử chat. Quản lý chúng bằng CLI chính thức và cài đặt tài khoản GitHub; xóa lịch sử V-Notch không xóa dữ liệu tại nhà cung cấp.
 
 | Nhà cung cấp | Địa chỉ API | Mục đích |
 | --- | --- | --- |

@@ -23,6 +23,7 @@ public partial class SettingsWindow
         var config = SpotlightAiService.Configuration(_aiDraft, _aiEditingProvider);
         SpotlightAiKeyBox.Password = config.Key;
         SpotlightAiModelBox.Text = config.Model;
+        UpdateCopilotSettings();
         _loadingAi = false;
     }
 
@@ -35,6 +36,7 @@ public partial class SettingsWindow
         var config = SpotlightAiService.Configuration(_aiDraft, provider);
         SpotlightAiKeyBox.Password = config.Key;
         SpotlightAiModelBox.Text = config.Model;
+        UpdateCopilotSettings();
         _loadingAi = false;
         PushLivePreview();
     }
@@ -85,9 +87,20 @@ public partial class SettingsWindow
         SpotlightAiSpeedSlider.Label = Loc.Get("settings.spotlightAi.speed");
         SpotlightAiSpeedSlider.Unit = Loc.Get("settings.spotlightAi.speedUnit");
         SpotlightAiTitle.Text = Loc.Get("spotlight.ai.title");
+        SpotlightAiDisclaimer.Text = Loc.Get("settings.spotlightAi.disclaimer");
         SpotlightAiHint.Text = Loc.Get("settings.spotlightAi.hint");
         SpotlightAiProviderLabel.Text = Loc.Get("settings.spotlightAi.provider");
         SpotlightAiKeyLabel.Text = Loc.Get("settings.spotlightAi.key");
         SpotlightAiModelLabel.Text = Loc.Get("settings.spotlightAi.model");
+        UpdateCopilotSettings();
+    }
+
+    private void UpdateCopilotSettings()
+    {
+        bool copilot = _aiEditingProvider == SpotlightAiService.CopilotProvider;
+        SpotlightAiHint.Text = Loc.Get(copilot ? "settings.spotlightAi.copilotHint" : "settings.spotlightAi.hint");
+        SpotlightAiKeyLabel.Visibility = copilot ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+        ((System.Windows.UIElement)SpotlightAiKeyBox.Parent).Visibility = SpotlightAiKeyLabel.Visibility;
+        SpotlightAiModelLabel.Text = Loc.Get(copilot ? "settings.spotlightAi.copilotModel" : "settings.spotlightAi.model");
     }
 }

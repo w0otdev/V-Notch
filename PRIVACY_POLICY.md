@@ -212,7 +212,11 @@ The services above (Spotify, GitHub, Google/YouTube, Piped/Invidious instances, 
 
 ### 4.8 Spotlight AI (Opt-In)
 
-When you send an AI message, V-Notch sends your prompt, recent conversation context, and selected model directly over HTTPS to the selected provider. Authentication uses your API key in request headers. AI requests do not pass through a V-Notch backend, and automatic redirects are disabled for this client.
+For OpenAI, Gemini, Claude and DeepSeek, sending an AI message sends your prompt, recent conversation context, and selected model directly over HTTPS to the selected provider. Authentication uses your API key in request headers. These AI requests do not pass through a V-Notch backend, and automatic redirects are disabled for this HTTP client.
+
+**GitHub Copilot:** When selected, V-Notch passes the recent transcript to the official Copilot SDK and its local CLI runtime over stdio. The runtime manages authentication using your CLI login in the standard user profile and connects to GitHub's Copilot services. V-Notch does not store a Copilot API key. V-Notch strips inherited environment overrides (including API tokens, BYOK, proxy and TLS settings) and fixes the runtime executable and stdio transport; the HTTP client's redirect restrictions above do not apply to the separate runtime. Tool access, file hooks, skills, configuration discovery, git context, cross-session memory/store and session telemetry are disabled for Spotlight sessions. Requests consume your Copilot allowance. GitHub's [privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) and [AI data terms](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#j-ai-features-training-and-your-data), or your organization's agreement, govern processing and training preferences.
+
+V-Notch attempts to delete each Copilot session after completion/cancellation. Copilot may separately retain session state, logs and credentials in its own data directory (normally `~/.copilot`; inherited `COPILOT_HOME` is not forwarded), especially after a crash or failed cleanup. These files are not encrypted or deleted by V-Notch's chat history controls. Manage them with the official CLI and GitHub account settings; deleting local V-Notch history does not delete provider-held data.
 
 | Provider | API destination | Purpose |
 | --- | --- | --- |

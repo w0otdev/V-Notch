@@ -25,7 +25,15 @@ internal sealed partial class SpotlightAiService
     { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
     private readonly HttpClient _client;
     internal SpotlightAiService(HttpClient? client = null) => _client = client ?? SharedClient;
-    internal static readonly string[] Providers = ["OpenAI", "Gemini", "Claude", "DeepSeek"];
+    internal const string CopilotProvider = "GitHub Copilot";
+    internal static readonly string[] Providers = ["OpenAI", "Gemini", "Claude", "DeepSeek", CopilotProvider];
+
+    internal static bool IsConfigured(NotchSettings settings)
+    {
+        var (key, model) = Configuration(settings, settings.SpotlightAiProvider);
+        return settings.SpotlightAiProvider == CopilotProvider ||
+            (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(model));
+    }
 
     internal static (string Key, string Model) Configuration(NotchSettings s, string provider) => provider switch
     {
@@ -33,6 +41,7 @@ internal sealed partial class SpotlightAiService
         "Gemini" => (s.SpotlightGeminiApiKey, s.SpotlightGeminiModel),
         "Claude" => (s.SpotlightClaudeApiKey, s.SpotlightClaudeModel),
         "DeepSeek" => (s.SpotlightDeepSeekApiKey, s.SpotlightDeepSeekModel),
+        CopilotProvider => ("", s.SpotlightCopilotModel),
         _ => ("", "")
     };
 
@@ -44,6 +53,7 @@ internal sealed partial class SpotlightAiService
             case "Gemini": s.SpotlightGeminiApiKey = key; s.SpotlightGeminiModel = model; break;
             case "Claude": s.SpotlightClaudeApiKey = key; s.SpotlightClaudeModel = model; break;
             case "DeepSeek": s.SpotlightDeepSeekApiKey = key; s.SpotlightDeepSeekModel = model; break;
+            case CopilotProvider: s.SpotlightCopilotModel = model; break;
         }
     }
 
@@ -93,6 +103,12 @@ internal sealed partial class SpotlightAiService
     internal async IAsyncEnumerable<string> StreamAsync(NotchSettings settings,
         IReadOnlyList<SpotlightAiMessage> history, [EnumeratorCancellation] CancellationToken token, Action<JsonElement[]>? onGeminiParts = null, Action<AiUsageSnapshot>? onUsage = null)
     {
+        if (settings.SpotlightAiProvider == CopilotProvider)
+        {
+            await foreach (string delta in SpotlightCopilotService.StreamAsync(settings.SpotlightCopilotModel, history, token))
+                yield return delta;
+            yield break;
+        }
         using var response = await OpenStreamAsync(settings, history, token).ConfigureAwait(false);
         var usage = AiUsageSnapshot.FromHeaders(response, settings.SpotlightAiProvider);
         onUsage?.Invoke(usage);
@@ -243,6 +259,12 @@ internal sealed partial class SpotlightAiService
 
     internal async Task<string> SendAsync(NotchSettings settings, IReadOnlyList<SpotlightAiMessage> history, CancellationToken token)
     {
+        if (settings.SpotlightAiProvider == CopilotProvider)
+        {
+            var result = new StringBuilder();
+            await foreach (string delta in StreamAsync(settings, history, token)) result.Append(delta);
+            return result.ToString();
+        }
         RuntimeLog.Debug("SPOTLIGHT-AI", "non-stream request started");
         using var request = CreateRequest(settings, history);
         using var response = await _client.SendAsync(request, token).ConfigureAwait(false);
