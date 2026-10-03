@@ -70,6 +70,8 @@ internal sealed class SpotlightController : ISpotlightController
             || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
 
         bool aiChanged = _settings == null
+            || _settings.SpotlightDefaultAi != settings.SpotlightDefaultAi
+            || _settings.SpotlightAiWordsPerSecond != settings.SpotlightAiWordsPerSecond
             || !string.Equals(_settings.SpotlightAiProvider, settings.SpotlightAiProvider, StringComparison.Ordinal)
             || VNotch.Services.Spotlight.SpotlightAiService.Providers.Any(provider =>
                 VNotch.Services.Spotlight.SpotlightAiService.Configuration(_settings, provider)
