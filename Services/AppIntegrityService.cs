@@ -124,36 +124,45 @@ public static class AppIntegrityService
         if (url.Equals("about:internet", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-            return true;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps || uri.Port != 443 || !string.IsNullOrEmpty(uri.UserInfo))
+            return false;
 
         var host = uri.Host;
-
-        // Localhost, loopback or RFC 2606 reserved test domains (.test, .example) for automated testing
-        if (uri.IsLoopback || host.EndsWith(".test", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
-            return true;
 
         // Official GitHub repository and releases
         if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
             host.Equals("www.github.com", StringComparison.OrdinalIgnoreCase))
         {
-            return uri.AbsolutePath.StartsWith($"/{OfficialRepoOwner}/{OfficialRepoName}", StringComparison.OrdinalIgnoreCase) ||
-                   uri.AbsolutePath.StartsWith($"/{OfficialRepoOwner}/", StringComparison.OrdinalIgnoreCase);
+            return IsOfficialRepositoryPath(uri.AbsolutePath);
         }
 
-        // GitHub CDN / Raw Content / Release Asset domains
-        if (host.EndsWith("githubusercontent.com", StringComparison.OrdinalIgnoreCase))
-            return true;
+        if (host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            host.Equals("media.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+            return IsOfficialRepositoryPath(uri.AbsolutePath);
 
-        // GitHub release storage backend (AWS S3)
-        if (host.StartsWith("github-production-release-asset", StringComparison.OrdinalIgnoreCase) &&
-            host.EndsWith(".amazonaws.com", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
+        // CDN paths do not identify a repository. Signed manifests establish artifact ownership.
+        return IsReleaseAssetHost(host);
     }
+
+    private static bool IsOfficialRepositoryPath(string path) =>
+        path.Equals($"/{OfficialRepoOwner}/{OfficialRepoName}", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith($"/{OfficialRepoOwner}/{OfficialRepoName}/", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsOfficialReleaseUrl(Uri uri) =>
+        uri.IsAbsoluteUri && uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443 &&
+        string.IsNullOrEmpty(uri.UserInfo) &&
+        uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
+        uri.AbsolutePath.StartsWith($"/{OfficialRepoOwner}/{OfficialRepoName}/releases/download/", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsReleaseAssetHost(string host) =>
+        host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+        host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsTrustedReleaseRedirect(Uri uri) =>
+        IsOfficialReleaseUrl(uri) ||
+        (uri.IsAbsoluteUri && uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443 &&
+         string.IsNullOrEmpty(uri.UserInfo) && IsReleaseAssetHost(uri.Host));
 
     /// <summary>
     /// Determines whether a release asset is an applicable checksum source for the target binary.

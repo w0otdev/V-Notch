@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Thả để mở khóa giới hạn tệp",
   "shelf.unlockMessage": "Bạn đang thêm {0} tệp trong khi giới hạn an toàn là 30 tệp.\nNếu muốn thêm nhiều hơn, bạn có thể mở khóa giới hạn tại đây.",
   "shelf.unlockSettingsHint": "Bạn cũng có thể tùy chỉnh trong Cài đặt.",
+  "spotifyLogin.blockedMethod": "Phương thức đăng nhập này bị chặn vì lý do bảo mật. Vui lòng đăng nhập bằng email.",
   "spotifyLogin.cancel": "Hủy",
   "spotifyLogin.connected": "Đã kết nối Spotify.",
   "spotifyLogin.failed": "Không thể mở trang đăng nhập Spotify. Hãy kiểm tra Microsoft Edge WebView2 Runtime.",

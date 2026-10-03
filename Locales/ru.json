@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Отпустите мышь для снятия лимита файлов",
   "shelf.unlockMessage": "Вы добавляете {0} файлов. Стандартный безопасный лимит — 30 файлов.\nЕсли вам нужно больше, вы можете снять это ограничение.",
   "shelf.unlockSettingsHint": "Вы также можете изменить этот параметр в Настройках.",
+  "spotifyLogin.blockedMethod": "Этот способ входа заблокирован в целях безопасности. Войдите с помощью электронной почты.",
   "spotifyLogin.cancel": "Отмена",
   "spotifyLogin.connected": "Учётная запись Spotify подключена.",
   "spotifyLogin.failed": "Не удалось открыть окно входа Spotify. Проверьте установку Microsoft Edge WebView2 Runtime.",

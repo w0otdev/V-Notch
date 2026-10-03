@@ -1,5 +1,6 @@
 using System.IO;
 using VNotch.Models;
+using VNotch.Controllers;
 
 namespace VNotch.Services.Spotlight;
 
@@ -48,6 +49,7 @@ internal static class SpotlightFileVisibility
 
     internal static bool ShouldInclude(SpotlightSearchItem item, string query)
     {
+        if (FileShelfController.IsUncPath(item.Target)) return false;
         string path = item.Target.Replace('/', '\\');
         if (IsExplicitPath(query))
             return path.StartsWith(query.Trim().Trim('"').Replace('/', '\\'), StringComparison.OrdinalIgnoreCase);

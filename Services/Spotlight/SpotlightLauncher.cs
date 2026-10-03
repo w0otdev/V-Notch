@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using VNotch.Models;
+using VNotch.Controllers;
 
 namespace VNotch.Services.Spotlight;
 
@@ -139,7 +140,8 @@ internal sealed class SpotlightLauncher
     internal static bool IsValidTarget(SpotlightSearchItem item)
     {
         if (string.IsNullOrWhiteSpace(item.Target)
-            || item.Target.IndexOfAny(['\0', '\r', '\n']) >= 0)
+            || item.Target.IndexOfAny(['\0', '\r', '\n']) >= 0
+            || FileShelfController.IsUncPath(item.Target))
         {
             return false;
         }

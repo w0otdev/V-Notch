@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Loslaten om de uploadlimiet op te heffen",
   "shelf.unlockMessage": "Je voegt {0} bestanden toe. De aanbevolen veilige limiet is 30 bestanden.\nAls je er meer wilt plaatsen, kun je de limiet hier ontgrendelen.",
   "shelf.unlockSettingsHint": "Je kunt dit later ook aanpassen in Instellingen.",
+  "spotifyLogin.blockedMethod": "Deze inlogmethode is om veiligheidsredenen geblokkeerd. Log in met je e-mailadres.",
   "spotifyLogin.cancel": "Annuleren",
   "spotifyLogin.connected": "Spotify is gekoppeld.",
   "spotifyLogin.failed": "Kan het Spotify-inlogvenster niet openen. Controleer of Microsoft Edge WebView2 Runtime is geïnstalleerd.",

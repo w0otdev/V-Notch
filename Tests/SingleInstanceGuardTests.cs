@@ -8,6 +8,13 @@ public class SingleInstanceGuardTests
     private const string TestMutexName = "VNotch_Test_SingleInstance_Mutex";
 
     [Fact]
+    public void ApplicationMutex_IsScopedToCurrentUserAndSession()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        Assert.Equal($@"Local\VNotch_SingleInstance_{identity.User!.Value}", SingleInstanceGuard.GetCurrentUserMutexName());
+    }
+
+    [Fact]
     public void TryAcquire_FirstCall_ReturnsTrue()
     {
         using var guard = new SingleInstanceGuard(TestMutexName + "_acquire_first");

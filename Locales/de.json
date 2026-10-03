@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Loslassen, um das Ablagelimit aufzuheben",
   "shelf.unlockMessage": "Sie fügen {0} Dateien hinzu. Die sichere Grenze liegt bei 30 Dateien.\nWenn Sie mehr hinzufügen möchten, können Sie das Limit hier aufheben.",
   "shelf.unlockSettingsHint": "Sie können dies auch in den Einstellungen anpassen.",
+  "spotifyLogin.blockedMethod": "Diese Anmeldemethode ist aus Sicherheitsgründen gesperrt. Bitte melden Sie sich mit Ihrer E-Mail-Adresse an.",
   "spotifyLogin.cancel": "Abbrechen",
   "spotifyLogin.connected": "Spotify ist verbunden.",
   "spotifyLogin.failed": "Die Spotify-Anmeldung konnte nicht geöffnet werden.",

@@ -12,6 +12,7 @@ namespace VNotch.Tests;
 
 public sealed class SignedUpdateManifestTests
 {
+    private const string ReleaseRoot = "https://github.com/rainaku/V-Notch/releases/download/v99.0.0/";
     private static readonly byte[] Installer = Encoding.UTF8.GetBytes("test installer bytes; never executed");
     private static SignedUpdateManifest Manifest => new(1, "99.0.0", UpdateService.SetupName,
         Installer.Length, Convert.ToHexString(SHA256.HashData(Installer)));
@@ -93,7 +94,7 @@ public sealed class SignedUpdateManifestTests
         bool installerRequested = false;
         using var client = new HttpClient(new Handler(request =>
         {
-            string path = request.RequestUri!.AbsolutePath;
+            string path = "/" + request.RequestUri!.Segments[^1];
             if (path == "/installer") installerRequested = true;
             if (path == "/signature" && scenario == "missing-signature")
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -135,7 +136,7 @@ public sealed class SignedUpdateManifestTests
                 tag_name = "v99.0.0",
                 body = "notes",
                 published_at = DateTime.UtcNow,
-                assets = names.Select(name => new { name, browser_download_url = "https://example.test/" + name })
+                assets = names.Select(name => new { name, browser_download_url = ReleaseRoot + name })
             });
             using var client = new HttpClient(new Handler(request => new(HttpStatusCode.OK)
             {
@@ -232,9 +233,9 @@ public sealed class SignedUpdateManifestTests
     {
         Version = "99.0.0",
         InstallerName = UpdateService.SetupName,
-        DownloadUrl = "https://example.test/installer",
-        ManifestUrl = "https://example.test/manifest",
-        ManifestSignatureUrl = "https://example.test/signature"
+        DownloadUrl = ReleaseRoot + "installer",
+        ManifestUrl = ReleaseRoot + "manifest",
+        ManifestSignatureUrl = ReleaseRoot + "signature"
     };
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
     {

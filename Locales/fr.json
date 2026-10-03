@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Déposer pour débloquer la limite de téléchargement",
   "shelf.unlockMessage": "Vous ajoutez {0} fichiers. La limite recommandée est de 30 fichiers.\nSi vous souhaitez en ajouter davantage, vous pouvez débloquer la limite ici.",
   "shelf.unlockSettingsHint": "Vous pouvez aussi modifier cela dans les Paramètres.",
+  "spotifyLogin.blockedMethod": "Cette méthode de connexion est bloquée pour des raisons de sécurité. Veuillez vous connecter avec votre adresse e-mail.",
   "spotifyLogin.cancel": "Annuler",
   "spotifyLogin.connected": "Spotify est connecté.",
   "spotifyLogin.failed": "Impossible d’ouvrir la connexion Spotify.",

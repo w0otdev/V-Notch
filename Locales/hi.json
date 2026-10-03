@@ -505,6 +505,7 @@
   "shelf.unlockHint": "अपलोड सीमा हटाने के लिए यहाँ छोड़ें",
   "shelf.unlockMessage": "आप {0} फ़ाइलें जोड़ रहे हैं। सुरक्षित सीमा 30 फ़ाइलों की है।\nयदि आप और जोड़ना चाहते हैं, तो यहाँ से सीमा अनलॉक कर सकते हैं।",
   "shelf.unlockSettingsHint": "इसे सेटिंग्स में भी बदला जा सकता है।",
+  "spotifyLogin.blockedMethod": "सुरक्षा कारणों से साइन इन करने का यह तरीका ब्लॉक है। कृपया ईमेल से साइन इन करें।",
   "spotifyLogin.cancel": "रद्द करें",
   "spotifyLogin.connected": "Spotify कनेक्ट हो गया।",
   "spotifyLogin.failed": "Spotify साइन-इन नहीं खुल सका। पक्का करें कि Microsoft Edge WebView2 Runtime इंस्टॉल है।",

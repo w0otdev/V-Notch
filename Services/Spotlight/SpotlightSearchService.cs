@@ -1,6 +1,7 @@
 using System.IO;
 using VNotch.Models;
 using VNotch.Services.Spotlight.Providers;
+using VNotch.Controllers;
 
 namespace VNotch.Services.Spotlight;
 
@@ -152,7 +153,8 @@ internal sealed class SpotlightSearchService
     {
         string? path = item.IconPath;
         if (item.Icon != null) return item;
-        if (string.IsNullOrEmpty(path) || (!File.Exists(path) && !Directory.Exists(path))) return item;
+        if (string.IsNullOrEmpty(path) || FileShelfController.IsUncPath(path) ||
+            (!File.Exists(path) && !Directory.Exists(path))) return item;
         return item with { Icon = FileIconProvider.GetFileIcon(path) };
     }
 }

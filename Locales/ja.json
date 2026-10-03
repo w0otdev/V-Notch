@@ -505,6 +505,7 @@
   "shelf.unlockHint": "ドロップしてアップロード制限を解除",
   "shelf.unlockMessage": "{0} 個のファイルを追加しようとしています。安全な制限は 30 ファイルです。\nさらに追加したい場合は、ここで制限を解除できます。",
   "shelf.unlockSettingsHint": "設定メニューからカスタマイズすることもできます。",
+  "spotifyLogin.blockedMethod": "セキュリティ上の理由により、このログイン方法はブロックされています。メールアドレスでログインしてください。",
   "spotifyLogin.cancel": "キャンセル",
   "spotifyLogin.connected": "Spotify に接続しました。",
   "spotifyLogin.failed": "Spotify のログイン画面を開けませんでした。",

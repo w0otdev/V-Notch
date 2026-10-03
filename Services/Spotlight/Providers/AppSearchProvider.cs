@@ -2,6 +2,7 @@ using System.Collections;
 using System.IO;
 using System.Runtime.InteropServices;
 using VNotch.Models;
+using VNotch.Controllers;
 
 namespace VNotch.Services.Spotlight.Providers;
 
@@ -136,6 +137,7 @@ internal sealed class AppSearchProvider : ISpotlightProvider
 
     private static string ResolveTarget(string path, string appId)
     {
+        if (FileShelfController.IsUncPath(path)) return string.Empty;
         if (path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)) return path;
         if (File.Exists(path) || Directory.Exists(path)) return path;
         string identity = appId.Length > 0 ? appId : path;

@@ -505,6 +505,7 @@
   "shelf.unlockHint": "松开鼠标以解锁上传数量限制",
   "shelf.unlockMessage": "您正在添加 {0} 个文件，默认安全上限为 30 个。\n如果您需要存放更多，可以在此解锁上限。",
   "shelf.unlockSettingsHint": "您也可以随时在“设置”中修改此项限制。",
+  "spotifyLogin.blockedMethod": "出于安全原因，此登录方式已被阻止。请使用电子邮箱登录。",
   "spotifyLogin.cancel": "取消",
   "spotifyLogin.connected": "Spotify 账号连接成功。",
   "spotifyLogin.failed": "无法打开 Spotify 登录窗口。请确保已安装 Microsoft Edge WebView2 Runtime。",

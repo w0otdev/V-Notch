@@ -10,6 +10,7 @@ namespace VNotch.Tests;
 
 public sealed class UpdateServiceSecurityTests
 {
+    private const string ReleaseRoot = "https://github.com/rainaku/V-Notch/releases/download/v99.0.0/";
     [Fact]
     public void SelectReleaseAssets_PrefersSelfContained_AndNeverSelectsOtherExe()
     {
@@ -40,7 +41,7 @@ public sealed class UpdateServiceSecurityTests
     {
         var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.Redirect) { Headers = { Location = new Uri("http://evil.test/setup") } });
         await using var temp = new TempFile();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadInstallerAsync("https://example.test/setup", temp.Path, null, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadInstallerAsync(ReleaseRoot + "setup", temp.Path, null, default));
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public sealed class UpdateServiceSecurityTests
         response.Content.Headers.ContentLength = UpdateSecurityPolicy.MaximumInstallerBytes + 1;
         var service = CreateService(_ => response);
         await using var temp = new TempFile();
-        await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadInstallerAsync("https://example.test/setup", temp.Path, null, default));
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadInstallerAsync(ReleaseRoot + "setup", temp.Path, null, default));
     }
 
     [Fact]
@@ -59,7 +60,57 @@ public sealed class UpdateServiceSecurityTests
         var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BlockingStream()) });
         using var cts = new CancellationTokenSource(); cts.Cancel();
         await using var temp = new TempFile();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.DownloadInstallerAsync("https://example.test/setup", temp.Path, null, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.DownloadInstallerAsync(ReleaseRoot + "setup", temp.Path, null, cts.Token));
+    }
+
+    [Theory]
+    [InlineData("https://attackergithubusercontent.com/setup")]
+    [InlineData("https://github-production-release-asset-attacker.s3.amazonaws.com/setup")]
+    [InlineData("https://example.test/setup")]
+    [InlineData("https://github.com/rainaku/V-Notch-evil/releases/download/v99.0.0/setup")]
+    [InlineData("https://raw.githubusercontent.com/rainaku/V-Notch/main/setup")]
+    public async Task DownloadInstaller_RejectsUnapprovedOriginWithoutMakingRequest(string url)
+    {
+        bool requested = false;
+        var service = CreateService(_ => { requested = true; return new(HttpStatusCode.OK); });
+        await using var temp = new TempFile();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadInstallerAsync(url, temp.Path, null, default));
+        Assert.False(requested);
+        Assert.False(File.Exists(temp.Path));
+    }
+
+    [Fact]
+    public async Task DownloadInstaller_RejectsUntrustedHttpsRedirectBeforeContactingTarget()
+    {
+        int requests = 0;
+        var service = CreateService(_ =>
+        {
+            requests++;
+            return new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("https://evil.example/setup") } };
+        });
+        await using var temp = new TempFile();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadInstallerAsync(ReleaseRoot + "setup", temp.Path, null, default));
+        Assert.Equal(1, requests);
+        Assert.False(File.Exists(temp.Path));
+    }
+
+    [Theory]
+    [InlineData("objects.githubusercontent.com")]
+    [InlineData("release-assets.githubusercontent.com")]
+    public async Task DownloadInstaller_AcceptsGitHubReleaseCdnRedirect(string host)
+    {
+        int requests = 0;
+        var service = CreateService(request =>
+        {
+            requests++;
+            return request.RequestUri!.Host == "github.com"
+                ? new(HttpStatusCode.Redirect) { Headers = { Location = new Uri($"https://{host}/asset") } }
+                : new(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) };
+        });
+        await using var temp = new TempFile();
+        await service.DownloadInstallerAsync(ReleaseRoot + "setup", temp.Path, null, default);
+        Assert.Equal(2, requests);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(temp.Path));
     }
 
     [Fact]

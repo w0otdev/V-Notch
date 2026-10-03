@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Soltar para desbloquear límite de carga",
   "shelf.unlockMessage": "Estás agregando {0} archivos. El límite seguro es de 30 archivos.\nSi deseas agregar más, puedes desbloquear el límite aquí.",
   "shelf.unlockSettingsHint": "También puedes personalizar esto en Configuración.",
+  "spotifyLogin.blockedMethod": "Este método de inicio de sesión está bloqueado por seguridad. Inicia sesión con tu correo electrónico.",
   "spotifyLogin.cancel": "Cancelar",
   "spotifyLogin.connected": "Spotify conectado.",
   "spotifyLogin.failed": "No se pudo abrir el inicio de sesión de Spotify.",

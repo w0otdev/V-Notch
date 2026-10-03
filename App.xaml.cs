@@ -16,7 +16,7 @@ public partial class App : Application
 {
     private SingleInstanceGuard? _guard;
     private static int _fatalUiExceptionInProgress;
-    private const string MutexName = "VNotch_SingleInstance_Mutex";
+    private static readonly string MutexName = SingleInstanceGuard.GetCurrentUserMutexName();
 
     private const int LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
     private const int LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800;
@@ -421,21 +421,21 @@ public partial class App : Application
 
             if (!string.IsNullOrEmpty(exePath))
             {
-                var cleanExe = exePath.Replace("\"", "");
-                var cmdPath = System.IO.Path.Combine(Environment.SystemDirectory, "cmd.exe");
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                var startInfo = new ProcessStartInfo(exePath)
                 {
-                    FileName = cmdPath,
-                    Arguments = $"/c ping -n 2 127.0.0.1 >nul & start \"\" \"{cleanExe}\" --restart",
                     UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
-                });
+                    WorkingDirectory = AppContext.BaseDirectory
+                };
+                startInfo.ArgumentList.Add("--restart");
+                using var process = Process.Start(startInfo);
+                if (process == null) return;
             }
+            else return;
         }
         catch (Exception ex)
         {
             RuntimeLog.Error("APP", ex, "Restart failed");
+            return;
         }
 
         Current?.Shutdown();

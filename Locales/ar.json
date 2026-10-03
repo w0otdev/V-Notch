@@ -505,6 +505,7 @@
   "shelf.unlockHint": "أفلت الملفات لإلغاء حد التحميل",
   "shelf.unlockMessage": "أنت تقوم بإضافة {0} ملفات. الحد الآمن الافتراضي هو 30 ملفاً.\nإذا كنت ترغب بإضافة المزيد، يمكنك فك هذا القيد هنا.",
   "shelf.unlockSettingsHint": "يمكنك أيضاً ضبط هذا الخيار لاحقاً من الإعدادات.",
+  "spotifyLogin.blockedMethod": "تم حظر طريقة تسجيل الدخول هذه لأسباب أمنية. يرجى تسجيل الدخول باستخدام البريد الإلكتروني.",
   "spotifyLogin.cancel": "إلغاء",
   "spotifyLogin.connected": "تم ربط Spotify بنجاح.",
   "spotifyLogin.failed": "تعذر فتح نافذة تسجيل الدخول إلى Spotify. تأكد من تثبيت Microsoft Edge WebView2 Runtime.",

@@ -505,6 +505,7 @@
   "shelf.unlockHint": "놓아서 파일 개수 제한 풀기",
   "shelf.unlockMessage": "{0}개의 파일을 추가하려 하고 있습니다. 안전 기본 제한은 30개입니다.\n더 많이 넣으려면 여기서 제한을 해제할 수 있습니다.",
   "shelf.unlockSettingsHint": "환경설정에서도 언제든 이 설정을 바꿀 수 있습니다.",
+  "spotifyLogin.blockedMethod": "보안상의 이유로 이 로그인 방식이 차단되었습니다. 이메일로 로그인해 주세요.",
   "spotifyLogin.cancel": "취소",
   "spotifyLogin.connected": "Spotify 계정이 연결되었습니다.",
   "spotifyLogin.failed": "Spotify 로그인 창을 열 수 없습니다. Microsoft Edge WebView2 Runtime이 설치되어 있는지 확인하세요.",

@@ -170,7 +170,7 @@ internal static class SetupOperations
 
     public static void RunUninstallFlow()
     {
-        var installDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var installDirectory = InstallDirectoryCleanup.ValidateDirectory(AppContext.BaseDirectory);
         var driveRoot = Path.GetPathRoot(installDirectory);
         bool isDriveRoot = string.Equals(driveRoot?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
             installDirectory, StringComparison.OrdinalIgnoreCase);
@@ -213,30 +213,7 @@ internal static class SetupOperations
         RemoveUninstallRegistration();
         RemoveShortcuts();
 
-        var safeInstallDir = installDirectory.Replace("\"", "").Replace("&", "").Replace("%", "");
-        var cleanupScriptPath = Path.Combine(
-            Path.GetTempPath(),
-            $"v-notch-uninstall-{Guid.NewGuid():N}.cmd");
-
-        var scriptContents = string.Join(
-            Environment.NewLine,
-            "@echo off",
-            "setlocal",
-            "timeout /t 2 /nobreak >nul",
-            $"rmdir /S /Q \"{safeInstallDir}\"",
-            $"del /Q \"{cleanupScriptPath}\"");
-
-        File.WriteAllText(cleanupScriptPath, scriptContents);
-
-        var systemDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        var cmdPath = Path.Combine(systemDir, "cmd.exe");
-
-        Process.Start(new ProcessStartInfo(cmdPath, $"/c \"\"{cleanupScriptPath}\"\"")
-        {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            WorkingDirectory = systemDir
-        });
+        InstallDirectoryCleanup.Schedule(installDirectory);
 
         Application.Current.Shutdown(0);
     }

@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Dosya yükleme sınırını kaldırmak için bırakın",
   "shelf.unlockMessage": "{0} dosya ekliyorsunuz. Güvenli varsayılan sınır 30 dosyadır.\nDaha fazla eklemek isterseniz bu sınırı buradan kaldırabilirsiniz.",
   "shelf.unlockSettingsHint": "Bu ayarı daha sonra Ayarlar bölümünden de değiştirebilirsiniz.",
+  "spotifyLogin.blockedMethod": "Bu giriş yöntemi güvenlik nedeniyle engellendi. Lütfen e-posta adresinizle giriş yapın.",
   "spotifyLogin.cancel": "İptal",
   "spotifyLogin.connected": "Spotify başarıyla bağlandı.",
   "spotifyLogin.failed": "Spotify giriş penceresi açılamadı. Microsoft Edge WebView2 Runtime'ın yüklü olduğundan emin olun.",

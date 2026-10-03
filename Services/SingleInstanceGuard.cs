@@ -1,10 +1,19 @@
 using System;
 using System.Threading;
+using System.Security.Principal;
 
 namespace VNotch.Services;
 
 public sealed class SingleInstanceGuard : IDisposable
 {
+    internal static string GetCurrentUserMutexName()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var sid = identity.User?.Value ?? throw new InvalidOperationException("The current user SID is unavailable.");
+        // Scope to this Windows session and user; same-user processes are still a trust boundary limitation.
+        return $@"Local\VNotch_SingleInstance_{sid}";
+    }
+
     private Mutex? _mutex;
     private bool _ownsMutex;
     private bool _disposed;

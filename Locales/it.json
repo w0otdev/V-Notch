@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Rilascia per sbloccare il limite di file",
   "shelf.unlockMessage": "Stai aggiungendo {0} file. Il limite di sicurezza consigliato è di 30 file.\nSe desideri aggiungerne di più, puoi sbloccare il limite adesso.",
   "shelf.unlockSettingsHint": "Puoi modificare questa opzione in qualsiasi momento nelle Impostazioni.",
+  "spotifyLogin.blockedMethod": "Questo metodo di accesso è bloccato per motivi di sicurezza. Accedi con il tuo indirizzo e-mail.",
   "spotifyLogin.cancel": "Annulla",
   "spotifyLogin.connected": "Spotify connesso con successo.",
   "spotifyLogin.failed": "Impossibile aprire la finestra di accesso a Spotify. Assicurati che Microsoft Edge WebView2 Runtime sia installato.",

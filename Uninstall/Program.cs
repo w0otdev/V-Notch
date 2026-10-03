@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -62,8 +61,7 @@ internal static class Program
         TrySilently(RemoveShortcuts, errors, Loc.Get("uninstall.action.removeShortcuts"));
         TrySilently(RemoveAppData, errors, Loc.Get("uninstall.action.removeData"));
 
-        // Hand final deletion to a temp script that waits for process exit,
-        // deletes the install folder, and removes itself.
+        // Hand final deletion to a helper that waits for this process to exit.
         TrySilently(() => ScheduleInstallDirRemoval(installDirectory), errors,
             Loc.Get("uninstall.action.removeInstallFolder"));
 
@@ -128,34 +126,8 @@ internal static class Program
 
     private static string ResolveInstallDirectory()
     {
-        var baseDir = AppContext.BaseDirectory
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        if (File.Exists(Path.Combine(baseDir, AppExeName)) && !IsDriveRoot(baseDir))
-        {
-            return baseDir;
-        }
-
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(AppRegistryPath);
-            if (key?.GetValue("InstallDir") is string fromReg && !string.IsNullOrWhiteSpace(fromReg))
-            {
-                var regDir = fromReg.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                if (File.Exists(Path.Combine(regDir, AppExeName)) && !IsDriveRoot(regDir))
-                {
-                    return regDir;
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Programs",
-            AppName);
+        // A user-writable registry value must never select a recursive deletion target.
+        return InstallDirectoryCleanup.ValidateDirectory(AppContext.BaseDirectory);
     }
 
     private static void StopRunningInstances()
@@ -256,38 +228,12 @@ internal static class Program
             return;
         }
 
-        var safeInstallDir = installDirectory.Replace("\"", "").Replace("&", "").Replace("%", "");
-        if (!File.Exists(Path.Combine(safeInstallDir, AppExeName)))
+        if (!File.Exists(Path.Combine(installDirectory, AppExeName)))
         {
             return;
         }
 
-        var scriptPath = Path.Combine(
-            Path.GetTempPath(),
-            $"v-notch-uninstall-{Guid.NewGuid():N}.cmd");
-
-        var script = string.Join(Environment.NewLine, new[]
-        {
-            "@echo off",
-            "setlocal",
-            "rem Wait for the uninstaller to exit, then wipe the install folder.",
-            "timeout /t 2 /nobreak >nul",
-            $"rmdir /S /Q \"{safeInstallDir}\"",
-            "rem Best-effort second pass in case files were still locked.",
-            "timeout /t 2 /nobreak >nul",
-            $"if exist \"{safeInstallDir}\" rmdir /S /Q \"{safeInstallDir}\"",
-            $"del /Q \"{scriptPath}\""
-        });
-
-        File.WriteAllText(scriptPath, script, new UTF8Encoding(false));
-
-        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
-        Process.Start(new ProcessStartInfo(cmdPath, $"/c \"\"{scriptPath}\"\"")
-        {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            WorkingDirectory = Path.GetTempPath()
-        });
+        InstallDirectoryCleanup.Schedule(installDirectory);
     }
 
     private static void DeleteFileIfExists(string path)

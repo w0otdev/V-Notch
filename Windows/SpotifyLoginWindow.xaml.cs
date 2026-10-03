@@ -151,6 +151,11 @@ public partial class SpotifyLoginWindow : Window
 
             SpotifyWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            SpotifyWebView.CoreWebView2.Settings.AreHostObjectsAllowed = false;
+            SpotifyWebView.CoreWebView2.Settings.IsWebMessageEnabled = false;
+            SpotifyWebView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
+            SpotifyWebView.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
+            SpotifyWebView.CoreWebView2.DownloadStarting += (_, args) => args.Cancel = true;
             SpotifyWebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
             SpotifyWebView.CoreWebView2.Navigate(SpotifyLoginUrl);
             _cookieTimer.Start();
@@ -162,6 +167,34 @@ public partial class SpotifyLoginWindow : Window
             StatusText.Text = Loc.Get("spotifyLogin.failed");
             StatusText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113));
         }
+    }
+
+    internal static bool IsAllowedNavigation(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443 && string.IsNullOrEmpty(uri.UserInfo) &&
+        (uri.Host.Equals("spotify.com", StringComparison.OrdinalIgnoreCase) ||
+         uri.Host.EndsWith(".spotify.com", StringComparison.OrdinalIgnoreCase));
+
+    private void CoreWebView2_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs args)
+    {
+        if (IsAllowedNavigation(args.Uri)) return;
+        args.Cancel = true;
+        ShowBlockedSignInMessage();
+        // Authentication URLs can contain tokens; do not log the URL.
+        RuntimeLog.Warn(LogCategory, "Blocked navigation outside Spotify.");
+    }
+
+    private void CoreWebView2_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs args)
+    {
+        args.Handled = true;
+        if (IsAllowedNavigation(args.Uri)) SpotifyWebView.CoreWebView2.Navigate(args.Uri);
+        else ShowBlockedSignInMessage();
+    }
+
+    private void ShowBlockedSignInMessage()
+    {
+        StatusText.Text = Loc.Get("spotifyLogin.blockedMethod");
+        StatusText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113));
     }
 
     private async void CoreWebView2_NavigationCompleted(
@@ -221,6 +254,8 @@ public partial class SpotifyLoginWindow : Window
             if (SpotifyWebView.CoreWebView2 != null)
             {
                 SpotifyWebView.CoreWebView2.NavigationCompleted -= CoreWebView2_NavigationCompleted;
+                SpotifyWebView.CoreWebView2.NavigationStarting -= CoreWebView2_NavigationStarting;
+                SpotifyWebView.CoreWebView2.NewWindowRequested -= CoreWebView2_NewWindowRequested;
                 try
                 {
                     SpotifyWebView.CoreWebView2.CookieManager.DeleteAllCookies();

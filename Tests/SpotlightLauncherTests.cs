@@ -38,6 +38,26 @@ public sealed class SpotlightLauncherTests
         Assert.False(SpotlightLauncher.IsValidTarget(Item(kind, target)));
     }
 
+    [Theory]
+    [InlineData(@"\\192.0.2.1\share\payload.exe")]
+    [InlineData("//192.0.2.1/share/payload.exe")]
+    [InlineData("file://192.0.2.1/share/payload.exe")]
+    [InlineData(@"\\?\UNC\192.0.2.1\share\payload.exe")]
+    public void RemoteTargets_AreRejectedForAllFileOperations(string target)
+    {
+        foreach (var kind in new[] { SpotlightResultKind.Application, SpotlightResultKind.File, SpotlightResultKind.Folder })
+        {
+            var item = Item(kind, target);
+            Assert.False(SpotlightLauncher.IsValidTarget(item));
+            Assert.False(SpotlightLauncher.CanReveal(item));
+            Assert.False(SpotlightLauncher.CanLaunchElevated(item));
+            Assert.False(new SpotlightLauncher().TryLaunch(item));
+            Assert.False(SpotlightFileVisibility.ShouldInclude(item, target));
+            var remoteIcon = item with { IconPath = target };
+            Assert.Same(remoteIcon, SpotlightSearchService.LoadIcon(remoteIcon));
+        }
+    }
+
     [Fact]
     public void CanReveal_AllowsFileBackedTargetsButNotStoreApps()
     {

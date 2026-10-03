@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Drop to unlock upload limit",
   "shelf.unlockMessage": "You are adding {0} files. The safe limit is 30 files.\nIf you want to add more, you can unlock the upload limit here.",
   "shelf.unlockSettingsHint": "You can also customize this in Settings.",
+  "spotifyLogin.blockedMethod": "This sign-in method is blocked for security reasons. Please sign in with email.",
   "spotifyLogin.cancel": "Cancel",
   "spotifyLogin.connected": "Spotify connected.",
   "spotifyLogin.failed": "Could not open Spotify sign-in. Make sure Microsoft Edge WebView2 Runtime is installed.",

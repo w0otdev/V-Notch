@@ -187,7 +187,7 @@ public class UpdateService : IUpdateService
     internal async Task DownloadInstallerAsync(string url, string path, IProgress<double>? progress, CancellationToken token, long? expectedSize = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await SendHttpsAsync(request, token);
+        using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true);
         response.EnsureSuccessStatusCode();
         var length = response.Content.Headers.ContentLength;
         if (length is > UpdateSecurityPolicy.MaximumInstallerBytes) throw new InvalidDataException("Installer exceeds 500 MB limit.");
@@ -222,7 +222,7 @@ public class UpdateService : IUpdateService
     private async Task<byte[]> DownloadSmallAssetAsync(string url, int limit, CancellationToken token)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await SendHttpsAsync(request, token);
+        using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > limit)
             throw new InvalidDataException("Update metadata exceeds its size limit.");
@@ -240,9 +240,12 @@ public class UpdateService : IUpdateService
         return output.ToArray();
     }
 
-    internal async Task<HttpResponseMessage> SendHttpsAsync(HttpRequestMessage request, CancellationToken token)
+    internal async Task<HttpResponseMessage> SendHttpsAsync(HttpRequestMessage request, CancellationToken token,
+        bool requireReleaseOrigin = false)
     {
         if (!IsHttps(request.RequestUri)) throw new InvalidOperationException("Only HTTPS update URLs are accepted.");
+        if (requireReleaseOrigin && !AppIntegrityService.IsOfficialReleaseUrl(request.RequestUri!))
+            throw new InvalidOperationException("Update assets must originate from official GitHub releases.");
         const int maxRedirects = 5;
         HttpRequestMessage? ownedRequest = null; // tracks redirect requests we created and must dispose
         try
@@ -252,7 +255,8 @@ public class UpdateService : IUpdateService
                 var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
                 if (!IsRedirect(response.StatusCode))
                 {
-                    if (!IsHttps(response.RequestMessage?.RequestUri ?? request.RequestUri))
+                    var finalUri = response.RequestMessage?.RequestUri ?? request.RequestUri;
+                    if (!IsHttps(finalUri) || (requireReleaseOrigin && !AppIntegrityService.IsTrustedReleaseRedirect(finalUri!)))
                     {
                         response.Dispose();
                         throw new InvalidOperationException("Final update URL is not HTTPS.");
@@ -267,6 +271,8 @@ public class UpdateService : IUpdateService
                 var target = response.Headers.Location.IsAbsoluteUri ? response.Headers.Location : new Uri(request.RequestUri!, response.Headers.Location);
                 response.Dispose();
                 if (!IsHttps(target)) throw new InvalidOperationException("Update redirect target is not HTTPS.");
+                if (requireReleaseOrigin && !AppIntegrityService.IsTrustedReleaseRedirect(target))
+                    throw new InvalidOperationException("Update redirect target is not a trusted release host.");
                 ownedRequest?.Dispose();
                 ownedRequest = new HttpRequestMessage(HttpMethod.Get, target);
                 request = ownedRequest;
@@ -308,8 +314,7 @@ public class UpdateService : IUpdateService
 
     private static bool IsTrustedUpdateUrl(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-        IsHttps(uri) &&
-        AppIntegrityService.IsTrustedDownloadDomain(value);
+        AppIntegrityService.IsOfficialReleaseUrl(uri);
     internal static bool IsHttps(Uri? uri) => uri is { IsAbsoluteUri: true } && uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     internal static bool HashesMatch(string expected, string actual) =>
         expected.Length == 64 && actual.Length == 64 &&

@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Lepaskan untuk membuka batasan jumlah file",
   "shelf.unlockMessage": "Anda menambahkan {0} file. Batas aman default adalah 30 file.\nJika Anda ingin memasukkan lebih banyak, Anda dapat membuka batas kapasitasnya sekarang.",
   "shelf.unlockSettingsHint": "Anda juga dapat mengubah opsi ini nanti di Pengaturan.",
+  "spotifyLogin.blockedMethod": "Metode masuk ini diblokir demi keamanan. Silakan masuk menggunakan email.",
   "spotifyLogin.cancel": "Batal",
   "spotifyLogin.connected": "Spotify berhasil terhubung.",
   "spotifyLogin.failed": "Tidak dapat membuka jendela masuk Spotify. Pastikan Microsoft Edge WebView2 Runtime telah terinstal.",

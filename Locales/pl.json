@@ -505,6 +505,7 @@
   "shelf.unlockHint": "Upuść, aby odblokować limit dodawania plików",
   "shelf.unlockMessage": "Dodajesz {0} plików. Domyślny bezpieczny limit to 30 plików.\nJeśli chcesz dodać ich więcej, możesz odblokować ten limit teraz.",
   "shelf.unlockSettingsHint": "Możesz zmienić ten parametr w dowolnym momencie w Ustawieniach.",
+  "spotifyLogin.blockedMethod": "Ta metoda logowania jest zablokowana ze względów bezpieczeństwa. Zaloguj się za pomocą adresu e-mail.",
   "spotifyLogin.cancel": "Anuluj",
   "spotifyLogin.connected": "Pomyślnie połączono ze Spotify.",
   "spotifyLogin.failed": "Nie udało się otworzyć okna logowania Spotify. Upewnij się, że zainstalowano Microsoft Edge WebView2 Runtime.",
