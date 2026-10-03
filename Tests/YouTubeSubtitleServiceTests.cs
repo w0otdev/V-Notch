@@ -9,6 +9,41 @@ namespace VNotch.Tests;
 public class YouTubeSubtitleServiceTests
 {
     [Fact]
+    public async Task FailedPreferredTrackFallsBackToNextTrack()
+    {
+        var tracks = new[] { new YouTubeCaptionTrack("vi", "Vietnamese", ".vi", "vi", false),
+            new YouTubeCaptionTrack("en", "English", ".en", "en", false) };
+        var lines = await YouTubeSubtitleService.TryCaptionCandidatesAsync(tracks, track =>
+            track.LanguageCode == "vi" ? throw new System.Net.Http.HttpRequestException() :
+            Task.FromResult<List<LyricLine>?>(new() { new(TimeSpan.Zero, "Caption") }), default);
+        Assert.Single(lines!);
+    }
+
+    [Fact]
+    public async Task EmptyTrackResponseIsRetried()
+    {
+        int attempts = 0;
+        var tracks = new[] { new YouTubeCaptionTrack("vi", "Vietnamese", ".vi", "vi", false) };
+        var lines = await YouTubeSubtitleService.TryCaptionCandidatesAsync(tracks, _ =>
+            Task.FromResult<List<LyricLine>?>(++attempts == 1 ? null : new() { new(TimeSpan.Zero, "Caption") }), default);
+        Assert.Equal(2, attempts);
+        Assert.Single(lines!);
+    }
+
+    [Fact]
+    public async Task CancelledDownloadDoesNotRetryOrPublishLines()
+    {
+        using var cts = new System.Threading.CancellationTokenSource();
+        var tracks = new[] { new YouTubeCaptionTrack("vi", "Vietnamese", ".vi", "vi", false) };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            YouTubeSubtitleService.TryCaptionCandidatesAsync(tracks, _ =>
+            {
+                cts.Cancel();
+                return Task.FromResult<List<LyricLine>?>(new() { new(TimeSpan.Zero, "Old caption") });
+            }, cts.Token));
+    }
+
+    [Fact]
     public void SelectCaptionTrack_NativePriority_PicksManualNativeOverAuto()
     {
         // Video with Japanese spoken audio (a.ja) and Japanese manual lyrics (.ja) + English (.en)

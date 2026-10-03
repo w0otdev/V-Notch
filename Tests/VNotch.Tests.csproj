@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\V-Notch.csproj" />
     <None Update="Fixtures\white-mat-artwork.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures\dark-textured-artwork.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

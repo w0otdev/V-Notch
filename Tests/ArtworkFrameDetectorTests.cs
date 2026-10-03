@@ -9,6 +9,59 @@ namespace VNotch.Tests;
 public sealed class ArtworkFrameDetectorTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DoesNotTreatBrightRoundSubjectOrHorizonAsAnInsetCover(bool horizon)
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            const int width = 384, height = 216;
+            byte[] pixels = new byte[width * height * 4];
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    bool bright = horizon ? y > 45 : Math.Pow(x - 192, 2) + Math.Pow(y - 108, 2) < 85 * 85;
+                    int i = (y * width + x) * 4;
+                    byte value = bright ? (byte)160 : (byte)(15 + (x + y) % 30);
+                    pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
+                    pixels[i + 3] = 255;
+                }
+            var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
+            source.Freeze();
+            Assert.Null(ArtworkFrameDetector.DetectFrame(source));
+        });
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1024)]
+    [InlineData(320)]
+    public void TexturedBackgroundIsExcludedFromReportedAlbumCover(int decodeWidth)
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            var source = new BitmapImage();
+            source.BeginInit();
+            source.UriSource = new Uri(System.IO.Path.Combine(AppContext.BaseDirectory, "Fixtures", "dark-textured-artwork.png"));
+            source.CacheOption = BitmapCacheOption.OnLoad;
+            source.DecodePixelWidth = decodeWidth;
+            source.EndInit();
+            source.Freeze();
+            var bounds = ArtworkFrameDetector.DetectFrame(source);
+            Assert.True(bounds.HasValue);
+            Assert.InRange(bounds.Value.X / (double)source.PixelWidth, .283, .30);
+            Assert.InRange(bounds.Value.Y / (double)source.PixelHeight, .122, .15);
+            Assert.InRange((bounds.Value.X + bounds.Value.Width) / (double)source.PixelWidth, .69, .707);
+            Assert.InRange((bounds.Value.Y + bounds.Value.Height) / (double)source.PixelHeight, .92, .948);
+            using var service = new MediaArtworkService();
+            var cropped = service.CropToSquare(source, "YouTube");
+            Assert.NotNull(cropped);
+            Assert.Equal(cropped.PixelWidth, cropped.PixelHeight);
+            Assert.InRange(cropped.PixelWidth / (double)source.PixelWidth, .39, .425);
+        });
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1024)]
     [InlineData(320)]
@@ -72,7 +125,7 @@ public sealed class ArtworkFrameDetectorTests
     public void LeavesUnframedAndPlainWhiteImagesAlone(int x, int y, int w, int h)
     {
         SharedStaTestRunner.Run(() =>
-            Assert.Null(ArtworkFrameDetector.DetectWhiteFrame(CreateImage(640, 360, new Int32Rect(x, y, w, h)))));
+            Assert.Null(ArtworkFrameDetector.DetectFrame(CreateImage(640, 360, new Int32Rect(x, y, w, h)))));
     }
 
     private static BitmapSource CreateImage(int width, int height, Int32Rect picture)

@@ -7,6 +7,24 @@ namespace VNotch.Tests;
 public sealed class SubtitleSearchControllerTests
 {
     [Fact]
+    public async Task RepeatedMediaUpdateDoesNotCancelPendingSearch()
+    {
+        var controller = new SubtitleSearchController();
+        var download = Pending<List<LyricLine>?>();
+        int fetches = 0, completions = 0;
+        Task Search() => controller.SearchAsync(() => Task.FromResult("video"),
+            _ => { fetches++; return download.Task; }, _ => { }, _ => completions++, "yt:video");
+        var first = Search();
+        await Search();
+        Assert.Equal(1, fetches);
+        download.SetResult(new() { new(TimeSpan.Zero, "Caption") });
+        await first;
+        Assert.Equal(1, completions);
+        await Search();
+        Assert.Equal(2, fetches);
+    }
+
+    [Fact]
     public async Task VideoIdArrivesAfterUnresolvedAttempt_SearchWidgetAppearsOnlyOnce()
     {
         var controller = new SubtitleSearchController();

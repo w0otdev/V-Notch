@@ -304,7 +304,7 @@ public partial class MainWindow
                 }
 
                 ApplySyncedLines(subtitles, info, provider: "YouTube");
-            });
+            }, searchKey: trackKey);
     }
 
     private async Task<string> ResolveSubtitleVideoIdAsync(MediaInfo info, string videoId)

@@ -166,14 +166,14 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 $"src={width}x{height} aspect={(double)width / height:F2} mediaSource='{mediaSource}' forceCenterCrop={forceCenterCrop} smartEnabled={EnableSmartCrop} smartAvail={_smartCropAvailable}");
 
             double srcAspect = (double)width / height;
-            var whiteFrame = ArtworkFrameDetector.DetectWhiteFrame(source);
-            if (whiteFrame == null && Math.Abs(srcAspect - 1.0) < 0.02 && !forceCenterCrop)
+            var artworkFrame = ArtworkFrameDetector.DetectFrame(source);
+            if (artworkFrame == null && Math.Abs(srcAspect - 1.0) < 0.02 && !forceCenterCrop)
             {
                 RuntimeLog.Log(CropPathLogTag, $"already square ({width}x{height}) — skip crop");
                 return source;
             }
 
-            var contentRect = whiteFrame ?? DetectContentBounds(source, width, height);
+            var contentRect = artworkFrame ?? DetectContentBounds(source, width, height);
             BitmapSource workingSource = source;
 
             if (contentRect.Width < width * 0.95 || contentRect.Height < height * 0.95)
