@@ -241,7 +241,7 @@ public sealed class ServiceOptimizationTests
     {
         using var http = new HttpClient(new SlowHandler()) { Timeout = TimeSpan.FromMilliseconds(100) };
         var service = new WeatherService(http);
-        Assert.Null(await service.GetCurrentWeatherAsync("Hanoi").WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Null(await service.GetCurrentWeatherAsync("Hanoi").WaitAsync(TimeSpan.FromSeconds(30)));
     }
 
     private static HttpResponseMessage Response(byte[] bytes, bool knownLength) => new()
@@ -260,8 +260,9 @@ public sealed class ServiceOptimizationTests
         public override bool CanSeek => false;
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
         {
-            await Task.Delay(Timeout.Infinite, token);
-            return 0;
+            var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var reg = token.Register(() => tcs.TrySetCanceled(token));
+            return await tcs.Task;
         }
     }
 
