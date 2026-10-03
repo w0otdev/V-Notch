@@ -9,6 +9,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
 
     <CETCompat>false</CETCompat>
 
@@ -41,7 +43,7 @@
     <PackageProjectUrl>https://github.com/rainaku/V-Notch</PackageProjectUrl>
     <RepositoryUrl>https://github.com/rainaku/V-Notch</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <Description>MacOS Notch for Windows - A beautiful and functional notch for your desktop</Description>
+    <Description>A desktop status and media companion for Windows</Description>
     <ApplicationIcon>Services\icons\logo.ico</ApplicationIcon>
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -86,12 +88,16 @@
   <ItemGroup>
     <None Include="TERMS_OF_SERVICE.md" CopyToOutputDirectory="PreserveNewest" />
     <None Include="TERMS_OF_SERVICE_VI.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="Introduction\**\*" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <None Include="Locales\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Models\yolo11n.onnx" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Models\yolo11n.onnx')" />
+    <None Update="Models\yolox_nano.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Update="Models\YOLOX-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Update="Models\model-provenance.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="Package.appxmanifest" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

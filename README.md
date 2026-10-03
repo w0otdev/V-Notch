@@ -5,7 +5,7 @@
 <h2 align="center">V-Notch</h2>
 
 <p align="center">
-  macOS Dynamic Island and notch for Windows
+  A desktop status and media companion for Windows
 </p>
 
 <p align="center">
@@ -194,11 +194,13 @@ V-Notch does not collect telemetry or analytics, or track you. It makes network 
 | GitHub Releases API                                  | Update checks                                                                      |
 | LRCLIB / lrc mux                                     | Synced lyrics                                                                      |
 | YouTube / SoundCloud                                 | Public thumbnails and captions                                                     |
-| Spotify Web Services                                 | Optional Canvas backgrounds; credentials encrypted with Windows DPAPI              |
+| Spotify Web Services                                 | Experimental Canvas, off by default; explicit opt-in; session encrypted with Windows DPAPI |
 | Open-Meteo / ipwho.is                                | Optional weather                                                                   |
 | OpenAI / Google Gemini / Anthropic Claude / DeepSeek / GitHub Copilot | Optional AI messages and conversation context; DeepSeek balance refresh on request |
 
 Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted AI chat history is stored separately at `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. Other component caches and temporary files are described in the Privacy Policy. Local Spotlight Search does not upload queries; Spotlight AI sends the content you submit to your selected provider.
+
+**Third-party media:** Canvas uses unofficial Spotify endpoints and requires acknowledgement before sign-in or requests. Spotify may restrict access; opt-in does not grant platform permission. YouTube captions must be accessed and used according to YouTube's terms and applicable law. Fair use is assessed case by case. Read the [external-platform notices](TERMS_OF_SERVICE.md#4-external-platforms-and-content) before enabling these features.
 
 > [!NOTE]
 > **API Key Safety:** User-provided API credentials (OpenAI, Gemini, Claude, DeepSeek, YouTube) are encrypted locally with Windows DPAPI. V-Notch maintains no intermediary servers. Maintainers assume no liability for third-party billing, quota exhaustion, or credentials leaked from user environments or pre-release testing builds. Please configure spending caps on your provider accounts.

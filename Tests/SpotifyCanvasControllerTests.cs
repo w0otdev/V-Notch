@@ -16,6 +16,14 @@ public sealed class SpotifyCanvasControllerTests
 {
     private const string CanvasTestUrl = "https://canvaz.scdn.co/upload/video/test.mp4";
 
+    private static NotchSettings OptedInSettings() => new()
+    {
+        EnableSpotifyCanvas = true,
+        AllowOnlineCanvas = true,
+        SpotifyCanvasConsentVersion = SpotifyCanvasConsent.CurrentNoticeVersion,
+        SpotifySpDc = "dummy_sp_dc_cookie"
+    };
+
     private sealed class FakeSpotifyCanvasPresenter : ISpotifyCanvasPresenter
     {
         public List<(Uri? uri, long version, bool autoPlay)> SetSourceCalls { get; } = new();
@@ -131,7 +139,7 @@ public sealed class SpotifyCanvasControllerTests
         using var service = CreateAsyncStubService(_ => tcs.Task);
         using var controller = new SpotifyCanvasController(service, presenter, action => action());
 
-        controller.UpdateSettings(enabled: true, spDc: "dummy_sp_dc_cookie", brightness: 0.7, localOnlyMode: false);
+        controller.UpdateSettings(OptedInSettings());
         controller.SetSurfaceVisibility(false);
         controller.UpdateTrack("Track A", "Artist A", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
 
@@ -165,7 +173,7 @@ public sealed class SpotifyCanvasControllerTests
         using var service = CreateAsyncStubService(_ => tcs.Task);
         using var controller = new SpotifyCanvasController(service, presenter, action => action());
 
-        controller.UpdateSettings(enabled: true, spDc: "dummy_sp_dc_cookie", brightness: 0.7, localOnlyMode: false);
+        controller.UpdateSettings(OptedInSettings());
         controller.SetSurfaceVisibility(true);
         controller.UpdateTrack("Track", "Artist", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
         Assert.True(controller.HasPendingFetch);
@@ -182,11 +190,12 @@ public sealed class SpotifyCanvasControllerTests
         var presenter = new FakeSpotifyCanvasPresenter();
         using var service = CreateStubService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         using var controller = new SpotifyCanvasController(service, presenter, action => action());
+        controller.UpdateSettings(OptedInSettings());
 
         controller.SetSurfaceVisibility(true);
         controller.UpdateTrack("Track", "Artist", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
 
-        controller.UpdateSettings(enabled: false, spDc: null, brightness: 0.8, localOnlyMode: false);
+        controller.UpdateSettings(new NotchSettings { SpotifyCanvasBrightness = 0.8 });
 
         Assert.Equal(string.Empty, controller.CurrentTrackKey);
         Assert.False(controller.HasPendingFetch);
@@ -199,6 +208,7 @@ public sealed class SpotifyCanvasControllerTests
         var presenter = new FakeSpotifyCanvasPresenter();
         using var service = CreateStubService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         using var controller = new SpotifyCanvasController(service, presenter, action => action());
+        controller.UpdateSettings(OptedInSettings());
 
         controller.SetSurfaceVisibility(true);
         controller.UpdateTrack("Track A", "Artist A", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
@@ -220,6 +230,7 @@ public sealed class SpotifyCanvasControllerTests
         var presenter = new FakeSpotifyCanvasPresenter();
         using var service = CreateStubService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         var controller = new SpotifyCanvasController(service, presenter, action => action());
+        controller.UpdateSettings(OptedInSettings());
 
         controller.SetSurfaceVisibility(true);
         controller.UpdateTrack("Track 1", "Artist 1", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, isPlaying: true);
@@ -229,5 +240,51 @@ public sealed class SpotifyCanvasControllerTests
         // Dispose while multiple requests were triggered
         var exception = Record.Exception(() => controller.Dispose());
         Assert.Null(exception);
+    }
+
+    [Theory]
+    [InlineData(0, true, false)]
+    [InlineData(2, true, false)]
+    [InlineData(1, false, false)]
+    [InlineData(1, true, true)]
+    public void UnacceptedOrRevokedSettings_NeverStartTransport(int noticeVersion, bool allowNetwork, bool offline)
+    {
+        int requests = 0;
+        using var service = CreateStubService(_ => { requests++; return new HttpResponseMessage(HttpStatusCode.NotFound); });
+        using var controller = new SpotifyCanvasController(service, new FakeSpotifyCanvasPresenter(), action => action());
+        var settings = OptedInSettings();
+        settings.SpotifyCanvasConsentVersion = noticeVersion;
+        settings.AllowOnlineCanvas = allowNetwork;
+        settings.EnableLocalOnlyMode = offline;
+        controller.UpdateSettings(settings);
+        controller.SetSurfaceVisibility(true);
+        controller.UpdateTrack("Track", "Artist", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, true);
+        controller.RefreshForCurrentTrack();
+        Assert.False(controller.HasPendingFetch);
+        Assert.Equal(0, requests);
+    }
+
+    [Fact]
+    public async Task Revocation_IgnoresLateCompletionAndClearsVideo()
+    {
+        var response = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var presenter = new FakeSpotifyCanvasPresenter();
+        using var service = CreateAsyncStubService(_ => response.Task);
+        using var controller = new SpotifyCanvasController(service, presenter, action => action());
+        var settings = OptedInSettings();
+        controller.UpdateSettings(settings);
+        controller.SetSurfaceVisibility(true);
+        controller.UpdateTrack("Track", "Artist", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, true);
+        Assert.True(controller.HasPendingFetch);
+        var pending = (Task)typeof(SpotifyCanvasController)
+            .GetField("_inFlightTask", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(controller)!;
+        SpotifyCanvasConsent.Revoke(settings);
+        controller.UpdateSettings(settings);
+        response.SetResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        await pending.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(controller.HasPendingFetch);
+        Assert.Null(presenter.CurrentSource);
+        Assert.Empty(presenter.SetSourceCalls);
     }
 }

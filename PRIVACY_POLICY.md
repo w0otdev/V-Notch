@@ -181,7 +181,9 @@ V-Notch tries two independent lyrics providers, in order, and stops as soon as o
 - **Data sent:** YouTube video ID and standard HTTP headers. No Spotify/V-Notch account credential is intended to be sent in this call; the recipient sees connection metadata such as IP address.
 - **Data received:** Timed caption text, used transiently in memory for display.
 
-### 4.5 Spotify Canvas (Opt-In)
+### 4.5 Spotify Canvas (Experimental, Opt-In)
+
+Canvas and its network/sign-in permission are **off by default**. Before enabling them, you must explicitly acknowledge the in-app notice about the session cookie, unofficial access methods and possible service/account restrictions. Legacy settings and imported configurations cannot supply that acknowledgement. Turning Canvas off or withdrawing its network permission clears the acknowledgement and cancels app-managed requests and sign-in. It preserves the locally encrypted cookie; use **Disconnect** to remove that cookie. Re-enabling requires another acknowledgement. This consent is a product control, not authorization from Spotify; see [Spotify's User Guidelines](https://www.spotify.com/us/legal/user-guidelines/).
 
 When you choose **Connect Spotify**, V-Notch opens Spotify's own sign-in page in a temporary Microsoft Edge WebView2 profile. After sign-in, it reads only Spotify's `sp_dc` session cookie, clears the temporary browser profile, and stores the cookie encrypted with Windows DPAPI for the current Windows user. It is never sent to a V-Notch server or any analytics server.
 

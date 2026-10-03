@@ -12,7 +12,7 @@
   <Properties>
     <DisplayName>V-Notch</DisplayName>
     <PublisherDisplayName>rainaku</PublisherDisplayName>
-    <Description>MacOS Notch for Windows - A beautiful and functional notch for your desktop</Description>
+    <Description>A desktop status and media companion for Windows</Description>
     <Logo>Assets\logo.png</Logo>
   </Properties>
 
@@ -30,7 +30,7 @@
                  EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="V-Notch"
-        Description="MacOS Notch for Windows"
+        Description="A desktop status and media companion for Windows"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\logo.png"
         Square44x44Logo="Assets\logo.png">

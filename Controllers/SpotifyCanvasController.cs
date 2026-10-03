@@ -34,7 +34,7 @@ public sealed class SpotifyCanvasController : IDisposable
     private bool _shouldPlay;
     private bool _disposed;
 
-    private bool _enabled = true;
+    private bool _enabled;
     private string _spDc = "";
     private double _brightness = 0.7;
     private bool _localOnlyMode;
@@ -65,14 +65,14 @@ public sealed class SpotifyCanvasController : IDisposable
         };
     }
 
-    public void UpdateSettings(bool enabled, string? spDc, double brightness, bool localOnlyMode)
+    public void UpdateSettings(NotchSettings settings)
     {
         if (_disposed) return;
         bool wasDisabled = !_enabled || _localOnlyMode;
-        _enabled = enabled;
-        _spDc = spDc ?? "";
-        _brightness = brightness;
-        _localOnlyMode = localOnlyMode;
+        _enabled = NetworkPrivacy.Allows(settings, NetworkFeature.Canvas);
+        _spDc = _enabled ? settings.SpotifySpDc ?? "" : "";
+        _brightness = settings.SpotifyCanvasBrightness;
+        _localOnlyMode = settings.EnableLocalOnlyMode;
 
         NotifyPresentationChanged();
 

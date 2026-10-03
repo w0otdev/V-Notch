@@ -185,7 +185,9 @@ V-Notch thử nghiệm hai nhà cung cấp lời bài hát độc lập theo th�
 - **Dữ liệu gửi đi:** ID video YouTube và header HTTP tiêu chuẩn. Không gửi tài khoản người dùng hay dữ liệu định danh cá nhân.
 - **Dữ liệu nhận về:** Văn bản phụ đề theo thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị.
 
-### 4.5 Spotify Canvas (Tùy chọn)
+### 4.5 Spotify Canvas (Thử nghiệm, chủ động bật)
+
+Canvas và quyền truy cập mạng/đăng nhập của tính năng **mặc định tắt**. Trước khi bật, bạn phải chủ động xác nhận thông báo trong ứng dụng về cookie phiên, phương thức truy cập không chính thức và khả năng bị hạn chế dịch vụ/tài khoản. Cấu hình cũ hoặc nhập từ tệp không được dùng làm xác nhận. Tắt Canvas hoặc thu hồi quyền mạng sẽ xóa xác nhận, hủy yêu cầu do ứng dụng quản lý và đóng đăng nhập. Cookie mã hóa trên máy được giữ lại; dùng **Ngắt kết nối** để xóa cookie. Bật lại yêu cầu xác nhận mới. Sự đồng ý là cơ chế kiểm soát trong sản phẩm, không phải chấp thuận từ Spotify; xem [Hướng dẫn người dùng Spotify](https://www.spotify.com/us/legal/user-guidelines/).
 
 Khi bạn chọn **Kết nối Spotify**, V-Notch mở trang đăng nhập chính thức của Spotify trong một hồ sơ Microsoft Edge WebView2 tạm thời. Sau khi đăng nhập, ứng dụng chỉ đọc cookie phiên `sp_dc`, xóa hoàn toàn hồ sơ trình duyệt tạm và lưu cookie đã mã hóa bằng Windows DPAPI cho tài khoản người dùng Windows hiện tại. Cookie này không bao giờ được gửi đến bất kỳ máy chủ nào của V-Notch hay máy chủ thu thập dữ liệu nào.
 
