@@ -6,27 +6,146 @@ name: CI
   push:
     branches: [main]
     tags: ['v*']
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  preflight:
+    name: Secrets and pipeline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      windows: ${{ steps.scope.outputs.windows }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test pipeline gates
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+
+      - name: Scan history for secrets (Gitleaks 8.30.1)
+        shell: bash
+        run: |
+          tool_dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$tool_dir" artifacts/security
+          archive="$tool_dir/gitleaks.tar.gz"
+          curl --fail --location --retry 3 --output "$archive" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$tool_dir" gitleaks
+          python .github/scripts/check_secret_scanner.py "$tool_dir/gitleaks"
+          "$tool_dir/gitleaks" git . --log-opts=--all --config .gitleaks.toml \
+            --gitleaks-ignore-path .gitleaksignore --redact=100 --no-banner \
+            --report-format sarif --report-path artifacts/security/gitleaks.sarif
+
+      - name: Retain redacted secret scan evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: secret-scan
+          path: artifacts/security/gitleaks.sarif
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Determine Windows build scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          GIT_REF: ${{ github.ref }}
+        run: python .github/scripts/ci_scope.py scope
+
+  sast:
+    name: CodeQL security analysis
+    needs: preflight
+    if: needs.preflight.outputs.windows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    env:
+      EnableWindowsTargeting: 'true'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '8.0.x'
+
+      # github/codeql-action@v4; build-mode none avoids a second WPF build.
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
+        with:
+          languages: csharp
+          build-mode: none
+          queries: security-extended
+          dependency-caching: true
+          config: |
+            paths-ignore:
+              - artifacts
+              - .codegraph
+
+      - name: Analyze and upload code scanning results
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
+        with:
+          category: /language:csharp
+          output: artifacts/codeql
+
+      - name: Reject CodeQL security findings
+        run: python .github/scripts/check_sarif.py artifacts/codeql
+
+      - name: Retain SAST evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: codeql-sarif
+          path: artifacts/codeql/*.sarif
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-validation:
+    name: Windows validation
+    needs: [preflight, sast]
+    if: needs.preflight.outputs.windows == 'true'
     runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
     steps:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       # actions/setup-dotnet@v4.3.1
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: '8.0.x'
+          cache: true
+          cache-dependency-path: |
+            packages.lock.json
+            Tests/packages.lock.json
+            Uninstall/packages.lock.json
 
       - name: Restore
-        run: dotnet restore V-Notch.sln
+        run: dotnet restore V-Notch.sln --locked-mode
+
+      - name: Verify model provenance and distribution allowlist
+        shell: pwsh
+        run: ./Tools/Assert-ModelAssets.ps1
+
+      - name: Validate all locale keys and format placeholders
+        run: python Tools/validate_locales.py
 
       - name: Verify format
         run: dotnet format V-Notch.sln --verify-no-changes --no-restore
@@ -34,5 +153,101 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
 
+      - name: Unit and UI regression tests with coverage
+        env:
+          VNOTCH_QA_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/ui-review
+        run: >-
+          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
+          --settings Tests/CI.runsettings --collect "Code Coverage"
+          --logger "trx;LogFileName=tests.trx" --results-directory artifacts/test-results
+
+      - name: Test release security gates
+        shell: pwsh
+        run: ./Tests/ReleaseGateTests.ps1
+
+      - name: Retain test and coverage evidence
+        if: ${{ !cancelled() }}
+        # actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: test-results
+          path: artifacts/test-results/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Audit packages
-        run: dotnet list V-Notch.sln package --vulnerable --include-transitive
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./Tools/Assert-PackageAudit.ps1
+
+      - name: Retain globalization rendering evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: globalization-ui
+          path: artifacts/ui-review/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Retain package audit evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-audit
+          path: artifacts/package-audit.json
+          if-no-files-found: error
+          retention-days: 7
+
+  coverage:
+    name: Application coverage (80 percent)
+    needs: windows-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: test-results
+          path: artifacts/test-results
+
+      # Keep the Windows job cacheable even when this independent gate fails.
+      - name: Enforce 80 percent application line coverage
+        shell: pwsh
+        run: ./Tools/Assert-Coverage.ps1 -ResultsDirectory artifacts/test-results -MinimumPercent 80
+
+  # Preserve the original required-check name while aggregating every gate.
+  validate:
+    needs: [preflight, sast, windows-validation, coverage]
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require all applicable checks
+        shell: bash
+        env:
+          PREFLIGHT: ${{ needs.preflight.result }}
+          WINDOWS_REQUIRED: ${{ needs.preflight.outputs.windows }}
+          SAST: ${{ needs.sast.result }}
+          BUILD: ${{ needs.windows-validation.result }}
+          COVERAGE: ${{ needs.coverage.result }}
+        run: |
+          if [[ "$PREFLIGHT" != 'success' ]]; then
+            echo 'Secret scanning or pipeline checks failed.' >&2
+            exit 1
+          fi
+          if [[ "$WINDOWS_REQUIRED" == 'true' ]]; then
+            for result in "$SAST" "$BUILD" "$COVERAGE"; do
+              if [[ "$result" != 'success' ]]; then
+                echo 'A required security, Windows, or coverage gate failed.' >&2
+                exit 1
+              fi
+            done
+          elif [[ "$WINDOWS_REQUIRED" != 'false' || "$SAST" != 'skipped' || "$BUILD" != 'skipped' || "$COVERAGE" != 'skipped' ]]; then
+            echo 'Invalid documentation-only validation state.' >&2
+            exit 1
+          fi
+          echo 'All applicable CI gates passed.'

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <!-- Microsoft collector handles WPF enum metadata that Coverlet 6.0.4 cannot resolve. -->
+      <DataCollector friendlyName="Code Coverage">
+        <Configuration>
+          <Format>Cobertura</Format>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <CodeCoverage>
+            <!-- C# coverage remains enabled, including managed child processes.
+                 Native instrumentation settings belong inside CodeCoverage. -->
+            <EnableStaticNativeInstrumentation>false</EnableStaticNativeInstrumentation>
+            <EnableDynamicNativeInstrumentation>false</EnableDynamicNativeInstrumentation>
+            <ModulePaths>
+              <Include><ModulePath>.*V-Notch\.dll$</ModulePath></Include>
+            </ModulePaths>
+            <Attributes>
+              <Exclude><Attribute>^System\.Diagnostics\.CodeAnalysis\.ExcludeFromCodeCoverageAttribute$</Attribute></Exclude>
+            </Attributes>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

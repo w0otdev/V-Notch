@@ -1,0 +1,5 @@
+# Reviewed historical occurrences of the built-in YouTube Innertube client key.
+# These exact commit/file/rule/line fingerprints do not exempt current source,
+# other Google keys, or future commits. No user/tenant credential is allowlisted.
+df70a487abed47ef1d358f330ecc3eb6669b1839:Services/YouTubeSubtitleService.cs:gcp-api-key:40
+e5fb8655d09959b8542eea2c3ce95b013d179bd4:Services/YouTubeSubtitleService.cs:gcp-api-key:34

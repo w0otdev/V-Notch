@@ -1,0 +1,28 @@
+title = "V-Notch secret scanning"
+
+[extend]
+useDefault = true
+
+# Match the exact synthetic values AND their specific test file. A different
+# token in the same test file, or this value in production code, still fails.
+[[allowlists]]
+description = "Synthetic scrubber/import test values"
+condition = "AND"
+paths = ['(^|/)Tests/SecurityAuditTests\.cs$']
+regexTarget = "secret"
+regexes = ['^(?:AIza)SyD_abc1234567890XYZ_abcdef12345678$', '^ATTACKER-KEY-12345$']
+
+[[allowlists]]
+description = "Synthetic legacy settings import value"
+condition = "AND"
+paths = ['(^|/)Tests/SettingsTransferTests\.cs$']
+regexTarget = "secret"
+regexes = ['^LEGACY-KEY-12345$']
+
+# This exact built-in YouTube Android client identifier is not a tenant key.
+[[allowlists]]
+description = "Exact built-in YouTube client identifier, one service only"
+condition = "AND"
+paths = ['(^|[\\/])Services[\\/]YouTubeSubtitleService\.cs$']
+regexTarget = "secret"
+regexes = ['^(?:AIza)SyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8$']

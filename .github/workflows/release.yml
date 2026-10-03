@@ -13,12 +13,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-installer:
+  verify-validation:
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      eligible: ${{ steps.validation.outputs.eligible }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Require Windows validation of this release commit
+        id: validation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/$CI_RUN_ID/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/ci-jobs.json"
+          python .github/scripts/ci_scope.py release "$RUNNER_TEMP/ci-jobs.json"
+
+  build-installer:
+    needs: verify-validation
+    if: needs.verify-validation.outputs.eligible == 'true'
     runs-on: windows-latest
+    timeout-minutes: 20
+    environment: code-signing
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
     strategy:
       fail-fast: false
       matrix:
@@ -28,23 +60,66 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
       # actions/setup-dotnet@v4.3.1
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: '8.0.x'
+          cache: true
+          cache-dependency-path: |
+            packages.lock.json
+            Tests/packages.lock.json
+            Uninstall/packages.lock.json
 
-      - name: Install NSIS
+      # actions/cache@v4; cache the publisher-verified portable archive only.
+      - name: Restore NSIS portable cache
+        id: nsis-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .cache/nsis/nsis-3.12.zip
+          key: ${{ runner.os }}-nsis-3.12-56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2c4f
+
+      - name: Verify and extract NSIS portable
+        id: nsis
         shell: pwsh
-        run: choco install nsis --no-progress -y
+        run: |
+          $compiler = ./scripts/Initialize-Nsis.ps1 -CacheDirectory '.cache/nsis' -DestinationDirectory (Join-Path $env:RUNNER_TEMP 'nsis-portable')
+          "makensis=$compiler" >> $env:GITHUB_OUTPUT
+
+      # Save before signing so an unavailable identity does not lose the tool cache.
+      - name: Save NSIS portable cache
+        if: steps.nsis-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .cache/nsis/nsis-3.12.zip
+          key: ${{ steps.nsis-cache.outputs.cache-primary-key }}
 
       - name: Build installer (${{ matrix.variant }})
         shell: pwsh
+        env:
+          VNOTCH_CODE_SIGNING_PFX_BASE64: ${{ secrets.VNOTCH_CODE_SIGNING_PFX_BASE64 }}
+          VNOTCH_CODE_SIGNING_PASSWORD: ${{ secrets.VNOTCH_CODE_SIGNING_PASSWORD }}
+          VNOTCH_CODE_SIGNING_THUMBPRINT: ${{ vars.VNOTCH_CODE_SIGNING_THUMBPRINT }}
+          NSIS_MAKENSIS: ${{ steps.nsis.outputs.makensis }}
         run: |
-          if ('${{ matrix.variant }}' -eq 'self-contained') {
-            ./b.ps1 -SelfContained
-          } else {
-            ./b.ps1
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:VNOTCH_CODE_SIGNING_PFX_BASE64 -or $env:VNOTCH_CODE_SIGNING_THUMBPRINT -notmatch '^[a-fA-F0-9]{40}$') {
+            throw 'Configure the protected code-signing environment before publishing. Unsigned public releases are blocked.'
+          }
+          $certificateFile = Join-Path $env:RUNNER_TEMP 'vnotch-signing.pfx'
+          $imported = @()
+          try {
+            [IO.File]::WriteAllBytes($certificateFile, [Convert]::FromBase64String($env:VNOTCH_CODE_SIGNING_PFX_BASE64))
+            $password = ConvertTo-SecureString -String $env:VNOTCH_CODE_SIGNING_PASSWORD -AsPlainText -Force
+            $imported = @(Import-PfxCertificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\My -Password $password)
+            $buildArguments = @{ CertificateThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT; RequireAuthenticode = $true; NsisPath = $env:NSIS_MAKENSIS; LockedRestore = $true }
+            if ('${{ matrix.variant }}' -eq 'self-contained') { $buildArguments.SelfContained = $true }
+            ./b.ps1 @buildArguments
+            if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+          } finally {
+            foreach ($certificate in $imported) { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -DeleteKey -Force }
+            if (Test-Path -LiteralPath $certificateFile) { Remove-Item -LiteralPath $certificateFile -Force }
           }
 
       - name: Name setup files
@@ -71,6 +146,7 @@ jobs:
             installers/${{ steps.artifact.outputs.name }}.sha256
             installers/*.sha256
           if-no-files-found: error
+          retention-days: 7
 
   sign-updates:
     needs: build-installer
@@ -109,6 +185,7 @@ jobs:
           name: signed-update-assets
           path: signed-assets/*
           if-no-files-found: error
+          retention-days: 7
 
   release:
     needs: sign-updates
