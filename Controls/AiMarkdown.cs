@@ -11,13 +11,14 @@ namespace VNotch.Controls;
 
 internal static class AiMarkdown
 {
+    private static readonly Uri FontsBaseUri = new("pack://application:,,,/V-Notch;component/Fonts/");
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras().Build();
 
     internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null)
     {
         var font = fontFamily
             ?? (FontFamily?)Application.Current?.TryFindResource("SFProDisplay")
-            ?? new FontFamily(new Uri("pack://application:,,,/V-Notch;component/Fonts/"), "./#SF Pro Display, Segoe UI, Arial");
+            ?? new FontFamily(FontsBaseUri, "./#SF Pro Display, Segoe UI, Arial");
 
         var doc = new FlowDocument
         {
@@ -59,7 +60,7 @@ internal static class AiMarkdown
                 Padding = new Thickness(22, 0, 0, 0)
             };
             if (list.IsOrdered && int.TryParse(list.OrderedStart, out int start) && start > 0) result.StartIndex = start;
-            foreach (ListItemBlock item in list)
+            foreach (var item in list.OfType<ListItemBlock>())
             {
                 var li = new ListItem { FontFamily = font, FontWeight = FontWeights.Bold };
                 foreach (var child in item) li.Blocks.Add(RenderBlock(child, font));
@@ -72,10 +73,10 @@ internal static class AiMarkdown
             var result = new System.Windows.Documents.Table { FontFamily = font, FontWeight = FontWeights.Bold, CellSpacing = 0, Margin = new Thickness(0, 6, 0, 10) };
             var rows = new TableRowGroup();
             result.RowGroups.Add(rows);
-            foreach (Markdig.Extensions.Tables.TableRow row in table)
+            foreach (var row in table.OfType<Markdig.Extensions.Tables.TableRow>())
             {
                 var rendered = new System.Windows.Documents.TableRow();
-                foreach (Markdig.Extensions.Tables.TableCell cell in row)
+                foreach (var cell in row.OfType<Markdig.Extensions.Tables.TableCell>())
                 {
                     var target = new System.Windows.Documents.TableCell
                     {
@@ -187,7 +188,7 @@ internal static class AiMarkdown
                 // words into a shared Run and fading the whole sentence.
                 var ink = new SolidColorBrush(foreground?.Color ?? VNotch.Services.UiPalette.PrimaryColor)
                 { Opacity = 1 };
-                var span = new Span(word.Start, word.End) { Foreground = ink };
+                _ = new Span(word.Start, word.End) { Foreground = ink };
                 ink.BeginAnimation(Brush.OpacityProperty,
                     new System.Windows.Media.Animation.DoubleAnimation(word.Progress, 1,
                         TimeSpan.FromMilliseconds(fadeMilliseconds * (1 - word.Progress)))

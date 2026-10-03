@@ -227,6 +227,13 @@ Thank you to everyone who has supported V-Notch since the early releases. Your f
 
 [![Star History Chart](https://api.star-history.com/svg?repos=rainaku/v-notch&type=Date)](https://star-history.com/#rainaku/v-notch&Date)
 
+## Other projects by rainaku
+
+If you like V-Notch, check out other free and open-source Windows utilities by rainaku:
+
+- **[Vertex](https://github.com/rainaku/Vertex)** — Minimalist radial wheel file converter for Windows (built with Rust).
+- **[Scroll-V](https://github.com/rainaku/Scroll-V)** — Buttery smooth scrolling experience for all Windows applications (built with C#).
+
 ## License
 
 V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

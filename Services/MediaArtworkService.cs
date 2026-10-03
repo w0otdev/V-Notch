@@ -105,7 +105,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                         RuntimeLog.Log(ArtworkLogTag, $"DownloadImageAsync exceeded max allowed size ({MaxArtworkDownloadSizeBytes} bytes) for {url}");
                         return null;
                     }
-                    ms.Write(buffer, 0, bytesRead);
+                    await ms.WriteAsync(buffer.AsMemory(0, bytesRead), timeoutCts.Token).ConfigureAwait(false);
                 }
             }
             finally

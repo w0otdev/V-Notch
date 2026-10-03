@@ -724,6 +724,22 @@ public sealed class MagnifierCaptureSource : IDisposable
         _wndProc = null;
         try
         {
+            _initDone.Dispose();
+        }
+        catch (Exception)
+        {
+            // Event handle cleanup errors on dispose are safely ignored.
+        }
+        try
+        {
+            _request.Dispose();
+        }
+        catch (Exception)
+        {
+            // Event handle cleanup errors on dispose are safely ignored.
+        }
+        try
+        {
             _frameReceivedEvent.Dispose();
         }
         catch (Exception)

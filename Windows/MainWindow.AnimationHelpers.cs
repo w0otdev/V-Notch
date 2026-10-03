@@ -93,7 +93,11 @@ public partial class MainWindow
                 MakeAnim(thumbScale, duration, easing, animFps));
             _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty,
                 MakeAnim(thumbScale, duration, easing, animFps));
-            double screenshotRadius = isHovered ? (islandMode ? notchHeight / 2.0 : 24) : _cornerRadiusCollapsed;
+            double screenshotRadius = _cornerRadiusCollapsed;
+            if (isHovered)
+            {
+                screenshotRadius = islandMode ? notchHeight / 2.0 : 24;
+            }
             AnimateCornerRadius(screenshotRadius, duration.TimeSpan);
             return;
         }
@@ -1437,90 +1441,6 @@ public partial class MainWindow
         }
     }
 
-    private void AnimateTimerContentFadeOut()
-    {
-        if (TimerContent == null || TimerContent.Visibility != Visibility.Visible) return;
-
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-        var baseDuration = new Duration(TimeSpan.FromMilliseconds(160));
-        var easing = _easeQuadIn;
-
-        if (CountdownDisplay != null && CountdownDisplay.Visibility == Visibility.Visible)
-        {
-            double currentOpacity = CountdownDisplay.Opacity;
-            if (currentOpacity > 0.01)
-            {
-                CountdownDisplay.BeginAnimation(OpacityProperty, null);
-                var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, TimeSpan.Zero);
-                Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                CountdownDisplay.BeginAnimation(OpacityProperty, fadeAnim);
-            }
-        }
-
-        var wave2Delay = TimeSpan.FromMilliseconds(25);
-
-        if (CountdownProgressFill != null && CountdownProgressFill.Visibility == Visibility.Visible)
-        {
-            double currentOpacity = CountdownProgressFill.Opacity;
-            if (currentOpacity > 0.01)
-            {
-                CountdownProgressFill.BeginAnimation(OpacityProperty, null);
-                var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave2Delay);
-                Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                CountdownProgressFill.BeginAnimation(OpacityProperty, fadeAnim);
-            }
-        }
-
-        if (CountdownDisplayPanel != null && CountdownDisplayPanel.Visibility == Visibility.Visible)
-        {
-            double currentOpacity = CountdownDisplayPanel.Opacity;
-            if (currentOpacity > 0.01)
-            {
-                CountdownDisplayPanel.BeginAnimation(OpacityProperty, null);
-                var fadeAnim = MakeAnim(currentOpacity, 0, new Duration(TimeSpan.FromMilliseconds(180)), easing, wave2Delay);
-                Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                CountdownDisplayPanel.BeginAnimation(OpacityProperty, fadeAnim);
-            }
-        }
-
-        var wave3Delay = TimeSpan.FromMilliseconds(40);
-
-        if (CountdownStartBtn != null && CountdownStartBtn.Visibility == Visibility.Visible)
-        {
-            double currentOpacity = CountdownStartBtn.Opacity;
-            if (currentOpacity > 0.01)
-            {
-                CountdownStartBtn.BeginAnimation(OpacityProperty, null);
-                var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave3Delay);
-                Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                CountdownStartBtn.BeginAnimation(OpacityProperty, fadeAnim);
-            }
-        }
-
-        if (CountdownResetBtn != null && CountdownResetBtn.Visibility == Visibility.Visible)
-        {
-            double currentOpacity = CountdownResetBtn.Opacity;
-            if (currentOpacity > 0.01)
-            {
-                CountdownResetBtn.BeginAnimation(OpacityProperty, null);
-                var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave3Delay);
-                Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                CountdownResetBtn.BeginAnimation(OpacityProperty, fadeAnim);
-            }
-        }
-
-        if (CountdownStepperCapsule != null && CountdownStepperCapsule.Visibility == Visibility.Visible)
-        {
-            double currentOpacity = CountdownStepperCapsule.Opacity;
-            if (currentOpacity > 0.01)
-            {
-                CountdownStepperCapsule.BeginAnimation(OpacityProperty, null);
-                var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave3Delay);
-                Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                CountdownStepperCapsule.BeginAnimation(OpacityProperty, fadeAnim);
-            }
-        }
-    }
 
     private void RestoreTimerContentOpacity()
     {

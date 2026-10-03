@@ -7,6 +7,7 @@ namespace VNotch;
 
 public partial class SpotlightWindow
 {
+    private const string AssistantRole = "assistant";
     private static readonly TimeSpan AiRequestTimeout = TimeSpan.FromSeconds(60);
     private bool _aiMode;
     private readonly List<SpotlightAiMessage> _aiHistory = new();
@@ -248,7 +249,7 @@ public partial class SpotlightWindow
         { Interval = TimeSpan.FromSeconds(1) };
         progressTimer.Tick += (_, _) =>
         {
-            if (ReferenceEquals(_aiRequest, cts) && _aiHistory.LastOrDefault()?.Role != "assistant")
+            if (ReferenceEquals(_aiRequest, cts) && _aiHistory.LastOrDefault()?.Role != AssistantRole)
                 SetAiStatus("spotlight.ai.waiting", (int)started.Elapsed.TotalSeconds);
         };
         SetAiStatus("spotlight.ai.waiting", 0);
@@ -286,10 +287,16 @@ public partial class SpotlightWindow
         {
             // Interrupted responses stay visible but are not replayed as completed turns.
             var history = new List<SpotlightAiMessage>();
-            for (int i = 0; i < _aiHistory.Count; i++)
+            int i = 0;
+            while (i < _aiHistory.Count)
             {
-                if (i + 1 < _aiHistory.Count && _aiHistory[i + 1].IsIncomplete) { i++; continue; }
+                if (i + 1 < _aiHistory.Count && _aiHistory[i + 1].IsIncomplete)
+                {
+                    i += 2;
+                    continue;
+                }
                 history.Add(_aiHistory[i]);
+                i++;
             }
             while (history.Count > 21 || (history.Count > 2 && history.Sum(m => m.Content.Length) > 64000))
                 history.RemoveRange(0, 2);
@@ -310,10 +317,10 @@ public partial class SpotlightWindow
                 if (liveView == null)
                 {
                     HideAiThinking();
-                    _aiHistory.Add(new SpotlightAiMessage("assistant", "") { IsIncomplete = true });
-                    liveView = AddAiMessage(new SpotlightAiMessage("assistant", ""), animate: true);
+                    _aiHistory.Add(new SpotlightAiMessage(AssistantRole, "") { IsIncomplete = true });
+                    liveView = AddAiMessage(new SpotlightAiMessage(AssistantRole, ""), animate: true);
                 }
-                _aiHistory[^1] = new SpotlightAiMessage("assistant", response.ToString()) { IsIncomplete = true };
+                _aiHistory[^1] = new SpotlightAiMessage(AssistantRole, response.ToString()) { IsIncomplete = true };
                 receivedText = response.ToString();
                 revealCaughtUp = false;
                 if (AnimationConfig.ReduceMotion) RevealText(finish: true);
@@ -324,7 +331,7 @@ public partial class SpotlightWindow
             while (!revealCaughtUp && ReferenceEquals(_aiRequest, cts))
                 await Task.Delay(32, cts.Token);
             if (!ReferenceEquals(_aiRequest, cts) || cts.IsCancellationRequested) return;
-            if (_aiHistory.LastOrDefault()?.Role == "assistant")
+            if (_aiHistory.LastOrDefault()?.Role == AssistantRole)
                 _aiHistory[^1] = _aiHistory[^1] with
                 {
                     IsIncomplete = false,
@@ -337,7 +344,7 @@ public partial class SpotlightWindow
         {
             HideAiThinking();
             if (!ReferenceEquals(_aiRequest, cts)) return;
-            cts.Cancel();
+            _ = cts.CancelAsync();
             RuntimeLog.Warn("SPOTLIGHT-AI", $"request ended after {started.Elapsed.TotalSeconds:F0}s ({ex.GetType().Name}; {(ex as SpotlightAiException)?.Diagnostic ?? "no provider status"})");
             // Failed/cancelled requests are retryable without duplicate user turns.
             if (_aiHistory.LastOrDefault()?.Role == "user")
@@ -345,8 +352,20 @@ public partial class SpotlightWindow
                 _aiHistory.Remove(pending);
                 if (string.IsNullOrEmpty(SearchBox.Text)) SearchBox.Text = prompt;
             }
-            SetAiStatus(ex is SpotlightAiException ? ex.Message :
-                ex is TimeoutException or OperationCanceledException ? "spotlight.ai.requestTimeout" : "spotlight.ai.networkError");
+            string statusKey;
+            if (ex is SpotlightAiException)
+            {
+                statusKey = ex.Message;
+            }
+            else if (ex is TimeoutException or OperationCanceledException)
+            {
+                statusKey = "spotlight.ai.requestTimeout";
+            }
+            else
+            {
+                statusKey = "spotlight.ai.networkError";
+            }
+            SetAiStatus(statusKey);
             _aiStatusDiagnostic = (ex as SpotlightAiException)?.Diagnostic;
             RenderAiStatus();
         }

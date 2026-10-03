@@ -988,10 +988,25 @@ public partial class MainWindow
 
         // Read effective animated values before detaching clocks. ActualWidth may
         // still describe the previous layout pass when an animation reverses.
-        double currentWidth = double.IsFinite(NotchBorder.Width) && NotchBorder.Width > 0
-            ? NotchBorder.Width : NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth;
-        double currentHeight = double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0
-            ? NotchBorder.Height : NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight;
+        double currentWidth = _collapsedWidth;
+        if (double.IsFinite(NotchBorder.Width) && NotchBorder.Width > 0)
+        {
+            currentWidth = NotchBorder.Width;
+        }
+        else if (NotchBorder.ActualWidth > 0)
+        {
+            currentWidth = NotchBorder.ActualWidth;
+        }
+
+        double currentHeight = _collapsedHeight;
+        if (double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0)
+        {
+            currentHeight = NotchBorder.Height;
+        }
+        else if (NotchBorder.ActualHeight > 0)
+        {
+            currentHeight = NotchBorder.ActualHeight;
+        }
         double currentCornerRadius = CurrentCornerRadius;
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
@@ -1697,7 +1712,15 @@ public partial class MainWindow
         MediaBackground.BeginAnimation(OpacityProperty, fadeOutBlurAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, fadeOutBlurAnim);
 
-        FrameworkElement contentToShow = IsScreenshotPillActive ? _screenshotCompact! : _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
+        FrameworkElement contentToShow;
+        if (IsScreenshotPillActive)
+        {
+            contentToShow = _screenshotCompact!;
+        }
+        else
+        {
+            contentToShow = _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
+        }
         FrameworkElement contentToHide = _isMusicCompactMode ? CollapsedContent : MusicCompactContent;
 
         contentToHide.BeginAnimation(OpacityProperty, null);

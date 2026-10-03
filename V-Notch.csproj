@@ -30,9 +30,9 @@
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <Version>1.9.3</Version>
-    <AssemblyVersion>1.9.3</AssemblyVersion>
-    <FileVersion>1.9.3</FileVersion>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0</AssemblyVersion>
+    <FileVersion>2.0.0</FileVersion>
     <Authors>rainaku</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -115,6 +115,8 @@
     </None>
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\QR.PNG" />
+    <Resource Include="Assets\vertex_logo.png" />
+    <Resource Include="Assets\scrollv_logo.png" />
     <Resource Include="Shaders\LiquidGlassRefraction.ps" />
     <Resource Include="Assets\Flags\flag_en.png" />
     <Resource Include="Assets\Flags\flag_vi.png" />

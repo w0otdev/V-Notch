@@ -3,7 +3,7 @@
 **Effective date:** October 3, 2026
 **Maintainer:** rainaku  
 **Project:** https://github.com/rainaku/V-Notch  
-**Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 1.9.3; confirm the version of the actual released binary.
+**Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 2.0; confirm the version of the actual released binary.
 
 > **Important:** V-Notch is an independent, free and open-source project, not a paid hosted service. This document does not amend Apache-2.0 or third-party licenses, deprive users of mandatory statutory rights, grant rights to third-party content, or establish an authorization from any media service. No clause guarantees protection against a legal claim.
 

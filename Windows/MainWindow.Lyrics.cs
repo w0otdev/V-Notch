@@ -143,10 +143,6 @@ public partial class MainWindow
         SpotifyCanvasController.UpdateTrack(info);
     }
 
-    private void RefreshSpotifyCanvasForCurrentTrack()
-    {
-        _spotifyCanvasController?.RefreshForCurrentTrack();
-    }
 
     private void ShowSpotifyCanvasBackgroundIfAvailable()
     {
@@ -199,15 +195,6 @@ public partial class MainWindow
         UpdateSpotifyCanvasPresentationContext();
     }
 
-    private void HideLyricsBlurForCanvas()
-    {
-        _spotifyCanvasPresenter?.HideBlurFallback();
-    }
-
-    private void RestoreLyricsBlurFallback()
-    {
-        _spotifyCanvasPresenter?.RestoreBlurFallback();
-    }
 
     private void ResetSpotifyCanvas()
     {
@@ -479,7 +466,7 @@ public partial class MainWindow
     private void HideLyricsSearchState(bool immediate = false)
     {
         _isLyricsSearchVisible = false;
-        int transitionVersion = ++_lyricsSearchTransitionVersion;
+        ++_lyricsSearchTransitionVersion;
         TranslateTransform searchTranslate = GetLyricsSearchTransform();
 
         void FinishHide()

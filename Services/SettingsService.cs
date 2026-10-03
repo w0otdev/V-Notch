@@ -598,12 +598,14 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         var v = Assembly.GetExecutingAssembly().GetName().Version;
         if (v == null)
         {
-            return "1.9.3";
+            return "2.0";
         }
 
-        return v.Revision > 0
-            ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}"
-            : $"{v.Major}.{v.Minor}.{v.Build}";
+        if (v.Revision > 0)
+            return $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+        if (v.Build > 0)
+            return $"{v.Major}.{v.Minor}.{v.Build}";
+        return $"{v.Major}.{v.Minor}";
     }
 
     private string QuarantineCorruptFile(string rawContents, Exception reason)

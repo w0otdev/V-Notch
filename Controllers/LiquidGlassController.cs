@@ -29,27 +29,27 @@ public sealed class LiquidGlassController
 
     public struct GlassParams
     {
-        public double PowerFactor;
-        public double RefractionA;
-        public double RefractionB;
-        public double RefractionC;
-        public double RefractionD;
-        public double FPower;
-        public double Noise;
-        public double GlowWeight;
-        public double GlowBias;
-        public double GlowEdge0;
-        public double GlowEdge1;
-        public double Refraction;
-        public double EdgeBend;
-        public double ChromaticAberration;
-        public double Distortion;
-        public double ZRadius;
-        public double Saturation;
-        public double Brightness;
-        public int BevelMode;
-        public double TopCornerRadius;
-        public double BottomCornerRadius;
+        public double PowerFactor { get; set; }
+        public double RefractionA { get; set; }
+        public double RefractionB { get; set; }
+        public double RefractionC { get; set; }
+        public double RefractionD { get; set; }
+        public double FPower { get; set; }
+        public double Noise { get; set; }
+        public double GlowWeight { get; set; }
+        public double GlowBias { get; set; }
+        public double GlowEdge0 { get; set; }
+        public double GlowEdge1 { get; set; }
+        public double Refraction { get; set; }
+        public double EdgeBend { get; set; }
+        public double ChromaticAberration { get; set; }
+        public double Distortion { get; set; }
+        public double ZRadius { get; set; }
+        public double Saturation { get; set; }
+        public double Brightness { get; set; }
+        public int BevelMode { get; set; }
+        public double TopCornerRadius { get; set; }
+        public double BottomCornerRadius { get; set; }
 
         public static GlassParams Default => new()
         {
@@ -624,14 +624,14 @@ public sealed class LiquidGlassController
         _worker.Start();
     }
 
-    public void Stop() => Stop(retainGpuResources: false);
-
     public void PrepareGpuResources()
     {
         if (!_gpuMode) return;
         try { _d3dPresenter?.PrepareResources(); }
         catch (Exception ex) { OnD3DPresenterFailed(ex); }
     }
+
+    public void Stop() => Stop(retainGpuResources: false);
 
     public void Stop(bool retainGpuResources)
     {
@@ -1087,11 +1087,13 @@ public sealed class LiquidGlassController
 
             if (_waitableTimer != null && !_waitableTimer.IsInvalid)
             {
+#pragma warning disable S3884 // Raw handles required for Win32 WaitForMultipleObjects
                 _renderWaitHandles = new IntPtr[2]
                 {
                     _idleWakeEvent.SafeWaitHandle.DangerousGetHandle(),
                     _waitableTimer.DangerousGetHandle()
                 };
+#pragma warning restore S3884
             }
             else
             {
@@ -1150,10 +1152,9 @@ public sealed class LiquidGlassController
 
             if (!isAnimating)
             {
-                // Prioritize CPU/battery savings in steady state with zero spin wait;
-                // maintain precise sleep intervals to prevent capture cadence jitter.
+                // Prioritize CPU/battery savings in steady state with zero spin wait,
+                // maintaining precise sleep intervals to prevent capture cadence jitter.
                 if (!WaitDeadlineSlice(remainingMs)) return;
-                continue;
             }
             else
             {
@@ -1697,8 +1698,8 @@ public sealed class LiquidGlassController
             dims.SrcX, dims.SrcY);
 
         long nowTicks = Environment.TickCount64;
-        // Avoid re-uploading desktop texture when only lens geometry moves/resizes;
-        // upload only when source origin or material parameters change.
+        // Avoid re-uploading desktop texture when only lens geometry moves or resizes,
+        // and upload only when source origin or material parameters change.
         GpuGeometry uploadedGeometry = _lastUploadedGpuGeometry;
         if (CaptureFullSurface)
         {
@@ -2478,10 +2479,12 @@ public sealed class LiquidGlassController
         return new MapGeometry(halfX, halfY, cx, cy, minHalf, topR, bottomR, uChroma, distort, verticalBalance);
     }
 
+#pragma warning disable S107 // High performance raster math requires individual inputs
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private void ComputeRefractionSample(
         int x, int idx, double ly, double baseY,
         in GlassParams p, in MapDimensions d, in MapGeometry geom, in SampleBounds bounds)
+#pragma warning restore S107
     {
         double lx = x - geom.Cx;
         double baseX = x + d.Margin - d.CaptureShiftX;

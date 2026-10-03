@@ -31,6 +31,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private const string SoundCloudPlatformName = "SoundCloud";
     private const string YouTubeLowerPlatformName = "youtube";
     private const string SoundCloudLowerPlatformName = "soundcloud";
+    private const string MediaStopLogTag = "MEDIA-STOP";
 
     private readonly object _lifecycleLock = new();
     private ServiceLifecycleState _state = ServiceLifecycleState.Stopped;
@@ -49,7 +50,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     internal bool IsStarting => _state == ServiceLifecycleState.Starting;
     internal bool IsStopped => _state == ServiceLifecycleState.Stopped;
     internal bool IsDisposed => _state == ServiceLifecycleState.Disposed;
-    internal BitmapImage? CachedThumbnail { get => _cachedThumbnail; set => _cachedThumbnail = value; }
+    internal BitmapImage? CachedThumbnail { get; set; }
 
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private bool _disposed;
@@ -73,7 +74,6 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private string _lastTrackSignature = "";
     private string _lastThumbTrackIdentity = "";
-    private BitmapImage? _cachedThumbnail;
     private string _cachedThumbnailSource = "";
 
     private string _pendingSessionInstanceKey = "";
@@ -832,11 +832,11 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             && !string.IsNullOrEmpty(info.CurrentTrack)
             && !isNewTrackForThumbnail
             && (info.Thumbnail == null || info.Thumbnail.PixelWidth < 120)
-            && (_cachedThumbnail == null || _cachedThumbnail.PixelWidth < 200);
+            && (CachedThumbnail == null || CachedThumbnail.PixelWidth < 200);
 
         if (willFetchYouTubeThumbnail)
         {
-            info.Thumbnail = _cachedThumbnail;
+            info.Thumbnail = CachedThumbnail;
         }
 
         if (isNewTrackForThumbnail &&
@@ -896,7 +896,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     }
                 }, System.Windows.Threading.DispatcherPriority.Normal, ct);
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                // Expected when background task or application is shutting down.
+            }
         }
         else
         {
@@ -1207,11 +1210,11 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             ForgetVideoIdCacheExceptForTrack(BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist));
         }
 
-        if (needsFetch && !forceFetchForTrackChange && _cachedThumbnail != null && _cachedThumbnail.PixelWidth >= 200)
+        if (needsFetch && !forceFetchForTrackChange && CachedThumbnail != null && CachedThumbnail.PixelWidth >= 200)
         {
             needsFetch = false;
-            info.Thumbnail = _cachedThumbnail;
-            _timelineSimulator.RecoveredThumbnail = _cachedThumbnail;
+            info.Thumbnail = CachedThumbnail;
+            _timelineSimulator.RecoveredThumbnail = CachedThumbnail;
         }
 
         if (needsFetch && info.Thumbnail != null && info.Thumbnail.PixelWidth >= 200)
@@ -1230,7 +1233,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     $"isNearSquare={isNearSquare} isTopicChannel={isTopicChannel}");
                 var cropped = CropToSquare(info.Thumbnail, info.MediaSource ?? YouTubePlatformName, forceCenterCrop: isTopicChannel) ?? info.Thumbnail;
                 info.Thumbnail = cropped;
-                _cachedThumbnail = cropped;
+                CachedThumbnail = cropped;
                 _cachedThumbnailSource = MediaPlatform.YouTube.ToDisplayString();
                 _timelineSimulator.RecoveredThumbnail = cropped;
             }
@@ -1666,7 +1669,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                                 $"thumb={frameBitmap.PixelWidth}x{frameBitmap.PixelHeight} isTopicChannel={isYtFetchTopicChannel}");
                             frameBitmap = CropToSquare(frameBitmap, YouTubePlatformName, forceCenterCrop: isYtFetchTopicChannel) ?? frameBitmap;
                             _timelineSimulator.RecoveredThumbnail = frameBitmap;
-                            _cachedThumbnail = frameBitmap;
+                            CachedThumbnail = frameBitmap;
                             _cachedThumbnailSource = MediaPlatform.YouTube.ToDisplayString();
                             info.Thumbnail = frameBitmap;
 
@@ -1885,7 +1888,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             frameBitmap = CropToSquare(frameBitmap, SoundCloudPlatformName) ?? frameBitmap;
             _timelineSimulator.RecoveredThumbnail = frameBitmap;
-            _cachedThumbnail = frameBitmap;
+            CachedThumbnail = frameBitmap;
             _cachedThumbnailSource = MediaPlatform.SoundCloud.ToDisplayString();
             if (info.Platform == MediaPlatform.Browser)
             {
@@ -2345,7 +2348,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         if (!preserveSameBrowserMediaCache)
         {
             _lastThumbTrackIdentity = "";
-            _cachedThumbnail = null;
+            CachedThumbnail = null;
             _cachedThumbnailSource = "";
             _timelineSimulator.RecoveredThumbnail = null;
             _thumbCts?.Cancel();
@@ -2457,7 +2460,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         bool trackChangedForThisPass = !string.Equals(currentTrackOnlyIdentityForThumb, _lastThumbTrackIdentity, StringComparison.Ordinal);
         if (trackChangedForThisPass)
         {
-            _cachedThumbnail = null;
+            CachedThumbnail = null;
             _cachedThumbnailSource = "";
             _timelineSimulator.RecoveredThumbnail = null;
             _thumbCts?.Cancel();
@@ -2696,14 +2699,14 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 StringComparison.Ordinal);
         bool hasVerifiedYouTubeThumb = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) == MediaPlatform.YouTube;
         bool hasVerifiedSoundCloudThumbGlobal = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) == MediaPlatform.SoundCloud;
-        if (!trackChangedForThisPass && _cachedThumbnail != null &&
+        if (!trackChangedForThisPass && CachedThumbnail != null &&
             (hasVerifiedYouTubeThumb || hasVerifiedSoundCloudThumbGlobal))
         {
-            info.Thumbnail = _cachedThumbnail;
+            info.Thumbnail = CachedThumbnail;
         }
-        else if (!trackChangedForThisPass && _cachedThumbnail != null)
+        else if (!trackChangedForThisPass && CachedThumbnail != null)
         {
-            info.Thumbnail = _cachedThumbnail;
+            info.Thumbnail = CachedThumbnail;
         }
         else
         {
@@ -2734,7 +2737,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                                 HasVerifiedSoundCloudThumb = hasVerifiedSoundCloudThumb,
                                 LikelySoundCloudArtwork = likelySoundCloudArtwork,
                                 RecentTrackChange = (DateTime.UtcNow - _lastMetadataChangeTime).TotalSeconds < 4.0,
-                                CachedThumbnailIsNull = _cachedThumbnail == null,
+                                CachedThumbnailIsNull = CachedThumbnail == null,
                                 PixelWidth = newBitmap.PixelWidth,
                                 PixelHeight = newBitmap.PixelHeight,
                             });
@@ -2756,7 +2759,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                                     $"thumb={newBitmap.PixelWidth}x{newBitmap.PixelHeight} aspect={(double)newBitmap.PixelWidth / newBitmap.PixelHeight:F2} " +
                                     $"isSmtcTopicChannel={isSmtcTopicChannel}");
                                 newBitmap = CropToSquare(newBitmap, info.MediaSource, forceCenterCrop: isSmtcTopicChannel) ?? newBitmap;
-                                _cachedThumbnail = newBitmap;
+                                CachedThumbnail = newBitmap;
                                 if (info.Platform == MediaPlatform.SoundCloud)
                                 {
                                     if (likelySoundCloudArtwork)
@@ -2768,7 +2771,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                                 {
                                     _cachedThumbnailSource = info.MediaSource ?? "";
                                 }
-                                info.Thumbnail = _cachedThumbnail;
+                                info.Thumbnail = CachedThumbnail;
                             }
                         }
                     }
@@ -2848,7 +2851,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             await Task.Delay(TimeSpan.FromMilliseconds(4100), cancellationToken).ConfigureAwait(false);
             if (!_disposed) _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancellation token is triggered.
+        }
     }
 
     private async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth)> ResolveActiveSessionAsync(bool forceRefresh)
@@ -3451,12 +3457,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         if (info.Platform == MediaPlatform.YouTube) return true;
 
-        if (info.IsPictureInPicture && (info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource)) && !string.IsNullOrEmpty(info.CurrentTrack))
+        if (info.IsPictureInPicture && (info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource)) && !string.IsNullOrEmpty(info.CurrentTrack) &&
+            MediaPlatformExtensions.ParsePlatform(_stableSource) == MediaPlatform.YouTube)
         {
-            if (MediaPlatformExtensions.ParsePlatform(_stableSource) == MediaPlatform.YouTube)
-            {
-                return true;
-            }
+            return true;
         }
 
         if (info.Platform == MediaPlatform.Browser && !string.IsNullOrEmpty(info.SourceAppId) &&
@@ -3643,11 +3647,11 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         // 1. Cancel background token
         try
         {
-            ctsToCancel?.Cancel();
+            if (ctsToCancel != null) await ctsToCancel.CancelAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            RuntimeLog.Log("MEDIA-STOP", $"CTS cancel failed: {ex.Message}");
+            RuntimeLog.Log(MediaStopLogTag, $"CTS cancel failed: {ex.Message}");
         }
 
         // 2. Wait for running tasks to complete
@@ -3662,16 +3666,16 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             try
             {
                 var allTasks = Task.WhenAll(tasksToWait);
-                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2));
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
                 var completed = await Task.WhenAny(allTasks, timeoutTask).ConfigureAwait(false);
                 if (completed != allTasks)
                 {
-                    RuntimeLog.Warn("MEDIA-STOP", "Timed out waiting for background tasks to exit.");
+                    RuntimeLog.Warn(MediaStopLogTag, "Timed out waiting for background tasks to exit.");
                 }
             }
             catch (Exception ex)
             {
-                RuntimeLog.Log("MEDIA-STOP", $"Error waiting for tasks: {ex.Message}");
+                RuntimeLog.Log(MediaStopLogTag, $"Error waiting for tasks: {ex.Message}");
             }
         }
 
@@ -3688,7 +3692,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             }
             catch (Exception ex)
             {
-                RuntimeLog.Log("MEDIA-STOP", $"Failed unsubscribing session manager: {ex.Message}");
+                RuntimeLog.Log(MediaStopLogTag, $"Failed unsubscribing session manager: {ex.Message}");
             }
         }
 
@@ -3698,7 +3702,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         // 5. If disposing, complete channel and dispose update lock
         if (isDisposing)
         {
-            _thumbCts?.Cancel();
+            if (_thumbCts != null) await _thumbCts.CancelAsync().ConfigureAwait(false);
             _thumbCts?.Dispose();
             _changeChannel.Writer.TryComplete();
             _updateLock.Dispose();
@@ -3706,7 +3710,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         else
         {
             // Drain stale items from channel so restart is clean
-            while (_changeChannel.Reader.TryRead(out _)) { }
+            while (_changeChannel.Reader.TryRead(out _))
+            {
+                // Discard buffered items.
+            }
 
             lock (_lifecycleLock)
             {

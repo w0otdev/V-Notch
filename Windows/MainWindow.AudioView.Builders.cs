@@ -773,9 +773,11 @@ public partial class MainWindow
         return g;
     }
 
+#pragma warning disable S107 // WPF UI builders pass layout and output binding delegates
     private FrameworkElement BuildSectionHeader(string title, bool expanded,
         bool showVolumeLabel, string deviceLabel, out RotateTransform chevronTransform,
         out FrameworkElement clickTarget, out List<FrameworkElement> columnLabels, double topMargin = 0)
+#pragma warning restore S107
     {
         var grid = NewRowGrid();
         grid.Margin = new Thickness(0, topMargin, 0, 6);
@@ -840,10 +842,12 @@ public partial class MainWindow
         VerticalAlignment = VerticalAlignment.Center
     };
 
+#pragma warning disable S107 // WPF UI builders pass layout and output binding delegates
     private FrameworkElement BuildSystemRow(string glyph, Geometry? iconGeometry, string label, double ratio,
         Action<double> onVol, string deviceGlyph, string deviceText,
         List<AudioDeviceInfo>? devices, Action<string>? onDevice,
         out Action<double> setVol, out TextBlock deviceLabel)
+#pragma warning restore S107
     {
         var grid = NewRowGrid();
         grid.Margin = new Thickness(0, 4, 0, 4);

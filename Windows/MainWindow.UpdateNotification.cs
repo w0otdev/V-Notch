@@ -84,12 +84,12 @@ public partial class MainWindow
         UpdateNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         UpdateNotificationButton.Visibility = Visibility.Visible;
         UpdateNotificationButton.IsHitTestVisible = true;
-        UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");
+        UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version?.ToString() ?? "-");
         UpdateNotificationButton.Cursor = Cursors.Hand;
         UpdateNotificationButton.Opacity = 1.0;
         UpdateNotificationTranslate.Y = 0;
         SetUpdateInlineTooltipContent(
-            Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-"),
+            Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version?.ToString() ?? "-"),
             Loc.Get(LocKeyUpdateClickToInstall));
 
         if (wasVisible)

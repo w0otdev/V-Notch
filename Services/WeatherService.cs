@@ -84,7 +84,7 @@ public sealed class WeatherService : IWeatherService
             totalRead += read;
             if (totalRead > maxBytes)
                 return null;
-            memory.Write(buffer, 0, read);
+            await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
         }
 
         return memory.Length > 0 ? System.Text.Encoding.UTF8.GetString(memory.ToArray()) : null;

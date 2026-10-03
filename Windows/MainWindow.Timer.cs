@@ -45,7 +45,7 @@ public partial class MainWindow
                     if (Dispatcher.CheckAccess()) action();
                     else Dispatcher.BeginInvoke(action);
                 });
-                _countdownController.Completed += (_, args) => OnCountdownCompleted(args.RunId);
+                _countdownController.Completed += (_, _) => OnCountdownCompleted();
                 _countdownController.Tick += (_, _) =>
                 {
                     if (TimerContent != null && TimerContent.Visibility == Visibility.Visible && _isExpanded)
@@ -86,37 +86,11 @@ public partial class MainWindow
     }
 
     private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
-    private bool _isCountdownRunning { get => CountdownController.IsRunning; set => _viewModel.Timer.IsRunning = value; }
-
-    private static readonly Geometry _countdownPlayGeometry = CreateFrozenGeometry(
-        "M133,440a35.37,35.37,0,0,1-17.5-4.67c-12-6.8-17.46-20-17.46-41.73V118.4c0-21.74,5.48-34.93,17.46-41.73a35.13,35.13,0,0,1,35.77.45L399.68,225.11a38.19,38.19,0,0,1,0,61.78L151.23,435a35.77,35.77,0,0,1-18.27,5Z");
-    private static readonly Geometry _countdownPauseGeometry = CreateFrozenGeometry(
-        "M224,320a16,16,0,0,1-32,0V192a16,16,0,0,1,32,0Zm96,0a16,16,0,0,1-32,0V192a16,16,0,0,1,32,0Z");
-    private static readonly Brush _countdownStartIdleBrush = CreateFrozenVerticalGradient(
-        Color.FromRgb(0xFF, 0xA0, 0x33), Color.FromRgb(0xFF, 0x7A, 0x00));
-    private static readonly Brush _countdownStartRunningBrush = CreateFrozenVerticalGradient(
-        Color.FromRgb(0xE0, 0x8A, 0x1E), Color.FromRgb(0xC2, 0x64, 0x00));
+    private bool _isCountdownRunning => CountdownController.IsRunning;
 
     private static readonly Color _countdownBorderIdleColor = Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF);
     private static readonly Color _countdownBorderEditingColor = Color.FromArgb(0x8C, 0xFF, 0x8C, 0x00);
-    private static readonly Color _countdownBorderFlashColor = Color.FromArgb(0x70, 0xFF, 0x8C, 0x00);
     private static readonly Color _countdownBorderErrorColor = Color.FromArgb(0xB4, 0xFF, 0x45, 0x3A);
-    private static readonly Color _countdownDigitsRestColor = Color.FromRgb(0xFF, 0xFF, 0xFF);
-    private static readonly Color _countdownDigitsFlashColor = Color.FromRgb(0xFF, 0xC9, 0x85);
-
-    private static Geometry CreateFrozenGeometry(string data)
-    {
-        var geometry = Geometry.Parse(data);
-        geometry.Freeze();
-        return geometry;
-    }
-
-    private static Brush CreateFrozenVerticalGradient(Color top, Color bottom)
-    {
-        var brush = new LinearGradientBrush(top, bottom, new Point(0, 0), new Point(0, 1));
-        brush.Freeze();
-        return brush;
-    }
 
     private void SetCountdownStartVisual(bool running)
     {
@@ -768,7 +742,7 @@ public partial class MainWindow
 
     #region Countdown Logic
 
-    private void OnCountdownCompleted(long runId = 0)
+    private void OnCountdownCompleted()
     {
         SetCountdownStartVisual(false);
 
@@ -1809,7 +1783,7 @@ public partial class MainWindow
             CountdownProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             CountdownProgressScale.ScaleX = progress;
 
-            if (CountdownProgressEdge.Opacity != edgeOpacity)
+            if (Math.Abs(CountdownProgressEdge.Opacity - edgeOpacity) > 0.001)
             {
                 CountdownProgressEdge.BeginAnimation(OpacityProperty, null);
                 CountdownProgressEdge.Opacity = edgeOpacity;

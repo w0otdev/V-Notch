@@ -833,7 +833,7 @@ public sealed class SpotifyCanvasService : IDisposable
             totalRead += read;
             if (totalRead > maxResponseBytes)
                 return null;
-            memory.Write(buffer, 0, read);
+            await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
         }
 
         return memory.Length > 0 ? memory.ToArray() : null;
@@ -1563,7 +1563,8 @@ public sealed class SpotifyCanvasService : IDisposable
                                      DecompressionMethods.Deflate |
                                      DecompressionMethods.Brotli
         };
-        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Canvas, handler)) { Timeout = RequestTimeout };
+        var privacyHandler = NetworkPrivacy.Handler(NetworkFeature.Canvas, handler);
+        var client = new HttpClient(privacyHandler) { Timeout = RequestTimeout };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("V-Notch/1.8 SpotifyCanvas");
         return client;
     }

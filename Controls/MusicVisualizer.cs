@@ -268,7 +268,10 @@ namespace VNotch.Controls
                 return;
             }
 
-            if (!isSettled || !drawSettled || opacityChanged || oldIconMix != _iconMix || oldCheckMix != _checkMix || oldPlayMix != _playMix)
+            if (!isSettled || !drawSettled || opacityChanged ||
+                Math.Abs(oldIconMix - _iconMix) > 0.0001 ||
+                Math.Abs(oldCheckMix - _checkMix) > 0.0001 ||
+                Math.Abs(oldPlayMix - _playMix) > 0.0001)
                 InvalidateVisual();
         }
 
@@ -287,7 +290,15 @@ namespace VNotch.Controls
             double target = _copiedFeedback || now < _feedbackUntil ? 1 : 0;
             // Keep the outgoing check shape while it returns to the bars;
             // do not pass through the play/pause silhouette on the way out.
-            double checkTarget = _copiedFeedback ? 1 : target > 0 ? 0 : _checkMix;
+            double checkTarget;
+            if (_copiedFeedback)
+            {
+                checkTarget = 1;
+            }
+            else
+            {
+                checkTarget = target > 0 ? 0 : _checkMix;
+            }
             StepSpring(ref _checkMix, ref _checkVelocity, checkTarget, dt);
             StepSpring(ref _iconMix, ref _iconVelocity, target, dt);
             StepSpring(ref _playMix, ref _playVelocity, IsPlaying ? 1 : 0, dt);
@@ -340,9 +351,10 @@ namespace VNotch.Controls
                         // Five adjoining filled slices form a continuous check mark.
                         bool leftArm = i < 2;
                         int checkSlice = leftArm ? i : i - 2;
+                        int rightOffset = right ? 1 : 0;
                         double checkX = leftArm
-                            ? 3 + 6.0 * (checkSlice + (right ? 1 : 0)) / 2
-                            : 9 + 12.0 * (checkSlice + (right ? 1 : 0)) / 3;
+                            ? 3 + 6.0 * (checkSlice + rightOffset) / 2
+                            : 9 + 12.0 * (checkSlice + rightOffset) / 3;
                         double checkY = leftArm ? checkX + 9 : 27 - checkX;
                         var check = new Point(checkX, checkY + (bottom ? 1.7 : -1.7));
                         icon += (check - icon) * _checkMix;
@@ -857,7 +869,6 @@ namespace VNotch.Controls
             double totalContentWidth = (barWidth * BarCount) + (spacing * (BarCount - 1));
 
             double startX = (width - totalContentWidth) / 2;
-            double centerY = height / 2;
 
             double snappedW = Math.Max(1.0, Math.Round(barWidth * dpi.DpiScaleX) / dpi.DpiScaleX);
 

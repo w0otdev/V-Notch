@@ -337,14 +337,16 @@ public partial class SettingsWindow : Window
     private static string GetAppVersion()
     {
         var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        return v != null ? FormatVersion(v) : "1.9.3";
+        return v != null ? FormatVersion(v) : "2.0";
     }
 
     private static string FormatVersion(Version v)
     {
-        return v.Revision > 0
-            ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}"
-            : $"{v.Major}.{v.Minor}.{v.Build}";
+        if (v.Revision > 0)
+            return $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
+        if (v.Build > 0)
+            return $"{v.Major}.{v.Minor}.{v.Build}";
+        return $"{v.Major}.{v.Minor}";
     }
     private void ApplyTooltips()
     {
@@ -657,6 +659,13 @@ public partial class SettingsWindow : Window
         DonatePaypalButton.Content = Loc.Get("settings.donating.paypal");
         DonatingBankTitle.Text = Loc.Get("settings.donating.bank");
         DonatingBankHint.Text = Loc.Get("settings.donating.bank.hint");
+        StarRepoTitle.Text = Loc.Get("settings.donating.star.title");
+        StarRepoDescription.Text = Loc.Get("settings.donating.star.description");
+        StarRepoButtonText.Text = Loc.Get("settings.donating.star.button");
+        OtherProjectsHeader.Text = Loc.Get("settings.donating.otherProjects.title");
+        OtherProjectsSubtext.Text = Loc.Get("settings.donating.otherProjects.subtitle");
+        ProjectVertexDesc.Text = Loc.Get("settings.donating.otherProjects.vertex.desc");
+        ProjectScrollVDesc.Text = Loc.Get("settings.donating.otherProjects.scrollv.desc");
     }
 
     internal void SetSpotlightHotkeyStatus(bool isRegistered)
@@ -3251,6 +3260,13 @@ public partial class SettingsWindow : Window
             (DonatingDescription, () => DonatingDescription.Text = Loc.Get("settings.donating.description")),
             (DonatingBankTitle, () => DonatingBankTitle.Text = Loc.Get("settings.donating.bank")),
             (DonatingBankHint, () => DonatingBankHint.Text = Loc.Get("settings.donating.bank.hint")),
+            (StarRepoTitle, () => StarRepoTitle.Text = Loc.Get("settings.donating.star.title")),
+            (StarRepoDescription, () => StarRepoDescription.Text = Loc.Get("settings.donating.star.description")),
+            (StarRepoButtonText, () => StarRepoButtonText.Text = Loc.Get("settings.donating.star.button")),
+            (OtherProjectsHeader, () => OtherProjectsHeader.Text = Loc.Get("settings.donating.otherProjects.title")),
+            (OtherProjectsSubtext, () => OtherProjectsSubtext.Text = Loc.Get("settings.donating.otherProjects.subtitle")),
+            (ProjectVertexDesc, () => ProjectVertexDesc.Text = Loc.Get("settings.donating.otherProjects.vertex.desc")),
+            (ProjectScrollVDesc, () => ProjectScrollVDesc.Text = Loc.Get("settings.donating.otherProjects.scrollv.desc")),
 
             (BackupHeader, () => BackupHeader.Text = Loc.Get("settings.section.backup")),
             (ExportSettingsLabel, () => ExportSettingsLabel.Text = Loc.Get("settings.exportSettings")),
@@ -3847,6 +3863,9 @@ public partial class SettingsWindow : Window
     private void SocialLink_Facebook_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://www.facebook.com/rain.107/");
     private void SocialLink_Discord_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://discord.com/users/298304189535092737");
     private void DonatePaypal_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://www.paypal.com/paypalme/PhuocLe678");
+    private void StarRepoButton_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch");
+    private void ProjectVertex_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/Vertex");
+    private void ProjectScrollV_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/Scroll-V");
     private void ReportBug_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new");
     private void RequestFeature_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new?labels=enhancement&template=feature_request.md");
 #pragma warning restore S1075

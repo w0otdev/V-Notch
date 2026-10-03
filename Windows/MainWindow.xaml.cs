@@ -1902,9 +1902,9 @@ public partial class MainWindow : Window
         _spotlightController?.ApplySettings(_settings);
         if (_isUpdateAvailable && _availableUpdate != null)
         {
-            UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-");
+            UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version?.ToString() ?? "-");
             SetUpdateInlineTooltipContent(
-                Loc.Get(LocKeyUpdateVersion, _availableUpdate?.Version?.ToString() ?? "-"),
+                Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version?.ToString() ?? "-"),
                 Loc.Get(LocKeyUpdateClickToInstall));
         }
     }

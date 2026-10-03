@@ -119,7 +119,7 @@ internal static class SpotlightCopilotService
         }
         finally
         {
-            lifetime.Cancel();
+            await lifetime.CancelAsync().ConfigureAwait(false);
             await producer.ConfigureAwait(false);
         }
     }
@@ -168,8 +168,23 @@ internal static class SpotlightCopilotService
             {
                 // Cancelling a wait does not stop runtime work. Abort before disposing.
                 using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                try { await session.AbortAsync(cleanup.Token).ConfigureAwait(false); } catch { }
-                try { await client.DeleteSessionAsync(session.SessionId, cleanup.Token).ConfigureAwait(false); } catch { }
+                try
+                {
+                    await session.AbortAsync(cleanup.Token).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort abort during teardown; ignore cleanup errors.
+                }
+
+                try
+                {
+                    await client.DeleteSessionAsync(session.SessionId, cleanup.Token).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Best-effort delete during teardown; ignore cleanup errors.
+                }
             }
         }
         catch (OperationCanceledException ex) { failure = ex; }

@@ -98,7 +98,10 @@ public sealed class FileShelfController : IDisposable
         {
             if (Uri.TryCreate(path, UriKind.Absolute, out var uri) && uri.IsUnc) return true;
         }
-        catch { }
+        catch (Exception)
+        {
+            // Malformed path strings that fail URI creation cannot be valid UNC paths.
+        }
         return false;
     }
 

@@ -52,7 +52,8 @@ internal sealed partial class CalculatorProvider : ISpotlightProvider
             // Promoting integer literals to decimals gives calculator semantics (5/2 = 2.5) instead of integer division.
             string promoted = IntegerLiteral().Replace(expression, "$1.0");
             string computeExpr = Regex.Replace(promoted, @"(\d+)\.0\s*%\s*(\d+)\.0", "$1 % $2");
-            object result = new DataTable().Compute(computeExpr, null);
+            using var table = new DataTable();
+            object result = table.Compute(computeExpr, null);
             if (result is DBNull or null) return false;
             value = Convert.ToDouble(result, CultureInfo.InvariantCulture);
         }

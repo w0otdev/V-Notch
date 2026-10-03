@@ -387,21 +387,24 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         }
         // A native IPC call may still own the semaphore. Leave this managed
         // semaphore alive for its finally/queued waiters to finish safely.
-        if (window == null) return;
-        try
+        if (window != null)
         {
-            if (window.Dispatcher.HasShutdownStarted) return;
-            window.Dispatcher.Invoke(() =>
+            try
             {
-                window.RemoveHook(ReplyWndProc);
-                window.Dispose();
-            });
+                if (window.Dispatcher.HasShutdownStarted) return;
+                window.Dispatcher.Invoke(() =>
+                {
+                    window.RemoveHook(ReplyWndProc);
+                    window.Dispose();
+                });
+            }
+            catch
+            {
+                // The dispatcher is tearing down with the process; the OS reclaims
+                // the message-only window either way.
+            }
         }
-        catch
-        {
-            // The dispatcher is tearing down with the process; the OS reclaims
-            // the message-only window either way.
-        }
+        _queryLock.Dispose();
     }
 
     [StructLayout(LayoutKind.Sequential)]

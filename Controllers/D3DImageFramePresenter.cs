@@ -116,8 +116,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
         CompositionTarget.Rendering += OnRendering;
     }
 
+#pragma warning disable S107 // High performance D3D presentation pipeline requires individual frame parameters
     public bool UploadFrame(IntPtr source, int width, int height, int sourceStride,
         int generation, out bool uploaded, LiquidGlassController.GpuGeometry tag = default, bool forcePresent = false)
+#pragma warning restore S107
     {
         uploaded = false;
         if (_disposed || _failed || source == IntPtr.Zero || width <= 0 || height <= 0)

@@ -55,8 +55,9 @@ public class UpdateService : IUpdateService
 
         if (version.Revision > 0)
             return $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
-
-        return $"{version.Major}.{version.Minor}.{version.Build}";
+        if (version.Build > 0)
+            return $"{version.Major}.{version.Minor}.{version.Build}";
+        return $"{version.Major}.{version.Minor}";
     }
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync()
@@ -234,7 +235,7 @@ public class UpdateService : IUpdateService
             if (count == 0) break;
             if (output.Length + count > limit)
                 throw new InvalidDataException("Update metadata exceeds its size limit.");
-            output.Write(buffer, 0, count);
+            await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
         }
         return output.ToArray();
     }
@@ -243,29 +244,41 @@ public class UpdateService : IUpdateService
     {
         if (!IsHttps(request.RequestUri)) throw new InvalidOperationException("Only HTTPS update URLs are accepted.");
         const int maxRedirects = 5;
-        for (var redirects = 0; redirects < maxRedirects; redirects++)
+        HttpRequestMessage? ownedRequest = null; // tracks redirect requests we created and must dispose
+        try
         {
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
-            if (!IsRedirect(response.StatusCode))
+            for (var redirects = 0; redirects < maxRedirects; redirects++)
             {
-                if (!IsHttps(response.RequestMessage?.RequestUri ?? request.RequestUri))
+                var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+                if (!IsRedirect(response.StatusCode))
+                {
+                    if (!IsHttps(response.RequestMessage?.RequestUri ?? request.RequestUri))
+                    {
+                        response.Dispose();
+                        throw new InvalidOperationException("Final update URL is not HTTPS.");
+                    }
+                    return response;
+                }
+                if (response.Headers.Location == null)
                 {
                     response.Dispose();
-                    throw new InvalidOperationException("Final update URL is not HTTPS.");
+                    throw new InvalidOperationException("Invalid or excessive update redirect.");
                 }
-                return response;
-            }
-            if (response.Headers.Location == null)
-            {
+                var target = response.Headers.Location.IsAbsoluteUri ? response.Headers.Location : new Uri(request.RequestUri!, response.Headers.Location);
                 response.Dispose();
-                throw new InvalidOperationException("Invalid or excessive update redirect.");
+                if (!IsHttps(target)) throw new InvalidOperationException("Update redirect target is not HTTPS.");
+                ownedRequest?.Dispose();
+                ownedRequest = new HttpRequestMessage(HttpMethod.Get, target);
+                request = ownedRequest;
             }
-            var target = response.Headers.Location.IsAbsoluteUri ? response.Headers.Location : new Uri(request.RequestUri!, response.Headers.Location);
-            response.Dispose();
-            if (!IsHttps(target)) throw new InvalidOperationException("Update redirect target is not HTTPS.");
-            request = new HttpRequestMessage(HttpMethod.Get, target);
+        }
+        catch
+        {
+            ownedRequest?.Dispose();
+            throw;
         }
 
+        ownedRequest?.Dispose();
         throw new InvalidOperationException("Invalid or excessive update redirect.");
     }
 
@@ -281,9 +294,10 @@ public class UpdateService : IUpdateService
     private static string FindAssetUrl(JsonElement release, string name)
     {
         if (!release.TryGetProperty("assets", out var assets)) return "";
-        foreach (var asset in assets.EnumerateArray())
-            if (asset.GetProperty("name").GetString() == name)
-                return asset.GetProperty("browser_download_url").GetString() ?? "";
+        foreach (var asset in assets.EnumerateArray().Where(a => a.GetProperty("name").GetString() == name))
+        {
+            return asset.GetProperty("browser_download_url").GetString() ?? "";
+        }
         return "";
     }
     internal static bool IsApprovedUpdate(UpdateInfo update) =>
@@ -295,7 +309,7 @@ public class UpdateService : IUpdateService
     private static bool IsTrustedUpdateUrl(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
         IsHttps(uri) &&
-        AppIntegrityService.IsTrustedDownloadDomain(value!);
+        AppIntegrityService.IsTrustedDownloadDomain(value);
     internal static bool IsHttps(Uri? uri) => uri is { IsAbsoluteUri: true } && uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     internal static bool HashesMatch(string expected, string actual) =>
         expected.Length == 64 && actual.Length == 64 &&
@@ -304,6 +318,19 @@ public class UpdateService : IUpdateService
     private static async Task<string> ComputeSha256Async(string path, CancellationToken token) { await using var file = File.OpenRead(path); return Convert.ToHexString(await SHA256.HashDataAsync(file, token)); }
     private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
     private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
-    internal static int CompareVersions(string left, string right) => Version.TryParse(left, out var a) && Version.TryParse(right, out var b) ? a.CompareTo(b) : 0;
+    internal static int CompareVersions(string left, string right)
+    {
+        if (!Version.TryParse(left, out var a) || !Version.TryParse(right, out var b))
+            return 0;
+
+        int aBuild = a.Build < 0 ? 0 : a.Build;
+        int bBuild = b.Build < 0 ? 0 : b.Build;
+        int aRev = a.Revision < 0 ? 0 : a.Revision;
+        int bRev = b.Revision < 0 ? 0 : b.Revision;
+
+        var normA = new Version(a.Major, a.Minor, aBuild, aRev);
+        var normB = new Version(b.Major, b.Minor, bBuild, bRev);
+        return normA.CompareTo(normB);
+    }
     private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion };
 }

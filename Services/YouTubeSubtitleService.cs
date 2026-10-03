@@ -717,6 +717,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
     {
         _cts?.Cancel();
         _cts?.Dispose();
+        (_youtube as IDisposable)?.Dispose();
     }
 }
 
