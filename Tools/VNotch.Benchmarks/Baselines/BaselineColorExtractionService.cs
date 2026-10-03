@@ -52,45 +52,45 @@ public sealed class BaselineColorExtractionService : IBaselineColorExtractionSer
     internal static Color ExtractSampledColor(byte[] pixels, int width, int height)
     {
         int stride = width * 4;
-                var sampledColors = new List<Color>(300);
+        var sampledColors = new List<Color>(300);
 #pragma warning disable S2245 // Pseudo-random generator is used solely for deterministic pixel sampling of images, not security or cryptography
-                var random = new Random(42);
+        var random = new Random(42);
 #pragma warning restore S2245
 
-                for (int i = 0; i < 300; i++)
-                {
-                    int x = random.Next(0, width);
-                    int y = random.Next(0, height);
-                    int index = (y * stride) + (x * 4);
+        for (int i = 0; i < 300; i++)
+        {
+            int x = random.Next(0, width);
+            int y = random.Next(0, height);
+            int index = (y * stride) + (x * 4);
 
-                    byte b = pixels[index];
-                    byte g = pixels[index + 1];
-                    byte r = pixels[index + 2];
-                    byte a = pixels[index + 3];
+            byte b = pixels[index];
+            byte g = pixels[index + 1];
+            byte r = pixels[index + 2];
+            byte a = pixels[index + 3];
 
-                    int brightness = (r + g + b) / 3;
+            int brightness = (r + g + b) / 3;
 
-                    bool isTooDark = brightness < 60;
-                    bool isTooBright = brightness > 245;
-                    bool isTransparent = a < 100;
+            bool isTooDark = brightness < 60;
+            bool isTooBright = brightness > 245;
+            bool isTransparent = a < 100;
 
-                    if (!isTooDark && !isTooBright && !isTransparent)
-                    {
-                        sampledColors.Add(Color.FromArgb(a, r, g, b));
-                    }
-                }
+            if (!isTooDark && !isTooBright && !isTransparent)
+            {
+                sampledColors.Add(Color.FromArgb(a, r, g, b));
+            }
+        }
 
-                if (sampledColors.Count == 0)
-                {
-                    return Color.FromRgb(255, 255, 255);
-                }
+        if (sampledColors.Count == 0)
+        {
+            return Color.FromRgb(255, 255, 255);
+        }
 
-                var dominantColor = FindMostCommonColor(sampledColors);
+        var dominantColor = FindMostCommonColor(sampledColors);
 
-                dominantColor = EnhanceSaturation(dominantColor, 1.3);
-                dominantColor = EnsureMinimumBrightness(dominantColor, 100);
+        dominantColor = EnhanceSaturation(dominantColor, 1.3);
+        dominantColor = EnsureMinimumBrightness(dominantColor, 100);
 
-                return dominantColor;
+        return dominantColor;
     }
 
     private struct ColorBucket
