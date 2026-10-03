@@ -119,12 +119,18 @@ public partial class SettingsWindow
 
     private bool _isUpdatingSpotifyCanvasOptIn;
 
-    private bool ConfirmSpotifyCanvasOptIn() => MessageBox.Show(this,
-        Loc.Get("settings.enableSpotifyCanvas.hint") + "\n\nhttps://www.spotify.com/us/legal/user-guidelines/",
-        Loc.Get("settings.enableSpotifyCanvas"), MessageBoxButton.YesNo, MessageBoxImage.Warning,
-        MessageBoxResult.No, Loc.GetCulture().TextInfo.IsRightToLeft
-            ? MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading
-            : MessageBoxOptions.None) == MessageBoxResult.Yes;
+    private bool ConfirmSpotifyCanvasOptIn() =>
+        VNotch.Windows.ConfirmationDialog.Show(
+            this,
+            Loc.Get("settings.enableSpotifyCanvas.hint"),
+            new VNotch.Windows.ConfirmationDialog.DialogOptions(
+                Title: Loc.Get("settings.enableSpotifyCanvas"),
+                BadgeText: Loc.Get(LocKeyBadgeAlpha),
+                ConfirmText: Loc.Get("dialog.confirm"),
+                CancelText: Loc.Get("dialog.cancel"),
+                Icon: VNotch.Windows.ConfirmationDialog.DialogIcon.Warning,
+                Style: VNotch.Windows.ConfirmationDialog.DialogStyle.Normal,
+                DetailText: "https://www.spotify.com/us/legal/user-guidelines/"));
 
     internal bool SetSpotifyCanvasOptIn(bool enabled, Func<bool> confirm)
     {

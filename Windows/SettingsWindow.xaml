@@ -656,7 +656,7 @@
                                            Foreground="#666666" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBox x:Name="SettingsSearchBox" Grid.Column="1"
                                          Background="Transparent" BorderThickness="0"
-                                         Foreground="{StaticResource SettingsTextBrush}" FontSize="12" FontWeight="Medium"
+                                         Foreground="{StaticResource SettingsTextBrush}" FontSize="12" FontWeight="Bold"
                                          FontFamily="{StaticResource SettingsFont}"
                                          VerticalContentAlignment="Center"
                                          CaretBrush="#C8C8C8"
@@ -665,7 +665,7 @@
                                          LostFocus="SettingsSearchBox_LostFocus"/>
                                 <TextBlock x:Name="SearchPlaceholder" Grid.Column="1"
                                            Text="Search settings..."
-                                           FontSize="12" FontWeight="Medium"
+                                           FontSize="12" FontWeight="Bold"
                                            Foreground="#858585"
                                            VerticalAlignment="Center"
                                            IsHitTestVisible="False"
@@ -679,7 +679,7 @@
                         </Grid.ColumnDefinitions>
                         <controls:MorphingSettingsIcon x:Name="SectionHeroIcon" Width="30" Height="30"/>
                         <TextBlock x:Name="SectionHeroTitle" Grid.Column="1" Margin="12,0,0,0"
-                                   FontFamily="{StaticResource SettingsFont}" FontSize="24" FontWeight="SemiBold"
+                                   FontFamily="{StaticResource SettingsFont}" FontSize="24" FontWeight="Bold"
                                    Foreground="{StaticResource SettingsTextBrush}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    TargetUpdated="SectionHeroTitle_TargetUpdated">
@@ -924,7 +924,7 @@
                     <TextBlock x:Name="SidebarBuildVersionText"
                                
                                Text="Build 2.0"
-                               FontSize="10.5" FontWeight="Normal"
+                               FontSize="10.5" FontWeight="Bold"
                                Foreground="#8C959E"
                                HorizontalAlignment="Left"
                                Margin="0,0,0,2"/>
@@ -987,23 +987,23 @@
                                         <StackPanel x:Name="SearchingEmptyState"
                                                     Visibility="Collapsed"
                                                     Margin="28,32,28,36">
-                                            <TextBlock Text="404" FontSize="144" FontWeight="SemiBold"
+                                            <TextBlock Text="404" FontSize="144" FontWeight="Bold"
                                                        Foreground="#E8E8E8" FlowDirection="LeftToRight"
                                                        HorizontalAlignment="Left"
                                                        LineHeight="156" LineStackingStrategy="BlockLineHeight"
                                                        AutomationProperties.Name="404"/>
                                             <TextBlock x:Name="SearchingEmptyText"
                                                        Text="No matching settings."
-                                                       Margin="4,24,0,0" FontSize="24" FontWeight="Medium"
+                                                       Margin="4,24,0,0" FontSize="24" FontWeight="Bold"
                                                        Foreground="{StaticResource SoftText}"
                                                        TextWrapping="Wrap"/>
                                             <TextBlock x:Name="SearchingEmptyQuery"
-                                                       Margin="4,10,0,0" FontSize="14" FontWeight="Normal"
+                                                       Margin="4,10,0,0" FontSize="14" FontWeight="Bold"
                                                        Foreground="#B0B0B0" TextTrimming="CharacterEllipsis"
                                                        ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                                             <TextBlock x:Name="SearchingEmptyHint"
                                                        Text="Try a different keyword or a shorter search."
-                                                       Margin="4,8,0,0" FontSize="13" FontWeight="Normal"
+                                                       Margin="4,8,0,0" FontSize="13" FontWeight="Bold"
                                                        Foreground="{StaticResource MutedText}"
                                                        TextWrapping="Wrap"/>
                                             <Button x:Name="SearchingClearButton" Content="Clear search"
@@ -1494,7 +1494,7 @@
                                                            Text="Note: High RAM &amp; memory usage. Very experimental / may not run smoothly on low-end devices."
                                                            Foreground="#E0A330"
                                                            FontSize="12"
-                                                           FontWeight="SemiBold"
+                                                           FontWeight="Bold"
                                                            TextWrapping="Wrap"
                                                            Margin="0,0,0,8"/>
                                                 <ComboBox x:Name="SkinCombo" SelectionChanged="SkinCombo_SelectionChanged"/>
@@ -1516,7 +1516,7 @@
                                                        Text="Đây là cài đặt chuyên sâu, ĐỪNG NÊN ĐỘNG VÀO trừ khi bạn biết mình đang làm gì."
                                                        Foreground="#E0A330"
                                                        FontSize="12"
-                                                       FontWeight="SemiBold"
+                                                       FontWeight="Bold"
                                                        TextWrapping="Wrap"
                                                        Margin="2,2,2,10"/>
                                             <Border Style="{StaticResource SettingRowBorder}">
@@ -1778,7 +1778,7 @@
                                         <TextBlock x:Name="BackupStatusText"
                                                    Text=""
                                                    FontSize="12"
-                                                   FontWeight="SemiBold"
+                                                   FontWeight="Bold"
                                                    Foreground="#30D158"
                                                    Margin="0,4,0,0"
                                                    Visibility="Collapsed"/>
@@ -2377,7 +2377,7 @@
                                                 <TextBlock x:Name="GpuPreferenceRestartNote"
                                                            Text="Requires restarting the app to take effect."
                                                            FontSize="11.5"
-                                                           FontWeight="SemiBold"
+                                                           FontWeight="Bold"
                                                            Foreground="#FF9F0A"
                                                            Margin="0,0,0,8"/>
                                                 <ComboBox x:Name="GpuPreferenceCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="GpuPreferenceCombo_SelectionChanged">
@@ -2699,7 +2699,7 @@
                                                                       VerticalAlignment="Center"/>
                                                                 <TextBlock Text="GitHub ↗"
                                                                            FontSize="11.5"
-                                                                           FontWeight="SemiBold"
+                                                                           FontWeight="Bold"
                                                                            VerticalAlignment="Center"/>
                                                             </StackPanel>
                                                         </Button>
@@ -2765,7 +2765,7 @@
                                                                       VerticalAlignment="Center"/>
                                                                 <TextBlock Text="GitHub ↗"
                                                                            FontSize="11.5"
-                                                                           FontWeight="SemiBold"
+                                                                           FontWeight="Bold"
                                                                            VerticalAlignment="Center"/>
                                                             </StackPanel>
                                                         </Button>
@@ -2988,7 +2988,7 @@
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,14,0">
                                     <TextBlock x:Name="RestartPromptTitle" Text="Restart required" FontSize="13.5" FontWeight="Bold" Foreground="{StaticResource SettingsTextBrush}"/>
                                     <TextBlock x:Name="RestartPromptMessage" Text="Some settings require restarting V-Notch to take full effect. Restart now?"
-                                               FontSize="11.5" FontWeight="SemiBold" Foreground="#D0A8B3C3" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                               FontSize="11.5" FontWeight="Bold" Foreground="#D0A8B3C3" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

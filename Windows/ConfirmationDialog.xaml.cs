@@ -43,7 +43,8 @@ public partial class ConfirmationDialog : Window
         string CancelText = "",
         DialogIcon Icon = DialogIcon.Warning,
         DialogStyle Style = DialogStyle.Normal,
-        string? DetailText = null);
+        string? DetailText = null,
+        string? BadgeText = null);
 
     public ConfirmationDialog()
     {
@@ -93,11 +94,25 @@ public partial class ConfirmationDialog : Window
             // Set message
             dialog.MessageText.Text = message;
 
+            // Set badge if provided
+            if (!string.IsNullOrEmpty(options.BadgeText))
+            {
+                dialog.BadgeText.Text = options.BadgeText;
+                dialog.BadgeBorder.Visibility = Visibility.Visible;
+            }
+
             // Set detail text in card if provided
             if (!string.IsNullOrEmpty(options.DetailText))
             {
                 dialog.DetailText.Text = options.DetailText;
                 dialog.DetailCard.Visibility = Visibility.Visible;
+
+                if (Uri.TryCreate(options.DetailText, UriKind.Absolute, out var uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                {
+                    dialog.DetailCard.Cursor = Cursors.Hand;
+                    dialog.DetailCard.MouseLeftButtonUp += (_, _) => SafeLauncher.TryOpenUrl(options.DetailText);
+                }
             }
 
             // Set button text

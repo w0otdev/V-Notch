@@ -14,7 +14,8 @@
         Loaded="Window_Loaded"
         Closing="Window_Closing"
         KeyDown="Window_KeyDown"
-        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI">
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"
+        FontWeight="Bold">
 
     <Window.Resources>
         <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
@@ -47,13 +48,14 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="14,12"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="ContentTemplate">
                 <Setter.Value>
                     <DataTemplate>
                         <TextBlock Text="{Binding}" TextWrapping="Wrap"
-                                   TextAlignment="Center" FontWeight="SemiBold"
+                                   TextAlignment="Center" FontWeight="Bold"
+                                   FontFamily="{StaticResource SettingsFont}"
                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                     </DataTemplate>
                 </Setter.Value>
@@ -227,18 +229,36 @@
                     </Viewbox>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock x:Name="TitleText"
-                                   Text="Clear cache"
-                                   FontSize="18"
-                                   FontWeight="Bold"
-                                   Foreground="#C8C8C8"
-                                   TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="TitleText"
+                                       Text="Clear cache"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       Foreground="#C8C8C8"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap"/>
+                            <Border x:Name="BadgeBorder"
+                                    Background="#C8C8C8"
+                                    CornerRadius="4"
+                                    Padding="8,3"
+                                    Margin="10,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <TextBlock x:Name="BadgeText"
+                                           Text="ALPHA"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="#1A1A1A"
+                                           FontFamily="{StaticResource SettingsFont}"/>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
 
                 <TextBlock x:Name="MessageText"
                            Text="Clear all cached data and logs?"
-                           FontSize="14" FontWeight="Normal"
+                           FontSize="14" FontWeight="Bold"
+                           FontFamily="{StaticResource SettingsFont}"
                            LineHeight="21" LineStackingStrategy="BlockLineHeight"
                            Foreground="{StaticResource SoftText}"
                            TextWrapping="Wrap" Margin="0,0,0,24"/>
@@ -256,6 +276,7 @@
                                Text="This removes cached data, logs, and temporary files. Your settings will be preserved."
                                FontSize="11.5"
                                FontWeight="Bold"
+                               FontFamily="{StaticResource SettingsFont}"
                                Foreground="{StaticResource MutedText}"
                                TextWrapping="Wrap"
                                LineHeight="16"/>

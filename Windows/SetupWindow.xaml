@@ -23,6 +23,8 @@
         SizeChanged="Window_SizeChanged">
     
     <Window.Resources>
+        <!-- SF Pro Display font with full fallback chain -->
+        <FontFamily x:Key="SFProDisplay">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
         <!-- Font family alias matching Settings -->
         <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
 
