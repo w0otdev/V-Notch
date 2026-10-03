@@ -234,7 +234,7 @@ Mở Spotlight, chọn AI làm chế độ mặc định hoặc nhập chữ mà
 
 Nhà cung cấp được chọn nhận nội dung gửi, thông tin xác thực, địa chỉ IP và metadata HTTP thông thường. Việc lưu giữ, huấn luyện, xử lý quốc tế và các quyền kiểm soát tài khoản phụ thuộc chính sách hiện hành, gói dịch vụ hoặc cài đặt tài khoản của họ. Mã hóa cục bộ không ngăn nhà cung cấp xử lý nội dung đã gửi. Trước khi gửi thông tin nhạy cảm, hãy xem [chính sách OpenAI](https://openai.com/policies/), [điều khoản Gemini API](https://ai.google.dev/gemini-api/terms), [điều khoản thương mại Anthropic](https://www.anthropic.com/legal/commercial-terms) và [chính sách quyền riêng tư DeepSeek](https://platform.deepseek.com/downloads/DeepSeek%20Privacy%20Policy.html).
 
-Thanh usage giữ số liệu do nhà cung cấp trả về trong bộ nhớ: token của yêu cầu gần nhất, quota tốc độ tại thời điểm phản hồi từ header OpenAI/Claude được hỗ trợ và số dư DeepSeek khi bạn yêu cầu tra cứu. Đây không phải tổng sử dụng tài khoản hay ngân sách tháng. Thông tin không có được ẩn; phản hồi bị ngắt có thể thiếu số liệu. Các số liệu này không được lưu vào lịch sử chat. Để tránh yêu cầu mạng AI, không gửi tin nhắn AI hoặc làm mới số dư; các nút quyền riêng tư khác không chặn yêu cầu AI bạn chủ động gửi.
+Thanh usage giữ số liệu do nhà cung cấp trả về trong bộ nhớ: token của yêu cầu gần nhất, quota tốc độ tại thời điểm phản hồi từ header OpenAI/Claude được hỗ trợ và số dư DeepSeek khi bạn yêu cầu tra cứu. Đây không phải tổng sử dụng tài khoản hay ngân sách tháng. Thông tin không có được ẩn; phản hồi bị ngắt có thể thiếu số liệu. Các số liệu này không được lưu vào lịch sử chat. Chế độ ngoại tuyến và tùy chọn Cho phép AI trực tuyến chặn cả tin nhắn AI chủ động và làm mới số dư. GitHub Copilot còn cần bật tùy chọn Cho phép GitHub Copilot.
 
 ## 5. Lưu trữ dữ liệu cục bộ
 
@@ -313,7 +313,7 @@ V-Notch **không được thiết kế để**:
 V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và hạn chế các kết nối mạng:
 
 - **Spotlight AI:** Xóa hội thoại trong lịch sử AI và xóa khóa trong cài đặt Spotlight. Các thao tác này riêng biệt với xóa lịch sử khởi chạy. Dữ liệu phía nhà cung cấp và thu hồi khóa cần công cụ của nhà cung cấp (§5.6).
-- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Công tắc ở cấp ứng dụng được thiết kế để chặn yêu cầu mạng do các mô-đun V-Notch khởi tạo (tự động kiểm tra bản cập nhật, tìm kiếm ảnh bìa trực tuyến, tra cứu lời bài hát/phụ đề, tải video Canvas của Spotify, và truy vấn thời tiết). Công tắc này không chặn yêu cầu Spotlight AI hoặc làm mới số dư bạn chủ động gửi (§4.8). Không bảo đảm chặn các kết nối do Windows, WebView, runtime hoặc ứng dụng khác tự thực hiện; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
+- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Chặn HTTP do ứng dụng quản lý, gồm cập nhật thủ công/tự động, kiểm tra tính toàn vẹn trực tuyến, ảnh bìa/metadata, lời bài hát, phụ đề, Canvas, thời tiết, tin nhắn AI và số dư. Ngăn khởi chạy Copilot, hủy yêu cầu Copilot đang chạy, chặn mở và đóng cửa sổ đăng nhập Spotify đang mở. Chặn mở liên kết trực tuyến qua ứng dụng. Yêu cầu và việc đọc phản hồi đang chạy nhận tín hiệu hủy khi thu hồi quyền. Không thể thu hồi dữ liệu đã gửi. Tính năng cục bộ và lựa chọn riêng vẫn được giữ. Đây là kiểm soát cấp ứng dụng, không phải tường lửa hệ điều hành: không bảo đảm chặn lưu lượng của Windows, ứng dụng khác hay kết nối nền tự phát của runtime/WebView; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
 - **Tự động kiểm tra bản cập nhật mới:** Bật/tắt kiểm tra định kỳ bản phát hành mới trên GitHub Releases ở chế độ nền.
 - **Tìm kiếm ảnh bìa album trực tuyến:** Bật/tắt tra cứu ảnh bìa từ YouTube, SoundCloud, Piped khi trình phát không có ảnh bìa nhúng.
 - **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ LRCLIB và lrc mux cho bài hát đang phát.
@@ -375,3 +375,7 @@ Mọi câu hỏi hoặc yêu cầu liên quan đến dữ liệu có thể gửi
 [https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)
 
 <!-- Publication checklist: validate network behavior, settings toggles, log paths and local deletion against the exact release binary before publication. This comment is not a representation that verification has been completed. -->
+
+### Bổ sung tùy chọn Privacy (03/10/2026)
+
+Có công tắc riêng cho AI trực tuyến, GitHub Copilot, phụ đề, Spotify Canvas/đăng nhập và thời tiết. Ngoại tuyến ưu tiên chặn mà không xóa lựa chọn riêng. Tắt **Lưu lịch sử chat AI** sẽ ngừng đọc/ghi lịch sử V-Notch. Đổi tùy chọn xóa hội thoại/bản nháp đang ở bộ nhớ để tránh lưu lại về sau; tệp lịch sử cũ được giữ. Bật lại để truy cập và xóa hội thoại đã lưu. Tùy chọn không kiểm soát lưu trữ riêng của runtime Copilot hay nhà cung cấp.

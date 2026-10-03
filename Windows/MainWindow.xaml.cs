@@ -1343,6 +1343,7 @@ public partial class MainWindow : Window
             bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
             string oldSubtitlePriority = oldSettings.SubtitlePriority ?? "";
             _settings = newSettings.Clone();
+            NetworkPrivacy.Current.Apply(_settings);
 
             if (oldSettings.IsShelfUploadLimitUnlocked != newSettings.IsShelfUploadLimitUnlocked)
             {
@@ -1380,6 +1381,7 @@ public partial class MainWindow : Window
             ApplySettings(oldSettings, sizeChanged);
 
             if (oldSettings.EnableWeather != newSettings.EnableWeather
+                || oldSettings.AllowOnlineWeather != newSettings.AllowOnlineWeather
                 || oldSettings.EnableLocalOnlyMode != newSettings.EnableLocalOnlyMode
                 || !string.Equals(oldSettings.ManualCity, newSettings.ManualCity, StringComparison.Ordinal))
             {

@@ -41,12 +41,12 @@ public class WeatherModule : NotchModuleBase
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        bool wasEnabled = _settings.EnableWeather && !_settings.EnableLocalOnlyMode;
+        bool wasEnabled = _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather;
         string previousCity = NormalizeCity(_settings.ManualCity);
         string newCity = NormalizeCity(settings.ManualCity);
         _settings = settings.Clone();
 
-        if (!settings.EnableWeather || settings.EnableLocalOnlyMode)
+        if (!settings.EnableWeather || settings.EnableLocalOnlyMode || !settings.AllowOnlineWeather)
         {
             bool shouldClear = wasEnabled || IsRunning || _isFetching;
             Stop();
@@ -112,7 +112,7 @@ public class WeatherModule : NotchModuleBase
     private async System.Threading.Tasks.Task RefreshAsync()
     {
         var settings = _settings;
-        if (!settings.EnableWeather || settings.EnableLocalOnlyMode || _isFetching)
+        if (!settings.EnableWeather || settings.EnableLocalOnlyMode || !settings.AllowOnlineWeather || _isFetching)
         {
             return;
         }

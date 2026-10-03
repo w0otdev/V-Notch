@@ -102,7 +102,9 @@ internal static class SpotlightCopilotService
         IReadOnlyList<SpotlightAiMessage> history, [EnumeratorCancellation] CancellationToken token)
     {
         ValidateRequest(model, history);
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Copilot))
+            throw new SpotlightAiException("spotlight.ai.privacyBlocked");
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token, NetworkPrivacy.Current.Acquire(NetworkFeature.Copilot));
         lifetime.CancelAfter(TimeSpan.FromMinutes(5));
         var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(256)
         {

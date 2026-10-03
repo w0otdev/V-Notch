@@ -119,9 +119,14 @@ public partial class SpotifyLoginWindow : Window
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, bool redraw);
 
+    private CancellationTokenRegistration _privacyCancellation;
+
     private async void SpotifyLoginWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= SpotifyLoginWindow_Loaded;
+        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas)) { Close(); return; }
+        _privacyCancellation = NetworkPrivacy.Current.Acquire(NetworkFeature.Canvas).Register(() =>
+            Dispatcher.BeginInvoke(() => { SpotifyWebView.Dispose(); Close(); }));
         PlayEntranceAnimation();
         try
         {
@@ -135,6 +140,14 @@ public partial class SpotifyLoginWindow : Window
             CoreWebView2Environment environment =
                 await CoreWebView2Environment.CreateAsync(userDataFolder: _userDataFolder);
             await SpotifyWebView.EnsureCoreWebView2Async(environment);
+
+            if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas)) { Close(); return; }
+            SpotifyWebView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            SpotifyWebView.CoreWebView2.WebResourceRequested += (_, args) =>
+            {
+                if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas))
+                    args.Response = environment.CreateWebResourceResponse(null, 403, "Disabled by privacy settings", "");
+            };
 
             SpotifyWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -201,6 +214,7 @@ public partial class SpotifyLoginWindow : Window
 
     private void Window_Closed(object? sender, EventArgs e)
     {
+        _privacyCancellation.Dispose();
         try
         {
             _cookieTimer.Stop();

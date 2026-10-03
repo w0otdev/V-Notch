@@ -1563,7 +1563,7 @@ public sealed class SpotifyCanvasService : IDisposable
                                      DecompressionMethods.Deflate |
                                      DecompressionMethods.Brotli
         };
-        var client = new HttpClient(handler) { Timeout = RequestTimeout };
+        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Canvas, handler)) { Timeout = RequestTimeout };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("V-Notch/1.8 SpotifyCanvas");
         return client;
     }

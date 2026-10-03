@@ -35,7 +35,7 @@ public static class AppIntegrityService
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
+        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Updates, new HttpClientHandler { AllowAutoRedirect = true }))
         {
             Timeout = TimeSpan.FromSeconds(15)
         };

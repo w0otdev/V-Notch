@@ -17,8 +17,8 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private const string TitlePropertyName = "title";
     private const string DurationPropertyName = "duration";
 
-    private static readonly HttpClient _httpClient = new();
-    private static readonly HttpClient KeyClient = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+    private static readonly HttpClient _httpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
+    private static readonly HttpClient KeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }));
 
     internal static HttpRequestMessage CreateYouTubeApiRequest(string url, string apiKey)
     {

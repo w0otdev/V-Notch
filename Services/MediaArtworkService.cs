@@ -25,7 +25,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     private const long MaxArtworkDownloadSizeBytes = 8 * 1024 * 1024; // 8 MiB
     private const int MaxDecodePixelWidth = 1024;
 
-    private static readonly HttpClient _httpClient = new();
+    private static readonly HttpClient _httpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private readonly HttpClient _client;
     private readonly SmartThumbnailCropService _smartCrop;
     private bool _smartCropAvailable;

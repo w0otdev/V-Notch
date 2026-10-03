@@ -59,6 +59,7 @@ public partial class SpotlightWindow
     private async void AiUsageRefresh_Click(object sender, RoutedEventArgs e)
     {
         if (_balanceLoading || _settings.SpotlightAiProvider != "DeepSeek") return;
+        if (_settings.EnableLocalOnlyMode || !_settings.AllowOnlineAi) { SetAiStatus("spotlight.ai.privacyBlocked"); return; }
         _balanceLoading = true;
         string identity = UsageIdentity(_settings);
         string key = SpotlightAiService.Configuration(_settings, "DeepSeek").Key;

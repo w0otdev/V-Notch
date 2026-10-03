@@ -155,6 +155,12 @@ public class NotchSettings
     public bool HasSeenSpotlightIntro { get; set; } = false;
 
     public bool EnableLocalOnlyMode { get; set; } = false;
+    public bool AllowOnlineAi { get; set; } = true;
+    public bool AllowCopilot { get; set; } = true;
+    public bool AllowOnlineSubtitles { get; set; } = true;
+    public bool AllowOnlineCanvas { get; set; } = true;
+    public bool AllowOnlineWeather { get; set; } = true;
+    public bool SaveAiChatHistory { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;
     public bool EnableOnlineArtworkLookup { get; set; } = true;
     public bool EnableOnlineLyrics { get; set; } = true;

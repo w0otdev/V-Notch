@@ -70,6 +70,22 @@ public partial class SpotlightWindow
 
     internal void ApplySettings(NotchSettings settings)
     {
+        bool restoreSavedChats = !_settings.SaveAiChatHistory && settings.SaveAiChatHistory;
+        if (settings.EnableLocalOnlyMode || !settings.AllowOnlineAi ||
+            (settings.SpotlightAiProvider == VNotch.Services.Spotlight.SpotlightAiService.CopilotProvider && !settings.AllowCopilot))
+            CancelAiRequest();
+        if (_settings.SaveAiChatHistory != settings.SaveAiChatHistory)
+        {
+            // Start a fresh in-memory conversation; never persist an incognito chat on re-enable.
+            CancelAiRequest();
+            _savedChats.Clear();
+            _aiHistory.Clear();
+            _chatId = Guid.NewGuid().ToString("N");
+            _aiDraftToRestore = null;
+            if (_aiMode) SearchBox.Clear();
+            CloseAiHistory();
+            RenderAiHistory();
+        }
         bool aiSelectionChanged = !string.Equals(_settings.SpotlightAiProvider, settings.SpotlightAiProvider, StringComparison.Ordinal)
             || VNotch.Services.Spotlight.SpotlightAiService.Configuration(_settings, _settings.SpotlightAiProvider).Model
                 != VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider).Model;
@@ -86,6 +102,7 @@ public partial class SpotlightWindow
             RenderAiHistory();
         }
         _settings = settings.Clone();
+        if (restoreSavedChats) LoadAiHistory();
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _gpuRefractionFailed = false;
         RefreshLocalization();

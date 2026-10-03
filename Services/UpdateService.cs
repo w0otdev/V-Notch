@@ -302,7 +302,7 @@ public class UpdateService : IUpdateService
         CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expected), Convert.FromHexString(actual));
     private static bool IsRedirect(HttpStatusCode status) => status is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
     private static async Task<string> ComputeSha256Async(string path, CancellationToken token) { await using var file = File.OpenRead(path); return Convert.ToHexString(await SHA256.HashDataAsync(file, token)); }
-    private static HttpClient CreateHttpClient() => new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
+    private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
     private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
     internal static int CompareVersions(string left, string right) => Version.TryParse(left, out var a) && Version.TryParse(right, out var b) ? a.CompareTo(b) : 0;
     private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion };

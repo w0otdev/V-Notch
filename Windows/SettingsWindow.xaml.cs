@@ -126,7 +126,8 @@ public partial class SettingsWindow : Window
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnMonitorConfigurationChanged;
         _appliedSettings = ReadSettingsFromUi();
         _settings = _appliedSettings.Clone();
-        CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
+        if (_settings.AutoCheckUpdates)
+            CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
     }
 
     public SettingsWindow(
@@ -325,6 +326,7 @@ public partial class SettingsWindow : Window
         EnableBrowserUrlInspectionCheck.IsChecked = _settings.EnableBrowserUrlInspection;
         EnableDiagnosticLoggingCheck.IsChecked = _settings.EnableDiagnosticLogging;
         EnableSpotlightHistoryCheck.IsChecked = _settings.EnableSpotlightHistory;
+        LoadAdditionalPrivacy(_settings);
         UpdateLocalOnlyDependentControls(_settings.EnableLocalOnlyMode);
 
         ApplyLiquidGlassSkin();
@@ -699,6 +701,8 @@ public partial class SettingsWindow : Window
         if (AutoCheckUpdatesCheck != null) AutoCheckUpdatesCheck.IsEnabled = !isLocalOnly;
         if (EnableOnlineArtworkCheck != null) EnableOnlineArtworkCheck.IsEnabled = !isLocalOnly;
         if (EnableOnlineLyricsCheck != null) EnableOnlineLyricsCheck.IsEnabled = !isLocalOnly;
+        if (CheckUpdateButton != null) CheckUpdateButton.IsEnabled = !isLocalOnly;
+        if (DownloadUpdateButton != null) DownloadUpdateButton.IsEnabled = !isLocalOnly;
     }
 
     private void UpdatePrivacyNetworkSection(bool isLocalOnly, bool animate)
@@ -3790,6 +3794,7 @@ public partial class SettingsWindow : Window
             EnableBrowserUrlInspectionCheck.IsChecked = defaults.EnableBrowserUrlInspection;
             EnableDiagnosticLoggingCheck.IsChecked = defaults.EnableDiagnosticLogging;
             EnableSpotlightHistoryCheck.IsChecked = defaults.EnableSpotlightHistory;
+            LoadAdditionalPrivacy(defaults);
             UpdateLocalOnlyDependentControls(defaults.EnableLocalOnlyMode);
             int defLangIndex = 0;
             for (int i = 0; i < LanguageCombo.Items.Count; i++)
@@ -4290,6 +4295,7 @@ public partial class SettingsWindow : Window
         snapshot.EnableBrowserUrlInspection = EnableBrowserUrlInspectionCheck.IsChecked ?? true;
         snapshot.EnableDiagnosticLogging = EnableDiagnosticLoggingCheck.IsChecked ?? true;
         snapshot.EnableSpotlightHistory = EnableSpotlightHistoryCheck.IsChecked ?? true;
+        ReadAdditionalPrivacy(snapshot);
 
         snapshot.EnableYouTubeApi = YouTubeApiCheck.IsChecked ?? false;
         snapshot.YouTubeApiKey = YouTubeApiKeyPasswordBox.Password?.Trim() ?? "";
@@ -4381,6 +4387,7 @@ public partial class SettingsWindow : Window
 
     private async Task CheckForUpdatesAsync()
     {
+        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Updates)) return;
         try
         {
             UpdateStatusText.Text = Loc.Get("settings.checkingUpdates");

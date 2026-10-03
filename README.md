@@ -241,3 +241,7 @@ V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOT
 
 
 Security limits: Spotlight validates model identifiers, transcript roles and input sizes before starting Copilot. Output buffering is bounded and requests have a five-minute overall deadline. These restrictions reduce the attack surface; they are not an OS sandbox or a guarantee against vulnerabilities in the SDK/runtime. The child process runs with the current Windows user's privileges. Malware or an attacker able to modify application/runtime files or the user's CLI credentials is outside these controls. Authenticated end-to-end runtime isolation has not been verified by the unit tests.
+
+### Privacy and offline controls
+
+Settings → Privacy now controls online AI, Copilot, subtitles, Spotify Canvas/sign-in, weather and AI chat history independently. Strict Local-Only Mode overrides online permissions, cancels app-managed requests (including streamed responses), blocks manual AI/balance/update requests and prevents Copilot from starting. It also blocks online links opened through the app. Turning offline mode off restores your individual choices. Disabling AI history starts an in-memory session; previous saved chats remain on disk and can be accessed again by enabling history. Copilot has separate retention controls. Offline mode is an application policy, not a Windows firewall; it cannot govern other apps or guarantee that third-party runtime background traffic is absent.

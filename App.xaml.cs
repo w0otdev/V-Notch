@@ -61,6 +61,7 @@ public partial class App : Application
 
             using var earlySettings = new SettingsService();
             var loadedSettings = earlySettings.Load();
+            NetworkPrivacy.Current.Apply(loadedSettings);
             Loc.SetLanguage(loadedSettings.Language);
             AnimationConfig.Configure(loadedSettings.AnimationFps, loadedSettings.AutoAnimationFps);
 

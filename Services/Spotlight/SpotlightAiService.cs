@@ -21,7 +21,7 @@ internal sealed class SpotlightAiException(string resourceKey, string? diagnosti
 
 internal sealed partial class SpotlightAiService
 {
-    private static readonly HttpClient SharedClient = new(new HttpClientHandler { AllowAutoRedirect = false })
+    private static readonly HttpClient SharedClient = new(NetworkPrivacy.Handler(NetworkFeature.Ai, new HttpClientHandler { AllowAutoRedirect = false }))
     { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
     private readonly HttpClient _client;
     internal SpotlightAiService(HttpClient? client = null) => _client = client ?? SharedClient;
@@ -59,6 +59,7 @@ internal sealed partial class SpotlightAiService
 
     internal static HttpRequestMessage CreateRequest(NotchSettings settings, IReadOnlyList<SpotlightAiMessage> history, bool streaming = false)
     {
+        EnsurePrivacy(settings);
         string provider = settings.SpotlightAiProvider;
         var (key, model) = Configuration(settings, provider);
         if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(model))
@@ -103,6 +104,7 @@ internal sealed partial class SpotlightAiService
     internal async IAsyncEnumerable<string> StreamAsync(NotchSettings settings,
         IReadOnlyList<SpotlightAiMessage> history, [EnumeratorCancellation] CancellationToken token, Action<JsonElement[]>? onGeminiParts = null, Action<AiUsageSnapshot>? onUsage = null)
     {
+        EnsurePrivacy(settings);
         if (settings.SpotlightAiProvider == CopilotProvider)
         {
             await foreach (string delta in SpotlightCopilotService.StreamAsync(settings.SpotlightCopilotModel, history, token))
@@ -259,6 +261,7 @@ internal sealed partial class SpotlightAiService
 
     internal async Task<string> SendAsync(NotchSettings settings, IReadOnlyList<SpotlightAiMessage> history, CancellationToken token)
     {
+        EnsurePrivacy(settings);
         if (settings.SpotlightAiProvider == CopilotProvider)
         {
             var result = new StringBuilder();
@@ -290,5 +293,11 @@ internal sealed partial class SpotlightAiService
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
         { throw new SpotlightAiException("spotlight.ai.emptyError"); }
+    }
+
+    internal static void EnsurePrivacy(NotchSettings settings)
+    {
+        if (!NetworkPrivacy.Allows(settings, settings.SpotlightAiProvider == CopilotProvider ? NetworkFeature.Copilot : NetworkFeature.Ai))
+            throw new SpotlightAiException("spotlight.ai.privacyBlocked");
     }
 }

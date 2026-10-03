@@ -81,6 +81,7 @@ public partial class SettingsWindow
 
     private void LocalizeSpotlightAiSettings()
     {
+        LocalizeAdditionalPrivacy();
         ((ComboBoxItem)SpotlightDefaultModeCombo.Items[0]).Content = "Spotlight · " + Loc.Get("spotlight.searchMode");
         ((ComboBoxItem)SpotlightDefaultModeCombo.Items[1]).Content = "Spotlight · " + Loc.Get("spotlight.ai.title");
         SpotlightDefaultModeLabel.Text = Loc.Get("settings.spotlight.defaultMode");

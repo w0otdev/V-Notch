@@ -55,6 +55,9 @@ public static class SafeLauncher
             return false;
         }
 
+        if (!uri.Scheme.Equals("ms-settings", StringComparison.OrdinalIgnoreCase) &&
+            !NetworkPrivacy.Current.IsAllowed(NetworkFeature.ExternalLinks)) return false;
+
         try
         {
             var psi = new ProcessStartInfo

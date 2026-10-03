@@ -1804,7 +1804,7 @@
                                                           Unchecked="LocalOnlyModeCheck_Changed"
                                                           VerticalAlignment="Center"/>
                                                 <TextBlock x:Name="LocalOnlyModeHint"
-                                                           Text="Block all outbound network requests across all modules. V-Notch will operate 100% offline (no update checks, online album art scrapers, lyrics, subtitles, Canvas, or weather queries)."
+                                                           Text="Block app-managed online features, including AI and Copilot, and cancel active requests. Individual preferences are preserved. This is not a system firewall."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,0"
                                                            TextWrapping="Wrap"/>
@@ -1894,6 +1894,7 @@
 
                                         <TextBlock x:Name="PrivacyStorageHeader" Text="LOCAL DATA &amp; HISTORY"
                                                    FontSize="10" FontWeight="Bold" Foreground="#7C7C7C" Margin="0,10,0,6"/>
+                                        <StackPanel x:Name="PrivacyStorageOptions"/>
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>

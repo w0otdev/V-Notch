@@ -16,13 +16,13 @@ internal sealed class LyricsService : IDisposable
     private static readonly string[] GenericPlatformNames = { "YouTube", "Browser", "Google Chrome", "Microsoft Edge" };
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
 
-    private static readonly HttpClient _lrclibHttp = new()
+    private static readonly HttpClient _lrclibHttp = new(NetworkPrivacy.Handler(NetworkFeature.Lyrics))
     {
         BaseAddress = new Uri("https://lrclib.net"),
         Timeout = TimeSpan.FromSeconds(8)
     };
 
-    private static readonly HttpClient _lrcMuxHttp = new()
+    private static readonly HttpClient _lrcMuxHttp = new(NetworkPrivacy.Handler(NetworkFeature.Lyrics))
     {
         BaseAddress = new Uri("https://api.lrcmux.dev"),
         Timeout = TimeSpan.FromSeconds(12)

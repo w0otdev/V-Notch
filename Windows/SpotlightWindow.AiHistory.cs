@@ -15,6 +15,7 @@ public partial class SpotlightWindow
 
     private void LoadAiHistory()
     {
+        if (!_settings.SaveAiChatHistory) return;
         _savedChats = _chatStore.Load();
         var latest = _savedChats.OrderByDescending(c => c.UpdatedUtc).FirstOrDefault(c => c.Messages.Count > 0
             && c.Provider == _settings.SpotlightAiProvider
@@ -38,6 +39,7 @@ public partial class SpotlightWindow
 
     private void SaveAiHistory()
     {
+        if (!_settings.SaveAiChatHistory) return;
         if (_aiHistory.Count == 0) return;
         var entry = _savedChats.FirstOrDefault(c => c.Id == _chatId);
         if (entry == null) { entry = new SpotlightSavedChat { Id = _chatId }; _savedChats.Add(entry); }
@@ -164,6 +166,7 @@ public partial class SpotlightWindow
                 delete.Click += async (s, args) =>
                 {
                     args.Handled = true;
+                    if (!_settings.SaveAiChatHistory) return;
                     if (!card.IsHitTestVisible) return;
                     card.IsHitTestVisible = false;
                     card.ClipToBounds = true;
