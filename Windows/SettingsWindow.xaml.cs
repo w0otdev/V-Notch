@@ -240,6 +240,7 @@ public partial class SettingsWindow : Window
         EnableSmartCropCheck.IsChecked = _settings.EnableSmartCrop;
         UpdatePerformanceDependentControls(_settings.EnableBlurEffects);
         EnableSpotifyLyricsCheck.IsChecked = _settings.EnableSpotifyLyrics;
+        BrightenDarkLyricsBackgroundCheck.IsChecked = _settings.BrightenDarkLyricsBackground;
         UpdateLyricsDependentControls(_settings.EnableSpotifyLyrics);
         EnableSpotifyCanvasCheck.IsChecked = _settings.EnableSpotifyCanvas;
         UpdateSpotifyCanvasDependentControls();
@@ -528,6 +529,7 @@ public partial class SettingsWindow : Window
         EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode");
         EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint");
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
+        BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground");
         EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint");
         EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas");
         EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint");
@@ -1213,6 +1215,12 @@ public partial class SettingsWindow : Window
         bool enabled = EnableSpotifyLyricsCheck.IsChecked ?? true;
         UpdateLyricsDependentControls(enabled, animate: true);
         UpdateSpotifyCanvasDependentControls(animate: true);
+        PushLivePreview();
+    }
+
+    private void BrightenDarkLyricsBackgroundCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
         PushLivePreview();
     }
 
@@ -3345,6 +3353,7 @@ public partial class SettingsWindow : Window
         AnimateContentChange(EnableDebugModeCheck, () => EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(EnableSpotifyLyricsCheck, () => EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics"), staggerMs, easeOut, fps);
+        AnimateContentChange(BrightenDarkLyricsBackgroundCheck, () => BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(EnableSpotifyCanvasCheck, () => EnableSpotifyCanvasCheck.Content = Loc.Get("settings.enableSpotifyCanvas"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
@@ -3732,6 +3741,7 @@ public partial class SettingsWindow : Window
             EnableSmartCropCheck.IsChecked = defaults.EnableSmartCrop;
             UpdatePerformanceDependentControls(defaults.EnableBlurEffects);
             EnableSpotifyLyricsCheck.IsChecked = defaults.EnableSpotifyLyrics;
+            BrightenDarkLyricsBackgroundCheck.IsChecked = defaults.BrightenDarkLyricsBackground;
             EnableSpotifyCanvasCheck.IsChecked = defaults.EnableSpotifyCanvas;
             EnableYouTubeSubtitlesCheck.IsChecked = defaults.EnableYouTubeSubtitles;
             IgnoreYouTubeAutoSubtitlesCheck.IsChecked = defaults.IgnoreYouTubeAutoSubtitles;
@@ -4227,6 +4237,7 @@ public partial class SettingsWindow : Window
         snapshot.EnableSubjectBlur = EnableSubjectBlurCheck.IsChecked ?? true;
         snapshot.EnableSmartCrop = EnableSmartCropCheck.IsChecked ?? true;
         snapshot.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
+        snapshot.BrightenDarkLyricsBackground = BrightenDarkLyricsBackgroundCheck.IsChecked == true;
         snapshot.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked ?? true;
         snapshot.EnableYouTubeSubtitles = EnableYouTubeSubtitlesCheck.IsChecked ?? true;
         snapshot.IgnoreYouTubeAutoSubtitles = IgnoreYouTubeAutoSubtitlesCheck.IsChecked ?? false;

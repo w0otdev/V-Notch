@@ -672,6 +672,7 @@ public partial class MainWindow
         }
 
         if (LyricsBlurImage == null || newThumbnail == null) return;
+        newThumbnail = LyricsBackgroundBrightness.Apply(newThumbnail, _settings.BrightenDarkLyricsBackground);
 
         if (LyricsBlurImage.Source == null || !_isExpanded)
         {
@@ -687,8 +688,19 @@ public partial class MainWindow
             return;
         }
 
-        if (ReferenceEquals(LyricsBlurImage.Source, newThumbnail) ||
-            ReferenceEquals(LyricsBlurImageNext?.Source, newThumbnail))
+        if (ReferenceEquals(LyricsBlurImage.Source, newThumbnail))
+        {
+            // Reversing a toggle mid-transition must also cancel the other layer.
+            if (LyricsBlurImageNext != null)
+            {
+                LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
+                LyricsBlurImageNext.Opacity = 0;
+                LyricsBlurImageNext.Source = null;
+            }
+            return;
+        }
+
+        if (ReferenceEquals(LyricsBlurImageNext?.Source, newThumbnail))
         {
             return;
         }
@@ -713,6 +725,7 @@ public partial class MainWindow
                     LyricsBlurImage.Source = newThumbnail;
                     LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
                     LyricsBlurImageNext.Opacity = 0;
+                    LyricsBlurImageNext.Source = null;
                 }
             };
             Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
@@ -742,7 +755,7 @@ public partial class MainWindow
         {
             if (LyricsBlurImage.Source == null && _currentMediaInfo?.Thumbnail != null)
             {
-                LyricsBlurImage.Source = _currentMediaInfo.Thumbnail;
+                LyricsBlurImage.Source = LyricsBackgroundBrightness.Apply(_currentMediaInfo.Thumbnail, _settings.BrightenDarkLyricsBackground);
             }
             if (LyricsBlurImageNext == null || LyricsBlurImageNext.Opacity <= 0.01)
             {

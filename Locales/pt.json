@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Tema Vidro Líquido",
   "settings.liquidGlass.hint": "Transforma o notch em vidro fosco que refrata a tela. Ocultado automaticamente em capturas de tela.",
   "settings.lyricsDarkOverlay": "Escurecer fundo das letras",
+  "settings.brightenDarkLyricsBackground": "Clarear fundos escuros das letras",
   "settings.lyricsDarkOverlay.hint": "Aplica uma película escura sobre a imagem de fundo para tornar as letras mais legíveis.",
   "settings.manualCity": "Cidade manual (opcional)",
   "settings.manualCity.hint": "Digite uma cidade para não depender de localização por IP. Deixe em branco para detecção automática.",

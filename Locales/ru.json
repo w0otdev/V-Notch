@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Тема «Жидкое стекло»",
   "settings.liquidGlass.hint": "Превращает шторку в матовое стекло, оптически преломляющее рабочий стол за ней. Скрывается на скриншотах.",
   "settings.lyricsDarkOverlay": "Затемнение фона текста песни",
+  "settings.brightenDarkLyricsBackground": "Осветлять тёмный фон текста песни",
   "settings.lyricsDarkOverlay.hint": "Добавляет тёмный градиент поверх фонового изображения для лучшей читаемости слов.",
   "settings.manualCity": "Город вручную (необязательно)",
   "settings.manualCity.hint": "Укажите название города вместо автоматического геоопределения по IP.",

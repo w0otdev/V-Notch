@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Tema Kaca Cair",
   "settings.liquidGlass.hint": "Mengubah notch menjadi kaca buram yang membiaskan layar di belakangnya. Otomatis disembunyikan pada tangkapan layar.",
   "settings.lyricsDarkOverlay": "Lapisan gelap latar belakang lirik",
+  "settings.brightenDarkLyricsBackground": "Cerahkan latar belakang lirik yang gelap",
   "settings.lyricsDarkOverlay.hint": "Tambahkan lapisan gelap di atas gambar latar belakang lirik agar teks lebih mudah dibaca.",
   "settings.manualCity": "Nama kota manual (opsional)",
   "settings.manualCity.hint": "Ketik nama kota untuk melewati deteksi IP. Kosongkan untuk deteksi otomatis.",

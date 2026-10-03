@@ -20,6 +20,7 @@ public class NotchSettings
     public double Opacity { get; set; } = 1.0;
     public double MediaBlurBrightnessBoost { get; set; } = 2.0;
     public double MediaBlurDarkOverlay { get; set; } = 0.0;
+    public bool BrightenDarkLyricsBackground { get; set; } = false;
     public bool EnableBlurEffects { get; set; } = true;
     public bool ShowMediaArtBackground { get; set; } = true;
     public int AnimationFps { get; set; } = 240;

@@ -304,6 +304,7 @@
   "settings.liquidGlass": "리퀴드 글래스 스킨",
   "settings.liquidGlass.hint": "노치를 반투명 유리 재질로 변경하여 바탕화면을 자연스럽게 굴절시킵니다. 화면 캡처 시 자동 제외됩니다.",
   "settings.lyricsDarkOverlay": "가사 배경 어둡게 처리",
+  "settings.brightenDarkLyricsBackground": "어두운 가사 배경 밝게 하기",
   "settings.lyricsDarkOverlay.hint": "가사 배경에 어두운 반투명 막을 씌워 흰색 텍스트의 가독성을 높입니다.",
   "settings.manualCity": "수동 도시 지정 (선택 사항)",
   "settings.manualCity.hint": "IP 기반 위치 대신 지정할 도시명을 입력합니다. 비워두면 자동 인식됩니다.",

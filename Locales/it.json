@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Tema Vetro Liquido",
   "settings.liquidGlass.hint": "Rende il notch di vetro satinato rifrangendo la schermata sottostante. Nascosto automaticamente nelle catture schermo.",
   "settings.lyricsDarkOverlay": "Sfondo scuro per i testi",
+  "settings.brightenDarkLyricsBackground": "Schiarisci gli sfondi scuri dei testi",
   "settings.lyricsDarkOverlay.hint": "Aggiunge uno strato scuro dietro ai testi per migliorarne la leggibilità.",
   "settings.manualCity": "Città manuale (facoltativo)",
   "settings.manualCity.hint": "Inserisci il nome di una città per non dipendere dalla posizione IP. Lascia vuoto per il rilevamento automatico.",

@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Liquid Glass Design",
   "settings.liquidGlass.hint": "Verwandelt die Notch in mattiertes Glas, das den Hintergrund bricht. Bei aktivierter Option in Bildschirmaufnahmen ausgeblendet.",
   "settings.lyricsDarkOverlay": "Dunkle Ebene für Songtexte",
+  "settings.brightenDarkLyricsBackground": "Dunkle Songtext-Hintergründe aufhellen",
   "settings.lyricsDarkOverlay.hint": "Legt eine dunkle Schicht über den Liedtext-Hintergrund, um die Lesbarkeit zu verbessern.",
   "settings.manualCity": "Stadt manuell wählen (optional)",
   "settings.manualCity.hint": "Geben Sie eine Stadt ein, um die IP-Ortung zu überspringen. Leer lassen für automatische Erkennung.",

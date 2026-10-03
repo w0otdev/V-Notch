@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Liquid Glass स्किन",
   "settings.liquidGlass.hint": "नॉच को फ्रॉस्टेड ग्लास में बदलता है जो पीछे के डेस्कटॉप को रिफ़्रैक्ट करता है। चालू रहने पर स्क्रीनशॉट से यह अपने आप छिप जाता है।",
   "settings.lyricsDarkOverlay": "लिरिक्स का डार्क ओवरले",
+  "settings.brightenDarkLyricsBackground": "गीत के बोलों की गहरी पृष्ठभूमि को उज्ज्वल करें",
   "settings.lyricsDarkOverlay.hint": "टेक्स्ट को आसानी से पढ़ने के लिए लिरिक्स बैकग्राउंड पर एक डार्क लेयर जोड़ें।",
   "settings.manualCity": "शहर खुद चुनें (वैकल्पिक)",
   "settings.manualCity.hint": "IP से स्थान पता न करना हो तो शहर का नाम लिखें। अपने-आप पहचानने के लिए खाली छोड़ दें।",

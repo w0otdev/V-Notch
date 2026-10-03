@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Liquid Glassスキン",
   "settings.liquidGlass.hint": "ノッチを背後のデスクトップを屈折させるすりガラス調に変えます。有効時は画面キャプチャから自動的に非表示になります。",
   "settings.lyricsDarkOverlay": "歌詞のダークオーバーレイ",
+  "settings.brightenDarkLyricsBackground": "歌詞の暗い背景を明るくする",
   "settings.lyricsDarkOverlay.hint": "歌詞の背景画像に暗いオーバーレイを重ね、文字を読みやすくします。",
   "settings.manualCity": "都市を手動指定（任意）",
   "settings.manualCity.hint": "IP による位置検出を使わない場合は都市名を入力します。自動検出する場合は空欄にしてください。",

@@ -2110,6 +2110,12 @@
                                                         ValueChanged="BlurDarkOverlaySlider_ValueChanged"
                                                         Margin="0,12,0,0"/>
 
+                                                <CheckBox x:Name="BrightenDarkLyricsBackgroundCheck"
+                                                          Content="Brighten dark lyrics backgrounds"
+                                                          Checked="BrightenDarkLyricsBackgroundCheck_Changed"
+                                                          Unchecked="BrightenDarkLyricsBackgroundCheck_Changed"
+                                                          Margin="0,14,0,0"/>
+
                                                 <CheckBox x:Name="EnableYouTubeSubtitlesCheck"
                                                           x:Uid="enableYouTubeSubtitles"
                                                           Checked="EnableYouTubeSubtitlesCheck_Changed"

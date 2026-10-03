@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Tema Liquid Glass",
   "settings.liquidGlass.hint": "Convierte el notch en cristal esmerilado que refracta el escritorio de fondo. Se oculta automáticamente en capturas de pantalla.",
   "settings.lyricsDarkOverlay": "Capa oscura de letras",
+  "settings.brightenDarkLyricsBackground": "Aclarar los fondos oscuros de las letras",
   "settings.lyricsDarkOverlay.hint": "Añade una capa oscura sobre el fondo de las letras para mejorar la legibilidad.",
   "settings.manualCity": "Ciudad manual (opcional)",
   "settings.manualCity.hint": "Introduce una ciudad para omitir la ubicación por IP. Déjalo vacío para detectarla automáticamente.",

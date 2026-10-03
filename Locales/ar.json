@@ -304,6 +304,7 @@
   "settings.liquidGlass": "مظهر الزجاج السائل",
   "settings.liquidGlass.hint": "يحول النتوء إلى زجاج مثلج يعكس ما خلفه بانسيابية. يُخفى تلقائياً من لقطات الشاشة.",
   "settings.lyricsDarkOverlay": "طبقة داكنة خلف الكلمات",
+  "settings.brightenDarkLyricsBackground": "تفتيح الخلفيات الداكنة لكلمات الأغاني",
   "settings.lyricsDarkOverlay.hint": "إضافة طبقة تظليل فوق خلفية الكلمات لجعل النصوص أكثر وضوحاً وسهولة في القراءة.",
   "settings.manualCity": "المدينة يدوياً (اختياري)",
   "settings.manualCity.hint": "أدخل اسم مدينتك لتجاوز التحديد عبر IP. اتركه فارغاً للكشف التلقائي.",

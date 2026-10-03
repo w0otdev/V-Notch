@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Liquid Glass skin",
   "settings.liquidGlass.hint": "Turns the notch into frosted glass that refracts what is behind it. Automatically hidden from screen captures while enabled.",
   "settings.lyricsDarkOverlay": "Lyrics Dark Overlay",
+  "settings.brightenDarkLyricsBackground": "Brighten dark lyrics backgrounds",
   "settings.lyricsDarkOverlay.hint": "Add a dark layer over the lyrics background image to improve text readability.",
   "settings.manualCity": "Manual city (optional)",
   "settings.manualCity.hint": "Enter a city name to skip IP-based location. Leave it empty to detect automatically.",

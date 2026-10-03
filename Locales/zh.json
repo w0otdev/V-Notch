@@ -304,6 +304,7 @@
   "settings.liquidGlass": "流体玻璃材质皮肤",
   "settings.liquidGlass.hint": "将刘海变为半透明毛玻璃，实时折射桌面背景。启用时会自动在屏幕截图中隐藏本体。",
   "settings.lyricsDarkOverlay": "歌词深色遮罩",
+  "settings.brightenDarkLyricsBackground": "提亮深色歌词背景",
   "settings.lyricsDarkOverlay.hint": "在歌词背景上叠加一层深色渐变蒙版，让白色歌词字迹更清晰易读。",
   "settings.manualCity": "手动指定城市（可选）",
   "settings.manualCity.hint": "输入城市名称以跳过 IP 定位。留空则自动按网络定位。",

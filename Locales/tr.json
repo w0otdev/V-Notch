@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Sıvı Cam Teması",
   "settings.liquidGlass.hint": "Çentiği arka planı kıran buzlu bir cama dönüştürür. Ekran yakalama sırasında otomatik gizlenir.",
   "settings.lyricsDarkOverlay": "Şarkı sözü arka planını karart",
+  "settings.brightenDarkLyricsBackground": "Koyu şarkı sözü arka planlarını aydınlat",
   "settings.lyricsDarkOverlay.hint": "Metnin daha kolay okunabilmesi için arka plan resminin üzerine koyu bir katman ekler.",
   "settings.manualCity": "Manuel şehir belirleme (isteğe bağlı)",
   "settings.manualCity.hint": "IP tabanlı konum yerine istediğiniz bir şehri girin. Otomatik bulma için boş bırakın.",

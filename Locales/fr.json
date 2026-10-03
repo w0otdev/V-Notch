@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Thème Liquid Glass",
   "settings.liquidGlass.hint": "Transforme le notch en verre dépoli qui réfracte le bureau en arrière-plan. Masqué automatiquement des captures d'écran.",
   "settings.lyricsDarkOverlay": "Superposition sombre des paroles",
+  "settings.brightenDarkLyricsBackground": "Éclaircir les arrière-plans sombres des paroles",
   "settings.lyricsDarkOverlay.hint": "Ajoute un voile sombre sur le fond des paroles pour améliorer la lisibilité du texte.",
   "settings.manualCity": "Ville manuelle (facultatif)",
   "settings.manualCity.hint": "Saisissez une ville pour ignorer la localisation IP. Laissez vide pour une détection automatique.",

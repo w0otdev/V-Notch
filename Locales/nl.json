@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Vloeibaar glas-thema",
   "settings.liquidGlass.hint": "Transformeert de notch in matglas dat het bureaublad erachter live breekt. Automatisch verborgen bij schermopnames.",
   "settings.lyricsDarkOverlay": "Donkere laag achter songteksten",
+  "settings.brightenDarkLyricsBackground": "Donkere achtergronden van songteksten oplichten",
   "settings.lyricsDarkOverlay.hint": "Plaatst een donkere laag over de achtergrond voor optimale leesbaarheid van de tekst.",
   "settings.manualCity": "Handmatige plaatsnaam (optioneel)",
   "settings.manualCity.hint": "Voer een stad in om locatiebepaling via IP over te slaan. Laat leeg voor automatische detectie.",

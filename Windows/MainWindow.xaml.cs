@@ -1696,6 +1696,11 @@ public partial class MainWindow : Window
             this.Opacity = _settings.Opacity;
         }
 
+        if (oldSettings == null || oldSettings.BrightenDarkLyricsBackground != _settings.BrightenDarkLyricsBackground)
+        {
+            AnimateLyricsBlurImageSwitch(_currentMediaInfo?.Thumbnail);
+        }
+
         if (oldSettings == null || Math.Abs(oldSettings.MediaBlurDarkOverlay - _settings.MediaBlurDarkOverlay) > 0.001)
         {
             double lyricsImageOpacity = Math.Max(0.2, 1.0 - _settings.MediaBlurDarkOverlay);

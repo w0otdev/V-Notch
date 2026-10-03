@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Motyw Płynne Szkło",
   "settings.liquidGlass.hint": "Zmienia notch w matowe szkło załamujące pulpit pod spodem. Automatycznie ukrywane na zrzutach ekranu.",
   "settings.lyricsDarkOverlay": "Przyciemnienie tła pod tekstem",
+  "settings.brightenDarkLyricsBackground": "Rozjaśnij ciemne tła tekstów piosenek",
   "settings.lyricsDarkOverlay.hint": "Nakłada ciemniejszą warstwę na grafikę tła, aby tekst piosenki był lepiej czytelny.",
   "settings.manualCity": "Własna miejscowość (opcjonalnie)",
   "settings.manualCity.hint": "Wpisz miasto ręcznie, jeśli nie chcesz lokalizacji na podstawie IP. Pozostaw puste dla autodetekcji.",

@@ -208,7 +208,7 @@ public partial class MainWindow
                 }
                 else if (LyricsBlurImage != null)
                 {
-                    LyricsBlurImage.Source = info.Thumbnail;
+                    LyricsBlurImage.Source = LyricsBackgroundBrightness.Apply(info.Thumbnail, _settings.BrightenDarkLyricsBackground);
                 }
 
                 switch (result.ThumbnailAction)

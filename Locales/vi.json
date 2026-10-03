@@ -304,6 +304,7 @@
   "settings.liquidGlass": "Giao diện Liquid Glass",
   "settings.liquidGlass.hint": "Biến thân notch thành kính mờ khúc xạ màn hình phía sau. Tự động ẩn khỏi ảnh chụp và quay màn hình khi đang bật.",
   "settings.lyricsDarkOverlay": "Lớp tối Lyrics",
+  "settings.brightenDarkLyricsBackground": "Tăng sáng nền lyrics tối màu",
   "settings.lyricsDarkOverlay.hint": "Thêm lớp phủ tối lên ảnh nền lời bài hát để chữ dễ đọc hơn.",
   "settings.manualCity": "Thành phố tùy chọn",
   "settings.manualCity.hint": "Nhập tên thành phố để bỏ qua định vị qua IP. Để trống để tự động nhận diện.",
