@@ -1,14 +1,12 @@
+using System.Buffers;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
-using System.Windows.Media;
 
 namespace VNotch.Controls;
 
 public static class HighlightedText
 {
-    private static readonly Brush MatchBrush = VNotch.Services.UiPalette.PrimaryBrush;
-
     public static readonly DependencyProperty TextProperty = DependencyProperty.RegisterAttached(
         "Text", typeof(string), typeof(HighlightedText),
         new PropertyMetadata(string.Empty, OnHighlightChanged));
@@ -29,41 +27,95 @@ public static class HighlightedText
         string text = GetText(textBlock) ?? string.Empty;
         string query = GetQuery(textBlock) ?? string.Empty;
 
-        textBlock.Inlines.Clear();
-        if (text.Length == 0) return;
-
-        bool[] mask = BuildMatchMask(text, query);
-        int index = 0;
-        while (index < text.Length)
+        if (text.Length == 0 || string.IsNullOrWhiteSpace(query))
         {
-            int start = index;
-            bool highlighted = mask[index];
-            while (index < text.Length && mask[index] == highlighted) index++;
+            textBlock.Text = text;
+            return;
+        }
 
-            var run = new Run(text[start..index]);
-            if (highlighted)
+        bool[]? rented = null;
+        Span<bool> mask = text.Length <= 512
+            ? stackalloc bool[text.Length]
+            : (rented = ArrayPool<bool>.Shared.Rent(text.Length)).AsSpan(0, text.Length);
+        try
+        {
+            if (!FillMatchMask(text, query, mask))
             {
-                run.Foreground = MatchBrush;
-                run.FontWeight = FontWeights.Bold;
+                textBlock.Text = text;
+                return;
             }
-            textBlock.Inlines.Add(run);
+
+            Inline? existing = textBlock.Inlines.FirstInline;
+            int index = 0;
+            while (index < text.Length)
+            {
+                int start = index;
+                bool highlighted = mask[index];
+                while (index < text.Length && mask[index] == highlighted) index++;
+
+                var run = existing as Run;
+                if (run == null)
+                {
+                    run = new Run();
+                    textBlock.Inlines.Add(run);
+                }
+                existing = run.NextInline;
+                run.Text = text[start..index];
+                if (highlighted)
+                {
+                    if (run.ReadLocalValue(TextElement.FontWeightProperty) is not FontWeight weight || weight != FontWeights.Bold)
+                    {
+                        run.SetResourceReference(TextElement.ForegroundProperty, "AccentBrush");
+                        run.FontWeight = FontWeights.Bold;
+                    }
+                }
+                else
+                {
+                    run.ClearValue(TextElement.ForegroundProperty);
+                    run.ClearValue(TextElement.FontWeightProperty);
+                }
+            }
+            while (existing != null)
+            {
+                var next = existing.NextInline;
+                textBlock.Inlines.Remove(existing);
+                existing = next;
+            }
+        }
+        finally
+        {
+            if (rented != null) ArrayPool<bool>.Shared.Return(rented);
         }
     }
 
     internal static bool[] BuildMatchMask(string text, string query)
     {
         var mask = new bool[text.Length];
-        foreach (string token in query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        FillMatchMask(text, query, mask);
+        return mask;
+    }
+
+    private static bool FillMatchMask(ReadOnlySpan<char> text, ReadOnlySpan<char> query, Span<bool> mask)
+    {
+        mask.Clear();
+        bool matched = false;
+        while (!query.IsEmpty)
         {
+            int separator = query.IndexOf(' ');
+            var token = (separator < 0 ? query : query[..separator]).Trim();
+            query = separator < 0 ? ReadOnlySpan<char>.Empty : query[(separator + 1)..];
+            if (token.IsEmpty) continue;
             int searchFrom = 0;
             int matchAt;
             while (searchFrom < text.Length
-                   && (matchAt = text.IndexOf(token, searchFrom, StringComparison.OrdinalIgnoreCase)) >= 0)
+                   && (matchAt = text[searchFrom..].IndexOf(token, StringComparison.OrdinalIgnoreCase)) >= 0)
             {
-                for (int i = matchAt; i < matchAt + token.Length; i++) mask[i] = true;
+                matchAt += searchFrom;
+                mask.Slice(matchAt, token.Length).Fill(true);
+                matched = true;
                 searchFrom = matchAt + 1;
             }
         }
-        return mask;
+        return matched;
     }
 }

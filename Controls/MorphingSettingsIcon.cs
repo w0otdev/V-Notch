@@ -18,6 +18,11 @@ public class MorphingSettingsIcon : FrameworkElement
     private Transform _morphTransform = Transform.Identity;
     private Point[][] _from = Array.Empty<Point[]>();
     private Point[][] _to = Array.Empty<Point[]>();
+    private Point[] _collapseCenters = Array.Empty<Point>();
+    private Point[][] _framePoints = Array.Empty<Point[]>();
+    private PathGeometry _morphGeometry = new() { FillRule = FillRule.Nonzero };
+    private GeometryGroup? _progressGeometry;
+    private Transform _renderTransform = Transform.Identity;
     private static readonly DependencyProperty ProgressProperty = DependencyProperty.Register(
         "Progress", typeof(double), typeof(MorphingSettingsIcon),
         new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -93,6 +98,31 @@ public class MorphingSettingsIcon : FrameworkElement
         {
             _from = Sample(previous);
             _to = Sample(normalized);
+            _collapseCenters = new Point[Math.Max(_from.Length, _to.Length)];
+            _framePoints = new Point[_collapseCenters.Length][];
+            _morphGeometry = new PathGeometry { FillRule = FillRule.Nonzero };
+            for (int i = 0; i < _collapseCenters.Length; i++)
+            {
+                var segment = new PolyLineSegment { IsStroked = false };
+                _framePoints[i] = new Point[Samples - 1];
+                segment.Points = new PointCollection(_framePoints[i]);
+                var figure = new PathFigure { IsFilled = true, IsClosed = true };
+                figure.Segments.Add(segment);
+                _morphGeometry.Figures.Add(figure);
+                if (i < _from.Length && i < _to.Length) continue;
+                var points = i < _from.Length ? _from[i] : _to[i];
+                double x = 0, y = 0;
+                foreach (var point in points)
+                {
+                    x += point.X;
+                    y += point.Y;
+                }
+                _collapseCenters[i] = new Point(x / points.Length, y / points.Length);
+            }
+        }
+        else
+        {
+            _progressGeometry = new GeometryGroup { Transform = _morphTransform };
         }
         var animation = new DoubleAnimation(0, 1, duration ?? TimeSpan.FromMilliseconds(420))
         {
@@ -156,6 +186,14 @@ public class MorphingSettingsIcon : FrameworkElement
             (points.Max(p => p.Y) - points.Min(p => p.Y))).ToArray();
     }
 
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        var transform = new ScaleTransform(sizeInfo.NewSize.Width / 56, sizeInfo.NewSize.Height / 56);
+        transform.Freeze();
+        _renderTransform = transform;
+    }
+
     protected override void OnRender(DrawingContext drawingContext)
     {
         if (_target == null) return;
@@ -167,37 +205,38 @@ public class MorphingSettingsIcon : FrameworkElement
         }
         else if (_geometryAtProgress != null)
         {
-            var shape = new GeometryGroup { Transform = _morphTransform };
+            var shape = _progressGeometry!;
+            shape.Children.Clear();
             shape.Children.Add(_geometryAtProgress(progress));
-            shape.Freeze();
             _display = shape;
         }
         else
         {
-            var shape = new StreamGeometry { FillRule = FillRule.Nonzero };
-            using (var writer = shape.Open())
+            var shape = _morphGeometry;
+            for (int i = 0; i < shape.Figures.Count; i++)
             {
-                for (int i = 0; i < Math.Max(_from.Length, _to.Length); i++)
+                var source = i < _from.Length ? _from[i] : null;
+                var destination = i < _to.Length ? _to[i] : null;
+                var center = _collapseCenters[i];
+                var figure = shape.Figures[i];
+                var points = _framePoints[i];
+                for (int j = 0; j < Samples; j++)
                 {
-                    var source = i < _from.Length ? _from[i] : null;
-                    var destination = i < _to.Length ? _to[i] : null;
-                    var existing = source ?? destination!;
-                    var center = new Point(existing.Average(p => p.X), existing.Average(p => p.Y));
-                    for (int j = 0; j < Samples; j++)
-                    {
-                        var a = source?[j] ?? center;
-                        var b = destination?[j] ?? center;
-                        Point point = a + (b - a) * progress;
-                        if (j == 0) writer.BeginFigure(point, true, true);
-                        else writer.LineTo(point, false, false);
-                    }
+                    var a = source?[j] ?? center;
+                    var b = destination?[j] ?? center;
+                    Point point = a + (b - a) * progress;
+                    if (j == 0) figure.StartPoint = point;
+                    else points[j - 1] = point;
                 }
+                // Publish all points together. Mutating a live PointCollection
+                // individually propagates 95 Freezable notifications per contour.
+                var collection = new PointCollection(points);
+                collection.Freeze();
+                ((PolyLineSegment)figure.Segments[0]).Points = collection;
             }
-            shape.Freeze();
             _display = shape;
         }
-        drawingContext.PushTransform(IsTextGeometry ? Transform.Identity :
-            new ScaleTransform(ActualWidth / 56, ActualHeight / 56));
+        drawingContext.PushTransform(IsTextGeometry ? Transform.Identity : _renderTransform);
         drawingContext.DrawGeometry(Brush ?? VNotch.Services.UiPalette.PrimaryBrush, null, _display);
         drawingContext.Pop();
     }

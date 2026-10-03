@@ -14,14 +14,29 @@ public sealed record SystemMonitorViewRefs(
     TextBlock RamValueText,
     Border RamBar,
     TextBlock NetDownText,
+    TextBlock NetUpText)
+{
+    public SystemMonitorShelfViewRefs? Shelf { get; init; }
+}
+
+public sealed record SystemMonitorShelfViewRefs(
+    FrameworkElement Section,
+    TextBlock CpuValueText,
+    Border CpuBar,
+    TextBlock RamValueText,
+    Border RamBar,
+    TextBlock NetDownText,
     TextBlock NetUpText);
 
 public sealed class SystemMonitorPresenter : IDisposable
 {
     private readonly SystemMonitorModule _module;
     private readonly IDispatcherService _dispatcher;
-    private readonly SystemMonitorViewRefs _refs;
-    private bool _disposed;
+    private SystemMonitorViewRefs? _refs;
+    private int _disposed;
+
+    public double LastNetDownBytesPerSec { get; private set; }
+    public double LastNetUpBytesPerSec { get; private set; }
 
     public SystemMonitorPresenter(SystemMonitorModule module, IDispatcherService dispatcher, SystemMonitorViewRefs refs)
     {
@@ -34,37 +49,50 @@ public sealed class SystemMonitorPresenter : IDisposable
 
     private void OnStatsUpdated(object? sender, SystemMonitorInfo e)
     {
+        if (Volatile.Read(ref _disposed) != 0) return;
         if (_dispatcher.CheckAccess())
         {
             UpdateSystemMonitorUI(e);
         }
         else
         {
-            _dispatcher.Invoke(() => UpdateSystemMonitorUI(e));
+            _dispatcher.BeginInvoke(() => UpdateSystemMonitorUI(e));
         }
     }
 
     private void UpdateSystemMonitorUI(SystemMonitorInfo stats)
     {
-        if (stats == null) return;
-        if (_refs.CpuValueText == null) return;
+        var refs = _refs;
+        if (Volatile.Read(ref _disposed) != 0 || stats == null || refs == null) return;
+        LastNetDownBytesPerSec = stats.NetDownBytesPerSec;
+        LastNetUpBytesPerSec = stats.NetUpBytesPerSec;
 
-        _refs.CpuValueText.Text = $"{Math.Round(stats.CpuPercent)}%";
-        SetUsageBar(_refs.CpuBar, stats.CpuPercent);
+        refs.CpuValueText.Text = $"{Math.Round(stats.CpuPercent)}%";
+        SetUsageBar(refs.CpuBar, stats.CpuPercent);
 
         if (stats.RamTotalBytes > 0)
         {
-            _refs.RamValueText.Text =
+            refs.RamValueText.Text =
                 $"{FormatGb(stats.RamUsedBytes)} / {FormatGb(stats.RamTotalBytes)} GB";
         }
         else
         {
-            _refs.RamValueText.Text = "—";
+            refs.RamValueText.Text = "—";
         }
-        SetUsageBar(_refs.RamBar, stats.RamPercent);
+        SetUsageBar(refs.RamBar, stats.RamPercent);
 
-        _refs.NetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
-        _refs.NetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
+        refs.NetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
+        refs.NetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
+
+        if (refs.Shelf is { Section.Visibility: Visibility.Visible } shelf)
+        {
+            shelf.CpuValueText.Text = refs.CpuValueText.Text;
+            SetUsageBar(shelf.CpuBar, stats.CpuPercent);
+            shelf.RamValueText.Text = stats.RamTotalBytes > 0 ? $"{FormatGb(stats.RamUsedBytes)} GB" : "—";
+            SetUsageBar(shelf.RamBar, stats.RamPercent);
+            shelf.NetDownText.Text = $"↓ {refs.NetDownText.Text}";
+            shelf.NetUpText.Text = $"↑ {refs.NetUpText.Text}";
+        }
     }
 
     private static void SetUsageBar(FrameworkElement? bar, double percent)
@@ -79,7 +107,7 @@ public sealed class SystemMonitorPresenter : IDisposable
 
         double current = double.IsNaN(bar.Width) ? bar.ActualWidth : bar.Width;
 
-        if (Math.Abs(target - current) < 0.5)
+        if (AnimationConfig.ReduceMotion || Math.Abs(target - current) < 0.5)
         {
             bar.BeginAnimation(FrameworkElement.WidthProperty, null);
             bar.Width = target;
@@ -118,8 +146,17 @@ public sealed class SystemMonitorPresenter : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _module.StatsUpdated -= OnStatsUpdated;
+        var refs = _refs;
+        _refs = null;
+        if (refs == null) return;
+        refs.CpuBar.BeginAnimation(FrameworkElement.WidthProperty, null);
+        refs.RamBar.BeginAnimation(FrameworkElement.WidthProperty, null);
+        if (refs.Shelf is { } shelf)
+        {
+            shelf.CpuBar.BeginAnimation(FrameworkElement.WidthProperty, null);
+            shelf.RamBar.BeginAnimation(FrameworkElement.WidthProperty, null);
+        }
     }
 }

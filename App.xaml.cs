@@ -50,7 +50,7 @@ public partial class App : Application
         Services = services;
     }
 
-    protected override async void OnStartup(StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         try
         {
@@ -83,8 +83,10 @@ public partial class App : Application
                 return;
             }
 
-            if (await HandleSetupOrUninstallAsync(e))
+            if (IsSetupOrUninstall(e.Args))
             {
+                base.OnStartup(e);
+                RunSetupOrUninstallAsync(e).SafeFireAndForget("SETUP-STARTUP");
                 return;
             }
 
@@ -114,21 +116,44 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            CrashReporter.LogCrash("App.OnStartup", ex, "Fatal exception during application startup", isTerminating: true);
-            try
-            {
-                MessageBox.Show(
-                    $"V-Notch encountered a fatal error during startup and must close.\n\nCrash details saved to:\n{CrashReporter.CrashLogPath}\n\nError: {ex.Message}",
-                    "V-Notch Startup Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-            }
-            catch
-            {
-                // Fallback if MessageBox fails
-            }
-            Shutdown(1);
+            HandleStartupFailure(ex);
         }
+    }
+
+    internal static bool IsSetupOrUninstall(string[] args, string? processPath = null)
+    {
+        var exeName = System.IO.Path.GetFileNameWithoutExtension(processPath ?? Environment.ProcessPath ?? "");
+        return args.Contains("--setup") || args.Contains("--uninstall") ||
+            !string.IsNullOrWhiteSpace(TryGetArgumentValue(args, "--setup-source")) ||
+            exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task RunSetupOrUninstallAsync(StartupEventArgs e)
+    {
+        try
+        {
+            await HandleSetupOrUninstallAsync(e);
+        }
+        catch (Exception ex)
+        {
+            HandleStartupFailure(ex);
+        }
+    }
+
+    private void HandleStartupFailure(Exception ex)
+    {
+        CrashReporter.LogCrash("App.OnStartup", ex, "Fatal exception during application startup", isTerminating: true);
+        try
+        {
+            MessageBox.Show(
+                $"V-Notch encountered a fatal error during startup and must close.\n\nCrash details saved to:\n{CrashReporter.CrashLogPath}\n\nError: {ex.Message}",
+                "V-Notch Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch
+        {
+            // The crash report remains available if displaying the error fails.
+        }
+        Shutdown(1);
     }
 
     private async Task<bool> HandleSetupOrUninstallAsync(StartupEventArgs e)

@@ -1,56 +1,41 @@
-using System;
 using System.Text.RegularExpressions;
 
 namespace VNotch.Services;
 
-public static class SensitiveDataScrubber
+public static partial class SensitiveDataScrubber
 {
-    private static readonly Regex AiApiKeyRegex = new(
-        @"\bsk-[A-Za-z0-9_-]{8,}",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private const int MatchTimeoutMilliseconds = 100;
 
-    private static readonly Regex NamedApiKeyRegex = new(
-        @"(?i)((?:[a-z0-9_-]*api[_-]?key|x-goog-api-key)[""']?\s*[:=]\s*[""']?)[^&\s,""';}\]]+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex SpDcRegex = new(
-        @"(?i)(sp_dc=)[^\s;,\r\n""]+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex GoogleApiKeyRegex = new(
-        @"AIza[0-9A-Za-z\-_]{16,40}",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex DpapiRegex = new(
-        @"enc:[A-Za-z0-9+/=]{16,}",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex UrlSecretParamRegex = new(
-        @"(?i)([?&](?:key|apikey|api_key|token|access_token|secret|client_secret)=)[^&\s""']+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex BearerTokenRegex = new(
-        @"(?i)(Bearer\s+)[A-Za-z0-9\-._~+/]+=*",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex PasswordRegex = new(
-        @"(?i)((?:password|passwd|pwd)\s*[:=]\s*)[^\s,;""]+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    // Match whole container values before tokens embedded inside them.
+    // The boundary prevents quadratic retries over long API-key identifiers.
+    [GeneratedRegex(
+        """
+        (?<prefix>(?i:sp_dc=))[^\s;,\r\n"]+
+        |(?<prefix>(?i:\b(?:[a-z0-9_-]*api[_-]?key|x-goog-api-key)["']?\s*[:=]\s*["']?))[^&\s,"';}\]]+
+        |(?<prefix>(?i:[?&](?:key|apikey|api_key|token|access_token|secret|client_secret)=))[^&\s"']+
+        |(?<prefix>(?i:Bearer\s+))[A-Za-z0-9\-._~+/]+=*
+        |(?<prefix>(?i:(?:password|passwd|pwd)\s*[:=]\s*))[^\s,;"]+
+        |\bsk-[A-Za-z0-9_-]{8,}
+        |(?<prefix>AIza)[0-9A-Za-z\-_]{16,40}
+        |(?<prefix>enc:)[A-Za-z0-9+/=]{16,}
+        """,
+        RegexOptions.CultureInvariant | RegexOptions.IgnorePatternWhitespace,
+        MatchTimeoutMilliseconds)]
+    private static partial Regex SecretRegex();
 
     public static string Scrub(string? input)
     {
         if (string.IsNullOrEmpty(input))
             return string.Empty;
 
-        string scrubbed = SpDcRegex.Replace(input, "$1[REDACTED]");
-        scrubbed = AiApiKeyRegex.Replace(scrubbed, "[REDACTED]");
-        scrubbed = NamedApiKeyRegex.Replace(scrubbed, "$1[REDACTED]");
-        scrubbed = GoogleApiKeyRegex.Replace(scrubbed, "AIza[REDACTED]");
-        scrubbed = DpapiRegex.Replace(scrubbed, "enc:[REDACTED]");
-        scrubbed = UrlSecretParamRegex.Replace(scrubbed, "$1[REDACTED]");
-        scrubbed = BearerTokenRegex.Replace(scrubbed, "$1[REDACTED]");
-        scrubbed = PasswordRegex.Replace(scrubbed, "$1[REDACTED]");
-
-        return scrubbed;
+        try
+        {
+            return SecretRegex().Replace(input, "${prefix}[REDACTED]");
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Never return raw input or log the exception (it contains Input).
+            return "[REDACTED: log entry exceeded scrubbing time limit]";
+        }
     }
 }

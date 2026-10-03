@@ -82,6 +82,7 @@ update_settings.ps1
 /Tools/*
 !/Tools/ReportBenchmark/
 !/Tools/StressRunner/
+!/Tools/SystemMonitorLifetimeProbe/
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json

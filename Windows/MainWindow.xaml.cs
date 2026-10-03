@@ -326,7 +326,7 @@ public partial class MainWindow : Window
         InitializeWeatherWidget();
 
         _systemMonitorModule = systemMonitorModule;
-        _systemMonitorModule.StatsUpdated += SystemMonitorModule_StatsUpdated;
+        InitializeSystemMonitorPresenter();
 
         _collapsedWidth = GetCollapsedWidth();
         _collapsedHeight = GetCollapsedHeight();
@@ -624,7 +624,7 @@ public partial class MainWindow : Window
         _privacyModule.StateChanged -= PrivacyModule_StateChanged;
         _notchState.StateChanged -= NotchState_PrivacyVisibilityChanged;
         _weatherModule.WeatherUpdated -= WeatherModule_WeatherUpdated;
-        _systemMonitorModule.StatsUpdated -= SystemMonitorModule_StatsUpdated;
+        DisposeSystemMonitorPresenter();
 
         InputMonitorService.MouseActionTriggered -= GlobalMouseHook_MouseLeftButtonDown;
 

@@ -61,8 +61,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            // Background update checks can fail due to network unavailability or API rate limits; ignore silently to avoid disrupting the user.
-            System.Diagnostics.Debug.WriteLine($"[Update] Background update check failed: {ex.Message}");
+            RuntimeLog.Warn("UPDATE", $"Background update check failed: {ex.Message}");
         }
     }
 
