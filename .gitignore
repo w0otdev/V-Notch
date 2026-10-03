@@ -83,10 +83,13 @@ update_settings.ps1
 !/Tools/Assert-Coverage.ps1
 !/Tools/Assert-ModelAssets.ps1
 !/Tools/Assert-PackageAudit.ps1
+!/Tools/Assert-UpdateCompatibility.ps1
 !/Tools/validate_locales.py
 !/Tools/ReportBenchmark/
+!/Tools/VNotch.Benchmarks/
 !/Tools/StressRunner/
 !/Tools/SystemMonitorLifetimeProbe/
+!/Tools/UpdateCompatibility/
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json
