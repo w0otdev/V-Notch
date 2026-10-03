@@ -11,7 +11,7 @@ public sealed class OnnxModelInputTests
     [Fact]
     public void SmartCropModel_UsesOptimized416InputAndExpectedOutput()
     {
-        string modelPath = Path.Combine(AppContext.BaseDirectory, "Models", "yolo11n.onnx");
+        string modelPath = Path.Combine(AppContext.BaseDirectory, "Models", "yolox_nano.onnx");
         Assert.True(File.Exists(modelPath), $"Model was not copied to {modelPath}");
 
         using var session = new InferenceSession(modelPath);
@@ -19,6 +19,8 @@ public sealed class OnnxModelInputTests
         int[] outputDimensions = session.OutputMetadata.Single().Value.Dimensions;
 
         Assert.Equal(new[] { 1, 3, 416, 416 }, inputDimensions);
-        Assert.Equal(new[] { 1, 84, 3549 }, outputDimensions);
+        Assert.Equal(new[] { 1, 3549, 85 }, outputDimensions);
+        Assert.Equal("c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(modelPath))).ToLowerInvariant());
     }
 }

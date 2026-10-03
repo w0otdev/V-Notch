@@ -292,7 +292,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             int requiredLength = 3 * ModelInputSize * ModelInputSize;
             tensorBuffer = ArrayPool<float>.Shared.Rent(requiredLength);
 
-            var (scale, _, padX, padY) = PreprocessImageFast(source, tensorBuffer);
+            float scale = PreprocessImageFast(source, tensorBuffer);
             var tensor = new DenseTensor<float>(
                 new Memory<float>(tensorBuffer, 0, requiredLength),
                 new[] { 1, 3, ModelInputSize, ModelInputSize });
@@ -303,8 +303,7 @@ public sealed class SmartThumbnailCropService : IDisposable
 
             using var results = _cachedSession.Run(inputs);
             var output = results[0].AsTensor<float>();
-            Detection[] detections = ParseYolov8Output(
-                output, imgWidth, imgHeight, scale, padX, padY).ToArray();
+            Detection[] detections = ParseYoloxOutput(output, imgWidth, imgHeight, scale).ToArray();
 
             AddInferenceCacheEntryLocked(fingerprint, detections);
             return detections;
@@ -331,7 +330,15 @@ public sealed class SmartThumbnailCropService : IDisposable
             EnableCpuMemArena = false
         };
 
-        _cachedSession = new InferenceSession(GetModelPath(), options);
+        var session = new InferenceSession(GetModelPath(), options);
+        if (session.InputMetadata.Count != 1 || session.OutputMetadata.Count != 1 ||
+            !session.InputMetadata.Single().Value.Dimensions.SequenceEqual(new[] { 1, 3, ModelInputSize, ModelInputSize }) ||
+            !session.OutputMetadata.Single().Value.Dimensions.SequenceEqual(new[] { 1, 3549, 85 }))
+        {
+            session.Dispose();
+            throw new InvalidDataException("Smart crop requires the bundled YOLOX-Nano raw-output model.");
+        }
+        _cachedSession = session;
         System.Diagnostics.Debug.WriteLine("[SmartCrop] Model loaded (cached session).");
     }
 
@@ -348,18 +355,14 @@ public sealed class SmartThumbnailCropService : IDisposable
         _inferenceCache[fingerprint] = new InferenceCacheEntry(detections, ++_inferenceCacheAccess);
     }
 
-    private static (float scale, float scaleY, float padX, float padY) PreprocessImageFast(BitmapImage source, float[] tensorBuffer)
+    internal static float PreprocessImageFast(BitmapImage source, float[] tensorBuffer)
     {
         int imgWidth = source.PixelWidth;
         int imgHeight = source.PixelHeight;
 
         float scale = Math.Min((float)ModelInputSize / imgWidth, (float)ModelInputSize / imgHeight);
-        int newWidth = (int)(imgWidth * scale);
-        int newHeight = (int)(imgHeight * scale);
-        float padX = (ModelInputSize - newWidth) / 2f;
-        float padY = (ModelInputSize - newHeight) / 2f;
-        int padXi = (int)padX;
-        int padYi = (int)padY;
+        int newWidth = Math.Max(1, (int)(imgWidth * scale));
+        int newHeight = Math.Max(1, (int)(imgHeight * scale));
 
         var scaled = new TransformedBitmap(source, new ScaleTransform(
             (double)newWidth / imgWidth,
@@ -385,25 +388,22 @@ public sealed class SmartThumbnailCropService : IDisposable
             }
 
             int planeSize = ModelInputSize * ModelInputSize;
-            const float grayVal = 114f / 255f;
-            const float inv255 = 1f / 255f;
+            // Megvii's deployment model expects unnormalized BGR with top-left letterboxing.
+            tensorBuffer.AsSpan(0, 3 * planeSize).Fill(114f);
 
-            tensorBuffer.AsSpan(0, 3 * planeSize).Fill(grayVal);
-
-            for (int y = 0; y < scaledH && (y + padYi) < ModelInputSize; y++)
+            for (int y = 0; y < scaledH && y < ModelInputSize; y++)
             {
-                int tensorY = y + padYi;
                 int rowOffset = y * stride;
-                int tensorRowBase = tensorY * ModelInputSize;
+                int tensorRowBase = y * ModelInputSize;
 
-                for (int x = 0; x < scaledW && (x + padXi) < ModelInputSize; x++)
+                for (int x = 0; x < scaledW && x < ModelInputSize; x++)
                 {
                     int pixelIdx = rowOffset + x * 4;
-                    int tensorIdx = tensorRowBase + (x + padXi);
+                    int tensorIdx = tensorRowBase + x;
 
-                    tensorBuffer[tensorIdx] = pixels[pixelIdx + 2] * inv255;
-                    tensorBuffer[planeSize + tensorIdx] = pixels[pixelIdx + 1] * inv255;
-                    tensorBuffer[2 * planeSize + tensorIdx] = pixels[pixelIdx] * inv255;
+                    tensorBuffer[tensorIdx] = pixels[pixelIdx];
+                    tensorBuffer[planeSize + tensorIdx] = pixels[pixelIdx + 1];
+                    tensorBuffer[2 * planeSize + tensorIdx] = pixels[pixelIdx + 2];
                 }
             }
         }
@@ -412,35 +412,39 @@ public sealed class SmartThumbnailCropService : IDisposable
             ArrayPool<byte>.Shared.Return(pixels);
         }
 
-        return (scale, scale, padXi, padYi);
+        return scale;
     }
 
-    private static List<Detection> ParseYolov8Output(Tensor<float> output, int imgWidth, int imgHeight, float scale, float padX, float padY)
+    internal static List<Detection> ParseYoloxOutput(Tensor<float> output, int imgWidth, int imgHeight, float scale)
     {
-        var detections = new List<Detection>(32);
         var dims = output.Dimensions;
-        int numChannels = dims[1];
-        int numPredictions = dims[2];
-        int numClasses = numChannels - 4;
-        float imgArea = imgWidth * imgHeight;
+        if (dims.Length != 3 || dims[0] != 1 || dims[1] != 3549 || dims[2] != 85)
+            throw new InvalidDataException("Unexpected YOLOX-Nano output shape.");
+        if (imgWidth <= 0 || imgHeight <= 0 || !float.IsFinite(scale) || scale <= 0)
+            throw new ArgumentOutOfRangeException(nameof(scale));
 
-        var context = new PredictionContext(imgWidth, imgHeight, imgArea, scale, padX, padY, numChannels, numPredictions);
-
+        var detections = new List<Detection>(32);
         ReadOnlySpan<float> buffer = output is DenseTensor<float> dense
             ? dense.Buffer.Span
             : ReadOnlySpan<float>.Empty;
-        bool useSpan = buffer.Length >= numChannels * numPredictions;
-
-        for (int i = 0; i < numPredictions; i++)
+        bool useSpan = buffer.Length == 3549 * 85;
+        int prediction = 0;
+        foreach (int stride in new[] { 8, 16, 32 })
         {
-            if (TryExtractPrediction(output, buffer, useSpan, in context, i, out var detection))
+            int gridSize = ModelInputSize / stride;
+            for (int y = 0; y < gridSize; y++)
             {
-                detections.Add(detection);
+                for (int x = 0; x < gridSize; x++, prediction++)
+                {
+                    var context = new PredictionContext(imgWidth, imgHeight, scale, x, y, stride);
+                    if (TryExtractPrediction(output, buffer, useSpan, in context, prediction, out var detection))
+                        detections.Add(detection);
+                }
             }
         }
 
         VNotch.Services.RuntimeLog.Log(LogCategory,
-            $"ParseYolov8: raw={detections.Count} predictions scanned={numPredictions} classes={numClasses}");
+            $"ParseYolox: raw={detections.Count} predictions scanned={prediction} classes=80");
 
         return detections.Count > 1 ? ApplyNms(detections) : detections;
     }
@@ -454,37 +458,45 @@ public sealed class SmartThumbnailCropService : IDisposable
         out Detection detection)
     {
         detection = default;
+        const int channels = 85;
+        int offset = i * channels;
+        float objectness = useSpan ? buffer[offset + 4] : output[0, i, 4];
+        if (!float.IsFinite(objectness) || objectness < PersonConfidenceThreshold || objectness > 1)
+            return false;
         float maxScore = 0f;
         int maxClassId = -1;
 
-        for (int c = 4; c < ctx.NumChannels; c++)
+        for (int c = 5; c < channels; c++)
         {
-            float score = useSpan ? buffer[c * ctx.NumPredictions + i] : output[0, c, i];
-            if (score > maxScore)
+            float score = useSpan ? buffer[offset + c] : output[0, i, c];
+            if (float.IsFinite(score) && score > maxScore && score <= 1)
             {
                 maxScore = score;
-                maxClassId = c - 4;
+                maxClassId = c - 5;
             }
         }
 
         if (maxClassId < 0) return false;
 
         bool isPerson = _personClasses.Contains(maxClassId);
+        maxScore *= objectness;
         float threshold = isPerson ? PersonConfidenceThreshold : ConfidenceThreshold;
         if (maxScore < threshold) return false;
 
-        float cx = useSpan ? buffer[i] : output[0, 0, i];
-        float cy = useSpan ? buffer[ctx.NumPredictions + i] : output[0, 1, i];
-        float w = useSpan ? buffer[2 * ctx.NumPredictions + i] : output[0, 2, i];
-        float h = useSpan ? buffer[3 * ctx.NumPredictions + i] : output[0, 3, i];
+        float cx = ((useSpan ? buffer[offset] : output[0, i, 0]) + ctx.GridX) * ctx.Stride;
+        float cy = ((useSpan ? buffer[offset + 1] : output[0, i, 1]) + ctx.GridY) * ctx.Stride;
+        float w = MathF.Exp(useSpan ? buffer[offset + 2] : output[0, i, 2]) * ctx.Stride;
+        float h = MathF.Exp(useSpan ? buffer[offset + 3] : output[0, i, 3]) * ctx.Stride;
+        if (!float.IsFinite(cx) || !float.IsFinite(cy) || !float.IsFinite(w) || !float.IsFinite(h))
+            return false;
 
-        float x1 = Math.Clamp((cx - w / 2f - ctx.PadX) / ctx.Scale, 0, ctx.ImgWidth);
-        float y1 = Math.Clamp((cy - h / 2f - ctx.PadY) / ctx.Scale, 0, ctx.ImgHeight);
-        float x2 = Math.Clamp((cx + w / 2f - ctx.PadX) / ctx.Scale, 0, ctx.ImgWidth);
-        float y2 = Math.Clamp((cy + h / 2f - ctx.PadY) / ctx.Scale, 0, ctx.ImgHeight);
+        float x1 = Math.Clamp((cx - w / 2f) / ctx.Scale, 0, ctx.ImgWidth);
+        float y1 = Math.Clamp((cy - h / 2f) / ctx.Scale, 0, ctx.ImgHeight);
+        float x2 = Math.Clamp((cx + w / 2f) / ctx.Scale, 0, ctx.ImgWidth);
+        float y2 = Math.Clamp((cy + h / 2f) / ctx.Scale, 0, ctx.ImgHeight);
 
         float bboxArea = (x2 - x1) * (y2 - y1);
-        float areaRatio = bboxArea / ctx.ImgArea;
+        float areaRatio = bboxArea / ((float)ctx.ImgWidth * ctx.ImgHeight);
         float minRatio = isPerson ? MinPersonAreaRatio : MinAreaRatio;
 
         if (areaRatio < minRatio || x2 - x1 < 5 || y2 - y1 < 5) return false;
@@ -1038,7 +1050,7 @@ public sealed class SmartThumbnailCropService : IDisposable
     private static string GetModelPath()
     {
         string appDir = AppDomain.CurrentDomain.BaseDirectory;
-        return Path.Combine(appDir, "Models", "yolo11n.onnx");
+        return Path.Combine(appDir, "Models", "yolox_nano.onnx");
     }
 
     public void Dispose()
@@ -1090,12 +1102,10 @@ public sealed class SmartThumbnailCropService : IDisposable
     private readonly record struct PredictionContext(
         int ImgWidth,
         int ImgHeight,
-        float ImgArea,
         float Scale,
-        float PadX,
-        float PadY,
-        int NumChannels,
-        int NumPredictions);
+        int GridX,
+        int GridY,
+        int Stride);
 
     private readonly record struct CellBounds(int StartX, int StartY, int EndX, int EndY);
 

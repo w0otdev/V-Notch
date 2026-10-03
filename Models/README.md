@@ -1,36 +1,26 @@
-# Smart Thumbnail Crop - YOLO11n ONNX Model
+# Smart crop model: YOLOX-Nano
 
-## Setup
+The bundled, unmodified `yolox_nano.onnx` comes from
+[Megvii-BaseDetection/YOLOX release 0.1.1rc0](https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0).
+Upstream publishes YOLOX under Apache-2.0. The complete upstream license and
+copyright notice are in `YOLOX-LICENSE.txt`; exact asset provenance is in
+`model-provenance.json`.
 
-Place the `yolo11n.onnx` model file in this directory.
+- SHA-256: `c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d`
+- Size: 3,659,407 bytes
+- Input: float32 `[1, 3, 416, 416]`, **BGR 0–255**, CHW, aspect-preserving resize,
+  top-left letterbox padded with 114. No division by 255.
+- Output: `[1, 3549, 85]`, raw XY grid offsets and log WH at strides 8/16/32;
+  confidence is objectness multiplied by the class probability.
+- Classes: 80 COCO categories; the crop prioritizes people, applies NMS, then
+  falls back to the existing text/saliency analysis if no suitable detection exists.
 
-### How to obtain the model:
+`Tools/Assert-ModelAssets.ps1` checks the allowlist, size, hash and license in CI
+and again on the published installer payload. Shape, preprocessing and decoding
+are covered by `OnnxModelInputTests` and `YoloxCropTests`. Model changes require a
+new provenance review and corresponding preprocessing/decoder tests.
 
-**Export from Ultralytics**
-```bash
-pip install ultralytics
-python -c "from ultralytics import YOLO; model = YOLO('yolo11n.pt'); model.export(format='onnx', imgsz=416, opset=13, simplify=True)"
-```
-
-The export must use `imgsz=416` — the app preprocesses to a fixed 416x416
-letterbox input and the model input test asserts this shape.
-
-## Model Details
-
-- **Architecture**: YOLO11 Nano (smallest variant)
-- **Input**: 416x416 RGB image (NCHW format, letterboxed, /255 normalized)
-- **Output**: [1, 84, 3549] tensor (4 bbox + 80 class scores × 3549 predictions)
-- **Size**: ~10.2MB
-- **Inference**: ~15-25ms on modern CPU
-- **Classes**: 80 COCO classes (person, car, etc.)
-
-## How it works
-
-The smart crop feature:
-1. Runs YOLO11n inference on the thumbnail
-2. Detects the main subject (prioritizes "person" class)
-3. Crops the square region centered on the detected subject
-4. Falls back to text-region/saliency analysis if no subject detected
-
-This ensures music thumbnails (especially YouTube 16:9) are cropped
-to show the artist/main content rather than arbitrary center cropping.
+The Ultralytics YOLO11 model has been removed from the current source and
+distribution. Git history and previously published installers can still contain
+it and require a separate distribution review. Do not restore that asset without
+documented authorization and a review of the applicable obligations.

@@ -1,0 +1,18 @@
+{
+  "name": "YOLOX-Nano",
+  "file": "yolox_nano.onnx",
+  "publisher": "Megvii-BaseDetection",
+  "license": "Apache-2.0",
+  "release": "0.1.1rc0",
+  "source": "https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx",
+  "sha256": "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d",
+  "bytes": 3659407,
+  "retrieved": "2026-10-03",
+  "modified": false,
+  "licenseSource": "https://github.com/Megvii-BaseDetection/YOLOX/blob/6ddff4824372906469a7fae2dc3206c7aa4bbaee/LICENSE",
+  "deploymentReferenceCommit": "6ddff4824372906469a7fae2dc3206c7aa4bbaee",
+  "input": [1, 3, 416, 416],
+  "output": [1, 3549, 85],
+  "preprocessing": "BGR float32 0..255, CHW, aspect-preserving resize, top-left letterbox filled with 114",
+  "decoding": "raw XY grid offsets and log WH, strides 8/16/32; confidence = objectness * class probability"
+}
