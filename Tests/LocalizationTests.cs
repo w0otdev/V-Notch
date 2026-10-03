@@ -57,7 +57,8 @@ public sealed class LocalizationTests
         var allowedTechnicalLabels = new HashSet<string>(StringComparer.Ordinal)
         {
             "settings.skin.liquidglass",
-            "settings.youtubeApiKey"
+            "settings.youtubeApiKey",
+            "greeting.hello" // Greetings intentionally fall back to English outside Vietnamese.
         };
         var untranslated = new List<string>();
 
@@ -86,7 +87,8 @@ public sealed class LocalizationTests
         var allowedTechnicalLabels = new HashSet<string>(StringComparer.Ordinal)
         {
             "settings.skin.liquidglass",
-            "settings.youtubeApiKey"
+            "settings.youtubeApiKey",
+            "greeting.hello" // Greetings intentionally fall back to English outside Vietnamese.
         };
         var nonNativeValues = new List<string>();
 

@@ -1,6 +1,7 @@
 import json
 import re
 import sys
+from pathlib import Path
 
 def validate_locale(lang_code):
     with open('Locales/en.json', encoding='utf-8') as f:
@@ -44,7 +45,7 @@ def validate_locale(lang_code):
     return True, f"{lang_code} passed all checks ({len(target_keys)} keys)"
 
 if __name__ == '__main__':
-    langs = sys.argv[1:] if len(sys.argv) > 1 else ['zh', 'pt', 'ru', 'ar', 'ko', 'it', 'tr', 'pl', 'nl', 'id']
+    langs = sys.argv[1:] if len(sys.argv) > 1 else sorted(p.stem for p in Path('Locales').glob('*.json'))
     all_ok = True
     for l in langs:
         ok, msg = validate_locale(l)

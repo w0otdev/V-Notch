@@ -25,12 +25,17 @@ public sealed class GreetingAcceptanceTests
     [Theory]
     [MemberData(nameof(LanguageCases))]
     public void OnlyVietnameseUsesXinChaoAndAllOtherLanguagesUseHello(string? language, bool vietnamese)
-        => Assert.Equal(vietnamese, StartupGreeting.UsesVietnamese(language));
+    {
+        Assert.Equal(vietnamese, StartupGreeting.UsesVietnamese(language));
+        Assert.Equal(!vietnamese, StartupGreeting.UsesEnglishHandwriting(language));
+    }
 
     [Theory]
     [InlineData("vi")]
     [InlineData("en")]
     [InlineData("ja")]
+    [InlineData("ar")]
+    [InlineData("de")]
     public void NewWidgetsAreHiddenAsAGroupAndTheirStateSurvivesGreeting(string language) => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new MainWindowFixture(language);
@@ -45,7 +50,7 @@ public sealed class GreetingAcceptanceTests
         Assert.Equal(0.65, newWidget.Opacity);
         Assert.Equal(Visibility.Collapsed, disabledWidget.Visibility);
         Assert.Equal(language == "vi" ? Visibility.Visible : Visibility.Collapsed, window.XinChaoPathContainer.Visibility);
-        Assert.Equal(language == "vi" ? Visibility.Collapsed : Visibility.Visible, window.HelloPathContainer.Visibility);
+        Assert.Equal(language != "vi" ? Visibility.Visible : Visibility.Collapsed, window.HelloPathContainer.Visibility);
         foreach (var widget in new FrameworkElement[] { window.VolumeIndicatorContainer, window.CollapsedContent,
             window.NavIconsPanel, window.MusicCompactContent, window.AudioContent, window.PrivacyIndicatorPanel })
             Assert.True(IsDescendantOf(widget, window.NotchLiveContent));
@@ -119,11 +124,22 @@ public sealed class GreetingAcceptanceTests
     [InlineData("vi", 96)]
     [InlineData("vi", 144)]
     [InlineData("vi", 192)]
+    [InlineData("ar", 96)]
+    [InlineData("ar", 144)]
+    [InlineData("ar", 192)]
+    [InlineData("de", 96)]
+    [InlineData("de", 144)]
+    [InlineData("de", 192)]
+    [InlineData("ru", 96)]
+    [InlineData("ru", 144)]
+    [InlineData("ru", 192)]
     public void GreetingGeometryRendersInsideViewportAt100150And200Percent(string language, int dpi) => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new MainWindowFixture(language);
         var window = fixture.Window;
         Invoke(window, "PlayGreetingAnimation");
+        Assert.Equal(language == "ar" ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
+        Assert.Equal(language != "vi" ? Visibility.Visible : Visibility.Collapsed, window.HelloPathContainer.Visibility);
         foreach (var path in Paths(window))
         {
             path.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
@@ -142,8 +158,15 @@ public sealed class GreetingAcceptanceTests
             drawing.DrawRectangle(Brushes.Black, null, new Rect(0, 0, width, height));
             drawing.DrawRectangle(new VisualBrush(window.GreetingOverlay)
             {
-                ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, width, height),
-                ViewportUnits = BrushMappingMode.Absolute, Viewport = new Rect(0, 0, width, height), Stretch = Stretch.None
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Viewbox = new Rect(0, 0, width, height),
+                ViewportUnits = BrushMappingMode.Absolute,
+                Viewport = new Rect(0, 0, width, height),
+                Stretch = Stretch.None
+                // The visual inherits RTL; the DrawingVisual destination is LTR.
+                ,
+                RelativeTransform = window.GreetingOverlay.FlowDirection == FlowDirection.RightToLeft
+                    ? new ScaleTransform(-1, 1, .5, .5) : Transform.Identity
             }, null, new Rect(0, 0, width, height));
         }
         double scale = dpi / 96d;
@@ -169,6 +192,22 @@ public sealed class GreetingAcceptanceTests
             using var stream = File.Create(System.IO.Path.Combine(artifacts, $"greeting-{language}-{(int)(scale * 100)}.png"));
             encoder.Save(stream);
         }
+    });
+
+    [Theory]
+    [InlineData("de", "Datenschutzeinstellungen und Batteriekapazität")]
+    [InlineData("ru", "Настройки конфиденциальности и ёмкость аккумулятора")]
+    public void CompactLabelsAreBoundedAndTheirTooltipRetainsTheFullTranslation(string language, string text) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new MainWindowFixture(language);
+        var label = fixture.Window.BluetoothDeviceName;
+        label.Text = text;
+        label.Measure(new Size(90, 40));
+        label.Arrange(new Rect(0, 0, 90, 40));
+        label.UpdateLayout();
+        Assert.Equal(TextTrimming.CharacterEllipsis, label.TextTrimming);
+        Assert.True(label.DesiredSize.Width <= 90);
+        Assert.Equal(text, label.ToolTip);
     });
 
     private static IEnumerable<System.Windows.Shapes.Path> Paths(MainWindow window) =>
@@ -201,23 +240,32 @@ public sealed class GreetingAcceptanceTests
         Dispatcher.PushFrame(frame);
     }
 
-    private sealed class MainWindowFixture : IDisposable
+    internal sealed class MainWindowFixture : IDisposable
     {
         private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-greeting-" + Guid.NewGuid().ToString("N"));
         private readonly ServiceProvider _provider;
         internal MainWindow Window { get; }
-        internal MainWindowFixture(string language)
+        internal MainWindowFixture(string language, bool greeting = true, Action<NotchSettings>? configureSettings = null)
         {
+            Loc.SetLanguage(language);
             var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
             app.Resources["SFProText"] = new FontFamily("Segoe UI");
             app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
             var settings = new SettingsService(System.IO.Path.Combine(_directory, "settings.json"), _ => { });
-            settings.Save(new NotchSettings
+            var options = new NotchSettings
             {
-                Language = language, Width = 300, Height = 40, CornerRadius = 20,
-                EnableHelloGreeting = true, EnableSpotlight = false, EnableWeather = false, AutoCheckUpdates = false
-            });
+                Language = language,
+                Width = 300,
+                Height = 40,
+                CornerRadius = 20,
+                EnableHelloGreeting = greeting,
+                EnableSpotlight = false,
+                EnableWeather = false,
+                AutoCheckUpdates = false
+            };
+            configureSettings?.Invoke(options);
+            settings.Save(options);
             var services = new ServiceCollection();
             var configure = typeof(App).GetMethod("ConfigureServices", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)!;
             configure.Invoke(configure.IsStatic ? null : RuntimeHelpers.GetUninitializedObject(typeof(App)), [services]);
@@ -238,6 +286,7 @@ public sealed class GreetingAcceptanceTests
             string expectedPrefix = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-greeting-");
             Assert.StartsWith(expectedPrefix, System.IO.Path.GetFullPath(_directory), StringComparison.OrdinalIgnoreCase);
             if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
+            Loc.SetLanguage("en");
         }
     }
 }

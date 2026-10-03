@@ -19,10 +19,14 @@ public static class Loc
     private static readonly Dictionary<string, IReadOnlyList<string>> TranslationsByText = InitializeTranslations();
 
     public static string CurrentLanguage => _currentLanguage;
+    public static event Action? LanguageChanged;
 
     public static void SetLanguage(string language)
     {
-        _currentLanguage = _strings.ContainsKey(language) ? language : "en";
+        string next = _strings.ContainsKey(language) ? language : "en";
+        if (string.Equals(next, _currentLanguage, StringComparison.OrdinalIgnoreCase)) return;
+        _currentLanguage = next;
+        LanguageChanged?.Invoke();
     }
 
     public static CultureInfo GetCulture()

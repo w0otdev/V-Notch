@@ -2,7 +2,9 @@ namespace VNotch.Services;
 
 internal static class StartupGreeting
 {
-    // Product policy: Vietnamese handwriting for vi, English for every other locale.
+    // Vietnamese uses Xin Chao; every other locale falls back to Hello.
     internal static bool UsesVietnamese(string? language) =>
         string.Equals(language?.Trim(), "vi", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool UsesEnglishHandwriting(string? language) => !UsesVietnamese(language);
 }
