@@ -51,12 +51,18 @@ public sealed class SpotlightAiTests
     [InlineData(401, "spotlight.ai.authError")]
     [InlineData(429, "spotlight.ai.rateError")]
     [InlineData(404, "spotlight.ai.modelError")]
-    [InlineData(500, "spotlight.ai.networkError")]
+    [InlineData(500, "spotlight.ai.serverError")]
+    [InlineData(400, "spotlight.ai.requestError")]
+    [InlineData(403, "spotlight.ai.permissionError")]
+    [InlineData(402, "spotlight.ai.billingError")]
+    [InlineData(413, "spotlight.ai.contextError")]
+    [InlineData(504, "spotlight.ai.requestTimeout")]
     public async Task ErrorsDoNotExposeProviderResponse(int status, string error)
     {
         using var client = new HttpClient(new Handler((_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent("sensitive response") })));
         var ex = await Assert.ThrowsAsync<SpotlightAiException>(() => new SpotlightAiService(client).SendAsync(Settings("OpenAI"), [new("user", "hi")], default));
         Assert.Equal(error, ex.Message);
+        Assert.Equal($"HTTP {status}", ex.Diagnostic);
     }
 
     [Theory]
@@ -68,6 +74,28 @@ public sealed class SpotlightAiTests
         using var client = new HttpClient(new Handler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) })));
         var ex = await Assert.ThrowsAsync<SpotlightAiException>(() => new SpotlightAiService(client).SendAsync(Settings("OpenAI"), [new("user", "hi")], default));
         Assert.Equal("spotlight.ai.emptyError", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("{\"code\":\"insufficient_quota\"}", "spotlight.ai.billingError")]
+    [InlineData("{\"code\":\"context_length_exceeded\"}", "spotlight.ai.contextError")]
+    [InlineData("{\"type\":\"overloaded_error\"}", "spotlight.ai.serverError")]
+    [InlineData("{\"code\":403}", "spotlight.ai.permissionError")]
+    [InlineData("{\"code\":{},\"type\":42}", "spotlight.ai.providerError")]
+    [InlineData("{\"code\":\"secret\\r\\nforged log\"}", "spotlight.ai.providerError")]
+    public async Task StreamErrorsAreClassifiedWithoutExposingPayload(string error, string key)
+    {
+        string body = "data: {\"error\":" + error + "}\n\n";
+        using var client = new HttpClient(new Handler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) })));
+        var ex = await Assert.ThrowsAsync<SpotlightAiException>(async () =>
+        {
+            await foreach (var _ in new SpotlightAiService(client).StreamAsync(Settings("OpenAI"), [new("user", "private prompt")], default)) { }
+        });
+        Assert.Equal(key, ex.Message);
+        Assert.DoesNotContain("secret", ex.ToString() + ex.Diagnostic);
+        Assert.DoesNotContain("forged", ex.ToString() + ex.Diagnostic);
+        Assert.DoesNotContain("private prompt", ex.ToString() + ex.Diagnostic);
     }
 
     [Fact]

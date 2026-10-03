@@ -1,4 +1,9 @@
 {
+  "spotlight.ai.permissionError": "Access denied. Check API account and model permissions.",
+  "spotlight.ai.billingError": "API credit or quota is exhausted. Check billing and account limits.",
+  "spotlight.ai.requestTimeout": "The AI request timed out. Any received text is kept; try again.",
+  "spotlight.ai.contextError": "The request is too large. Shorten your message or start a new chat.",
+  "spotlight.ai.requestError": "Invalid request. Check the model settings or shorten the conversation.",
   "spotlight.ai.usage.balanceUpdated": "Balance updated: {0}",
   "spotlight.ai.usage.reset": "Resets: {0}",
   "spotlight.ai.agent": "{0} assistant",

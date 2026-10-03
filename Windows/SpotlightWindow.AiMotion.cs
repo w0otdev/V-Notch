@@ -296,15 +296,31 @@ public partial class SpotlightWindow
             FrameworkElement destination = AiHistoryPanel.Visibility == Visibility.Visible
                 ? AiHistoryPanel
                 : AiWelcome.Visibility == Visibility.Visible ? AiWelcome : AiTranscriptScroll;
-            AnimateAiPageReveal(destination);
+            if (ReferenceEquals(destination, AiWelcome)) AnimateAiFade(destination);
+            else AnimateAiPageReveal(destination);
         }
         ScheduleContentResize();
         return Task.CompletedTask;
     }
 
+    private static void AnimateAiFade(FrameworkElement element)
+    {
+        element.BeginAnimation(OpacityProperty, null);
+        element.Opacity = 1;
+        element.RenderTransform = Transform.Identity;
+        if (AnimationConfig.ReduceMotion) return;
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240))
+        { FillBehavior = FillBehavior.Stop };
+        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
+        element.BeginAnimation(OpacityProperty, fade);
+    }
+
     private static void AnimateAiPageReveal(FrameworkElement element)
     {
-        bool interrupted = element.HasAnimatedProperties;
+        // A stopped FillBehavior.Stop clock can remain attached after completion.
+        // Only continue an in-flight fade; completed reveals must start anew.
+        bool interrupted = element.HasAnimatedProperties && element.Opacity < 1;
         double opacity = interrupted ? element.Opacity : 0;
         var previous = element.RenderTransform as TransformGroup;
         var oldScale = previous?.Children.OfType<ScaleTransform>().FirstOrDefault();
@@ -341,7 +357,9 @@ public partial class SpotlightWindow
 
     private static void AnimateAiArrival(FrameworkElement element, double distance, int milliseconds)
     {
-        bool interrupted = element.HasAnimatedProperties;
+        // A stopped FillBehavior.Stop clock can remain attached after completion.
+        // Only continue an in-flight fade; completed reveals must start anew.
+        bool interrupted = element.HasAnimatedProperties && element.Opacity < 1;
         double opacity = interrupted ? element.Opacity : 0.65;
         var translate = element.RenderTransform as TranslateTransform;
         double from = interrupted && translate != null ? translate.Y : Math.Min(distance, 6);

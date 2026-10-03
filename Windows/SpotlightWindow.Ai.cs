@@ -14,6 +14,9 @@ public partial class SpotlightWindow
     private CancellationTokenSource? _aiRequest;
     private string _aiConversationProvider = "";
     private string _aiConversationModel = "";
+    private string _aiStatusKey = "spotlight.ai.hint";
+    private object[] _aiStatusArgs = [];
+    private string? _aiStatusDiagnostic;
 
     internal static bool IsAiToggle(Key key, ModifierKeys modifiers) => key == Key.Tab && modifiers == ModifierKeys.None;
 
@@ -100,13 +103,43 @@ public partial class SpotlightWindow
         System.Windows.Automation.AutomationProperties.SetName(AiSendButton, Loc.Get("spotlight.ai.send"));
         AiStopButton.ToolTip = Loc.Get("spotlight.ai.stop");
         System.Windows.Automation.AutomationProperties.SetName(AiStopButton, Loc.Get("spotlight.ai.stop"));
-        if (_aiRequest == null) SetAiStatus(Loc.Get("spotlight.ai.hint"));
+        RenderAiStatus();
     }
 
-    private void SetAiStatus(string text)
+    private void SetAiStatus(string key, params object[] args)
     {
+        _aiStatusKey = key;
+        _aiStatusArgs = args;
+        _aiStatusDiagnostic = null;
+        RenderAiStatus();
+        // Animate new error events only, not localization or diagnostic refreshes.
+        if (_aiMode && AiStatus.Tag is "error")
+        {
+            PlayShake();
+            AnimateAiFade(AiStatus);
+        }
+        else
+        {
+            AiStatus.BeginAnimation(OpacityProperty, null);
+            AiStatus.Opacity = 1;
+            if (AiStatus.RenderTransform is System.Windows.Media.TranslateTransform translate)
+            {
+                translate.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, null);
+                translate.Y = 0;
+            }
+        }
+    }
+
+    private void RenderAiStatus()
+    {
+        string text = Loc.Get(_aiStatusKey, _aiStatusArgs) +
+            (_aiStatusDiagnostic is { } diagnostic ? $" ({diagnostic})" : "");
+        AiStatus.Tag = _aiStatusKey.EndsWith("Error", StringComparison.Ordinal) ||
+            _aiStatusKey is "spotlight.ai.configure" or "spotlight.ai.tooLong" or
+                "spotlight.ai.requestTimeout" or "spotlight.ai.timeout" ? "error" : null;
         AiStatus.Text = text;
         AiStatus.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+        if (_aiMode) ScheduleContentResize();
     }
 
     private void UpdateAiSendButtonState()
@@ -182,7 +215,7 @@ public partial class SpotlightWindow
         var config = SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider);
         if (string.IsNullOrWhiteSpace(config.Key) || string.IsNullOrWhiteSpace(config.Model))
         {
-            SetAiStatus(Loc.Get("spotlight.ai.configure"));
+            SetAiStatus("spotlight.ai.configure");
             RefreshAiPanel();
             return;
         }
@@ -195,7 +228,7 @@ public partial class SpotlightWindow
         string prompt = SearchBox.Text.Trim();
         if (prompt.Length > 16000)
         {
-            SetAiStatus(Loc.Get("spotlight.ai.tooLong"));
+            SetAiStatus("spotlight.ai.tooLong");
             return;
         }
         // Keep complete conversation turns and bound the request size.
@@ -216,9 +249,9 @@ public partial class SpotlightWindow
         progressTimer.Tick += (_, _) =>
         {
             if (ReferenceEquals(_aiRequest, cts) && _aiHistory.LastOrDefault()?.Role != "assistant")
-                SetAiStatus(Loc.Get("spotlight.ai.waiting", (int)started.Elapsed.TotalSeconds));
+                SetAiStatus("spotlight.ai.waiting", (int)started.Elapsed.TotalSeconds);
         };
-        SetAiStatus(Loc.Get("spotlight.ai.waiting", 0));
+        SetAiStatus("spotlight.ai.waiting", 0);
         progressTimer.Start();
         System.Windows.Controls.RichTextBox? liveView = null;
         string receivedText = "";
@@ -285,7 +318,7 @@ public partial class SpotlightWindow
                 revealCaughtUp = false;
                 if (AnimationConfig.ReduceMotion) RevealText(finish: true);
                 UpdateAiMetadata();
-                SetAiStatus(Loc.Get("spotlight.ai.streaming"));
+                SetAiStatus("spotlight.ai.streaming");
             }
             cts.CancelAfter(Timeout.InfiniteTimeSpan);
             while (!revealCaughtUp && ReferenceEquals(_aiRequest, cts))
@@ -297,23 +330,25 @@ public partial class SpotlightWindow
                     IsIncomplete = false,
                     GeminiParts = settings.SpotlightAiProvider == "Gemini" ? geminiParts.ToArray() : null
                 };
-            SetAiStatus(Loc.Get("spotlight.ai.hint"));
+            RuntimeLog.Debug("SPOTLIGHT-AI", $"stream completed; elapsedMs={started.ElapsedMilliseconds}");
+            SetAiStatus("spotlight.ai.hint");
         }
         catch (Exception ex)
         {
             HideAiThinking();
             if (!ReferenceEquals(_aiRequest, cts)) return;
             cts.Cancel();
-            RuntimeLog.Warn("SPOTLIGHT-AI", $"{settings.SpotlightAiProvider} request ended after {started.Elapsed.TotalSeconds:F0}s ({ex.GetType().Name}; {(ex as SpotlightAiException)?.Diagnostic ?? "no provider status"})");
+            RuntimeLog.Warn("SPOTLIGHT-AI", $"request ended after {started.Elapsed.TotalSeconds:F0}s ({ex.GetType().Name}; {(ex as SpotlightAiException)?.Diagnostic ?? "no provider status"})");
             // Failed/cancelled requests are retryable without duplicate user turns.
             if (_aiHistory.LastOrDefault()?.Role == "user")
             {
                 _aiHistory.Remove(pending);
                 if (string.IsNullOrEmpty(SearchBox.Text)) SearchBox.Text = prompt;
             }
-            SetAiStatus(Loc.Get(ex is SpotlightAiException ? ex.Message :
-                ex is TimeoutException or OperationCanceledException ? "spotlight.ai.timeout" : "spotlight.ai.networkError") +
-                (ex is SpotlightAiException { Diagnostic: { } diagnostic } ? $" ({diagnostic})" : ""));
+            SetAiStatus(ex is SpotlightAiException ? ex.Message :
+                ex is TimeoutException or OperationCanceledException ? "spotlight.ai.requestTimeout" : "spotlight.ai.networkError");
+            _aiStatusDiagnostic = (ex as SpotlightAiException)?.Diagnostic;
+            RenderAiStatus();
         }
         finally
         {
@@ -347,7 +382,7 @@ public partial class SpotlightWindow
             if (string.IsNullOrEmpty(SearchBox.Text)) SearchBox.Text = pending.Content;
         }
         SaveAiHistory();
-        SetAiStatus(Loc.Get("spotlight.ai.cancelled"));
+        SetAiStatus("spotlight.ai.cancelled");
         RenderAiHistory();
         if (_aiMode) RefreshAiPanel();
     }
@@ -374,7 +409,7 @@ public partial class SpotlightWindow
         _aiHistory.Clear();
         RenderAiHistory();
         SearchBox.Clear();
-        SetAiStatus(Loc.Get("spotlight.ai.hint"));
+        SetAiStatus("spotlight.ai.hint");
         RefreshAiPanel();
         SearchBox.Focus();
     }

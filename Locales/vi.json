@@ -1,4 +1,9 @@
 {
+  "spotlight.ai.permissionError": "Không có quyền truy cập. Kiểm tra quyền của tài khoản API và model.",
+  "spotlight.ai.billingError": "Đã hết số dư hoặc hạn mức API. Kiểm tra thanh toán và hạn mức tài khoản.",
+  "spotlight.ai.requestTimeout": "Yêu cầu AI hết thời gian chờ. Phần đã nhận được giữ lại; hãy thử lại.",
+  "spotlight.ai.contextError": "Yêu cầu quá dài. Rút ngắn tin nhắn hoặc tạo hội thoại mới.",
+  "spotlight.ai.requestError": "Yêu cầu không hợp lệ. Kiểm tra cài đặt model hoặc rút ngắn hội thoại.",
   "spotlight.ai.usage.balanceUpdated": "Số dư cập nhật lúc: {0}",
   "spotlight.ai.usage.reset": "Đặt lại: {0}",
   "spotlight.ai.agent": "Trợ lý {0}",

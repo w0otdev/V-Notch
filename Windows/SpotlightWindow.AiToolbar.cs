@@ -28,7 +28,7 @@ public partial class SpotlightWindow
         string text = string.Join("\n\n", _aiHistory.Select(m => m.Content));
         if (TryCopyToClipboard(text))
         {
-            AiStatus.Text = Loc.Get("spotlight.ai.copied");
+            SetAiStatus("spotlight.ai.copied");
             var originalContent = AiCopyButton.Content;
             AiCopyButton.Content = new TextBlock
             {

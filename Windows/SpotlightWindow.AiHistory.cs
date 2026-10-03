@@ -46,7 +46,7 @@ public partial class SpotlightWindow
         entry.Model = _aiConversationModel;
         if (_aiMode) entry.Draft = SearchBox.Text;
         entry.UpdatedUtc = DateTime.UtcNow;
-        if (!_chatStore.Save(_savedChats)) AiStatus.Text = Loc.Get("spotlight.ai.saveError");
+        if (!_chatStore.Save(_savedChats)) SetAiStatus("spotlight.ai.saveError");
     }
 
     private async void AiHistory_Click(object sender, RoutedEventArgs e)
@@ -169,7 +169,7 @@ public partial class SpotlightWindow
                     card.ClipToBounds = true;
                     _savedChats.Remove(chat);
                     if (chat.Id == _chatId) { _aiHistory.Clear(); _chatId = Guid.NewGuid().ToString("N"); SearchBox.Clear(); RenderAiHistory(); }
-                    if (!_chatStore.Save(_savedChats)) AiStatus.Text = Loc.Get("spotlight.ai.saveError");
+                    if (!_chatStore.Save(_savedChats)) SetAiStatus("spotlight.ai.saveError");
 
                     if (!AnimationConfig.ReduceMotion)
                     {
@@ -240,7 +240,7 @@ public partial class SpotlightWindow
                         CloseAiHistory();
                         RenderAiHistory();
                         RefreshAiPanel();
-                        AiStatus.Text = Loc.Get("spotlight.ai.hint");
+                        SetAiStatus("spotlight.ai.hint");
 
                         SearchBox.Focus();
                     });
@@ -280,7 +280,16 @@ public partial class SpotlightWindow
     }
     private void UpdateAiWelcome()
     {
-        AiWelcome.Visibility = _aiHistory.Count == 0 && AiHistoryPanel.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        bool wasVisible = AiWelcome.Visibility == Visibility.Visible;
+        bool showWelcome = _aiHistory.Count == 0 && AiHistoryPanel.Visibility != Visibility.Visible;
+        AiWelcome.Visibility = showWelcome ? Visibility.Visible : Visibility.Collapsed;
+        // A failed first request restores this whole surface, not just the status line.
+        // Only reveal on entry so normal metadata/input refreshes do not restart it.
+        if (showWelcome && !wasVisible && _aiMode && IsSpotlightOpen && !_isClosing)
+        {
+            AnimateAiFade(AiHeader);
+            AnimateAiFade(AiWelcome);
+        }
     }
     private void AiSuggestion_Click(object sender, RoutedEventArgs e)
     {

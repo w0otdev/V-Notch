@@ -96,6 +96,7 @@ internal sealed partial class SpotlightAiService
         using var response = await OpenStreamAsync(settings, history, token).ConfigureAwait(false);
         var usage = AiUsageSnapshot.FromHeaders(response, settings.SpotlightAiProvider);
         onUsage?.Invoke(usage);
+        RuntimeLog.Debug("SPOTLIGHT-AI", $"response; HTTP {(int)response.StatusCode}");
         if (!response.IsSuccessStatusCode)
             throw ProviderError((int)response.StatusCode);
         using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
@@ -119,10 +120,7 @@ internal sealed partial class SpotlightAiService
                     onUsage?.Invoke(usage);
                     if (root.TryGetProperty("error", out var error))
                     {
-                        int code = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var value) && value.TryGetInt32(out int parsed) ? parsed : 0;
-                        string? errorType = error.ValueKind == JsonValueKind.Object && error.TryGetProperty("type", out var t) ? t.GetString() : null;
-                        if (code == 0) code = errorType switch { "overloaded_error" => 503, "rate_limit_error" => 429, "authentication_error" => 401, "invalid_request_error" => 400, _ => 0 };
-                        throw ProviderError(code, streaming: true);
+                        throw StreamError(error);
                     }
                     if (settings.SpotlightAiProvider == "Gemini" &&
                         root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0 &&
@@ -157,7 +155,9 @@ internal sealed partial class SpotlightAiService
         for (int attempt = 0; ; attempt++)
         {
             using var request = CreateRequest(settings, history, streaming: true);
+            RuntimeLog.Debug("SPOTLIGHT-AI", $"stream request; attempt={attempt + 1}");
             var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            RuntimeLog.Debug("SPOTLIGHT-AI", $"stream response; attempt={attempt + 1}; HTTP {(int)response.StatusCode}");
             // Retry only explicit unavailability before any response text is consumed.
             if ((int)response.StatusCode != 503 || attempt >= 2) return response;
             var retryAfter = response.Headers.RetryAfter;
@@ -167,19 +167,59 @@ internal sealed partial class SpotlightAiService
             // Respect a long server cooldown by returning the error instead of retrying early.
             if (delay > TimeSpan.FromSeconds(15)) return response;
             response.Dispose();
-            RuntimeLog.Warn("SPOTLIGHT-AI", $"{settings.SpotlightAiProvider} HTTP 503; retry {attempt + 1}/2");
+            RuntimeLog.Warn("SPOTLIGHT-AI", $"HTTP 503; retry {attempt + 1}/2");
             await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(1), token).ConfigureAwait(false);
         }
     }
 
     private static SpotlightAiException ProviderError(int code, bool streaming = false) => new(code switch
     {
-        401 or 403 => "spotlight.ai.authError",
+        401 => "spotlight.ai.authError",
+        403 => "spotlight.ai.permissionError",
+        402 => "spotlight.ai.billingError",
+        408 or 504 => "spotlight.ai.requestTimeout",
+        413 => "spotlight.ai.contextError",
         429 => "spotlight.ai.rateError",
-        400 or 404 => "spotlight.ai.modelError",
+        400 or 422 => "spotlight.ai.requestError",
+        404 => "spotlight.ai.modelError",
         >= 500 => "spotlight.ai.serverError",
         _ => "spotlight.ai.providerError"
     }, code > 0 ? $"{(streaming ? "API" : "HTTP")} {code}" : "API stream error");
+
+    // Only fixed labels and numeric status codes may cross into UI/log diagnostics.
+    // Never include provider messages, request URLs, headers, model IDs or chat text.
+    internal static SpotlightAiException StreamError(JsonElement error)
+    {
+        if (error.ValueKind != JsonValueKind.Object) return ProviderError(0, true);
+        int code = error.TryGetProperty("code", out var value) && value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out int parsed) && parsed is >= 100 and <= 599 ? parsed : 0;
+        string? label = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        if (label == null && error.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String)
+            label = type.GetString();
+        if (label == null && error.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String)
+            label = status.GetString();
+        string? key = label switch
+        {
+            "insufficient_quota" => "spotlight.ai.billingError",
+            "context_length_exceeded" => "spotlight.ai.contextError",
+            _ => null
+        };
+        if (key != null) return new SpotlightAiException(key, "API " + label);
+        if (code == 0) code = label switch
+        {
+            "overloaded_error" or "UNAVAILABLE" => 503,
+            "rate_limit_error" or "rate_limit_exceeded" or "RESOURCE_EXHAUSTED" => 429,
+            "authentication_error" or "invalid_api_key" or "UNAUTHENTICATED" => 401,
+            "permission_error" or "PERMISSION_DENIED" => 403,
+            "invalid_request_error" or "INVALID_ARGUMENT" => 400,
+            "not_found_error" or "model_not_found" or "NOT_FOUND" => 404,
+            "request_too_large" => 413,
+            "DEADLINE_EXCEEDED" => 504,
+            "api_error" or "INTERNAL" => 500,
+            _ => 0
+        };
+        return ProviderError(code, true);
+    }
 
     private static string ReadDelta(JsonElement root, string provider)
     {
@@ -203,16 +243,12 @@ internal sealed partial class SpotlightAiService
 
     internal async Task<string> SendAsync(NotchSettings settings, IReadOnlyList<SpotlightAiMessage> history, CancellationToken token)
     {
+        RuntimeLog.Debug("SPOTLIGHT-AI", "non-stream request started");
         using var request = CreateRequest(settings, history);
         using var response = await _client.SendAsync(request, token).ConfigureAwait(false);
+        RuntimeLog.Debug("SPOTLIGHT-AI", $"response; HTTP {(int)response.StatusCode}");
         if (!response.IsSuccessStatusCode)
-            throw new SpotlightAiException((int)response.StatusCode switch
-            {
-                401 or 403 => "spotlight.ai.authError",
-                429 => "spotlight.ai.rateError",
-                400 or 404 => "spotlight.ai.modelError",
-                _ => "spotlight.ai.networkError"
-            });
+            throw ProviderError((int)response.StatusCode);
         try
         {
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token).ConfigureAwait(false));

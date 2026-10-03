@@ -722,7 +722,7 @@
                     <Grid Grid.Row="0" Margin="0,6,0,7">
                         <StackPanel x:Name="AiPanel" Visibility="Collapsed" Margin="20,10,20,4" TextElement.FontFamily="{StaticResource SFProDisplay}" TextElement.FontWeight="Bold">
                             <!-- Unified macOS Header Toolbar -->
-                            <Grid Margin="0,0,0,10">
+                            <Grid x:Name="AiHeader" Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
@@ -804,6 +804,19 @@
                                 <Button x:Name="AiUsageRefresh" Grid.Column="1" Style="{StaticResource AiToolbarStyle}" Click="AiUsageRefresh_Click" Content="↻" Foreground="#C8C8C8"/>
                             </Grid>
 
+                            <!-- Status stays visible when a failed prompt is restored to the input. -->
+                            <TextBlock x:Name="AiStatus" TextWrapping="Wrap" HorizontalAlignment="Left" TextAlignment="Left" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#A8ACB6"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="Tag" Value="error">
+                                                <Setter Property="Foreground" Value="#FF6B6B"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <!-- Bottom Status and Action Bar (Separator Line Removed) -->
                             <Border x:Name="AiBottomActionRow" Margin="0,2,0,0" Padding="0">
                                 <Grid>
@@ -818,7 +831,6 @@
                                             </Ellipse>
                                             <Ellipse x:Name="AiActivityDot" Width="6" Height="6" Fill="#90959E" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Grid>
-                                        <TextBlock x:Name="AiStatus" TextWrapping="Wrap" MaxWidth="400" Foreground="#A8ACB6" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button x:Name="AiStopButton" Style="{StaticResource AiStopButtonStyle}" Click="AiStop_Click" Margin="0,0,8,0" Visibility="Collapsed"/>

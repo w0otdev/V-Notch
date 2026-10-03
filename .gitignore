@@ -84,3 +84,5 @@ update_settings.ps1
 !/Tools/StressRunner/
 /changes
 build-installer.ps1
+.test-output/ai-errors/Locales/ar.json
+/.test-output
