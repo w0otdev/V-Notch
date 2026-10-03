@@ -1,6 +1,4 @@
 using System;
-using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using Xunit;
@@ -41,25 +39,6 @@ public sealed class SetupLanguagePageTests
         });
     }
 
-    private static void RunOnStaThread(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception ex)
-            {
-                error = ex;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (error != null)
-            ExceptionDispatchInfo.Capture(error).Throw();
-    }
+    // Application and native tray controls share the suite's persistent dispatcher.
+    private static void RunOnStaThread(Action action) => SharedStaTestRunner.Run(action);
 }

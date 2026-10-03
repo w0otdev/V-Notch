@@ -610,6 +610,7 @@ public partial class MainWindow : Window
     {
         if (_cleanedUp) return;
         _cleanedUp = true;
+        DisposeGreetingLifecycle();
         DisposeSessionUnlockFeedback();
         _mediaUpdates.Dispose();
 

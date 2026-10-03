@@ -16,38 +16,26 @@ public partial class MainWindow
     private bool _isGreetingActive = false;
     private DispatcherTimer? _greetingDismissTimer;
     private bool _isVietnameseGreeting = false;
+    private int _greetingGeneration;
 
     private void PlayGreetingAnimation()
     {
-        if (GreetingOverlay == null || HelloPath1 == null || HelloPath2 == null) return;
+        if (_cleanedUp || GreetingOverlay == null || HelloPath1 == null || HelloPath2 == null) return;
+
+        int generation = ++_greetingGeneration;
+        _greetingDismissTimer?.Stop();
+        _greetingDismissTimer = null;
 
         _isGreetingActive = true;
         _isAnimating = true;
-        _isVietnameseGreeting = Loc.CurrentLanguage == "vi";
-
-        CollapsedContent.Opacity = 0;
-        CollapsedContent.Visibility = Visibility.Collapsed;
-        MusicCompactContent.Opacity = 0;
-        MusicCompactContent.Visibility = Visibility.Collapsed;
-        ExpandedContent.Opacity = 0;
-        ExpandedContent.Visibility = Visibility.Collapsed;
-        SecondaryContent.Opacity = 0;
-        SecondaryContent.Visibility = Visibility.Collapsed;
-        TimerContent.Opacity = 0;
-        TimerContent.Visibility = Visibility.Collapsed;
-        PrivacyIndicatorPanel.Opacity = 0;
-        PrivacyIndicatorPanel.Visibility = Visibility.Collapsed;
-        BluetoothNotification.Opacity = 0;
-        BluetoothNotification.Visibility = Visibility.Collapsed;
-        BluetoothDisconnectNotification.Opacity = 0;
-        BluetoothDisconnectNotification.Visibility = Visibility.Collapsed;
-        ChargingNotification.Opacity = 0;
-        ChargingNotification.Visibility = Visibility.Collapsed;
-        VolumeIndicatorContainer.Opacity = 0;
-        VolumeIndicatorContainer.Visibility = Visibility.Collapsed;
+        _isVietnameseGreeting = StartupGreeting.UsesVietnamese(_settings.Language);
+        // Hide the parent, preserving each widget's visibility and bindings.
+        NotchLiveContent.Visibility = Visibility.Hidden;
 
         GreetingOverlay.Visibility = Visibility.Visible;
         GreetingOverlay.Opacity = 1;
+        HelloPathContainer.Visibility = Visibility.Collapsed;
+        XinChaoPathContainer.Visibility = Visibility.Collapsed;
 
         if (_isVietnameseGreeting)
         {
@@ -86,6 +74,7 @@ public partial class MainWindow
 
         heightAnim.Completed += (s, e) =>
         {
+            if (!IsGreetingCurrent(generation)) return;
             if (_isVietnameseGreeting)
                 PlayXinChaoStrokeAnimation();
             else
@@ -119,17 +108,11 @@ public partial class MainWindow
             if (delayMs > 0)
             {
                 path.Opacity = 0;
-                var showTimer = new DispatcherTimer(DispatcherPriority.Render)
-                {
-                    Interval = TimeSpan.FromMilliseconds(delayMs)
-                };
-                var capturedPath = path;
-                showTimer.Tick += (s, e) =>
-                {
-                    ((DispatcherTimer)s!).Stop();
-                    capturedPath.Opacity = 1;
-                };
-                showTimer.Start();
+                var show = new DoubleAnimationUsingKeyFrames();
+                show.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                show.KeyFrames.Add(new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(delayMs))));
+                Timeline.SetDesiredFrameRate(show, AnimationConfig.TargetFps);
+                path.BeginAnimation(OpacityProperty, show);
             }
             else
             {
@@ -164,17 +147,7 @@ public partial class MainWindow
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(dotFadeIn, VNotch.Services.AnimationConfig.TargetFps);
         ViDotI.BeginAnimation(OpacityProperty, dotFadeIn);
 
-        _greetingDismissTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(totalDurationMs)
-        };
-        _greetingDismissTimer.Tick += (s, e) =>
-        {
-            _greetingDismissTimer.Stop();
-            _greetingDismissTimer = null;
-            DismissGreeting();
-        };
-        _greetingDismissTimer.Start();
+        ScheduleGreetingDismiss(TimeSpan.FromMilliseconds(totalDurationMs));
     }
 
     private static void PreparePath(Path path)
@@ -224,6 +197,7 @@ public partial class MainWindow
 
     private void PlayHelloStrokeAnimation()
     {
+        int generation = _greetingGeneration;
         double path1Length = (double)HelloPath1.Tag;
         double path2Length = (double)HelloPath2.Tag;
 
@@ -246,17 +220,7 @@ public partial class MainWindow
 
         path2Anim.Completed += (s, e) =>
         {
-            _greetingDismissTimer = new DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(1500)
-            };
-            _greetingDismissTimer.Tick += (s2, e2) =>
-            {
-                _greetingDismissTimer.Stop();
-                _greetingDismissTimer = null;
-                DismissGreeting();
-            };
-            _greetingDismissTimer.Start();
+            if (IsGreetingCurrent(generation)) ScheduleGreetingDismiss(TimeSpan.FromMilliseconds(1500));
         };
 
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(path1Anim, VNotch.Services.AnimationConfig.TargetFps);
@@ -267,6 +231,8 @@ public partial class MainWindow
 
     private void DismissGreeting()
     {
+        int generation = _greetingGeneration;
+        if (!IsGreetingCurrent(generation)) return;
         var fadeOut = new DoubleAnimation
         {
             From = 1,
@@ -277,6 +243,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (s, e) =>
         {
+            if (!IsGreetingCurrent(generation)) return;
             GreetingOverlay.Visibility = Visibility.Collapsed;
             GreetingOverlay.Opacity = 0;
 
@@ -311,6 +278,7 @@ public partial class MainWindow
 
     private void CollapseAfterGreeting()
     {
+        int generation = _greetingGeneration;
         var widthAnim = MakeAnim(_collapsedWidth, _dur500, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
         var heightAnim = MakeAnim(_collapsedHeight, _dur500, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -318,10 +286,12 @@ public partial class MainWindow
 
         heightAnim.Completed += (s, e) =>
         {
+            if (!IsGreetingCurrent(generation)) return;
             _isAnimating = false;
             _isGreetingActive = false;
             StartStartupHold(TimeSpan.FromMilliseconds(3300));
             RestorePrivacyDotVisibility();
+            NotchLiveContent.Visibility = Visibility.Visible;
 
             CollapsedContent.Visibility = Visibility.Visible;
             var restoreFade = new DoubleAnimation
@@ -333,7 +303,7 @@ public partial class MainWindow
             };
             restoreFade.Completed += (_, _) =>
             {
-                StartStartupHold(TimeSpan.FromSeconds(3));
+                if (!_cleanedUp && generation == _greetingGeneration) StartStartupHold(TimeSpan.FromSeconds(3));
             };
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(restoreFade, VNotch.Services.AnimationConfig.TargetFps);
             CollapsedContent.BeginAnimation(OpacityProperty, restoreFade);
@@ -347,6 +317,38 @@ public partial class MainWindow
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
+    }
+
+    private bool IsGreetingCurrent(int generation) => !_cleanedUp && _isGreetingActive && generation == _greetingGeneration;
+
+    private void ScheduleGreetingDismiss(TimeSpan delay)
+    {
+        _greetingDismissTimer?.Stop();
+        int generation = _greetingGeneration;
+        var timer = new DispatcherTimer { Interval = delay };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (ReferenceEquals(_greetingDismissTimer, timer)) _greetingDismissTimer = null;
+            if (IsGreetingCurrent(generation)) DismissGreeting();
+        };
+        _greetingDismissTimer = timer;
+        timer.Start();
+    }
+
+    private void DisposeGreetingLifecycle()
+    {
+        ++_greetingGeneration;
+        _greetingDismissTimer?.Stop();
+        _greetingDismissTimer = null;
+        _isGreetingActive = false;
+        GreetingOverlay.BeginAnimation(OpacityProperty, null);
+        foreach (var path in new[] { HelloPath1, HelloPath2, ViPath1, ViPath2, ViPath3, ViPath4, ViPath5, ViPath6, ViPath7, ViPath8, ViPath9, ViPath10 })
+        {
+            path.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+            path.BeginAnimation(OpacityProperty, null);
+        }
+        ViDotI.BeginAnimation(OpacityProperty, null);
     }
 
     #endregion

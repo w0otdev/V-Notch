@@ -50,6 +50,8 @@ public sealed class PrivacyIndicatorService : IDisposable
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _micFlowGate = new(1, 1);
     private readonly object _lifecycleLock = new();
+    private readonly HashSet<Task> _workers = new();
+    internal Task CleanupCompletion { get; private set; } = Task.CompletedTask;
 
     private CancellationTokenSource? _workerCts;
     private Task? _workerTask;
@@ -91,19 +93,21 @@ public sealed class PrivacyIndicatorService : IDisposable
             _workerCts = new CancellationTokenSource();
             var token = _workerCts.Token;
 
-            _workerTask = Task.Run(() => WorkerLoopAsync(generation, token), token);
+            _workerTask = TrackWorkerLocked(Task.Run(() => WorkerLoopAsync(generation, token), token));
         }
     }
 
     public void Stop()
     {
         CancellationTokenSource? ctsToCancel;
+        Task? worker;
         lock (_lifecycleLock)
         {
             if (!_started) return;
             _started = false;
             _currentGeneration++;
             ctsToCancel = _workerCts;
+            worker = _workerTask;
             _workerCts = null;
             _workerTask = null;
 
@@ -111,7 +115,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
 
         ctsToCancel?.Cancel();
-        ctsToCancel?.Dispose();
+        DisposeCancellationWhenFinished(ctsToCancel, worker);
     }
 
     public void Dispose()
@@ -123,9 +127,39 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
 
         Stop();
-        _scanGate.Dispose();
-        _micFlowGate.Dispose();
-        _microphoneFlowProbe.Dispose();
+        lock (_lifecycleLock)
+            CleanupCompletion = CleanupAfterWorkersAsync(_workers.ToArray());
+    }
+
+    private Task TrackWorkerLocked(Task worker)
+    {
+        _workers.RemoveWhere(task => task.IsCompleted);
+        _workers.Add(worker);
+        return worker;
+    }
+
+    private static void DisposeCancellationWhenFinished(CancellationTokenSource? source, Task? worker)
+    {
+        if (source == null) return;
+        if (worker == null) { source.Dispose(); return; }
+        _ = worker.ContinueWith(_ => source.Dispose(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private async Task CleanupAfterWorkersAsync(Task[] workers)
+    {
+        try { await Task.WhenAll(workers).ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { RuntimeLog.Error("PRIVACY", ex, "Privacy worker failed during shutdown"); }
+        finally
+        {
+            // Dispose is synchronous on the UI thread, but gates and COM probes
+            // must remain alive until every current/retired worker has exited.
+            _scanGate.Dispose();
+            _micFlowGate.Dispose();
+            _microphoneFlowProbe.Dispose();
+            lock (_lifecycleLock) _workers.Clear();
+        }
     }
 
     private async Task WorkerLoopAsync(int generation, CancellationToken token)
@@ -298,17 +332,18 @@ public sealed class PrivacyIndicatorService : IDisposable
         int generation = _micFlowGeneration;
         _micFlowCts = new CancellationTokenSource();
         var token = _micFlowCts.Token;
-        _micFlowTask = Task.Run(() => MicrophoneFlowWorkerLoopAsync(generation, token), token);
+        _micFlowTask = TrackWorkerLocked(Task.Run(() => MicrophoneFlowWorkerLoopAsync(generation, token), token));
     }
 
     private void StopMicrophoneFlowWorkerLocked()
     {
         _micFlowGeneration++;
         var cts = _micFlowCts;
+        var worker = _micFlowTask;
         _micFlowCts = null;
         _micFlowTask = null;
         cts?.Cancel();
-        cts?.Dispose();
+        DisposeCancellationWhenFinished(cts, worker);
     }
 
     private async Task MicrophoneFlowWorkerLoopAsync(int generation, CancellationToken token)

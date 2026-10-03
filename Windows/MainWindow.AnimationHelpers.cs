@@ -499,6 +499,7 @@ public partial class MainWindow
         {
             _isGreetingActive = true;
             _isAnimating = true;
+            NotchLiveContent.Visibility = Visibility.Hidden;
         }
 
         NotchBorder.Opacity = 0;

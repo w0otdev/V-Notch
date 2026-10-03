@@ -10,6 +10,11 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[CollectionDefinition("DataProtection overrides", DisableParallelization = true)]
+public sealed class DataProtectionOverrideCollection { }
+
+// Failure injection changes a process-wide delegate used by settings tests.
+[Collection("DataProtection overrides")]
 public class DataProtectionSettingsTests : IDisposable
 {
     private readonly Func<byte[], byte[]> _originalProtectBytes = DataProtection.ProtectBytes;

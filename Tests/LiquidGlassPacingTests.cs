@@ -165,10 +165,11 @@ public sealed class LiquidGlassPacingTests
         {
             var backdrop = new Window
             {
-                Left = 40,
-                Top = 70,
-                Width = 600,
-                Height = 350,
+                // Full-surface capture extends beyond the notch; keep the entire captured desktop static.
+                Left = SystemParameters.VirtualScreenLeft,
+                Top = SystemParameters.VirtualScreenTop,
+                Width = SystemParameters.VirtualScreenWidth,
+                Height = SystemParameters.VirtualScreenHeight,
                 WindowStyle = WindowStyle.None,
                 ShowActivated = false,
                 ShowInTaskbar = false,

@@ -1,6 +1,4 @@
 using System;
-using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -218,27 +216,6 @@ public sealed class SetupTermsOfServicePageTests
         });
     }
 
-    private static void RunOnStaThread(Action action)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception ex)
-            {
-                error = ex;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (error != null)
-        {
-            ExceptionDispatchInfo.Capture(error).Throw();
-        }
-    }
+    // Keep Application on the same dispatcher as MainWindow/tray integration tests.
+    private static void RunOnStaThread(Action action) => SharedStaTestRunner.Run(action);
 }
