@@ -22,8 +22,13 @@ public sealed class SpotlightAiRevealTests
             var element = new Border();
             using var source = new System.Windows.Interop.HwndSource(
                 new System.Windows.Interop.HwndSourceParameters("ai-reveal-test")
-                { Width = 100, Height = 100, PositionX = -32000, PositionY = -32000,
-                  WindowStyle = unchecked((int)0x80000000) });
+                {
+                    Width = 100,
+                    Height = 100,
+                    PositionX = -32000,
+                    PositionY = -32000,
+                    WindowStyle = unchecked((int)0x80000000)
+                });
             source.RootVisual = element;
             try
             {

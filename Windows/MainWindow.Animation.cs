@@ -249,9 +249,24 @@ public partial class MainWindow
 
     private bool _isThumbnailExpandAnimating;
     private Action? _pendingThumbnailHandoff;
+    private long _thumbnailOverlayVersion;
+
+    private void CancelMediaThumbnailTransition()
+    {
+        StopMainViewHorizontalStabilizer();
+        // Screenshot morphs own this overlay independently of the media player.
+        if (IsScreenshotPillActive) return;
+
+        ResetAnimationThumbnailOverlay();
+        ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        ThumbnailBorder.Opacity = 1;
+        CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        CompactThumbnailBorder.Opacity = 1;
+    }
 
     private void ResetAnimationThumbnailOverlay(bool clearSource = true)
     {
+        ++_thumbnailOverlayVersion;
         _isThumbnailExpandAnimating = false;
         _pendingThumbnailHandoff = null;
         AnimationThumbnailBorder.BeginAnimation(OpacityProperty, null);
@@ -609,8 +624,10 @@ public partial class MainWindow
 
         _isThumbnailExpandAnimating = true;
         _pendingThumbnailHandoff = null;
+        long overlayVersion = ++_thumbnailOverlayVersion;
         thumbTranslateYAnim.Completed += (s, e) =>
         {
+            if (overlayVersion != _thumbnailOverlayVersion) return;
             _isThumbnailExpandAnimating = false;
             var handoff = _pendingThumbnailHandoff;
             _pendingThumbnailHandoff = null;

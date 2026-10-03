@@ -21,6 +21,49 @@ public sealed class ScreenshotMediaRestoreTests
     private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public void InterruptedMediaTransitionRemovesOverlayAndRestoresLiveArtwork() => WithWindow(window =>
+    {
+        void Set(string name, object value) => typeof(MainWindow).GetField(name, PrivateInstance)!.SetValue(window, value);
+        object? Get(string name) => typeof(MainWindow).GetField(name, PrivateInstance)!.GetValue(window);
+        bool staleHandoffCalled = false;
+        Set("_isThumbnailExpandAnimating", true);
+        Set("_pendingThumbnailHandoff", (Action)(() => staleHandoffCalled = true));
+        long version = (long)Get("_thumbnailOverlayVersion")!;
+        window.AnimationThumbnailBorder.Visibility = Visibility.Visible;
+        window.AnimationThumbnailBorder.BeginAnimation(FrameworkElement.WidthProperty,
+            new DoubleAnimation(102, TimeSpan.Zero));
+        window.ThumbnailBorder.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.Zero));
+        window.CompactThumbnailBorder.Opacity = 0;
+
+        typeof(MainWindow).GetMethod("CancelMediaThumbnailTransition", PrivateInstance)!.Invoke(window, null);
+
+        Assert.Equal(Visibility.Collapsed, window.AnimationThumbnailBorder.Visibility);
+        Assert.False(window.AnimationThumbnailBorder.HasAnimatedProperties);
+        Assert.Equal(1, window.ThumbnailBorder.Opacity);
+        Assert.Equal(1, window.CompactThumbnailBorder.Opacity);
+        Assert.False((bool)Get("_isThumbnailExpandAnimating")!);
+        Assert.Null(Get("_pendingThumbnailHandoff"));
+        Assert.True((long)Get("_thumbnailOverlayVersion")! > version);
+        Assert.False(staleHandoffCalled);
+    });
+
+    [Fact]
+    public void MediaTransitionCancellationPreservesScreenshotMorph() => WithWindow(window =>
+    {
+        typeof(MainWindow).GetMethod("EnsureScreenshotSurface", PrivateInstance)!.Invoke(window, null);
+        var arbiter = (CompactPillArbiter)typeof(MainWindow).GetField("_compactPillArbiter", PrivateInstance)!.GetValue(window)!;
+        typeof(MainWindow).GetField("_screenshotSlotToken", PrivateInstance)!.SetValue(window,
+            arbiter.TryAcquire(CompactPillSlot.Screenshot).Token);
+        window.AnimationThumbnailBorder.Visibility = Visibility.Visible;
+        window.AnimationThumbnailBorder.Width = 75;
+
+        typeof(MainWindow).GetMethod("CancelMediaThumbnailTransition", PrivateInstance)!.Invoke(window, null);
+
+        Assert.Equal(Visibility.Visible, window.AnimationThumbnailBorder.Visibility);
+        Assert.Equal(75, window.AnimationThumbnailBorder.Width);
+    });
+
+    [Fact]
     public void ScreenshotOutsideClickClosesCoordinatorViewEvenWithStaleVisualFlags() => WithWindow(window =>
     {
         object Field(string name) => typeof(MainWindow).GetField(name, PrivateInstance)!.GetValue(window)!;

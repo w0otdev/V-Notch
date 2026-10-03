@@ -743,6 +743,7 @@ public partial class MainWindow : Window
         // Detach its old clocks first so HoldEnd cannot override the new view.
         _notchShellPresenter?.CancelCurrentAnimation();
         _notchContentPresenter?.CancelActiveTransition();
+        CancelMediaThumbnailTransition();
         switch (args.TargetView)
         {
             case VNotch.Models.NotchView.Compact:
