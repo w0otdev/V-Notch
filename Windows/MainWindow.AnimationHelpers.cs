@@ -25,6 +25,16 @@ public partial class MainWindow
 
         if (!isHovered && _isGestureActive) return;
 
+        var light = MakeAnim(isHovered ? 0.35 : 0, _dur200, _easeQuadOut);
+        HoverGlow.BeginAnimation(OpacityProperty, light);
+        if (VNotch.Services.AnimationConfig.ReduceMotion)
+        {
+            NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            NotchScale.ScaleX = NotchShadowScale.ScaleX = 1;
+            return;
+        }
+
         double targetScale = isHovered ? NotchHoverScaleX : 1.0;
         var duration = isHovered ? _dur500 : _dur350;
         var easing = isHovered ? (IEasingFunction)_easeSoftSpring : _easeQuadOut;

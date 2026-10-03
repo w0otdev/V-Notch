@@ -29,12 +29,14 @@ public sealed class MorphingSettingsTitle : MorphingSettingsIcon
     protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
-        if (e.Property == TextProperty) UpdateTextGeometry();
+        if (e.Property == TextProperty || e.Property == FlowDirectionProperty || e.Property == LanguageProperty)
+            UpdateTextGeometry();
     }
 
     private void UpdateTextGeometry()
     {
         AutomationProperties.SetName(this, Text);
+        ToolTip = Text;
         if (string.IsNullOrEmpty(Text) || ActualWidth <= 0) return;
         var typeface = new Typeface(new FontFamily(
             "pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"),

@@ -4,21 +4,18 @@ namespace VNotch.Services;
 
 internal static class UiPalette
 {
-    public static readonly Color PrimaryColor = Color.FromRgb(0xC8, 0xC8, 0xC8);
-    public static readonly SolidColorBrush PrimaryBrush = CreatePrimaryBrush();
+    // Alpha belongs to the ink, so it composes with the surface underneath.
+    public static readonly Color PrimaryColor = Colors.White;
+    public static readonly Color SecondaryColor = Color.FromArgb(0xB3, 255, 255, 255);
+    public static readonly Color TertiaryColor = Color.FromArgb(0x73, 255, 255, 255);
+    public static readonly SolidColorBrush PrimaryBrush = CreateBrush(PrimaryColor);
+    public static readonly SolidColorBrush SecondaryBrush = CreateBrush(SecondaryColor);
+    public static readonly SolidColorBrush TertiaryBrush = CreateBrush(TertiaryColor);
+    public static readonly SolidColorBrush IconBrush = TertiaryBrush;
 
-    public static readonly SolidColorBrush IconBrush = CreateIconBrush();
-
-    private static SolidColorBrush CreateIconBrush()
+    private static SolidColorBrush CreateBrush(Color color)
     {
-        var brush = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xAA));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static SolidColorBrush CreatePrimaryBrush()
-    {
-        var brush = new SolidColorBrush(PrimaryColor);
+        var brush = new SolidColorBrush(color);
         brush.Freeze();
         return brush;
     }

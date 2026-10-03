@@ -18,17 +18,17 @@ internal static class AnimationPrimitives
     public static readonly QuadraticEase _easeQuadInOut = Freeze(new QuadraticEase { EasingMode = EasingMode.EaseInOut });
     public static readonly PowerEase _easePowerIn2 = Freeze(new PowerEase { EasingMode = EasingMode.EaseIn, Power = 2 });
     public static readonly PowerEase _easePowerOut3 = Freeze(new PowerEase { EasingMode = EasingMode.EaseOut, Power = 3 });
-    public static readonly ElasticEase _easeSpring = Freeze(new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 8 });
-    public static readonly ElasticEase _easeSoftSpring = Freeze(new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 3 });
-    public static readonly ElasticEase _easeMenuSpring = Freeze(new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 4 });
-    public static readonly ElasticEase _easeThumbSpring = Freeze(new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 6.5 });
+    public static readonly DampedSpringEase _easeSpring = Freeze(new DampedSpringEase());
+    public static readonly DampedSpringEase _easeSoftSpring = Freeze(new DampedSpringEase());
+    public static readonly DampedSpringEase _easeMenuSpring = Freeze(new DampedSpringEase());
+    public static readonly DampedSpringEase _easeThumbSpring = Freeze(new DampedSpringEase());
     public static readonly SineEase _easeSineInOut = Freeze(new SineEase { EasingMode = EasingMode.EaseInOut });
-    public static readonly ElasticEase _easeHapticBounce = Freeze(new ElasticEase { EasingMode = EasingMode.EaseOut, Oscillations = 1, Springiness = 5 });
+    public static readonly DampedSpringEase _easeHapticBounce = Freeze(new DampedSpringEase());
     public static readonly CubicBezierEase _easeAppleOut =
-        Freeze(new CubicBezierEase(0.32, 0.72, 0.0, 1.0) { EasingMode = EasingMode.EaseIn });
+        Freeze(CubicBezierEase.FromEaseOutCurve(0.32, 0.72, 0.0, 1.0));
 
     public static readonly CubicBezierEase _easeAppleInOut =
-        Freeze(new CubicBezierEase(0.4, 0.0, 0.2, 1.0) { EasingMode = EasingMode.EaseIn });
+        Freeze(CubicBezierEase.FromEaseOutCurve(0.4, 0.0, 0.2, 1.0));
 
     public static readonly CubicBezierEase _easeAppleIn =
         Freeze(new CubicBezierEase(0.4, 0.0, 1.0, 1.0) { EasingMode = EasingMode.EaseIn });
@@ -275,6 +275,11 @@ internal sealed class CubicBezierEase : EasingFunctionBase
         X1 = x1; Y1 = y1; X2 = x2; Y2 = y2;
     }
 
+    // EaseInCore evaluates raw CSS control points. WPF mirrors that core for
+    // EaseOut, so mirror the supplied curve first to retain its actual timing.
+    public static CubicBezierEase FromEaseOutCurve(double x1, double y1, double x2, double y2) =>
+        new(1 - x2, 1 - y2, 1 - x1, 1 - y1) { EasingMode = EasingMode.EaseOut };
+
     protected override double EaseInCore(double normalizedTime)
     {
         double x = Math.Clamp(normalizedTime, 0.0, 1.0);
@@ -284,16 +289,28 @@ internal sealed class CubicBezierEase : EasingFunctionBase
 
     private double SolveForT(double x)
     {
+        if (x <= 0 || x >= 1) return x;
+        double lower = 0, upper = 1;
         double t = x;
         for (int i = 0; i < 8; i++)
         {
             double error = Sample(t, X1, X2) - x;
-            if (error > -1e-5 && error < 1e-5) break;
+            if (Math.Abs(error) < 1e-8) return t;
+            if (error < 0) lower = t; else upper = t;
             double slope = Derivative(t, X1, X2);
-            if (slope > -1e-6 && slope < 1e-6) break;
-            t -= error / slope;
+            double next = Math.Abs(slope) > 1e-8 ? t - error / slope : double.NaN;
+            t = next > lower && next < upper ? next : (lower + upper) / 2;
         }
-        return Math.Clamp(t, 0.0, 1.0);
+        // Flat tangents can defeat Newton's method. A bounded bisection keeps
+        // progress continuous rather than clamping an escaped estimate.
+        for (int i = 0; i < 24; i++)
+        {
+            double error = Sample(t, X1, X2) - x;
+            if (Math.Abs(error) < 1e-8) return t;
+            if (error < 0) lower = t; else upper = t;
+            t = (lower + upper) / 2;
+        }
+        return t;
     }
 
     private static double Sample(double t, double p1, double p2)

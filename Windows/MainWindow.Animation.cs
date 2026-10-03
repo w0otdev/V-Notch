@@ -885,6 +885,8 @@ public partial class MainWindow
         _transitionCoordinator.CompleteTransition(generation);
         UpdateSpotifyCanvasPresentationContext();
 
+        if (_focusNotchAfterExpand) FocusNotchForKeyboard();
+
         // The screenshot preview uses the Media route but has its own layout.
         // Do not hand off hidden media images or cache thumbnail coordinates here.
         if (IsScreenshotPillActive)
@@ -1109,7 +1111,7 @@ public partial class MainWindow
 
         var motion = new VNotch.Models.TransitionMotionConfig(
             Duration: IsScreenshotPillActive ? ScreenshotThumbnailDuration : _dur500,
-            Easing: _easeExpOut6,
+            Easing: _easeAppleOut,
             TargetFps: animFps,
             ReduceMotion: false
         );
@@ -1137,8 +1139,8 @@ public partial class MainWindow
         }
         else
         {
-            var widthAnim = MakeExpandGeometryAnimation(currentWidth, targetWidth, _easeExpOut6, animFps);
-            var heightAnim = MakeExpandGeometryAnimation(currentHeight, targetHeight, _easeExpOut6, animFps);
+            var widthAnim = MakeExpandGeometryAnimation(currentWidth, targetWidth, _easeAppleOut, animFps);
+            var heightAnim = MakeExpandGeometryAnimation(currentHeight, targetHeight, _easeAppleOut, animFps);
             heightAnim.Completed += (s, e) => OnExpandCompleted(generation, suppressCompactThumbnailMotion, effectiveTarget);
             NotchBorder.BeginAnimation(WidthProperty, widthAnim);
             NotchBorder.BeginAnimation(HeightProperty, heightAnim);

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -44,12 +45,20 @@ public class ElasticSlider : Slider
 
     private static void OnLabelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is ElasticSlider s) s.UpdateLabelText();
+        if (d is ElasticSlider s)
+        {
+            AutomationProperties.SetName(s, s.Label);
+            s.UpdateLabelText();
+        }
     }
 
     private static void OnDescriptionChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is ElasticSlider s) s.UpdateDescriptionText();
+        if (d is ElasticSlider s)
+        {
+            AutomationProperties.SetHelpText(s, s.Description);
+            s.UpdateDescriptionText();
+        }
     }
 
     private static void OnUnitChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -551,7 +560,7 @@ public class ElasticSlider : Slider
 
     #region Keyboard Navigation
 
-    protected override void OnKeyDown(KeyEventArgs e)
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         double step = GetEffectiveTickStep();
 
@@ -559,11 +568,17 @@ public class ElasticSlider : Slider
         switch (e.Key)
         {
             case Key.Left:
+                Value = Math.Clamp(Value + (FlowDirection == FlowDirection.RightToLeft ? step : -step), Minimum, Maximum);
+                handled = true;
+                break;
             case Key.Down:
                 Value = Math.Max(Minimum, Value - step);
                 handled = true;
                 break;
             case Key.Right:
+                Value = Math.Clamp(Value + (FlowDirection == FlowDirection.RightToLeft ? -step : step), Minimum, Maximum);
+                handled = true;
+                break;
             case Key.Up:
                 Value = Math.Min(Maximum, Value + step);
                 handled = true;
@@ -579,9 +594,11 @@ public class ElasticSlider : Slider
         }
 
         if (handled)
+        {
             e.Handled = true;
-
-        base.OnKeyDown(e);
+            return;
+        }
+        base.OnPreviewKeyDown(e);
     }
 
     #endregion

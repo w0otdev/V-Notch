@@ -64,6 +64,9 @@ public class MorphingSettingsIcon : FrameworkElement
         };
     }
 
+    protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() =>
+        new System.Windows.Automation.Peers.FrameworkElementAutomationPeer(this);
+
     public void MorphTo(Geometry geometry, bool animate = true, Rect? viewport = null,
         TimeSpan? duration = null, IEasingFunction? easing = null,
         Func<double, Geometry>? geometryAtProgress = null)
@@ -235,6 +238,16 @@ public class MorphingSettingsIcon : FrameworkElement
                 ((PolyLineSegment)figure.Segments[0]).Points = collection;
             }
             _display = shape;
+        }
+        // RenderSize is authoritative even before the deferred SizeChanged callback.
+        // Keep the normalized 56-unit geometry inside the current layout slot.
+        if (!IsTextGeometry &&
+            (_renderTransform.Value.M11 != RenderSize.Width / 56 ||
+             _renderTransform.Value.M22 != RenderSize.Height / 56))
+        {
+            var transform = new ScaleTransform(RenderSize.Width / 56, RenderSize.Height / 56);
+            transform.Freeze();
+            _renderTransform = transform;
         }
         drawingContext.PushTransform(IsTextGeometry ? Transform.Identity : _renderTransform);
         drawingContext.DrawGeometry(Brush ?? VNotch.Services.UiPalette.PrimaryBrush, null, _display);
