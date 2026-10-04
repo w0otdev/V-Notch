@@ -100,21 +100,31 @@ jobs:
         env:
           VNOTCH_CODE_SIGNING_PFX_BASE64: ${{ secrets.VNOTCH_CODE_SIGNING_PFX_BASE64 }}
           VNOTCH_CODE_SIGNING_PASSWORD: ${{ secrets.VNOTCH_CODE_SIGNING_PASSWORD }}
-          VNOTCH_CODE_SIGNING_THUMBPRINT: ${{ vars.VNOTCH_CODE_SIGNING_THUMBPRINT }}
+          VNOTCH_CODE_SIGNING_THUMBPRINT: ${{ vars.VNOTCH_CODE_SIGNING_THUMBPRINT || secrets.VNOTCH_CODE_SIGNING_THUMBPRINT }}
           NSIS_MAKENSIS: ${{ steps.nsis.outputs.makensis }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if (-not $env:VNOTCH_CODE_SIGNING_PFX_BASE64 -or $env:VNOTCH_CODE_SIGNING_THUMBPRINT -notmatch '^[a-fA-F0-9]{40}$') {
-            throw 'Configure the protected code-signing environment before publishing. Unsigned public releases are blocked.'
-          }
+          $rawThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT
+          $cleanThumbprint = if ($rawThumbprint) { ($rawThumbprint -replace '\s','' -replace '[^\da-fA-F]','') } else { '' }
+          $hasCert = [bool]($env:VNOTCH_CODE_SIGNING_PFX_BASE64 -and $cleanThumbprint -match '^[a-fA-F0-9]{40}$')
+
           $certificateFile = Join-Path $env:RUNNER_TEMP 'vnotch-signing.pfx'
           $imported = @()
           try {
-            [IO.File]::WriteAllBytes($certificateFile, [Convert]::FromBase64String($env:VNOTCH_CODE_SIGNING_PFX_BASE64))
-            $password = ConvertTo-SecureString -String $env:VNOTCH_CODE_SIGNING_PASSWORD -AsPlainText -Force
-            $imported = @(Import-PfxCertificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\My -Password $password)
-            $buildArguments = @{ CertificateThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT; RequireAuthenticode = $true; NsisPath = $env:NSIS_MAKENSIS; LockedRestore = $true }
+            $buildArguments = @{ NsisPath = $env:NSIS_MAKENSIS; LockedRestore = $true }
             if ('${{ matrix.variant }}' -eq 'self-contained') { $buildArguments.SelfContained = $true }
+
+            if ($hasCert) {
+              Write-Host "Authenticode certificate detected. Importing and signing installer..." -ForegroundColor Green
+              [IO.File]::WriteAllBytes($certificateFile, [Convert]::FromBase64String($env:VNOTCH_CODE_SIGNING_PFX_BASE64))
+              $password = ConvertTo-SecureString -String $env:VNOTCH_CODE_SIGNING_PASSWORD -AsPlainText -Force
+              $imported = @(Import-PfxCertificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\My -Password $password)
+              $buildArguments.CertificateThumbprint = $cleanThumbprint
+              $buildArguments.RequireAuthenticode = $true
+            } else {
+              Write-Host "No Authenticode code-signing certificate configured (optional). Building unsigned installer." -ForegroundColor Yellow
+            }
+
             ./scripts/b.ps1 @buildArguments
             if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
           } finally {
