@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Explicit opt-in: these tests show windows and cover the physical desktop. -->
+<RunSettings>
+  <RunConfiguration>
+    <TestCaseFilter>Category=DesktopIntegration</TestCaseFilter>
+    <EnvironmentVariables>
+      <VNOTCH_RUN_DESKTOP_TESTS>1</VNOTCH_RUN_DESKTOP_TESTS>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

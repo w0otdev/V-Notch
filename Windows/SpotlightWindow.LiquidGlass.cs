@@ -817,9 +817,7 @@ public partial class SpotlightWindow
         if (!double.IsFinite(w) || w <= 0) w = 720;
         if (!double.IsFinite(h) || h <= 0) h = 64;
 
-        double rTop = Shell.CornerRadius.TopLeft;
-        double rBottom = Shell.CornerRadius.BottomLeft;
-        var geometry = MainWindow.BuildRoundedNotchClipGeometry(w, h, rTop, rBottom);
+        var geometry = GlassClipBuilder.CreateClip(new Size(w, h), Shell.CornerRadius);
         GlassMaterialClipHost.Clip = geometry;
     }
 

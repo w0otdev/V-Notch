@@ -138,7 +138,7 @@ public static class FastBlurService
         }
     }
 
-    // radius is clamped to 1..20 by the public entry point. Rounding the
+    // Callers use radii up to 32 (including subject-aware blur). Rounding the
     // reciprocal UP at 24 bits preserves floor(sum / window) for every possible
     // channel sum (0..255*window). The unsigned product stays below 2^32.
     internal static uint GetWindowReciprocal(int window) => ((1u << 24) + (uint)window - 1) / (uint)window;

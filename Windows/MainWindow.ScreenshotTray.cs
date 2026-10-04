@@ -362,6 +362,7 @@ public partial class MainWindow
         _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         _screenshotThumbnailScale.ScaleX = _screenshotThumbnailScale.ScaleY = 1;
+        _screenshotThumbnail?.BeginAnimation(FrameworkElement.MarginProperty, null);
         _screenshotCompact!.BeginAnimation(HeightProperty, null);
         _screenshotCompact.Height = _collapsedHeight;
         _screenshotCompact.BeginAnimation(OpacityProperty, null);
@@ -517,8 +518,10 @@ public partial class MainWindow
             _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             _screenshotThumbnailScale.ScaleX = _screenshotThumbnailScale.ScaleY = 1;
+            _screenshotThumbnail?.BeginAnimation(FrameworkElement.MarginProperty, null);
             _screenshotCompact!.BeginAnimation(HeightProperty, null);
             _screenshotCompact.Height = _collapsedHeight;
+            AlignScreenshotCompactThumbnail();
 
             // Settle the image layers while screenshot ownership still hides media.
             // Resetting only the border leaves a paused morph transparent/blurred,

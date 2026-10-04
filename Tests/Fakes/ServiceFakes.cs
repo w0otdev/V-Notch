@@ -2,6 +2,8 @@ using System;
 using System.Threading.Tasks;
 using VNotch.Models;
 using VNotch.Services;
+using System.Windows.Media.Imaging;
+using Windows.Storage.Streams;
 
 namespace VNotch.Tests.Fakes;
 
@@ -14,9 +16,22 @@ public sealed class FakeDispatcherService : IDispatcherService
 
 public sealed class FakeMediaDetectionService : IMediaDetectionService
 {
+    public IMediaArtworkService ArtworkService { get; set; } = new FakeMediaArtworkService();
+    public bool KeepPinnedOnTrackChange { get; set; }
+    public string? PinnedSessionKey { get; private set; }
+    public bool IsSessionPinned(string? sessionKey) => !string.IsNullOrEmpty(sessionKey) && sessionKey == PinnedSessionKey;
+    public bool ToggleSessionPin(MediaInfo info)
+    {
+        if (string.IsNullOrEmpty(info.SessionInstanceKey)) return false;
+        PinnedSessionKey = IsSessionPinned(info.SessionInstanceKey) ? null : info.SessionInstanceKey;
+        return true;
+    }
+    public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) =>
+        Task.FromResult<YouTubeLookupResult?>(null);
     public event EventHandler<MediaInfo>? MediaChanged;
 
     public int StartCount { get; private set; }
+    public int DisposeCount { get; private set; }
     public TimeSpan? LastSeekAbsolute { get; private set; }
     public TimeSpan? LastSeek { get; private set; }
 
@@ -54,7 +69,17 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
     public bool TryToggleCurrentSessionMute() => false;
     public void InvalidateVolumeSessionCache() { }
 
-    public void Dispose() { }
+    public void Dispose() => DisposeCount++;
+}
+
+public sealed class FakeMediaArtworkService : IMediaArtworkService
+{
+    public bool SmartCropEnabled { get; private set; }
+    public Task<BitmapImage?> DownloadImageAsync(string url, CancellationToken ct = default) => Task.FromResult<BitmapImage?>(null);
+    public BitmapImage? CropToSquare(BitmapImage source, string mediaSource, bool forceCenterCrop = false) => source;
+    public Task<BitmapImage?> ConvertToWpfBitmapAsync(IRandomAccessStreamWithContentType stream, CancellationToken ct = default) => Task.FromResult<BitmapImage?>(null);
+    public void ConfigureSmartCrop(bool enabled) => SmartCropEnabled = enabled;
+    public SubjectBounds? GetDominantSubjectBounds(BitmapImage source) => null;
 }
 
 public sealed class FakeSettingsService : ISettingsService

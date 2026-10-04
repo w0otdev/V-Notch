@@ -131,6 +131,9 @@ internal static class Win32Interop
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
+    [DllImport("user32.dll", EntryPoint = "GetClassNameW", ExactSpelling = true)]
+    public static extern unsafe int GetClassName(IntPtr hWnd, char* lpClassName, int nMaxCount);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool AddClipboardFormatListener(IntPtr hwnd);

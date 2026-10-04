@@ -29,9 +29,9 @@ public partial class MainWindow : Window
 {
     #region Fields
 
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly NotchManager _notchManager;
-    private readonly MediaDetectionService _mediaService;
+    private readonly IMediaDetectionService _mediaService;
     private readonly IUpdateService _updateService;
     private readonly ShellViewModel _viewModel;
     private readonly DispatcherTimer _updateTimer;
@@ -86,20 +86,20 @@ public partial class MainWindow : Window
     private readonly SystemMonitorModule _systemMonitorModule;
     private readonly IModuleLifecycleManager _moduleHost;
 
-    private readonly NotchStateManager _notchState = new();
-
     private readonly MediaDisplayController _mediaDisplayController;
     private readonly FullscreenAutoHideController _fullscreenController;
     private readonly BluetoothNotificationController _bluetoothController;
     private DragDropController _dragDropController;
     private readonly TimerManager _timerManager;
 
+    // Greeting, hover and in-view effects also animate without navigation.
+    private bool _isVisualAnimationActive;
     private bool _isAnimating
     {
-        get => _notchState.IsAnimating;
+        get => _isVisualAnimationActive || _transitionCoordinator.IsTransitionActive;
         set
         {
-            _notchState.IsAnimating = value;
+            _isVisualAnimationActive = value;
             // Drive the liquid-glass refresh rate off notch motion: full rate while
             UpdateGlassMotionState();
         }
@@ -107,20 +107,11 @@ public partial class MainWindow : Window
 
     private bool _isExpanded
     {
-        get => _notchState.IsExpanded;
-        set
+        get
         {
-            if (value)
-            {
-                if (!_notchState.TryTransitionTo(NotchState.Expanded))
-                    _notchState.ForceState(NotchState.Expanded);
-            }
-            else
-            {
-                if (!_notchState.TryTransitionTo(NotchState.Collapsed))
-                    _notchState.ForceState(NotchState.Collapsed);
-            }
-            UpdateGlassMotionState();
+            var snapshot = _transitionCoordinator.Snapshot;
+            return snapshot.CurrentView != VNotch.Models.NotchView.Compact &&
+                snapshot.TargetView != VNotch.Models.NotchView.Compact;
         }
     }
 
@@ -176,6 +167,10 @@ public partial class MainWindow : Window
 
     private readonly VNotch.Controllers.CompactPillArbiter _compactPillArbiter = new();
     private readonly VNotch.Controllers.NotchTransitionCoordinator _transitionCoordinator;
+    private readonly bool _ownsTransitionCoordinator;
+    private readonly Func<NotchView, string, bool> _canInitiateTransition;
+    private readonly Func<bool> _isExpandedCheck;
+    private readonly VNotch.Presenters.GlassMaterialClipPresenter _glassMaterialPresenter;
     private VNotch.Presenters.NotchShellPresenter? _notchShellPresenter;
     private VNotch.Presenters.NotchContentTransitionPresenter? _notchContentPresenter;
 
@@ -242,11 +237,17 @@ public partial class MainWindow : Window
         VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null)
     {
         InitializeComponent();
+        _glassMaterialPresenter = new(GlassMaterialClipHost,
+            GlassBackdropHost, GlassTintOverlay, GlassGrainOverlay,
+            GlassDepthRimBorder, GlassCoolRimBorder, GlassWarmRimBorder,
+            GlassFresnelBloomBorder, GlassFresnelBorder, GlassInnerFresnelBorder,
+            GlassRimBorder, GlassSpecularBorder, GlassDarkOverlay);
         LocalizedPresentation.Apply(this);
         _mediaUpdates = new(action => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, action), ApplyMediaUpdate);
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
+        _ownsTransitionCoordinator = transitionCoordinator == null;
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
-        _transitionCoordinator.CanInitiateTransition = (target, reason) =>
+        _canInitiateTransition = (target, reason) =>
         {
             if (IsScreenshotPillActive && (_screenshotReturnPending || _screenshotMorphReturning) &&
                 target != VNotch.Models.NotchView.Compact && reason != "ScreenshotExplicitOpen") return false;
@@ -254,6 +255,7 @@ public partial class MainWindow : Window
             if (_isDebugViewLocked && target == VNotch.Models.NotchView.Compact) return false;
             return true;
         };
+        _transitionCoordinator.CanInitiateTransition = _canInitiateTransition;
         _transitionCoordinator.StateChanged += OnCoordinatorStateChanged;
         _transitionCoordinator.TransitionRequested += OnTransitionRequested;
         _transitionCoordinator.CountdownCompletionDisplayRequested += OnCountdownCompletionDisplayRequested;
@@ -278,10 +280,11 @@ public partial class MainWindow : Window
         });
         _viewModel = viewModel;
         DataContext = _viewModel;
-        _viewModel.IsExpandedCheck = () => _isExpanded || _isMusicExpanded;
+        _isExpandedCheck = () => _isExpanded || _isMusicExpanded;
+        _viewModel.IsExpandedCheck = _isExpandedCheck;
         _viewModel.MediaInfoUpdated += ViewModel_MediaInfoUpdated;
         AnimationPrimitives.ApplyFpsToTree(this);
-        _settingsService = (SettingsService)settingsService;
+        _settingsService = settingsService;
         _settings = _settingsService.Load();
         if (string.IsNullOrEmpty(_settings.MonitorDeviceId))
         {
@@ -296,8 +299,8 @@ public partial class MainWindow : Window
                 _settingsService.Save(_settings);
             }
         }
-        _notchManager = new NotchManager(this, _settings);
-        _mediaService = (MediaDetectionService)mediaService;
+        _notchManager = new NotchManager(this, _settings, _transitionCoordinator);
+        _mediaService = mediaService;
         _updateService = updateService;
         _spotlightController = spotlightController;
 
@@ -320,7 +323,6 @@ public partial class MainWindow : Window
 
         _privacyModule = privacyIndicatorModule;
         _privacyModule.StateChanged += PrivacyModule_StateChanged;
-        _notchState.StateChanged += NotchState_PrivacyVisibilityChanged;
 
         _weatherModule = weatherModule;
         _weatherModule.WeatherUpdated += WeatherModule_WeatherUpdated;
@@ -620,12 +622,14 @@ public partial class MainWindow : Window
         _notchManager.HoverService.HoverLeave -= HoverService_HoverLeave;
         _notchManager.HoverService.MousePositionChanged -= HoverService_MousePositionChangedForDesktopReveal;
         _viewModel.MediaInfoUpdated -= ViewModel_MediaInfoUpdated;
-        _viewModel.Dispose();
+        if (_viewModel.IsExpandedCheck == _isExpandedCheck) _viewModel.IsExpandedCheck = null;
         _batteryModule.BatteryUpdated -= BatteryModule_BatteryUpdated;
+        _bluetoothModule.DeviceConnected -= BluetoothModule_DeviceConnected;
+        _bluetoothModule.DeviceDisconnected -= BluetoothModule_DeviceDisconnected;
         AnimationConfig.ReduceMotionChanged -= OnReduceMotionChanged;
         DisposeCalendarPresenter();
         _privacyModule.StateChanged -= PrivacyModule_StateChanged;
-        _notchState.StateChanged -= NotchState_PrivacyVisibilityChanged;
+        StopMainViewHorizontalStabilizer();
         _weatherModule.WeatherUpdated -= WeatherModule_WeatherUpdated;
         DisposeSystemMonitorPresenter();
 
@@ -633,14 +637,12 @@ public partial class MainWindow : Window
 
         DisposeScreenshotTray();
         _clipboardListener.Dispose();
-        _spotlightController.Dispose();
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
         StopTitleGradientShift();
         SetProgressRenderingEnabled(false);
         _lyricsTimer?.Stop();
         _volumeSyncTimer?.Stop();
-        _mediaService?.Dispose();
         _lyricsService?.Dispose();
         DisposeSpotifyCanvasLifecycle();
         _notchManager?.Dispose();
@@ -657,7 +659,6 @@ public partial class MainWindow : Window
         DetachDesktopTransparentFrameHandler();
         DisposeIdleAutoHide();
         _fullscreenController?.Dispose();
-        _moduleHost?.Dispose();
         _camera?.Dispose();
         _timerManager?.Dispose();
         DisposeGestureController();
@@ -670,7 +671,10 @@ public partial class MainWindow : Window
         _transitionCoordinator.CountdownCompletionDisplayRequested -= OnCountdownCompletionDisplayRequested;
         _notchShellPresenter?.Dispose();
         _notchContentPresenter?.Dispose();
-        _transitionCoordinator.Dispose();
+        if (_transitionCoordinator.CanInitiateTransition == _canInitiateTransition)
+            _transitionCoordinator.CanInitiateTransition = null;
+        // Only the optional coordinator constructed by this window is view-owned.
+        if (_ownsTransitionCoordinator) _transitionCoordinator.Dispose();
     }
 
     private void OnCoordinatorStateChanged(object? sender, VNotch.Controllers.NotchTransitionSnapshot snapshot)
@@ -690,17 +694,9 @@ public partial class MainWindow : Window
         if (_cleanedUp || snapshot != _transitionCoordinator.Snapshot) return;
         _localAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
         _localSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
-        _notchState.IsTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
-        _notchState.IsAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
-        if (snapshot.CurrentView == VNotch.Models.NotchView.Secondary)
-        {
-            if (_notchState.CurrentState != NotchState.SecondaryView)
-                _notchState.ForceState(NotchState.SecondaryView);
-        }
-        else if (_notchState.CurrentState == NotchState.SecondaryView)
-        {
-            _notchState.ForceState(NotchState.Expanded);
-        }
+        _localTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
+        UpdateGlassMotionState();
+        SyncPrivacyDotVisibilityForCurrentView();
         UpdateSpotifyCanvasPresentationContext();
     }
 
@@ -747,14 +743,29 @@ public partial class MainWindow : Window
         _notchShellPresenter?.CancelCurrentAnimation();
         _notchContentPresenter?.CancelActiveTransition();
         CancelMediaThumbnailTransition();
+        StopMainViewHorizontalStabilizer();
+        // An interrupted shell animation must resume from its rendered geometry,
+        // even when the requested view matches the last completed view.
+        bool requiresExpansion = args.FromView == VNotch.Models.NotchView.Compact ||
+            args.FromShape is VNotch.Controllers.NotchShapeState.Expanding
+                or VNotch.Controllers.NotchShapeState.Collapsing
+                or VNotch.Controllers.NotchShapeState.MusicExpanding
+                or VNotch.Controllers.NotchShapeState.MusicCollapsing;
         switch (args.TargetView)
         {
             case VNotch.Models.NotchView.Compact:
-                CollapseNotch(args.TransitionId);
+                if (args.Reason == "CountdownDismiss")
+                    AnimateCountdownDismissCollapse(args.TransitionId);
+                else
+                    CollapseNotch(args.TransitionId);
                 break;
 
             case VNotch.Models.NotchView.Media:
-                if (args.FromView == VNotch.Models.NotchView.Compact || !_isExpanded ||
+                if (args.Reason == "CollapseMusicWidget")
+                {
+                    CollapseMusicWidget(args.TransitionId);
+                }
+                else if (requiresExpansion ||
                     args.Reason == "ScreenshotExplicitOpen")
                 {
                     ExpandNotch(args.TransitionId);
@@ -782,7 +793,7 @@ public partial class MainWindow : Window
                 {
                     ShowCountdownCompletionOnPill(args.TransitionId);
                 }
-                else if (!_isExpanded)
+                else if (requiresExpansion)
                 {
                     ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.Timer);
                 }
@@ -801,7 +812,7 @@ public partial class MainWindow : Window
                 break;
 
             case VNotch.Models.NotchView.AudioMixer:
-                if (!_isExpanded)
+                if (requiresExpansion)
                 {
                     ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.AudioMixer);
                 }
@@ -820,7 +831,7 @@ public partial class MainWindow : Window
                 break;
 
             case VNotch.Models.NotchView.Secondary:
-                if (!_isExpanded)
+                if (requiresExpansion)
                 {
                     ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.Secondary);
                 }
@@ -1654,7 +1665,7 @@ public partial class MainWindow : Window
                         NotchBorderShadow.CornerRadius = cr;
                         MediaBackground.CornerRadius = cr;
                         MediaBackground2.CornerRadius = cr;
-                        SyncGlassCornerRadius(cr);
+                        _glassMaterialPresenter.SyncCornerRadius(cr);
                         CurrentCornerRadius = _cornerRadiusCollapsed;
                     }
                 }
@@ -1794,7 +1805,7 @@ public partial class MainWindow : Window
         NotchBorderShadow.CornerRadius = cr;
         MediaBackground.CornerRadius = cr;
         MediaBackground2.CornerRadius = cr;
-        SyncGlassCornerRadius(cr);
+        _glassMaterialPresenter.SyncCornerRadius(cr);
         CurrentCornerRadius = _cornerRadiusCollapsed;
     }
 
@@ -2258,7 +2269,7 @@ public partial class MainWindow : Window
 
         Rect exitBounds = thumbnailBounds;
 
-        if (_settings.EnableDynamicIslandMode && _isCompactThumbnailHovered)
+        if ((_settings.EnableDynamicIslandMode || IsScreenshotPillActive) && _isCompactThumbnailHovered)
         {
             double notchWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : NotchBorder.Width;
             double notchHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : NotchBorder.Height;
@@ -2489,112 +2500,16 @@ public partial class MainWindow : Window
         UpdateGlassClip();
     }
 
-    private double _lastGlassClipWidth = double.NaN;
-    private double _lastGlassClipHeight = double.NaN;
-    private double _lastGlassClipTopRadius = double.NaN;
-    private double _lastGlassClipBottomRadius = double.NaN;
-
-    private void UpdateGlassClip()
-    {
-        if (GlassMaterialClipHost?.Visibility != Visibility.Visible) return;
-
-        double w = GlassMaterialClipHost.ActualWidth;
-        double h = GlassMaterialClipHost.ActualHeight;
-        if (w <= 0 || h <= 0) return;
-
-        double maxR = Math.Min(w, h) / 2.0;
-        double rTop = Math.Clamp(NotchBorder.CornerRadius.TopLeft, 0, maxR);
-        double rBottom = Math.Clamp(NotchBorder.CornerRadius.BottomRight, 0, maxR);
-
-        if (Math.Abs(w - _lastGlassClipWidth) < 0.01 &&
-            Math.Abs(h - _lastGlassClipHeight) < 0.01 &&
-            Math.Abs(rTop - _lastGlassClipTopRadius) < 0.01 &&
-            Math.Abs(rBottom - _lastGlassClipBottomRadius) < 0.01)
-        {
-            return;
-        }
-
-        var geometry = BuildRoundedNotchClipGeometry(w, h, rTop, rBottom);
-        if (geometry != null)
-        {
-            GlassMaterialClipHost.Clip = geometry;
-            _lastGlassClipWidth = w;
-            _lastGlassClipHeight = h;
-            _lastGlassClipTopRadius = rTop;
-            _lastGlassClipBottomRadius = rBottom;
-        }
-    }
+    private void UpdateGlassClip() =>
+        _glassMaterialPresenter?.UpdateClip(NotchBorder.CornerRadius);
 
     private void GlassMaterialClipHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateGlassClip();
     }
 
-    private StreamGeometry? BuildNotchClipGeometry(double w, double h)
-    {
-        if (w <= 0 || h <= 0) return null;
-
-        // Clamp the arc radii to the element's bounds. Unlike a Border's built-in
-        double maxR = Math.Min(w, h) / 2.0;
-        double rBottom = Math.Max(0, Math.Min(NotchBorder.CornerRadius.BottomRight, maxR));
-        double rTop = Math.Max(0, Math.Min(NotchBorder.CornerRadius.TopLeft, maxR));
-
-        return BuildRoundedNotchClipGeometry(w, h, rTop, rBottom);
-    }
-
-    internal static StreamGeometry? BuildRoundedNotchClipGeometry(
-        double w,
-        double h,
-        double rTop,
-        double rBottom)
-    {
-        if (w <= 0 || h <= 0) return null;
-
-        double maxR = Math.Min(w, h) / 2.0;
-        rTop = Math.Clamp(rTop, 0, maxR);
-        rBottom = Math.Clamp(rBottom, 0, maxR);
-
-        var geometry = new StreamGeometry();
-        using (var ctx = geometry.Open())
-        {
-            if (rTop > 0)
-            {
-                ctx.BeginFigure(new Point(rTop, 0), true, true);
-                ctx.LineTo(new Point(w - rTop, 0), true, false);
-                ctx.ArcTo(new Point(w, rTop), new Size(rTop, rTop), 0, false, SweepDirection.Clockwise, true, false);
-            }
-            else
-            {
-                ctx.BeginFigure(new Point(0, 0), true, true);
-                ctx.LineTo(new Point(w, 0), true, false);
-            }
-
-            ctx.LineTo(new Point(w, h - rBottom), true, false);
-            if (rBottom > 0)
-                ctx.ArcTo(new Point(w - rBottom, h), new Size(rBottom, rBottom), 0, false, SweepDirection.Clockwise, true, false);
-            else
-                ctx.LineTo(new Point(w, h), true, false);
-
-            ctx.LineTo(new Point(rBottom, h), true, false);
-            if (rBottom > 0)
-                ctx.ArcTo(new Point(0, h - rBottom), new Size(rBottom, rBottom), 0, false, SweepDirection.Clockwise, true, false);
-            else
-                ctx.LineTo(new Point(0, h), true, false);
-
-            if (rTop > 0)
-            {
-                ctx.LineTo(new Point(0, rTop), true, false);
-                ctx.ArcTo(new Point(rTop, 0), new Size(rTop, rTop), 0, false, SweepDirection.Clockwise, true, false);
-            }
-            else
-            {
-                ctx.LineTo(new Point(0, 0), true, false);
-            }
-        }
-
-        geometry.Freeze();
-        return geometry;
-    }
+    private StreamGeometry? BuildNotchClipGeometry(double w, double h) =>
+        GlassClipBuilder.CreateClip(new Size(Math.Max(0, w), Math.Max(0, h)), NotchBorder.CornerRadius);
 
     #endregion
 

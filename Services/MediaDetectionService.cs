@@ -4,7 +4,6 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading.Channels;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using NAudio.CoreAudioApi;
@@ -61,7 +60,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private readonly MediaSessionVolumeService _volumeService;
     private readonly MediaTransportControlService _transportService;
 
-    private readonly Channel<ChangeTypes> _changeChannel;
+    private readonly MediaChangeQueue _changes = new();
     private CancellationTokenSource? _bgCts;
     private DetectionMode _currentMode = DetectionMode.Idle;
     private long _lastEventTimeTicks;
@@ -143,13 +142,6 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         _volumeService = new MediaSessionVolumeService();
         _transportService = new MediaTransportControlService(GetActiveSession);
 
-        _changeChannel = Channel.CreateBounded<ChangeTypes>(
-            new BoundedChannelOptions(16)
-            {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true
-            });
-
         _sourceCache = new MediaSourceCache();
         _sourceCache.Load();
     }
@@ -208,7 +200,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             }
         }
         Interlocked.Exchange(ref _pinMissingSince, 0);
-        _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+        _changes.Enqueue(ChangeTypes.ForceRefresh);
         return true;
     }
 
@@ -304,7 +296,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 _stagedRefreshTask = Task.Run(() => RunStagedRefreshAsync(ct), ct);
             }
 
-            _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+            _changes.Enqueue(ChangeTypes.ForceRefresh);
         }
         catch (OperationCanceledException)
         {
@@ -352,7 +344,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 return;
             }
 
-            _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+            _changes.Enqueue(ChangeTypes.ForceRefresh);
         }
     }
 
@@ -367,11 +359,12 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         UnsubscribeFromSession();
 
-        if (_sessionManager == null) return;
+        var sessionManager = _sessionManager;
+        if (sessionManager == null) return;
 
         try
         {
-            _currentSession = _sessionManager.GetCurrentSession();
+            _currentSession = sessionManager.GetCurrentSession();
             if (_currentSession != null)
             {
                 _currentSession.TimelinePropertiesChanged += OnTimelineChanged;
@@ -422,31 +415,31 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private void OnTimelineChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args)
     {
         Interlocked.Exchange(ref _lastEventTimeTicks, DateTime.UtcNow.Ticks);
-        _changeChannel.Writer.TryWrite(ChangeTypes.Timeline);
+        _changes.Enqueue(ChangeTypes.Timeline);
     }
 
     private void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args)
     {
         Interlocked.Exchange(ref _lastEventTimeTicks, DateTime.UtcNow.Ticks);
-        _changeChannel.Writer.TryWrite(ChangeTypes.Playback);
+        _changes.Enqueue(ChangeTypes.Playback);
     }
 
     private void OnMediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args)
     {
         Interlocked.Exchange(ref _lastEventTimeTicks, DateTime.UtcNow.Ticks);
-        _changeChannel.Writer.TryWrite(ChangeTypes.MediaProperties);
+        _changes.Enqueue(ChangeTypes.MediaProperties);
     }
 
     private void OnSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args)
     {
         Log("Session Changed", "System-wide session focus shifted");
-        _changeChannel.Writer.TryWrite(ChangeTypes.SessionChanged);
+        _changes.Enqueue(ChangeTypes.SessionChanged);
     }
 
     private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args)
     {
         Log("Sessions Changed", "Session list changed (app opened/closed)");
-        _changeChannel.Writer.TryWrite(ChangeTypes.SessionChanged);
+        _changes.Enqueue(ChangeTypes.SessionChanged);
     }
 
     private static void Log(string tag, string message)
@@ -458,18 +451,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private async Task ProcessingLoopAsync(CancellationToken ct)
     {
-        await foreach (var change in _changeChannel.Reader.ReadAllAsync(ct))
+        await foreach (var types in _changes.ReadAllAsync(ct))
         {
             try
             {
-
-                await Task.Delay(50, ct);
-                var types = change;
-                while (_changeChannel.Reader.TryRead(out var extra))
-                {
-                    types |= extra;
-                }
-
                 bool forceRefresh = types.HasFlag(ChangeTypes.MediaProperties)
                     || types.HasFlag(ChangeTypes.Playback)
                     || types.HasFlag(ChangeTypes.SessionChanged)
@@ -480,7 +465,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     SubscribeToCurrentSession();
                 }
 
-                await UpdateMediaInfoAsync(forceRefresh);
+                await UpdateMediaInfoAsync(forceRefresh, ct);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -522,7 +507,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 continue;
             }
 
-            _changeChannel.Writer.TryWrite(ChangeTypes.Heartbeat);
+            _changes.Enqueue(ChangeTypes.Heartbeat);
         }
     }
 
@@ -579,7 +564,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                         return;
                     }
 
-                    _changeChannel.Writer.TryWrite(ChangeTypes.Heartbeat);
+                    _changes.Enqueue(ChangeTypes.Heartbeat);
                 }
             }
             catch (OperationCanceledException)
@@ -595,9 +580,9 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     #endregion
 
-    private async Task UpdateMediaInfoAsync(bool forceRefresh = false)
+    private async Task UpdateMediaInfoAsync(bool forceRefresh, CancellationToken ct)
     {
-        if (!await _updateLock.WaitAsync(forceRefresh ? 500 : 0, _bgCts?.Token ?? CancellationToken.None)) return;
+        await _updateLock.WaitAsync(ct).ConfigureAwait(false);
 
         try
         {
@@ -610,6 +595,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 windowTitles ??= GetAllWindowTitles();
                 return windowTitles;
             });
+            ct.ThrowIfCancellationRequested();
 
             if (_pinClosedThisUpdate)
             {
@@ -619,7 +605,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 UpdateDetectionMode(info);
                 CommitPublishedState(info, info.GetSignature());
                 await FireMediaChangedAsync(info);
-                _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+                _changes.Enqueue(ChangeTypes.ForceRefresh);
                 return;
             }
 
@@ -673,6 +659,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             bool isNewTrackForThumbnail = ComputeIsNewTrackForThumbnail(info);
 
+            ct.ThrowIfCancellationRequested();
             if (!await TryPublishMediaChangeAsync(info, currentSignature, isNewTrackForThumbnail, forceRefresh))
                 return;
 
@@ -793,7 +780,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
         if (!forceRefresh && metadataChanged && !string.IsNullOrEmpty(info.CurrentTrack))
         {
-            _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+            _changes.Enqueue(ChangeTypes.ForceRefresh);
         }
 
         return true;
@@ -1027,7 +1014,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             if (progress >= 1.0 && info.Duration.TotalSeconds > 0 && _timelineSimulator.IsThrottled)
             {
                 _timelineSimulator.Reset();
-                _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+                _changes.Enqueue(ChangeTypes.ForceRefresh);
             }
 
             if (positionStuck || atEndStuck)
@@ -2195,7 +2182,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     if (_keepPinnedOnTrackChange || string.IsNullOrEmpty(pinned.Track))
                         Interlocked.CompareExchange(ref _pinnedSession, pinned with { Track = track }, pinned);
                     else if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, null, pinned), pinned))
-                        _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+                        _changes.Enqueue(ChangeTypes.ForceRefresh);
                 }
             }
 
@@ -2849,7 +2836,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         try
         {
             await Task.Delay(TimeSpan.FromMilliseconds(4100), cancellationToken).ConfigureAwait(false);
-            if (!_disposed) _changeChannel.Writer.TryWrite(ChangeTypes.ForceRefresh);
+            if (!_disposed) _changes.Enqueue(ChangeTypes.ForceRefresh);
         }
         catch (OperationCanceledException)
         {
@@ -2859,11 +2846,14 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth)> ResolveActiveSessionAsync(bool forceRefresh)
     {
-        if (_sessionManager == null) return (null, null);
+        // Stop clears the shared reference while this scan can be awaiting
+        // metadata. Retain the manager for the lifetime of this scan.
+        var sessionManager = _sessionManager;
+        if (sessionManager == null) return (null, null);
         var pinned = Volatile.Read(ref _pinnedSession);
         if (pinned != null)
         {
-            var sessions = _sessionManager.GetSessions();
+            var sessions = sessionManager.GetSessions();
             var match = sessions.FirstOrDefault(s => BuildSessionInstanceKey(s) == pinned.Key);
             if (match != null)
             {
@@ -2926,7 +2916,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         }
         GlobalSystemMediaTransportControlsSession? session = null;
         string? spotifyGroundTruth = null;
-        var osCurrentSession = _sessionManager.GetCurrentSession();
+        var osCurrentSession = sessionManager.GetCurrentSession();
 
         if (_activeDisplaySession != null && !forceRefresh && !IsSessionStillPresent(_activeDisplaySession))
         {
@@ -2991,7 +2981,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             try
             {
-                var sessions = _sessionManager.GetSessions();
+                var sessions = sessionManager.GetSessions();
                 var newlyPlayingSessions = new List<GlobalSystemMediaTransportControlsSession>();
                 var scanTimeUtc = DateTime.UtcNow;
 
@@ -3325,7 +3315,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 }
                 else
                 {
-                    session = _sessionManager.GetCurrentSession();
+                    session = sessionManager.GetCurrentSession();
                 }
             }
         }
@@ -3704,16 +3694,13 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         {
             if (_thumbCts != null) await _thumbCts.CancelAsync().ConfigureAwait(false);
             _thumbCts?.Dispose();
-            _changeChannel.Writer.TryComplete();
+            _changes.Complete();
             _updateLock.Dispose();
         }
         else
         {
             // Drain stale items from channel so restart is clean
-            while (_changeChannel.Reader.TryRead(out _))
-            {
-                // Discard buffered items.
-            }
+            _changes.Clear();
 
             lock (_lifecycleLock)
             {

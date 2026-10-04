@@ -37,6 +37,7 @@ internal sealed class SpotlightController : ISpotlightController
     private NotchSettings? _settings;
     private bool _disposed;
     private bool _preparationQueued;
+    private int _hostGeneration;
 
     public bool IsHotkeyRegistered => _nativeRegistered || _keyboardHook != IntPtr.Zero;
 
@@ -48,9 +49,11 @@ internal sealed class SpotlightController : ISpotlightController
     public void Initialize(Window host, NotchSettings settings)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_source != null) return;
+        if (_host == host) return;
+        DetachHost();
 
         _host = host;
+        host.Closed += Host_Closed;
         _hwnd = new WindowInteropHelper(host).EnsureHandle();
         if (_hwnd != IntPtr.Zero)
         {
@@ -238,10 +241,12 @@ internal sealed class SpotlightController : ISpotlightController
     {
         if (_preparationQueued || _host == null) return;
         _preparationQueued = true;
+        int generation = _hostGeneration;
         _host.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, (Action)(() =>
         {
+            if (generation != _hostGeneration) return;
             _preparationQueued = false;
-            if (_disposed || _settings?.EnableSpotlight != true) return;
+            if (_disposed || _host == null || _settings?.EnableSpotlight != true) return;
             try
             {
                 if (_window == null)
@@ -271,14 +276,25 @@ internal sealed class SpotlightController : ISpotlightController
         _lastFallbackSpaceEventTime = 0;
     }
 
+    private void Host_Closed(object? sender, EventArgs e) => DetachHost();
+
+    private void DetachHost()
+    {
+        ++_hostGeneration;
+        _preparationQueued = false;
+        DisableHotkey();
+        _source?.RemoveHook(WndProc);
+        _source = null;
+        if (_host != null) _host.Closed -= Host_Closed;
+        _host = null;
+        _hwnd = IntPtr.Zero;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        DisableHotkey();
-        _source?.RemoveHook(WndProc);
-        _source = null;
-        _host = null;
+        DetachHost();
         _window?.Shutdown();
         _window = null;
     }

@@ -1,4 +1,5 @@
 using VNotch.Controllers;
+using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 
@@ -6,6 +7,31 @@ namespace VNotch.Tests;
 
 public sealed class SpotlightControllerTests
 {
+    [Fact]
+    public void ClosingHostLeavesControllerAvailableForAnotherHost() => SharedStaTestRunner.Run(() =>
+    {
+        using var controller = new SpotlightController(() => throw new InvalidOperationException("Spotlight is disabled"));
+        var firstHost = new BackgroundWindow();
+        var secondHost = new BackgroundWindow();
+        try
+        {
+            controller.Initialize(firstHost, new NotchSettings { EnableSpotlight = false });
+            firstHost.Close();
+            controller.Initialize(secondHost, new NotchSettings { EnableSpotlight = false });
+            Assert.False(controller.IsHotkeyRegistered);
+            secondHost.Close();
+            controller.ApplySettings(new NotchSettings { EnableSpotlight = false });
+            controller.Dispose();
+            Assert.Throws<ObjectDisposedException>(() =>
+                controller.Initialize(secondHost, new NotchSettings { EnableSpotlight = false }));
+        }
+        finally
+        {
+            firstHost.Close();
+            secondHost.Close();
+        }
+    });
+
     [Theory]
     [InlineData(Win32Interop.VK_SPACE, Win32Interop.LLKHF_ALTDOWN, true)]
     [InlineData(Win32Interop.VK_SPACE, 0, false)]

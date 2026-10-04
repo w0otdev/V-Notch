@@ -38,6 +38,7 @@ public sealed class TransitionRequestEventArgs : EventArgs
 {
     public long TransitionId { get; }
     public NotchView FromView { get; }
+    public NotchShapeState FromShape { get; }
     public NotchView TargetView { get; }
     public NotchShapeState TargetShape { get; }
     public string Reason { get; }
@@ -47,10 +48,12 @@ public sealed class TransitionRequestEventArgs : EventArgs
         NotchView fromView,
         NotchView targetView,
         NotchShapeState targetShape,
-        string reason)
+        string reason,
+        NotchShapeState fromShape)
     {
         TransitionId = transitionId;
         FromView = fromView;
+        FromShape = fromShape;
         TargetView = targetView;
         TargetShape = targetShape;
         Reason = reason;
@@ -69,11 +72,14 @@ public sealed class NotchTransitionCoordinator
     private NotchView _currentView = NotchView.Compact;
     private NotchView _targetView = NotchView.Compact;
     private NotchShapeState _shapeState = NotchShapeState.Collapsed;
+    private NotchShapeState _stableShape = NotchShapeState.Collapsed;
+    private NotchShapeState _targetStableShape = NotchShapeState.Collapsed;
     private long _activeTransitionId;
     private bool _isTransitionActive;
     private DisplayOwnership _ownership = DisplayOwnership.Notch;
     private long _spotlightSessionId;
     private NotchView _viewToRestoreOnSpotlightClose = NotchView.Compact;
+    private NotchShapeState _shapeToRestoreOnSpotlightClose = NotchShapeState.Collapsed;
     private bool _hasPendingCountdownCompletion;
     private bool _isEffectivelyVisible = true;
     private bool _isDisposed;
@@ -188,14 +194,17 @@ public sealed class NotchTransitionCoordinator
             bool isCountdownCompletion = string.Equals(reason, "CountdownCompletion", StringComparison.OrdinalIgnoreCase);
 
             // Quy tắc: Yêu cầu lại đúng đích đang mở và không trong chuyển cảnh
-            if (target == _currentView && !_isTransitionActive && !isCountdownCompletion)
+            var stableShape = target == NotchView.Compact
+                ? NotchShapeState.Collapsed
+                : isMusic ? NotchShapeState.MusicExpanded : NotchShapeState.Expanded;
+            if (target == _currentView && stableShape == _stableShape && !_isTransitionActive && !isCountdownCompletion)
             {
                 RuntimeLog.Debug(LogTag, () => $"RequestView({target}) ignored: already in target view ({reason})");
                 return false;
             }
 
             // Đang chuyển tới đúng đích đó rồi
-            if (target == _targetView && _isTransitionActive && !isCountdownCompletion)
+            if (target == _targetView && stableShape == _targetStableShape && _isTransitionActive && !isCountdownCompletion)
             {
                 RuntimeLog.Debug(LogTag, () => $"RequestView({target}) ignored: already transitioning to target ({reason})");
                 return false;
@@ -204,17 +213,22 @@ public sealed class NotchTransitionCoordinator
             long transitionId = ++_activeTransitionId;
             _targetView = target;
             _isTransitionActive = true;
+            _targetStableShape = stableShape;
 
             NotchShapeState targetShape;
             if (target == NotchView.Compact)
             {
-                targetShape = isMusic ? NotchShapeState.MusicCollapsing : NotchShapeState.Collapsing;
+                targetShape = isMusic || _stableShape == NotchShapeState.MusicExpanded
+                    ? NotchShapeState.MusicCollapsing : NotchShapeState.Collapsing;
             }
             else
             {
-                targetShape = isMusic ? NotchShapeState.MusicExpanding : NotchShapeState.Expanding;
+                targetShape = isMusic ? NotchShapeState.MusicExpanding
+                    : target == _currentView && _stableShape == NotchShapeState.MusicExpanded
+                        ? NotchShapeState.MusicCollapsing : NotchShapeState.Expanding;
             }
 
+            var fromShape = _shapeState;
             _shapeState = targetShape;
 
             requestArgs = new TransitionRequestEventArgs(
@@ -222,7 +236,8 @@ public sealed class NotchTransitionCoordinator
                 _currentView,
                 _targetView,
                 targetShape,
-                reason);
+                reason,
+                fromShape);
 
             newSnapshot = CreateSnapshotUnderLock();
         }
@@ -252,6 +267,7 @@ public sealed class NotchTransitionCoordinator
         lock (_lock)
         {
             _viewToRestoreOnSpotlightClose = _currentView;
+            _shapeToRestoreOnSpotlightClose = _stableShape;
 
             _ownership = DisplayOwnership.Spotlight;
             sessionId = ++_spotlightSessionId;
@@ -268,6 +284,7 @@ public sealed class NotchTransitionCoordinator
         NotchTransitionSnapshot? newSnapshot = null;
         NotchView? restoreView = null;
         bool showDeferredCountdown = false;
+        bool restoreMusic = false;
 
         lock (_lock)
         {
@@ -288,6 +305,7 @@ public sealed class NotchTransitionCoordinator
             else if (restorePreviousView)
             {
                 restoreView = _viewToRestoreOnSpotlightClose;
+                restoreMusic = _shapeToRestoreOnSpotlightClose == NotchShapeState.MusicExpanded;
             }
 
             newSnapshot = CreateSnapshotUnderLock();
@@ -303,7 +321,7 @@ public sealed class NotchTransitionCoordinator
         }
         else if (restoreView.HasValue)
         {
-            RequestView(restoreView.Value, "SpotlightHandoffRestoration");
+            RequestView(restoreView.Value, "SpotlightHandoffRestoration", isMusic: restoreMusic);
         }
     }
 
@@ -355,13 +373,10 @@ public sealed class NotchTransitionCoordinator
             finalView = _currentView;
             _isTransitionActive = false;
 
-            if (_currentView == NotchView.Compact)
+            _stableShape = _targetStableShape;
+            _shapeState = _stableShape;
+            if (_currentView != NotchView.Compact)
             {
-                _shapeState = NotchShapeState.Collapsed;
-            }
-            else
-            {
-                _shapeState = NotchShapeState.Expanded;
                 _viewToRestoreOnSpotlightClose = _currentView;
             }
 
@@ -388,7 +403,8 @@ public sealed class NotchTransitionCoordinator
             // Invalidate every delayed callback belonging to the canceled session.
             ++_activeTransitionId;
             // Roll back shape state to match current stable view
-            _shapeState = _currentView == NotchView.Compact ? NotchShapeState.Collapsed : NotchShapeState.Expanded;
+            _shapeState = _stableShape;
+            _targetStableShape = _stableShape;
             _targetView = _currentView;
 
             newSnapshot = CreateSnapshotUnderLock();
@@ -408,6 +424,8 @@ public sealed class NotchTransitionCoordinator
             _currentView = view;
             _targetView = view;
             _shapeState = shape;
+            _stableShape = shape;
+            _targetStableShape = shape;
             _isTransitionActive = false;
             _viewToRestoreOnSpotlightClose = view;
 

@@ -4,6 +4,15 @@ namespace VNotch.Services;
 
 public interface IMediaDetectionService : IDisposable
 {
+    IMediaArtworkService ArtworkService { get; }
+
+    bool KeepPinnedOnTrackChange { get; set; }
+
+    bool IsSessionPinned(string? sessionKey);
+
+    bool ToggleSessionPin(MediaInfo info);
+
+    Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default);
 
     event EventHandler<MediaInfo>? MediaChanged;
 

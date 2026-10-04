@@ -29,7 +29,7 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(() =>
         {
             _bluetoothController.TryShow(info, connected: true,
-                _isNotchVisible, _isAnimating, _isExpanded, _notchState.IsMusicExpanded);
+                _isNotchVisible, _isAnimating, _isExpanded, _isMusicExpanded);
         });
     }
 
@@ -38,7 +38,7 @@ public partial class MainWindow
         Dispatcher.BeginInvoke(() =>
         {
             _bluetoothController.TryShow(info, connected: false,
-                _isNotchVisible, _isAnimating, _isExpanded, _notchState.IsMusicExpanded);
+                _isNotchVisible, _isAnimating, _isExpanded, _isMusicExpanded);
         });
     }
 

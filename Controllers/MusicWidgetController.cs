@@ -1,70 +1,59 @@
 using System;
-using VNotch.Services;
+using VNotch.Models;
 
 namespace VNotch.Controllers;
 
 public sealed class MusicWidgetController
 {
-    private readonly NotchStateManager _stateManager;
+    private readonly NotchTransitionCoordinator _coordinator;
 
-    private bool _isMusicAnimating = false;
     private double _musicWidgetSmallWidth = 0;
 
-    public bool IsMusicExpanded => _stateManager.IsMusicExpanded;
-    public bool IsMusicAnimating => _isMusicAnimating;
+    public bool IsMusicExpanded => _coordinator.ShapeState == NotchShapeState.MusicExpanded;
+    public bool IsMusicAnimating => _coordinator.IsTransitionActive &&
+        _coordinator.ShapeState is NotchShapeState.MusicExpanding or NotchShapeState.MusicCollapsing;
     public double SmallWidth => _musicWidgetSmallWidth;
 
     public event Action? ExpandRequested;
     public event Action? CollapseRequested;
     public event Action? LayoutUpdateRequested;
 
-    public MusicWidgetController(NotchStateManager stateManager)
+    public MusicWidgetController(NotchTransitionCoordinator coordinator)
     {
-        _stateManager = stateManager;
+        _coordinator = coordinator;
     }
 
     public bool TryBeginExpand(double currentWidgetWidth)
     {
-        if (_isMusicAnimating) return false;
-        _isMusicAnimating = true;
+        if (_coordinator.IsTransitionActive) return false;
         _musicWidgetSmallWidth = currentWidgetWidth;
 
-        if (!_stateManager.TryTransitionTo(NotchState.MusicExpanding))
-        {
-            _isMusicAnimating = false;
-            return false;
-        }
+        if (!_coordinator.RequestView(NotchView.Media, "MusicWidgetController.Expand", isMusic: true)) return false;
 
         ExpandRequested?.Invoke();
         return true;
     }
 
-    public void CompleteExpand()
+    public void CompleteExpand(long transitionId)
     {
-        _isMusicAnimating = false;
-        _stateManager.TryTransitionTo(NotchState.MusicExpanded);
+        if (!_coordinator.IsTransitionActive || transitionId != _coordinator.ActiveTransitionId) return;
+        _coordinator.CompleteTransition(transitionId);
         LayoutUpdateRequested?.Invoke();
     }
 
     public bool TryBeginCollapse()
     {
-        if (_isMusicAnimating) return false;
-        _isMusicAnimating = true;
-
-        if (!_stateManager.TryTransitionTo(NotchState.MusicCollapsing))
-        {
-            _isMusicAnimating = false;
-            return false;
-        }
+        if (_coordinator.IsTransitionActive || !IsMusicExpanded) return false;
+        if (!_coordinator.RequestView(NotchView.Media, "MusicWidgetController.Collapse")) return false;
 
         CollapseRequested?.Invoke();
         return true;
     }
 
-    public void CompleteCollapse()
+    public void CompleteCollapse(long transitionId)
     {
-        _isMusicAnimating = false;
-        _stateManager.TryTransitionTo(NotchState.Expanded);
+        if (!_coordinator.IsTransitionActive || transitionId != _coordinator.ActiveTransitionId) return;
+        _coordinator.CompleteTransition(transitionId);
         LayoutUpdateRequested?.Invoke();
     }
 

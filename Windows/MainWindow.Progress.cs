@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -132,77 +133,103 @@ public partial class MainWindow
     }
 
     private DateTime _lastOutsideClickTime = DateTime.MinValue;
+    private readonly Queue<OutsideClickSnapshot> _outsideClicks = new();
+    private Action? _drainOutsideClicks;
+    private bool _outsideClickDrainPending;
+    private readonly record struct OutsideClickSnapshot(InputMonitorService.POINT Point,
+        bool ScreenshotClick, bool OutsideScreenshot, bool ScreenshotWasAnimating);
 
     private void GlobalMouseHook_MouseLeftButtonDown(object? sender, InputMonitorService.POINT pt)
     {
+        if (_cleanedUp || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility ||
+            (!IsScreenshotPillActive && !_isExpanded && !_isMusicExpanded)) return;
         // Capture against the visible shell at mouse-down, before queued layout
         // or animation work can move/resize it under this click.
         bool screenshotClick = IsScreenshotPillActive;
         bool outsideScreenshot = screenshotClick && !IsScreenPointInsideScreenshotShell(pt);
         bool screenshotWasAnimating = screenshotClick && (_isAnimating || _screenshotMorphRunning || _transitionCoordinator.IsTransitionActive);
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        _outsideClicks.Enqueue(new OutsideClickSnapshot(pt, screenshotClick, outsideScreenshot, screenshotWasAnimating));
+        if (_outsideClickDrainPending) return;
+        _outsideClickDrainPending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, _drainOutsideClicks ??= DrainOutsideClicks);
+    }
+
+    private void DrainOutsideClicks()
+    {
+        try
         {
-            // Clicks inside Spotlight window must not collapse MainWindow's hidden
-            // state while Spotlight temporarily owns the notch surface.
-            if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
-
-            if (IsScreenshotPillActive)
+            while (_outsideClicks.TryDequeue(out var click))
             {
-                if (screenshotClick && outsideScreenshot)
+                if (_cleanedUp) { _outsideClicks.Clear(); break; }
+                HandleOutsideClick(click);
+            }
+        }
+        finally { _outsideClickDrainPending = false; }
+    }
+
+    private void HandleOutsideClick(OutsideClickSnapshot click)
+    {
+        var pt = click.Point;
+        // Clicks inside Spotlight window must not collapse MainWindow's hidden
+        // state while Spotlight temporarily owns the notch surface.
+        if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+
+        if (IsScreenshotPillActive)
+        {
+            if (click.ScreenshotClick && click.OutsideScreenshot)
+                ReturnScreenshotToWaiting();
+            else if (click.ScreenshotWasAnimating)
+            {
+                if (_screenshotReturnPending || _screenshotMorphReturning)
+                    OpenScreenshotFromClick();
+                else
                     ReturnScreenshotToWaiting();
-                else if (screenshotWasAnimating)
-                {
-                    if (_screenshotReturnPending || _screenshotMorphReturning)
-                        OpenScreenshotFromClick();
-                    else
-                        ReturnScreenshotToWaiting();
-                }
-                return;
             }
+            return;
+        }
 
-            if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
+        if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
+        {
+            IntPtr hWndAtPoint = WindowFromPoint(new POINT { X = pt.x, Y = pt.y });
+
+            if (!IsScreenPointInsideNotchVisual(pt))
             {
-                IntPtr hWndAtPoint = WindowFromPoint(new POINT { X = pt.x, Y = pt.y });
-
-                if (!IsScreenPointInsideNotchVisual(pt))
+                if (DateTime.UtcNow < _suppressOutsideClickUntilUtc)
                 {
-                    if (DateTime.UtcNow < _suppressOutsideClickUntilUtc)
+                    RuntimeLog.Log("COLLAPSE-BLOCKED",
+                        $"Suppressed during thumbnail animation grace: pt=({pt.x},{pt.y}) " +
+                        $"hWndAtPoint=0x{hWndAtPoint:X} remaining={((_suppressOutsideClickUntilUtc - DateTime.UtcNow).TotalMilliseconds):F0}ms");
+                    return;
+                }
+
+                RuntimeLog.Log("COLLAPSE-TRIGGER",
+                    $"Outside click detected: pt=({pt.x},{pt.y}) hWndAtPoint=0x{hWndAtPoint:X} _hwnd=0x{_hwnd:X} " +
+                    $"isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded} isSecondary={_isSecondaryView} " +
+                    $"isAnimating={_isAnimating}");
+
+                if (_isSecondaryView)
+                {
+                    var now = DateTime.Now;
+                    double doubleClickTime = GetDoubleClickTime();
+
+                    if ((now - _lastOutsideClickTime).TotalMilliseconds < doubleClickTime)
                     {
-                        RuntimeLog.Log("COLLAPSE-BLOCKED",
-                            $"Suppressed during thumbnail animation grace: pt=({pt.x},{pt.y}) " +
-                            $"hWndAtPoint=0x{hWndAtPoint:X} remaining={((_suppressOutsideClickUntilUtc - DateTime.UtcNow).TotalMilliseconds):F0}ms");
-                        return;
-                    }
-
-                    RuntimeLog.Log("COLLAPSE-TRIGGER",
-                        $"Outside click detected: pt=({pt.x},{pt.y}) hWndAtPoint=0x{hWndAtPoint:X} _hwnd=0x{_hwnd:X} " +
-                        $"isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded} isSecondary={_isSecondaryView} " +
-                        $"isAnimating={_isAnimating}");
-
-                    if (_isSecondaryView)
-                    {
-                        var now = DateTime.Now;
-                        double doubleClickTime = GetDoubleClickTime();
-
-                        if ((now - _lastOutsideClickTime).TotalMilliseconds < doubleClickTime)
-                        {
-                            RuntimeLog.Log("COLLAPSE-TRIGGER", "Secondary view double-click -> CollapseAll");
-                            CollapseAll();
-                            _lastOutsideClickTime = DateTime.MinValue;
-                        }
-                        else
-                        {
-                            _lastOutsideClickTime = now;
-                        }
+                        RuntimeLog.Log("COLLAPSE-TRIGGER", "Secondary view double-click -> CollapseAll");
+                        CollapseAll();
+                        _lastOutsideClickTime = DateTime.MinValue;
                     }
                     else
                     {
-                        RuntimeLog.Log("COLLAPSE-TRIGGER", "Normal view single outside click -> CollapseAll");
-                        CollapseAll();
+                        _lastOutsideClickTime = now;
                     }
                 }
+                else
+                {
+                    RuntimeLog.Log("COLLAPSE-TRIGGER", "Normal view single outside click -> CollapseAll");
+                    CollapseAll();
+                }
             }
-        }));
+        }
     }
 
     private bool IsScreenPointInsideScreenshotShell(InputMonitorService.POINT pt)
@@ -1179,7 +1206,7 @@ public partial class MainWindow
 
         if (isExpanded)
         {
-            InputMonitorService.Start();
+            InputMonitorService.Start(_hwnd);
         }
         else
         {

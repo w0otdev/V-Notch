@@ -1,6 +1,5 @@
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Windows.Automation;
 
@@ -30,10 +29,10 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+    [DllImport("user32.dll", EntryPoint = "GetWindowTextW", ExactSpelling = true)]
+    private static extern unsafe int GetWindowText(IntPtr hWnd, char* lpString, int nMaxCount);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextLength(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -57,7 +56,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private readonly object _cacheLock = new();
     // All title enumerations are serialized by _cacheLock.
-    private readonly StringBuilder _titleBuffer = new(256);
+    private char[] _titleBuffer = new char[256];
     private List<string> _cachedWindowTitles = new();
     private DateTime _lastWindowEnumTime = DateTime.MinValue;
 
@@ -65,7 +64,9 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     {
         lock (_cacheLock)
         {
-            int cacheDurationMs = isThrottled ? 300 : 700;
+            // Throttled players need fallback detection, but full desktop scans
+            // should back off instead of increasing their polling frequency.
+            int cacheDurationMs = isThrottled ? 2000 : 700;
             if ((DateTime.UtcNow - _lastWindowEnumTime).TotalMilliseconds < cacheDurationMs)
             {
                 return _cachedWindowTitles;
@@ -80,28 +81,14 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                     return true;
                 }
 
-                int length = GetWindowTextLength(hWnd);
-                if (length == 0)
-                {
+                // USER32 reads foreign-process captions without WM_GETTEXT.
+                // Our own windows can synchronously message a UI thread while
+                // this background scanner holds the cache lock.
+                GetWindowThreadProcessId(hWnd, out uint processId);
+                if (processId == 0 || processId == (uint)Environment.ProcessId)
                     return true;
-                }
 
-                _titleBuffer.Clear();
-                _titleBuffer.EnsureCapacity(length + 1);
-                GetWindowText(hWnd, _titleBuffer, _titleBuffer.Capacity);
-                var title = _titleBuffer.ToString();
-
-                if (string.IsNullOrWhiteSpace(title))
-                {
-                    return true;
-                }
-
-                foreach (string keyword in _platformKeywords)
-                {
-                    if (!title.Contains(keyword, StringComparison.OrdinalIgnoreCase)) continue;
-                    titles.Add(title);
-                    break;
-                }
+                AddMatchingWindowTitle(hWnd, titles);
 
                 return true;
             }, IntPtr.Zero);
@@ -110,6 +97,34 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
             _lastWindowEnumTime = DateTime.UtcNow;
             return titles;
         }
+    }
+
+    private unsafe void AddMatchingWindowTitle(IntPtr hWnd, List<string> titles)
+    {
+        int length = GetWindowTextLength(hWnd);
+        if (length <= 0) return;
+
+        if (_titleBuffer.Length <= length)
+            Array.Resize(ref _titleBuffer, Math.Max(length + 1, _titleBuffer.Length * 2));
+
+        int copied;
+        fixed (char* buffer = _titleBuffer)
+            copied = GetWindowText(hWnd, buffer, _titleBuffer.Length);
+        if (copied <= 0) return;
+
+        ReadOnlySpan<char> title = _titleBuffer.AsSpan(0, copied);
+        if (MatchesPlatformTitle(title))
+            titles.Add(new string(title));
+    }
+
+    internal static bool MatchesPlatformTitle(ReadOnlySpan<char> title)
+    {
+        foreach (string keyword in _platformKeywords)
+        {
+            if (title.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     [DllImport("user32.dll")]
@@ -203,7 +218,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private int _generation;
     private readonly AutoResetEvent _wakeWorkerEvent = new(false);
-    private readonly Thread _workerThread;
+    private Thread? _workerThread;
     private volatile bool _disposed;
 
     private bool _browserUrlScanActive;
@@ -222,26 +237,35 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     internal Func<string?> AnyBrowserMediaUrlExtractor { get; set; } = ExtractMediaUrlFromAllBrowserWindows;
     internal Func<bool> SpotifyWebPlayerDetector { get; set; } = DetectSpotifyWebPlayer;
 
-    public WindowTitleScanner()
+    internal bool IsWorkerStarted => _workerThread != null;
+    internal bool IsWorkerAlive => _workerThread?.IsAlive == true;
+
+    // Called under _cacheLock. Title-only polling does not need a UIA worker.
+    private void WakeWorker()
     {
-        _workerThread = new Thread(WorkerLoop)
+        if (_workerThread == null)
         {
-            IsBackground = true,
-            Name = "VNotch.WindowTitleScanner.Worker",
-            Priority = ThreadPriority.BelowNormal
-        };
-        _workerThread.Start();
+            _workerThread = new Thread(WorkerLoop)
+            {
+                IsBackground = true,
+                Name = "VNotch.WindowTitleScanner.Worker",
+                Priority = ThreadPriority.BelowNormal
+            };
+            _workerThread.Start();
+        }
+        _wakeWorkerEvent.Set();
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        try
+        lock (_cacheLock)
         {
-            _wakeWorkerEvent.Set();
+            if (_disposed) return;
+            _disposed = true;
+            _generation++; // Do not publish results from an in-flight UIA call.
+            if (_workerThread == null) _wakeWorkerEvent.Dispose();
+            else _wakeWorkerEvent.Set();
         }
-        catch (ObjectDisposedException) { }
     }
 
     public string? TryGetBrowserUrl()
@@ -251,6 +275,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
         lock (_cacheLock)
         {
+            if (_disposed) return null;
             if ((DateTime.UtcNow - _lastBrowserUrlTime).TotalMilliseconds < 1000)
                 return _cachedBrowserUrl;
 
@@ -259,13 +284,13 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                 _browserUrlScanActive = true;
                 _browserUrlScanGen = _generation;
                 _pendingBrowserUrlScan = true;
-                _wakeWorkerEvent.Set();
+                WakeWorker();
             }
             else if (_browserUrlScanGen != _generation)
             {
                 _browserUrlScanGen = _generation;
                 _pendingBrowserUrlScan = true;
-                _wakeWorkerEvent.Set();
+                WakeWorker();
             }
 
             return _cachedBrowserUrl;
@@ -279,6 +304,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
         lock (_cacheLock)
         {
+            if (_disposed) return null;
             int ttlMs = !string.IsNullOrEmpty(_cachedAnyBrowserMediaUrl) ? 1500 : 400;
             if ((DateTime.UtcNow - _lastAnyBrowserMediaUrlTime).TotalMilliseconds < ttlMs)
                 return _cachedAnyBrowserMediaUrl;
@@ -288,13 +314,13 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                 _anyBrowserScanActive = true;
                 _anyBrowserScanGen = _generation;
                 _pendingAnyBrowserScan = true;
-                _wakeWorkerEvent.Set();
+                WakeWorker();
             }
             else if (_anyBrowserScanGen != _generation)
             {
                 _anyBrowserScanGen = _generation;
                 _pendingAnyBrowserScan = true;
-                _wakeWorkerEvent.Set();
+                WakeWorker();
             }
 
             return _cachedAnyBrowserMediaUrl;
@@ -364,6 +390,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     {
         lock (_cacheLock)
         {
+            if (_disposed) return false;
             int ttlMs = _cachedSpotifyWebPlayerOpen ? 3000 : 1000;
             if ((DateTime.UtcNow - _lastSpotifyWebPlayerTime).TotalMilliseconds < ttlMs)
                 return _cachedSpotifyWebPlayerOpen;
@@ -373,13 +400,13 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                 _spotifyScanActive = true;
                 _spotifyScanGen = _generation;
                 _pendingSpotifyScan = true;
-                _wakeWorkerEvent.Set();
+                WakeWorker();
             }
             else if (_spotifyScanGen != _generation)
             {
                 _spotifyScanGen = _generation;
                 _pendingSpotifyScan = true;
-                _wakeWorkerEvent.Set();
+                WakeWorker();
             }
 
             return _cachedSpotifyWebPlayerOpen;
@@ -395,6 +422,17 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     }
 
     private void WorkerLoop()
+    {
+        try { RunWorkerScans(); }
+        finally
+        {
+            // UIA may be slow to return. Disposal never blocks the UI waiting for
+            // COM; the worker releases its wait handle after its final call exits.
+            lock (_cacheLock) { _wakeWorkerEvent.Dispose(); }
+        }
+    }
+
+    private void RunWorkerScans()
     {
         while (!_disposed)
         {
@@ -661,8 +699,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     {
         try
         {
-            var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
-            var tabs = root.FindAll(TreeScope.Descendants, tabCondition);
+            var tabs = FindCachedTabs(root);
             if (tabs == null || tabs.Count == 0) return null;
 
             foreach (AutomationElement tab in tabs)
@@ -681,30 +718,50 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         return null;
     }
 
-    private static string? TryReadTabUrl(AutomationElement tab)
+    internal static AutomationElementCollection FindCachedTabs(AutomationElement root)
+    {
+        var cache = new CacheRequest
+        {
+            AutomationElementMode = AutomationElementMode.None,
+            TreeScope = TreeScope.Element | TreeScope.Children,
+            // Match FindAll(Children, IsControlElement=true): direct raw children,
+            // filtered below, rather than walking through non-control ancestors.
+            TreeFilter = Automation.RawViewCondition
+        };
+        cache.Add(AutomationElement.HelpTextProperty);
+        cache.Add(AutomationElement.NameProperty);
+        cache.Add(AutomationElement.IsControlElementProperty);
+        cache.Add(ValuePattern.Pattern);
+        cache.Add(ValuePattern.ValueProperty);
+        using (cache.Activate())
+            return root.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+    }
+
+    internal static string? TryReadTabUrl(AutomationElement tab)
     {
         try
         {
-            string help = tab.Current.HelpText ?? string.Empty;
+            string help = tab.Cached.HelpText ?? string.Empty;
             if (LooksLikeUrl(help)) return NormalizeUrl(help);
 
-            string name = tab.Current.Name ?? string.Empty;
+            string name = tab.Cached.Name ?? string.Empty;
             if (LooksLikeUrl(name)) return NormalizeUrl(name);
 
-            var subtree = tab.FindAll(TreeScope.Children,
-                new PropertyCondition(AutomationElement.IsControlElementProperty, true));
+            var subtree = tab.CachedChildren;
 
             foreach (AutomationElement child in subtree)
             {
-                string childHelp = child.Current.HelpText ?? string.Empty;
+                if (!child.Cached.IsControlElement) continue;
+                string childHelp = child.Cached.HelpText ?? string.Empty;
                 if (LooksLikeUrl(childHelp)) return NormalizeUrl(childHelp);
 
-                string childName = child.Current.Name ?? string.Empty;
+                string childName = child.Cached.Name ?? string.Empty;
                 if (LooksLikeUrl(childName)) return NormalizeUrl(childName);
 
-                if (child.TryGetCurrentPattern(ValuePattern.Pattern, out object? p))
+                if (child.TryGetCachedPattern(ValuePattern.Pattern, out object? p))
                 {
-                    string v = ((ValuePattern)p).Current.Value ?? string.Empty;
+                    string v = ((ValuePattern)p).Cached.Value ?? string.Empty;
                     if (LooksLikeUrl(v)) return NormalizeUrl(v);
                 }
             }
@@ -864,8 +921,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private static bool TabsContainSpotify(AutomationElement element)
     {
-        var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
-        var tabs = element.FindAll(TreeScope.Descendants, tabCondition);
+        var tabs = FindCachedTabs(element);
         if (tabs != null)
         {
             foreach (AutomationElement tab in tabs)
@@ -877,29 +933,29 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         return false;
     }
 
-    private static bool TabReferencesSpotifyWebPlayer(AutomationElement tab)
+    internal static bool TabReferencesSpotifyWebPlayer(AutomationElement tab)
     {
         try
         {
-            string help = tab.Current.HelpText ?? string.Empty;
+            string help = tab.Cached.HelpText ?? string.Empty;
             if (help.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
 
-            string name = tab.Current.Name ?? string.Empty;
+            string name = tab.Cached.Name ?? string.Empty;
             if (name.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
 
-            var subtree = tab.FindAll(TreeScope.Children,
-                new PropertyCondition(AutomationElement.IsControlElementProperty, true));
+            var subtree = tab.CachedChildren;
             foreach (AutomationElement child in subtree)
             {
-                string childHelp = child.Current.HelpText ?? string.Empty;
+                if (!child.Cached.IsControlElement) continue;
+                string childHelp = child.Cached.HelpText ?? string.Empty;
                 if (childHelp.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
 
-                string childName = child.Current.Name ?? string.Empty;
+                string childName = child.Cached.Name ?? string.Empty;
                 if (childName.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
 
-                if (child.TryGetCurrentPattern(ValuePattern.Pattern, out object? p))
+                if (child.TryGetCachedPattern(ValuePattern.Pattern, out object? p))
                 {
-                    string v = ((ValuePattern)p).Current.Value ?? string.Empty;
+                    string v = ((ValuePattern)p).Cached.Value ?? string.Empty;
                     if (v.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
                 }
             }

@@ -91,7 +91,7 @@ public partial class MainWindow
 
             ApplyLiquidGlassConfig();
             _liquidGlass.Start();
-            SyncGlassCornerRadius(NotchBorder.CornerRadius);
+            _glassMaterialPresenter.SyncCornerRadius(NotchBorder.CornerRadius);
             ApplyGlassContentShadow(true);
             ApplyGlassToTimerBar(true);
             ApplyGlassToTimerFinishedView(true);
@@ -183,7 +183,7 @@ public partial class MainWindow
             _glassRefractionEffect.HighlightStrength = cfg.TouchLight;
         }
 
-        SyncGlassCornerRadius(NotchBorder.CornerRadius);
+        _glassMaterialPresenter.SyncCornerRadius(NotchBorder.CornerRadius);
 
         if (NotchShadowWrapper?.Effect is System.Windows.Media.Effects.DropShadowEffect dse)
         {
@@ -803,24 +803,6 @@ public partial class MainWindow
             dse.Opacity = _notchShadowDefaultOpacity;
             dse.BlurRadius = _notchShadowDefaultBlur;
         }
-    }
-
-    private void SyncGlassCornerRadius(CornerRadius cr)
-    {
-        if (GlassBackdropHost == null || GlassMaterialClipHost?.Visibility != Visibility.Visible) return;
-        GlassBackdropHost.CornerRadius = cr;
-        GlassTintOverlay.CornerRadius = cr;
-        if (GlassGrainOverlay != null) GlassGrainOverlay.CornerRadius = cr;
-        GlassDepthRimBorder.CornerRadius = cr;
-        GlassCoolRimBorder.CornerRadius = cr;
-        GlassWarmRimBorder.CornerRadius = cr;
-        GlassFresnelBloomBorder.CornerRadius = cr;
-        GlassFresnelBorder.CornerRadius = cr;
-        GlassInnerFresnelBorder.CornerRadius = cr;
-        GlassRimBorder.CornerRadius = cr;
-        GlassSpecularBorder.CornerRadius = cr;
-        if (GlassDarkOverlay != null) GlassDarkOverlay.CornerRadius = cr;
-        UpdateGlassClip();
     }
 
     private double GetGlassDpiScale()

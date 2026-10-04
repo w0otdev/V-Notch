@@ -14,8 +14,7 @@ public partial class MainWindow
 {
     #region Expanded Music Player Animations
 
-    private bool _isMusicExpanded => _notchState.IsMusicExpanded;
-    private bool _isMusicAnimating = false;
+    private bool _isMusicExpanded => _transitionCoordinator.ShapeState == VNotch.Controllers.NotchShapeState.MusicExpanded;
 
     private double GetMediaWidgetLayoutX()
     {
@@ -76,11 +75,15 @@ public partial class MainWindow
         MediaWidgetLayoutTranslate.BeginAnimation(TranslateTransform.XProperty, translateAnim);
     }
 
-    private void CollapseMusicWidget()
+    private void CollapseMusicWidget(long? transitionId = null)
     {
-        if (_isDebugViewLocked || _isMusicAnimating) return;
-        _isMusicAnimating = true;
-        _notchState.TryTransitionTo(NotchState.MusicCollapsing);
+        if (!transitionId.HasValue)
+        {
+            if (_isDebugViewLocked) return;
+            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Media, "CollapseMusicWidget");
+            return;
+        }
+        long generation = transitionId.Value;
         UpdateProgressSectionLayout();
 
         ResetCalendarHoverFocusVisualState();
@@ -108,9 +111,9 @@ public partial class MainWindow
 
         AnimateMediaWidgetLayoutFrom(currentWidth, currentX, collapseDuration, _easeExpOut7, () =>
         {
+            if (generation != _transitionCoordinator.ActiveTransitionId) return;
             UpdateProgressSectionLayout();
-            _isMusicAnimating = false;
-            _notchState.TryTransitionTo(NotchState.Expanded);
+            _transitionCoordinator.CompleteTransition(generation);
             UpdateProgressTimerState();
         });
 

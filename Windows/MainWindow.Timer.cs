@@ -22,11 +22,7 @@ public partial class MainWindow
     private bool _isTimerView
     {
         get => _localTimerView;
-        set
-        {
-            _localTimerView = value;
-            _notchState.IsTimerView = value;
-        }
+        set => _localTimerView = value;
     }
     private const double _timerViewHeight = 108;
     private const double _countdownCompleteWidthInset = 28;
@@ -810,66 +806,6 @@ public partial class MainWindow
         }
     }
 
-    private void EnsureExpandedStateForTimerSurface()
-    {
-        var state = _notchState.CurrentState;
-        if (state == NotchState.Expanded)
-            return;
-
-        if (state == NotchState.Collapsed)
-        {
-            _notchState.TryTransitionTo(NotchState.Expanding);
-            _notchState.TryTransitionTo(NotchState.Expanded);
-            return;
-        }
-
-        if ((state == NotchState.Expanding ||
-             state == NotchState.SecondaryView ||
-             state == NotchState.CameraExpanded) &&
-            _notchState.TryTransitionTo(NotchState.Expanded))
-        {
-            return;
-        }
-
-        _notchState.ForceState(NotchState.Expanded);
-    }
-
-    private void BeginCountdownManualCollapseState()
-    {
-        var state = _notchState.CurrentState;
-        if (state == NotchState.Collapsed || state == NotchState.Collapsing)
-            return;
-
-        if (state == NotchState.SecondaryView || state == NotchState.CameraExpanded)
-        {
-            _notchState.TryTransitionTo(NotchState.Expanded);
-            state = _notchState.CurrentState;
-        }
-
-        if (state == NotchState.Expanded)
-        {
-            _notchState.TryTransitionTo(NotchState.Collapsing);
-            return;
-        }
-
-        _notchState.ForceState(NotchState.Collapsing);
-    }
-
-    private void CompleteCountdownManualCollapseState()
-    {
-        var state = _notchState.CurrentState;
-        if (state == NotchState.Collapsed)
-            return;
-
-        if ((state == NotchState.Collapsing || state == NotchState.MusicCollapsing) &&
-            _notchState.TryTransitionTo(NotchState.Collapsed))
-        {
-            return;
-        }
-
-        _notchState.ForceState(NotchState.Collapsed);
-    }
-
     private void ShowCountdownCompletionOnPill(long? transitionId = null)
     {
         _isCountdownCompleteVisible = true;
@@ -881,7 +817,6 @@ public partial class MainWindow
 
     private void AnimateCountdownCompletionToClockView(long? transitionId = null)
     {
-        EnsureExpandedStateForTimerSurface();
         int generation = (int)(transitionId ?? _transitionCoordinator.ActiveTransitionId);
         _viewTransitionGeneration = generation;
 
@@ -899,7 +834,6 @@ public partial class MainWindow
             DisableKeyboardInput();
         }
 
-        _isExpanded = true;
         _isTimerView = true;
         _isSecondaryView = false;
         _isAudioView = false;
@@ -934,8 +868,6 @@ public partial class MainWindow
         Action onCompletedAction = () =>
         {
             if (transitionId.HasValue && generation != _viewTransitionGeneration) return;
-
-            EnsureExpandedStateForTimerSurface();
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
@@ -1235,7 +1167,6 @@ public partial class MainWindow
         _isTimerView = true;
         _isSecondaryView = false;
         _isAudioView = false;
-        EnsureExpandedStateForTimerSurface();
         _lastViewSwitchUtc = DateTime.UtcNow;
         _isScrollSessionLocked = true;
         NotchBorder.IsHitTestVisible = false;
@@ -1320,7 +1251,6 @@ public partial class MainWindow
 
         timerFadeIn.Completed += (s, e) =>
         {
-            EnsureExpandedStateForTimerSurface();
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
@@ -1376,9 +1306,15 @@ public partial class MainWindow
 
         AnimateCountdownCompleteOverlayOut();
         _viewModel.Timer.Remaining = _countdownDuration;
+        _transitionCoordinator.RequestCollapse("CountdownDismiss");
+        SetCountdownStartVisual(false);
+    }
+
+    private void AnimateCountdownDismissCollapse(long transitionId)
+    {
+        _viewTransitionGeneration = (int)transitionId;
         _isTimerView = false;
         _isSecondaryView = false;
-        BeginCountdownManualCollapseState();
 
         _isAnimating = true;
         var durCollapse = new Duration(TimeSpan.FromMilliseconds(400));
@@ -1388,7 +1324,8 @@ public partial class MainWindow
 
         heightAnim.Completed += (s, ev) =>
         {
-            CompleteCountdownManualCollapseState();
+            if (transitionId != _transitionCoordinator.ActiveTransitionId) return;
+            _transitionCoordinator.CompleteTransition(transitionId);
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;

@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Media.Animation;
+using VNotch.Models;
 using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
 
@@ -8,9 +9,9 @@ namespace VNotch.Controllers;
 
 public sealed class NotchAnimationController
 {
-    private readonly NotchStateManager _stateManager;
+    private readonly NotchTransitionCoordinator _coordinator;
 
-    public bool IsAnimating { get; set; }
+    public bool IsAnimating => _coordinator.IsTransitionActive;
 
     public (double X, double Y)? CachedThumbnailExpandTarget { get; set; }
 
@@ -33,44 +34,42 @@ public sealed class NotchAnimationController
     public event Action? CollapseStarted;
     public event Action? CollapseCompleted;
 
-    public NotchAnimationController(NotchStateManager stateManager)
+    public NotchAnimationController(NotchTransitionCoordinator coordinator)
     {
-        _stateManager = stateManager;
+        _coordinator = coordinator;
     }
 
-    public bool IsExpanded => _stateManager.IsExpanded;
+    public bool IsExpanded => _coordinator.CurrentView != NotchView.Compact;
     public bool CanExpand => !IsAnimating && !IsExpanded;
     public bool CanCollapse => !IsAnimating && IsExpanded;
 
     public bool TryBeginExpand()
     {
         if (!CanExpand) return false;
-        if (!_stateManager.TryTransitionTo(NotchState.Expanding)) return false;
-        IsAnimating = true;
+        if (!_coordinator.RequestView(NotchView.Media, "NotchAnimationController.Expand")) return false;
         ExpandStarted?.Invoke();
         return true;
     }
 
-    public void CompleteExpand()
+    public void CompleteExpand(long transitionId)
     {
-        IsAnimating = false;
-        _stateManager.TryTransitionTo(NotchState.Expanded);
+        if (!_coordinator.IsTransitionActive || transitionId != _coordinator.ActiveTransitionId) return;
+        _coordinator.CompleteTransition(transitionId);
         ExpandCompleted?.Invoke();
     }
 
     public bool TryBeginCollapse()
     {
         if (!CanCollapse) return false;
-        if (!_stateManager.TryTransitionTo(NotchState.Collapsing)) return false;
-        IsAnimating = true;
+        if (!_coordinator.RequestCollapse("NotchAnimationController.Collapse")) return false;
         CollapseStarted?.Invoke();
         return true;
     }
 
-    public void CompleteCollapse()
+    public void CompleteCollapse(long transitionId)
     {
-        IsAnimating = false;
-        _stateManager.TryTransitionTo(NotchState.Collapsed);
+        if (!_coordinator.IsTransitionActive || transitionId != _coordinator.ActiveTransitionId) return;
+        _coordinator.CompleteTransition(transitionId);
         CollapseCompleted?.Invoke();
     }
 

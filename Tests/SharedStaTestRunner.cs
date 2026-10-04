@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 
 namespace VNotch.Tests;
@@ -10,34 +11,48 @@ internal static class SharedStaTestRunner
     private static Thread? _thread;
     private static Dispatcher? _dispatcher;
 
+    // The dispatcher keeps running its normal message loop while the test awaits
+    // rendering or completion events. No nested DispatcherFrame is necessary.
+    public static void RunAsync(Func<Task> action, int timeoutSeconds = 45)
+        => RunAsync(_ => action(), timeoutSeconds);
+
+    public static void RunAsync(Func<CancellationToken, Task> action, int timeoutSeconds = 45)
+    {
+        lock (_sync)
+        {
+            EnsureDispatcher();
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _dispatcher!.BeginInvoke(async () =>
+            {
+                try
+                {
+                    BackgroundTestWindows.Initialize();
+                    await action(deadline.Token);
+                    completion.TrySetResult();
+                }
+                catch (Exception ex) { completion.TrySetException(ex); }
+            });
+            // Allow cancellation continuations to finish their finally blocks
+            // before the next serialized test acquires this dispatcher.
+            completion.Task.WaitAsync(TimeSpan.FromSeconds(timeoutSeconds + 5)).GetAwaiter().GetResult();
+        }
+    }
+
     public static void Run(Action action, int timeoutSeconds = 45)
     {
         lock (_sync)
         {
-            if (_thread == null || !_thread.IsAlive || _dispatcher == null || _dispatcher.HasShutdownStarted)
-            {
-                using var ready = new ManualResetEventSlim(false);
-                _thread = new Thread(() =>
-                {
-                    SynchronizationContext.SetSynchronizationContext(
-                        new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-                    _dispatcher = Dispatcher.CurrentDispatcher;
-                    ready.Set();
-                    Dispatcher.Run();
-                })
-                {
-                    IsBackground = true,
-                    Name = "VNotchSharedStaRunner"
-                };
-                _thread.SetApartmentState(ApartmentState.STA);
-                _thread.Start();
-                ready.Wait();
-            }
+            EnsureDispatcher();
 
             Exception? failure = null;
             var op = _dispatcher!.BeginInvoke(() =>
             {
-                try { action(); }
+                try
+                {
+                    BackgroundTestWindows.Initialize();
+                    action();
+                }
                 catch (Exception ex) { failure = ex; }
             });
 
@@ -51,5 +66,22 @@ internal static class SharedStaTestRunner
             if (failure != null)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
         }
+    }
+
+    private static void EnsureDispatcher()
+    {
+        if (_thread?.IsAlive == true && _dispatcher != null && !_dispatcher.HasShutdownStarted) return;
+        using var ready = new ManualResetEventSlim(false);
+        _thread = new Thread(() =>
+        {
+            SynchronizationContext.SetSynchronizationContext(
+                new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+            _dispatcher = Dispatcher.CurrentDispatcher;
+            ready.Set();
+            Dispatcher.Run();
+        }) { IsBackground = true, Name = "VNotchSharedStaRunner" };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
+        ready.Wait();
     }
 }

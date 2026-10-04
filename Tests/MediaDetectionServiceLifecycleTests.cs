@@ -12,13 +12,52 @@ namespace VNotch.Tests;
 
 public class MediaDetectionServiceLifecycleTests
 {
+    [Fact]
+    public async Task CancellationDuringFallbackScanPreventsPublishingTheStoppedUpdate()
+    {
+        using var cts = new CancellationTokenSource();
+        using var service = CreateTestService(null, new DummyWindowTitleScanner(() => cts.Cancel()));
+        bool published = false;
+        service.MediaChanged += (_, _) => published = true;
+        var update = typeof(MediaDetectionService).GetMethod("UpdateMediaInfoAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .CreateDelegate<Func<bool, CancellationToken, Task>>(service);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => update(true, cts.Token));
+        Assert.False(published);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateWaitsForContendedLockUntilCancellation(bool forceRefresh)
+    {
+        using var service = CreateTestService(null);
+        var updateLock = (SemaphoreSlim)typeof(MediaDetectionService).GetField("_updateLock",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(service)!;
+        var update = typeof(MediaDetectionService).GetMethod("UpdateMediaInfoAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .CreateDelegate<Func<bool, CancellationToken, Task>>(service);
+        using var cts = new CancellationTokenSource();
+        await updateLock.WaitAsync();
+        try
+        {
+            var pending = update(forceRefresh, cts.Token);
+            var observation = Task.Delay(650);
+            Assert.Same(observation, await Task.WhenAny(pending, observation));
+            cts.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        }
+        finally { updateLock.Release(); }
+    }
+
     private static MediaDetectionService CreateTestService(
-        Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? factory)
+        Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? factory,
+        IWindowTitleScanner? scanner = null)
     {
         return new MediaDetectionService(
             new DummyMetadataLookup(),
             new DummyArtworkService(),
-            new DummyWindowTitleScanner(),
+            scanner ?? new DummyWindowTitleScanner(),
             factory);
     }
 
@@ -306,7 +345,13 @@ public class MediaDetectionServiceLifecycleTests
 
     private sealed class DummyWindowTitleScanner : IWindowTitleScanner
     {
-        public List<string> GetAllWindowTitles(bool isThrottled) => new();
+        private readonly Action? _onScan;
+        public DummyWindowTitleScanner(Action? onScan = null) => _onScan = onScan;
+        public List<string> GetAllWindowTitles(bool isThrottled)
+        {
+            _onScan?.Invoke();
+            return new();
+        }
         public string? TryGetBrowserUrl() => null;
         public string? TryGetMediaUrlFromAnyBrowser() => null;
         public bool IsSpotifyWebPlayerOpen() => false;

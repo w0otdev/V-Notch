@@ -1,6 +1,5 @@
 using System.IO;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -411,8 +410,7 @@ public sealed class ScreenshotMediaRestoreTests
         var settingsService = new SettingsService(settingsPath, _ => { });
         settingsService.Save(new NotchSettings { EnableSpotlight = false, AutoCheckUpdates = false, EnableWeather = false });
         var services = new ServiceCollection();
-        var configure = typeof(App).GetMethod("ConfigureServices", PrivateInstance | BindingFlags.Static)!;
-        configure.Invoke(configure.IsStatic ? null : RuntimeHelpers.GetUninitializedObject(typeof(App)), [services]);
+        ServiceConfigurator.ConfigureServices(services);
         services.AddSingleton<ISettingsService>(settingsService);
         using var provider = services.BuildServiceProvider();
         var window = provider.GetRequiredService<MainWindow>();

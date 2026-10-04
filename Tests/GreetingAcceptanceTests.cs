@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -245,7 +244,8 @@ public sealed class GreetingAcceptanceTests
         private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-greeting-" + Guid.NewGuid().ToString("N"));
         private readonly ServiceProvider _provider;
         internal MainWindow Window { get; }
-        internal MainWindowFixture(string language, bool greeting = true, Action<NotchSettings>? configureSettings = null)
+        internal MainWindowFixture(string language, bool greeting = true, Action<NotchSettings>? configureSettings = null,
+            Action<IServiceCollection>? configureServices = null)
         {
             Loc.SetLanguage(language);
             var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -267,9 +267,9 @@ public sealed class GreetingAcceptanceTests
             configureSettings?.Invoke(options);
             settings.Save(options);
             var services = new ServiceCollection();
-            var configure = typeof(App).GetMethod("ConfigureServices", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)!;
-            configure.Invoke(configure.IsStatic ? null : RuntimeHelpers.GetUninitializedObject(typeof(App)), [services]);
+            ServiceConfigurator.ConfigureServices(services);
             services.AddSingleton<ISettingsService>(settings);
+            configureServices?.Invoke(services);
             _provider = services.BuildServiceProvider();
             Window = _provider.GetRequiredService<MainWindow>();
         }

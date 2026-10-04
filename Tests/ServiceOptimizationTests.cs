@@ -14,7 +14,7 @@ public sealed class ServiceOptimizationTests
     [Fact]
     public void ReciprocalMatchesDivisionForEverySupportedChannelSum()
     {
-        for (int radius = 1; radius <= 20; radius++)
+        for (int radius = 1; radius <= 32; radius++)
         {
             int window = radius * 2 + 1;
             uint reciprocal = FastBlurService.GetWindowReciprocal(window);
@@ -80,7 +80,7 @@ public sealed class ServiceOptimizationTests
     {
         byte[] source = new byte[width * height * 4];
         new Random(17).NextBytes(source);
-        for (int radius = 1; radius <= 20; radius++)
+        for (int radius = 1; radius <= 32; radius++)
         {
             byte[] expected = (byte[])source.Clone(), actual = (byte[])source.Clone();
             byte[] expectedTemp = new byte[source.Length], actualTemp = new byte[source.Length];

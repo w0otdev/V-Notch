@@ -1,12 +1,13 @@
 using System.Windows;
 using VNotch.Models;
 using VNotch.Services;
+using VNotch.Controllers;
 
 namespace VNotch.Contracts;
 
 public interface INotchManager : IDisposable
 {
-    NotchStateManager StateManager { get; }
+    NotchTransitionCoordinator TransitionCoordinator { get; }
     HoverDetectionService HoverService { get; }
     Rect SafeArea { get; }
 

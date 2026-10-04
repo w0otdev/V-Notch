@@ -157,7 +157,7 @@ public sealed class LiquidGlassPacingTests
         });
     }
 
-    [Fact]
+    [DesktopFact]
     [Trait("Category", "DesktopIntegration")]
     public void LiquidGlass_FullSurface_UnchangedFrame_SkipsRedundantGpuUpload()
     {
@@ -165,11 +165,11 @@ public sealed class LiquidGlassPacingTests
         {
             var backdrop = new Window
             {
-                // Full-surface capture extends beyond the notch; keep the entire captured desktop static.
-                Left = SystemParameters.VirtualScreenLeft,
-                Top = SystemParameters.VirtualScreenTop,
-                Width = SystemParameters.VirtualScreenWidth,
-                Height = SystemParameters.VirtualScreenHeight,
+                // Cover the bounded capture envelope around this test lens.
+                Left = 40,
+                Top = 70,
+                Width = 1000,
+                Height = 700,
                 WindowStyle = WindowStyle.None,
                 ShowActivated = false,
                 ShowInTaskbar = false,
@@ -513,7 +513,7 @@ public sealed class LiquidGlassPacingTests
         }
     }
 
-    [Fact]
+    [DesktopFact]
     [Trait("Category", "DesktopIntegration")]
     public void LiquidGlass_PacingBenchmark_60Fps_And_120Fps()
     {

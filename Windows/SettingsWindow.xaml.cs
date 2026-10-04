@@ -133,7 +133,7 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow(
         NotchSettings settings,
-        SettingsService settingsService,
+        ISettingsService settingsService,
         BluetoothModule? bluetoothModule = null,
         bool isSpotlightHotkeyRegistered = true)
         : this(settings, new SettingsApplicationService(settingsService), bluetoothModule, isSpotlightHotkeyRegistered)

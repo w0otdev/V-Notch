@@ -1,24 +1,24 @@
 using System;
-using System.Diagnostics;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using System.Windows.Interop;
 
 namespace VNotch.Services;
 
 public static class InputMonitorService
 {
-    private const int WH_MOUSE_LL = 14;
-    private const int WM_LBUTTONDOWN = 0x0201;
-
-    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private const int WM_INPUT = 0x00FF;
+    private const uint RID_INPUT = 0x10000003;
+    private const uint RIDEV_INPUTSINK = 0x00000100;
+    private const uint RIDEV_REMOVE = 0x00000001;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct MSLLHOOKSTRUCT
+    private struct RAWINPUTDEVICE
     {
-        public POINT pt;
-        public uint mouseData;
-        public uint flags;
-        public uint time;
-        public IntPtr dwExtraInfo;
+        public ushort UsagePage;
+        public ushort Usage;
+        public uint Flags;
+        public IntPtr Target;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -28,54 +28,81 @@ public static class InputMonitorService
         public int y;
     }
 
-    private static LowLevelMouseProc? _proc;
-    private static IntPtr _hookID = IntPtr.Zero;
+    private static readonly HwndSourceHook InputHook = OnWindowMessage;
+    private static HwndSource? _source;
+    internal static bool IsStarted => _source != null;
 
     public static event EventHandler<POINT>? MouseActionTriggered;
 
-    public static void Start()
+    public static void Start(IntPtr windowHandle)
     {
-        if (_hookID != IntPtr.Zero) return;
-        _proc = HookCallback;
-        _hookID = SetHook(_proc);
+        if (windowHandle == IntPtr.Zero) return;
+        var source = HwndSource.FromHwnd(windowHandle);
+        if (source == null || source.IsDisposed || ReferenceEquals(source, _source)) return;
+        source.Dispatcher.VerifyAccess();
+        Stop();
+        source.AddHook(InputHook);
+
+        // Raw input is delivered asynchronously to our window. A busy dispatcher
+        // cannot hold up the system mouse hook chain. Keep ordinary mouse messages.
+        var device = new RAWINPUTDEVICE { UsagePage = 1, Usage = 2, Flags = RIDEV_INPUTSINK, Target = windowHandle };
+        if (!RegisterRawInputDevices(ref device, 1, (uint)Marshal.SizeOf<RAWINPUTDEVICE>()))
+        {
+            source.RemoveHook(InputHook);
+            RuntimeLog.Warn("INPUT", $"Raw mouse registration failed: {Marshal.GetLastWin32Error()}");
+            return;
+        }
+        _source = source;
     }
 
     public static void Stop()
     {
-        if (_hookID == IntPtr.Zero) return;
-        UnhookWindowsHookEx(_hookID);
-        _hookID = IntPtr.Zero;
+        var source = _source;
+        if (source == null) return;
+        source.Dispatcher.VerifyAccess();
+        var device = new RAWINPUTDEVICE { UsagePage = 1, Usage = 2, Flags = RIDEV_REMOVE };
+        RegisterRawInputDevices(ref device, 1, (uint)Marshal.SizeOf<RAWINPUTDEVICE>());
+        if (!source.IsDisposed) source.RemoveHook(InputHook);
+        _source = null;
     }
 
-    private static IntPtr SetHook(LowLevelMouseProc proc)
+    private static unsafe IntPtr OnWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        var hModule = GetModuleHandle(Process.GetCurrentProcess().MainModule?.ModuleName!);
-        return SetWindowsHookEx(WH_MOUSE_LL, proc, hModule, 0);
-    }
-
-    private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        if (nCode >= 0 && wParam == (IntPtr)WM_LBUTTONDOWN)
+        if (message == WM_INPUT && _source != null)
         {
-            unsafe
-            {
-                var p = (MSLLHOOKSTRUCT*)lParam;
-                MouseActionTriggered?.Invoke(null, p->pt);
-            }
+            // RAWINPUTHEADER + RAWMOUSE fits in 48 bytes on x64 (40 on x86).
+            byte* buffer = stackalloc byte[64];
+            uint size = 64;
+            uint read = GetRawInputData(lParam, RID_INPUT, buffer, ref size, (uint)(8 + 2 * IntPtr.Size));
+            if (read != uint.MaxValue && read <= 64 && IsLeftButtonDown(new ReadOnlySpan<byte>(buffer, (int)read)))
+                MouseActionTriggered?.Invoke(null, DecodeMessagePosition(GetMessagePos()));
         }
-        return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        // Let WPF/DefWindowProc perform WM_INPUT cleanup.
+        return IntPtr.Zero;
     }
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+    internal static bool IsLeftButtonDown(ReadOnlySpan<byte> packet)
+    {
+        int headerSize = 8 + 2 * IntPtr.Size;
+        if (packet.Length < headerSize + 24 || BinaryPrimitives.ReadUInt32LittleEndian(packet) != 0) return false;
+        uint declaredSize = BinaryPrimitives.ReadUInt32LittleEndian(packet[4..]);
+        return declaredSize >= headerSize + 24 && declaredSize <= packet.Length &&
+            (BinaryPrimitives.ReadUInt16LittleEndian(packet[(headerSize + 4)..]) & 1) != 0;
+    }
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    internal static POINT DecodeMessagePosition(uint packed) => new()
+    {
+        x = unchecked((short)(packed & 0xffff)),
+        y = unchecked((short)(packed >> 16))
+    };
+
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    private static extern bool RegisterRawInputDevices(ref RAWINPUTDEVICE device, uint count, uint size);
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern unsafe uint GetRawInputData(IntPtr rawInput, uint command, void* data, ref uint size, uint headerSize);
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern IntPtr GetModuleHandle(string lpModuleName);
+    [DllImport("user32.dll")]
+    private static extern uint GetMessagePos();
 }

@@ -18,11 +18,7 @@ public partial class MainWindow
     private bool _isAudioView
     {
         get => _localAudioView;
-        set
-        {
-            _localAudioView = value;
-            _notchState.IsAudioView = value;
-        }
+        set => _localAudioView = value;
     }
     private const double _audioViewWidth = 720;
 

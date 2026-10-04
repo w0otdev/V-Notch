@@ -20,7 +20,8 @@ public partial class MainWindow
 
     private double ExpandedContentRestY => _settings.EnableDynamicIslandMode ? 8.5 : 4;
 
-    private EventHandler? _mainViewHorizontalStabilizer;
+    private SizeChangedEventHandler? _mainViewHorizontalStabilizer;
+    private DispatcherOperation? _mainViewHorizontalStabilizerOperation;
 
     private void StartMainViewHorizontalStabilizer(TranslateTransform contentTranslate)
     {
@@ -28,46 +29,55 @@ public partial class MainWindow
 
         void Stabilize()
         {
-            if (ExpandedContent == null || NotchContainer == null || !ExpandedContent.IsLoaded)
+            if (_mainViewHorizontalStabilizer == null || !ExpandedContent.IsLoaded ||
+                !NotchContainer.IsAncestorOf(ExpandedContent))
             {
                 return;
             }
 
-            try
-            {
-                Point renderedOrigin = ExpandedContent
-                    .TransformToAncestor(NotchContainer)
-                    .Transform(new Point(0, 0));
-                double layoutOriginX = renderedOrigin.X - contentTranslate.X;
-                double targetOriginX = (NotchContainer.ActualWidth - ExpandedContent.ActualWidth) / 2.0;
-                DpiScale dpi = VisualTreeHelper.GetDpi(ExpandedContent);
-                double correction = targetOriginX - layoutOriginX;
-                correction = Math.Round(correction * dpi.DpiScaleX) / dpi.DpiScaleX;
+            Point renderedOrigin = ExpandedContent
+                .TransformToAncestor(NotchContainer)
+                .Transform(new Point(0, 0));
+            double layoutOriginX = renderedOrigin.X - contentTranslate.X;
+            double targetOriginX = (NotchContainer.ActualWidth - ExpandedContent.ActualWidth) / 2.0;
+            DpiScale dpi = VisualTreeHelper.GetDpi(ExpandedContent);
+            double correction = targetOriginX - layoutOriginX;
+            correction = Math.Round(correction * dpi.DpiScaleX) / dpi.DpiScaleX;
 
-                if (Math.Abs(contentTranslate.X - correction) > 0.001)
-                {
-                    contentTranslate.X = correction;
-                }
-            }
-            catch (InvalidOperationException)
+            if (Math.Abs(contentTranslate.X - correction) > 0.001)
             {
-                // The transition replaced the visual tree between layout ticks.
+                contentTranslate.X = correction;
             }
         }
 
-        _mainViewHorizontalStabilizer = (_, _) => Stabilize();
-        ExpandedContent.LayoutUpdated += _mainViewHorizontalStabilizer;
-        Stabilize();
+        void ScheduleStabilize()
+        {
+            if (_mainViewHorizontalStabilizerOperation != null) return;
+            _mainViewHorizontalStabilizerOperation = Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
+            {
+                _mainViewHorizontalStabilizerOperation = null;
+                Stabilize();
+            }));
+        }
+
+        _mainViewHorizontalStabilizer = (_, args) =>
+        {
+            if (args.WidthChanged) ScheduleStabilize();
+        };
+        ExpandedContent.SizeChanged += _mainViewHorizontalStabilizer;
+        NotchContainer.SizeChanged += _mainViewHorizontalStabilizer;
+        NotchBorder.SizeChanged += _mainViewHorizontalStabilizer;
+        ScheduleStabilize();
     }
 
     private void StopMainViewHorizontalStabilizer()
     {
-        if (_mainViewHorizontalStabilizer == null || ExpandedContent == null)
-        {
-            return;
-        }
-
-        ExpandedContent.LayoutUpdated -= _mainViewHorizontalStabilizer;
+        _mainViewHorizontalStabilizerOperation?.Abort();
+        _mainViewHorizontalStabilizerOperation = null;
+        if (_mainViewHorizontalStabilizer == null) return;
+        ExpandedContent.SizeChanged -= _mainViewHorizontalStabilizer;
+        NotchContainer.SizeChanged -= _mainViewHorizontalStabilizer;
+        NotchBorder.SizeChanged -= _mainViewHorizontalStabilizer;
         _mainViewHorizontalStabilizer = null;
     }
 
@@ -840,7 +850,6 @@ public partial class MainWindow
         if (generation != _viewTransitionGeneration || generation != _transitionCoordinator.ActiveTransitionId) return;
         StopMainViewHorizontalStabilizer();
         _isAnimating = false;
-        _isExpanded = true;
         NotchBorder.IsHitTestVisible = true;
 
         if (effectiveTarget == VNotch.Models.NotchView.Timer)
@@ -977,7 +986,6 @@ public partial class MainWindow
         int generation = (int)transitionId;
         _viewTransitionGeneration = generation;
         _isAnimating = true;
-        _notchState.TryTransitionTo(NotchState.Expanding);
 
         var effectiveTarget = targetView ?? VNotch.Models.NotchView.Media;
 
@@ -1509,7 +1517,6 @@ public partial class MainWindow
     {
         if (generation != _viewTransitionGeneration || generation != _transitionCoordinator.ActiveTransitionId) return;
         _isAnimating = false;
-        _isExpanded = false;
         NotchBorder.IsHitTestVisible = true;
         _transitionCoordinator.CompleteTransition(generation);
         UpdateSpotifyCanvasPresentationContext();
@@ -1588,7 +1595,6 @@ public partial class MainWindow
             StopCameraPreviewForViewExit();
         }
         _isAnimating = true;
-        _notchState.TryTransitionTo(NotchState.Collapsing);
         SuspendSpotifyCanvasLifecycle();
         if (IsCountdownCompletionVisualActive)
         {

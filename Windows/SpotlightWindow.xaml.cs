@@ -2064,22 +2064,16 @@ public partial class SpotlightWindow : Window
         // Adding it only at handoff grows the auto-height shell by two DIPs.
         Shell.BorderThickness = new Thickness(IsLiquidGlassEnabled ? 0 : 1);
         // ActualSize can still describe the final notch-sized frame when a
-        double width = ActualWidth;
-        if (!double.IsFinite(width) || width <= 0) width = Width;
-        if (!double.IsFinite(width) || width <= 0) width = 768;
+        double width = SpotlightLayoutMetrics.ResolveMeasureWidth(ActualWidth, Width);
 
         Shell.Measure(new Size(width, double.PositiveInfinity));
-        // The HWND includes room for the horizontal shake; the visible shell
-        // keeps its original width in both automatic layout and morph targets.
-        width = Math.Max(1, width - Shell.Margin.Left - Shell.Margin.Right);
-        double height = Shell.DesiredSize.Height - Shell.Margin.Top - Shell.Margin.Bottom;
-        if (!double.IsFinite(height) || height <= 0)
-            height = Math.Max(1, Shell.ActualHeight);
+        var size = SpotlightLayoutMetrics.CalculateEntranceSize(
+            width, Shell.DesiredSize.Height, Shell.ActualHeight, Shell.Margin);
 
         RuntimeLog.Debug(
             "SPOTLIGHT-MORPH",
-            $"Entrance measure: target={width:F1}x{height:F1}, actual={Shell.ActualWidth:F1}x{Shell.ActualHeight:F1}, gen={_animationGeneration}");
-        return new Size(width, height);
+            $"Entrance measure: target={size.Width:F1}x{size.Height:F1}, actual={Shell.ActualWidth:F1}x{Shell.ActualHeight:F1}, gen={_animationGeneration}");
+        return size;
     }
 
     private void PlayExit(int generation)

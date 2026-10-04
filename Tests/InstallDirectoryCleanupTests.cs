@@ -60,20 +60,33 @@ public sealed class InstallDirectoryCleanupTests
         string sentinel = Path.Combine(parent, "keep.txt");
         File.WriteAllText(marker, "test marker; never executed");
         File.WriteAllText(sentinel, "must survive cleanup");
+        string releaseName = $"Local\\VNotchOwnerRelease-{Guid.NewGuid():N}";
+        string readyName = $"Local\\VNotchOwnerReady-{Guid.NewGuid():N}";
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName);
+        using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, readyName);
         var ownerStart = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
         {
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 3" })
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command",
+            "$release = [System.Threading.EventWaitHandle]::OpenExisting($env:VNOTCH_OWNER_RELEASE); " +
+            "$ready = [System.Threading.EventWaitHandle]::OpenExisting($env:VNOTCH_OWNER_READY); " +
+            "$null = $ready.Set(); $null = $release.WaitOne()" })
             ownerStart.ArgumentList.Add(argument);
+        ownerStart.Environment["VNOTCH_OWNER_RELEASE"] = releaseName;
+        ownerStart.Environment["VNOTCH_OWNER_READY"] = readyName;
         using var owner = Process.Start(ownerStart)!;
         using var helper = Process.Start(InstallDirectoryCleanup.CreateStartInfo(directory, owner.Id))!;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         try
         {
+            Assert.True(await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(10))),
+                "Owner did not initialize its release gate.");
             await Task.Delay(700, timeout.Token);
+            Assert.False(owner.HasExited);
             Assert.True(File.Exists(marker));
+            release.Set();
             await helper.WaitForExitAsync(timeout.Token);
             Assert.Equal(0, helper.ExitCode);
             Assert.False(Directory.Exists(directory));
@@ -81,6 +94,7 @@ public sealed class InstallDirectoryCleanupTests
         }
         finally
         {
+            release.Set();
             if (!owner.HasExited) owner.Kill();
             if (!helper.HasExited) helper.Kill();
             // Only exact paths created by this test; never recursively delete the parent.

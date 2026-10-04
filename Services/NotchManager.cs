@@ -2,58 +2,40 @@ using System.Windows;
 using System.Windows.Forms;
 using VNotch.Contracts;
 using VNotch.Models;
+using VNotch.Controllers;
 
 namespace VNotch.Services;
 
 public sealed class NotchManager : INotchManager
 {
     private NotchSettings _settings;
-    private readonly NotchStateManager _stateManager;
     private readonly HoverDetectionService _hoverService;
 
     private Screen? _currentScreen;
     private Rect _safeArea;
     private bool _disposed;
 
-    public NotchStateManager StateManager => _stateManager;
+    public NotchTransitionCoordinator TransitionCoordinator { get; }
     public HoverDetectionService HoverService => _hoverService;
     public Rect SafeArea => _safeArea;
 
     public event EventHandler<Rect>? SafeAreaChanged;
     public event EventHandler? PositionUpdated;
 
-    public NotchManager(Window window, NotchSettings settings)
+    public NotchManager(Window window, NotchSettings settings, NotchTransitionCoordinator transitionCoordinator)
     {
         _ = window;
         _settings = settings;
-        _stateManager = new NotchStateManager();
+        TransitionCoordinator = transitionCoordinator;
         _hoverService = new HoverDetectionService(settings.HoverZoneMargin);
-
-        if (settings.EnableHoverExpand)
-        {
-            _hoverService.HoverEnter += OnHoverEnter;
-            _hoverService.HoverLeave += OnHoverLeave;
-        }
 
         _hoverService.Start();
     }
 
     public void UpdateSettings(NotchSettings settings)
     {
-        var oldHoverEnabled = _settings.EnableHoverExpand;
         _settings = settings;
         AnimationConfig.Configure(settings.AnimationFps, settings.AutoAnimationFps);
-
-        if (settings.EnableHoverExpand && !oldHoverEnabled)
-        {
-            _hoverService.HoverEnter += OnHoverEnter;
-            _hoverService.HoverLeave += OnHoverLeave;
-        }
-        else if (!settings.EnableHoverExpand && oldHoverEnabled)
-        {
-            _hoverService.HoverEnter -= OnHoverEnter;
-            _hoverService.HoverLeave -= OnHoverLeave;
-        }
 
         UpdatePosition();
     }
@@ -114,61 +96,28 @@ public sealed class NotchManager : INotchManager
             .ToArray();
     }
 
-    #region Hover Handling
-
-    private void OnHoverEnter(object? sender, EventArgs e)
-    {
-
-        if (_stateManager.CanExpand())
-        {
-            _stateManager.ExpandCompact();
-        }
-    }
-
-    private void OnHoverLeave(object? sender, EventArgs e)
-    {
-
-        if (_stateManager.CanCollapse())
-        {
-            _stateManager.Collapse();
-        }
-    }
-
-    #endregion
-
     #region Public Controls
 
     public void Expand(NotchExpandMode mode = NotchExpandMode.Compact)
     {
-        switch (mode)
-        {
-            case NotchExpandMode.Compact:
-                _stateManager.ExpandCompact();
-                break;
-            case NotchExpandMode.Medium:
-                _stateManager.ExpandMedium();
-                break;
-            case NotchExpandMode.Large:
-                _stateManager.ExpandLarge();
-                break;
-        }
+        TransitionCoordinator.RequestView(NotchView.Media, $"NotchManager.Expand({mode})");
     }
 
     public void Collapse()
     {
-        _stateManager.Collapse();
+        TransitionCoordinator.RequestCollapse("NotchManager.Collapse");
     }
 
     public void Hide()
     {
         _hoverService.Stop();
-        _stateManager.Hide();
+        TransitionCoordinator.SetEffectivelyVisible(false, "NotchManager.Hide");
     }
 
     public void Show()
     {
         _hoverService.Start();
-        _stateManager.Show();
+        TransitionCoordinator.SetEffectivelyVisible(true, "NotchManager.Show");
     }
 
     #endregion
@@ -177,8 +126,6 @@ public sealed class NotchManager : INotchManager
     {
         if (!_disposed)
         {
-            _hoverService.HoverEnter -= OnHoverEnter;
-            _hoverService.HoverLeave -= OnHoverLeave;
             _hoverService.Dispose();
             _disposed = true;
         }

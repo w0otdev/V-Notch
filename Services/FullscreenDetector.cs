@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Text;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
@@ -182,15 +181,20 @@ internal static class FullscreenDetector
         }
     }
 
-    internal static bool IsBlockedClass(IntPtr hwnd)
+    internal static unsafe bool IsBlockedClass(IntPtr hwnd)
     {
-        var sb = new StringBuilder(160);
-        if (GetClassName(hwnd, sb, sb.Capacity) <= 0) return false;
-        string className = sb.ToString();
+        Span<char> buffer = stackalloc char[160];
+        int length;
+        fixed (char* className = buffer)
+            length = GetClassName(hwnd, className, buffer.Length);
+        return length > 0 && IsBlockedClassName(buffer[..length]);
+    }
 
+    internal static bool IsBlockedClassName(ReadOnlySpan<char> className)
+    {
         for (int i = 0; i < BlockedClassNamesExact.Length; i++)
         {
-            if (string.Equals(className, BlockedClassNamesExact[i], StringComparison.Ordinal))
+            if (className.Equals(BlockedClassNamesExact[i], StringComparison.Ordinal))
             {
                 return true;
             }

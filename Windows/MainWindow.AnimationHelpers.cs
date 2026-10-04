@@ -99,6 +99,28 @@ public partial class MainWindow
             // without entering an expanded view or replacing the pill content.
             _screenshotCompact!.BeginAnimation(HeightProperty,
                 MakeAnim(notchHeight, duration, isHovered ? _easeExpOut6 : _easeQuadOut, animFps));
+
+            var bounds = GetScreenshotCompactThumbnailBounds();
+            double targetTop = isHovered ? Math.Max(0, (notchHeight - 22) / 2.0) : bounds.Top;
+            var marginAnim = new System.Windows.Media.Animation.ThicknessAnimation
+            {
+                To = new Thickness(0, targetTop, 0, 0),
+                Duration = duration,
+                EasingFunction = isHovered ? _easeExpOut6 : _easeQuadOut
+            };
+            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(marginAnim, animFps);
+            if (!isHovered)
+            {
+                marginAnim.Completed += (s, e) =>
+                {
+                    if (_isCompactThumbnailHovered) return;
+                    _screenshotThumbnail?.BeginAnimation(FrameworkElement.MarginProperty, null);
+                    if (_screenshotThumbnail != null)
+                        _screenshotThumbnail.Margin = new Thickness(0, bounds.Top, 0, 0);
+                };
+            }
+            _screenshotThumbnail?.BeginAnimation(FrameworkElement.MarginProperty, marginAnim);
+
             _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty,
                 MakeAnim(thumbScale, duration, easing, animFps));
             _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty,
@@ -585,7 +607,7 @@ public partial class MainWindow
             window.MediaBackground2.CornerRadius = cr;
             window.NotchBorderShadow.CornerRadius = cr;
             window.HoverGlow.CornerRadius = cr;
-            window.SyncGlassCornerRadius(cr);
+            window._glassMaterialPresenter.SyncCornerRadius(cr);
             window.UpdateNotchClip();
         }
     }

@@ -34,7 +34,7 @@ public partial class MainWindow
            isBluetoothNotificationVisible || isClipboardPeekActive;
 
     private bool IsCompactPillForPrivacyIndicator =>
-        _notchState.CurrentState == NotchState.Collapsed &&
+        _transitionCoordinator.ShapeState == VNotch.Controllers.NotchShapeState.Collapsed &&
         !_isAnimating &&
         !_isGreetingActive;
 
@@ -44,17 +44,6 @@ public partial class MainWindow
         _isVolumeIndicatorActive,
         _isBluetoothNotificationVisible,
         _isClipboardPeekActive);
-
-    private void NotchState_PrivacyVisibilityChanged(object? sender, NotchStateChangedEventArgs e)
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            Dispatcher.BeginInvoke(SyncPrivacyDotVisibilityForCurrentView);
-            return;
-        }
-
-        SyncPrivacyDotVisibilityForCurrentView();
-    }
 
     private void SyncPrivacyDotVisibilityForCurrentView()
     {

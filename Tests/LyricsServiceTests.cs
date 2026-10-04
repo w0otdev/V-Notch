@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using VNotch.Services;
 using Xunit;
 
@@ -140,5 +143,96 @@ public sealed class LyricsServiceTests
     {
         string result = LyricsService.NormalizeForMatching(input);
         Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("\r")]
+    public void ParseLrc_HandlesLineEndingsAndInvalidTimestampsWithoutLosingText(string newline)
+    {
+        string lrc = string.Join(newline, "[ti:Header]", "[00:02.125]  Đêm nay 🎵  ",
+            "[not:a.time]Invalid", "[00:01.5] First ", "[00:03.00]   ");
+        var lines = LyricsService.ParseLrc(lrc);
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(new LyricLine(TimeSpan.FromMilliseconds(1500), "First"), lines[0]);
+        Assert.Equal(new LyricLine(TimeSpan.FromMilliseconds(2125), "Đêm nay 🎵"), lines[1]);
+    }
+
+    [Theory]
+    [InlineData("ĐẶNG -- DƯỚI TÁN CÂY (live) [MV]")]
+    [InlineData("Cafe\u0301 -- Straße / Æ / K / Å")]
+    [InlineData("한글 日本語 Ελληνικά -- Song 123")]
+    [InlineData("[intro) SONG (unfinished")]
+    [InlineData("()[] 🎵 -- \u0301\u2003")]
+    [InlineData("a\u0344b\u0903c")]
+    public void NormalizeForMatching_PreservesOriginalUnicodeAndBracketSemantics(string input)
+    {
+        Assert.Equal(NormalizeOriginal(input), LyricsService.NormalizeForMatching(input));
+    }
+
+    [Fact]
+    public void NormalizeForMatching_PooledBuffersRemainCorrectAcrossConcurrentCalls()
+    {
+        string input = string.Concat(Enumerable.Repeat("ĐÊM Cafe\u0301 🎵 -- SONG [MV] ", 80));
+        string expected = NormalizeOriginal(input);
+        Parallel.For(0, 40, _ => Assert.Equal(expected, LyricsService.NormalizeForMatching(input)));
+    }
+
+    [Fact]
+    public void NormalizeForMatching_AllocatesLessThanOriginalPipeline()
+    {
+        const string input = "  ARTIST *** Song -- 2026 [Official Video]  ";
+        long original = MeasureAllocations(() => NormalizeOriginal(input));
+        long optimized = MeasureAllocations(() => LyricsService.NormalizeForMatching(input));
+        Assert.True(optimized < original / 2, $"Original: {original} bytes; optimized: {optimized} bytes");
+    }
+
+    [Theory]
+    [InlineData("en-US", "Song - LIVE")]
+    [InlineData("tr-TR", "Song - LIVE")]
+    [InlineData("az-Latn-AZ", "Song - LIVE")]
+    [InlineData("lt-LT", "Song - LIVE")]
+    [InlineData("en-US", "Song | OFFİCİAL Video")]
+    [InlineData("tr-TR", "Song | OFFİCİAL Video")]
+    [InlineData("az-Latn-AZ", "Song | OFFİCİAL Video")]
+    [InlineData("lt-LT", "Song | OFFİCİAL Video")]
+    public void GenerateSearchCandidates_PreservesCultureSensitiveSuffixMatching(string culture, string title)
+    {
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+            string expected = Regex.Replace(title, @"\s*\|\s*(?:Official|OFFICIAL|MV|mv|Music Video|Visualizer|Lyric Video|Audio|Track\s*No\.\d+).*", "", RegexOptions.IgnoreCase);
+            expected = Regex.Replace(expected, @"\s*-\s*(?:Remaster(?:ed)?|Live|Acoustic|Radio Edit|Bonus Track|Single Version|Instrumental|Deluxe|Mono|Stereo).*", "", RegexOptions.IgnoreCase).Trim();
+            Assert.Equal(expected, LyricsService.GenerateSearchCandidates(title, "Artist")[0].Track);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    private static long MeasureAllocations(Func<string> normalize)
+    {
+        for (int i = 0; i < 100; i++) normalize();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) GC.KeepAlive(normalize());
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    private static string NormalizeOriginal(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        string stripped = Regex.Replace(text, @"[\(\[][^\)\]]*[\)\]]", "");
+        string decomposed = stripped.Normalize(NormalizationForm.FormD);
+        var buffer = new StringBuilder(decomposed.Length);
+        foreach (char c in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                buffer.Append(c is 'đ' or 'Đ' ? 'd' : c);
+        }
+        return Regex.Replace(buffer.ToString().Normalize(NormalizationForm.FormC), @"[^a-zA-Z0-9]+", " ")
+            .Trim().ToLowerInvariant();
     }
 }

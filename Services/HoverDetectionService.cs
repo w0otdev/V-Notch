@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
@@ -19,8 +20,8 @@ public class HoverDetectionService : IDisposable
     private bool _isHovering;
     private bool _disposed;
 
-    private DateTime _hoverEnterTime;
-    private DateTime _hoverLeaveTime;
+    private long _hoverEnterTime;
+    private long _hoverLeaveTime;
     private readonly TimeSpan _enterDelay = TimeSpan.FromMilliseconds(150);
     private readonly TimeSpan _leaveDelay = TimeSpan.FromMilliseconds(400);
     private bool _pendingEnter;
@@ -93,7 +94,7 @@ public class HoverDetectionService : IDisposable
         MousePositionChanged?.Invoke(this, mousePoint);
 
         bool isInZone = _hoverZone.Contains(mousePoint);
-        var now = DateTime.Now;
+        long now = Stopwatch.GetTimestamp();
 
         if (isInZone)
         {
@@ -108,7 +109,7 @@ public class HoverDetectionService : IDisposable
                     _pendingEnter = true;
                     _hoverEnterTime = now;
                 }
-                else if (now - _hoverEnterTime >= _enterDelay)
+                else if (Stopwatch.GetElapsedTime(_hoverEnterTime, now) >= _enterDelay)
                 {
 
                     _isHovering = true;
@@ -130,7 +131,7 @@ public class HoverDetectionService : IDisposable
                     _pendingLeave = true;
                     _hoverLeaveTime = now;
                 }
-                else if (now - _hoverLeaveTime >= _leaveDelay)
+                else if (Stopwatch.GetElapsedTime(_hoverLeaveTime, now) >= _leaveDelay)
                 {
 
                     _isHovering = false;
@@ -180,10 +181,9 @@ public class HoverDetectionService : IDisposable
             _notchBounds.Top + _notchBounds.Height / 2
         );
 
-        return Math.Sqrt(
-            Math.Pow(point.X - center.X, 2) +
-            Math.Pow(point.Y - center.Y, 2)
-        );
+        double dx = point.X - center.X;
+        double dy = point.Y - center.Y;
+        return Math.Sqrt(dx * dx + dy * dy);
     }
 
     public void ResetHoverState()

@@ -7,7 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Xml.Linq;
-using VNotch;
+using VNotch.Services;
 using Xunit;
 
 namespace VNotch.Tests;
@@ -92,11 +92,7 @@ public sealed class LiquidGlassClipTests
     public void RoundedNotchClip_PreservesFlatTopAndClipsRoundedBottomCorners()
     {
         StreamGeometry geometry = Assert.IsType<StreamGeometry>(
-            MainWindow.BuildRoundedNotchClipGeometry(
-                w: 100,
-                h: 40,
-                rTop: 0,
-                rBottom: 20));
+            GlassClipBuilder.CreateClip(new Size(100, 40), new CornerRadius(0, 0, 20, 20)));
 
         Assert.True(geometry.FillContains(new Point(1, 1)));
         Assert.False(geometry.FillContains(new Point(1, 39)));

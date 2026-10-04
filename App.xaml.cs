@@ -102,7 +102,7 @@ public partial class App : Application
             RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
 
             var services = new ServiceCollection();
-            ConfigureServices(services);
+            ServiceConfigurator.ConfigureServices(services);
             SetServices(services.BuildServiceProvider());
 
             ServicePrewarmer.Prewarm(Services);
@@ -350,65 +350,6 @@ public partial class App : Application
         RuntimeLog.Error("UNOBSERVED-TASK", args.Exception?.InnerException ?? args.Exception!,
             "Unobserved task exception");
         args.SetObserved();
-    }
-
-    private static void ConfigureServices(IServiceCollection services)
-    {
-        services.AddSingleton<ISettingsService, SettingsService>();
-        services.AddSingleton<IStartupManager, WindowsStartupManager>();
-        services.AddSingleton<ISettingsApplicationService, SettingsApplicationService>();
-        services.AddSingleton<IMediaMetadataLookupService, MediaMetadataLookupService>();
-        services.AddSingleton<IMediaArtworkService, MediaArtworkService>();
-        services.AddSingleton<IColorExtractionService, ColorExtractionService>();
-        services.AddSingleton<IWindowTitleScanner, WindowTitleScanner>();
-        services.AddSingleton<IMediaDetectionService, MediaDetectionService>();
-        services.AddSingleton<IVolumeService, VolumeService>();
-        services.AddSingleton<AudioMixerService>();
-        services.AddSingleton<IBatteryService, BatteryServiceImpl>();
-        services.AddSingleton<BluetoothMonitorService>();
-        services.AddSingleton<PrivacyIndicatorService>();
-        services.AddSingleton<IDispatcherService>(sp =>
-            new DispatcherService(Current.Dispatcher));
-        services.AddSingleton<IUpdateService, UpdateService>();
-        services.AddSingleton<IWeatherService, WeatherService>();
-        services.AddSingleton<ISpotlightProvider, AppSearchProvider>();
-        services.AddSingleton<ISpotlightProvider, SystemCommandProvider>();
-        services.AddSingleton<ISpotlightProvider, SystemFileSearchProvider>();
-        services.AddSingleton<ISpotlightProvider, EverythingSearchProvider>();
-        services.AddSingleton<ISpotlightProvider, WindowsSearchProvider>();
-        services.AddSingleton<ISpotlightProvider, CalculatorProvider>();
-        services.AddSingleton<SpotlightUsageStore>();
-        services.AddSingleton<SpotlightSearchService>();
-        services.AddSingleton<SpotlightLauncher>();
-        services.AddSingleton<SpotlightViewModel>();
-        services.AddSingleton(sp => new SpotlightWindow(
-            sp.GetRequiredService<SpotlightViewModel>(),
-            sp.GetRequiredService<SpotlightLauncher>()));
-        services.AddSingleton<Controllers.ISpotlightController>(sp =>
-            new Controllers.SpotlightController(() => sp.GetRequiredService<SpotlightWindow>()));
-        services.AddSingleton<Controllers.NotchTransitionCoordinator>();
-        // This is the application state owner used by both the running window and unit tests.
-        services.AddSingleton<ShellViewModel>();
-
-        services.AddSingleton<BatteryModule>();
-        services.AddSingleton<CalendarModule>();
-        services.AddSingleton<BluetoothModule>();
-        services.AddSingleton<PrivacyIndicatorModule>();
-        services.AddSingleton<WeatherModule>();
-        services.AddSingleton<SystemMonitorModule>();
-        services.AddSingleton<IModuleLifecycleManager>(sp =>
-        {
-            var host = new ModuleLifecycleManager();
-            host.Register(sp.GetRequiredService<BatteryModule>());
-            host.Register(sp.GetRequiredService<CalendarModule>());
-            host.Register(sp.GetRequiredService<BluetoothModule>());
-            host.Register(sp.GetRequiredService<PrivacyIndicatorModule>());
-            host.Register(sp.GetRequiredService<WeatherModule>());
-            host.Register(sp.GetRequiredService<SystemMonitorModule>());
-            return host;
-        });
-
-        services.AddSingleton<MainWindow>();
     }
 
     private static string FormatVersion(Version v)

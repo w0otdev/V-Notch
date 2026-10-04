@@ -71,18 +71,21 @@ internal static class OverloadChecks
         enqueue(Info("after-close"));
         Require(applied.Count == 0 && callbacks.IsEmpty, "Closed consumer received updates");
 
-        var state = new NotchStateManager();
+        var state = new VNotch.Controllers.NotchTransitionCoordinator();
         int changes = 0;
         state.StateChanged += (_, _) => changes++;
-        Require(state.TryTransitionTo(NotchState.Expanding), "Expand rejected");
-        Require(state.TryTransitionTo(NotchState.Collapsing), "Reverse to collapse rejected");
-        Require(state.TryTransitionTo(NotchState.Expanding), "Reverse to expand rejected");
-        Require(state.TryTransitionTo(NotchState.Expanded), "Expand completion rejected");
+        Require(state.RequestView(VNotch.Models.NotchView.Media, "OverloadExpand"), "Expand rejected");
+        long staleExpand = state.ActiveTransitionId;
+        Require(state.RequestCollapse("OverloadCollapse"), "Reverse to collapse rejected");
+        Require(state.RequestView(VNotch.Models.NotchView.Media, "OverloadReverse"), "Reverse to expand rejected");
+        state.CompleteTransition(staleExpand);
+        Require(state.IsTransitionActive, "Stale completion changed the latest transition");
+        state.CompleteTransition(state.ActiveTransitionId);
+        Require(state.CurrentView == VNotch.Models.NotchView.Media, "Expand completion rejected");
         int beforeRepeat = changes;
-        Require(state.TryTransitionTo(NotchState.Expanded) && changes == beforeRepeat, "Repeated state emitted event");
-        Require(!state.CanTransitionTo(NotchState.CameraExpanded), "Unrelated invalid transition was enabled");
+        Require(!state.RequestView(VNotch.Models.NotchView.Media, "OverloadRepeat") && changes == beforeRepeat, "Repeated state emitted event");
         Console.WriteLine(JsonSerializer.Serialize(new { passed = true, concurrentUpdates = 100000,
-            checks = new[] { "bounded queue", "latest metadata", "artwork ordering", "stale artwork", "reentrant update", "dispose", "animation reversal", "idempotent state", "invalid edge remains rejected" } }));
+            checks = new[] { "bounded queue", "latest metadata", "artwork ordering", "stale artwork", "reentrant update", "dispose", "animation reversal", "stale completion", "idempotent state" } }));
     }
 
     private static MediaInfo Info(string track) => new()

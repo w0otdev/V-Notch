@@ -25,14 +25,7 @@ public partial class MainWindow
     private bool _isSecondaryView
     {
         get => _localSecondaryView;
-        set
-        {
-            _localSecondaryView = value;
-            if (value && !_notchState.IsSecondaryView)
-                _notchState.TryTransitionTo(NotchState.SecondaryView);
-            else if (!value && _notchState.IsSecondaryView)
-                _notchState.TryTransitionTo(NotchState.Expanded);
-        }
+        set => _localSecondaryView = value;
     }
     private DateTime _lastViewSwitchUtc = DateTime.MinValue;
     private static readonly TimeSpan ViewSwitchCooldown = TimeSpan.FromMilliseconds(600);

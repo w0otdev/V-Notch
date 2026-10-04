@@ -1,20 +1,33 @@
 #pragma warning disable S1075 // Public lyrics API endpoints
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace VNotch.Services;
 
-internal sealed class LyricsService : IDisposable
+internal sealed partial class LyricsService : IDisposable
 {
     private const string LogTag = "LYRICS";
     private static readonly string[] GenericPlatformNames = { "YouTube", "Browser", "Google Chrome", "Microsoft Edge" };
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
+    private static readonly string[] ArtistSeparators = { " feat.", " ft.", " featuring", " & ", ", ", " x " };
+
+    [GeneratedRegex(@"[\(\[][^\)\]]*[\)\]]")]
+    private static partial Regex BracketedExtrasRegex();
+
+    [GeneratedRegex(@"\s*[\(\[][^\)\]]*[\)\]]")]
+    private static partial Regex TitleExtrasRegex();
+
+    private const string VideoSuffixPattern = @"\s*\|\s*(?:Official|OFFICIAL|MV|mv|Music Video|Visualizer|Lyric Video|Audio|Track\s*No\.\d+).*";
+    private const string RecordingSuffixPattern = @"\s*-\s*(?:Remaster(?:ed)?|Live|Acoustic|Radio Edit|Bonus Track|Single Version|Instrumental|Deluxe|Mono|Stereo).*";
 
     private static readonly HttpClient _lrclibHttp = new(NetworkPrivacy.Handler(NetworkFeature.Lyrics))
     {
@@ -94,7 +107,6 @@ internal sealed class LyricsService : IDisposable
     public static List<(string Track, string Artist)> GenerateSearchCandidates(string trackName, string artistName)
     {
         var candidates = new List<(string Track, string Artist)>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         void AddCandidate(string t, string a)
         {
@@ -103,16 +115,20 @@ internal sealed class LyricsService : IDisposable
             if (string.IsNullOrWhiteSpace(cleanT)) return;
 
             // Strip browser/generic platform names from artist
-            if (GenericPlatformNames.Any(p => cleanA.Equals(p, StringComparison.OrdinalIgnoreCase)))
+            foreach (string platform in GenericPlatformNames)
             {
+                if (!cleanA.Equals(platform, StringComparison.OrdinalIgnoreCase)) continue;
                 cleanA = "";
+                break;
             }
 
-            string key = $"{cleanT}|{cleanA}";
-            if (seen.Add(key))
+            foreach (var candidate in candidates)
             {
-                candidates.Add((cleanT, cleanA));
+                if (candidate.Track.Equals(cleanT, StringComparison.OrdinalIgnoreCase) &&
+                    candidate.Artist.Equals(cleanA, StringComparison.OrdinalIgnoreCase))
+                    return;
             }
+            candidates.Add((cleanT, cleanA));
         }
 
         // 1. Raw inputs
@@ -158,9 +174,10 @@ internal sealed class LyricsService : IDisposable
 
     private static void DecomposeDashes(string cTrack, Action<string, string> addCandidate)
     {
-        foreach (var dash in Dashes.Where(cTrack.Contains))
+        foreach (var dash in Dashes)
         {
-            var parts = cTrack.Split(new[] { dash }, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (!cTrack.Contains(dash)) continue;
+            var parts = cTrack.Split(dash, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (parts.Length == 2)
             {
                 addCandidate(parts[1], parts[0]);
@@ -176,15 +193,15 @@ internal sealed class LyricsService : IDisposable
 
         RuntimeLog.Log(LogTag, $"Fetching (exact): {trackName} - {artistName} ({durationSeconds}s)");
 
-        var response = await _lrclibHttp.GetAsync(url, token);
+        using var response = await _lrclibHttp.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"Exact HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
-        var json = await response.Content.ReadAsStringAsync(token);
-        using var doc = JsonDocument.Parse(json);
+        using var stream = await response.Content.ReadAsStreamAsync(token);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
         var lines = ExtractSyncedLines(doc.RootElement);
         if (lines is { Count: > 0 })
             RuntimeLog.Log(LogTag, $"Got {lines.Count} synced lines (exact) for '{trackName}'");
@@ -198,15 +215,15 @@ internal sealed class LyricsService : IDisposable
 
         RuntimeLog.Log(LogTag, $"Fetching (search): {trackName} - {artistName}");
 
-        var response = await _lrclibHttp.GetAsync(url, token);
+        using var response = await _lrclibHttp.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"Search HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
-        var json = await response.Content.ReadAsStringAsync(token);
-        using var doc = JsonDocument.Parse(json);
+        using var stream = await response.Content.ReadAsStreamAsync(token);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
             return null;
 
@@ -273,30 +290,51 @@ internal sealed class LyricsService : IDisposable
     internal static string NormalizeForMatching(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
-        string s = System.Text.RegularExpressions.Regex.Replace(text, @"[\(\[][^\)\]]*[\)\]]", "");
-        s = RemoveDiacritics(s);
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"[^a-zA-Z0-9]+", " ");
-        return s.Trim().ToLowerInvariant();
-    }
-
-    private static string RemoveDiacritics(string text)
-    {
-        var normalizedString = text.Normalize(System.Text.NormalizationForm.FormD);
-        var sb = new System.Text.StringBuilder(normalizedString.Length);
-
-        foreach (var c in normalizedString)
+        string decomposed = BracketedExtrasRegex().Replace(text, "").Normalize(NormalizationForm.FormD);
+        char[]? rented = null;
+        Span<char> buffer = decomposed.Length <= 512
+            ? stackalloc char[decomposed.Length]
+            : (rented = ArrayPool<char>.Shared.Rent(decomposed.Length)).AsSpan(0, decomposed.Length);
+        try
         {
-            var category = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
-            if (category != System.Globalization.UnicodeCategory.NonSpacingMark)
+            int length = 0;
+            bool needsRecomposition = false;
+            foreach (char original in decomposed)
             {
-                if (c == 'đ' || c == 'Đ')
-                    sb.Append('d');
-                else
-                    sb.Append(c);
+                if (original > 127 && CharUnicodeInfo.GetUnicodeCategory(original) == UnicodeCategory.NonSpacingMark)
+                    continue;
+                char c = original is 'đ' or 'Đ' ? 'd' : original;
+                buffer[length++] = c;
+                needsRecomposition |= c > 127;
             }
-        }
 
-        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+            // Preserve NFC behavior for non-ASCII text; Latin titles can stay in the buffer.
+            ReadOnlySpan<char> characters = buffer[..length];
+            if (needsRecomposition)
+                characters = new string(characters).Normalize(NormalizationForm.FormC);
+
+            int written = 0;
+            bool pendingSpace = false;
+            foreach (char original in characters)
+            {
+                char c = original is >= 'A' and <= 'Z' ? (char)(original + ('a' - 'A')) : original;
+                if (c is >= 'a' and <= 'z' or >= '0' and <= '9')
+                {
+                    if (pendingSpace) buffer[written++] = ' ';
+                    buffer[written++] = c;
+                    pendingSpace = false;
+                }
+                else
+                {
+                    pendingSpace = written > 0;
+                }
+            }
+            return new string(buffer[..written]);
+        }
+        finally
+        {
+            if (rented != null) ArrayPool<char>.Shared.Return(rented);
+        }
     }
 
     private static async Task<LyricsResult?> TryLrcMuxAsync(
@@ -319,8 +357,9 @@ internal sealed class LyricsService : IDisposable
             return null;
         }
 
-        string json = await response.Content.ReadAsStringAsync(token);
-        var result = ParseLrcMuxResult(json);
+        using var stream = await response.Content.ReadAsStreamAsync(token);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        var result = ParseLrcMuxResult(doc.RootElement);
         if (result is { Lines.Count: > 0 })
             RuntimeLog.Log(LogTag, $"Got {result.Lines.Count} synced lines from {result.Provider} for '{trackName}'");
         return result;
@@ -331,7 +370,11 @@ internal sealed class LyricsService : IDisposable
         if (string.IsNullOrWhiteSpace(json)) return null;
 
         using var doc = JsonDocument.Parse(json);
-        JsonElement root = doc.RootElement;
+        return ParseLrcMuxResult(doc.RootElement);
+    }
+
+    private static LyricsResult? ParseLrcMuxResult(JsonElement root)
+    {
         if (root.ValueKind != JsonValueKind.Object) return null;
 
         if (!root.TryGetProperty("meta", out var meta) || meta.ValueKind != JsonValueKind.Object)
@@ -415,15 +458,17 @@ internal sealed class LyricsService : IDisposable
         if (string.IsNullOrWhiteSpace(title)) return title;
 
         // Drop bracketed/parenthesised extras like (Official Music Video), (Lyric Video), [MV], etc.
-        string s = System.Text.RegularExpressions.Regex.Replace(title, @"\s*[\(\[][^\)\]]*[\)\]]", "");
+        string s = TitleExtrasRegex().Replace(title, "");
 
         // Remove YouTube visualizer/MV suffix patterns
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s*\|\s*(?:Official|OFFICIAL|MV|mv|Music Video|Visualizer|Lyric Video|Audio|Track\s*No\.\d+).*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // Runtime regex preserves CurrentCulture casing (notably Turkish/Azeri I).
+        s = Regex.Replace(s, VideoSuffixPattern, "", RegexOptions.IgnoreCase);
 
         // Strip standard remaster/live suffixes
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s*-\s*(?:Remaster(?:ed)?|Live|Acoustic|Radio Edit|Bonus Track|Single Version|Instrumental|Deluxe|Mono|Stereo).*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, RecordingSuffixPattern, "", RegexOptions.IgnoreCase);
 
-        return s.Trim().Length == 0 ? title.Trim() : s.Trim();
+        s = s.Trim();
+        return s.Length == 0 ? title.Trim() : s;
     }
 
     private static string CleanArtist(string artist)
@@ -432,12 +477,13 @@ internal sealed class LyricsService : IDisposable
 
         // Use only the primary artist (before "feat.", "&", "," , "x").
         string s = artist;
-        foreach (var sep in new[] { " feat.", " ft.", " featuring", " & ", ", ", " x " })
+        foreach (var sep in ArtistSeparators)
         {
             int idx = s.IndexOf(sep, StringComparison.OrdinalIgnoreCase);
             if (idx > 0) s = s[..idx];
         }
-        return s.Trim().Length == 0 ? artist.Trim() : s.Trim();
+        s = s.Trim();
+        return s.Length == 0 ? artist.Trim() : s;
     }
 
     public void Reset()
@@ -449,7 +495,7 @@ internal sealed class LyricsService : IDisposable
     internal static List<LyricLine> ParseLrc(string lrc)
     {
         var lines = new List<LyricLine>();
-        foreach (var rawLine in lrc.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var rawLine in lrc.AsSpan().EnumerateLines())
         {
             var line = rawLine.Trim();
             if (line.Length < 10 || line[0] != '[') continue;
@@ -457,14 +503,14 @@ internal sealed class LyricsService : IDisposable
             int closeBracket = line.IndexOf(']');
             if (closeBracket < 5) continue;
 
-            string timestamp = line[1..closeBracket];
-            string text = line[(closeBracket + 1)..].Trim();
+            ReadOnlySpan<char> timestamp = line[1..closeBracket];
+            ReadOnlySpan<char> text = line[(closeBracket + 1)..].Trim();
 
-            if (string.IsNullOrWhiteSpace(text)) continue;
+            if (text.IsEmpty) continue;
 
             if (TryParseTimestamp(timestamp, out var time))
             {
-                lines.Add(new LyricLine(time, text));
+                lines.Add(new LyricLine(time, new string(text)));
             }
         }
 
@@ -472,7 +518,7 @@ internal sealed class LyricsService : IDisposable
         return lines;
     }
 
-    private static bool TryParseTimestamp(string ts, out TimeSpan result)
+    private static bool TryParseTimestamp(ReadOnlySpan<char> ts, out TimeSpan result)
     {
         result = TimeSpan.Zero;
 
@@ -485,7 +531,7 @@ internal sealed class LyricsService : IDisposable
         if (!int.TryParse(ts[(colonIdx + 1)..dotIdx], NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds))
             return false;
 
-        string fracStr = ts[(dotIdx + 1)..];
+        ReadOnlySpan<char> fracStr = ts[(dotIdx + 1)..];
         if (!int.TryParse(fracStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frac))
             return false;
 

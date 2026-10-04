@@ -71,11 +71,7 @@ public partial class MainWindow
     private bool _isLyricsPlaceholderActive;
     private int _lyricsFetchGeneration;
     private readonly SubtitleSearchController _subtitleSearchController = new();
-    private bool _isLyricsActive
-    {
-        get => _notchState.IsLyricsActive;
-        set => _notchState.IsLyricsActive = value;
-    }
+    private bool _isLyricsActive;
     private string _lastKnownYouTubeVideoId = "";
 
     private bool IsSpotifyCanvasSurfaceVisible =>
