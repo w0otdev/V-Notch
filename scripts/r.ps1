@@ -10,9 +10,10 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 $ErrorActionPreference = "Continue"
 
 # --- Configuration ---------------------------------------------------------
+$repoRoot    = Split-Path $PSScriptRoot -Parent
 $processName = "V-Notch"
-$objPath     = "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
-$binPath     = "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
+$objPath     = Join-Path $repoRoot "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
+$binPath     = Join-Path $repoRoot "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
 $exePath     = Join-Path $binPath "V-Notch.exe"
 
 # --- 1. Stop old instances and WAIT for them to actually exit ---------------
@@ -83,8 +84,8 @@ if ($Clean) {
 # slow restore step; if obj is missing (first run / after -Clean) we restore normally.
 Write-Host ">>> Building$(if ($Clean) { ' (full rebuild)' } else { ' (incremental)' })..." -ForegroundColor Cyan
 
-$buildArgs = @("build", "V-Notch.csproj", "-nologo", "-tl")
-$restoreReady = Test-Path "obj\project.assets.json"
+$buildArgs = @("build", (Join-Path $repoRoot "V-Notch.csproj"), "-nologo", "-tl")
+$restoreReady = Test-Path (Join-Path $repoRoot "obj\project.assets.json")
 if (-not $Clean -and $restoreReady) {
     $buildArgs += "--no-restore"
 }
@@ -104,7 +105,7 @@ try {
         $proc | Wait-Process
     } else {
         Write-Host ">>> Exe not found, running via dotnet run --no-build..." -ForegroundColor Yellow
-        dotnet run --no-build
+        dotnet run --project (Join-Path $repoRoot "V-Notch.csproj") --no-build
     }
 }
 finally {

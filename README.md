@@ -163,7 +163,7 @@
 
 In **Settings → Spotlight**, choose a default opening mode (Search or AI). Press `Alt + Space` to open Spotlight and `Tab` to switch modes.
 Opening AI mode does not send a request; sending a message transmits it and recent conversation context directly to the selected provider.
-API keys are encrypted in local settings with Windows DPAPI and excluded from settings exports. AI conversations are also encrypted locally; see the [Privacy Policy](PRIVACY_POLICY.md#48-spotlight-ai-opt-in) for storage, recipients, and deletion details.
+API keys are encrypted in local settings with Windows DPAPI and excluded from settings exports. AI conversations are also encrypted locally; see the [Privacy Policy](docs/PRIVACY_POLICY.md#48-spotlight-ai-opt-in) for storage, recipients, and deletion details.
 
 <div id="installation"></div>
 
@@ -200,7 +200,7 @@ V-Notch does not collect telemetry or analytics, or track you. It makes network 
 
 Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted AI chat history is stored separately at `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. Other component caches and temporary files are described in the Privacy Policy. Local Spotlight Search does not upload queries; Spotlight AI sends the content you submit to your selected provider.
 
-**Third-party media:** Canvas uses unofficial Spotify endpoints and requires acknowledgement before sign-in or requests. Spotify may restrict access; opt-in does not grant platform permission. YouTube captions must be accessed and used according to YouTube's terms and applicable law. Fair use is assessed case by case. Read the [external-platform notices](TERMS_OF_SERVICE.md#4-external-platforms-and-content) before enabling these features.
+**Third-party media:** Canvas uses unofficial Spotify endpoints and requires acknowledgement before sign-in or requests. Spotify may restrict access; opt-in does not grant platform permission. YouTube captions must be accessed and used according to YouTube's terms and applicable law. Fair use is assessed case by case. Read the [external-platform notices](docs/TERMS_OF_SERVICE.md#4-external-platforms-and-content) before enabling these features.
 
 > [!NOTE]
 > **API Key Safety:** User-provided API credentials (OpenAI, Gemini, Claude, DeepSeek, YouTube) are encrypted locally with Windows DPAPI. V-Notch maintains no intermediary servers. Maintainers assume no liability for third-party billing, quota exhaustion, or credentials leaked from user environments or pre-release testing builds. Please configure spending caps on your provider accounts.
@@ -221,7 +221,7 @@ Authentication uses the official CLI login in the standard user profile. V-Notch
 
 Privacy dots use capture reports from Windows and recording signals from Bandicam, OBS Studio, and FFmpeg. See [recording detection coverage and limitations](RECORDING_DETECTION.md).
 
-[Privacy Policy](PRIVACY_POLICY.md) · [Tiếng Việt](PRIVACY_POLICY_VI.md) · [Terms of Service](TERMS_OF_SERVICE.md) · [Tiếng Việt](TERMS_OF_SERVICE_VI.md)
+[Privacy Policy](docs/PRIVACY_POLICY.md) · [Tiếng Việt](docs/PRIVACY_POLICY_VI.md) · [Terms of Service](docs/TERMS_OF_SERVICE.md) · [Tiếng Việt](docs/TERMS_OF_SERVICE_VI.md)
 
 ## Star history
 
@@ -238,7 +238,7 @@ If you like V-Notch, check out other free and open-source Windows utilities by r
 
 ## License
 
-V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 <p align="center">
   Made by <a href="https://rainaku.id.vn">rainaku</a> ·

@@ -53,8 +53,7 @@ internal sealed class SpotifyTokenProvider : IDisposable
             long serverTimeMs = await GetServerTimeMsAsync(sessionCookie, localTimeMs, token).ConfigureAwait(false);
             string localTotp = GenerateTotp(config.Secret, localTimeMs);
 
-            // Matches the token payload used by Paxsenix0/Spotify-Canvas-API.
-            string serverTotp = GenerateTotp(config.Secret, (long)Math.Floor(serverTimeMs / 30d));
+            string serverTotp = GenerateTotp(config.Secret, serverTimeMs);
             var endpoint = new UriBuilder(TokenUri)
             {
                 Query = "reason=init&productType=mobile-web-player" +

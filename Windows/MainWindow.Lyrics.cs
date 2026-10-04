@@ -94,10 +94,10 @@ public partial class MainWindow
             return;
         }
 
-        int generation = ++_lyricsFetchGeneration;
         string trackKey = $"{info.CurrentTrack}|{info.CurrentArtist}";
 
         if (trackKey == _lyricsTrackKey && (_currentLyrics != null && _currentLyrics.Count > 0 || !_isLyricsActive)) return;
+        int generation = ++_lyricsFetchGeneration;
         _lyricsTrackKey = trackKey;
         _syncedTextSource = SyncedTextSource.SpotifyLyrics;
 

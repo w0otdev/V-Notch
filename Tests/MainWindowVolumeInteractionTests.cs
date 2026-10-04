@@ -18,7 +18,7 @@ public sealed class MainWindowVolumeInteractionTests
     [Theory]
     [InlineData(120)]
     [InlineData(-120)]
-    public Task WheelDetentsActivateImmediatelyAndSmallDeltasAccumulateUntilIntentIsClear(int direction) => SharedStaTestRunner.RunAsync(ct =>
+    public void WheelDetentsActivateImmediatelyAndSmallDeltasAccumulateUntilIntentIsClear(int direction) => SharedStaTestRunner.RunAsync(ct =>
     {
         using var fixture = Create(new FakeMediaDetectionService());
         var window = fixture.Window;
@@ -47,7 +47,7 @@ public sealed class MainWindowVolumeInteractionTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public Task FirstWheelStepReadsTheSessionBaselineAndDismissalCancelsItsPresentation(bool available) => SharedStaTestRunner.RunAsync(async ct =>
+    public void FirstWheelStepReadsTheSessionBaselineAndDismissalCancelsItsPresentation(bool available) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => (available, .7f, false) };
         using var fixture = Create(media);
@@ -68,7 +68,7 @@ public sealed class MainWindowVolumeInteractionTests
     });
 
     [Fact]
-    public Task VolumeIndicatorTimerReturnsTheCompactPillToMedia() => SharedStaTestRunner.RunAsync(async ct =>
+    public void VolumeIndicatorTimerReturnsTheCompactPillToMedia() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create(new FakeMediaDetectionService());
         var window = fixture.Window;
@@ -86,7 +86,7 @@ public sealed class MainWindowVolumeInteractionTests
     [InlineData(true, false)]
     [InlineData(true, true)]
     [InlineData(false, false)]
-    public Task SessionVolumeRefreshUpdatesOnlyAnAvailableSession(bool available, bool muted) => SharedStaTestRunner.RunAsync(async ct =>
+    public void SessionVolumeRefreshUpdatesOnlyAnAvailableSession(bool available, bool muted) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => (available, .72f, muted) };
         using var fixture = Create(media);
@@ -101,7 +101,7 @@ public sealed class MainWindowVolumeInteractionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task ADelayedReadCannotOverwriteADragOrANewerVolumeInteraction(bool dragging) => SharedStaTestRunner.RunAsync(async ct =>
+    public void ADelayedReadCannotOverwriteADragOrANewerVolumeInteraction(bool dragging) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
@@ -126,7 +126,7 @@ public sealed class MainWindowVolumeInteractionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task MuteClicksAreSerializedAndRefreshTheIconWhenTheDriverAcceptsTheToggle(bool accepted) => SharedStaTestRunner.RunAsync(async ct =>
+    public void MuteClicksAreSerializedAndRefreshTheIconWhenTheDriverAcceptsTheToggle(bool accepted) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => (true, .4f, true), SessionMuteToggleSucceeded = accepted };
         using var fixture = Create(media);
@@ -146,7 +146,7 @@ public sealed class MainWindowVolumeInteractionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task VolumeDragKeepsThePresentationConsistentAndReleasesItsDragState(bool compact) => SharedStaTestRunner.RunAsync(async ct =>
+    public void VolumeDragKeepsThePresentationConsistentAndReleasesItsDragState(bool compact) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
         using var fixture = Create(media);
@@ -174,7 +174,7 @@ public sealed class MainWindowVolumeInteractionTests
     });
 
     [Fact]
-    public Task MediaButtonsAndVolumeIconCompleteTheirHoverAnimations() => SharedStaTestRunner.RunAsync(async ct =>
+    public void MediaButtonsAndVolumeIconCompleteTheirHoverAnimations() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create(new FakeMediaDetectionService());
         var window = fixture.Window;

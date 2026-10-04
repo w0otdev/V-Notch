@@ -20,12 +20,12 @@ public sealed class MainWindowMorphHandoffTests
     [InlineData(false, 120)]
     [InlineData(true, 120)]
     [InlineData(false, 0)]
-    public Task SpotlightReturnsTheExactOpacityAndInputStateItBorrowed(bool reducedMotion, int milliseconds) => SharedStaTestRunner.RunAsync(async ct =>
+    public void SpotlightReturnsTheExactOpacityAndInputStateItBorrowed(bool reducedMotion, int milliseconds) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create();
         var window = fixture.Window;
         bool previous = AnimationConfig.ReduceMotion;
-        AnimationConfig.ReduceMotion = reducedMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
         try
         {
             window.NotchWrapper.Opacity = .7;
@@ -56,11 +56,11 @@ public sealed class MainWindowMorphHandoffTests
             window.BeginSpotlightReturnHandoff(TimeSpan.FromMilliseconds(120));
             Assert.False(Get<bool>(window, "_spotlightReturnHandoffActive"));
         }
-        finally { AnimationConfig.ReduceMotion = previous; }
+        finally { AnimationConfig.SetReduceMotion(previous); }
     });
 
     [Fact]
-    public Task ReopeningSpotlightDuringReturnClearsTheOldAnimationWithoutLosingRestoreValues() => SharedStaTestRunner.RunAsync(async ct =>
+    public void ReopeningSpotlightDuringReturnClearsTheOldAnimationWithoutLosingRestoreValues() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create();
         var window = fixture.Window;
@@ -86,7 +86,7 @@ public sealed class MainWindowMorphHandoffTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task MorphGeometryUsesTheCurrentNotchSizeAndMaterialCornerRadii(bool island) => SharedStaTestRunner.RunAsync(ct =>
+    public void MorphGeometryUsesTheCurrentNotchSizeAndMaterialCornerRadii(bool island) => SharedStaTestRunner.RunAsync(ct =>
     {
         using var fixture = Create();
         var window = fixture.Window;
@@ -108,7 +108,7 @@ public sealed class MainWindowMorphHandoffTests
     });
 
     [Fact]
-    public Task ReturnBounceAndSettingsAndBatteryHoverSettleAtTheirRestingValues() => SharedStaTestRunner.RunAsync(async ct =>
+    public void ReturnBounceAndSettingsAndBatteryHoverSettleAtTheirRestingValues() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create();
         var window = fixture.Window;

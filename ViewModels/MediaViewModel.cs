@@ -29,7 +29,7 @@ public partial class MediaViewModel : ObservableObject
     private string _sourceIcon = "";
 
     [ObservableProperty]
-    private BitmapImage? _thumbnail;
+    private BitmapSource? _thumbnail;
 
     [ObservableProperty]
     private bool _hasThumbnail;

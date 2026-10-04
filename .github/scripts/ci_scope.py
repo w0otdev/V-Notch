@@ -13,12 +13,21 @@ DOCUMENTATION = {
     "GLOBAL_RELEASE_AUDIT.md", "DEVOPS_PIPELINE_AUDIT.md",
 }
 
+PACKAGED_DOCS = {
+    "TERMS_OF_SERVICE.md",
+    "TERMS_OF_SERVICE_VI.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/TERMS_OF_SERVICE.md",
+    "docs/TERMS_OF_SERVICE_VI.md",
+    "docs/THIRD_PARTY_NOTICES.md",
+}
+
 
 def needs_windows(paths):
     # Packaged terms/notices and unknown inputs require the build. Do not
     # classify every Markdown file as documentation: some are embedded assets.
     return not paths or any(
-        path not in DOCUMENTATION and not path.startswith("docs/")
+        path in PACKAGED_DOCS or (path not in DOCUMENTATION and not path.startswith("docs/"))
         for path in paths
     )
 

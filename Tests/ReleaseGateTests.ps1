@@ -58,7 +58,7 @@ try {
     Remove-Item -LiteralPath (Join-Path $modelDirectory 'yolo11n.onnx')
     [IO.File]::WriteAllBytes((Join-Path $modelDirectory 'yolox_nano.onnx'), [byte[]](0, 1, 2))
     Expect-Failure { & $modelScript -RootDirectory $modelRoot } 'checksum or length'
-    Expect-Failure { & (Join-Path $repository 'b.ps1') -RequireAuthenticode } 'thumbprint is required'
+    Expect-Failure { & (Join-Path $repository 'scripts/b.ps1') -RequireAuthenticode } 'thumbprint is required'
     Write-Host 'Release gates passed: coverage boundaries, duplicate reports, XML safety, model allowlist/hash/license, required signing.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)

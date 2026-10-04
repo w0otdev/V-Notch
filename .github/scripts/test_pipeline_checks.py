@@ -13,7 +13,7 @@ class PipelineChecks(unittest.TestCase):
         self.assertFalse(needs_windows(["README.md", "docs/setup.md"]))
 
     def test_packaged_docs_and_unknown_changes_require_windows(self):
-        for paths in ([], ["TERMS_OF_SERVICE.md"], ["THIRD_PARTY_NOTICES.md"], ["README.md", "V-Notch.csproj"], [".gitleaks.toml"]):
+        for paths in ([], ["TERMS_OF_SERVICE.md"], ["THIRD_PARTY_NOTICES.md"], ["docs/TERMS_OF_SERVICE.md"], ["docs/THIRD_PARTY_NOTICES.md"], ["README.md", "V-Notch.csproj"], [".gitleaks.toml"]):
             with self.subTest(paths=paths):
                 self.assertTrue(needs_windows(paths))
 

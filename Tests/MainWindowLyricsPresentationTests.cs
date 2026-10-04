@@ -13,6 +13,23 @@ public sealed class MainWindowLyricsPresentationTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Fact]
+    public void IgnoringDuplicateTrackEventsKeepsThePendingFetchGeneration() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableLocalOnlyMode = false;
+        settings.EnableSpotifyLyrics = true;
+        settings.EnableOnlineLyrics = true;
+        var media = new MediaInfo { CurrentTrack = "Track", CurrentArtist = "Artist", MediaSource = "Spotify" };
+        Set(window, "_lyricsTrackKey", "Track|Artist");
+        Set(window, "_lyricsFetchGeneration", 42);
+        Set(window, "_isLyricsActive", false);
+        ((Task)Invoke(window, "FetchLyricsForTrack", media)!).GetAwaiter().GetResult();
+        Assert.Equal(42, Field<int>(window, "_lyricsFetchGeneration"));
+    });
+
     [Theory]
     [InlineData(false, "Artist")]
     [InlineData(true, "Artist")]

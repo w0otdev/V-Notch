@@ -17,12 +17,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path $PSScriptRoot -Parent
 $restoreArguments = if ($LockedRestore) { @('-p:RestoreLockedMode=true') } else { @() }
 if ($RequireAuthenticode -and -not $CertificateThumbprint) {
     throw 'A trusted certificate thumbprint is required for a public release.'
 }
 
-$projectVersion = ([xml](Get-Content -Raw .\V-Notch.csproj)).Project.PropertyGroup.Version |
+Push-Location $repoRoot
+try {
+
+$projectPath = Join-Path $repoRoot 'V-Notch.csproj'
+$projectVersion = ([xml](Get-Content -Raw $projectPath)).Project.PropertyGroup.Version |
     Where-Object { $_ } |
     Select-Object -First 1
 if ($projectVersion -match '^\d+\.\d+\.\d+$') {
@@ -49,7 +54,7 @@ $publishDir = "release"
 Write-Host "[1/3] Cleaning previous publish..." -ForegroundColor Yellow
 if (Test-Path $publishDir) {
     $resolvedPublish = (Resolve-Path -LiteralPath $publishDir).Path
-    $expectedPublish = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'release'))
+    $expectedPublish = [IO.Path]::GetFullPath((Join-Path $repoRoot 'release'))
     if ($resolvedPublish -ne $expectedPublish) { throw 'Publish cleanup must stay inside this repository release directory.' }
     Remove-Item -LiteralPath $resolvedPublish -Recurse -Force
     Write-Host "      Cleaned $publishDir" -ForegroundColor Green
@@ -86,7 +91,7 @@ Write-Host "      Uninstaller published (uninstall.exe)" -ForegroundColor Green
 
 ./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir
 if ($CertificateThumbprint) {
-    ./scripts/Sign-ReleaseBinary.ps1 -Path "$publishDir\V-Notch.exe", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
+    & (Join-Path $PSScriptRoot 'Sign-ReleaseBinary.ps1') -Path "$publishDir\V-Notch.exe", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
     Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
 }
@@ -140,7 +145,7 @@ if ($LASTEXITCODE -ne 0) {
 # Authenticode is optional. The release workflow separately signs update manifests
 # using the free ECDSA key; the updater always requires those manifests.
 if ($CertificateThumbprint) {
-    ./scripts/Sign-ReleaseBinary.ps1 -Path 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
+    & (Join-Path $PSScriptRoot 'Sign-ReleaseBinary.ps1') -Path 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
 } elseif ($CertificatePath) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign installer." -ForegroundColor Red; exit 1 }
@@ -172,13 +177,13 @@ Write-Host "      SHA-256 checksums created (installer and application binary)" 
 # Step 4: Automatically sign update manifest if ECDSA release key is available
 $privateKeyCandidates = @(
     $env:VNOTCH_UPDATE_SIGNING_KEY_PEM_PATH,
-    (Join-Path $PSScriptRoot "..\VNotchReleaseKeys\update-2026-09-private.pem")
+    (Join-Path $repoRoot "..\VNotchReleaseKeys\update-2026-09-private.pem")
 )
 $foundKey = $privateKeyCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
     Write-Host "      Signing update manifest..." -ForegroundColor Yellow
-    $signScript = Join-Path $PSScriptRoot "scripts\Sign-UpdateManifest.ps1"
+    $signScript = Join-Path $PSScriptRoot "Sign-UpdateManifest.ps1"
     $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
     $keyArg = if ($foundKey) { "-PrivateKeyPath '$foundKey'" } else { "" }
     try {
@@ -206,3 +211,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Build Complete! (v$exeVersion)" -ForegroundColor Green
 Write-Host "Installer: installers\V-Notch-Setup.exe" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+
+} finally {
+    Pop-Location
+}

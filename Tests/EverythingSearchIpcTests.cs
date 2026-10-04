@@ -14,7 +14,7 @@ public sealed class EverythingSearchIpcTests
     [Theory]
     [InlineData("report", 0)]
     [InlineData("docs/report", 4)]
-    public Task SearchUsesTheIpcProtocolAndFiltersAndRanksItsReply(string query, uint expectedFlags) => SharedStaTestRunner.RunAsync(async ct =>
+    public void SearchUsesTheIpcProtocolAndFiltersAndRanksItsReply(string query, uint expectedFlags) => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
         using var server = new Server([
@@ -43,7 +43,7 @@ public sealed class EverythingSearchIpcTests
     });
 
     [Fact]
-    public Task QueryWithoutAReplyTimesOutAndReleasesTheNextQuery() => SharedStaTestRunner.RunAsync(async ct =>
+    public void QueryWithoutAReplyTimesOutAndReleasesTheNextQuery() => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
         using var server = new Server([("report.txt", @"C:\Fixture", false)]) { DropReplies = true };
@@ -56,7 +56,7 @@ public sealed class EverythingSearchIpcTests
     });
 
     [Fact]
-    public Task CancellationAndDisposalAllowPendingAndQueuedQueriesToFinishSafely() => SharedStaTestRunner.RunAsync(async ct =>
+    public void CancellationAndDisposalAllowPendingAndQueuedQueriesToFinishSafely() => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
         using var server = new Server([]) { DropReplies = true };
@@ -78,7 +78,7 @@ public sealed class EverythingSearchIpcTests
     });
 
     [Fact]
-    public Task DisconnectedIpcWindowAndInvalidQueriesReturnNoResults() => SharedStaTestRunner.RunAsync(async ct =>
+    public void DisconnectedIpcWindowAndInvalidQueriesReturnNoResults() => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
         using var server = new Server([]);

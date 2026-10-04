@@ -171,14 +171,7 @@ internal static class FullscreenDetector
             return string.Empty;
         }
 
-        try
-        {
-            return System.Diagnostics.Process.GetProcessById((int)processId).ProcessName;
-        }
-        catch (Exception)
-        {
-            return string.Empty;
-        }
+        return ProcessNameResolver.TryGetName(processId) ?? string.Empty;
     }
 
     internal static unsafe bool IsBlockedClass(IntPtr hwnd)

@@ -81,16 +81,16 @@
     <InternalsVisibleTo Include="VNotch.Tests" />
     <InternalsVisibleTo Include="VNotch.Benchmarks" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
-    <EmbeddedResource Include="TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />
-    <EmbeddedResource Include="TERMS_OF_SERVICE_VI.md" LogicalName="VNotch.TERMS_OF_SERVICE_VI.md" />
+    <EmbeddedResource Include="docs\TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />
+    <EmbeddedResource Include="docs\TERMS_OF_SERVICE_VI.md" LogicalName="VNotch.TERMS_OF_SERVICE_VI.md" />
     <EmbeddedResource Include="Locales\*.json" LogicalName="VNotch.Locales.%(FileName).json" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="TERMS_OF_SERVICE.md" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="TERMS_OF_SERVICE_VI.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="docs\TERMS_OF_SERVICE.md" CopyToOutputDirectory="PreserveNewest" Link="TERMS_OF_SERVICE.md" />
+    <None Include="docs\TERMS_OF_SERVICE_VI.md" CopyToOutputDirectory="PreserveNewest" Link="TERMS_OF_SERVICE_VI.md" />
     <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Update="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="docs\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
     <None Update="Introduction\**\*" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <None Include="Locales\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

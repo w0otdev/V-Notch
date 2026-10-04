@@ -7,7 +7,7 @@ namespace VNotch.Services;
 
 internal static class ThumbnailHeuristics
 {
-    public static bool IsLikelyPlaceholderThumbnail(BitmapImage? thumbnail)
+    public static bool IsLikelyPlaceholderThumbnail(BitmapSource? thumbnail)
     {
         if (thumbnail == null || thumbnail.PixelWidth <= 0 || thumbnail.PixelHeight <= 0)
         {
@@ -29,7 +29,7 @@ internal static class ThumbnailHeuristics
         return HasLowEntropyMonochromeProfile(thumbnail);
     }
 
-    public static bool IsLikelyArtworkCandidate(BitmapImage? thumbnail)
+    public static bool IsLikelyArtworkCandidate(BitmapSource? thumbnail)
     {
         if (thumbnail == null || thumbnail.PixelWidth <= 0 || thumbnail.PixelHeight <= 0)
         {
@@ -48,7 +48,7 @@ internal static class ThumbnailHeuristics
                !IsLikelyPlaceholderThumbnail(thumbnail);
     }
 
-    public static bool HasLowEntropyMonochromeProfile(BitmapImage thumbnail)
+    public static bool HasLowEntropyMonochromeProfile(BitmapSource thumbnail)
     {
         try
         {

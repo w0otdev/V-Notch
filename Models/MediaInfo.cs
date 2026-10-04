@@ -34,7 +34,7 @@ public class MediaInfo
     public string SourceAppId { get; set; } = "";
     public string SessionInstanceKey { get; set; } = "";
     public string? YouTubeVideoId { get; set; }
-    public BitmapImage? Thumbnail { get; set; }
+    public BitmapSource? Thumbnail { get; set; }
     public bool HasThumbnail => Thumbnail != null;
 
     public TimeSpan Position { get; set; } = TimeSpan.Zero;

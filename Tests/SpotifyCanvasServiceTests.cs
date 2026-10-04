@@ -47,6 +47,8 @@ public sealed class SpotifyCanvasServiceTests
         Assert.DoesNotContain(requests, request => request.Uri.Host == "raw.githubusercontent.com");
         var tokenRequest = Assert.Single(requests.Where(request => request.Uri.AbsolutePath == "/api/token"));
         Assert.Equal(SpotifyWebPlayerProtocol.TotpVersion, GetQueryParameter(tokenRequest.Uri, "totpVer"));
+        Assert.Equal(SpotifyTokenProvider.GenerateTotp(SpotifyWebPlayerProtocol.CreateTotpSecret(), 1700000000000L),
+            GetQueryParameter(tokenRequest.Uri, "totpServer"));
         Assert.Contains(requests, request =>
             request.Uri.Host == "open.spotify.com" && request.Cookie == "sp_dc=session-cookie");
         RequestInfo pathfinderRequest = Assert.Single(requests.Where(request =>

@@ -122,7 +122,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         }
     }
 
-    public SubjectBounds? GetDominantSubjectBounds(BitmapImage source)
+    public SubjectBounds? GetDominantSubjectBounds(BitmapSource source)
     {
         if (_disposed) return null;
         if (!_modelExists && !TryInitialize()) return null;
@@ -192,7 +192,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         return new SubjectBounds(cx, cy, w, h, b.Confidence, b.ClassId);
     }
 
-    public Int32Rect? GetSmartCropRect(BitmapImage source, int targetSquareSize, bool useObjectDetection = false)
+    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection = false)
     {
         if (source == null || targetSquareSize <= 0) return null;
         int width = source.PixelWidth;
@@ -221,7 +221,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             return rect;
         }
     }
-    private Int32Rect? ComputeSmartCropRectCore(BitmapImage source, int targetSquareSize)
+    private Int32Rect? ComputeSmartCropRectCore(BitmapSource source, int targetSquareSize)
     {
         if (_disposed) return null;
         if (!_modelExists && !TryInitialize())
@@ -278,7 +278,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         }
     }
 
-    private Detection[] GetOrRunInferenceLocked(BitmapImage source, int imgWidth, int imgHeight)
+    private Detection[] GetOrRunInferenceLocked(BitmapSource source, int imgWidth, int imgHeight)
     {
         ArtworkFingerprint fingerprint = _fingerprintCache
             .GetValue(source, static bitmap => new FingerprintHolder(ArtworkFingerprint.Create(bitmap)))
@@ -364,7 +364,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         _inferenceCache[fingerprint] = new InferenceCacheEntry(detections, ++_inferenceCacheAccess);
     }
 
-    internal static float PreprocessImageFast(BitmapImage source, float[] tensorBuffer)
+    internal static float PreprocessImageFast(BitmapSource source, float[] tensorBuffer)
     {
         int imgWidth = source.PixelWidth;
         int imgHeight = source.PixelHeight;
@@ -573,7 +573,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         return 1.0f - dist * 0.5f;
     }
 
-    private static List<TextRegion> DetectTextRegions(BitmapImage source, int imgWidth, int imgHeight)
+    private static List<TextRegion> DetectTextRegions(BitmapSource source, int imgWidth, int imgHeight)
     {
         var regions = new List<TextRegion>();
 
@@ -676,7 +676,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         return pixelCount > 0 ? edgeCount / pixelCount : 0;
     }
 
-    private Int32Rect GetHybridCropRect(IReadOnlyList<Detection> detections, BitmapImage source, int imgWidth, int imgHeight, int targetSize)
+    private Int32Rect GetHybridCropRect(IReadOnlyList<Detection> detections, BitmapSource source, int imgWidth, int imgHeight, int targetSize)
     {
         int maxCropSize = Math.Min(imgWidth, imgHeight);
         int cropSize = Math.Min(targetSize, maxCropSize);
@@ -762,7 +762,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             : GetGroupPersonCropRect(persons, imgWidth, imgHeight, targetSize);
     }
 
-    private Int32Rect? TryGetPortraitCrop(BitmapImage source, Detection person, int width, int height)
+    private Int32Rect? TryGetPortraitCrop(BitmapSource source, Detection person, int width, int height)
     {
         if (!global::Windows.Media.FaceAnalysis.FaceDetector.IsSupported) return null;
         try
@@ -917,7 +917,7 @@ public sealed class SmartThumbnailCropService : IDisposable
         return new Int32Rect(cropX, cropY, cropSize, cropSize);
     }
 
-    private static Int32Rect? GetSaliencyCropRect(BitmapImage source, int imgWidth, int imgHeight, int targetSize)
+    private static Int32Rect? GetSaliencyCropRect(BitmapSource source, int imgWidth, int imgHeight, int targetSize)
     {
         try
         {

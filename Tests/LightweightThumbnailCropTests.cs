@@ -37,6 +37,34 @@ public sealed class LightweightThumbnailCropTests
             var crop = service.CropToSquare(CreateWideArtwork(), "test");
             Assert.NotNull(crop);
             Assert.Equal(crop.PixelWidth, crop.PixelHeight);
+            Assert.IsType<CroppedBitmap>(crop);
+            Assert.True(crop.IsFrozen);
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CroppedSourcesPreservePixelsAndCanBeReadAcrossThreads(bool smartCrop)
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            using var service = new MediaArtworkService { EnableSmartCrop = smartCrop };
+            var source = CreateWideArtwork();
+            var crop = Assert.IsType<CroppedBitmap>(service.CropToSquare(source, "pixel-test", forceCenterCrop: !smartCrop));
+            Assert.True(crop.IsFrozen);
+            Assert.Same(crop, service.CropToSquare(source, "pixel-test", forceCenterCrop: !smartCrop));
+            int stride = (crop.PixelWidth * crop.Format.BitsPerPixel + 7) / 8;
+            var expected = new byte[stride * crop.PixelHeight];
+            crop.Source.CopyPixels(crop.SourceRect, expected, stride, 0);
+            var actual = Task.Run(() =>
+            {
+                var pixels = new byte[expected.Length];
+                crop.CopyPixels(pixels, stride, 0);
+                return pixels;
+            }).GetAwaiter().GetResult();
+            Assert.Equal(expected, actual);
+            Assert.NotNull(service.CropToSquare(crop, "already-cropped"));
         });
     }
 

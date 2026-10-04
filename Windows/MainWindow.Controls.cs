@@ -736,7 +736,10 @@ public partial class MainWindow
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 _volumeInteractionVersion++;
-                SyncVolumeFromActiveSession();
+                if (_volumeReadInFlight)
+                    _pendingMuteRefreshVersion = _volumeInteractionVersion;
+                else
+                    SyncVolumeFromActiveSession();
             }));
         });
     }
@@ -806,6 +809,7 @@ public partial class MainWindow
     }
 
     private bool _volumeReadInFlight;
+    private int? _pendingMuteRefreshVersion;
     private int _volumeInteractionVersion;
 
     private async void SyncVolumeFromActiveSession()
@@ -837,6 +841,10 @@ public partial class MainWindow
         finally
         {
             _volumeReadInFlight = false;
+            int? pendingVersion = _pendingMuteRefreshVersion;
+            _pendingMuteRefreshVersion = null;
+            if (pendingVersion == _volumeInteractionVersion)
+                SyncVolumeFromActiveSession();
         }
     }
 

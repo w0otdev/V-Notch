@@ -48,60 +48,132 @@ internal sealed partial class LyricsService : IDisposable
         _lrcMuxHttp.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
     }
 
-    private CancellationTokenSource? _cts;
-    private string _lastFetchKey = "";
+    private readonly HttpClient _lrclibClient;
+    private readonly HttpClient _lrcMuxClient;
 
-    public async Task<LyricsResult?> FetchSyncedLyricsAsync(string trackName, string artistName, int durationSeconds)
+    public LyricsService() : this(_lrclibHttp, _lrcMuxHttp) { }
+
+    internal LyricsService(HttpClient lrclibClient, HttpClient lrcMuxClient, int cacheCapacity = 64)
     {
-        string fetchKey = $"{trackName}|{artistName}|{durationSeconds}";
-        if (fetchKey == _lastFetchKey) return null;
+        if (cacheCapacity <= 0) throw new ArgumentOutOfRangeException(nameof(cacheCapacity));
+        _lrclibClient = lrclibClient;
+        _lrcMuxClient = lrcMuxClient;
+        _cacheCapacity = cacheCapacity;
+    }
 
-        if (_cts != null)
+    private readonly object _fetchLock = new();
+    private readonly int _cacheCapacity;
+    private readonly Dictionary<FetchKey, (LyricsResult Result, long LastAccess)> _cache = new();
+    private long _cacheAccess;
+    private FetchOperation? _activeFetch;
+    private bool _disposed;
+
+    private readonly record struct FetchKey(string Track, string Artist, int DurationSeconds);
+
+    private sealed class FetchOperation(FetchKey key)
+    {
+        public FetchKey Key { get; } = key;
+        public CancellationTokenSource Cancellation { get; } = new();
+        public TaskCompletionSource<LyricsResult?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task CancellationTask { get; set; } = Task.CompletedTask;
+    }
+
+    public Task<LyricsResult?> FetchSyncedLyricsAsync(string trackName, string artistName, int durationSeconds)
+    {
+        var key = new FetchKey(trackName, artistName, durationSeconds);
+        FetchOperation operation;
+        lock (_fetchLock)
         {
-            await _cts.CancelAsync();
-            _cts.Dispose();
+            if (_disposed) return Task.FromResult<LyricsResult?>(null);
+            if (_activeFetch?.Key == key) return _activeFetch.Completion.Task;
+
+            CancelActiveFetchLocked();
+            if (_cache.TryGetValue(key, out var cached))
+            {
+                _cache[key] = (cached.Result, ++_cacheAccess);
+                return Task.FromResult<LyricsResult?>(cached.Result);
+            }
+
+            operation = new FetchOperation(key);
+            _activeFetch = operation;
         }
-        _cts = new CancellationTokenSource();
-        var token = _cts.Token;
 
-        _lastFetchKey = fetchKey;
+        _ = CompleteFetchAsync(operation);
+        return operation.Completion.Task;
+    }
 
+    private async Task CompleteFetchAsync(FetchOperation operation)
+    {
+        LyricsResult? result = null;
         try
         {
-            var candidates = GenerateSearchCandidates(trackName, artistName);
-
-            foreach (var (candTrack, candArtist) in candidates)
-            {
-                // Exact search
-                if (!string.IsNullOrEmpty(candArtist))
-                {
-                    var exact = await TryGetExactAsync(candTrack, candArtist, durationSeconds, token);
-                    if (exact is { Count: > 0 }) return new LyricsResult(exact, "LRCLIB");
-                }
-
-                // Fuzzy search
-                var searched = await TrySearchAsync(candTrack, candArtist, durationSeconds, token);
-                if (searched is { Count: > 0 }) return new LyricsResult(searched, "LRCLIB");
-            }
-
-            // Fallback to LRCMux
-            foreach (var (candTrack, candArtist) in candidates)
-            {
-                var aggregated = await TryLrcMuxAsync(candTrack, candArtist, durationSeconds, token);
-                if (aggregated != null) return aggregated;
-            }
-
-            return null;
+            result = await FetchUncachedLyricsAsync(operation.Key, operation.Cancellation.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
-        {
-            return null;
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             RuntimeLog.Log(LogTag, $"Error: {ex.Message}");
-            return null;
         }
+
+        Task cancellationTask;
+        lock (_fetchLock)
+        {
+            if (_disposed || operation.Cancellation.IsCancellationRequested)
+                result = null;
+            else if (result is { Lines.Count: > 0 })
+            {
+                if (_cache.Count >= _cacheCapacity)
+                    _cache.Remove(_cache.MinBy(static entry => entry.Value.LastAccess).Key);
+                _cache[operation.Key] = (result, ++_cacheAccess);
+            }
+
+            if (ReferenceEquals(_activeFetch, operation)) _activeFetch = null;
+            cancellationTask = operation.CancellationTask;
+        }
+
+        // The fetch owns its CTS until both HTTP work and cancellation callbacks finish.
+        try { await cancellationTask.ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log(LogTag, $"Cancellation error: {ex.Message}");
+        }
+        finally
+        {
+            operation.Cancellation.Dispose();
+            operation.Completion.TrySetResult(result);
+        }
+    }
+
+    private void CancelActiveFetchLocked()
+    {
+        if (_activeFetch == null) return;
+        _activeFetch.CancellationTask = _activeFetch.Cancellation.CancelAsync();
+        _activeFetch = null;
+    }
+
+    private async Task<LyricsResult?> FetchUncachedLyricsAsync(FetchKey key, CancellationToken token)
+    {
+        var candidates = GenerateSearchCandidates(key.Track, key.Artist);
+        foreach (var (candTrack, candArtist) in candidates)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!string.IsNullOrEmpty(candArtist))
+            {
+                var exact = await TryGetExactAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
+                if (exact is { Count: > 0 }) return new LyricsResult(exact, "LRCLIB");
+            }
+
+            var searched = await TrySearchAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
+            if (searched is { Count: > 0 }) return new LyricsResult(searched, "LRCLIB");
+        }
+
+        foreach (var (candTrack, candArtist) in candidates)
+        {
+            token.ThrowIfCancellationRequested();
+            var aggregated = await TryLrcMuxAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
+            if (aggregated != null) return aggregated;
+        }
+        return null;
     }
 
     public static List<(string Track, string Artist)> GenerateSearchCandidates(string trackName, string artistName)
@@ -186,14 +258,14 @@ internal sealed partial class LyricsService : IDisposable
         }
     }
 
-    private static async Task<List<LyricLine>?> TryGetExactAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
+    private async Task<List<LyricLine>?> TryGetExactAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
     {
         string url = $"/api/get?track_name={Uri.EscapeDataString(trackName)}" +
                      $"&artist_name={Uri.EscapeDataString(artistName)}&duration={durationSeconds}";
 
         RuntimeLog.Log(LogTag, $"Fetching (exact): {trackName} - {artistName} ({durationSeconds}s)");
 
-        using var response = await _lrclibHttp.GetAsync(url, token);
+        using var response = await _lrclibClient.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"Exact HTTP {(int)response.StatusCode} for '{trackName}'");
@@ -208,14 +280,14 @@ internal sealed partial class LyricsService : IDisposable
         return lines;
     }
 
-    private static async Task<List<LyricLine>?> TrySearchAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
+    private async Task<List<LyricLine>?> TrySearchAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
     {
         string url = $"/api/search?track_name={Uri.EscapeDataString(trackName)}" +
                      $"&artist_name={Uri.EscapeDataString(artistName)}";
 
         RuntimeLog.Log(LogTag, $"Fetching (search): {trackName} - {artistName}");
 
-        using var response = await _lrclibHttp.GetAsync(url, token);
+        using var response = await _lrclibClient.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"Search HTTP {(int)response.StatusCode} for '{trackName}'");
@@ -337,7 +409,7 @@ internal sealed partial class LyricsService : IDisposable
         }
     }
 
-    private static async Task<LyricsResult?> TryLrcMuxAsync(
+    private async Task<LyricsResult?> TryLrcMuxAsync(
         string trackName,
         string artistName,
         int durationSeconds,
@@ -350,7 +422,7 @@ internal sealed partial class LyricsService : IDisposable
 
         RuntimeLog.Log(LogTag, $"Fetching (lrc mux): {trackName} - {artistName}");
 
-        using var response = await _lrcMuxHttp.GetAsync(url, token);
+        using var response = await _lrcMuxClient.GetAsync(url, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"lrc mux HTTP {(int)response.StatusCode} for '{trackName}'");
@@ -488,8 +560,7 @@ internal sealed partial class LyricsService : IDisposable
 
     public void Reset()
     {
-        _lastFetchKey = "";
-        _cts?.Cancel();
+        lock (_fetchLock) CancelActiveFetchLocked();
     }
 
     internal static List<LyricLine> ParseLrc(string lrc)
@@ -549,8 +620,13 @@ internal sealed partial class LyricsService : IDisposable
 
     public void Dispose()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
+        lock (_fetchLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            CancelActiveFetchLocked();
+            _cache.Clear();
+        }
     }
 }
 

@@ -11,11 +11,11 @@ namespace VNotch.Services;
 public interface IMediaArtworkService
 {
     Task<BitmapImage?> DownloadImageAsync(string url, CancellationToken ct = default);
-    BitmapImage? CropToSquare(BitmapImage source, string mediaSource, bool forceCenterCrop = false);
+    BitmapSource? CropToSquare(BitmapSource source, string mediaSource, bool forceCenterCrop = false);
     Task<BitmapImage?> ConvertToWpfBitmapAsync(IRandomAccessStreamWithContentType stream, CancellationToken ct = default);
     void ConfigureSmartCrop(bool enabled);
 
-    SubjectBounds? GetDominantSubjectBounds(BitmapImage source);
+    SubjectBounds? GetDominantSubjectBounds(BitmapSource source);
 }
 
 public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
@@ -54,7 +54,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         EnableSmartCrop = enabled;
     }
 
-    public SubjectBounds? GetDominantSubjectBounds(BitmapImage source)
+    public SubjectBounds? GetDominantSubjectBounds(BitmapSource source)
     {
         if (!_smartCropAvailable && !_smartCrop.TryInitialize())
             return null;
@@ -151,11 +151,11 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             HashCode.Combine(Fingerprint, Rect, ForceCenterCrop, SmartCropEnabled);
     }
 
-    private static readonly Dictionary<CropCacheKey, (BitmapImage Image, DateTime LastAccessedUtc)> _cropCache = new();
+    private static readonly Dictionary<CropCacheKey, (BitmapSource Image, DateTime LastAccessedUtc)> _cropCache = new();
     private static readonly object _cropCacheLock = new();
     private const int MaxCropCacheSize = 24;
 
-    public BitmapImage? CropToSquare(BitmapImage source, string mediaSource, bool forceCenterCrop = false)
+    public BitmapSource? CropToSquare(BitmapSource source, string mediaSource, bool forceCenterCrop = false)
     {
         try
         {
@@ -208,7 +208,8 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 }
             }
 
-            var encoded = EncodeCroppedBitmap(workingSource, rect);
+            var cropped = new CroppedBitmap(workingSource, rect);
+            cropped.Freeze();
 
             lock (_cropCacheLock)
             {
@@ -229,10 +230,10 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                         _cropCache.Remove(oldestKey);
                     }
                 }
-                _cropCache[cacheKey] = (encoded, DateTime.UtcNow);
+                _cropCache[cacheKey] = (cropped, DateTime.UtcNow);
             }
 
-            return encoded;
+            return cropped;
         }
         catch (Exception ex)
         {
@@ -245,21 +246,13 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     {
         if (EnableSmartCrop && aspect > 1.4 && !forceCenterCrop)
         {
-            BitmapImage? workingBitmap = workingSource as BitmapImage ?? ConvertToBitmapImage(workingSource);
-            if (workingBitmap != null)
+            var smartRect = _smartCrop.GetSmartCropRect(workingSource, squareSize);
+            if (smartRect.HasValue)
             {
-                var smartRect = _smartCrop.GetSmartCropRect(workingBitmap, squareSize);
-                if (smartRect.HasValue)
-                {
-                    RuntimeLog.Log(CropPathLogTag, $"smart-crop OK rect=({smartRect.Value.X},{smartRect.Value.Y},{smartRect.Value.Width}x{smartRect.Value.Height})");
-                    return smartRect.Value;
-                }
-                RuntimeLog.Log(CropPathLogTag, "smart-crop returned null -> fallback");
+                RuntimeLog.Log(CropPathLogTag, $"smart-crop OK rect=({smartRect.Value.X},{smartRect.Value.Y},{smartRect.Value.Width}x{smartRect.Value.Height})");
+                return smartRect.Value;
             }
-            else
-            {
-                RuntimeLog.Log(CropPathLogTag, "workingBitmap null -> fallback");
-            }
+            RuntimeLog.Log(CropPathLogTag, "smart-crop returned null -> fallback");
         }
         else if (forceCenterCrop)
         {
@@ -271,26 +264,6 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         var fallbackRect = GetFallbackCropRect(width, height, squareSize);
         RuntimeLog.Log(CropPathLogTag, $"fallback rect=({fallbackRect.X},{fallbackRect.Y},{fallbackRect.Width}x{fallbackRect.Height})");
         return fallbackRect;
-    }
-
-    private static BitmapImage EncodeCroppedBitmap(BitmapSource workingSource, Int32Rect rect)
-    {
-        var cropped = new CroppedBitmap(workingSource, rect);
-        cropped.Freeze();
-
-        using var ms = new MemoryStream();
-        var encoder = new BmpBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(cropped));
-        encoder.Save(ms);
-        ms.Position = 0;
-
-        var bitmapImage = new BitmapImage();
-        bitmapImage.BeginInit();
-        bitmapImage.StreamSource = ms;
-        bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-        bitmapImage.EndInit();
-        bitmapImage.Freeze();
-        return bitmapImage;
     }
 
     private static Int32Rect GetFallbackCropRect(int width, int height, int squareSize)
@@ -502,31 +475,6 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 darkPixels++;
         }
         return (double)darkPixels / total > 0.85;
-    }
-
-    private static BitmapImage? ConvertToBitmapImage(BitmapSource source)
-    {
-        try
-        {
-            using var ms = new MemoryStream();
-            var encoder = new BmpBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(source));
-            encoder.Save(ms);
-            ms.Position = 0;
-
-            var bitmapImage = new BitmapImage();
-            bitmapImage.BeginInit();
-            bitmapImage.StreamSource = ms;
-            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-            bitmapImage.EndInit();
-            bitmapImage.Freeze();
-            return bitmapImage;
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log(ArtworkLogTag, $"ConvertToBitmapImage failed: {ex.Message}");
-            return null;
-        }
     }
 
     public void Dispose()

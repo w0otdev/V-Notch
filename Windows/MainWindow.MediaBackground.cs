@@ -530,17 +530,17 @@ public partial class MainWindow
     private const string BlurCrossfadeLogTag = "BLUR-CROSSFADE";
     private int _blurCrossfadeVersion = 0;
     private int _blurTaskVersion = 0;
-    private BitmapImage? _lastBlurThumbnailRef;
+    private BitmapSource? _lastBlurThumbnailRef;
     private bool _suppressNextBlurDissolve = false;
     private DispatcherTimer? _blurDissolveDebounce;
     private BitmapSource? _pendingBlurResult;
 
-    private sealed record BlurRequest(BitmapImage Thumbnail, bool AllowInterimThumbnail, int Version);
+    private sealed record BlurRequest(BitmapSource Thumbnail, bool AllowInterimThumbnail, int Version);
     private BlurRequest? _pendingBlurRequest;
     private bool _isBlurWorkerRunning = false;
     private readonly object _blurWorkerLock = new();
 
-    private async Task UpdateBlurredBackgroundAsync(BitmapImage thumbnail, bool allowInterimThumbnail = false)
+    private async Task UpdateBlurredBackgroundAsync(BitmapSource thumbnail, bool allowInterimThumbnail = false)
     {
         try
         {

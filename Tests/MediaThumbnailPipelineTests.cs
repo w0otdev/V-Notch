@@ -290,10 +290,10 @@ public sealed class MediaThumbnailPipelineTests
         public List<string> Downloads { get; } = new();
         public List<(string Source, bool Center)> Crops { get; } = new();
         public Task<BitmapImage?> DownloadImageAsync(string url, CancellationToken ct = default) { Downloads.Add(url); return Download?.Invoke(url) ?? Task.FromResult(Image); }
-        public BitmapImage? CropToSquare(BitmapImage source, string mediaSource, bool forceCenterCrop = false) { Crops.Add((mediaSource, forceCenterCrop)); return source; }
+        public BitmapSource? CropToSquare(BitmapSource source, string mediaSource, bool forceCenterCrop = false) { Crops.Add((mediaSource, forceCenterCrop)); return source; }
         public Task<BitmapImage?> ConvertToWpfBitmapAsync(IRandomAccessStreamWithContentType stream, CancellationToken ct = default) => Task.FromResult<BitmapImage?>(null);
         public void ConfigureSmartCrop(bool enabled) { }
-        public SubjectBounds? GetDominantSubjectBounds(BitmapImage source) => null;
+        public SubjectBounds? GetDominantSubjectBounds(BitmapSource source) => null;
     }
 
     private sealed class Scanner : IWindowTitleScanner

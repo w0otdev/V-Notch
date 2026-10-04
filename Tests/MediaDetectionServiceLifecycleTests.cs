@@ -336,7 +336,7 @@ public class MediaDetectionServiceLifecycleTests
         public Task<System.Windows.Media.Imaging.BitmapImage?> DownloadImageAsync(string url, CancellationToken ct = default)
             => Task.FromResult<System.Windows.Media.Imaging.BitmapImage?>(null);
 
-        public System.Windows.Media.Imaging.BitmapImage? CropToSquare(System.Windows.Media.Imaging.BitmapImage source, string mediaSource, bool forceCenterCrop = false)
+        public System.Windows.Media.Imaging.BitmapSource? CropToSquare(System.Windows.Media.Imaging.BitmapSource source, string mediaSource, bool forceCenterCrop = false)
             => source;
 
         public Task<System.Windows.Media.Imaging.BitmapImage?> ConvertToWpfBitmapAsync(IRandomAccessStreamWithContentType stream, CancellationToken ct = default)
@@ -344,7 +344,7 @@ public class MediaDetectionServiceLifecycleTests
 
         public void ConfigureSmartCrop(bool enabled) { }
 
-        public SubjectBounds? GetDominantSubjectBounds(System.Windows.Media.Imaging.BitmapImage source)
+        public SubjectBounds? GetDominantSubjectBounds(System.Windows.Media.Imaging.BitmapSource source)
             => null;
     }
 

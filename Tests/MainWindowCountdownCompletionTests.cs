@@ -19,7 +19,7 @@ public sealed class MainWindowCountdownCompletionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task RestartingACompletedCountdownRestoresTheClockAndStartsTheSameTimer(bool music) => SharedStaTestRunner.RunAsync(async ct =>
+    public void RestartingACompletedCountdownRestoresTheClockAndStartsTheSameTimer(bool music) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create();
         var window = fixture.Window;
@@ -31,6 +31,7 @@ public sealed class MainWindowCountdownCompletionTests
         Assert.True(timer.IsRunning);
         Assert.True(Get<bool>(window, "_isAnimating"));
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Collapsed, "countdown restart transition", ct);
+        await WpfFrameWaiter.UntilAsync(() => window.TimerContent.Opacity == 1 && window.NavIconsPanel.Opacity == 1, "countdown restart content entrance", ct);
         Assert.Equal(Visibility.Visible, window.TimerContent.Visibility);
         Assert.Equal(1, window.TimerContent.Opacity);
         Assert.Equal(Visibility.Visible, window.NavIconsPanel.Visibility);
@@ -46,7 +47,7 @@ public sealed class MainWindowCountdownCompletionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public Task DismissingACompletedCountdownRestoresTheAppropriateCompactContent(bool music) => SharedStaTestRunner.RunAsync(async ct =>
+    public void DismissingACompletedCountdownRestoresTheAppropriateCompactContent(bool music) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = Create();
         var window = fixture.Window;
@@ -59,7 +60,7 @@ public sealed class MainWindowCountdownCompletionTests
         Invoke(window, "CountdownDismiss_Click", window, args);
         Assert.True(args.Handled);
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Collapsed, "countdown dismiss transition", ct);
-        var content = music ? window.MusicCompactContent : window.CollapsedContent;
+        FrameworkElement content = music ? window.MusicCompactContent : window.CollapsedContent;
         await WpfFrameWaiter.UntilAsync(() => content.Opacity == 1 && content.RenderTransform == null, "restored compact content", ct);
         Assert.Equal(Visibility.Visible, content.Visibility);
         Assert.Equal(Visibility.Collapsed, window.TimerContent.Visibility);

@@ -41,7 +41,7 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 $ErrorActionPreference = 'Stop'
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$repository = $PSScriptRoot
+$repository = Split-Path $PSScriptRoot -Parent
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
 Write-Host "        V-Notch Full CI Local Verification               " -ForegroundColor Cyan
@@ -112,7 +112,7 @@ if ($FixFormat) {
 & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n[!] Code format verification failed!" -ForegroundColor Red
-    Write-Host "[*] Run 'dotnet format V-Notch.sln' or '.\c.ps1 -FixFormat' to auto-fix formatting." -ForegroundColor Yellow
+    Write-Host "[*] Run 'dotnet format V-Notch.sln' or '.\scripts\c.ps1 -FixFormat' to auto-fix formatting." -ForegroundColor Yellow
     throw "Code formatting verification failed."
 }
 Write-Host "Code formatting check passed." -ForegroundColor Green

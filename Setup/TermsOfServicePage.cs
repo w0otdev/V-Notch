@@ -303,7 +303,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             // Fall through
         }
 
-        // 2. Try disk file in BaseDirectory or parent
+        // 2. Try disk file in BaseDirectory, parent, or docs/ subdirectories
         try
         {
             var baseDir = AppContext.BaseDirectory;
@@ -313,6 +313,12 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 return File.ReadAllText(localPath);
             }
 
+            var localDocPath = Path.Combine(baseDir, "docs", fileName);
+            if (File.Exists(localDocPath))
+            {
+                return File.ReadAllText(localDocPath);
+            }
+
             var parentDir = Directory.GetParent(baseDir)?.FullName;
             if (parentDir != null)
             {
@@ -320,6 +326,12 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                 if (File.Exists(parentPath))
                 {
                     return File.ReadAllText(parentPath);
+                }
+
+                var parentDocPath = Path.Combine(parentDir, "docs", fileName);
+                if (File.Exists(parentDocPath))
+                {
+                    return File.ReadAllText(parentDocPath);
                 }
             }
         }

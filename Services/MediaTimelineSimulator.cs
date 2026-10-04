@@ -19,7 +19,7 @@ public class MediaTimelineSimulator
     public TimeSpan LastObservedPosition => _lastObservedPosition;
     public DateTime LastPositionChangeTime => _lastPositionChangeTime;
     public TimeSpan RecoveredDuration { get; set; } = TimeSpan.Zero;
-    public BitmapImage? RecoveredThumbnail { get; set; }
+    public BitmapSource? RecoveredThumbnail { get; set; }
 
     public void UpdateObservedPosition(TimeSpan position)
     {

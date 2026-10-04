@@ -18,12 +18,12 @@ public sealed class ConfirmationDialogPresentationTests
     [InlineData(ConfirmationDialog.DialogIcon.Trash, true, "fixture details")]
     [InlineData(ConfirmationDialog.DialogIcon.Error, true, "https://fixture.invalid/help")]
     [InlineData(ConfirmationDialog.DialogIcon.Info, false, "file:///C:/fixture")]
-    public Task DialogOptionsChooseTheirIconTextBadgeAndActionStyle(ConfirmationDialog.DialogIcon icon, bool danger, string? detail) => SharedStaTestRunner.RunAsync(async ct =>
+    public void DialogOptionsChooseTheirIconTextBadgeAndActionStyle(ConfirmationDialog.DialogIcon icon, bool danger, string? detail) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = CreateResources();
         var options = new ConfirmationDialog.DialogOptions("Fixture title", "Continue fixture", "Cancel fixture", icon,
             danger ? ConfirmationDialog.DialogStyle.Danger : ConfirmationDialog.DialogStyle.Normal, detail, danger ? "Fixture badge" : null);
-        var dialog = ConfirmationDialog.Create(null, "Fixture message", options, () => new BackgroundDialog());
+        var dialog = CreateDialog(null, "Fixture message", options);
         try
         {
             Assert.Equal("Fixture title", dialog.Title);
@@ -63,12 +63,12 @@ public sealed class ConfirmationDialogPresentationTests
     [InlineData("enter", true)]
     [InlineData("escape", false)]
     [InlineData("close", false)]
-    public Task ConfirmationAndKeyboardDismissalAnimateOnceAndKeepTheFirstResult(string action, bool expected) => SharedStaTestRunner.RunAsync(async ct =>
+    public void ConfirmationAndKeyboardDismissalAnimateOnceAndKeepTheFirstResult(string action, bool expected) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = CreateResources();
         var owner = new BackgroundWindow { Width = 100, Height = 60 };
         owner.Show();
-        var dialog = ConfirmationDialog.Create(owner, "Fixture message", new(), () => new BackgroundDialog());
+        var dialog = CreateDialog(owner, "Fixture message", new());
         try
         {
             Assert.Same(owner, dialog.Owner);
@@ -78,7 +78,7 @@ public sealed class ConfirmationDialogPresentationTests
             await WpfFrameWaiter.UntilAsync(() => dialog.DialogCard.Opacity == 1, "confirmation ready", ct);
             if (action is "enter" or "escape")
             {
-                var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(dialog)!, Environment.TickCount, action == "enter" ? Key.Enter : Key.Escape);
+                var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(dialog)!, Environment.TickCount, action == "enter" ? Key.Enter : Key.Escape) { RoutedEvent = Keyboard.KeyDownEvent };
                 Invoke(dialog, "Window_KeyDown", dialog, args);
                 Assert.True(args.Handled);
             }
@@ -94,9 +94,12 @@ public sealed class ConfirmationDialogPresentationTests
 
     private static GreetingAcceptanceTests.MainWindowFixture CreateResources() => new("en", false, configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static void Invoke(ConfirmationDialog dialog, string method, params object?[] args) => typeof(ConfirmationDialog).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(dialog, args);
-    private sealed class BackgroundDialog : ConfirmationDialog
+    private static ConfirmationDialog CreateDialog(Window? owner, string message, ConfirmationDialog.DialogOptions options)
     {
-        static BackgroundDialog() => BackgroundTestWindows.OverrideMetadata(typeof(BackgroundDialog));
-        internal BackgroundDialog() => BackgroundTestWindows.ProtectInput(this);
+        var dialog = ConfirmationDialog.Create(owner, message, options);
+        dialog.Opacity = 0;
+        dialog.Topmost = false;
+        BackgroundTestWindows.ProtectInput(dialog);
+        return dialog;
     }
 }

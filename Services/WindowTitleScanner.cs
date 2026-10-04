@@ -606,16 +606,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private static string? TryGetProcessName(int pid)
     {
-        try
-        {
-            var proc = System.Diagnostics.Process.GetProcessById(pid);
-            return proc.ProcessName.ToLowerInvariant();
-        }
-        catch (Exception)
-        {
-            // Process may have exited before query; skip window
-            return null;
-        }
+        return pid > 0 ? ProcessNameResolver.TryGetName((uint)pid)?.ToLowerInvariant() : null;
     }
 
     private static bool IsBrowserProcess(string processName) =>

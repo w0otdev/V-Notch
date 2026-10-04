@@ -49,7 +49,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     internal bool IsStarting => _state == ServiceLifecycleState.Starting;
     internal bool IsStopped => _state == ServiceLifecycleState.Stopped;
     internal bool IsDisposed => _state == ServiceLifecycleState.Disposed;
-    internal BitmapImage? CachedThumbnail { get; set; }
+    internal BitmapSource? CachedThumbnail { get; set; }
 
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private bool _disposed;
@@ -1591,7 +1591,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
                     if (needsBetterThumb || info.Platform == MediaPlatform.YouTube)
                     {
-                        BitmapImage? frameBitmap = null;
+                        BitmapSource? frameBitmap = null;
                         string thumbnailUrl;
 
                         if (!string.IsNullOrWhiteSpace(preferredThumbnailUrl))
@@ -1841,7 +1841,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 return;
             }
 
-            var frameBitmap = await DownloadImageAsync(artworkUrl, token);
+            BitmapSource? frameBitmap = await DownloadImageAsync(artworkUrl, token);
             if (frameBitmap == null ||
                 IsLikelySoundCloudPlaceholderThumbnail(frameBitmap) ||
                 token.IsCancellationRequested)
@@ -1925,13 +1925,20 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         try
         {
             var spotifyProcesses = Process.GetProcessesByName(SpotifyPlatformName);
-            return spotifyProcesses
-                .Select(proc => proc.MainWindowTitle)
-                .FirstOrDefault(title => !string.IsNullOrEmpty(title) &&
-                                         title != SpotifyPlatformName &&
-                                         title != "Spotify Premium" &&
-                                         title != "Spotify Free" &&
-                                         !title.ToLower().EndsWith("spotify")) ?? "";
+            try
+            {
+                return spotifyProcesses
+                    .Select(proc => proc.MainWindowTitle)
+                    .FirstOrDefault(title => !string.IsNullOrEmpty(title) &&
+                                             title != SpotifyPlatformName &&
+                                             title != "Spotify Premium" &&
+                                             title != "Spotify Free" &&
+                                             !title.EndsWith("spotify", StringComparison.OrdinalIgnoreCase)) ?? "";
+            }
+            finally
+            {
+                foreach (var process in spotifyProcesses) process.Dispose();
+            }
         }
         catch (Exception ex)
         {
@@ -2081,10 +2088,10 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         return PlatformDetector.NormalizeForLooseMatch(value);
     }
 
-    private static bool IsLikelySoundCloudPlaceholderThumbnail(BitmapImage? thumbnail)
+    private static bool IsLikelySoundCloudPlaceholderThumbnail(BitmapSource? thumbnail)
         => ThumbnailHeuristics.IsLikelyPlaceholderThumbnail(thumbnail);
 
-    private static bool IsLikelySoundCloudArtworkCandidate(BitmapImage? thumbnail)
+    private static bool IsLikelySoundCloudArtworkCandidate(BitmapSource? thumbnail)
         => ThumbnailHeuristics.IsLikelyArtworkCandidate(thumbnail);
 
     private static bool IsLikelySoundCloudPlaceholderArtworkUrl(string? url)
@@ -2701,7 +2708,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     using var stream = await thumbnail.OpenReadAsync();
                     if (stream != null && stream.Size > 0)
                     {
-                        var newBitmap = await ConvertToWpfBitmapAsync(stream, _bgCts?.Token ?? CancellationToken.None);
+                        BitmapSource? newBitmap = await ConvertToWpfBitmapAsync(stream, _bgCts?.Token ?? CancellationToken.None);
                         if (newBitmap != null)
                         {
                             bool isSoundCloudSource = info.Platform == MediaPlatform.SoundCloud;
@@ -3340,7 +3347,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private Task<BitmapImage?> DownloadImageAsync(string url, CancellationToken ct = default)
         => _artworkService.DownloadImageAsync(url, ct);
 
-    private BitmapImage? CropToSquare(BitmapImage source, string mediaSource, bool forceCenterCrop = false)
+    private BitmapSource? CropToSquare(BitmapSource source, string mediaSource, bool forceCenterCrop = false)
         => _artworkService.CropToSquare(source, mediaSource, forceCenterCrop);
 
     private Task<BitmapImage?> ConvertToWpfBitmapAsync(global::Windows.Storage.Streams.IRandomAccessStreamWithContentType stream, CancellationToken ct = default)

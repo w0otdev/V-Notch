@@ -106,7 +106,7 @@ public sealed class MusicVisualizerAudioPipelineTests
     }));
 
     [Fact]
-    public Task LoadedPausedVisualizerMorphsToCopiedFeedbackAndReleasesItWhenUnloaded() => SharedStaTestRunner.RunAsync(async ct =>
+    public void LoadedPausedVisualizerMorphsToCopiedFeedbackAndReleasesItWhenUnloaded() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var visualizer = new MusicVisualizer { TrackId = "Fixture paused track", Width = 80, Height = 40 };
         var host = new BackgroundWindow { Width = 100, Height = 60, Content = visualizer };

@@ -115,7 +115,7 @@ jobs:
             $imported = @(Import-PfxCertificate -FilePath $certificateFile -CertStoreLocation Cert:\CurrentUser\My -Password $password)
             $buildArguments = @{ CertificateThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT; RequireAuthenticode = $true; NsisPath = $env:NSIS_MAKENSIS; LockedRestore = $true }
             if ('${{ matrix.variant }}' -eq 'self-contained') { $buildArguments.SelfContained = $true }
-            ./b.ps1 @buildArguments
+            ./scripts/b.ps1 @buildArguments
             if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
           } finally {
             foreach ($certificate in $imported) { Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -DeleteKey -Force }

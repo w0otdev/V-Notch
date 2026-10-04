@@ -5,12 +5,12 @@ namespace VNotch.Services;
 
 public interface IColorExtractionService
 {
-    Color ExtractDominantColor(BitmapImage? image);
+    Color ExtractDominantColor(BitmapSource? image);
 }
 
 public sealed class ColorExtractionService : IColorExtractionService
 {
-    public Color ExtractDominantColor(BitmapImage? image)
+    public Color ExtractDominantColor(BitmapSource? image)
     {
         if (image == null)
         {

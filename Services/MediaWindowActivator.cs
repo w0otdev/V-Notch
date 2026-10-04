@@ -259,23 +259,26 @@ internal static class MediaWindowActivator
             return false;
         }
 
-        foreach (var process in processes)
+        try
         {
-            try
+            foreach (var process in processes)
             {
-                process.Refresh();
-                IntPtr hwnd = process.MainWindowHandle;
-                if (hwnd != IntPtr.Zero && TryActivateWindow(hwnd))
-                    return true;
+                try
+                {
+                    process.Refresh();
+                    IntPtr hwnd = process.MainWindowHandle;
+                    if (hwnd != IntPtr.Zero && TryActivateWindow(hwnd))
+                        return true;
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Error(LogTag, ex.ToString());
+                }
             }
-            catch (Exception ex)
-            {
-                RuntimeLog.Error(LogTag, ex.ToString());
-            }
-            finally
-            {
-                process.Dispose();
-            }
+        }
+        finally
+        {
+            foreach (var process in processes) process.Dispose();
         }
 
         return false;
@@ -296,9 +299,8 @@ internal static class MediaWindowActivator
                 GetWindowThreadProcessId(hwnd, out uint processId);
                 if (processId == 0) return true;
 
-                string processName;
-                try { processName = Process.GetProcessById((int)processId).ProcessName; }
-                catch { return true; }
+                string? processName = ProcessNameResolver.TryGetName(processId);
+                if (string.IsNullOrEmpty(processName)) return true;
 
                 if (!IsCandidateBrowserWindow(processName, processNames)) return true;
 
@@ -544,9 +546,8 @@ internal static class MediaWindowActivator
             GetWindowThreadProcessId(hwnd, out uint processId);
             if (processId == 0) return true;
 
-            string processName;
-            try { processName = Process.GetProcessById((int)processId).ProcessName; }
-            catch { return true; }
+            string? processName = ProcessNameResolver.TryGetName(processId);
+            if (string.IsNullOrEmpty(processName)) return true;
 
             if (processNames.Count > 0 && !processNames.Contains(processName)) return true;
 
