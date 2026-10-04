@@ -31,11 +31,19 @@ internal static class SpotifyJson
     {
         foreach (var property in element.EnumerateObject())
         {
-            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+            if (property.NameEquals(name) &&
                 property.Value.ValueKind == JsonValueKind.String)
             {
                 return property.Value.GetString();
             }
+        }
+
+        // Keep compatibility with differently cased providers only after the allocation-free pass.
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.String &&
+                property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return property.Value.GetString();
         }
 
         foreach (var property in element.EnumerateObject())
@@ -77,12 +85,20 @@ internal static class SpotifyJson
     {
         foreach (var property in element.EnumerateObject())
         {
-            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+            if (property.NameEquals(name) &&
                 property.Value.ValueKind == JsonValueKind.Number &&
                 property.Value.TryGetDouble(out double value))
             {
                 return value;
             }
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.Number &&
+                property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                property.Value.TryGetDouble(out double value))
+                return value;
         }
 
         foreach (var property in element.EnumerateObject())
@@ -111,6 +127,15 @@ internal static class SpotifyJson
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (property.NameEquals(name))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+
             var enumerator = element.EnumerateObject();
             while (enumerator.MoveNext())
             {

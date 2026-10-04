@@ -20,6 +20,7 @@ public sealed class SpotifyCanvasService : IDisposable
     private readonly MusixmatchTrackResolver _musixmatch;
     private readonly SpotifyCanvasClient _canvas;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
+    private readonly object _cacheLock = new();
 
     public SpotifyCanvasService()
         : this(CreateHttpClient(), ownsHttpClient: true)
@@ -59,7 +60,7 @@ public sealed class SpotifyCanvasService : IDisposable
             if (cached.ExpiresAtUtc > DateTimeOffset.UtcNow)
                 return cached.CanvasUri;
 
-            _cache.TryRemove(cacheKey, out _);
+            ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(new(cacheKey, cached));
         }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -88,10 +89,7 @@ public sealed class SpotifyCanvasService : IDisposable
 
             Uri? canvasUri = await _canvas.FetchAsync(trackId, accessToken, timeoutCts.Token).ConfigureAwait(false);
             if (canvasUri != null)
-            {
-                TrimCacheIfNeeded();
-                _cache[cacheKey] = new CacheEntry(canvasUri, DateTimeOffset.UtcNow + CacheLifetime);
-            }
+                CacheCanvas(cacheKey, canvasUri);
 
             return canvasUri;
         }
@@ -138,7 +136,7 @@ public sealed class SpotifyCanvasService : IDisposable
 
     public void ClearCache()
     {
-        _cache.Clear();
+        lock (_cacheLock) _cache.Clear();
         _tokens.ClearCache();
     }
 
@@ -176,20 +174,31 @@ public sealed class SpotifyCanvasService : IDisposable
         return cookie;
     }
 
+    private void CacheCanvas(string key, Uri uri)
+    {
+        lock (_cacheLock)
+        {
+            _cache[key] = new CacheEntry(uri, DateTimeOffset.UtcNow + CacheLifetime);
+            TrimCacheIfNeeded();
+        }
+    }
+
     private void TrimCacheIfNeeded()
     {
+        if (_cache.Count <= MaxCacheEntries) return;
+
         var now = DateTimeOffset.UtcNow;
+        KeyValuePair<string, CacheEntry>? oldest = null;
         foreach (var entry in _cache)
         {
             if (entry.Value.ExpiresAtUtc <= now)
                 ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(entry);
+            else if (oldest == null || entry.Value.ExpiresAtUtc < oldest.Value.Value.ExpiresAtUtc)
+                oldest = entry;
         }
-
-        if (_cache.Count < MaxCacheEntries)
-            return;
-
-        foreach (var entry in _cache.OrderBy(pair => pair.Value.ExpiresAtUtc).Take(_cache.Count - MaxCacheEntries + 1))
-            _cache.TryRemove(entry.Key, out _);
+        // Writers hold _cacheLock, so one linear pass can evict the single overflow entry.
+        if (_cache.Count > MaxCacheEntries && oldest is { } victim)
+            ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(victim);
     }
 
     private static HttpClient CreateHttpClient()

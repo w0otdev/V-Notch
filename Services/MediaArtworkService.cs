@@ -127,28 +127,25 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     private readonly struct CropCacheKey : IEquatable<CropCacheKey>
     {
         public readonly ArtworkFingerprint Fingerprint;
-        public readonly Int32Rect Rect;
         public readonly bool ForceCenterCrop;
         public readonly bool SmartCropEnabled;
 
-        public CropCacheKey(ArtworkFingerprint fingerprint, Int32Rect rect, bool forceCenterCrop, bool smartCropEnabled)
+        public CropCacheKey(ArtworkFingerprint fingerprint, bool forceCenterCrop, bool smartCropEnabled)
         {
             Fingerprint = fingerprint;
-            Rect = rect;
             ForceCenterCrop = forceCenterCrop;
             SmartCropEnabled = smartCropEnabled;
         }
 
         public bool Equals(CropCacheKey other) =>
             Fingerprint.Equals(other.Fingerprint) &&
-            Rect.Equals(other.Rect) &&
             ForceCenterCrop == other.ForceCenterCrop &&
             SmartCropEnabled == other.SmartCropEnabled;
 
         public override bool Equals(object? obj) => obj is CropCacheKey other && Equals(other);
 
         public override int GetHashCode() =>
-            HashCode.Combine(Fingerprint, Rect, ForceCenterCrop, SmartCropEnabled);
+            HashCode.Combine(Fingerprint, ForceCenterCrop, SmartCropEnabled);
     }
 
     private static readonly Dictionary<CropCacheKey, (BitmapSource Image, DateTime LastAccessedUtc)> _cropCache = new();
@@ -162,6 +159,17 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             int width = source.PixelWidth;
             int height = source.PixelHeight;
 
+            bool smartCropEnabled = EnableSmartCrop;
+            var cacheKey = new CropCacheKey(ArtworkFingerprint.Create(source), forceCenterCrop, smartCropEnabled);
+            lock (_cropCacheLock)
+            {
+                if (_cropCache.TryGetValue(cacheKey, out var cached))
+                {
+                    _cropCache[cacheKey] = (cached.Image, DateTime.UtcNow);
+                    return cached.Image;
+                }
+            }
+
             RuntimeLog.Log("CROP-START",
                 $"src={width}x{height} aspect={(double)width / height:F2} mediaSource='{mediaSource}' forceCenterCrop={forceCenterCrop} smartEnabled={EnableSmartCrop} smartAvail={_smartCropAvailable}");
 
@@ -170,7 +178,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             if (artworkFrame == null && Math.Abs(srcAspect - 1.0) < 0.02 && !forceCenterCrop)
             {
                 RuntimeLog.Log(CropPathLogTag, $"already square ({width}x{height}) — skip crop");
-                return source;
+                return CacheCropResult(cacheKey, source);
             }
 
             var contentRect = artworkFrame ?? DetectContentBounds(source, width, height);
@@ -189,51 +197,17 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             double zoom = aspect >= 0.9 && aspect <= 1.1 ? 1.0 : 0.97;
             int squareSize = (int)(Math.Min(width, height) * zoom);
 
-            Int32Rect rect = DetermineCropRect(workingSource, width, height, squareSize, aspect, forceCenterCrop);
+            Int32Rect rect = DetermineCropRect(workingSource, width, height, squareSize, aspect, forceCenterCrop, smartCropEnabled);
 
             if (ReferenceEquals(workingSource, source) && rect.X == 0 && rect.Y == 0 && rect.Width == width && rect.Height == height)
             {
-                return source;
-            }
-
-            var fingerprint = ArtworkFingerprint.Create(source);
-            var cacheKey = new CropCacheKey(fingerprint, rect, forceCenterCrop, EnableSmartCrop);
-
-            lock (_cropCacheLock)
-            {
-                if (_cropCache.TryGetValue(cacheKey, out var cached))
-                {
-                    _cropCache[cacheKey] = (cached.Image, DateTime.UtcNow);
-                    return cached.Image;
-                }
+                return CacheCropResult(cacheKey, source);
             }
 
             var cropped = new CroppedBitmap(workingSource, rect);
             cropped.Freeze();
 
-            lock (_cropCacheLock)
-            {
-                if (_cropCache.Count >= MaxCropCacheSize && !_cropCache.ContainsKey(cacheKey))
-                {
-                    CropCacheKey oldestKey = default;
-                    DateTime oldestTime = DateTime.MaxValue;
-                    foreach (var kvp in _cropCache)
-                    {
-                        if (kvp.Value.LastAccessedUtc < oldestTime)
-                        {
-                            oldestTime = kvp.Value.LastAccessedUtc;
-                            oldestKey = kvp.Key;
-                        }
-                    }
-                    if (oldestTime != DateTime.MaxValue)
-                    {
-                        _cropCache.Remove(oldestKey);
-                    }
-                }
-                _cropCache[cacheKey] = (cropped, DateTime.UtcNow);
-            }
-
-            return cropped;
+            return CacheCropResult(cacheKey, cropped);
         }
         catch (Exception ex)
         {
@@ -242,9 +216,39 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         }
     }
 
-    private Int32Rect DetermineCropRect(BitmapSource workingSource, int width, int height, int squareSize, double aspect, bool forceCenterCrop)
+    private static BitmapSource CacheCropResult(CropCacheKey cacheKey, BitmapSource image)
     {
-        if (EnableSmartCrop && aspect > 1.4 && !forceCenterCrop)
+        // A no-op crop can return a mutable caller-owned source. Never share it.
+        if (!image.IsFrozen) return image;
+
+        lock (_cropCacheLock)
+        {
+            if (_cropCache.Count >= MaxCropCacheSize && !_cropCache.ContainsKey(cacheKey))
+            {
+                CropCacheKey oldestKey = default;
+                DateTime oldestTime = DateTime.MaxValue;
+                foreach (var kvp in _cropCache)
+                {
+                    if (kvp.Value.LastAccessedUtc < oldestTime)
+                    {
+                        oldestTime = kvp.Value.LastAccessedUtc;
+                        oldestKey = kvp.Key;
+                    }
+                }
+                if (oldestTime != DateTime.MaxValue)
+                {
+                    _cropCache.Remove(oldestKey);
+                }
+            }
+            _cropCache[cacheKey] = (image, DateTime.UtcNow);
+        }
+
+        return image;
+    }
+
+    private Int32Rect DetermineCropRect(BitmapSource workingSource, int width, int height, int squareSize, double aspect, bool forceCenterCrop, bool smartCropEnabled)
+    {
+        if (smartCropEnabled && aspect > 1.4 && !forceCenterCrop)
         {
             var smartRect = _smartCrop.GetSmartCropRect(workingSource, squareSize);
             if (smartRect.HasValue)

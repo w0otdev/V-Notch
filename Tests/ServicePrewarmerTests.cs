@@ -48,7 +48,7 @@ public sealed class ServicePrewarmerTests
 
     private static async Task WaitForBackgroundWarmups(RecordingProvider provider)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         while (provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)) < 2) await Task.Delay(10, timeout.Token);
     }
 

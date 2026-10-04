@@ -36,9 +36,33 @@ public enum SpatialAudioMode
 
 public sealed class AudioMixerService : IDisposable
 {
-    private SimpleAudioVolume? _setCacheVolume;
-    private uint _setCachePid = uint.MaxValue;
-    private DateTime _setCacheAtUtc = DateTime.MinValue;
+    private sealed class CachedSessionVolume : IDisposable
+    {
+        public MMDeviceEnumerator Enumerator { get; }
+        public MMDevice Device { get; }
+        public SimpleAudioVolume SimpleVolume { get; }
+        public uint ProcessId { get; }
+        public DateTime CachedAtUtc { get; set; }
+
+        public CachedSessionVolume(MMDeviceEnumerator enumerator, MMDevice device, SimpleAudioVolume sv, uint processId)
+        {
+            Enumerator = enumerator;
+            Device = device;
+            SimpleVolume = sv;
+            ProcessId = processId;
+            CachedAtUtc = DateTime.UtcNow;
+        }
+
+        public void Dispose()
+        {
+            try { SimpleVolume.Dispose(); } catch { }
+            try { Device.Dispose(); } catch { }
+            try { Enumerator.Dispose(); } catch { }
+        }
+    }
+
+    private CachedSessionVolume? _setCache;
+    private readonly object _setCacheLock = new();
     private const double SetCacheLifetimeMs = 3000;
 
     private MMDeviceEnumerator? _enumerator;
@@ -333,32 +357,72 @@ public sealed class AudioMixerService : IDisposable
     {
         float target = Math.Clamp(volume, 0f, 1f);
 
-        if (_setCacheVolume != null && _setCachePid == processId &&
-            (DateTime.UtcNow - _setCacheAtUtc).TotalMilliseconds < SetCacheLifetimeMs)
+        lock (_setCacheLock)
         {
+            if (_setCache != null && _setCache.ProcessId == processId &&
+                (DateTime.UtcNow - _setCache.CachedAtUtc).TotalMilliseconds < SetCacheLifetimeMs)
+            {
+                try
+                {
+                    _setCache.SimpleVolume.Volume = target;
+                    if (target > 0.001f && _setCache.SimpleVolume.Mute) _setCache.SimpleVolume.Mute = false;
+                    return true;
+                }
+                catch (Exception)
+                {
+                    InvalidateSetCacheLocked();
+                }
+            }
+
+            MMDeviceEnumerator? enumerator = null;
+            MMDevice? device = null;
             try
             {
-                _setCacheVolume.Volume = target;
-                if (target > 0.001f && _setCacheVolume.Mute) _setCacheVolume.Mute = false;
-                return true;
+                enumerator = new MMDeviceEnumerator();
+                device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                var sessions = device.AudioSessionManager.Sessions;
+                if (sessions != null)
+                {
+                    for (int i = 0; i < sessions.Count; i++)
+                    {
+                        var session = sessions[i];
+                        if (session == null) continue;
+                        try
+                        {
+                            bool match = processId == 0
+                                ? session.IsSystemSoundsSession
+                                : (!session.IsSystemSoundsSession && session.GetProcessID == processId);
+                            if (!match) continue;
+
+                            var sv = session.SimpleAudioVolume;
+                            sv.Volume = target;
+                            if (target > 0.001f && sv.Mute) sv.Mute = false;
+
+                            InvalidateSetCacheLocked();
+                            _setCache = new CachedSessionVolume(enumerator!, device!, sv, processId);
+                            enumerator = null;
+                            device = null;
+                            return true;
+                        }
+                        catch (Exception)
+                        {
+                            // Session volume interface disconnected
+                        }
+                    }
+                }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                InvalidateSetCache();
+                RuntimeLog.Log("AUDIOMIXER-SETVOL", ex.Message);
             }
+            finally
+            {
+                device?.Dispose();
+                enumerator?.Dispose();
+            }
+
+            return false;
         }
-
-        return ResolveSimpleVolume(processId, sv =>
-        {
-            _setCacheVolume?.Dispose();
-            _setCacheVolume = sv;
-            _setCachePid = processId;
-            _setCacheAtUtc = DateTime.UtcNow;
-
-            sv.Volume = target;
-            if (target > 0.001f && sv.Mute) sv.Mute = false;
-            return true;
-        }, keepAlive: true);
     }
 
     public bool ToggleSessionMute(uint processId)
@@ -368,10 +432,10 @@ public sealed class AudioMixerService : IDisposable
         {
             sv.Mute = !sv.Mute;
             return sv.Mute;
-        }, keepAlive: false);
+        });
     }
 
-    private static bool ResolveSimpleVolume(uint processId, Func<SimpleAudioVolume, bool> action, bool keepAlive)
+    private static bool ResolveSimpleVolume(uint processId, Func<SimpleAudioVolume, bool> action)
     {
         try
         {
@@ -391,10 +455,8 @@ public sealed class AudioMixerService : IDisposable
                         : (!session.IsSystemSoundsSession && session.GetProcessID == processId);
                     if (!match) continue;
 
-                    var sv = session.SimpleAudioVolume;
-                    bool result = action(sv);
-                    if (!keepAlive) sv.Dispose();
-                    return result;
+                    using var sv = session.SimpleAudioVolume;
+                    return action(sv);
                 }
                 catch (Exception)
                 {
@@ -411,13 +473,20 @@ public sealed class AudioMixerService : IDisposable
 
     private void InvalidateSetCache()
     {
-        if (_setCacheVolume != null)
+        lock (_setCacheLock)
         {
-            try { _setCacheVolume.Dispose(); }
-            catch (Exception) { /* Cached volume object already released */ }
-            _setCacheVolume = null;
+            InvalidateSetCacheLocked();
         }
-        _setCachePid = uint.MaxValue;
+    }
+
+    private void InvalidateSetCacheLocked()
+    {
+        if (_setCache != null)
+        {
+            try { _setCache.Dispose(); }
+            catch (Exception) { /* Cached volume object already released */ }
+            _setCache = null;
+        }
     }
 
     public List<AudioDeviceInfo> GetOutputDevices()
@@ -509,28 +578,55 @@ public sealed class AudioMixerService : IDisposable
         }
     }
 
+    private MMDeviceEnumerator? _captureEnumerator;
     private MMDevice? _captureDevice;
     private DateTime _captureCacheAtUtc = DateTime.MinValue;
+    private readonly object _captureCacheLock = new();
 
     private AudioEndpointVolume? GetCaptureEndpointVolume()
     {
-        if (_captureDevice != null && (DateTime.UtcNow - _captureCacheAtUtc).TotalMilliseconds < SetCacheLifetimeMs)
-            return _captureDevice.AudioEndpointVolume;
+        lock (_captureCacheLock)
+        {
+            if (_captureDevice != null && (DateTime.UtcNow - _captureCacheAtUtc).TotalMilliseconds < SetCacheLifetimeMs)
+                return _captureDevice.AudioEndpointVolume;
 
-        InvalidateCaptureCache();
-        using var enumerator = new MMDeviceEnumerator();
-        _captureDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
-        _captureCacheAtUtc = DateTime.UtcNow;
-        return _captureDevice.AudioEndpointVolume;
+            InvalidateCaptureCacheLocked();
+            try
+            {
+                _captureEnumerator = new MMDeviceEnumerator();
+                _captureDevice = _captureEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+                _captureCacheAtUtc = DateTime.UtcNow;
+                return _captureDevice.AudioEndpointVolume;
+            }
+            catch (Exception)
+            {
+                InvalidateCaptureCacheLocked();
+                return null;
+            }
+        }
     }
 
     private void InvalidateCaptureCache()
+    {
+        lock (_captureCacheLock)
+        {
+            InvalidateCaptureCacheLocked();
+        }
+    }
+
+    private void InvalidateCaptureCacheLocked()
     {
         if (_captureDevice != null)
         {
             try { _captureDevice.Dispose(); }
             catch (Exception) { /* Capture device already disposed */ }
             _captureDevice = null;
+        }
+        if (_captureEnumerator != null)
+        {
+            try { _captureEnumerator.Dispose(); }
+            catch (Exception) { /* Capture enumerator already disposed */ }
+            _captureEnumerator = null;
         }
     }
 

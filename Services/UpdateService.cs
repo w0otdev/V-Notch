@@ -68,12 +68,13 @@ public class UpdateService : IUpdateService
             using var request = new HttpRequestMessage(HttpMethod.Get, GithubLatestReleaseUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
             if (!string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
-            using var response = await SendHttpsAsync(request, CancellationToken.None);
+            using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
             _lastCheckUtc = now;
             if (response.StatusCode == HttpStatusCode.NotModified && _cachedLatestRelease != null) return Clone(_cachedLatestRelease);
             response.EnsureSuccessStatusCode();
             _latestReleaseEtag = response.Headers.ETag?.ToString();
-            using var jsonDoc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var jsonDoc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
             var root = jsonDoc.RootElement;
             var (installer, checksum) = SelectReleaseAssets(root);
             var info = new UpdateInfo
@@ -102,10 +103,11 @@ public class UpdateService : IUpdateService
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, GithubAllReleasesUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
-            using var response = await SendHttpsAsync(request, CancellationToken.None);
+            using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            using var jsonDoc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var jsonDoc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
             var releases = new List<UpdateInfo>();
 
             foreach (var release in jsonDoc.RootElement.EnumerateArray())
@@ -173,9 +175,9 @@ public class UpdateService : IUpdateService
     internal async Task DownloadAndVerifyInstallerAsync(UpdateInfo update, string path, IProgress<double>? progress, CancellationToken token)
     {
         if (!IsApprovedUpdate(update)) throw new InvalidDataException("Signed update assets are required.");
-        var manifest = await DownloadVerifiedManifestAsync(update, token);
-        await DownloadInstallerAsync(update.DownloadUrl, path, progress, token, manifest.Size);
-        var actualHash = await ComputeSha256Async(path, token);
+        var manifest = await DownloadVerifiedManifestAsync(update, token).ConfigureAwait(false);
+        await DownloadInstallerAsync(update.DownloadUrl, path, progress, token, manifest.Size).ConfigureAwait(false);
+        var actualHash = await ComputeSha256Async(path, token).ConfigureAwait(false);
         if (!HashesMatch(manifest.Sha256, actualHash))
             throw new InvalidDataException("Installer SHA-256 does not match the signed manifest.");
         var signature = _signatureValidator(path);
@@ -185,23 +187,24 @@ public class UpdateService : IUpdateService
     internal async Task DownloadInstallerAsync(string url, string path, IProgress<double>? progress, CancellationToken token, long? expectedSize = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true);
+        using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var length = response.Content.Headers.ContentLength;
         if (length is > UpdateSecurityPolicy.MaximumInstallerBytes) throw new InvalidDataException("Installer exceeds 500 MB limit.");
         if (expectedSize.HasValue && length.HasValue && length != expectedSize)
             throw new InvalidDataException("Installer length does not match the signed manifest.");
         progress?.Report(length is > 0 ? 0 : -1);
-        await using var input = await response.Content.ReadAsStreamAsync(token);
-        await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+            bufferSize: 81920, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
         var buffer = new byte[81920]; long received = 0;
         while (true)
         {
-            var count = await input.ReadAsync(buffer.AsMemory(), token); if (count == 0) break;
+            var count = await input.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false); if (count == 0) break;
             received += count; if (received > UpdateSecurityPolicy.MaximumInstallerBytes) throw new InvalidDataException("Installer exceeds 500 MB limit.");
             if (expectedSize.HasValue && received > expectedSize.Value)
                 throw new InvalidDataException("Installer exceeds the signed size.");
-            await output.WriteAsync(buffer.AsMemory(0, count), token);
+            await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
             if (length is > 0) progress?.Report(received * 100d / length.Value);
         }
         if (expectedSize.HasValue && received != expectedSize.Value)
@@ -211,8 +214,8 @@ public class UpdateService : IUpdateService
 
     internal async Task<SignedUpdateManifest> DownloadVerifiedManifestAsync(UpdateInfo update, CancellationToken token)
     {
-        var payload = await DownloadSmallAssetAsync(update.ManifestUrl, SignedUpdateManifest.MaximumManifestBytes, token);
-        var signature = await DownloadSmallAssetAsync(update.ManifestSignatureUrl, 64, token);
+        var payload = await DownloadSmallAssetAsync(update.ManifestUrl, SignedUpdateManifest.MaximumManifestBytes, token).ConfigureAwait(false);
+        var signature = await DownloadSmallAssetAsync(update.ManifestSignatureUrl, 64, token).ConfigureAwait(false);
         return SignedUpdateManifest.Verify(payload, signature, _manifestPublicKey,
             update.Version, update.InstallerName, CurrentVersion);
     }
@@ -220,16 +223,16 @@ public class UpdateService : IUpdateService
     private async Task<byte[]> DownloadSmallAssetAsync(string url, int limit, CancellationToken token)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true);
+        using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > limit)
             throw new InvalidDataException("Update metadata exceeds its size limit.");
-        await using var input = await response.Content.ReadAsStreamAsync(token);
+        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var output = new MemoryStream();
         var buffer = new byte[4096];
         while (true)
         {
-            int count = await input.ReadAsync(buffer.AsMemory(), token);
+            int count = await input.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false);
             if (count == 0) break;
             if (output.Length + count > limit)
                 throw new InvalidDataException("Update metadata exceeds its size limit.");
@@ -250,7 +253,7 @@ public class UpdateService : IUpdateService
         {
             for (var redirects = 0; redirects < maxRedirects; redirects++)
             {
-                var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+                var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
                 if (!IsRedirect(response.StatusCode))
                 {
                     var finalUri = response.RequestMessage?.RequestUri ?? request.RequestUri;
@@ -271,18 +274,22 @@ public class UpdateService : IUpdateService
                 if (!IsHttps(target)) throw new InvalidOperationException("Update redirect target is not HTTPS.");
                 if (requireReleaseOrigin && !AppIntegrityService.IsTrustedReleaseRedirect(target))
                     throw new InvalidOperationException("Update redirect target is not a trusted release host.");
+                var redirectedRequest = new HttpRequestMessage(HttpMethod.Get, target);
+                // Only forward the updater's non-sensitive representation/cache headers.
+                // Credentials, cookies and an explicit Host must not follow redirects.
+                foreach (string header in new[] { "Accept", "If-None-Match" })
+                    if (request.Headers.TryGetValues(header, out var values))
+                        redirectedRequest.Headers.TryAddWithoutValidation(header, values);
                 ownedRequest?.Dispose();
-                ownedRequest = new HttpRequestMessage(HttpMethod.Get, target);
+                ownedRequest = redirectedRequest;
                 request = ownedRequest;
             }
         }
-        catch
+        finally
         {
             ownedRequest?.Dispose();
-            throw;
         }
 
-        ownedRequest?.Dispose();
         throw new InvalidOperationException("Invalid or excessive update redirect.");
     }
 
@@ -318,7 +325,12 @@ public class UpdateService : IUpdateService
         expected.Length == 64 && actual.Length == 64 &&
         CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expected), Convert.FromHexString(actual));
     private static bool IsRedirect(HttpStatusCode status) => status is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
-    private static async Task<string> ComputeSha256Async(string path, CancellationToken token) { await using var file = File.OpenRead(path); return Convert.ToHexString(await SHA256.HashDataAsync(file, token)); }
+    private static async Task<string> ComputeSha256Async(string path, CancellationToken token)
+    {
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 81920, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return Convert.ToHexString(await SHA256.HashDataAsync(file, token).ConfigureAwait(false));
+    }
     private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
     private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
     internal static int CompareVersions(string left, string right)

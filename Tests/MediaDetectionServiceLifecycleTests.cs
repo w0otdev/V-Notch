@@ -13,6 +13,65 @@ namespace VNotch.Tests;
 public class MediaDetectionServiceLifecycleTests
 {
     [Fact]
+    public void DisposeAllowsAWorkerToFinishOnTheUiDispatcher() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = CreateTestService(async _ =>
+        {
+            await release.Task.ConfigureAwait(false);
+            await dispatcher.InvokeAsync(() => { }).Task;
+            return null;
+        });
+        service.Start();
+        var init = service.InitTask!;
+        try
+        {
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            service.Dispose();
+            Assert.True(elapsed.ElapsedMilliseconds < 200, "Dispose blocked the dispatcher.");
+            Assert.True(service.IsDisposed);
+            var shutdown = service.DisposeAsync().AsTask();
+            Assert.False(shutdown.IsCompleted);
+            Assert.Same(shutdown, service.DisposeAsync().AsTask());
+            release.TrySetResult();
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+            await init;
+            Assert.Null(service.ProcessingTask);
+            Assert.Null(service.HeartbeatTask);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await service.DisposeAsync();
+        }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TimedOutWorkerCanStillReleaseItsUpdateLock(bool stopFirst)
+    {
+        var service = CreateTestService(null);
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var updateLock = (SemaphoreSlim)typeof(MediaDetectionService).GetField("_updateLock", flags)!.GetValue(service)!;
+        await updateLock.WaitAsync();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var worker = Task.Run(async () => { await release.Task; updateLock.Release(); });
+        typeof(MediaDetectionService).GetField("_processingTask", flags)!.SetValue(service, worker);
+        var state = typeof(MediaDetectionService).GetField("_state", flags)!;
+        state.SetValue(service, Enum.Parse(state.FieldType, "Running"));
+        try
+        {
+            if (stopFirst) await service.StopAsync();
+            await service.DisposeAsync();
+            Assert.False(worker.IsCompleted);
+        }
+        finally { release.TrySetResult(); }
+        await worker.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task CancellationDuringFallbackScanPreventsPublishingTheStoppedUpdate()
     {
         using var cts = new CancellationTokenSource();

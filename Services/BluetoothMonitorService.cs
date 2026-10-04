@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Windows.Threading;
 using Windows.Devices.Enumeration;
 
 namespace VNotch.Services;
@@ -12,20 +13,21 @@ public sealed class BluetoothMonitorService : IDisposable
 
     private DeviceWatcher? _watcher;
     private readonly ConcurrentDictionary<string, BluetoothDeviceInfo> _knownDevices = new();
-    private readonly Debouncer _debouncer;
-    private bool _disposed;
-    private bool _isInitialEnumerationComplete = false;
+    private readonly object _deviceChangeLock = new();
+    private readonly Dispatcher _dispatcher;
+    private volatile bool _disposed;
+    private volatile bool _isInitialEnumerationComplete;
     public event EventHandler<BluetoothDeviceInfo>? DeviceConnected;
     public event EventHandler<BluetoothDeviceInfo>? DeviceDisconnected;
 
     public BluetoothMonitorService()
     {
-        _debouncer = new Debouncer(TimeSpan.FromMilliseconds(300));
+        _dispatcher = Dispatcher.CurrentDispatcher;
     }
 
     public void Start()
     {
-        if (_watcher != null) return;
+        if (_disposed || _watcher != null) return;
 
         try
         {
@@ -79,33 +81,35 @@ public sealed class BluetoothMonitorService : IDisposable
 
     private void Watcher_Added(DeviceWatcher sender, DeviceInformation device)
     {
+        if (_disposed) return;
         var info = CreateDeviceInfo(device);
         if (info == null) return;
 
-        _knownDevices[device.Id] = info;
-        RuntimeLog.Log(LogTag, $"Device connected: {info.Name} ({info.DeviceType})");
+        AddDevice(info);
+    }
 
-        if (_isInitialEnumerationComplete)
+    internal void AddDevice(BluetoothDeviceInfo info)
+    {
+        lock (_deviceChangeLock)
         {
-            _debouncer.Debounce(() => DeviceConnected?.Invoke(this, info));
+            if (_disposed || !_knownDevices.TryAdd(info.Id, info)) return;
+            RuntimeLog.Log(LogTag, $"Device connected: {info.Name} ({info.DeviceType})");
+            if (_isInitialEnumerationComplete)
+                PublishDeviceChange(info, connected: true);
         }
     }
 
     private void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate update)
     {
+        if (_disposed) return;
         if (update.Properties.TryGetValue("System.Devices.Aep.IsConnected", out var connectedObj)
             && connectedObj is bool isConnected)
         {
-            if (_knownDevices.TryGetValue(update.Id, out var existing))
+            if (!isConnected)
             {
-                if (!isConnected)
-                {
-                    _knownDevices.TryRemove(update.Id, out _);
-                    RuntimeLog.Log(LogTag, $"Device disconnected (update): {existing.Name}");
-                    _debouncer.Debounce(() => DeviceDisconnected?.Invoke(this, existing));
-                }
+                RemoveDevice(update.Id);
             }
-            else if (isConnected)
+            else if (!_knownDevices.ContainsKey(update.Id))
             {
                 var info = new BluetoothDeviceInfo
                 {
@@ -113,20 +117,39 @@ public sealed class BluetoothMonitorService : IDisposable
                     Name = ExtractNameFromId(update.Id),
                     DeviceType = BluetoothDeviceType.Unknown
                 };
-                _knownDevices[update.Id] = info;
-                RuntimeLog.Log(LogTag, $"Device connected (update): {info.Name}");
-                _debouncer.Debounce(() => DeviceConnected?.Invoke(this, info));
+                AddDevice(info);
             }
         }
     }
 
     private void Watcher_Removed(DeviceWatcher sender, DeviceInformationUpdate update)
     {
-        if (_knownDevices.TryRemove(update.Id, out var removed))
+        RemoveDevice(update.Id);
+    }
+
+    internal void RemoveDevice(string id)
+    {
+        lock (_deviceChangeLock)
         {
-            RuntimeLog.Log(LogTag, $"Device removed: {removed.Name}");
-            _debouncer.Debounce(() => DeviceDisconnected?.Invoke(this, removed));
+            if (_disposed) return;
+            if (_knownDevices.TryRemove(id, out var removed))
+            {
+                RuntimeLog.Log(LogTag, $"Device removed: {removed.Name}");
+                if (_isInitialEnumerationComplete)
+                    PublishDeviceChange(removed, connected: false);
+            }
         }
+    }
+
+    private void PublishDeviceChange(BluetoothDeviceInfo info, bool connected)
+    {
+        if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished) return;
+        _dispatcher.BeginInvoke(() =>
+        {
+            if (_disposed) return;
+            if (connected) DeviceConnected?.Invoke(this, info);
+            else DeviceDisconnected?.Invoke(this, info);
+        });
     }
 
     private void Watcher_EnumerationCompleted(DeviceWatcher sender, object args)
@@ -214,7 +237,6 @@ public sealed class BluetoothMonitorService : IDisposable
             _watcher = null;
         }
 
-        _debouncer.Dispose();
         _knownDevices.Clear();
     }
 }

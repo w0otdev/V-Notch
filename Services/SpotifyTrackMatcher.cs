@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -29,6 +30,8 @@ internal static class SpotifyTrackMatcher
 
             string? bestId = null;
             int bestScore = int.MinValue;
+            string normalizedTrack = NormalizeForMatch(expectedTrack);
+            string normalizedArtist = NormalizeForMatch(expectedArtist);
             foreach (var result in items.EnumerateArray())
             {
                 if (result.ValueKind != JsonValueKind.Object ||
@@ -42,7 +45,7 @@ internal static class SpotifyTrackMatcher
                 }
 
                 string? id = GetTrackId(track);
-                int? score = ScorePathfinderTrack(track, id, expectedTrack, expectedArtist);
+                int? score = ScorePathfinderTrack(track, id, normalizedTrack, normalizedArtist);
                 if (score.HasValue && score.Value > bestScore)
                 {
                     bestId = id;
@@ -90,19 +93,35 @@ internal static class SpotifyTrackMatcher
     {
         IReadOnlyList<string> artists = GetPathfinderArtistNames(track);
         int artistScore = 0;
+        int combinedLength = Math.Max(0, artists.Count - 1);
         foreach (string artist in artists)
         {
-            artistScore = Math.Max(artistScore, MatchScore(artist, expectedArtist, exact: 35, contains: 22));
+            artistScore = Math.Max(artistScore, MatchNormalizedScore(artist, expectedArtist, exact: 35, contains: 22));
+            if (artistScore == 35) return artistScore;
+            combinedLength += artist.Length;
         }
 
-        if (artists.Count > 1)
+        if (artists.Count <= 1) return artistScore;
+
+        char[]? rented = null;
+        Span<char> combined = combinedLength <= 512
+            ? stackalloc char[combinedLength]
+            : (rented = ArrayPool<char>.Shared.Rent(combinedLength)).AsSpan(0, combinedLength);
+        try
         {
-            artistScore = Math.Max(
-                artistScore,
-                MatchScore(string.Join(" ", artists), expectedArtist, exact: 35, contains: 22));
+            int offset = 0;
+            foreach (string artist in artists)
+            {
+                if (offset > 0) combined[offset++] = ' ';
+                artist.AsSpan().CopyTo(combined[offset..]);
+                offset += artist.Length;
+            }
+            return Math.Max(artistScore, MatchNormalizedScore(combined, expectedArtist, exact: 35, contains: 22));
         }
-
-        return artistScore;
+        finally
+        {
+            if (rented != null) ArrayPool<char>.Shared.Return(rented);
+        }
     }
 
     private static IReadOnlyList<string> GetPathfinderArtistNames(JsonElement track)
@@ -126,8 +145,9 @@ internal static class SpotifyTrackMatcher
             }
 
             string? name = GetDirectString(profile, "name");
-            if (!string.IsNullOrWhiteSpace(name))
-                names.Add(name);
+            string normalized = NormalizeForMatch(name);
+            if (normalized.Length > 0)
+                names.Add(normalized);
         }
 
         return names;
@@ -147,9 +167,11 @@ internal static class SpotifyTrackMatcher
 
             TrackCandidate? best = null;
             int bestScore = int.MinValue;
+            string normalizedTrack = NormalizeForMatch(expectedTrack);
+            string normalizedArtist = NormalizeForMatch(expectedArtist);
             foreach (var candidate in candidates)
             {
-                int? score = ScoreTrackCandidate(candidate, expectedTrack, expectedArtist, expectedDuration);
+                int? score = ScoreTrackCandidate(candidate, normalizedTrack, normalizedArtist, expectedDuration);
                 if (score.HasValue && score.Value > bestScore)
                 {
                     best = candidate;
@@ -351,18 +373,38 @@ internal static class SpotifyTrackMatcher
                double.TryParse(property.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
-    private static int MatchScore(string? candidate, string expected, int exact, int contains)
+    // Expected values are normalized once by the parsing entry points.
+    private static int MatchScore(string? candidate, string normalizedExpected, int exact, int contains)
+        => MatchNormalizedScore(NormalizeForMatch(candidate), normalizedExpected, exact, contains);
+
+    private static int MatchNormalizedScore(ReadOnlySpan<char> normalizedCandidate, ReadOnlySpan<char> normalizedExpected, int exact, int contains)
     {
-        string normalizedCandidate = NormalizeForMatch(candidate);
-        string normalizedExpected = NormalizeForMatch(expected);
         if (normalizedCandidate.Length == 0 || normalizedExpected.Length == 0)
             return 0;
-        if (normalizedCandidate == normalizedExpected)
+        if (normalizedCandidate.SequenceEqual(normalizedExpected))
             return exact;
-        if (normalizedCandidate.Contains(normalizedExpected, StringComparison.Ordinal) ||
-            normalizedExpected.Contains(normalizedCandidate, StringComparison.Ordinal))
+        if (ContainsWholePhrase(normalizedCandidate, normalizedExpected) ||
+            ContainsWholePhrase(normalizedExpected, normalizedCandidate))
             return contains;
         return 0;
+    }
+
+    private static bool ContainsWholePhrase(ReadOnlySpan<char> text, ReadOnlySpan<char> phrase)
+    {
+        // Very short titles/artists require an exact match, even at a word boundary.
+        if (phrase.Length < 3) return false;
+        int start = 0;
+        while (start <= text.Length - phrase.Length)
+        {
+            int relativeIndex = text[start..].IndexOf(phrase, StringComparison.Ordinal);
+            if (relativeIndex < 0) return false;
+            int index = start + relativeIndex;
+            int end = index + phrase.Length;
+            if ((index == 0 || text[index - 1] == ' ') && (end == text.Length || text[end] == ' '))
+                return true;
+            start = index + 1;
+        }
+        return false;
     }
 
     internal static string NormalizeForMatch(string? value)

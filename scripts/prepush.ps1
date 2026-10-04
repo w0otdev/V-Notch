@@ -41,27 +41,37 @@ Write-Host "Build succeeded with 0 warnings and 0 errors." -ForegroundColor Gree
 
 Write-Host "`n=== [4/5] Running Tests & Collecting Coverage ===" -ForegroundColor Cyan
 $coverageResults = Join-Path $repository ('artifacts/prepush-coverage-' + [guid]::NewGuid().ToString('N'))
-if (-not $IncludeDesktopIntegration) {
-    Write-Host ">>> Running tests in headless mode (skipping DesktopIntegration window popups)..." -ForegroundColor Yellow
-    dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults --verbosity normal
-} else {
-    Write-Host ">>> Running all tests including DesktopIntegration..." -ForegroundColor Yellow
-    $previousDesktopTestMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
-    try {
-        $env:VNOTCH_RUN_DESKTOP_TESTS = '1'
-        dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults --verbosity normal
-    } finally {
-        [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopTestMode, 'Process')
+try {
+    if (-not $IncludeDesktopIntegration) {
+        Write-Host ">>> Running tests in headless mode (skipping DesktopIntegration window popups)..." -ForegroundColor Yellow
+        dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults --verbosity normal
+    } else {
+        Write-Host ">>> Running all tests including DesktopIntegration..." -ForegroundColor Yellow
+        $previousDesktopTestMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
+        try {
+            $env:VNOTCH_RUN_DESKTOP_TESTS = '1'
+            dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults --verbosity normal
+        } finally {
+            [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopTestMode, 'Process')
+        }
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Test run failed.'
+    }
+
+    # Use the same assembly scope and threshold as c.ps1 and GitHub Actions.
+    & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResults
+    Write-Host "Test & coverage check passed." -ForegroundColor Green
+} finally {
+    $coverageRoot = [IO.Path]::GetFullPath((Join-Path $repository 'artifacts'))
+    $coverageTarget = [IO.Path]::GetFullPath($coverageResults)
+    if (-not [string]::Equals([IO.Path]::GetDirectoryName($coverageTarget), $coverageRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Coverage cleanup target must be inside the repository artifacts directory.'
+    }
+    if (Test-Path -LiteralPath $coverageTarget) {
+        Remove-Item -LiteralPath $coverageTarget -Recurse -Force
     }
 }
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "`n[!] Test run failed." -ForegroundColor Red
-    exit 1
-}
-
-# Use the same assembly scope and threshold as c.ps1 and GitHub Actions.
-& "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResults
-Write-Host "Test & coverage check passed." -ForegroundColor Green
 
 Write-Host "`n=== [5/5] Auditing NuGet Packages for Vulnerabilities ===" -ForegroundColor Cyan
 dotnet list "$repository/V-Notch.sln" package --vulnerable --include-transitive

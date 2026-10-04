@@ -11,9 +11,10 @@ from ci_scope import needs_windows, release_eligible, scope
 class PipelineChecks(unittest.TestCase):
     def test_known_docs_can_skip_windows(self):
         self.assertFalse(needs_windows(["README.md", "docs/setup.md"]))
+        self.assertFalse(needs_windows(["README.md", "docs\\setup.md"]))
 
     def test_packaged_docs_and_unknown_changes_require_windows(self):
-        for paths in ([], ["TERMS_OF_SERVICE.md"], ["THIRD_PARTY_NOTICES.md"], ["docs/TERMS_OF_SERVICE.md"], ["docs/THIRD_PARTY_NOTICES.md"], ["README.md", "V-Notch.csproj"], [".gitleaks.toml"]):
+        for paths in ([], ["TERMS_OF_SERVICE.md"], ["THIRD_PARTY_NOTICES.md"], ["docs/TERMS_OF_SERVICE.md"], ["docs/THIRD_PARTY_NOTICES.md"], ["docs\\TERMS_OF_SERVICE.md"], ["docs\\THIRD_PARTY_NOTICES.md"], ["README.md", "Services\\SpotifyJson.cs"], ["README.md", "V-Notch.csproj"], [".gitleaks.toml"]):
             with self.subTest(paths=paths):
                 self.assertTrue(needs_windows(paths))
 

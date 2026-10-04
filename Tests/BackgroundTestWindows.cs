@@ -15,6 +15,7 @@ internal static class BackgroundTestWindows
 
     internal static void Initialize()
     {
+        EnsureApplicationResources();
         if (_initialized) return;
         if (DesktopTestMode.Enabled) { _initialized = true; return; }
         // Run before any test action constructs MainWindow. This metadata exists
@@ -24,6 +25,17 @@ internal static class BackgroundTestWindows
         EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent,
             new RoutedEventHandler((sender, _) => ProtectInput((Window)sender)));
         _initialized = true;
+    }
+
+    internal static void EnsureApplicationResources()
+    {
+        var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        if (!app.Resources.Contains("SFProDisplay"))
+            app.Resources["SFProDisplay"] = new System.Windows.Media.FontFamily("Segoe UI");
+        if (!app.Resources.Contains("SFProText"))
+            app.Resources["SFProText"] = new System.Windows.Media.FontFamily("Segoe UI");
+        if (!app.Resources.Contains("IconFont"))
+            app.Resources["IconFont"] = new System.Windows.Media.FontFamily("Segoe MDL2 Assets");
     }
 
     internal static void OverrideMetadata(Type windowType)

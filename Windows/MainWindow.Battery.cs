@@ -60,7 +60,7 @@ public partial class MainWindow
         SolidColorBrush percentBrush;
         bool showLightning = false;
 
-        if (battery.Percentage <= 20 && !battery.IsCharging)
+        if (battery.Percentage >= 0 && battery.Percentage <= 20 && !battery.IsCharging)
         {
             fillBrush = _brushLowBattery;
             percentBrush = _brushLowBattery;
@@ -121,7 +121,7 @@ public partial class MainWindow
         _chargingGlanceToken = token;
         _isChargingNotificationVisible = true;
 
-        ChargingPercentText.Text = $"{battery.Percentage}%";
+        ChargingPercentText.Text = battery.GetPercentageText();
 
         Color accent;
         string statusKey;

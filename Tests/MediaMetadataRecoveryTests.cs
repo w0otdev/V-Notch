@@ -9,6 +9,18 @@ namespace VNotch.Tests;
 
 public sealed class MediaMetadataRecoveryTests
 {
+    [Theory]
+    [InlineData(DetectionMode.AwaitingMetadata, true)]
+    [InlineData(DetectionMode.EventDriven, false)]
+    [InlineData(DetectionMode.Idle, false)]
+    public void AwaitingMetadataUsesTheLongerDesktopScanCache(DetectionMode mode, bool expected)
+    {
+        using var fixture = new Fixture();
+        Set(fixture.Service, "_currentMode", mode);
+        Invoke(fixture.Service, "GetAllWindowTitles");
+        Assert.Equal(expected, fixture.Scanner.LastThrottled);
+    }
+
     private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
 
     [Theory]
@@ -244,7 +256,8 @@ public sealed class MediaMetadataRecoveryTests
     private sealed class Scanner : IWindowTitleScanner
     {
         public List<string> Titles { get; } = new();
-        public List<string> GetAllWindowTitles(bool isThrottled) => Titles;
+        public bool LastThrottled { get; private set; }
+        public List<string> GetAllWindowTitles(bool isThrottled) { LastThrottled = isThrottled; return Titles; }
         public string? TryGetBrowserUrl() => null;
         public string? TryGetMediaUrlFromAnyBrowser() => null;
         public bool IsSpotifyWebPlayerOpen() => true;

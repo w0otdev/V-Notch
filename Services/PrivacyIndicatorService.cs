@@ -238,7 +238,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         var borderlessCapture = capabilities?[3] ?? ScanCapability("graphicsCaptureWithoutBorder");
         var locationUsage = capabilities?[4] ?? ScanCapability("location");
 
-        var running = new ConsumerProcessProbe();
+        using var running = new ConsumerProcessProbe();
         var microphoneCandidates = GetRelevantConsumerUsages(
             micUsage,
             running.IsRunning,
@@ -718,7 +718,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
     }
 
-    internal sealed class ConsumerProcessProbe
+    internal sealed class ConsumerProcessProbe : IDisposable
     {
         private const uint ProcessQueryLimitedInformation = 0x1000;
         private const int ErrorInsufficientBuffer = 122;
@@ -740,7 +740,7 @@ public sealed class PrivacyIndicatorService : IDisposable
 
         private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, bool> _processMatchCache = new(StringComparer.OrdinalIgnoreCase);
-        private Dictionary<string, List<uint>>? _processIdsByName;
+        private PrivacyProcessSnapshot? _processSnapshot;
 
         public bool IsRunning(string rawConsumer)
         {
@@ -771,10 +771,10 @@ public sealed class PrivacyIndicatorService : IDisposable
             string processName = Path.GetFileName(executablePath);
             if (string.IsNullOrWhiteSpace(processName)) return false;
 
-            _processIdsByName ??= PrivacyProcessSnapshot.Capture();
-            if (!_processIdsByName.TryGetValue(processName, out var ids)) return false;
-            foreach (uint pid in ids)
-                if (IsDesktopExecutableProcess(executablePath, pid)) return true;
+            _processSnapshot ??= PrivacyProcessSnapshot.Capture();
+            for (int i = 0; i < _processSnapshot.Count; i++)
+                if (_processSnapshot.MatchesExecutableName(i, processName) &&
+                    IsDesktopExecutableProcess(executablePath, _processSnapshot.GetProcessId(i))) return true;
             return false;
         }
 
@@ -787,7 +787,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                 char* path = stackalloc char[1024];
                 uint length = 1024;
                 if (QueryFullProcessImageName(handle, 0, path, ref length))
-                    return string.Equals(new string(path, 0, (int)length), executablePath,
+                    return new ReadOnlySpan<char>(path, (int)length).Equals(executablePath.AsSpan(),
                         StringComparison.OrdinalIgnoreCase);
 
                 if (Marshal.GetLastWin32Error() != ErrorInsufficientBuffer) return false;
@@ -797,7 +797,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                     length = 32768;
                     fixed (char* buffer = largePath)
                         return QueryFullProcessImageName(handle, 0, buffer, ref length) &&
-                            string.Equals(new string(buffer, 0, (int)length), executablePath,
+                            new ReadOnlySpan<char>(buffer, (int)length).Equals(executablePath.AsSpan(),
                                 StringComparison.OrdinalIgnoreCase);
                 }
                 finally { System.Buffers.ArrayPool<char>.Shared.Return(largePath); }
@@ -814,12 +814,13 @@ public sealed class PrivacyIndicatorService : IDisposable
         {
             if (string.IsNullOrWhiteSpace(packageFamily)) return false;
 
-            _processIdsByName ??= PrivacyProcessSnapshot.Capture();
-            foreach (var ids in _processIdsByName.Values)
-                foreach (uint pid in ids)
-                    if (IsPackageFamilyProcess(packageFamily, pid)) return true;
+            _processSnapshot ??= PrivacyProcessSnapshot.Capture();
+            for (int i = 0; i < _processSnapshot.Count; i++)
+                if (IsPackageFamilyProcess(packageFamily, _processSnapshot.GetProcessId(i))) return true;
             return false;
         }
+
+        public void Dispose() => _processSnapshot?.Dispose();
 
         private static bool IsPackageFamilyProcess(string packageFamily, uint processId)
         {
@@ -1073,7 +1074,7 @@ public sealed class PrivacyIndicatorService : IDisposable
             _lastRebuildTicks = Stopwatch.GetTimestamp();
             InvalidateCacheLocked();
 
-            var processProbe = new ConsumerProcessProbe();
+            using var processProbe = new ConsumerProcessProbe();
 
             try
             {

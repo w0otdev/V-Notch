@@ -8,6 +8,98 @@ namespace VNotch.Tests;
 
 public sealed class MediaMetadataLookupServiceTests
 {
+    [Fact]
+    public async Task SearchRejectsUnrelatedFirstResultsFromEveryProvider()
+    {
+        string id = NewId();
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.Host == "www.googleapis.com")
+            {
+                Assert.EndsWith("/search", uri.AbsolutePath);
+                return Json(new { items = new[] { new { id = new { videoId = id }, snippet = new { title = "Unrelated viral podcast", channelTitle = "Host" } } } });
+            }
+            if (uri.Host == "www.youtube.com") return Body("<html>no matching results</html>");
+            if (uri.AbsolutePath == "/search")
+                return Json(new { items = new[] { new { url = "/watch?v=" + id, title = "Unrelated viral podcast", uploaderName = "Host" } } });
+            return Json(new[] { new { videoId = id, title = "Unrelated viral podcast", author = "Host" } });
+        });
+        using var client = new HttpClient(handler);
+        var result = await Service(client, apiKey: "test-key-for-fixtures").TrySearchYouTubeByTitleAsync("Obscure underground track", "Artist");
+        Assert.Null(result);
+        Assert.DoesNotContain(handler.Requests, uri => uri.AbsolutePath is "/oembed" or "/youtube/v3/videos");
+    }
+
+    [Theory]
+    [InlineData("", "Song")]
+    [InlineData("!!!", "Song")]
+    [InlineData("Song", "!!!")]
+    [InlineData(" ", "Song")]
+    public void EmptyNormalizedTitlesCannotMatchUnrelatedVideos(string title, string expected)
+        => Assert.False(new YouTubeLookupResult { Title = title }.TitleMatches(expected));
+
+    [Theory]
+    [InlineData("api")]
+    [InlineData("scrape")]
+    public async Task EnrichmentCannotReplaceAMatchingSearchTitleWithUnrelatedMetadata(string source)
+    {
+        string id = NewId();
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.Host == "www.googleapis.com")
+                return uri.AbsolutePath.EndsWith("/search")
+                    ? Json(new { items = new[] { new { id = new { videoId = id }, snippet = new { title = "Requested song" } } } })
+                    : Json(new { items = new[] { new { snippet = new { title = "Unrelated video", channelTitle = "Other artist" }, contentDetails = new { duration = "PT2M" } } } });
+            if (uri.AbsolutePath == "/oembed") return Json(new { title = "Unrelated video", author_name = "Other artist" });
+            if (uri.Host == "www.youtube.com") return Body(source == "scrape"
+                ? "<script>var ytInitialData = {\"videoId\":\"" + id + "\",\"title\":{\"runs\":[{\"text\":\"Requested song\"}]}};</script>"
+                : "<html>no results</html>");
+            return uri.AbsolutePath == "/search" ? Json(new { items = Array.Empty<object>() }) : Json(Array.Empty<object>());
+        });
+        using var client = new HttpClient(handler);
+        Assert.Null(await Service(client, apiKey: source == "api" ? "test-key-for-fixtures" : null)
+            .TrySearchYouTubeByTitleAsync("Requested song"));
+    }
+
+    [Theory]
+    [InlineData("api")]
+    [InlineData("scrape")]
+    [InlineData("piped")]
+    [InlineData("invidious")]
+    public async Task SearchRejectsUnrelatedResultsWithoutEnrichingOrCachingThem(string source)
+    {
+        string id = NewId();
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath == "/oembed") return Json(new { title = "Actual video title", author_name = "Actual artist" });
+            if (uri.Host == "www.googleapis.com")
+                return uri.AbsolutePath.EndsWith("/search")
+                    ? Json(new { items = new[] { new { id = new { videoId = id }, snippet = new { title = "Unrelated result", channelTitle = "Other artist" } } } })
+                    : Json(new { items = Array.Empty<object>() });
+            if (uri.Host == "www.youtube.com")
+                return Body(source == "scrape"
+                    ? "<script>var ytInitialData = {\"videoId\":\"" + id + "\",\"title\":{\"runs\":[{\"text\":\"Unrelated result\"}]}};</script>"
+                    : "<html>no results</html>");
+            if (uri.AbsolutePath == "/search")
+                return source == "piped"
+                    ? Json(new { items = new[] { new { url = "/watch?v=" + id, title = "Unrelated result" } } })
+                    : Json(new { items = Array.Empty<object>() });
+            return source == "invidious"
+                ? Json(new[] { new { videoId = id, title = "Unrelated result" } })
+                : Json(Array.Empty<object>());
+        });
+        using var client = new HttpClient(handler);
+        var service = Service(client, apiKey: source == "api" ? "test-key-for-fixtures" : null);
+        Assert.Null(await service.TrySearchYouTubeByTitleAsync("Requested song", "Requested artist"));
+        Assert.DoesNotContain(handler.Requests, uri => uri.AbsolutePath is "/oembed" or "/youtube/v3/videos");
+        var actual = await service.TryGetYouTubeVideoIdWithInfoAsync(id);
+        Assert.Equal("Actual video title", actual?.Title);
+        Assert.Contains(handler.Requests, uri => uri.AbsolutePath == "/oembed");
+    }
+
     [Theory]
     [InlineData("https://www.youtube.com/watch?v={0}")]
     [InlineData("https://youtu.be/{0}")]

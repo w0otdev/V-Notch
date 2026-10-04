@@ -90,6 +90,44 @@ public sealed class WebcamFramePipelineTests
         Assert.Equal(1, calls);
     }
 
+    [Theory]
+    [InlineData(BitmapPixelFormat.Nv12, 8, 4)]
+    [InlineData(BitmapPixelFormat.Nv12, 10, 6)]
+    [InlineData(BitmapPixelFormat.Yuy2, 8, 4)]
+    [InlineData(BitmapPixelFormat.Yuy2, 10, 6)]
+    [InlineData(BitmapPixelFormat.Gray8, 8, 4)]
+    [InlineData(BitmapPixelFormat.Bgra8, 8, 4)]
+    [InlineData(BitmapPixelFormat.Rgba8, 8, 4)]
+    public void ReusableConversionMatchesThePlatformAndLeavesBufferHeadroomUntouched(BitmapPixelFormat format, int width, int height)
+    {
+        int size = width * height * 4;
+        byte[] input = format switch
+        {
+            BitmapPixelFormat.Nv12 => Enumerable.Range(0, width * height).Select(i => (byte)(16 + i * 7)).Concat(Enumerable.Range(0, width * height / 4).SelectMany(_ => new byte[] { 90, 240 })).ToArray(),
+            BitmapPixelFormat.Yuy2 => Enumerable.Range(0, width * height / 2).SelectMany(i => new byte[] { (byte)(16 + i * 14), 90, (byte)(23 + i * 14), 240 }).ToArray(),
+            BitmapPixelFormat.Gray8 => Enumerable.Range(0, width * height).Select(i => (byte)(i * 8)).ToArray(),
+            _ => Enumerable.Range(0, width * height).SelectMany(_ => new byte[] { 50, 100, 200, 128 }).ToArray()
+        };
+        BitmapAlphaMode alpha = format is BitmapPixelFormat.Bgra8 or BitmapPixelFormat.Rgba8 ? BitmapAlphaMode.Straight : BitmapAlphaMode.Ignore;
+        using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(input.AsBuffer(), format, width, height, alpha);
+        using var converted = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        byte[] expected = new byte[size];
+        converted.CopyToBuffer(expected.AsBuffer());
+        byte[] output = Enumerable.Repeat((byte)0xCD, size + 64).ToArray();
+        byte[] scratch = Array.Empty<byte>();
+        WebcamPixelConverter.CopyToBgra8(bitmap, output, size, ref scratch);
+        for (int i = 0; i < size; i++) Assert.InRange(Math.Abs(output[i] - expected[i]), 0, 2);
+        Assert.All(output.Skip(size), value => Assert.Equal(0xCD, value));
+        byte[] allocated = scratch;
+        WebcamPixelConverter.CopyToBgra8(bitmap, output, size, ref scratch);
+        Assert.Same(allocated, scratch);
+        int smallerWidth = Math.Max(2, (width / 2) & ~1);
+        int smallerHeight = Math.Max(2, (height / 2) & ~1);
+        using var smaller = new SoftwareBitmap(format, smallerWidth, smallerHeight, alpha);
+        WebcamPixelConverter.CopyToBgra8(smaller, output, smallerWidth * smallerHeight * 4, ref scratch);
+        Assert.Same(allocated, scratch);
+    }
+
     private static int Activate(WebcamCaptureController controller)
     {
         int token = controller.NextFadeToken();

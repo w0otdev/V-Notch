@@ -2,7 +2,6 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using static VNotch.Services.SpotifyHttpResponseReader;
 using static VNotch.Services.SpotifyJson;
@@ -16,8 +15,6 @@ internal sealed class SpotifyTokenProvider : IDisposable
     private static readonly Uri SpotifyWebUri = new("https://open.spotify.com/");
     private static readonly Uri ServerTimeUri = new("https://open.spotify.com/api/server-time");
     private static readonly Uri TokenUri = new("https://open.spotify.com/api/token");
-    private static readonly TotpConfig BundledTotpConfig = new(
-        SpotifyWebPlayerProtocol.TotpVersion, SpotifyWebPlayerProtocol.CreateTotpSecret());
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _authLock = new(1, 1);
     private AccessTokenCache? _accessToken;
@@ -27,10 +24,9 @@ internal sealed class SpotifyTokenProvider : IDisposable
 
     internal async Task<string?> GetAccessTokenAsync(string sessionCookie, CancellationToken token)
     {
-        string cookieHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sessionCookie)));
         AccessTokenCache? cached = _accessToken;
         if (cached != null &&
-            cached.CookieHash == cookieHash &&
+            string.Equals(cached.SessionCookie, sessionCookie, StringComparison.Ordinal) &&
             cached.ExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
         {
             return cached.Token;
@@ -41,24 +37,22 @@ internal sealed class SpotifyTokenProvider : IDisposable
         {
             cached = _accessToken;
             if (cached != null &&
-                cached.CookieHash == cookieHash &&
+                string.Equals(cached.SessionCookie, sessionCookie, StringComparison.Ordinal) &&
                 cached.ExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
             {
                 return cached.Token;
             }
 
-            TotpConfig config = BundledTotpConfig;
-
             long localTimeMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             long serverTimeMs = await GetServerTimeMsAsync(sessionCookie, localTimeMs, token).ConfigureAwait(false);
-            string localTotp = GenerateTotp(config.Secret, localTimeMs);
+            string localTotp = GenerateTotp(SpotifyWebPlayerProtocol.TotpSecret, localTimeMs);
 
-            string serverTotp = GenerateTotp(config.Secret, serverTimeMs);
+            string serverTotp = GenerateTotp(SpotifyWebPlayerProtocol.TotpSecret, serverTimeMs);
             var endpoint = new UriBuilder(TokenUri)
             {
                 Query = "reason=init&productType=mobile-web-player" +
                         $"&totp={Uri.EscapeDataString(localTotp)}" +
-                        $"&totpVer={Uri.EscapeDataString(config.Version)}" +
+                        $"&totpVer={SpotifyWebPlayerProtocol.TotpVersion}" +
                         $"&totpServer={Uri.EscapeDataString(serverTotp)}"
             }.Uri;
 
@@ -81,7 +75,7 @@ internal sealed class SpotifyTokenProvider : IDisposable
                 expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expirationMs);
             }
 
-            _accessToken = new AccessTokenCache(cookieHash, accessToken, expiresAt);
+            _accessToken = new AccessTokenCache(sessionCookie, accessToken, expiresAt);
             return accessToken;
         }
         finally
@@ -150,6 +144,5 @@ internal sealed class SpotifyTokenProvider : IDisposable
 
     public void Dispose() => _authLock.Dispose();
 
-    private sealed record TotpConfig(string Version, byte[] Secret);
-    private sealed record AccessTokenCache(string CookieHash, string Token, DateTimeOffset ExpiresAtUtc);
+    private sealed record AccessTokenCache(string SessionCookie, string Token, DateTimeOffset ExpiresAtUtc);
 }

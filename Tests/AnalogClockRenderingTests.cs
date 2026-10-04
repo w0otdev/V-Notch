@@ -18,13 +18,7 @@ public sealed class AnalogClockRenderingTests
     {
         SharedStaTestRunner.Run(() =>
         {
-            if (Application.Current == null)
-            {
-                var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-                application.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-                application.Resources["SFProText"] = new FontFamily("Segoe UI");
-                application.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-            }
+            BackgroundTestWindows.EnsureApplicationResources();
             var baseline = new BaselineAnalogClock();
             var current = new AnalogClock();
             var oldVisual = new DrawingVisual();

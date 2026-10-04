@@ -346,7 +346,7 @@ internal sealed partial class LyricsService : IDisposable
                !string.IsNullOrWhiteSpace(sp.GetString());
     }
 
-    private static bool IsTrackTitleMatch(JsonElement item, string targetTrackNorm)
+    internal static bool IsTrackTitleMatch(JsonElement item, string targetTrackNorm)
     {
         if (string.IsNullOrEmpty(targetTrackNorm)) return true;
 
@@ -355,8 +355,25 @@ internal sealed partial class LyricsService : IDisposable
         if (string.IsNullOrEmpty(itemTrackNorm)) return true;
 
         return itemTrackNorm.Equals(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
-               itemTrackNorm.Contains(targetTrackNorm, StringComparison.OrdinalIgnoreCase) ||
-               targetTrackNorm.Contains(itemTrackNorm, StringComparison.OrdinalIgnoreCase);
+               ContainsWholePhrase(itemTrackNorm.AsSpan(), targetTrackNorm.AsSpan()) ||
+               ContainsWholePhrase(targetTrackNorm.AsSpan(), itemTrackNorm.AsSpan());
+    }
+
+    private static bool ContainsWholePhrase(ReadOnlySpan<char> text, ReadOnlySpan<char> phrase)
+    {
+        if (phrase.Length < 3) return false;
+        int start = 0;
+        while (start <= text.Length - phrase.Length)
+        {
+            int relativeIndex = text[start..].IndexOf(phrase, StringComparison.Ordinal);
+            if (relativeIndex < 0) return false;
+            int index = start + relativeIndex;
+            int end = index + phrase.Length;
+            if ((index == 0 || text[index - 1] == ' ') && (end == text.Length || text[end] == ' '))
+                return true;
+            start = index + 1;
+        }
+        return false;
     }
 
     internal static string NormalizeForMatching(string text)
@@ -603,6 +620,9 @@ internal sealed partial class LyricsService : IDisposable
             return false;
 
         ReadOnlySpan<char> fracStr = ts[(dotIdx + 1)..];
+        if (fracStr.Length > 3)
+            fracStr = fracStr[..3];
+
         if (!int.TryParse(fracStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frac))
             return false;
 
@@ -610,7 +630,6 @@ internal sealed partial class LyricsService : IDisposable
         {
             1 => frac * 100,
             2 => frac * 10,
-            3 => frac,
             _ => frac
         };
 

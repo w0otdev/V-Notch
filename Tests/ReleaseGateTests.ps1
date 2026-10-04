@@ -26,7 +26,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $temporary 'run.cobertura.xml') -Destination $duplicate
     & $coverageScript -ResultsDirectory $temporary
     Write-Coverage 69
-    Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'different coverage reports'
+    Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'require.*line details'
     Remove-Item -LiteralPath $duplicate
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'below the required threshold'
     Write-Coverage 69999 100000
@@ -38,9 +38,31 @@ try {
     Write-Coverage 0 0
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'empty or has invalid'
     Write-Coverage 100 100 'TestAssembly'
-    Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'application assembly only'
+    Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'No coverage report contains'
     Set-Content -LiteralPath (Join-Path $temporary 'run.cobertura.xml') -Value '<!DOCTYPE coverage [<!ENTITY x SYSTEM "file:///not-read">]><coverage>&x;</coverage>'
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'DTD|security reasons'
+
+    # Distinct suites cover complementary lines of the same class. Extra assemblies
+    # and the duplicate per-method line records must not inflate application coverage.
+    $suite1 = '<coverage lines-valid="4" lines-covered="2"><packages><package name="V-Notch"><classes><class name="Example" filename="Services/Example.cs"><methods><method><lines><line number="1" hits="1"/></lines></method></methods><lines><line number="1" hits="1"/><line number="2" hits="1"/><line number="3" hits="0"/><line number="4" hits="0"/></lines></class></classes></package></packages></coverage>'
+    $suite2 = $suite1.Replace('lines-valid="4" lines-covered="2"', 'lines-valid="5" lines-covered="3"').Replace('number="2" hits="1"', 'number="2" hits="0"').Replace('number="3" hits="0"', 'number="3" hits="1"').Replace('</packages>', '<package name="TestAssembly"><classes><class name="Test" filename="Test.cs"><lines><line number="1" hits="1"/></lines></class></classes></package></packages>')
+    Set-Content -LiteralPath (Join-Path $temporary 'run.cobertura.xml') -Value $suite1
+    Set-Content -LiteralPath $duplicate -Value $suite2
+    & $coverageScript -ResultsDirectory $temporary -MinimumPercent 75
+    Expect-Failure { & $coverageScript -ResultsDirectory $temporary -MinimumPercent 76 } 'below the required threshold'
+    Copy-Item -LiteralPath $duplicate -Destination (Join-Path $temporary 'collector-copy.cobertura.xml')
+    & $coverageScript -ResultsDirectory $temporary -MinimumPercent 75
+    Remove-Item -LiteralPath $duplicate, (Join-Path $temporary 'collector-copy.cobertura.xml')
+    Set-Content -LiteralPath (Join-Path $temporary 'run.cobertura.xml') -Value $suite2
+    & $coverageScript -ResultsDirectory $temporary -MinimumPercent 50
+    Expect-Failure { & $coverageScript -ResultsDirectory $temporary -MinimumPercent 51 } 'below the required threshold'
+
+    $methodSuite = '<coverage lines-valid="3" lines-covered="1"><packages><package name="V-Notch"><classes><class name="Example" filename="Example.cs"><methods><method name="M" signature="()"><lines><line number="1" hits="1"/></lines></method><method name="N" signature="()"><lines><line number="1" hits="0"/><line number="2" hits="0"/></lines></method></methods><lines><line number="1" hits="1"/><line number="2" hits="0"/></lines></class></classes></package></packages></coverage>'
+    Set-Content -LiteralPath (Join-Path $temporary 'run.cobertura.xml') -Value $methodSuite
+    Set-Content -LiteralPath $duplicate -Value $methodSuite.Replace('name="M" signature="()"><lines><line number="1" hits="1"', 'name="M" signature="()"><lines><line number="1" hits="0"').Replace('name="N" signature="()"><lines><line number="1" hits="0"', 'name="N" signature="()"><lines><line number="1" hits="1"')
+    Set-Content -LiteralPath (Join-Path $temporary 'unrelated.cobertura.xml') -Value '<coverage lines-valid="0" lines-covered="0"><packages><package name="TestAssembly"/></packages></coverage>'
+    & $coverageScript -ResultsDirectory $temporary -MinimumPercent 66
+    Expect-Failure { & $coverageScript -ResultsDirectory $temporary -MinimumPercent 67 } 'below the required threshold'
 
     $modelRoot = Join-Path $temporary 'payload'
     $modelDirectory = Join-Path $modelRoot 'Models'
@@ -59,7 +81,7 @@ try {
     [IO.File]::WriteAllBytes((Join-Path $modelDirectory 'yolox_nano.onnx'), [byte[]](0, 1, 2))
     Expect-Failure { & $modelScript -RootDirectory $modelRoot } 'checksum or length'
     Expect-Failure { & (Join-Path $repository 'scripts/b.ps1') -RequireAuthenticode } 'thumbprint is required'
-    Write-Host 'Release gates passed: coverage boundaries, duplicate reports, XML safety, model allowlist/hash/license, required signing.'
+    Write-Host 'Release gates passed: coverage boundaries, merged suites/assemblies, duplicate reports, XML safety, model allowlist/hash/license, required signing.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

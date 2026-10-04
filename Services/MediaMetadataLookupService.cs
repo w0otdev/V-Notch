@@ -188,7 +188,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 if (candidate.TitleMatches(originalTitle))
                 {
                     var enriched = await ResolveVideoIdAsync(videoId, ct);
-                    if (enriched != null)
+                    if (enriched != null && enriched.TitleMatches(originalTitle))
                     {
                         RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"data-api-search-ok query='{query}' videoId={videoId} title='{resultTitle}'");
@@ -197,21 +197,6 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 }
             }
 
-            var firstItem = items[0];
-            string? firstVideoId = null;
-            if (firstItem.TryGetProperty("id", out var firstIdEl) && firstIdEl.TryGetProperty(VideoIdPropertyName, out var firstVidEl))
-                firstVideoId = firstVidEl.GetString();
-
-            if (!string.IsNullOrEmpty(firstVideoId))
-            {
-                var enrichedFirst = await ResolveVideoIdAsync(firstVideoId, ct);
-                if (enrichedFirst != null)
-                {
-                    RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                        $"data-api-search-first-result query='{query}' videoId={firstVideoId} title='{enrichedFirst.Title}'");
-                    return enrichedFirst;
-                }
-            }
         }
         catch (OperationCanceledException) { /* Cancelled */ }
         catch (Exception ex)
@@ -236,7 +221,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-                var response = await _httpClient.GetAsync(url, timeoutCts.Token);
+                using var response = await _httpClient.GetAsync(url, timeoutCts.Token);
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -294,38 +279,6 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                     }
                 }
 
-                if (items.GetArrayLength() > 0)
-                {
-                    var first = items[0];
-                    string? firstUrl = first.TryGetProperty("url", out var fUrlEl) ? fUrlEl.GetString() : null;
-                    if (!string.IsNullOrEmpty(firstUrl))
-                    {
-                        var firstMatch = Regex.Match(firstUrl, @"v=([a-zA-Z0-9_-]{11})");
-                        if (firstMatch.Success)
-                        {
-                            string firstVideoId = firstMatch.Groups[1].Value;
-                            string? firstTitle = first.TryGetProperty(TitlePropertyName, out var fTitleEl) ? fTitleEl.GetString() : null;
-                            string? firstUploader = first.TryGetProperty("uploaderName", out var fUpEl) ? fUpEl.GetString() : null;
-                            long firstDur = first.TryGetProperty(DurationPropertyName, out var fDurEl) && fDurEl.ValueKind == JsonValueKind.Number ? fDurEl.GetInt64() : 0;
-                            string? firstThumb = first.TryGetProperty("thumbnail", out var fThumbEl) ? fThumbEl.GetString() : null;
-
-                            var result = new YouTubeLookupResult
-                            {
-                                Id = firstVideoId,
-                                Title = firstTitle,
-                                Author = firstUploader,
-                                Duration = TimeSpan.FromSeconds(firstDur),
-                                ThumbnailUrl = firstThumb,
-                                Source = YouTubeLookupSource.OEmbed,
-                            };
-
-                            RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                                $"piped-search-first-result instance={instance} query='{query}' videoId={firstVideoId} title='{firstTitle}'");
-                            CacheVideo(firstVideoId, result);
-                            return result;
-                        }
-                    }
-                }
             }
             catch (OperationCanceledException) { throw; }
             catch
@@ -345,7 +298,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-                var response = await _httpClient.GetAsync(url, timeoutCts.Token);
+                using var response = await _httpClient.GetAsync(url, timeoutCts.Token);
                 if (!response.IsSuccessStatusCode)
                     continue;
 
@@ -385,32 +338,6 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                     }
                 }
 
-                if (root.GetArrayLength() > 0)
-                {
-                    var first = root[0];
-                    string? firstVideoId = first.TryGetProperty(VideoIdPropertyName, out var fVidEl) ? fVidEl.GetString() : null;
-                    if (!string.IsNullOrEmpty(firstVideoId))
-                    {
-                        string? firstTitle = first.TryGetProperty(TitlePropertyName, out var fTitleEl) ? fTitleEl.GetString() : null;
-                        string? firstAuthor = first.TryGetProperty("author", out var fAuthEl) ? fAuthEl.GetString() : null;
-                        long firstLen = first.TryGetProperty("lengthSeconds", out var fLenEl) && fLenEl.ValueKind == JsonValueKind.Number ? fLenEl.GetInt64() : 0;
-
-                        var result = new YouTubeLookupResult
-                        {
-                            Id = firstVideoId,
-                            Title = firstTitle,
-                            Author = firstAuthor,
-                            Duration = TimeSpan.FromSeconds(firstLen),
-                            ThumbnailUrl = null,
-                            Source = YouTubeLookupSource.OEmbed,
-                        };
-
-                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                            $"invidious-search-first-result instance={instance} query='{query}' videoId={firstVideoId} title='{firstTitle}'");
-                        CacheVideo(firstVideoId, result);
-                        return result;
-                    }
-                }
             }
             catch (OperationCanceledException) { throw; }
             catch
@@ -436,7 +363,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             request.Headers.Add("Accept-Language", "en-US,en;q=0.9");
             request.Headers.Add("Cookie", "CONSENT=PENDING+999");
 
-            var response = await _httpClient.SendAsync(request, timeoutCts.Token);
+            using var response = await _httpClient.SendAsync(request, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
                 return null;
 
@@ -518,6 +445,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                     var enriched = await ResolveVideoIdAsync(videoId, ct);
                     if (enriched != null)
                     {
+                        if (!enriched.TitleMatches(originalTitle)) continue;
                         RuntimeLog.Log(YouTubeTitleSearchLogTag,
                             $"yt-scrape-ok query='{query}' videoId={videoId} title='{videoTitle}' duration={enriched.Duration}");
                         CacheVideo(videoId, enriched);
@@ -530,30 +458,6 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 }
             }
 
-            var (firstId, firstTitle2, firstChannel) = videoIds[0];
-            var enrichedFirst = await ResolveVideoIdAsync(firstId, ct);
-            if (enrichedFirst != null)
-            {
-                RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                    $"yt-scrape-first-result query='{query}' videoId={firstId} title='{firstTitle2}' duration={enrichedFirst.Duration}");
-                CacheVideo(firstId, enrichedFirst);
-                return enrichedFirst;
-            }
-
-            var firstResult = new YouTubeLookupResult
-            {
-                Id = firstId,
-                Title = firstTitle2,
-                Author = firstChannel,
-                Duration = TimeSpan.Zero,
-                ThumbnailUrl = null,
-                Source = YouTubeLookupSource.OEmbed,
-            };
-
-            RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                $"yt-scrape-first-result query='{query}' videoId={firstId} title='{firstTitle2}' (no enrich)");
-            CacheVideo(firstId, firstResult);
-            return firstResult;
         }
         catch (OperationCanceledException) { /* Cancelled */ }
         catch (Exception ex)

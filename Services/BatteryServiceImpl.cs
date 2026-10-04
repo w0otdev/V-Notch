@@ -10,7 +10,7 @@ public class BatteryServiceImpl : IBatteryService
     private static extern bool GetSystemPowerStatus(out SystemPowerStatus lpSystemPowerStatus);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SystemPowerStatus
+    internal struct SystemPowerStatus
     {
         public byte ACLineStatus;
         public byte BatteryFlag;
@@ -32,7 +32,7 @@ public class BatteryServiceImpl : IBatteryService
     private const uint StatusSuccess = 0;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct SystemBatteryState
+    internal struct SystemBatteryState
     {
         [MarshalAs(UnmanagedType.U1)] public bool AcOnLine;
         [MarshalAs(UnmanagedType.U1)] public bool BatteryPresent;
@@ -52,7 +52,7 @@ public class BatteryServiceImpl : IBatteryService
 
     public BatteryInfo GetBatteryInfo()
     {
-        var info = new BatteryInfo();
+        var info = new BatteryInfo { Percentage = -1, HasBattery = false };
         PopulateSystemPowerStatus(info);
         PopulateNtBatteryState(info);
         return info;
@@ -64,30 +64,25 @@ public class BatteryServiceImpl : IBatteryService
         {
             if (GetSystemPowerStatus(out SystemPowerStatus status))
             {
-                info.Percentage = status.BatteryLifePercent == 255 ? 100 : status.BatteryLifePercent;
-                info.IsCharging = status.ACLineStatus == 1;
-                info.IsPluggedIn = status.ACLineStatus == 1;
-                info.HasBattery = status.BatteryFlag != 128;
-
-                info.IsBatterySaver = (status.SystemStatusFlag & 0x01) != 0;
-
-                if (status.BatteryFlag == 8)
-                {
-                    info.IsCharging = true;
-                }
-
-                if (status.BatteryLifeTime != -1)
-                {
-                    info.RemainingMinutes = status.BatteryLifeTime / 60;
-                }
+                ApplySystemPowerStatus(info, status);
             }
         }
         catch (Exception)
         {
             // Fallback defaults when power status cannot be queried
-            info.Percentage = 100;
+            info.Percentage = -1;
             info.HasBattery = false;
         }
+    }
+
+    internal static void ApplySystemPowerStatus(BatteryInfo info, SystemPowerStatus status)
+    {
+        info.HasBattery = status.BatteryFlag != byte.MaxValue && (status.BatteryFlag & 128) == 0;
+        info.Percentage = info.HasBattery && status.BatteryLifePercent <= 100 ? status.BatteryLifePercent : -1;
+        info.IsPluggedIn = status.ACLineStatus == 1;
+        info.IsCharging = info.HasBattery && (status.BatteryFlag & 8) != 0;
+        info.IsBatterySaver = (status.SystemStatusFlag & 1) != 0;
+        info.RemainingMinutes = info.HasBattery && status.BatteryLifeTime >= 0 ? status.BatteryLifeTime / 60 : -1;
     }
 
     private static void PopulateNtBatteryState(BatteryInfo info)
@@ -97,25 +92,36 @@ public class BatteryServiceImpl : IBatteryService
             uint size = (uint)Marshal.SizeOf<SystemBatteryState>();
             uint result = CallNtPowerInformation(SystemBatteryStateInfoLevel, IntPtr.Zero, 0, out SystemBatteryState bs, size);
 
-            if (result == StatusSuccess && bs.BatteryPresent)
+            if (result == StatusSuccess)
             {
-                int rateMilliwatts = bs.Rate;
-
-                bool plausible = Math.Abs(rateMilliwatts) < 200_000;
-
-                if (plausible)
-                {
-                    info.PowerWatts = rateMilliwatts / 1000.0;
-                    info.HasPowerRate = true;
-                }
-
-                if (bs.Charging) info.IsCharging = true;
-                if (bs.AcOnLine) info.IsPluggedIn = true;
+                ApplyNtBatteryState(info, bs);
             }
         }
         catch (Exception)
         {
             // NtPowerInformation query may not be supported or available
         }
+    }
+
+    internal static void ApplyNtBatteryState(BatteryInfo info, SystemBatteryState state)
+    {
+        info.HasBattery = state.BatteryPresent;
+        info.IsPluggedIn = state.AcOnLine;
+        info.IsCharging = state.BatteryPresent && state.Charging;
+        if (!state.BatteryPresent)
+        {
+            info.Percentage = -1;
+            info.RemainingMinutes = -1;
+            info.PowerWatts = 0;
+            info.HasPowerRate = false;
+            return;
+        }
+
+        // NT power information can recover a battery whose Win32 status was unknown.
+        if (info.Percentage < 0 && state.MaxCapacity > 0 && state.MaxCapacity != uint.MaxValue && state.RemainingCapacity != uint.MaxValue)
+            info.Percentage = (int)Math.Min(100, state.RemainingCapacity * 100UL / state.MaxCapacity);
+
+        info.HasPowerRate = Math.Abs((long)state.Rate) < 200_000;
+        info.PowerWatts = info.HasPowerRate ? state.Rate / 1000.0 : 0;
     }
 }

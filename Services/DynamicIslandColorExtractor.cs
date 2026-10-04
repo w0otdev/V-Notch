@@ -558,8 +558,10 @@ internal static class DynamicIslandColorExtractor
         if (s == 0) { r = g = b = l; }
         else
         {
-            double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-            double p = 2 * l - q;
+            // Stable endpoints keep saturated channels monotone: l + s - l * s
+            // can round just below 1 for s == 1 and truncate a 255 channel to 254.
+            double q = l < 0.5 ? l * (1 + s) : l + (1 - l) * s;
+            double p = l < 0.5 ? l * (1 - s) : l - (1 - l) * s;
             r = HueToRgb(p, q, h + 1.0 / 3.0);
             g = HueToRgb(p, q, h);
             b = HueToRgb(p, q, h - 1.0 / 3.0);
@@ -575,8 +577,8 @@ internal static class DynamicIslandColorExtractor
         if (t < 0) t += 1;
         if (t > 1) t -= 1;
         if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
-        if (t < 1.0 / 2.0) return q;
-        if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        if (t <= 1.0 / 2.0) return q;
+        if (t < 2.0 / 3.0) return q - (q - p) * (6.0 * t - 3.0);
         return p;
     }
 
@@ -621,63 +623,82 @@ internal static class DynamicIslandColorExtractor
         if (GetContrastRatio(best, background) >= minRatio && GetRelativeLuminance(best) >= 0.18)
             return best;
 
-        // Search the original discrete steps, preserving the selected RGB value.
-        // Dark backgrounds give a monotone predicate; retain the general path below.
+        // Search the original discrete lightness steps without changing palette granularity.
         double backgroundLuminance = GetRelativeLuminance(background);
-        if (backgroundLuminance <= 0.18)
+        double saturation = Math.Max(0.18, hsl.S);
+        if (backgroundLuminance > 0.18)
         {
+            // Contrast falls and then rises as luminance crosses the background.
+            // Check the first allowed luminance for a solution on the darker side.
             int low = 0, high = 101;
             while (low < high)
             {
                 int step = low + (high - low) / 2;
-                double l = hsl.L + (1.0 - hsl.L) * (step / 100.0);
-                var candidate = HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(l, 0.55, 0.72));
-                double luminance = GetRelativeLuminance(candidate);
-                if (luminance >= 0.18 && (luminance + 0.05) / (backgroundLuminance + 0.05) >= minRatio)
+                var candidate = ContrastCandidate(hsl.H, saturation, hsl.L, true, 0.55, 0.72, step);
+                if (GetRelativeLuminance(candidate) >= 0.18)
                     high = step;
                 else
                     low = step + 1;
             }
             if (low > 100) return Colors.White;
-            return HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(hsl.L + (1.0 - hsl.L) * (low / 100.0), 0.55, 0.72));
+            var firstAllowed = ContrastCandidate(hsl.H, saturation, hsl.L, true, 0.55, 0.72, low);
+            if (GetContrastRatio(firstAllowed, background) >= minRatio)
+                return firstAllowed;
         }
 
-        for (int step = 0; step <= 100; step++)
-        {
-            double t = step / 100.0;
-            double l = hsl.L + (1.0 - hsl.L) * t;
-            var candidate = HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(l, 0.55, 0.72));
-            if (GetContrastRatio(candidate, background) >= minRatio && GetRelativeLuminance(candidate) >= 0.18)
-                return candidate;
-        }
-
-        return Colors.White;
+        int first = FindContrastStep(hsl.H, saturation, hsl.L, true, 0.55, 0.72,
+            backgroundLuminance, minRatio, minimumLuminance: 0.18);
+        return first <= 100
+            ? ContrastCandidate(hsl.H, saturation, hsl.L, true, 0.55, 0.72, first)
+            : Colors.White;
     }
 
     public static Color EnsureContrast(Color sub, Color main, double minRatio)
     {
+        if (GetContrastRatio(sub, main) >= minRatio) return sub;
         var hsl = ToHsl(sub);
-        bool lighten = GetRelativeLuminance(main) < 0.45;
-        Color best = sub;
-        double bestRatio = GetContrastRatio(best, main);
+        double backgroundLuminance = GetRelativeLuminance(main);
+        bool lighten = backgroundLuminance < 0.45;
+        double saturation = Math.Max(0.18, hsl.S);
+        var initial = ContrastCandidate(hsl.H, saturation, hsl.L, lighten, 0, 1, 0);
+        if (GetContrastRatio(initial, main) >= minRatio) return initial;
 
-        for (int step = 0; step <= 100 && bestRatio < minRatio; step++)
+        int first = FindContrastStep(hsl.H, saturation, hsl.L, lighten, 0, 1,
+            backgroundLuminance, minRatio);
+        if (first <= 100)
+            return ContrastCandidate(hsl.H, saturation, hsl.L, lighten, 0, 1, first);
+
+        return GetContrastRatio(Colors.White, main) >= GetContrastRatio(Colors.Black, main)
+            ? Colors.White : Colors.Black;
+    }
+
+    private static Color ContrastCandidate(double hue, double saturation, double lightness,
+        bool lighten, double lowerLightness, double upperLightness, int step)
+    {
+        double t = step / 100.0;
+        double l = lighten ? lightness + (1.0 - lightness) * t : lightness * (1.0 - t);
+        return HslToColor(hue, saturation, Math.Clamp(l, lowerLightness, upperLightness));
+    }
+
+    private static int FindContrastStep(double hue, double saturation, double lightness,
+        bool lighten, double lowerLightness, double upperLightness, double backgroundLuminance,
+        double minRatio, double minimumLuminance = 0)
+    {
+        int low = 0, high = 101;
+        while (low < high)
         {
-            double t = step / 100.0;
-            double l = lighten ? hsl.L + (1.0 - hsl.L) * t : hsl.L * (1.0 - t);
-            var candidate = HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(l, 0.0, 1.0));
-            double ratio = GetContrastRatio(candidate, main);
-            if (ratio > bestRatio) { best = candidate; bestRatio = ratio; }
+            int step = low + (high - low) / 2;
+            double luminance = GetRelativeLuminance(ContrastCandidate(
+                hue, saturation, lightness, lighten, lowerLightness, upperLightness, step));
+            bool meetsContrast = lighten
+                ? luminance >= backgroundLuminance && (luminance + 0.05) / (backgroundLuminance + 0.05) >= minRatio
+                : luminance <= backgroundLuminance && (backgroundLuminance + 0.05) / (luminance + 0.05) >= minRatio;
+            if (luminance >= minimumLuminance && meetsContrast)
+                high = step;
+            else
+                low = step + 1;
         }
-
-        if (bestRatio < minRatio)
-        {
-            var whiteRatio = GetContrastRatio(Colors.White, main);
-            var blackRatio = GetContrastRatio(Colors.Black, main);
-            best = whiteRatio >= blackRatio ? Colors.White : Colors.Black;
-        }
-
-        return best;
+        return low;
     }
 
     #endregion

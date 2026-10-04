@@ -22,7 +22,17 @@ public static class SubjectAwareBlurService
             return await FastBlurService.GetBlurredImageAsync(source, downscaleWidth, backgroundBlurRadius);
         }
 
-        return await Task.Run(() => ProcessSubjectBlur(source, s, downscaleWidth, backgroundBlurRadius, subjectBlurRadius));
+        try
+        {
+            source = await ArtworkAnalysisSource.GetFrozenSnapshotAsync(source).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("SUBJECT-BLUR", $"Could not prepare bitmap: {ex}");
+            return null;
+        }
+
+        return await Task.Run(() => ProcessSubjectBlur(source, s, downscaleWidth, backgroundBlurRadius, subjectBlurRadius)).ConfigureAwait(false);
     }
 
     private static BitmapSource? ProcessSubjectBlur(
@@ -71,9 +81,9 @@ public static class SubjectAwareBlurService
                 System.Buffers.ArrayPool<byte>.Shared.Return(tmp);
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Fall back to null if image transformation or rendering fails.
+            RuntimeLog.Warn("SUBJECT-BLUR", $"Image processing failed: {ex}");
             return null;
         }
     }

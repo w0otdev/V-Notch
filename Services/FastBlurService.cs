@@ -18,6 +18,16 @@ public static class FastBlurService
     {
         if (source == null) return null;
 
+        try
+        {
+            source = await ArtworkAnalysisSource.GetFrozenSnapshotAsync(source).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("FAST-BLUR", $"Could not prepare bitmap: {ex}");
+            return null;
+        }
+
         return await Task.Run(() =>
         {
             try
@@ -62,11 +72,12 @@ public static class FastBlurService
                     ArrayPool<byte>.Shared.Return(target);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                RuntimeLog.Warn("FAST-BLUR", $"Image processing failed: {ex}");
                 return null;
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     internal static void DarkenPixels(byte[] pixels, int length)

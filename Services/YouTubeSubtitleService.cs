@@ -42,7 +42,9 @@ internal sealed class YouTubeSubtitleService : IDisposable
         _fallback = fallback;
     }
 
-    private CancellationTokenSource? _cts;
+    private readonly object _fetchLock = new();
+    private FetchRequest? _request;
+    private bool _disposed;
     private string _lastFetchKey = "";
     private List<LyricLine>? _lastFetchedSubtitles;
     private int _fetchGeneration;
@@ -94,22 +96,21 @@ internal sealed class YouTubeSubtitleService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(videoId)) return null;
 
-        if (IsCachedResultValid(videoId, force))
+        FetchRequest request;
+        int myGeneration;
+        lock (_fetchLock)
         {
-            return _lastFetchedSubtitles;
-        }
+            if (_disposed) return null;
+            if (IsCachedResultValid(videoId, force)) return _lastFetchedSubtitles;
 
-        if (_cts != null)
-        {
-            await _cts.CancelAsync();
-            _cts.Dispose();
+            _request?.Cancel();
+            request = new FetchRequest();
+            _request = request;
+            myGeneration = ++_fetchGeneration;
+            _lastFetchKey = videoId;
+            _lastFetchedSubtitles = null;
         }
-        _cts = new CancellationTokenSource();
-        var token = _cts.Token;
-
-        int myGeneration = ++_fetchGeneration;
-        _lastFetchKey = videoId;
-        _lastFetchedSubtitles = null;
+        var token = request.Source.Token;
 
         try
         {
@@ -118,21 +119,19 @@ internal sealed class YouTubeSubtitleService : IDisposable
             // 1. Primary: Direct Innertube Android player API (fast, unthrottled, no poToken required)
             var innertubeLines = await FetchViaInnertubeAsync(videoId, token);
             token.ThrowIfCancellationRequested();
-            if (myGeneration != _fetchGeneration) return null;
+            if (!IsCurrentFetch(myGeneration)) return null;
             if (innertubeLines is { Count: > 0 })
             {
-                _lastFetchedSubtitles = innertubeLines;
-                return innertubeLines;
+                return PublishSubtitles(myGeneration, innertubeLines);
             }
 
             // 2. Secondary fallback: YoutubeExplode ClosedCaptions manifest (without calling GetVideoAsync)
             var explodeLines = await (_fallback?.Invoke(videoId, token) ?? FetchViaYoutubeExplodeAsync(videoId, token));
             token.ThrowIfCancellationRequested();
-            if (myGeneration != _fetchGeneration) return null;
+            if (!IsCurrentFetch(myGeneration)) return null;
             if (explodeLines is { Count: > 0 })
             {
-                _lastFetchedSubtitles = explodeLines;
-                return explodeLines;
+                return PublishSubtitles(myGeneration, explodeLines);
             }
 
             RuntimeLog.Log(LogCategory, $"No usable caption track found for {videoId}");
@@ -149,6 +148,19 @@ internal sealed class YouTubeSubtitleService : IDisposable
             InvalidateFetchKey(myGeneration, videoId);
             return null;
         }
+        finally
+        {
+            Task cancellation;
+            lock (_fetchLock)
+            {
+                if (ReferenceEquals(_request, request)) _request = null;
+                cancellation = request.Cancellation;
+            }
+            // The request owns its source until its work and cancellation callbacks finish.
+            try { await cancellation.ConfigureAwait(false); }
+            catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Cancellation callback failed: {ex.Message}"); }
+            finally { request.Source.Dispose(); }
+        }
     }
 
     private bool IsCachedResultValid(string videoId, bool force) =>
@@ -156,8 +168,37 @@ internal sealed class YouTubeSubtitleService : IDisposable
 
     private void InvalidateFetchKey(int generation, string videoId)
     {
-        if (_fetchGeneration == generation && _lastFetchKey == videoId)
-            _lastFetchKey = "";
+        lock (_fetchLock)
+        {
+            if (_fetchGeneration == generation && _lastFetchKey == videoId)
+                _lastFetchKey = "";
+        }
+    }
+
+    private bool IsCurrentFetch(int generation)
+    {
+        lock (_fetchLock) return !_disposed && generation == _fetchGeneration;
+    }
+
+    private List<LyricLine>? PublishSubtitles(int generation, List<LyricLine> lines)
+    {
+        lock (_fetchLock)
+        {
+            if (_disposed || generation != _fetchGeneration) return null;
+            _lastFetchedSubtitles = lines;
+            return lines;
+        }
+    }
+
+    private sealed class FetchRequest
+    {
+        public CancellationTokenSource Source { get; } = new();
+        public Task Cancellation { get; private set; } = Task.CompletedTask;
+
+        public void Cancel()
+        {
+            if (!Source.IsCancellationRequested) Cancellation = Source.CancelAsync();
+        }
     }
 
     private async Task<List<LyricLine>?> FetchViaYoutubeExplodeAsync(string videoId, CancellationToken token)
@@ -456,9 +497,10 @@ internal sealed class YouTubeSubtitleService : IDisposable
 
         if (effectiveTracks.Count == 0) return result;
 
+        var seen = new HashSet<YouTubeCaptionTrack>();
         void Add(YouTubeCaptionTrack? t)
         {
-            if (t != null && (!ignoreAutoGenerated || !t.IsAutoGenerated) && !result.Contains(t))
+            if (t != null && (!ignoreAutoGenerated || !t.IsAutoGenerated) && seen.Add(t))
                 result.Add(t);
         }
         void AddRange(IEnumerable<YouTubeCaptionTrack> seq) { foreach (var t in seq) Add(t); }
@@ -538,7 +580,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
         Action<IEnumerable<YouTubeCaptionTrack>> addRange)
     {
         addRange(effectiveTracks.Where(t => !t.IsAutoGenerated && !LanguageCodeMatches(t.LanguageCode, "en")));
-        addRange(effectiveTracks.Where(t => !t.IsAutoGenerated));
+        addRange(effectiveTracks.Where(t => !t.IsAutoGenerated && LanguageCodeMatches(t.LanguageCode, "en")));
         if (!ignoreAutoGenerated)
         {
             addRange(effectiveTracks.Where(t => t.IsAutoGenerated));
@@ -717,16 +759,26 @@ internal sealed class YouTubeSubtitleService : IDisposable
 
     public void Reset()
     {
-        _lastFetchKey = "";
-        _lastFetchedSubtitles = null;
-        _fetchGeneration++;
-        _cts?.Cancel();
+        lock (_fetchLock)
+        {
+            _lastFetchKey = "";
+            _lastFetchedSubtitles = null;
+            _fetchGeneration++;
+            _request?.Cancel();
+        }
     }
 
     public void Dispose()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
+        lock (_fetchLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _fetchGeneration++;
+            _lastFetchKey = "";
+            _lastFetchedSubtitles = null;
+            _request?.Cancel();
+        }
         (_youtube as IDisposable)?.Dispose();
     }
 }

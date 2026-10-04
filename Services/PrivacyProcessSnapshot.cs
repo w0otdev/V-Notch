@@ -1,10 +1,14 @@
+using System.Buffers;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
-internal static class PrivacyProcessSnapshot
+internal sealed class PrivacyProcessSnapshot : IDisposable
 {
+    private ProcessEntry[]? _entries;
+    internal int Count { get; private set; }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern SafeFileHandle CreateToolhelp32Snapshot(uint flags, uint processId);
 
@@ -18,27 +22,64 @@ internal static class PrivacyProcessSnapshot
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool Process32Next(SafeFileHandle snapshot, ref ProcessEntry entry);
 
-    internal static unsafe Dictionary<string, List<uint>> Capture()
+    internal static unsafe PrivacyProcessSnapshot Capture()
     {
-        var processes = new Dictionary<string, List<uint>>(StringComparer.OrdinalIgnoreCase);
+        var processes = new PrivacyProcessSnapshot();
         // Enumerate process IDs and executable names once, without opening process
-        // handles or loading modules. Full paths are queried only for candidates.
+        // handles or allocating a string/list for every process. Full paths are
+        // queried only for candidates; native entries live in a rented buffer.
         using var snapshot = CreateToolhelp32Snapshot(0x00000002, 0); // TH32CS_SNAPPROCESS
         if (snapshot.IsInvalid) return processes;
         ProcessEntry entry = default;
         entry.Size = (uint)sizeof(ProcessEntry);
         if (!Process32First(snapshot, ref entry)) return processes;
-        do
+        try
         {
-            if (entry.ProcessId == 0) continue;
+            processes._entries = ArrayPool<ProcessEntry>.Shared.Rent(256);
+            do
+            {
+                if (entry.ProcessId == 0) continue;
+                if (processes.Count == processes._entries.Length)
+                {
+                    var larger = ArrayPool<ProcessEntry>.Shared.Rent(processes.Count * 2);
+                    processes._entries.AsSpan(0, processes.Count).CopyTo(larger);
+                    ArrayPool<ProcessEntry>.Shared.Return(processes._entries);
+                    processes._entries = larger;
+                }
+                processes._entries[processes.Count++] = entry;
+            } while (Process32Next(snapshot, ref entry));
+            return processes;
+        }
+        catch
+        {
+            processes.Dispose();
+            throw;
+        }
+    }
+
+    internal uint GetProcessId(int index)
+    {
+        if ((uint)index >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(index));
+        return _entries![index].ProcessId;
+    }
+
+    internal unsafe bool MatchesExecutableName(int index, ReadOnlySpan<char> executableName)
+    {
+        if ((uint)index >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(index));
+        fixed (char* name = _entries![index].ExecutableFile)
+        {
             int length = 0;
-            while (length < 260 && entry.ExecutableFile[length] != '\0') length++;
-            string name = new(entry.ExecutableFile, 0, length);
-            if (!processes.TryGetValue(name, out var ids))
-                processes[name] = ids = new List<uint>(1);
-            ids.Add(entry.ProcessId);
-        } while (Process32Next(snapshot, ref entry));
-        return processes;
+            while (length < 260 && name[length] != '\0') length++;
+            return new ReadOnlySpan<char>(name, length).Equals(executableName, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_entries == null) return;
+        ArrayPool<ProcessEntry>.Shared.Return(_entries);
+        _entries = null;
+        Count = 0;
     }
 
     // PROCESSENTRY32W contains WCHAR[MAX_PATH]; ANSI marshalling corrupts the names.

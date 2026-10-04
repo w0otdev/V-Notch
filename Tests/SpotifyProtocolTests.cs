@@ -6,6 +6,17 @@ namespace VNotch.Tests;
 
 public sealed class SpotifyProtocolTests
 {
+    [Fact]
+    public void FixedTotpSecretMatchesTheProtocolAndCannotBeMutatedThroughACopy()
+    {
+        const string expected = "376136387538459893883312310911992847112448894410210511297108";
+        var copy = SpotifyWebPlayerProtocol.CreateTotpSecret();
+        Assert.Equal(expected, Encoding.UTF8.GetString(copy));
+        copy[0] = 0;
+        Assert.Equal(expected, Encoding.UTF8.GetString(SpotifyWebPlayerProtocol.TotpSecret));
+        Assert.Equal(expected, Encoding.UTF8.GetString(SpotifyWebPlayerProtocol.CreateTotpSecret()));
+    }
+
     // RFC 6238, Appendix B, SHA-1 vectors reduced to the protocol's six digits.
     [Theory]
     [InlineData(59L, "287082")]

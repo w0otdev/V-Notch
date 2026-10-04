@@ -32,7 +32,7 @@ public sealed class PrivacyIndicatorServiceTests
         Assert.True(PrivacyIndicatorService.ConsumerProcessProbe.IsDesktopExecutableProcess(executable, pid));
         Assert.False(PrivacyIndicatorService.ConsumerProcessProbe.IsDesktopExecutableProcess(executable + ".other", pid));
         Assert.False(PrivacyIndicatorService.ConsumerProcessProbe.IsDesktopExecutableProcess(executable, 0));
-        var probe = new PrivacyIndicatorService.ConsumerProcessProbe();
+        using var probe = new PrivacyIndicatorService.ConsumerProcessProbe();
         Assert.True(probe.IsRunning(executable.Replace('\\', '#')));
         Assert.False(probe.IsRunning(@"C:#missing-directory#" + System.IO.Path.GetFileName(executable)));
     }

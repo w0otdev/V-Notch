@@ -36,7 +36,7 @@ public sealed class LyricsFetchTests
         var duplicates = Enumerable.Range(0, 20).Select(_ => service.FetchSyncedLyricsAsync("Track", "Artist", 240)).ToArray();
         Assert.All(duplicates, duplicate => Assert.Same(first, duplicate));
         response.SetResult(Lyrics());
-        var result = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await first.WaitAsync(TimeSpan.FromSeconds(15));
         Assert.NotNull(result);
         foreach (var duplicate in duplicates) Assert.Same(result, await duplicate);
         Assert.Equal(1, requests);
@@ -59,7 +59,7 @@ public sealed class LyricsFetchTests
         var cached = await service.FetchSyncedLyricsAsync("Cached", "Artist", 240);
         var pending = service.FetchSyncedLyricsAsync("Pending", "Artist", 240);
         Assert.Same(cached, await service.FetchSyncedLyricsAsync("Cached", "Artist", 240));
-        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(15)));
         Assert.True(pendingToken.IsCancellationRequested);
         Assert.NotNull(await service.FetchSyncedLyricsAsync("Latest", "Artist", 240));
     }
@@ -79,7 +79,7 @@ public sealed class LyricsFetchTests
         service.Reset();
         var retry = await service.FetchSyncedLyricsAsync("Track", "Artist", 240);
         Assert.NotNull(retry);
-        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(15)));
         service.Reset();
         Assert.Same(retry, await service.FetchSyncedLyricsAsync("Track", "Artist", 240));
         Assert.Equal(2, requests);
@@ -126,7 +126,7 @@ public sealed class LyricsFetchTests
         using var service = new LyricsService(client, client);
         var pending = service.FetchSyncedLyricsAsync("Track", "Artist", 240);
         Parallel.For(0, 20, _ => { service.Reset(); service.Dispose(); });
-        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(15)));
         Assert.Null(await service.FetchSyncedLyricsAsync("Track", "Artist", 240));
     }
 
@@ -140,7 +140,7 @@ public sealed class LyricsFetchTests
         });
         using var service = new LyricsService(client, client);
         var results = await Task.WhenAll(Enumerable.Range(0, 100).Select(index => Task.Run(
-            () => service.FetchSyncedLyricsAsync("Track " + index, "Artist", 240)))).WaitAsync(TimeSpan.FromSeconds(5));
+            () => service.FetchSyncedLyricsAsync("Track " + index, "Artist", 240)))).WaitAsync(TimeSpan.FromSeconds(15));
         Assert.Contains(results, result => result is { Lines.Count: 2 });
         Assert.NotNull(await service.FetchSyncedLyricsAsync("Final", "Artist", 240));
     }

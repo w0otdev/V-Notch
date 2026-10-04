@@ -235,6 +235,69 @@ public sealed class YouTubeSubtitleHttpTests
         Assert.NotNull(await service.FetchSubtitlesAsync(Video));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SupersededOrDisposedRequestsKeepTheirTokenAliveUntilTheirWorkFinishes(bool dispose)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource<List<LyricLine>?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken oldToken = default;
+        using var client = Client((request, _) => Task.FromResult(Response(request.Method == HttpMethod.Post ? Player() : "")));
+        using var service = new YouTubeSubtitleService(client, (video, token) =>
+        {
+            if (video != Video) return Task.FromResult<List<LyricLine>?>([new(TimeSpan.Zero, "Latest")]);
+            oldToken = token;
+            entered.TrySetResult();
+            return finish.Task;
+        });
+        Task<List<LyricLine>?> old = service.FetchSubtitlesAsync(Video);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            if (dispose) service.Dispose();
+            else Assert.Equal("Latest", Assert.Single((await service.FetchSubtitlesAsync("latest12345"))!).Text);
+            Assert.True(oldToken.IsCancellationRequested);
+            Assert.NotNull(oldToken.WaitHandle); // Reading a disposed source's handle would throw.
+        }
+        finally { finish.TrySetResult([new(TimeSpan.Zero, "Old")]); }
+        Assert.Null(await old);
+        Assert.Throws<ObjectDisposedException>(() => oldToken.WaitHandle);
+        if (dispose) Assert.Null(await service.FetchSubtitlesAsync("latest12345"));
+        else Assert.Equal("Latest", Assert.Single((await service.FetchSubtitlesAsync("latest12345"))!).Text);
+    }
+
+    [Fact]
+    public async Task ConcurrentFetchesCannotOverwriteTheLatestResult()
+    {
+        const int count = 12;
+        int arrivals = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = Client(async (request, _) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                if (Interlocked.Increment(ref arrivals) <= count)
+                {
+                    if (arrivals == count) entered.TrySetResult();
+                    await release.Task;
+                }
+                return Response(Player());
+            }
+            return Response(Xml);
+        });
+        using var service = Service(client);
+        var old = Enumerable.Range(0, count).Select(i => Task.Run(() => service.FetchSubtitlesAsync($"oldvideo{i:D3}"))).ToArray();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        List<LyricLine>? latest;
+        try { latest = await service.FetchSubtitlesAsync("latest12345"); }
+        finally { release.TrySetResult(); }
+        Assert.NotNull(latest);
+        Assert.All(await Task.WhenAll(old), Assert.Null);
+        Assert.Same(latest, await service.FetchSubtitlesAsync("latest12345"));
+    }
+
     private static YouTubeSubtitleService Service(HttpClient client) => new(client, (_, _) => Task.FromResult<List<LyricLine>?>(null));
     private static HttpResponseMessage Response(string content, HttpStatusCode status = HttpStatusCode.OK) => new(status) { Content = new StringContent(content) };
     private static HttpClient Client(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) => new(new Handler(respond));

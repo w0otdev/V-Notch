@@ -34,6 +34,7 @@ public sealed class WebcamCaptureController : IDisposable
     // during the brief resolution-negotiation phase at camera startup.
     private byte[] _frameBuffer = Array.Empty<byte>();
     private int _frameBufferCapacity;
+    private byte[] _conversionBuffer = Array.Empty<byte>();
     private int _frameBufferInUse;
     public bool IsActive
     {
@@ -96,6 +97,7 @@ public sealed class WebcamCaptureController : IDisposable
         }
     }
 
+    // The leased array may have headroom; only width * height * 4 bytes contain frame pixels.
     public event Action<byte[], int, int, int>? FrameAvailable;
 
     public void ReleaseFrameBuffer()
@@ -482,19 +484,8 @@ public sealed class WebcamCaptureController : IDisposable
         }
 
         bool handedOff = false;
-        SoftwareBitmap? convertedBitmap = null;
         try
         {
-            if (softwareBitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8 ||
-                softwareBitmap.BitmapAlphaMode != BitmapAlphaMode.Premultiplied)
-            {
-                convertedBitmap = SoftwareBitmap.Convert(
-                    softwareBitmap,
-                    BitmapPixelFormat.Bgra8,
-                    BitmapAlphaMode.Premultiplied);
-                softwareBitmap = convertedBitmap;
-            }
-
             int width = softwareBitmap.PixelWidth;
             int height = softwareBitmap.PixelHeight;
             int requiredSize = checked(width * height * 4);
@@ -508,7 +499,11 @@ public sealed class WebcamCaptureController : IDisposable
                 _frameBufferCapacity = newCapacity;
             }
 
-            softwareBitmap.CopyToBuffer(_frameBuffer.AsBuffer());
+            if (softwareBitmap.BitmapPixelFormat == BitmapPixelFormat.Bgra8 &&
+                softwareBitmap.BitmapAlphaMode == BitmapAlphaMode.Premultiplied)
+                softwareBitmap.CopyToBuffer(_frameBuffer.AsBuffer(0, requiredSize));
+            else
+                WebcamPixelConverter.CopyToBgra8(softwareBitmap, _frameBuffer, requiredSize, ref _conversionBuffer);
 
             var handler = FrameAvailable;
             if (handler == null) return;
@@ -527,7 +522,6 @@ public sealed class WebcamCaptureController : IDisposable
         }
         finally
         {
-            convertedBitmap?.Dispose();
             if (!handedOff)
             {
                 ReleaseFrameBuffer();

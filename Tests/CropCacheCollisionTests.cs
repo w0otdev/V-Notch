@@ -9,6 +9,52 @@ namespace VNotch.Tests;
 public sealed class CropCacheCollisionTests
 {
     [Fact]
+    public void EquivalentSquareArtworkReusesTheCachedNoOpResult() => SharedStaTestRunner.Run(() =>
+    {
+        var pixels = new byte[100 * 100 * 4];
+        new Random(7981).NextBytes(pixels);
+        var first = CreateBitmapImage(100, 100, pixels);
+        var equivalent = CreateBitmapImage(100, 100, pixels);
+        using var service = new MediaArtworkService();
+        var result = service.CropToSquare(first, "test");
+        Assert.Same(first, result);
+        Assert.Same(result, service.CropToSquare(equivalent, "test"));
+    });
+
+    [Fact]
+    public void CropOptionsDoNotReuseTheWrongCachedResult() => SharedStaTestRunner.Run(() =>
+    {
+        var pixels = new byte[100 * 60 * 4];
+        new Random(876).NextBytes(pixels);
+        var source = CreateBitmapImage(100, 60, pixels);
+        using var service = new MediaArtworkService();
+        var normal = service.CropToSquare(source, "test");
+        var centered = service.CropToSquare(source, "test", forceCenterCrop: true);
+        Assert.NotNull(normal);
+        Assert.NotNull(centered);
+        Assert.NotSame(normal, centered);
+        service.ConfigureSmartCrop(true);
+        var smart = service.CropToSquare(source, "test");
+        Assert.NotNull(smart);
+        Assert.NotSame(normal, smart);
+        service.ConfigureSmartCrop(false);
+        Assert.Same(normal, service.CropToSquare(source, "test"));
+    });
+
+    [Fact]
+    public void MutableNoOpSourcesAreNotSharedThroughTheCache() => SharedStaTestRunner.Run(() =>
+    {
+        var pixels = new byte[64 * 64 * 4];
+        new Random(141).NextBytes(pixels);
+        var source = BitmapSource.Create(64, 64, 96, 96, PixelFormats.Bgra32, null, pixels, 64 * 4);
+        var equivalent = source.CloneCurrentValue();
+        using var service = new MediaArtworkService();
+        Assert.Same(source, service.CropToSquare(source, "test"));
+        Assert.Same(equivalent, service.CropToSquare(equivalent, "test"));
+        Assert.False(source.IsFrozen);
+    });
+
+    [Fact]
     public void TwoImagesWithIdenticalSamplePoints_HaveDifferentFingerprintsAndDoNotCollideInCropCache()
     {
         SharedStaTestRunner.Run(() =>

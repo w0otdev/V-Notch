@@ -7,6 +7,32 @@ namespace VNotch.Tests;
 public sealed class WindowTitleScannerLifetimeTests
 {
     [Fact]
+    public async Task SettingsWatcherCreatesANewDirectoryAndSeesTheFirstSettingsFile()
+    {
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "VNotchWatcher-" + Guid.NewGuid().ToString("N"));
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            Assert.False(System.IO.Directory.Exists(directory));
+            using var watcher = WindowTitleScanner.CreateSettingsWatcher(directory, () => changed.TrySetResult());
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(directory, "settings.json"), "{}");
+            await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void CallerMutationsCannotChangeTheCachedWindowTitles()
+    {
+        using var scanner = new WindowTitleScanner();
+        var first = scanner.GetAllWindowTitles(isThrottled: true);
+        var expected = first.ToArray();
+        first.Clear();
+        first.Add("caller-owned value");
+        Assert.Equal(expected, scanner.GetAllWindowTitles(isThrottled: true));
+    }
+
+    [Fact]
     public void TitleOnlyPollingDoesNotStartTheAutomationWorker()
     {
         using var scanner = new WindowTitleScanner();

@@ -8,6 +8,23 @@ internal static class ArtworkAnalysisSource
 {
     private static readonly ConditionalWeakTable<BitmapSource, BitmapSource> FormattedSources = new();
 
+    internal static async Task<BitmapSource> GetFrozenSnapshotAsync(BitmapSource source)
+    {
+        // IsFrozen itself verifies access for mutable Freezables. Read it only
+        // on the owner; frozen sources have no dispatcher and are safe to share.
+        if (source.Dispatcher is not { } dispatcher || dispatcher.CheckAccess()) return Snapshot();
+        return await dispatcher.InvokeAsync(Snapshot).Task.ConfigureAwait(false);
+
+        BitmapSource Snapshot()
+        {
+            if (source.IsFrozen) return source;
+            // Keep the caller's bitmap editable; only the worker's copy is frozen.
+            var snapshot = source.CloneCurrentValue();
+            snapshot.Freeze();
+            return snapshot;
+        }
+    }
+
     internal static BitmapSource GetBgra32(BitmapSource source)
     {
         if (source.Format == PixelFormats.Bgra32) return source;

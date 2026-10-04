@@ -166,18 +166,8 @@ public static class PipDetector
         return foundHwnd != IntPtr.Zero;
     }
 
-    private static string? TryGetProcessName(int pid)
-    {
-        try
-        {
-            using var proc = Process.GetProcessById(pid);
-            return proc.ProcessName.ToLowerInvariant();
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    private static string? TryGetProcessName(int pid) =>
+        pid > 0 ? ProcessNameResolver.TryGetName((uint)pid)?.ToLowerInvariant() : null;
 
     private static string GetWindowTitle(IntPtr hwnd)
     {

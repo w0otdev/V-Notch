@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Full CI Verification Script for V-Notch.
-    Mirrors .github/workflows/ci.yml locally before pushing.
+    Runs the Windows validation and pipeline checks locally before pushing.
+    Hosted Gitleaks history scanning and CodeQL analysis still run in GitHub Actions.
 
 .DESCRIPTION
     Runs the complete Windows CI validation suite:
@@ -24,7 +25,10 @@
     Skips the 'dotnet restore' step to save time if dependencies are unchanged.
 
 .PARAMETER Fast
-    Runs essential build and unit tests without code coverage collection or slow audits.
+    Runs validation without code coverage collection or its threshold check.
+
+.PARAMETER IncludeDesktopIntegration
+    Includes tests that require visible desktop windows, in addition to the CI suite.
 
 .PARAMETER MinimumCoverage
     Minimum code coverage percentage required (default: 70).
@@ -34,6 +38,7 @@ param(
     [switch]$FixFormat,
     [switch]$SkipRestore,
     [switch]$Fast,
+    [switch]$IncludeDesktopIntegration,
     [ValidateRange(0, 100)][decimal]$MinimumCoverage = 70
 )
 
@@ -42,6 +47,10 @@ $ErrorActionPreference = 'Stop'
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $repository = Split-Path $PSScriptRoot -Parent
+$previousQaDirectory = [Environment]::GetEnvironmentVariable('VNOTCH_QA_ARTIFACT_DIR', 'Process')
+$previousDesktopMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
+Push-Location $repository
+try {
 
 Write-Host "`n========================================================" -ForegroundColor Cyan
 Write-Host "        V-Notch Full CI Local Verification               " -ForegroundColor Cyan
@@ -57,17 +66,23 @@ if ($running) {
     Start-Sleep -Milliseconds 400
 }
 
-# Ensure artifacts directory structure
+# Keep each run's evidence, including failures, separate from previous runs.
 $artifactsDir = Join-Path $repository 'artifacts'
-$testResultsDir = Join-Path $artifactsDir 'test-results'
-$uiReviewDir = Join-Path $artifactsDir 'ui-review'
-
-if (Test-Path $testResultsDir) {
-    Remove-Item -LiteralPath $testResultsDir -Recurse -Force -ErrorAction SilentlyContinue
-}
+$runDirectory = Join-Path $artifactsDir ('local-ci-' + [guid]::NewGuid().ToString('N'))
+$testResultsDir = Join-Path $runDirectory 'test-results'
+$uiReviewDir = Join-Path $runDirectory 'ui-review'
 New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $uiReviewDir -Force | Out-Null
 $env:VNOTCH_QA_ARTIFACT_DIR = $uiReviewDir
+$env:VNOTCH_RUN_DESKTOP_TESTS = if ($IncludeDesktopIntegration) { '1' } else { '0' }
+Write-Host "Evidence directory: $runDirectory"
+
+# Prune older local-ci-* runs to prevent disk accumulation (keep last 3)
+$oldRuns = @(Get-ChildItem -LiteralPath $artifactsDir -Directory -Filter 'local-ci-*' -ErrorAction SilentlyContinue |
+    Sort-Object CreationTime -Descending | Select-Object -Skip 3)
+foreach ($old in $oldRuns) {
+    Remove-Item -LiteralPath $old.FullName -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 # Step 1: Pipeline & Locale Validation (Python)
 Write-Host "`n=== [1/10] Validating Locales and Pipeline Scripts ===" -ForegroundColor Cyan
@@ -81,23 +96,18 @@ if ($python) {
     & python "$repository/Tools/validate_locales.py"
     if ($LASTEXITCODE -ne 0) { throw "Locale validation failed." }
 } else {
-    Write-Host "[!] Python not found in PATH; skipping Python pipeline tests & locale validator." -ForegroundColor Yellow
+    throw 'Python is required for pipeline tests and locale validation.'
 }
 
 # Step 2: Model Assets Verification
 Write-Host "`n=== [2/10] Verifying Model Asset Provenance & License ===" -ForegroundColor Cyan
 & "$repository/Tools/Assert-ModelAssets.ps1"
-if ($LASTEXITCODE -ne 0) { throw "Model assets verification failed." }
 
 # Step 3: Restore Dependencies
 Write-Host "`n=== [3/10] Restoring Solution Dependencies ===" -ForegroundColor Cyan
 if (-not $SkipRestore) {
-    $restoreOutput = & dotnet restore "$repository/V-Notch.sln" --locked-mode 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host ">>> Locked restore failed or not applicable, falling back to standard restore..." -ForegroundColor Yellow
-        & dotnet restore "$repository/V-Notch.sln"
-        if ($LASTEXITCODE -ne 0) { throw "Restore failed." }
-    }
+    & dotnet restore "$repository/V-Notch.sln" --locked-mode
+    if ($LASTEXITCODE -ne 0) { throw 'Locked dependency restore failed.' }
     Write-Host "Dependencies restored successfully." -ForegroundColor Green
 } else {
     Write-Host ">>> -SkipRestore passed: skipping dependency restore." -ForegroundColor Yellow
@@ -108,6 +118,7 @@ Write-Host "`n=== [4/10] Verifying Code Formatting ===" -ForegroundColor Cyan
 if ($FixFormat) {
     Write-Host ">>> -FixFormat passed: auto-formatting code with 'dotnet format'..." -ForegroundColor Yellow
     & dotnet format "$repository/V-Notch.sln"
+    if ($LASTEXITCODE -ne 0) { throw 'Automatic formatting failed.' }
 }
 & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore
 if ($LASTEXITCODE -ne 0) {
@@ -125,37 +136,45 @@ Write-Host "Release build succeeded with 0 warnings and 0 errors." -ForegroundCo
 
 # Step 6: Run Unit & UI Tests
 Write-Host "`n=== [6/10] Running Unit & UI Regression Tests ===" -ForegroundColor Cyan
+$testArguments = @(
+    'test', "$repository/Tests/VNotch.Tests.csproj", '--configuration', 'Release', '--no-build', '--no-restore',
+    '--logger', 'trx;LogFileName=tests.trx', '--results-directory', $testResultsDir,
+    '--verbosity', 'normal', '--blame-hang-timeout', '2m', '--blame-hang-dump-type', 'mini'
+)
+if (-not $IncludeDesktopIntegration) {
+    Write-Host ">>> Running tests in headless mode (skipping DesktopIntegration)..." -ForegroundColor Yellow
+    $testArguments += @('--filter', 'Category!=DesktopIntegration')
+} else {
+    Write-Host ">>> Running all tests including DesktopIntegration..." -ForegroundColor Yellow
+}
 if ($Fast) {
     Write-Host ">>> -Fast mode: Running tests without coverage collection..." -ForegroundColor Yellow
-    & dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore
 } else {
-    & dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore `
-        --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" `
-        --logger "trx;LogFileName=tests.trx" --results-directory $testResultsDir
+    $testArguments += @('--settings', "$repository/Tests/CI.runsettings", '--collect', 'Code Coverage')
 }
+& dotnet @testArguments
 if ($LASTEXITCODE -ne 0) { throw "Test run failed." }
 Write-Host "All tests passed successfully." -ForegroundColor Green
 
 # Step 7: Release Security Gates
 Write-Host "`n=== [7/10] Testing Release Security Gates ===" -ForegroundColor Cyan
 & "$repository/Tests/ReleaseGateTests.ps1"
-if ($LASTEXITCODE -ne 0) { throw "Release security gates failed." }
+# Run this fixture in a child process: it stubs dotnet and executes an exit-based runner.
+& (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File "$repository/Tests/PrepushCleanupTests.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Prepush cleanup regression tests failed.' }
 
 # Step 8: Update Compatibility Assertion
 Write-Host "`n=== [8/10] Verifying Update Compatibility with 1.9.3 Client ===" -ForegroundColor Cyan
 & "$repository/Tools/Assert-UpdateCompatibility.ps1"
-if ($LASTEXITCODE -ne 0) { throw "Update compatibility check failed." }
 
 # Step 9: Package Audit
 Write-Host "`n=== [9/10] Auditing Packages for Known Vulnerabilities ===" -ForegroundColor Cyan
-& "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$artifactsDir/package-audit.json"
-if ($LASTEXITCODE -ne 0) { throw "Package audit failed." }
+& "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json"
 
 # Step 10: Enforce Application Code Coverage
 Write-Host "`n=== [10/10] Enforcing Minimum Code Coverage ($MinimumCoverage%) ===" -ForegroundColor Cyan
 if (-not $Fast) {
     & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $testResultsDir -MinimumPercent $MinimumCoverage
-    if ($LASTEXITCODE -ne 0) { throw "Code coverage check failed." }
 } else {
     Write-Host ">>> -Fast mode: skipping coverage threshold check." -ForegroundColor Yellow
 }
@@ -164,6 +183,12 @@ $stopwatch.Stop()
 $elapsed = $stopwatch.Elapsed
 
 Write-Host "`n========================================================" -ForegroundColor Green
-Write-Host "   ALL CI CHECKS PASSED SUCCESSFULLY IN $($elapsed.ToString("mm\:ss"))!  " -ForegroundColor Green
-Write-Host "   Safe to push to remote (GitHub Actions will PASS).    " -ForegroundColor Green
+Write-Host "   LOCAL CHECKS PASSED IN $($elapsed.ToString("mm\:ss"))!  " -ForegroundColor Green
+Write-Host "   Coverage enforced: $(-not $Fast); Desktop integration: $IncludeDesktopIntegration" -ForegroundColor Green
+Write-Host "   Evidence: $runDirectory" -ForegroundColor Green
 Write-Host "========================================================`n" -ForegroundColor Green
+} finally {
+    [Environment]::SetEnvironmentVariable('VNOTCH_QA_ARTIFACT_DIR', $previousQaDirectory, 'Process')
+    [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopMode, 'Process')
+    Pop-Location
+}

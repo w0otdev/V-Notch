@@ -39,6 +39,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private Task? _processingTask;
     private Task? _heartbeatTask;
     private Task? _stagedRefreshTask;
+    private Task _workerDrainTask = Task.CompletedTask;
+    private Task? _disposeTask;
     private readonly Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? _sessionManagerFactory;
 
     internal Task? InitTask => _initTask;
@@ -3354,7 +3356,9 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         => _artworkService.ConvertToWpfBitmapAsync(stream, ct);
 
     private List<string> GetAllWindowTitles()
-        => _windowTitleScanner.GetAllWindowTitles(_timelineSimulator.IsThrottled);
+        // Fast metadata probes reuse the longer desktop-title cache while waiting.
+        => _windowTitleScanner.GetAllWindowTitles(
+            _timelineSimulator.IsThrottled || _currentMode == DetectionMode.AwaitingMetadata);
 
     private string? TryExtractVideoIdFromBrowserUrl()
     {
@@ -3592,21 +3596,29 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     public void Dispose()
     {
-        StopCoreAsync(isDisposing: true).GetAwaiter().GetResult();
+        // Mark the service disposed immediately; let the dispatcher keep running
+        // while workers finish cancellation and release their resources.
+        _ = ObserveShutdownAsync(GetDisposalTask());
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => new(GetDisposalTask());
+
+    private Task GetDisposalTask()
     {
-        await StopCoreAsync(isDisposing: true).ConfigureAwait(false);
+        lock (_lifecycleLock)
+            return _disposeTask ??= StopCoreAsync(isDisposing: true);
+    }
+
+    private static async Task ObserveShutdownAsync(Task task)
+    {
+        try { await task.ConfigureAwait(false); }
+        catch (Exception ex) { RuntimeLog.Warn(MediaStopLogTag, $"Shutdown failed: {ex}"); }
     }
 
     private async Task StopCoreAsync(bool isDisposing)
     {
         CancellationTokenSource? ctsToCancel;
-        Task? initTask;
-        Task? processingTask;
-        Task? heartbeatTask;
-        Task? stagedRefreshTask;
+        Task allTasks;
         GlobalSystemMediaTransportControlsSessionManager? sessionManagerToUnsub;
 
         lock (_lifecycleLock)
@@ -3623,10 +3635,13 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             ctsToCancel = _bgCts;
             _bgCts = null;
 
-            initTask = _initTask;
-            processingTask = _processingTask;
-            heartbeatTask = _heartbeatTask;
-            stagedRefreshTask = _stagedRefreshTask;
+            var tasksToWait = new List<Task>();
+            if (!_workerDrainTask.IsCompleted) tasksToWait.Add(_workerDrainTask);
+            if (_initTask != null) tasksToWait.Add(_initTask);
+            if (_processingTask != null) tasksToWait.Add(_processingTask);
+            if (_heartbeatTask != null) tasksToWait.Add(_heartbeatTask);
+            if (_stagedRefreshTask != null) tasksToWait.Add(_stagedRefreshTask);
+            allTasks = _workerDrainTask = Task.WhenAll(tasksToWait);
 
             _initTask = null;
             _processingTask = null;
@@ -3648,22 +3663,19 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         }
 
         // 2. Wait for running tasks to complete
-        var tasksToWait = new List<Task>();
-        if (initTask != null) tasksToWait.Add(initTask);
-        if (processingTask != null) tasksToWait.Add(processingTask);
-        if (heartbeatTask != null) tasksToWait.Add(heartbeatTask);
-        if (stagedRefreshTask != null) tasksToWait.Add(stagedRefreshTask);
-
-        if (tasksToWait.Count > 0)
+        if (!allTasks.IsCompletedSuccessfully)
         {
             try
             {
-                var allTasks = Task.WhenAll(tasksToWait);
                 var timeoutTask = Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
                 var completed = await Task.WhenAny(allTasks, timeoutTask).ConfigureAwait(false);
                 if (completed != allTasks)
                 {
                     RuntimeLog.Warn(MediaStopLogTag, "Timed out waiting for background tasks to exit.");
+                }
+                else
+                {
+                    await allTasks.ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -3690,15 +3702,16 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         }
 
         // 4. Dispose CTS
-        ctsToCancel?.Dispose();
+        // A timed-out worker may still use its token and release the update lock.
+        // Release those objects only after the captured workers actually exit.
+        _ = ReleaseWorkerResourcesAsync(allTasks, ctsToCancel, isDisposing);
 
-        // 5. If disposing, complete channel and dispose update lock
+        // 5. Complete the channel or drain it for a later restart.
         if (isDisposing)
         {
             if (_thumbCts != null) await _thumbCts.CancelAsync().ConfigureAwait(false);
             _thumbCts?.Dispose();
             _changes.Complete();
-            _updateLock.Dispose();
         }
         else
         {
@@ -3712,6 +3725,17 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     _state = ServiceLifecycleState.Stopped;
                 }
             }
+        }
+    }
+
+    private async Task ReleaseWorkerResourcesAsync(Task workers, CancellationTokenSource? cts, bool isDisposing)
+    {
+        try { await workers.ConfigureAwait(false); }
+        catch (Exception ex) { RuntimeLog.Debug(MediaStopLogTag, () => $"Worker exited: {ex.Message}"); }
+        finally
+        {
+            cts?.Dispose();
+            if (isDisposing) _updateLock.Dispose();
         }
     }
 

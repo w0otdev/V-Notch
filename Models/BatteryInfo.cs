@@ -14,7 +14,7 @@ public class BatteryInfo
 
     public bool IsBatterySaver { get; set; } = false;
 
-    public bool IsFullyCharged => IsPluggedIn && Percentage >= 99;
+    public bool IsFullyCharged => HasBattery && IsPluggedIn && Percentage >= 99;
 
     public string GetBatteryIcon()
     {
@@ -27,6 +27,6 @@ public class BatteryInfo
 
     public string GetPercentageText()
     {
-        return $"{Percentage}%";
+        return Percentage < 0 ? "—" : $"{Percentage}%";
     }
 }

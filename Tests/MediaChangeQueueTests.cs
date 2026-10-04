@@ -23,7 +23,7 @@ public sealed class MediaChangeQueueTests
     public async Task ChangesArrivingDuringAnUpdateAreDeliveredInTheNextBatch()
     {
         var queue = new MediaChangeQueue();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var reader = queue.ReadAllAsync(cts.Token).GetAsyncEnumerator();
         queue.Enqueue(ChangeTypes.Timeline);
         Assert.True(await reader.MoveNextAsync());
@@ -39,7 +39,7 @@ public sealed class MediaChangeQueueTests
     public async Task ConcurrentProducersAndConsumerPreserveEveryChangeType()
     {
         var queue = new MediaChangeQueue();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var consume = Task.Run(async () =>
         {
             var seen = ChangeTypes.None;

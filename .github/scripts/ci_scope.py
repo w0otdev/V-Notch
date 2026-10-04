@@ -24,6 +24,7 @@ PACKAGED_DOCS = {
 
 
 def needs_windows(paths):
+    paths = [path.replace("\\", "/") for path in paths]
     # Packaged terms/notices and unknown inputs require the build. Do not
     # classify every Markdown file as documentation: some are embedded assets.
     return not paths or any(

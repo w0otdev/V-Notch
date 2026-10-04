@@ -33,7 +33,7 @@ public sealed class SetupLanguagePageTests
     {
         RunOnStaThread(() =>
         {
-            if (Application.Current == null) new Application();
+            BackgroundTestWindows.EnsureApplicationResources();
             var font = SetupFonts.SFProDisplayFont;
             Assert.Contains("SF Pro Display", font.FamilyNames.Values);
         });

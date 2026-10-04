@@ -72,7 +72,10 @@ public sealed class SetupOperationsIntegrationTests
         Assert.Throws<FileNotFoundException>(() => SetupOperations.CopyFileWithRetry(Path.Combine(fixture.Root, "absent"), destination, 2, delays.Add));
         Assert.Equal(new[] { 800, 1600 }, delays);
         delays.Clear();
-        Assert.Throws<UnauthorizedAccessException>(() => SetupOperations.CopyFileWithRetry(source, fixture.Root, 1, delays.Add));
+        // File.Copy reports a directory destination as an IO or access error,
+        // depending on the Windows/.NET version. Both must exhaust retries.
+        var failure = Record.Exception(() => SetupOperations.CopyFileWithRetry(source, fixture.Root, 1, delays.Add));
+        Assert.True(failure is IOException or UnauthorizedAccessException, $"Unexpected copy failure: {failure}");
         Assert.Equal(new[] { 800 }, delays);
     }
 

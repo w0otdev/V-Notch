@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -10,6 +11,69 @@ namespace VNotch.Tests;
 
 public sealed class WindowTitleScannerAutomationCacheTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void BrowserScansExcludeToolbarsEditsAndTabsInsideThePageDocument(bool includeBrowserToolbar) => SharedStaTestRunner.Run(() =>
+    {
+        var content = new StackPanel();
+        if (includeBrowserToolbar)
+            content.Children.Add(new ToolBar { Items = { new TextBox { Text = "https://youtube.com/watch?v=toolbar" } } });
+        content.Children.Add(new TextBox { Text = "https://example.com/outside-toolbar" });
+        var page = new StackPanel();
+        page.Children.Add(new ToolBar { Items = { new TextBox { Text = "https://open.spotify.com/page-impostor" } } });
+        page.Children.Add(new TabControl { Items = { new TabItem { Header = "Page tab" } } });
+        for (int i = 0; i < 300; i++) page.Children.Add(new TextBox { Text = "https://example.com/input" });
+        content.Children.Add(new PageDocument { Content = page });
+        var window = new BackgroundWindow
+        {
+            Width = 400,
+            Height = 200,
+            Left = -10000,
+            Top = -10000,
+            ShowActivated = false,
+            ShowInTaskbar = false,
+            Content = content
+        };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            IntPtr hwnd = new WindowInteropHelper(window).Handle;
+            var scan = Task.Run(() =>
+            {
+                var root = AutomationElement.FromHandle(hwnd);
+                // Verify the fixture really exposes page controls that a broad
+                // descendant query would otherwise mistake for browser chrome.
+                var document = Assert.Single(root.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document)).Cast<AutomationElement>());
+                Assert.Single(document.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolBar)).Cast<AutomationElement>());
+                int toolbarCount = WindowTitleScanner.FindBrowserChromeElements(root, ControlType.ToolBar).Count;
+                int tabCount = WindowTitleScanner.FindCachedTabs(root).Count;
+                var address = WindowTitleScanner.FindChromiumAddressBar(root);
+                string? url = address == null ? null : ((ValuePattern)address.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+                return (toolbarCount, tabCount, url);
+            });
+            PumpUntilComplete(scan);
+            var result = scan.GetAwaiter().GetResult();
+            Assert.Equal(includeBrowserToolbar ? 1 : 0, result.toolbarCount);
+            Assert.Equal(0, result.tabCount);
+            Assert.Equal(includeBrowserToolbar ? "https://youtube.com/watch?v=toolbar" : null, result.url);
+        }
+        finally { window.Close(); }
+    });
+
+    private sealed class PageDocument : ContentControl
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new PageDocumentPeer(this);
+    }
+
+    private sealed class PageDocumentPeer(PageDocument owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Document;
+    }
+
     [Fact]
     public void ChildValuePatternIsReadFromTheSnapshot() => SharedStaTestRunner.Run(() =>
     {
@@ -63,7 +127,7 @@ public sealed class WindowTitleScannerAutomationCacheTests
             ShowInTaskbar = false,
             Content = control
         };
-        AutomationElementCollection tabs;
+        IReadOnlyList<AutomationElement> tabs;
         try
         {
             window.Show();

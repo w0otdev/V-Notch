@@ -114,6 +114,48 @@ public sealed class UpdateServiceSecurityTests
     }
 
     [Fact]
+    public async Task RedirectsPreserveRepresentationHeadersWithoutForwardingCredentials()
+    {
+        int requests = 0;
+        var service = CreateService(request =>
+        {
+            requests++;
+            Assert.Equal("application/vnd.github+json", Assert.Single(request.Headers.GetValues("Accept")));
+            Assert.Equal("\"release-etag\"", Assert.Single(request.Headers.GetValues("If-None-Match")));
+            Assert.Equal(requests == 1, request.Headers.Contains("Authorization"));
+            Assert.Equal(requests == 1, request.Headers.Contains("Cookie"));
+            Assert.Equal(requests == 1, request.Headers.Host != null);
+            return requests switch
+            {
+                1 => new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("/moved", UriKind.Relative) } },
+                2 => new(HttpStatusCode.TemporaryRedirect) { Headers = { Location = new Uri("https://release-assets.githubusercontent.com/asset") } },
+                _ => new(HttpStatusCode.OK)
+            };
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/releases");
+        request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
+        request.Headers.TryAddWithoutValidation("If-None-Match", "\"release-etag\"");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer test-only");
+        request.Headers.TryAddWithoutValidation("Cookie", "test-only=value");
+        request.Headers.Host = "api.github.com";
+        using var response = await service.SendHttpsAsync(request, default);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(3, requests);
+    }
+
+    [Fact]
+    public async Task ReleaseEndpointsParseStreamsWithoutBufferingContentAsAString()
+    {
+        const string release = "{\"tag_name\":\"v99.0.0\",\"body\":\"notes\",\"published_at\":\"2026-10-04T00:00:00Z\",\"assets\":[]}";
+        var service = CreateService(request => new(HttpStatusCode.OK)
+        {
+            Content = new StreamOnlyContent(request.RequestUri!.AbsolutePath.EndsWith("/latest") ? release : "[" + release + "]")
+        });
+        Assert.Equal("99.0.0", (await service.CheckForUpdatesAsync())?.Version);
+        Assert.Equal("99.0.0", Assert.Single(await service.GetAllReleasesAsync()).Version);
+    }
+
+    [Fact]
     public async Task CheckForUpdates_InvalidReleaseJson_ReturnsNull()
     {
         var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("not json") });
@@ -138,6 +180,14 @@ public sealed class UpdateServiceSecurityTests
     { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => Task.FromResult(reply(request)); }
     private sealed class BlockingStream : MemoryStream
     { public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) => ValueTask.FromCanceled<int>(token); }
+    private sealed class StreamOnlyContent(string json) : HttpContent
+    {
+        protected override Task<Stream> CreateContentReadStreamAsync() =>
+            Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes(json)));
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            throw new InvalidOperationException("Content must be consumed as a stream.");
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+    }
     private sealed class TempFile : IAsyncDisposable
     { public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N")); public ValueTask DisposeAsync() { if (File.Exists(Path)) File.Delete(Path); return ValueTask.CompletedTask; } }
 }

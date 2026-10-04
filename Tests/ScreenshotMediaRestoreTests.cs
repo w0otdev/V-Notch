@@ -399,13 +399,7 @@ public sealed class ScreenshotMediaRestoreTests
 
     private static void WithWindow(Action<MainWindow> action) => SharedStaTestRunner.Run(() =>
     {
-        if (Application.Current == null)
-        {
-            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-            app.Resources["SFProText"] = new FontFamily("Segoe UI");
-            app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-        }
+        BackgroundTestWindows.EnsureApplicationResources();
         string settingsPath = Path.Combine(Path.GetTempPath(), $"vnotch-screenshot-restore-{Guid.NewGuid():N}.json");
         var settingsService = new SettingsService(settingsPath, _ => { });
         settingsService.Save(new NotchSettings { EnableSpotlight = false, AutoCheckUpdates = false, EnableWeather = false });

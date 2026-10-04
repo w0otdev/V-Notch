@@ -16,13 +16,7 @@ public sealed class MainWindowDependencyTests
     [Fact]
     public void ClosingMainWindowLeavesInjectedDependenciesAliveUntilProviderDisposal() => SharedStaTestRunner.Run(() =>
     {
-        if (Application.Current == null)
-        {
-            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-            app.Resources["SFProText"] = new FontFamily("Segoe UI");
-            app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-        }
+        BackgroundTestWindows.EnsureApplicationResources();
         var settings = new FakeSettingsService(new NotchSettings
         {
             EnableSpotlight = false,

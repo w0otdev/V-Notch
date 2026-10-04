@@ -69,7 +69,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
             int cacheDurationMs = isThrottled ? 2000 : 700;
             if ((DateTime.UtcNow - _lastWindowEnumTime).TotalMilliseconds < cacheDurationMs)
             {
-                return _cachedWindowTitles;
+                return new List<string>(_cachedWindowTitles);
             }
 
             var titles = new List<string>();
@@ -95,7 +95,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
             _cachedWindowTitles = titles;
             _lastWindowEnumTime = DateTime.UtcNow;
-            return titles;
+            return new List<string>(titles);
         }
     }
 
@@ -152,17 +152,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         {
             var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             string dir = Path.Combine(appDataPath, "V-Notch");
-            if (Directory.Exists(dir))
-            {
-                _settingsWatcher = new FileSystemWatcher(dir, "settings.json")
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
-                    EnableRaisingEvents = true
-                };
-                _settingsWatcher.Changed += (_, _) => InvalidateInspectionAllowed();
-                _settingsWatcher.Created += (_, _) => InvalidateInspectionAllowed();
-                _settingsWatcher.Renamed += (_, _) => InvalidateInspectionAllowed();
-            }
+            _settingsWatcher = CreateSettingsWatcher(dir, InvalidateInspectionAllowed);
         }
         catch
         {
@@ -173,6 +163,22 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     public static void UpdateInspectionAllowed(bool allowed)
     {
         _cachedInspectionAllowed = allowed ? 1 : 0;
+    }
+
+    internal static FileSystemWatcher CreateSettingsWatcher(string directory, Action invalidate)
+    {
+        Directory.CreateDirectory(directory);
+        var watcher = new FileSystemWatcher(directory, "settings.json")
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size
+        };
+        watcher.Changed += (_, _) => invalidate();
+        watcher.Created += (_, _) => invalidate();
+        watcher.Deleted += (_, _) => invalidate();
+        watcher.Renamed += (_, _) => invalidate();
+        watcher.Error += (_, _) => invalidate();
+        watcher.EnableRaisingEvents = true;
+        return watcher;
     }
 
     public static void InvalidateInspectionAllowed()
@@ -620,7 +626,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
             if (element == null) return null;
 
             AutomationElement? addressBar = processName.Contains("firefox", StringComparison.OrdinalIgnoreCase)
-                ? element.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar-input"))
+                ? FindBrowserChromeElements(element, ControlType.Edit).FirstOrDefault(edit => edit.Current.AutomationId == "urlbar-input")
                 : FindChromiumAddressBar(element);
 
             if (addressBar != null &&
@@ -648,31 +654,29 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         return null;
     }
 
-    private static AutomationElement? FindChromiumAddressBar(AutomationElement element)
+    internal static AutomationElement? FindChromiumAddressBar(AutomationElement element)
     {
-        var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
-        var edits = element.FindAll(TreeScope.Descendants, editCondition);
-
-        foreach (AutomationElement edit in edits)
-        {
-            try
+        foreach (var toolbar in FindBrowserChromeElements(element, ControlType.ToolBar))
+            foreach (var edit in FindBrowserChromeElements(toolbar, ControlType.Edit))
             {
-                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
+                try
                 {
-                    var valuePattern = (ValuePattern)pattern;
-                    string val = valuePattern.Current.Value ?? "";
-
-                    if (IsAddressBarValue(val))
+                    if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
                     {
-                        return edit;
+                        var valuePattern = (ValuePattern)pattern;
+                        string val = valuePattern.Current.Value ?? "";
+
+                        if (IsAddressBarValue(val))
+                        {
+                            return edit;
+                        }
                     }
                 }
+                catch (Exception)
+                {
+                    // ValuePattern may throw if element state changed during UI automation traversal
+                }
             }
-            catch (Exception)
-            {
-                // ValuePattern may throw if element state changed during UI automation traversal
-            }
-        }
 
         return null;
     }
@@ -709,7 +713,45 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         return null;
     }
 
-    internal static AutomationElementCollection FindCachedTabs(AutomationElement root)
+    // Walk only browser chrome. Never descend into the page's accessibility tree,
+    // and bound work even if a provider exposes unusual or deeply nested controls.
+    internal static IReadOnlyList<AutomationElement> FindBrowserChromeElements(AutomationElement root, ControlType targetType)
+    {
+        const int maxElements = 256;
+        const int maxDepth = 8;
+        var matches = new List<AutomationElement>();
+        var pending = new Queue<(AutomationElement Element, int Depth)>();
+        pending.Enqueue((root, 0));
+        int visited = 0;
+        var cache = new CacheRequest { TreeScope = TreeScope.Element, TreeFilter = Automation.RawViewCondition };
+        cache.Add(AutomationElement.ControlTypeProperty);
+        while (pending.Count > 0 && visited < maxElements)
+        {
+            var (parent, depth) = pending.Dequeue();
+            if (depth >= maxDepth) continue;
+            try
+            {
+                AutomationElementCollection children;
+                using (cache.Activate())
+                    children = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
+                foreach (AutomationElement child in children)
+                {
+                    if (++visited > maxElements) break;
+                    var type = child.Cached.ControlType;
+                    if (type == ControlType.Document) continue;
+                    if (type == targetType) matches.Add(child);
+                    else pending.Enqueue((child, depth + 1));
+                }
+            }
+            catch (Exception)
+            {
+                // A disappearing provider must not discard other browser controls.
+            }
+        }
+        return matches;
+    }
+
+    internal static IReadOnlyList<AutomationElement> FindCachedTabs(AutomationElement root)
     {
         var cache = new CacheRequest
         {
@@ -724,9 +766,13 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         cache.Add(AutomationElement.IsControlElementProperty);
         cache.Add(ValuePattern.Pattern);
         cache.Add(ValuePattern.ValueProperty);
-        using (cache.Activate())
-            return root.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+        var tabs = new List<AutomationElement>();
+        foreach (var tab in FindBrowserChromeElements(root, ControlType.TabItem))
+        {
+            try { tabs.Add(tab.GetUpdatedCache(cache)); }
+            catch (Exception) { /* Tab closed while capturing its snapshot. */ }
+        }
+        return tabs;
     }
 
     internal static string? TryReadTabUrl(AutomationElement tab)
@@ -889,24 +935,23 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private static bool ChromiumAddressBarHasSpotify(AutomationElement element)
     {
-        var editCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
-        var edits = element.FindAll(TreeScope.Descendants, editCondition);
-        foreach (AutomationElement edit in edits)
-        {
-            try
+        foreach (var toolbar in FindBrowserChromeElements(element, ControlType.ToolBar))
+            foreach (var edit in FindBrowserChromeElements(toolbar, ControlType.Edit))
             {
-                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
+                try
                 {
-                    string val = ((ValuePattern)pattern).Current.Value ?? "";
-                    if (val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase))
-                        return true;
+                    if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
+                    {
+                        string val = ((ValuePattern)pattern).Current.Value ?? "";
+                        if (val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                }
+                catch (Exception)
+                {
+                    // UI automation read failure on individual element
                 }
             }
-            catch (Exception)
-            {
-                // UI automation read failure on individual element
-            }
-        }
         return false;
     }
 

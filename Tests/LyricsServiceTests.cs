@@ -53,6 +53,37 @@ public sealed class LyricsServiceTests
     }
 
     [Fact]
+    public void ParseLrc_HandlesMoreThanThreeDigitMilliseconds()
+    {
+        const string lrc = """
+            [00:05.1234]Four digits line
+            [00:10.987654]Microseconds line
+            """;
+
+        var lines = LyricsService.ParseLrc(lrc);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(TimeSpan.FromMilliseconds(5123), lines[0].Time);
+        Assert.Equal(TimeSpan.FromMilliseconds(10987), lines[1].Time);
+    }
+
+    [Theory]
+    [InlineData("Go", "Golden Hour", false)]
+    [InlineData("In", "Window", false)]
+    [InlineData("Me", "Someone", false)]
+    [InlineData("Day", "One Day", true)]
+    [InlineData("Day", "Day", true)]
+    [InlineData("Love", "Love Story", true)]
+    [InlineData("Love", "Glove", false)]
+    public void IsTrackTitleMatch_PreventsShortWordSubstringCollisions(string itemTitle, string targetTitle, bool expectedMatch)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse($"{{\"trackName\": \"{itemTitle}\"}}");
+        string targetNorm = LyricsService.NormalizeForMatching(targetTitle);
+        bool match = LyricsService.IsTrackTitleMatch(doc.RootElement, targetNorm);
+        Assert.Equal(expectedMatch, match);
+    }
+
+    [Fact]
     public void ParseLrc_EmptyOrWhitespace_ReturnsEmptyList()
     {
         Assert.Empty(LyricsService.ParseLrc(""));
