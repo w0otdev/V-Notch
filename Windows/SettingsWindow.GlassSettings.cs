@@ -413,8 +413,8 @@ public partial class SettingsWindow
 
         if (preset != null)
         {
-            var currentFps = _settings.LiquidGlass?.TargetFps ?? 0;
-            var currentGpu = _settings.LiquidGlass?.UseGpuRefraction ?? true;
+            var currentFps = (int)Math.Round(GlassFpsSlider.Value);
+            var currentGpu = GpuRefractionCheck.IsChecked ?? false;
             _settings.LiquidGlass = preset.Clone();
             _settings.LiquidGlass.TargetFps = currentFps;
             _settings.LiquidGlass.UseGpuRefraction = currentGpu;
@@ -502,15 +502,11 @@ public partial class SettingsWindow
 
         if (GlassPresetLabel != null) GlassPresetLabel.Text = Loc.Get("settings.glass.preset");
         if (GlassAdvancedWarning != null) GlassAdvancedWarning.Text = Loc.Get("settings.glass.advancedWarning");
-        int presetIdx = GlassPresetCombo.SelectedIndex;
+        string presetTag = (GlassPresetCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
         _suppressGlassPresetChange = true;
         GlassPresetCombo.Items.Clear();
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.custom"), Tag = GlassPresetCustom });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.frosted"), Tag = GlassPresetFrosted });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.dark"), Tag = "dark" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.regular"), Tag = GlassPresetRegular });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.clear"), Tag = GlassPresetClear });
-        GlassPresetCombo.SelectedIndex = presetIdx < 0 ? 0 : presetIdx;
+        EnsureGlassPresetItems();
+        SelectGlassPreset(presetTag);
         _suppressGlassPresetChange = false;
 
         GlassBlurSlider.Label = Loc.Get("settings.glass.blur");

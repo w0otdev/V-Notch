@@ -57,6 +57,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     private readonly IMediaMetadataLookupService _metadataLookup;
     private readonly IMediaArtworkService _artworkService;
     private readonly IWindowTitleScanner _windowTitleScanner;
+    private readonly Func<string> _spotifyWindowTitle;
     private readonly MediaSessionVolumeService _volumeService;
     private readonly MediaTransportControlService _transportService;
 
@@ -133,16 +134,19 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         IMediaMetadataLookupService metadataLookup,
         IMediaArtworkService artworkService,
         IWindowTitleScanner windowTitleScanner,
-        Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? sessionManagerFactory)
+        Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? sessionManagerFactory,
+        MediaSourceCache? sourceCache = null,
+        Func<string>? spotifyWindowTitle = null)
     {
         _metadataLookup = metadataLookup;
         _artworkService = artworkService;
         _windowTitleScanner = windowTitleScanner;
+        _spotifyWindowTitle = spotifyWindowTitle ?? GetSpotifyWindowTitle;
         _sessionManagerFactory = sessionManagerFactory;
         _volumeService = new MediaSessionVolumeService();
         _transportService = new MediaTransportControlService(GetActiveSession);
 
-        _sourceCache = new MediaSourceCache();
+        _sourceCache = sourceCache ?? new MediaSourceCache();
         _sourceCache.Load();
     }
     public IMediaArtworkService ArtworkService => _artworkService;
@@ -644,6 +648,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 ApplyVideoTimelineRecovery(info, ref windowTitles);
             }
 
+            ct.ThrowIfCancellationRequested();
             DetectPictureInPictureState(info);
 
             TrackNameChangeBookkeeping(info);
@@ -910,25 +915,16 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             if (info.Platform != MediaPlatform.Spotify)
             {
-                var spotifyProcesses = Process.GetProcessesByName(SpotifyPlatformName);
-                if (spotifyProcesses.Length > 0)
+                var wTitle = _spotifyWindowTitle();
+                if (!string.IsNullOrEmpty(wTitle))
                 {
-                    var wTitle = spotifyProcesses
-                        .Select(proc => proc.MainWindowTitle)
-                        .FirstOrDefault(w => !string.IsNullOrEmpty(w) &&
-                                             w != SpotifyPlatformName &&
-                                             !w.ToLower().EndsWith("spotify"));
-
-                    if (!string.IsNullOrEmpty(wTitle))
-                    {
-                        info.IsSpotifyRunning = true;
-                        info.IsSpotifyPlaying = true;
-                        info.IsAnyMediaPlaying = true;
-                        info.IsPlaying = true;
-                        info.MediaSource = MediaPlatform.Spotify.ToDisplayString();
-                        ParseSpotifyTitle(wTitle, info);
-                        if (!string.IsNullOrEmpty(info.CurrentArtist)) _stableArtist = info.CurrentArtist;
-                    }
+                    info.IsSpotifyRunning = true;
+                    info.IsSpotifyPlaying = true;
+                    info.IsAnyMediaPlaying = true;
+                    info.IsPlaying = true;
+                    info.MediaSource = MediaPlatform.Spotify.ToDisplayString();
+                    ParseSpotifyTitle(wTitle, info);
+                    if (!string.IsNullOrEmpty(info.CurrentArtist)) _stableArtist = info.CurrentArtist;
                 }
             }
 

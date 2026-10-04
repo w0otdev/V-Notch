@@ -23,7 +23,9 @@ internal sealed class AppSearchProvider : ISpotlightProvider
         int limit,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var apps = await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         return apps
             .Select(app => app with
             {

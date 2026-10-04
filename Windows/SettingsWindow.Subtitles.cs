@@ -45,7 +45,7 @@ public partial class SettingsWindow
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var allKeys = new[] { "native", "english", "auto" };
-        var ordered = keys.Where(allKeys.Contains).ToList();
+        var ordered = keys.Where(allKeys.Contains).Distinct(StringComparer.Ordinal).ToList();
         ordered.AddRange(allKeys.Where(k => !ordered.Contains(k)));
 
         foreach (var key in ordered)

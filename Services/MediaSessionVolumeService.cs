@@ -8,6 +8,20 @@ namespace VNotch.Services;
 
 public sealed class MediaSessionVolumeService
 {
+    private readonly Func<MediaAudioSessions> _getAudioSessions;
+    private readonly Func<IEnumerable<string>, HashSet<uint>> _getProcessIds;
+    private readonly Func<DateTime> _utcNow;
+
+    public MediaSessionVolumeService() : this(WindowsMediaAudioSessions.Read, GetProcessIds, () => DateTime.UtcNow) { }
+
+    internal MediaSessionVolumeService(Func<MediaAudioSessions> getAudioSessions,
+        Func<IEnumerable<string>, HashSet<uint>> getProcessIds, Func<DateTime> utcNow)
+    {
+        _getAudioSessions = getAudioSessions;
+        _getProcessIds = getProcessIds;
+        _utcNow = utcNow;
+    }
+
     private readonly object _volumeCacheLock = new();
     private string _lastMatchedSessionId = "";
     private uint _lastMatchedProcessId;
@@ -16,7 +30,7 @@ public sealed class MediaSessionVolumeService
     private DateTime _cachedProcessIdsAtUtc = DateTime.MinValue;
     private HashSet<uint> _cachedProcessIds = new();
 
-    private SimpleAudioVolume? _cachedSimpleVolume;
+    private IMediaAudioVolume? _cachedSimpleVolume;
     private string _cachedVolumeSourceAppId = "";
     private DateTime _cachedVolumeSessionAtUtc = DateTime.MinValue;
     private const double SessionCacheLifetimeMs = 3000;
@@ -47,7 +61,7 @@ public sealed class MediaSessionVolumeService
         {
             if (_cachedSimpleVolume != null &&
                 string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) &&
-                (DateTime.UtcNow - _cachedVolumeSessionAtUtc).TotalMilliseconds < SessionCacheLifetimeMs)
+                (_utcNow() - _cachedVolumeSessionAtUtc).TotalMilliseconds < SessionCacheLifetimeMs)
             {
                 try
                 {
@@ -72,7 +86,7 @@ public sealed class MediaSessionVolumeService
                 InvalidateVolumeSessionCacheLocked();
                 _cachedSimpleVolume = session.SimpleAudioVolume;
                 _cachedVolumeSourceAppId = sourceAppId;
-                _cachedVolumeSessionAtUtc = DateTime.UtcNow;
+                _cachedVolumeSessionAtUtc = _utcNow();
 
                 _cachedSimpleVolume.Volume = target;
                 if (target > 0.001f && _cachedSimpleVolume.Mute)
@@ -121,16 +135,15 @@ public sealed class MediaSessionVolumeService
         });
     }
 
-    private bool TryWithAudioSession(string sourceAppId, Func<AudioSessionControl, bool> action)
+    private bool TryWithAudioSession(string sourceAppId, Func<MediaAudioSessionSnapshot, bool> action)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return false;
 
         try
         {
-            using var deviceEnumerator = new MMDeviceEnumerator();
-            using var defaultDevice = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var sessions = defaultDevice.AudioSessionManager.Sessions;
+            using var snapshot = _getAudioSessions();
+            var sessions = snapshot.Sessions;
             if (sessions == null || sessions.Count == 0)
                 return false;
 
@@ -153,9 +166,9 @@ public sealed class MediaSessionVolumeService
         }
     }
 
-    private AudioSessionControl? FindBestMatchingSession(SessionCollection sessions, string sourceAppId, HashSet<uint> candidateProcessIds)
+    private MediaAudioSessionSnapshot? FindBestMatchingSession(IReadOnlyList<MediaAudioSessionSnapshot> sessions, string sourceAppId, HashSet<uint> candidateProcessIds)
     {
-        AudioSessionControl? targetSession = null;
+        MediaAudioSessionSnapshot? targetSession = null;
         double bestScore = double.MinValue;
 
         for (int i = 0; i < sessions.Count; i++)
@@ -175,7 +188,7 @@ public sealed class MediaSessionVolumeService
         return targetSession;
     }
 
-    private double CalculateSessionScore(AudioSessionControl session, string sourceAppId, HashSet<uint> candidateProcessIds)
+    private double CalculateSessionScore(MediaAudioSessionSnapshot session, string sourceAppId, HashSet<uint> candidateProcessIds)
     {
         uint processId = session.GetProcessID;
         bool matchedByProcess = candidateProcessIds.Contains(processId);
@@ -195,7 +208,7 @@ public sealed class MediaSessionVolumeService
 
         try
         {
-            score += session.AudioMeterInformation.MasterPeakValue * 100;
+            score += session.ReadPeak() * 100;
         }
         catch (Exception ex)
         {
@@ -246,14 +259,14 @@ public sealed class MediaSessionVolumeService
     {
         bool canUseCache =
             string.Equals(sourceAppId, _cachedProcessSourceAppId, StringComparison.OrdinalIgnoreCase) &&
-            (DateTime.UtcNow - _cachedProcessIdsAtUtc).TotalMilliseconds < 1200;
+            (_utcNow() - _cachedProcessIdsAtUtc).TotalMilliseconds < 1200;
 
         if (canUseCache)
             return _cachedProcessIds;
 
         _cachedProcessSourceAppId = sourceAppId;
-        _cachedProcessIds = GetProcessIds(processNames);
-        _cachedProcessIdsAtUtc = DateTime.UtcNow;
+        _cachedProcessIds = _getProcessIds(processNames);
+        _cachedProcessIdsAtUtc = _utcNow();
         return _cachedProcessIds;
     }
 
@@ -297,7 +310,7 @@ public sealed class MediaSessionVolumeService
         return processIds;
     }
 
-    private static bool SessionMatchesSourceAppId(AudioSessionControl session, string sourceAppId)
+    private static bool SessionMatchesSourceAppId(MediaAudioSessionSnapshot session, string sourceAppId)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return false;

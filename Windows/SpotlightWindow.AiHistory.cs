@@ -9,7 +9,7 @@ namespace VNotch;
 
 public partial class SpotlightWindow
 {
-    private readonly SpotlightChatStore _chatStore = new();
+    private readonly SpotlightChatStore _chatStore;
     private List<SpotlightSavedChat> _savedChats = new();
     private string _chatId = Guid.NewGuid().ToString("N");
 

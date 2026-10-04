@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 using VNotch.Models;
 using VNotch.Services;
-using System.Windows.Media.Imaging;
 using Windows.Storage.Streams;
 
 namespace VNotch.Tests.Fakes;
@@ -34,15 +34,22 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
     public int DisposeCount { get; private set; }
     public TimeSpan? LastSeekAbsolute { get; private set; }
     public TimeSpan? LastSeek { get; private set; }
+    public int PlayPauseCount { get; private set; }
+    public int NextTrackCount { get; private set; }
+    public int PreviousTrackCount { get; private set; }
+    public Func<(bool Success, float Volume, bool Muted)>? ReadSessionVolume { get; set; }
+    public float? LastSessionVolume { get; private set; }
+    public bool SessionMuteToggleSucceeded { get; set; }
+    public int SessionMuteToggleCount { get; private set; }
 
     public void RaiseMediaChanged(MediaInfo info) => MediaChanged?.Invoke(this, info);
 
     public void Start() => StartCount++;
     public void Stop() { }
 
-    public Task PlayPauseAsync() => Task.CompletedTask;
-    public Task NextTrackAsync() => Task.CompletedTask;
-    public Task PreviousTrackAsync() => Task.CompletedTask;
+    public Task PlayPauseAsync() { PlayPauseCount++; return Task.CompletedTask; }
+    public Task NextTrackAsync() { NextTrackCount++; return Task.CompletedTask; }
+    public Task PreviousTrackAsync() { PreviousTrackCount++; return Task.CompletedTask; }
 
     public Task SeekAsync(TimeSpan position)
     {
@@ -60,13 +67,20 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
 
     public bool TryGetCurrentSessionVolume(out float volume, out bool isMuted)
     {
+        if (ReadSessionVolume != null)
+        {
+            var result = ReadSessionVolume();
+            volume = result.Volume;
+            isMuted = result.Muted;
+            return result.Success;
+        }
         volume = 0f;
         isMuted = false;
         return false;
     }
 
-    public bool TrySetCurrentSessionVolume(float volume) => false;
-    public bool TryToggleCurrentSessionMute() => false;
+    public bool TrySetCurrentSessionVolume(float volume) { LastSessionVolume = volume; return ReadSessionVolume != null; }
+    public bool TryToggleCurrentSessionMute() { SessionMuteToggleCount++; return SessionMuteToggleSucceeded; }
     public void InvalidateVolumeSessionCache() { }
 
     public void Dispose() => DisposeCount++;

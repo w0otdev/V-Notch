@@ -22,6 +22,13 @@ internal sealed record SetupProgressInfo(
     int TotalSteps = 0,
     bool IsIndeterminate = false);
 
+internal sealed record SetupInstallCallbacks(
+    Action StopRunningInstances,
+    Action<string, string> CreateShortcuts,
+    Action<string, bool> ConfigureStartup,
+    Action<string, string> RegisterUninstall,
+    Action<string> SaveSettings);
+
 internal static class SetupOperations
 {
     private const string AppName = "V-Notch";
@@ -118,6 +125,11 @@ internal static class SetupOperations
     }
 
     public static async Task InstallAsync(SetupInstallOptions options, Action<SetupProgressInfo> reportProgress)
+        => await InstallAsync(options, reportProgress, new SetupInstallCallbacks(
+            StopOtherRunningInstances, CreateShortcuts, ConfigureStartup, RegisterUninstall, SaveInitialSettings));
+
+    internal static async Task InstallAsync(SetupInstallOptions options, Action<SetupProgressInfo> reportProgress,
+        SetupInstallCallbacks callbacks)
     {
         await Task.Run(() =>
         {
@@ -135,7 +147,7 @@ internal static class SetupOperations
             }
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.closingRunning"), IsIndeterminate: true));
-            StopOtherRunningInstances();
+            callbacks.StopRunningInstances();
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.preparingFolder"), IsIndeterminate: true));
             Directory.CreateDirectory(installDirectory);
@@ -167,16 +179,16 @@ internal static class SetupOperations
 
             var installedExePath = Path.Combine(installDirectory, AppExeName);
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.creatingShortcuts"), files.Length, files.Length));
-            CreateShortcuts(installedExePath, installDirectory);
+            callbacks.CreateShortcuts(installedExePath, installDirectory);
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingStartup"), files.Length, files.Length));
-            ConfigureStartup(installedExePath, options.StartWithWindows);
+            callbacks.ConfigureStartup(installedExePath, options.StartWithWindows);
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.registeringUninstall"), files.Length, files.Length));
-            RegisterUninstall(installedExePath, installDirectory);
+            callbacks.RegisterUninstall(installedExePath, installDirectory);
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingPreferences"), files.Length, files.Length));
-            SaveInitialSettings(options.Language);
+            callbacks.SaveSettings(options.Language);
         });
     }
 
@@ -276,7 +288,8 @@ internal static class SetupOperations
         }
     }
 
-    private static void CopyFileWithRetry(string sourceFile, string destinationFile, int maxRetries = 5)
+    internal static void CopyFileWithRetry(string sourceFile, string destinationFile, int maxRetries = 5,
+        Action<int>? delay = null)
     {
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
@@ -287,18 +300,22 @@ internal static class SetupOperations
             }
             catch (IOException) when (attempt < maxRetries)
             {
-                System.Threading.Thread.Sleep(800 * (attempt + 1));
+                (delay ?? System.Threading.Thread.Sleep)(800 * (attempt + 1));
             }
             catch (UnauthorizedAccessException) when (attempt < maxRetries)
             {
-                System.Threading.Thread.Sleep(800 * (attempt + 1));
+                (delay ?? System.Threading.Thread.Sleep)(800 * (attempt + 1));
             }
         }
     }
 
     private static void ConfigureStartup(string installedExePath, bool startWithWindows)
+        => ConfigureStartup(installedExePath, startWithWindows,
+            () => Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"));
+
+    internal static void ConfigureStartup(string installedExePath, bool startWithWindows, Func<RegistryKey?> openKey)
     {
-        using var runKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+        using var runKey = openKey();
         if (runKey == null)
         {
             throw new InvalidOperationException(Loc.Get("setup.install.startupRegistryUnavailable"));
@@ -346,8 +363,11 @@ internal static class SetupOperations
     }
 
     private static void RegisterUninstall(string installedExePath, string installDirectory)
+        => RegisterUninstall(installedExePath, installDirectory, path => Registry.CurrentUser.CreateSubKey(path));
+
+    internal static void RegisterUninstall(string installedExePath, string installDirectory, Func<string, RegistryKey?> openKey)
     {
-        using var uninstallKey = Registry.CurrentUser.CreateSubKey(UninstallRegistryPath);
+        using var uninstallKey = openKey(UninstallRegistryPath);
 
         if (uninstallKey == null)
         {
@@ -375,7 +395,7 @@ internal static class SetupOperations
             uninstallKey.SetValue("QuietUninstallString", $"\"{installedExePath}\" --uninstall");
         }
 
-        using var appKey = Registry.CurrentUser.CreateSubKey($@"Software\{AppName}");
+        using var appKey = openKey($@"Software\{AppName}");
         appKey?.SetValue("InstallDir", installDirectory);
     }
 
@@ -460,7 +480,7 @@ internal static class SetupOperations
         }
     }
 
-    private static void CreateShortcut(string shortcutPath, string targetPath, string workingDirectory)
+    internal static void CreateShortcut(string shortcutPath, string targetPath, string workingDirectory)
     {
         var shellType = Type.GetTypeFromProgID("WScript.Shell");
         if (shellType == null)

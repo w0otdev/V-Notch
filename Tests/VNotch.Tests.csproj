@@ -32,6 +32,7 @@
     <Compile Include="../Tools/VNotch.Benchmarks/Baselines/BaselineColorExtractionService.cs" Link="Baselines/BaselineColorExtractionService.cs" />
     <None Update="Fixtures\white-mat-artwork.png" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Fixtures\dark-textured-artwork.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures\canvas-test.mp4" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

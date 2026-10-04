@@ -39,47 +39,27 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Build succeeded with 0 warnings and 0 errors." -ForegroundColor Green
 
 Write-Host "`n=== [4/5] Running Tests & Collecting Coverage ===" -ForegroundColor Cyan
+$coverageResults = Join-Path $PSScriptRoot ('artifacts/prepush-coverage-' + [guid]::NewGuid().ToString('N'))
 if (-not $IncludeDesktopIntegration) {
     Write-Host ">>> Running tests in headless mode (skipping DesktopIntegration window popups)..." -ForegroundColor Yellow
-    dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --collect:"Code Coverage;Format=Cobertura" --results-directory Tests/artifacts/coverage/ --verbosity normal
+    dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --settings Tests/CI.runsettings --collect "Code Coverage" --results-directory $coverageResults --verbosity normal
 } else {
     Write-Host ">>> Running all tests including DesktopIntegration..." -ForegroundColor Yellow
-    dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --collect:"Code Coverage;Format=Cobertura" --results-directory Tests/artifacts/coverage/ --verbosity normal
+    $previousDesktopTestMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
+    try {
+        $env:VNOTCH_RUN_DESKTOP_TESTS = '1'
+        dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --settings Tests/CI.runsettings --collect "Code Coverage" --results-directory $coverageResults --verbosity normal
+    } finally {
+        [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopTestMode, 'Process')
+    }
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n[!] Test run failed." -ForegroundColor Red
     exit 1
 }
 
-# Coverage validation matching GitHub Actions CI
-$coverageFile = Get-ChildItem -Path Tests/artifacts/coverage -Filter *.cobertura.xml -Recurse | Where-Object { $_.Name -ne 'coverage.cobertura.xml' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if ($coverageFile) {
-    Copy-Item $coverageFile.FullName -Destination Tests/artifacts/coverage/coverage.cobertura.xml -Force
-}
-
-if (-not (Test-Path Tests/artifacts/coverage/coverage.cobertura.xml)) {
-    Write-Host "`n[!] Coverage report file not found." -ForegroundColor Red
-    exit 1
-}
-
-[xml]$coverage = Get-Content Tests/artifacts/coverage/coverage.cobertura.xml
-$lineRate = [double]$coverage.coverage.'line-rate'
-Write-Host ("Coverage line-rate: {0:P2}" -f $lineRate) -ForegroundColor Cyan
-
-if ($lineRate -le 0) {
-    Write-Host "`n[!] Coverage report is empty." -ForegroundColor Red
-    exit 1
-}
-
-$baseline = 'Tests/coverage-baseline.txt'
-if (Test-Path $baseline) {
-    $minimum = [double](Get-Content $baseline -Raw)
-    Write-Host ("Baseline minimum: {0:P2}" -f $minimum) -ForegroundColor Gray
-    if ($lineRate -lt $minimum) {
-        Write-Host "`n[!] Coverage dropped below baseline $minimum." -ForegroundColor Red
-        exit 1
-    }
-}
+# Use the same assembly scope and threshold as c.ps1 and GitHub Actions.
+& "$PSScriptRoot/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResults
 Write-Host "Test & coverage check passed." -ForegroundColor Green
 
 Write-Host "`n=== [5/5] Auditing NuGet Packages for Vulnerabilities ===" -ForegroundColor Cyan

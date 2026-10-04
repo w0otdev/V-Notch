@@ -1,8 +1,8 @@
 using System.Windows;
 using System.Windows.Forms;
 using VNotch.Contracts;
-using VNotch.Models;
 using VNotch.Controllers;
+using VNotch.Models;
 
 namespace VNotch.Services;
 

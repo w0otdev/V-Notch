@@ -547,13 +547,12 @@ public class ElasticSlider : Slider
         var ay = new DoubleAnimation(1.0, dur) { EasingFunction = ease };
         Timeline.SetDesiredFrameRate(ax, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(ay, VNotch.Services.AnimationConfig.TargetFps);
-        _rootScale.BeginAnimation(ScaleTransform.ScaleXProperty, ax);
-        _rootScale.BeginAnimation(ScaleTransform.ScaleYProperty, ay);
-
         ax.Completed += (_, _) =>
         {
             _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
         };
+        _rootScale.BeginAnimation(ScaleTransform.ScaleXProperty, ax);
+        _rootScale.BeginAnimation(ScaleTransform.ScaleYProperty, ay);
     }
 
     #endregion

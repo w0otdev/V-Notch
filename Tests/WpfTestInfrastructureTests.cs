@@ -59,7 +59,9 @@ public sealed class WpfTestInfrastructureTests
     {
         using var source = new HwndSource(new HwndSourceParameters("VNotchSnapshotTest")
         {
-            Width = 1, Height = 1, WindowStyle = 0
+            Width = 1,
+            Height = 1,
+            WindowStyle = 0
         });
         using var presenter = new D3DImageFramePresenter(Dispatcher.CurrentDispatcher, source.Handle, 1, 1);
         presenter.BeginSession(1);

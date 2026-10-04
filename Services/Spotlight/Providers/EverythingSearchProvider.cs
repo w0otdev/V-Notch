@@ -32,6 +32,11 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private TaskCompletionSource<IReadOnlyList<(string Name, string Parent, bool IsFolder)>>? _pendingReply;
     private uint _pendingReplyId;
     private volatile bool _disposed;
+    private readonly Func<IntPtr> _findWindow;
+
+    public EverythingSearchProvider() : this(() => FindWindowW(EverythingIpcWindowClass, null)) { }
+
+    internal EverythingSearchProvider(Func<IntPtr> findWindow) => _findWindow = findWindow;
 
     public bool IsAvailable { get; private set; }
 
@@ -46,7 +51,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         if (_disposed) return Array.Empty<SpotlightSearchItem>();
         if (!SpotlightFileVisibility.ShouldSearch(query) || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
-        IntPtr everythingWindow = FindWindowW(EverythingIpcWindowClass, null);
+        IntPtr everythingWindow = _findWindow();
         if (everythingWindow == IntPtr.Zero)
         {
             IsAvailable = false;
@@ -404,7 +409,6 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
                 // the message-only window either way.
             }
         }
-        _queryLock.Dispose();
     }
 
     [StructLayout(LayoutKind.Sequential)]

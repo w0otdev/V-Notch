@@ -101,8 +101,11 @@ public partial class SpotlightWindow : Window
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
 
-    internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null)
+    internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null,
+        SpotlightAiService? aiService = null, SpotlightChatStore? chatStore = null)
     {
+        _aiService = aiService ?? new SpotlightAiService();
+        _chatStore = chatStore ?? new SpotlightChatStore();
         InitializeComponent();
         LocalizedPresentation.Apply(this);
         if (settings != null) _settings = settings.Clone();

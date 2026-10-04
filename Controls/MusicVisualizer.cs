@@ -1172,7 +1172,14 @@ namespace VNotch.Controls
                 var capture = _capture;
                 if (capture == null || !ReferenceEquals(sender, capture)) return;
 
-                var waveFormat = capture.WaveFormat;
+                ProcessAudioBuffer(e.Buffer, e.BytesRecorded, capture.WaveFormat);
+            }
+        }
+
+        internal static void ProcessAudioBuffer(byte[] buffer, int bytesRecorded, WaveFormat waveFormat)
+        {
+            lock (_lockObj)
+            {
                 int bytesPerSample = waveFormat.BitsPerSample / 8;
                 if (bytesPerSample <= 0)
                 {
@@ -1184,7 +1191,7 @@ namespace VNotch.Controls
                 int bytesPerFrame = bytesPerSample * channels;
                 if (bytesPerFrame <= 0) return;
 
-                int framesRecorded = e.BytesRecorded / bytesPerFrame;
+                int framesRecorded = Math.Clamp(bytesRecorded, 0, buffer.Length) / bytesPerFrame;
                 if (framesRecorded <= 0) return;
 
                 for (int frame = 0; frame < framesRecorded; frame++)
@@ -1195,7 +1202,7 @@ namespace VNotch.Controls
                     for (int ch = 0; ch < channels; ch++)
                     {
                         int sampleOffset = frameOffset + (ch * bytesPerSample);
-                        mixed += ReadSampleAsFloat(e.Buffer, sampleOffset, waveFormat);
+                        mixed += ReadSampleAsFloat(buffer, sampleOffset, waveFormat);
                     }
 
                     PushSample((float)(mixed / channels));

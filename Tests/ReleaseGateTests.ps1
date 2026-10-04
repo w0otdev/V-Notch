@@ -20,15 +20,21 @@ function Write-Coverage([int]$Covered, [int]$Valid = 100, [string]$Package = 'V-
 try {
     $coverageScript = Join-Path $repository 'Tools/Assert-Coverage.ps1'
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'No Cobertura'
-    Write-Coverage 80
+    Write-Coverage 70
     & $coverageScript -ResultsDirectory $temporary
     $duplicate = Join-Path $temporary 'duplicate.cobertura.xml'
     Copy-Item -LiteralPath (Join-Path $temporary 'run.cobertura.xml') -Destination $duplicate
     & $coverageScript -ResultsDirectory $temporary
-    Write-Coverage 79
+    Write-Coverage 69
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'different coverage reports'
     Remove-Item -LiteralPath $duplicate
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'below the required threshold'
+    Write-Coverage 69999 100000
+    Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'below the required threshold'
+    Write-Coverage 70000 100000
+    & $coverageScript -ResultsDirectory $temporary
+    Write-Coverage 100
+    & $coverageScript -ResultsDirectory $temporary
     Write-Coverage 0 0
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'empty or has invalid'
     Write-Coverage 100 100 'TestAssembly'

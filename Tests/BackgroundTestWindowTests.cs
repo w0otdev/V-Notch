@@ -15,8 +15,15 @@ public sealed class BackgroundTestWindowTests
     {
         var window = new BackgroundWindow
         {
-            Width = 100, Height = 100, Left = -10000, Top = -10000, Content = new Border(),
-            Opacity = 1, ShowActivated = true, ShowInTaskbar = true, Topmost = true
+            Width = 100,
+            Height = 100,
+            Left = -10000,
+            Top = -10000,
+            Content = new Border(),
+            Opacity = 1,
+            ShowActivated = true,
+            ShowInTaskbar = true,
+            Topmost = true
         };
         try
         {

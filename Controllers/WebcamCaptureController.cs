@@ -457,6 +457,21 @@ public sealed class WebcamCaptureController : IDisposable
         long now = Stopwatch.GetTimestamp();
         if (now - _lastFrameTimestamp < FrameIntervalTicks)
             return;
+
+        if (Volatile.Read(ref _frameBufferInUse) != 0) return;
+        using var frame = sender.TryAcquireLatestFrame();
+        if (frame?.VideoMediaFrame?.SoftwareBitmap == null) return;
+        ProcessFrame(frame.VideoMediaFrame.SoftwareBitmap, frameToken);
+    }
+
+    internal void ProcessFrame(SoftwareBitmap softwareBitmap, int frameToken)
+    {
+        lock (_lifecycleLock)
+        {
+            if (!_isActive || frameToken != _fadeToken) return;
+        }
+        long now = Stopwatch.GetTimestamp();
+        if (now - _lastFrameTimestamp < FrameIntervalTicks) return;
         _lastFrameTimestamp = now;
 
         // Keep at most one copied frame in flight. The UI consumes this buffer
@@ -470,10 +485,6 @@ public sealed class WebcamCaptureController : IDisposable
         SoftwareBitmap? convertedBitmap = null;
         try
         {
-            using var frame = sender.TryAcquireLatestFrame();
-            if (frame?.VideoMediaFrame?.SoftwareBitmap == null) return;
-
-            var softwareBitmap = frame.VideoMediaFrame.SoftwareBitmap;
             if (softwareBitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8 ||
                 softwareBitmap.BitmapAlphaMode != BitmapAlphaMode.Premultiplied)
             {
@@ -505,8 +516,7 @@ public sealed class WebcamCaptureController : IDisposable
             lock (_lifecycleLock)
             {
                 if (!_isActive ||
-                    frameToken != _fadeToken ||
-                    !ReferenceEquals(sender, _frameReader))
+                    frameToken != _fadeToken)
                 {
                     return;
                 }

@@ -17,9 +17,12 @@ internal sealed class SpotlightSavedChat
 
 internal sealed class SpotlightChatStore
 {
-    private readonly string _path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "spotlight-chats.enc");
+    private readonly string _path;
     private readonly object _gate = new();
     private bool _canSave = true;
+    internal SpotlightChatStore(string? path = null) => _path = path ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "spotlight-chats.enc");
+
     internal List<SpotlightSavedChat> Load()
     {
         lock (_gate)

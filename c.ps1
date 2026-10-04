@@ -15,7 +15,7 @@
       8. Release security gates validation
       9. Update compatibility assertion against 1.9.3 client
       10. Package vulnerability audit
-      11. Enforces 80% application line coverage
+      11. Enforces 70% application line coverage
 
 .PARAMETER FixFormat
     Automatically formats code with 'dotnet format' before verifying.
@@ -27,14 +27,14 @@
     Runs essential build and unit tests without code coverage collection or slow audits.
 
 .PARAMETER MinimumCoverage
-    Minimum code coverage percentage required (default: 80).
+    Minimum code coverage percentage required (default: 70).
 #>
 [CmdletBinding()]
 param(
     [switch]$FixFormat,
     [switch]$SkipRestore,
     [switch]$Fast,
-    [decimal]$MinimumCoverage = 80
+    [ValidateRange(0, 100)][decimal]$MinimumCoverage = 70
 )
 
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force

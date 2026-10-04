@@ -1,7 +1,7 @@
 using System.Windows;
+using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services;
-using VNotch.Controllers;
 
 namespace VNotch.Contracts;
 

@@ -18,8 +18,13 @@ public sealed class WindowTitleScannerAutomationCacheTests
         var control = new TabControl { Items = { new TabItem { Header = "Player", Content = editor } } };
         var window = new BackgroundWindow
         {
-            Width = 400, Height = 200, Left = -10000, Top = -10000,
-            ShowActivated = false, ShowInTaskbar = false, Content = control
+            Width = 400,
+            Height = 200,
+            Left = -10000,
+            Top = -10000,
+            ShowActivated = false,
+            ShowInTaskbar = false,
+            Content = control
         };
         AutomationElement tab;
         try
@@ -50,8 +55,13 @@ public sealed class WindowTitleScannerAutomationCacheTests
         }
         var window = new BackgroundWindow
         {
-            Width = 400, Height = 200, Left = -10000, Top = -10000,
-            ShowActivated = false, ShowInTaskbar = false, Content = control
+            Width = 400,
+            Height = 200,
+            Left = -10000,
+            Top = -10000,
+            ShowActivated = false,
+            ShowInTaskbar = false,
+            Content = control
         };
         AutomationElementCollection tabs;
         try

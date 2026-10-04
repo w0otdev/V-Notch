@@ -75,59 +75,7 @@ public partial class ConfirmationDialog : Window
     {
         try
         {
-            var dialog = new ConfirmationDialog();
-
-            if (owner != null && owner.IsVisible)
-            {
-                dialog.Owner = owner;
-            }
-            else
-            {
-                dialog.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-                dialog.ShowInTaskbar = true;
-            }
-
-            // Set title
-            dialog.TitleText.Text = string.IsNullOrEmpty(options.Title) ? Loc.Get(DefaultTitleKey) : options.Title;
-            dialog.Title = dialog.TitleText.Text;
-
-            // Set message
-            dialog.MessageText.Text = message;
-
-            // Set badge if provided
-            if (!string.IsNullOrEmpty(options.BadgeText))
-            {
-                dialog.BadgeText.Text = options.BadgeText;
-                dialog.BadgeBorder.Visibility = Visibility.Visible;
-            }
-
-            // Set detail text in card if provided
-            if (!string.IsNullOrEmpty(options.DetailText))
-            {
-                dialog.DetailText.Text = options.DetailText;
-                dialog.DetailCard.Visibility = Visibility.Visible;
-
-                if (Uri.TryCreate(options.DetailText, UriKind.Absolute, out var uri) &&
-                    (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-                {
-                    dialog.DetailCard.Cursor = Cursors.Hand;
-                    dialog.DetailCard.MouseLeftButtonUp += (_, _) => SafeLauncher.TryOpenUrl(options.DetailText);
-                }
-            }
-
-            // Set button text
-            dialog.ConfirmButton.Content = string.IsNullOrEmpty(options.ConfirmText) ? Loc.Get(ConfirmKey) : options.ConfirmText;
-            dialog.CancelButton.Content = string.IsNullOrEmpty(options.CancelText) ? Loc.Get(CancelKey) : options.CancelText;
-
-            // Set button style
-            if (options.Style == DialogStyle.Danger)
-            {
-                dialog.ConfirmButton.Style = (Style)dialog.FindResource("DangerButton");
-            }
-
-            // Set icon
-            dialog.SetIcon(options.Icon);
-
+            var dialog = Create(owner, message, options);
             dialog.ShowDialog();
             return dialog.Confirmed;
         }
@@ -147,6 +95,65 @@ public partial class ConfirmationDialog : Window
             var result = MessageBox.Show(combinedMessage, dlgTitle, MessageBoxButton.OKCancel, msgBoxIcon);
             return result == MessageBoxResult.OK;
         }
+    }
+
+    internal static ConfirmationDialog Create(Window? owner, string message, DialogOptions options,
+        Func<ConfirmationDialog>? factory = null)
+    {
+        var dialog = factory?.Invoke() ?? new ConfirmationDialog();
+
+        if (owner != null && owner.IsVisible)
+        {
+            dialog.Owner = owner;
+        }
+        else
+        {
+            dialog.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            dialog.ShowInTaskbar = true;
+        }
+
+        // Set title
+        dialog.TitleText.Text = string.IsNullOrEmpty(options.Title) ? Loc.Get(DefaultTitleKey) : options.Title;
+        dialog.Title = dialog.TitleText.Text;
+
+        // Set message
+        dialog.MessageText.Text = message;
+
+        // Set badge if provided
+        if (!string.IsNullOrEmpty(options.BadgeText))
+        {
+            dialog.BadgeText.Text = options.BadgeText;
+            dialog.BadgeBorder.Visibility = Visibility.Visible;
+        }
+
+        // Set detail text in card if provided
+        if (!string.IsNullOrEmpty(options.DetailText))
+        {
+            dialog.DetailText.Text = options.DetailText;
+            dialog.DetailCard.Visibility = Visibility.Visible;
+
+            if (Uri.TryCreate(options.DetailText, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                dialog.DetailCard.Cursor = Cursors.Hand;
+                dialog.DetailCard.MouseLeftButtonUp += (_, _) => SafeLauncher.TryOpenUrl(options.DetailText);
+            }
+        }
+
+        // Set button text
+        dialog.ConfirmButton.Content = string.IsNullOrEmpty(options.ConfirmText) ? Loc.Get(ConfirmKey) : options.ConfirmText;
+        dialog.CancelButton.Content = string.IsNullOrEmpty(options.CancelText) ? Loc.Get(CancelKey) : options.CancelText;
+
+        // Set button style
+        if (options.Style == DialogStyle.Danger)
+        {
+            dialog.ConfirmButton.Style = (Style)dialog.FindResource("DangerButton");
+        }
+
+        // Set icon
+        dialog.SetIcon(options.Icon);
+
+        return dialog;
     }
 
     private void SetIcon(DialogIcon icon)

@@ -79,7 +79,8 @@ internal static class SharedStaTestRunner
             _dispatcher = Dispatcher.CurrentDispatcher;
             ready.Set();
             Dispatcher.Run();
-        }) { IsBackground = true, Name = "VNotchSharedStaRunner" };
+        })
+        { IsBackground = true, Name = "VNotchSharedStaRunner" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
         ready.Wait();

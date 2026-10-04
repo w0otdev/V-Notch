@@ -405,6 +405,7 @@ public partial class MainWindow
             TimerContent.BeginAnimation(OpacityProperty, null);
             TimerContent.RenderTransform = null;
             RestoreTimerContentOpacity();
+            _transitionCoordinator.CompleteTransition(generation);
         };
 
         AnimateClockViewNotchResize(

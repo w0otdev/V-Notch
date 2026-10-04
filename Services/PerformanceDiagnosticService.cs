@@ -23,6 +23,9 @@ public sealed class PerformanceDiagnosticService
     private readonly Queue<DiagnosticLogEntry> _diagnosticLogs = new(200);
     private readonly Queue<DiagnosticLogEntry> _serviceLogs = new(500);
     private readonly object _lock = new();
+    private readonly object _serviceLogLock = new();
+    private readonly DiagnosticLogCapturePolicy _serviceLogCapturePolicy = new();
+    private int _verboseServiceLogReaders;
 
     // CPU Tracking
     private ulong _lastProcTime;
@@ -65,6 +68,11 @@ public sealed class PerformanceDiagnosticService
     private readonly long _serviceStartTicks = Stopwatch.GetTimestamp();
 
     private PerformanceDiagnosticService()
+        : this(subscribeToRuntimeLog: true)
+    {
+    }
+
+    internal PerformanceDiagnosticService(bool subscribeToRuntimeLog)
     {
         _processorCount = Math.Max(1, Environment.ProcessorCount);
         _lastAllocatedBytes = GC.GetTotalAllocatedBytes();
@@ -74,17 +82,39 @@ public sealed class PerformanceDiagnosticService
         AddLog(PerformanceHealthLevel.Nominal, "INIT", "Diagnostic engine active. Performance baseline established.");
         AddServiceLog(PerformanceHealthLevel.Nominal, "INIT", "Service logging engine active.");
 
-        // Subscribe to RuntimeLog to receive real-time operational logs from all background services
-        RuntimeLog.EntryWritten += (level, category, message) =>
+        if (subscribeToRuntimeLog) RuntimeLog.EntryWritten += CaptureRuntimeLogEntry;
+    }
+
+    internal void CaptureRuntimeLogEntry(LogLevel level, string category, string message)
+    {
+        if (level < LogLevel.Warn && Volatile.Read(ref _verboseServiceLogReaders) == 0)
+            return;
+        if (!_serviceLogCapturePolicy.TryCapture(Environment.TickCount64))
+            return;
+
+        var severity = level switch
         {
-            var severity = level switch
-            {
-                LogLevel.Error => PerformanceHealthLevel.Critical,
-                LogLevel.Warn => PerformanceHealthLevel.Warning,
-                _ => PerformanceHealthLevel.Nominal
-            };
-            AddServiceLog(severity, category, message);
+            LogLevel.Error => PerformanceHealthLevel.Critical,
+            LogLevel.Warn => PerformanceHealthLevel.Warning,
+            _ => PerformanceHealthLevel.Nominal
         };
+        AddServiceLog(severity, category, message);
+    }
+
+    public IDisposable BeginVerboseServiceLogCapture()
+    {
+        Interlocked.Increment(ref _verboseServiceLogReaders);
+        return new VerboseServiceLogCapture(this);
+    }
+
+    private sealed class VerboseServiceLogCapture(PerformanceDiagnosticService owner) : IDisposable
+    {
+        private PerformanceDiagnosticService? _owner = owner;
+        public void Dispose()
+        {
+            var service = Interlocked.Exchange(ref _owner, null);
+            if (service != null) Interlocked.Decrement(ref service._verboseServiceLogReaders);
+        }
     }
 
     public void PingDispatcher(Dispatcher dispatcher)
@@ -518,7 +548,7 @@ public sealed class PerformanceDiagnosticService
 
     public void AddServiceLog(PerformanceHealthLevel severity, string category, string message)
     {
-        lock (_lock)
+        lock (_serviceLogLock)
         {
             if (_serviceLogs.Count >= 500)
             {
@@ -538,7 +568,7 @@ public sealed class PerformanceDiagnosticService
 
     public IReadOnlyList<DiagnosticLogEntry> GetRecentServiceLogs()
     {
-        lock (_lock)
+        lock (_serviceLogLock)
         {
             return _serviceLogs.ToArray();
         }
@@ -555,7 +585,7 @@ public sealed class PerformanceDiagnosticService
 
     public void ClearServiceLogs()
     {
-        lock (_lock)
+        lock (_serviceLogLock)
         {
             _serviceLogs.Clear();
             AddServiceLog(PerformanceHealthLevel.Nominal, "INFO", "Service logs cleared.");

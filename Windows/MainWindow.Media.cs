@@ -438,27 +438,9 @@ public partial class MainWindow
         Timeline.SetDesiredFrameRate(inFade, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(inScale, VNotch.Services.AnimationConfig.TargetFps);
 
-        ThumbnailImage.BeginAnimation(OpacityProperty, outFade);
-        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
-        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
-        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurExpanded);
-        ThumbnailImageNext.BeginAnimation(OpacityProperty, inFade);
-        ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
-        ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
-        ThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurExpanded);
-
-        CompactThumbnail.BeginAnimation(OpacityProperty, outFade);
-        CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
-        CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
-        CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurCompact);
-        CompactThumbnailNext.BeginAnimation(OpacityProperty, inFade);
-        CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
-        CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
-        CompactThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurCompact);
-
         inScale.Completed += (s, e) =>
         {
-            if (_thumbnailSwitchGeneration != generation) return;
+            if (_thumbnailSwitchGeneration != generation || !_isThumbnailSwitchActive) return;
             _isThumbnailSwitchActive = false;
 
             ThumbnailImage.BeginAnimation(OpacityProperty, null);
@@ -515,6 +497,24 @@ public partial class MainWindow
                 ShowMusicVisualizer(animate: false);
             }
         };
+
+        ThumbnailImage.BeginAnimation(OpacityProperty, outFade);
+        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
+        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
+        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurExpanded);
+        ThumbnailImageNext.BeginAnimation(OpacityProperty, inFade);
+        ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
+        ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
+        ThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurExpanded);
+
+        CompactThumbnail.BeginAnimation(OpacityProperty, outFade);
+        CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
+        CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
+        CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurCompact);
+        CompactThumbnailNext.BeginAnimation(OpacityProperty, inFade);
+        CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
+        CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
+        CompactThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurCompact);
     }
 #pragma warning restore S3776
 
@@ -890,10 +890,6 @@ public partial class MainWindow
         var opacityAnim = MakeAnim(0.0, 1.0, new Duration(TimeSpan.FromMilliseconds(250)), _easeQuadOut);
         Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
 
-        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimX);
-        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimY);
-        CompactThumbnailBorder.BeginAnimation(OpacityProperty, opacityAnim);
-
         scaleAnimX.Completed += (s, e) =>
         {
             if (generation != _compactThumbnailAnimationGeneration) return;
@@ -911,6 +907,10 @@ public partial class MainWindow
             CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
             CompactThumbnailBorder.Opacity = 1.0;
         };
+
+        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimX);
+        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimY);
+        CompactThumbnailBorder.BeginAnimation(OpacityProperty, opacityAnim);
     }
 
     private void PlayCompactThumbnailExitAnimation(Action? onCompleted = null)

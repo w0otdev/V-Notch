@@ -17,6 +17,11 @@ public class MediaDetectionServiceLifecycleTests
     {
         using var cts = new CancellationTokenSource();
         using var service = CreateTestService(null, new DummyWindowTitleScanner(() => cts.Cancel()));
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        // An empty session list only falls back to captions after recent browser
+        // media. Model that state so the cancellation occurs inside the scan.
+        typeof(MediaDetectionService).GetField("_lastSource", flags)!.SetValue(service, "Browser");
+        typeof(MediaDetectionService).GetField("_emptyMetadataStartTime", flags)!.SetValue(service, DateTime.UtcNow);
         bool published = false;
         service.MediaChanged += (_, _) => published = true;
         var update = typeof(MediaDetectionService).GetMethod("UpdateMediaInfoAsync",

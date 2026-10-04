@@ -17,6 +17,62 @@ public sealed class NotchNavigationIntegrationTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EveryExpandedViewCanNavigateToEveryOtherViewAndCollapse(bool blurEnabled) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            settings =>
+            {
+                settings.EnableLocalOnlyMode = true;
+                settings.DisableMouseLeaveAutoClose = true;
+                settings.EnableBlurEffects = blurEnabled;
+                settings.ShelfWidget = "none";
+            },
+            services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
+        var window = fixture.Window;
+        using var mixer = new AudioMixerService();
+        typeof(MainWindow).GetField("_audioMixerServiceCached", Private)!.SetValue(window, mixer);
+        typeof(MainWindow).GetField("_masterVolumeCached", Private)!.SetValue(window, new Fakes.FakeVolumeService());
+        await StartAsync(window, ct);
+        var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+        var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer };
+        async Task Navigate(NotchView view)
+        {
+            if (coordinator.CurrentView != view)
+            {
+                if (view == NotchView.Compact) window.SetDebugViewLock(false);
+                Assert.True(coordinator.RequestView(view, "NavigationMatrix"), $"Navigation from {coordinator.CurrentView} to {view} was rejected.");
+                window.SetDebugViewLock(true);
+                await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window),
+                    $"navigation to {view}", ct);
+            }
+            Assert.Equal(view, coordinator.CurrentView);
+            Assert.Equal(view, ((ShellViewModel)window.DataContext).CurrentView);
+            Assert.Equal(view != NotchView.Compact, Property<bool>(window, "_isExpanded"));
+            Assert.True(window.NotchBorder.IsHitTestVisible);
+        }
+        foreach (var from in views)
+        {
+            foreach (var to in views.Where(view => view != from))
+            {
+                await Navigate(from);
+                await Navigate(to);
+                var content = to switch
+                {
+                    NotchView.Media => window.ExpandedContent,
+                    NotchView.Secondary => window.SecondaryContent,
+                    NotchView.Timer => window.TimerContent,
+                    _ => window.AudioContent
+                };
+                Assert.Equal(Visibility.Visible, content.Visibility);
+            }
+            await Navigate(NotchView.Compact);
+        }
+        Assert.Equal(NotchShapeState.Collapsed, coordinator.ShapeState);
+    }, timeoutSeconds: 90);
+
     [Fact]
     public void InterruptedAnimationsSettleInTheLatestViewAcrossAllConsumers() => SharedStaTestRunner.RunAsync(async ct =>
     {

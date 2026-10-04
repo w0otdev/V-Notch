@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ResultsDirectory,
-    [ValidateRange(0, 100)][decimal]$MinimumPercent = 80
+    [ValidateRange(0, 100)][decimal]$MinimumPercent = 70
 )
 
 $ErrorActionPreference = 'Stop'

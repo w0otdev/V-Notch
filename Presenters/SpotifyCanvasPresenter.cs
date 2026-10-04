@@ -223,9 +223,13 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         {
             HideBlurFallback();
         }
-        else if (options.IsLyricsActive && options.BlurFallbackEnabled)
+        else if (options.IsLyricsActive)
         {
             RestoreBlurFallback();
+        }
+        else
+        {
+            HideBlurFallback();
         }
     }
 

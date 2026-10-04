@@ -96,6 +96,7 @@ public partial class DebugWindow : Window
     private string _prevNetDown = "";
     private string _prevNetUp = "";
     private string _prevHealthSummary = "";
+    private IDisposable? _serviceLogCapture;
     private PerformanceHealthLevel _prevHealthLevel = PerformanceHealthLevel.Nominal;
 
     public DebugWindow(DebugWindowOptions? options = null)
@@ -113,6 +114,11 @@ public partial class DebugWindow : Window
         InitializeComponent();
         Loaded += DebugWindow_Loaded;
         IsVisibleChanged += DebugWindow_IsVisibleChanged;
+        Closed += (_, _) =>
+        {
+            _serviceLogCapture?.Dispose();
+            _serviceLogCapture = null;
+        };
 
         _updateTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -155,12 +161,15 @@ public partial class DebugWindow : Window
     {
         if (IsVisible)
         {
+            _serviceLogCapture ??= PerformanceDiagnosticService.Instance.BeginVerboseServiceLogCapture();
             RefreshDiagnosticLogs();
             RefreshServiceLogs();
             if (!_updateTimer.IsEnabled) _updateTimer.Start();
         }
         else
         {
+            _serviceLogCapture?.Dispose();
+            _serviceLogCapture = null;
             if (_updateTimer.IsEnabled) _updateTimer.Stop();
         }
     }

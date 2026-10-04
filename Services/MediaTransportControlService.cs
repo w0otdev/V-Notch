@@ -9,11 +9,26 @@ public sealed class MediaTransportControlService
 {
     private const string LogTag = "MEDIA-CTRL";
 
-    private readonly Func<GlobalSystemMediaTransportControlsSession?> _getActiveSession;
+    private readonly Func<IMediaTransportSession?> _getActiveSession;
+    private readonly Action<byte> _sendMediaKey;
+    private readonly Func<string, bool> _isBrowserMediaSession;
+    private readonly Func<MediaInfo, bool> _goBackInMediaTab;
+    private readonly Func<DateTime> _utcNow;
 
     public MediaTransportControlService(Func<GlobalSystemMediaTransportControlsSession?> getActiveSession)
+        : this(() => getActiveSession() is { } session ? new WindowsMediaTransportSession(session) : null, SendMediaKey)
+    {
+    }
+
+    internal MediaTransportControlService(Func<IMediaTransportSession?> getActiveSession, Action<byte> sendMediaKey,
+        Func<string, bool>? isBrowserMediaSession = null, Func<MediaInfo, bool>? goBackInMediaTab = null,
+        Func<DateTime>? utcNow = null)
     {
         _getActiveSession = getActiveSession;
+        _sendMediaKey = sendMediaKey;
+        _isBrowserMediaSession = isBrowserMediaSession ?? MediaWindowActivator.IsBrowserMediaSession;
+        _goBackInMediaTab = goBackInMediaTab ?? MediaWindowActivator.TryGoBackInMediaTab;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
     public async Task PlayPauseAsync()
@@ -28,13 +43,13 @@ public sealed class MediaTransportControlService
             }
             if (!success)
             {
-                SendMediaKey(Win32Interop.VK_MEDIA_PLAY_PAUSE);
+                _sendMediaKey(Win32Interop.VK_MEDIA_PLAY_PAUSE);
             }
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogTag, ex, "PlayPause failed");
-            SendMediaKey(Win32Interop.VK_MEDIA_PLAY_PAUSE);
+            _sendMediaKey(Win32Interop.VK_MEDIA_PLAY_PAUSE);
         }
     }
 
@@ -59,12 +74,12 @@ public sealed class MediaTransportControlService
                     return;
                 }
             }
-            SendMediaKey(Win32Interop.VK_MEDIA_NEXT_TRACK);
+            _sendMediaKey(Win32Interop.VK_MEDIA_NEXT_TRACK);
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogTag, ex, "NextTrack failed");
-            SendMediaKey(Win32Interop.VK_MEDIA_NEXT_TRACK);
+            _sendMediaKey(Win32Interop.VK_MEDIA_NEXT_TRACK);
         }
     }
 
@@ -93,14 +108,14 @@ public sealed class MediaTransportControlService
                     ? currentPos - timeline.StartTime
                     : currentPos;
 
-                bool isConsecutive = (DateTime.UtcNow - _lastRewindUtc).TotalSeconds < ConsecutiveClickWindowSeconds
+                bool isConsecutive = (_utcNow() - _lastRewindUtc).TotalSeconds < ConsecutiveClickWindowSeconds
                     && string.Equals(_lastRewindSessionId, sessionId, StringComparison.OrdinalIgnoreCase);
 
                 // If playing past the 3-second threshold and not a rapid consecutive click,
                 // rewind / restart the track to the beginning.
                 if (!isConsecutive && timeline != null && timeline.EndTime > TimeSpan.Zero && relativePos.TotalSeconds > RestartThresholdSeconds)
                 {
-                    _lastRewindUtc = DateTime.UtcNow;
+                    _lastRewindUtc = _utcNow();
                     _lastRewindSessionId = sessionId;
 
                     TimeSpan startTarget = timeline.StartTime > TimeSpan.Zero ? timeline.StartTime : TimeSpan.Zero;
@@ -128,15 +143,14 @@ public sealed class MediaTransportControlService
                 }
 
                 var browserInfo = new MediaInfo { SourceAppId = sessionId };
-                if (await Task.Run(() => MediaWindowActivator.IsBrowserMediaSession(sessionId)))
+                if (await Task.Run(() => _isBrowserMediaSession(sessionId)))
                 {
                     // Outside a playlist, a browser may expose no previous-track
                     // action. The media key cannot navigate its watch history.
-                    var properties = await session.TryGetMediaPropertiesAsync();
-                    browserInfo.CurrentTrack = properties?.Title ?? string.Empty;
-                    if (!ReferenceEquals(session, _getActiveSession())) return;
+                    browserInfo.CurrentTrack = await session.GetTitleAsync() ?? string.Empty;
+                    if (!ReferenceEquals(session.Identity, _getActiveSession()?.Identity)) return;
 
-                    bool navigated = await Task.Run(() => MediaWindowActivator.TryGoBackInMediaTab(browserInfo));
+                    bool navigated = await Task.Run(() => _goBackInMediaTab(browserInfo));
                     RuntimeLog.Log(LogTag, navigated
                         ? "Previous: navigated back in the matching browser tab"
                         : "Previous: no unambiguous browser tab with an available Back button");
@@ -144,21 +158,20 @@ public sealed class MediaTransportControlService
                 }
             }
             RuntimeLog.Log(LogTag, "Previous: sending VK_MEDIA_PREV_TRACK");
-            SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
+            _sendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogTag, ex, "PreviousTrack failed");
-            SendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
+            _sendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
     }
 
-    private static GlobalSystemMediaTransportControlsSessionPlaybackControls? TryGetControls(
-        GlobalSystemMediaTransportControlsSession session)
+    private static MediaTransportControls? TryGetControls(IMediaTransportSession session)
     {
         try
         {
-            return session.GetPlaybackInfo()?.Controls;
+            return session.GetControls();
         }
         catch
         {
@@ -167,7 +180,7 @@ public sealed class MediaTransportControlService
     }
 
     private static async Task<bool> TrySeekToTimelineEdgeAsync(
-        GlobalSystemMediaTransportControlsSession session, bool toEnd)
+        IMediaTransportSession session, bool toEnd)
     {
         try
         {

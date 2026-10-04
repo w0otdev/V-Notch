@@ -30,7 +30,8 @@ public sealed class SmartThumbnailCropService : IDisposable
     private const float SubjectMarginRatio = 0.15f;
     private const float MinCropRatio = 0.45f;
 
-    private readonly Dictionary<(ArtworkFingerprint Artwork, int Size), Int32Rect> _cropCache = new();
+    private readonly Dictionary<(ArtworkFingerprint Artwork, int Size, bool ObjectDetection), Int32Rect> _cropCache = new();
+    private readonly Queue<(ArtworkFingerprint Artwork, int Size, bool ObjectDetection)> _cropCacheOrder = new();
 
     private bool _disposed;
     private bool _modelExists;
@@ -191,23 +192,31 @@ public sealed class SmartThumbnailCropService : IDisposable
         return new SubjectBounds(cx, cy, w, h, b.Confidence, b.ClassId);
     }
 
-    public Int32Rect? GetSmartCropRect(BitmapImage source, int targetSquareSize)
+    public Int32Rect? GetSmartCropRect(BitmapImage source, int targetSquareSize, bool useObjectDetection = false)
     {
         if (source == null || targetSquareSize <= 0) return null;
+        int width = source.PixelWidth;
+        int height = source.PixelHeight;
+        if (width < 64 || height < 64 || Math.Abs(width - height) < 10) return null;
+        // Tiny thumbnails do not benefit from neural inference or face analysis.
+        useObjectDetection &= targetSquareSize > 96;
         lock (_lock)
         {
             if (_disposed) return null;
             var fingerprint = _fingerprintCache
                 .GetValue(source, static bitmap => new FingerprintHolder(ArtworkFingerprint.Create(bitmap))).Value;
-            var key = (fingerprint, targetSquareSize);
+            var key = (fingerprint, targetSquareSize, useObjectDetection);
             if (_cropCache.TryGetValue(key, out var cached)) return cached;
 
-            var rect = ComputeSmartCropRectCore(source, targetSquareSize);
+            var rect = useObjectDetection
+                ? ComputeSmartCropRectCore(source, targetSquareSize)
+                : GetSaliencyCropRect(source, width, height, targetSquareSize);
             if (rect.HasValue)
             {
                 if (_cropCache.Count >= MaxInferenceCacheEntries)
-                    _cropCache.Remove(_cropCache.Keys.First());
+                    _cropCache.Remove(_cropCacheOrder.Dequeue());
                 _cropCache[key] = rect.Value;
+                _cropCacheOrder.Enqueue(key);
             }
             return rect;
         }
@@ -1064,6 +1073,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             _cachedSession = null;
             _inferenceCache.Clear();
             _cropCache.Clear();
+            _cropCacheOrder.Clear();
         }
     }
 

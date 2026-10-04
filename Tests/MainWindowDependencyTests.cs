@@ -1,9 +1,9 @@
-using Microsoft.Extensions.DependencyInjection;
 using System.Windows;
 using System.Windows.Media;
-using VNotch.Models;
-using VNotch.Controllers;
+using Microsoft.Extensions.DependencyInjection;
 using VNotch.Contracts;
+using VNotch.Controllers;
+using VNotch.Models;
 using VNotch.Services;
 using VNotch.Tests.Fakes;
 using VNotch.ViewModels;
@@ -25,8 +25,11 @@ public sealed class MainWindowDependencyTests
         }
         var settings = new FakeSettingsService(new NotchSettings
         {
-            EnableSpotlight = false, AutoCheckUpdates = false, EnableWeather = false,
-            KeepMediaPinnedOnTrackChange = true, EnableSmartCrop = true
+            EnableSpotlight = false,
+            AutoCheckUpdates = false,
+            EnableWeather = false,
+            KeepMediaPinnedOnTrackChange = true,
+            EnableSmartCrop = true
         });
         var media = new FakeMediaDetectionService();
         var spotlight = new TrackingSpotlightController();

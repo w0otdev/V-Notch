@@ -26,8 +26,6 @@ public sealed class SpotifyCanvasServiceTests
             string host = request.RequestUri!.Host;
             string path = request.RequestUri.AbsolutePath;
 
-            if (host == "raw.githubusercontent.com")
-                return JsonResponse("{\"42\":[99,111,47,88,49,56,118,65]}");
             if (host == "open.spotify.com" && path.EndsWith("/server-time", StringComparison.Ordinal))
                 return JsonResponse("{\"serverTime\":1700000000}");
             if (host == "open.spotify.com" && path.EndsWith("/token", StringComparison.Ordinal))
@@ -45,7 +43,10 @@ public sealed class SpotifyCanvasServiceTests
             "Kill Bill", "SZA", TimeSpan.FromSeconds(153), "session-cookie");
 
         Assert.Equal(CanvasUrl, result?.AbsoluteUri);
-        Assert.Equal(5, requests.Count);
+        Assert.Equal(4, requests.Count);
+        Assert.DoesNotContain(requests, request => request.Uri.Host == "raw.githubusercontent.com");
+        var tokenRequest = Assert.Single(requests.Where(request => request.Uri.AbsolutePath == "/api/token"));
+        Assert.Equal(SpotifyWebPlayerProtocol.TotpVersion, GetQueryParameter(tokenRequest.Uri, "totpVer"));
         Assert.Contains(requests, request =>
             request.Uri.Host == "open.spotify.com" && request.Cookie == "sp_dc=session-cookie");
         RequestInfo pathfinderRequest = Assert.Single(requests.Where(request =>
@@ -86,8 +87,6 @@ public sealed class SpotifyCanvasServiceTests
             string host = request.RequestUri!.Host;
             string path = request.RequestUri.AbsolutePath;
 
-            if (host == "raw.githubusercontent.com")
-                return JsonResponse("{\"42\":[99,111,47,88,49,56,118,65]}");
             if (host == "open.spotify.com" && path.EndsWith("/server-time", StringComparison.Ordinal))
                 return JsonResponse("{\"serverTime\":1700000000}");
             if (host == "open.spotify.com" && path.EndsWith("/token", StringComparison.Ordinal))
@@ -112,7 +111,7 @@ public sealed class SpotifyCanvasServiceTests
             "Kill Bill", "SZA", TimeSpan.FromSeconds(153), "session-cookie");
 
         Assert.Equal(CanvasUrl, result?.AbsoluteUri);
-        Assert.Equal(7, requests.Count);
+        Assert.Equal(6, requests.Count);
         Assert.Contains(requests, request => request.Uri.Host == "api-partner.spotify.com");
         Assert.Contains(requests, request =>
             request.Uri.Host == "apic-desktop.musixmatch.com" &&
@@ -138,8 +137,6 @@ public sealed class SpotifyCanvasServiceTests
             string host = request.RequestUri!.Host;
             string path = request.RequestUri.AbsolutePath;
 
-            if (host == "raw.githubusercontent.com")
-                return JsonResponse("{\"42\":[99,111,47,88,49,56,118,65]}");
             if (host == "open.spotify.com" && path.EndsWith("/server-time", StringComparison.Ordinal))
                 return JsonResponse("{\"serverTime\":1700000000}");
             if (host == "open.spotify.com" && path.EndsWith("/token", StringComparison.Ordinal))
@@ -192,8 +189,6 @@ public sealed class SpotifyCanvasServiceTests
             string host = request.RequestUri!.Host;
             string path = request.RequestUri.AbsolutePath;
 
-            if (host == "raw.githubusercontent.com")
-                return JsonResponse("{\"42\":[99,111,47,88,49,56,118,65]}");
             if (host == "open.spotify.com" && path.EndsWith("/server-time", StringComparison.Ordinal))
                 return JsonResponse("{\"serverTime\":1700000000}");
             if (host == "open.spotify.com" && path.EndsWith("/token", StringComparison.Ordinal))
@@ -424,9 +419,57 @@ public sealed class SpotifyCanvasServiceTests
     }
 
     [Fact]
+    public async Task FetchCanvasAsync_CatalogRefreshAlsoUpdatesCanvasHash()
+    {
+        int catalogRequests = 0;
+        int pageRequests = 0;
+        int scriptRequests = 0;
+        string catalogHash = new('a', 64);
+        string canvasHash = new('b', 64);
+        var canvasHashes = new List<string>();
+        var handler = new StubHandler(request =>
+        {
+            string host = request.RequestUri!.Host;
+            string path = request.RequestUri.AbsolutePath;
+            HttpResponseMessage? bootstrap = BootstrapResponse(host, path);
+            if (bootstrap != null)
+                return bootstrap;
+            if (host == "api-partner.spotify.com" && path.EndsWith("/pathfinder/v2/query", StringComparison.Ordinal))
+                return ++catalogRequests == 1
+                    ? new HttpResponseMessage(HttpStatusCode.PreconditionFailed) : PathfinderResponse();
+            if (host == "api-partner.spotify.com" && path.EndsWith("/pathfinder/v1/query", StringComparison.Ordinal))
+            {
+                canvasHashes.Add(GetPersistedQueryHashFromUri(request.RequestUri));
+                return CanvasPathfinderResponse(CanvasUrl);
+            }
+            if (host == "open.spotify.com" && path == "/")
+            {
+                pageRequests++;
+                return JsonResponse("<script src='https://open.spotifycdn.com/cdn/build/mobile-web-player/mobile-web-player.abcdef12.js'></script>");
+            }
+            if (host == "open.spotifycdn.com")
+            {
+                scriptRequests++;
+                return JsonResponse($"'findTracks','query','{catalogHash}';'canvas','query','{canvasHash}'");
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var http = new HttpClient(handler);
+        using var service = new SpotifyCanvasService(http);
+
+        Uri? result = await service.FetchCanvasAsync("Kill Bill", "SZA", TimeSpan.FromSeconds(153), "session-cookie");
+
+        Assert.Equal(CanvasUrl, result?.AbsoluteUri);
+        Assert.Equal(2, catalogRequests);
+        Assert.Equal(canvasHash, Assert.Single(canvasHashes));
+        Assert.Equal(1, pageRequests);
+        Assert.Equal(1, scriptRequests);
+    }
+
+    [Fact]
     public void ParseTrackId_MismatchedSearchResultReturnsNull()
     {
-        string? result = SpotifyCanvasService.ParseTrackId(
+        string? result = SpotifyTrackMatcher.ParseTrackId(
             "{\"tracks\":{\"items\":[{\"id\":\"" + TrackId +
             "\",\"name\":\"Another Song\",\"artists\":[{\"name\":\"Someone Else\"}]}]}}",
             "Kill Bill",
@@ -449,7 +492,7 @@ public sealed class SpotifyCanvasServiceTests
             "\"artists\":{\"items\":[{\"profile\":{\"name\":\"VCC Left Hand\"}}," +
             "{\"profile\":{\"name\":\"kidsai\"}}]}}}}]}}}}";
 
-        string? result = SpotifyCanvasService.ParsePathfinderTrackId(json, "LOVELY", "kidsai");
+        string? result = SpotifyTrackMatcher.ParsePathfinderTrackId(json, "LOVELY", "kidsai");
 
         Assert.Equal(expectedId, result);
     }
@@ -457,7 +500,7 @@ public sealed class SpotifyCanvasServiceTests
     [Fact]
     public void ParsePathfinderTrackId_DoesNotAcceptWrongArtist()
     {
-        string? result = SpotifyCanvasService.ParsePathfinderTrackId(
+        string? result = SpotifyTrackMatcher.ParsePathfinderTrackId(
             PathfinderJson(TrackId, "Kill Bill", "Someone Else"),
             "Kill Bill",
             "SZA");
@@ -468,7 +511,7 @@ public sealed class SpotifyCanvasServiceTests
     [Fact]
     public void ParseCanvasResponse_RejectsUntrustedVideoUrl()
     {
-        Uri? result = SpotifyCanvasService.ParseCanvasResponse(
+        Uri? result = SpotifyCanvasProtocol.ParseCanvasResponse(
             BuildCanvasResponse("https://example.com/untrusted.mp4"));
 
         Assert.Null(result);
@@ -477,7 +520,7 @@ public sealed class SpotifyCanvasServiceTests
     [Fact]
     public void BuildCanvasRequest_IncludesSpotifyTrackUri()
     {
-        byte[] request = SpotifyCanvasService.BuildCanvasRequest(TrackId);
+        byte[] request = SpotifyCanvasProtocol.BuildCanvasRequest(TrackId);
 
         Assert.Contains("spotify:track:" + TrackId, Encoding.UTF8.GetString(request), StringComparison.Ordinal);
     }
@@ -523,8 +566,6 @@ public sealed class SpotifyCanvasServiceTests
 
     private static HttpResponseMessage? BootstrapResponse(string host, string path)
     {
-        if (host == "raw.githubusercontent.com")
-            return JsonResponse("{\"42\":[99,111,47,88,49,56,118,65]}");
         if (host == "open.spotify.com" && path.EndsWith("/server-time", StringComparison.Ordinal))
             return JsonResponse("{\"serverTime\":1700000000}");
         if (host == "open.spotify.com" && path.EndsWith("/token", StringComparison.Ordinal))

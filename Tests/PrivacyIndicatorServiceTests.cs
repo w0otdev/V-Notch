@@ -6,6 +6,38 @@ namespace VNotch.Tests;
 public sealed class PrivacyIndicatorServiceTests
 {
     [Fact]
+    public void RelevantConsumersKeepNewestUsageAndFilterBeforeProbingProcesses()
+    {
+        var usages = new[]
+        {
+            new CapabilityUsage("Recorder", "old", 10),
+            new CapabilityUsage("RECORDER", "new", 20),
+            new CapabilityUsage("stopped", "stopped", 30),
+            new CapabilityUsage("service", "service", 40)
+        };
+        var probed = new List<string>();
+        var result = PrivacyIndicatorService.GetRelevantConsumerUsages(usages,
+            name => { probed.Add(name); return name != "stopped"; },
+            usage => usage.RawName != "service");
+
+        Assert.Equal("new", Assert.Single(result).DisplayName);
+        Assert.DoesNotContain("service", probed);
+    }
+
+    [Fact]
+    public void ProcessEvidenceMatchesTheFullExecutablePathWithLimitedQueryAccess()
+    {
+        string executable = Environment.ProcessPath!;
+        uint pid = (uint)Environment.ProcessId;
+        Assert.True(PrivacyIndicatorService.ConsumerProcessProbe.IsDesktopExecutableProcess(executable, pid));
+        Assert.False(PrivacyIndicatorService.ConsumerProcessProbe.IsDesktopExecutableProcess(executable + ".other", pid));
+        Assert.False(PrivacyIndicatorService.ConsumerProcessProbe.IsDesktopExecutableProcess(executable, 0));
+        var probe = new PrivacyIndicatorService.ConsumerProcessProbe();
+        Assert.True(probe.IsRunning(executable.Replace('\\', '#')));
+        Assert.False(probe.IsRunning(@"C:#missing-directory#" + System.IO.Path.GetFileName(executable)));
+    }
+
+    [Fact]
     public void DotColor_AllActivityCombinationsFollowPriority()
     {
         for (int flags = 0; flags < 16; flags++)

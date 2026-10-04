@@ -15,6 +15,7 @@ internal static class DynamicIslandColorExtractor
     public readonly record struct PaletteColor(Color Color, int Population, double Score);
 
     private const string LogTag = "COLOR-PICK";
+    private static readonly Palette DefaultPalette = new(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
 
     private sealed class BoxedPalette
     {
@@ -29,31 +30,71 @@ internal static class DynamicIslandColorExtractor
     }
 
     private static readonly ConditionalWeakTable<BitmapSource, BoxedPalette> _paletteCache = new();
+    private sealed record CroppedPalette(Int32Rect Crop, Palette Palette);
+    private static readonly ConditionalWeakTable<BitmapSource, CroppedPalette> _croppedPaletteCache = new();
     private static readonly ConditionalWeakTable<BitmapSource, BoxedDim> _dimCache = new();
 
     #region Public entry points
 
     public static Task<Palette> PreloadDynamicIslandPaletteAsync(BitmapSource bitmap)
     {
-        if (bitmap == null) return Task.FromResult(new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180)));
+        if (bitmap == null) return Task.FromResult(DefaultPalette);
         if (_paletteCache.TryGetValue(bitmap, out var cachedBox))
             return Task.FromResult(cachedBox.Palette);
 
-        if (!bitmap.IsFrozen)
-        {
-            try { bitmap.Freeze(); } catch { }
-        }
+        // IsFrozen itself verifies thread access on an unfrozen Freezable.
+        if (!bitmap.CheckAccess())
+            return PreloadOnOwnerAsync(bitmap);
 
-        return Task.Run(() => GetDynamicIslandPalette(bitmap));
+        return TryFreezeBitmap(bitmap)
+            ? Task.Run(() => GetDynamicIslandPalette(bitmap))
+            : Task.FromResult(GetDynamicIslandPalette(bitmap));
+    }
+
+    private static async Task<Palette> PreloadOnOwnerAsync(BitmapSource bitmap)
+    {
+        try
+        {
+            // Another thread may freeze the source after CheckAccess, detaching its dispatcher.
+            var dispatcher = bitmap.Dispatcher;
+            if (dispatcher == null)
+                return await Task.Run(() => GetDynamicIslandPalette(bitmap)).ConfigureAwait(false);
+            Task<Palette> pending = await dispatcher.InvokeAsync(
+                () => PreloadDynamicIslandPaletteAsync(bitmap)).Task.ConfigureAwait(false);
+            return await pending.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or OperationCanceledException)
+        {
+            return DefaultPalette;
+        }
+    }
+
+    private static bool TryFreezeBitmap(BitmapSource bitmap)
+    {
+        if (!bitmap.CheckAccess()) return false;
+        if (bitmap.IsFrozen) return true;
+        try
+        {
+            if (bitmap.CanFreeze)
+                bitmap.Freeze();
+        }
+        catch (InvalidOperationException)
+        {
+            // Non-freezable sources can still be analyzed on their owning thread.
+        }
+        return bitmap.IsFrozen;
     }
 
     public static Palette GetDynamicIslandPalette(BitmapSource bitmap)
     {
         if (bitmap == null)
-            return new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
+            return DefaultPalette;
 
         if (_paletteCache.TryGetValue(bitmap, out var cachedBox))
             return cachedBox.Palette;
+        // Do not cache a temporary fallback for an inaccessible mutable source.
+        if (!bitmap.CheckAccess())
+            return DefaultPalette;
 
         var result = ExtractAdvancedPalette(bitmap);
         Palette palette;
@@ -61,7 +102,7 @@ internal static class DynamicIslandColorExtractor
         {
             RuntimeLog.Debug(LogTag,
                 () => $"FALLBACK: IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
-            palette = new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
+            palette = DefaultPalette;
         }
         else
         {
@@ -79,21 +120,41 @@ internal static class DynamicIslandColorExtractor
 
     public static Palette GetDynamicIslandPalette(BitmapSource bitmap, Rect smartCropBbox)
     {
-        _ = smartCropBbox;
-        var result = ExtractAdvancedPalette(bitmap);
-        if (result.IsMonotone || result.Primary == default)
-        {
-            RuntimeLog.Debug(LogTag,
-                () => $"FALLBACK(bbox): IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
-            return new Palette(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
-        }
+        if (bitmap == null || !bitmap.CheckAccess())
+            return GetDynamicIslandPalette(bitmap!);
+        _ = TryFreezeBitmap(bitmap);
 
-        RuntimeLog.Debug(LogTag,
-            () => $"OK(bbox): Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
-        var main = result.Primary;
-        var darkUiBackground = Colors.Black;
-        var sub = EnsureTextOnDarkBackground(main, darkUiBackground, 4.5);
-        return new Palette(main, sub);
+        Int32Rect? cropRect = GetClampedCropRect(smartCropBbox, bitmap.PixelWidth, bitmap.PixelHeight);
+        if (cropRect is not Int32Rect crop)
+            return GetDynamicIslandPalette(bitmap);
+
+        if (_croppedPaletteCache.TryGetValue(bitmap, out var cached) && cached.Crop == crop)
+            return cached.Palette;
+
+        var cropped = new CroppedBitmap(bitmap, crop);
+        _ = TryFreezeBitmap(cropped);
+        Palette palette = GetDynamicIslandPalette(cropped);
+        _croppedPaletteCache.AddOrUpdate(bitmap, new CroppedPalette(crop, palette));
+        return palette;
+    }
+
+    internal static Int32Rect? GetClampedCropRect(Rect bounds, int pixelWidth, int pixelHeight)
+    {
+        if (pixelWidth <= 0 || pixelHeight <= 0 || bounds.IsEmpty ||
+            !double.IsFinite(bounds.Left) || !double.IsFinite(bounds.Top) ||
+            !double.IsFinite(bounds.Right) || !double.IsFinite(bounds.Bottom))
+            return null;
+
+        bounds.Intersect(new Rect(0, 0, pixelWidth, pixelHeight));
+        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+            return null;
+
+        // Clamp the rounded edges before casting so SourceRect stays inside the bitmap.
+        int left = (int)Math.Clamp(Math.Floor(bounds.Left), 0, pixelWidth - 1);
+        int top = (int)Math.Clamp(Math.Floor(bounds.Top), 0, pixelHeight - 1);
+        int right = (int)Math.Clamp(Math.Ceiling(bounds.Right), left + 1, pixelWidth);
+        int bottom = (int)Math.Clamp(Math.Ceiling(bounds.Bottom), top + 1, pixelHeight);
+        return new Int32Rect(left, top, right - left, bottom - top);
     }
 
     public static Color GetDominantColor(BitmapSource bitmap)

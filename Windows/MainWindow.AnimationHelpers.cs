@@ -456,15 +456,6 @@ public partial class MainWindow
         var slideIn0 = new DoubleAnimation(-slideDistance, 0, _dur250) { EasingFunction = _easeQuadOut };
         var fadeIn0 = new DoubleAnimation(0, 1, _dur250) { EasingFunction = _easeQuadOut };
 
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(slideOut1, VNotch.Services.AnimationConfig.TargetFps);
-        arrow1Transform.BeginAnimation(TranslateTransform.XProperty, slideOut1);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOut1, VNotch.Services.AnimationConfig.TargetFps);
-        arrow1.BeginAnimation(OpacityProperty, fadeOut1);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(slideIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0Transform.BeginAnimation(TranslateTransform.XProperty, slideIn0);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0.BeginAnimation(OpacityProperty, fadeIn0);
-
         fadeOut1.Completed += (s, e) =>
         {
             arrow1Transform.X = 0;
@@ -477,6 +468,15 @@ public partial class MainWindow
             arrow0Transform.BeginAnimation(TranslateTransform.XProperty, null);
             arrow0.BeginAnimation(OpacityProperty, null);
         };
+
+        Timeline.SetDesiredFrameRate(slideOut1, VNotch.Services.AnimationConfig.TargetFps);
+        arrow1Transform.BeginAnimation(TranslateTransform.XProperty, slideOut1);
+        Timeline.SetDesiredFrameRate(fadeOut1, VNotch.Services.AnimationConfig.TargetFps);
+        arrow1.BeginAnimation(OpacityProperty, fadeOut1);
+        Timeline.SetDesiredFrameRate(slideIn0, VNotch.Services.AnimationConfig.TargetFps);
+        arrow0Transform.BeginAnimation(TranslateTransform.XProperty, slideIn0);
+        Timeline.SetDesiredFrameRate(fadeIn0, VNotch.Services.AnimationConfig.TargetFps);
+        arrow0.BeginAnimation(OpacityProperty, fadeIn0);
     }
 
     private void PlayPrevSkipAnimation()
@@ -500,15 +500,6 @@ public partial class MainWindow
         var slideIn0 = new DoubleAnimation(slideDistance, 0, _dur250) { EasingFunction = _easeQuadOut };
         var fadeIn0 = new DoubleAnimation(0, 1, _dur250) { EasingFunction = _easeQuadOut };
 
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(slideOut2, VNotch.Services.AnimationConfig.TargetFps);
-        arrow2Transform.BeginAnimation(TranslateTransform.XProperty, slideOut2);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOut2, VNotch.Services.AnimationConfig.TargetFps);
-        arrow2.BeginAnimation(OpacityProperty, fadeOut2);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(slideIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0Transform.BeginAnimation(TranslateTransform.XProperty, slideIn0);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0.BeginAnimation(OpacityProperty, fadeIn0);
-
         fadeOut2.Completed += (s, e) =>
         {
             arrow2Transform.X = 0;
@@ -521,6 +512,15 @@ public partial class MainWindow
             arrow0Transform.BeginAnimation(TranslateTransform.XProperty, null);
             arrow0.BeginAnimation(OpacityProperty, null);
         };
+
+        Timeline.SetDesiredFrameRate(slideOut2, VNotch.Services.AnimationConfig.TargetFps);
+        arrow2Transform.BeginAnimation(TranslateTransform.XProperty, slideOut2);
+        Timeline.SetDesiredFrameRate(fadeOut2, VNotch.Services.AnimationConfig.TargetFps);
+        arrow2.BeginAnimation(OpacityProperty, fadeOut2);
+        Timeline.SetDesiredFrameRate(slideIn0, VNotch.Services.AnimationConfig.TargetFps);
+        arrow0Transform.BeginAnimation(TranslateTransform.XProperty, slideIn0);
+        Timeline.SetDesiredFrameRate(fadeIn0, VNotch.Services.AnimationConfig.TargetFps);
+        arrow0.BeginAnimation(OpacityProperty, fadeIn0);
     }
 
     private void PlayAppearAnimation()

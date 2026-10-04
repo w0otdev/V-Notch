@@ -21,7 +21,8 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private static readonly TimeSpan ActivePollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan IdlePollInterval = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan MicrophoneFlowPollInterval = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan MicrophoneFlowPollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan InactiveMicrophoneFlowPollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan MinimumScreenRecordingDuration = TimeSpan.FromSeconds(2);
     internal static readonly TimeSpan MicrophoneSignalHoldDuration = TimeSpan.FromMilliseconds(1400);
     internal const float MicrophoneSignalThreshold = 0.0125f;
@@ -240,14 +241,14 @@ public sealed class PrivacyIndicatorService : IDisposable
         var running = new ConsumerProcessProbe();
         var microphoneCandidates = GetRelevantConsumerUsages(
             micUsage,
-            running,
+            running.IsRunning,
             usage => !IsIgnoredMicrophoneConsumer(usage.RawName));
         var microphoneCandidateNames = GetConsumerNames(microphoneCandidates);
 
-        var cam = GetRelevantConsumerUsages(camUsage, running);
+        var cam = GetRelevantConsumerUsages(camUsage, running.IsRunning);
         var cameraConsumers = GetConsumerNames(cam);
         bool cameraInUse = cameraConsumers.Count > 0;
-        var locationConsumers = GetConsumerNames(GetRelevantConsumerUsages(locationUsage, running));
+        var locationConsumers = GetConsumerNames(GetRelevantConsumerUsages(locationUsage, running.IsRunning));
         bool screenRecordingActive = DetectScreenRecording(
             programmaticCapture.Concat(borderlessCapture), running, utcNow) ||
             _screenRecordingProbe.IsRecording();
@@ -350,6 +351,7 @@ public sealed class PrivacyIndicatorService : IDisposable
     {
         while (!token.IsCancellationRequested)
         {
+            TimeSpan pollInterval = InactiveMicrophoneFlowPollInterval;
             try
             {
                 await _micFlowGate.WaitAsync(token).ConfigureAwait(false);
@@ -364,6 +366,8 @@ public sealed class PrivacyIndicatorService : IDisposable
 
                     DateTime utcNow = DateTime.UtcNow;
                     MicrophoneFlowEvidence evidence = _microphoneFlowProbe.Probe(candidates);
+                    if (evidence.HasActiveSession)
+                        pollInterval = MicrophoneFlowPollInterval;
 
                     bool microphoneInUse = _microphoneActivityGate.Evaluate(
                         hasCandidate: candidates.Count > 0,
@@ -378,7 +382,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                     _micFlowGate.Release();
                 }
 
-                await Task.Delay(MicrophoneFlowPollInterval, token).ConfigureAwait(false);
+                await Task.Delay(pollInterval, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -389,7 +393,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                 RuntimeLog.Error("PRIVACY-MIC", ex, "Microphone flow worker loop error");
                 try
                 {
-                    await Task.Delay(MicrophoneFlowPollInterval, token).ConfigureAwait(false);
+                    await Task.Delay(InactiveMicrophoneFlowPollInterval, token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -497,17 +501,23 @@ public sealed class PrivacyIndicatorService : IDisposable
         IReadOnlyList<string> LocationConsumers,
         DateTime UtcNow);
 
-    private static IReadOnlyList<CapabilityUsage> GetRelevantConsumerUsages(
+    internal static IReadOnlyList<CapabilityUsage> GetRelevantConsumerUsages(
         IEnumerable<CapabilityUsage> usages,
-        ConsumerProcessProbe running,
+        Func<string, bool> isRunning,
         Func<CapabilityUsage, bool>? additionalRule = null)
     {
-        return usages
-            .Where(usage => running.IsRunning(usage.RawName))
-            .Where(usage => additionalRule == null || additionalRule(usage))
-            .GroupBy(usage => usage.RawName, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.OrderByDescending(usage => usage.LastStartFileTime).First())
-            .ToArray();
+        Dictionary<string, CapabilityUsage>? latest = null;
+        foreach (var usage in usages)
+        {
+            if ((additionalRule != null && !additionalRule(usage)) || !isRunning(usage.RawName))
+                continue;
+
+            latest ??= new(StringComparer.OrdinalIgnoreCase);
+            if (!latest.TryGetValue(usage.RawName, out var previous) ||
+                usage.LastStartFileTime > previous.LastStartFileTime)
+                latest[usage.RawName] = usage;
+        }
+        return latest == null ? Array.Empty<CapabilityUsage>() : latest.Values.ToArray();
     }
 
     private static IReadOnlyList<string> GetConsumerNames(IEnumerable<CapabilityUsage> usages)
@@ -708,7 +718,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
     }
 
-    private sealed class ConsumerProcessProbe
+    internal sealed class ConsumerProcessProbe
     {
         private const uint ProcessQueryLimitedInformation = 0x1000;
         private const int ErrorInsufficientBuffer = 122;
@@ -723,8 +733,14 @@ public sealed class PrivacyIndicatorService : IDisposable
         [DllImport("kernel32.dll")]
         private static extern int GetPackageFamilyName(IntPtr process, ref uint packageFamilyNameLength, IntPtr packageFamilyName);
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern unsafe bool QueryFullProcessImageName(
+            IntPtr process, uint flags, char* path, ref uint size);
+
         private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, bool> _processMatchCache = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, List<uint>>? _processIdsByName;
 
         public bool IsRunning(string rawConsumer)
         {
@@ -750,75 +766,58 @@ public sealed class PrivacyIndicatorService : IDisposable
             return matches;
         }
 
-        private static bool IsDesktopExecutableRunning(string executablePath)
+        private bool IsDesktopExecutableRunning(string executablePath)
         {
-            string processName = Path.GetFileNameWithoutExtension(executablePath);
+            string processName = Path.GetFileName(executablePath);
             if (string.IsNullOrWhiteSpace(processName)) return false;
 
-            foreach (Process process in Process.GetProcessesByName(processName))
-            {
-                using (process)
-                {
-                    try
-                    {
-                        string? runningPath = process.MainModule?.FileName;
-                        if (runningPath != null && string.Equals(
-                            NormalizeExecutablePath(runningPath), executablePath,
-                            StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
-                    catch
-                    {
-                        // Strict privacy evidence: an unverifiable process does not
-                        // keep an indicator alive from a possibly stale registry key.
-                    }
-                }
-            }
+            _processIdsByName ??= PrivacyProcessSnapshot.Capture();
+            if (!_processIdsByName.TryGetValue(processName, out var ids)) return false;
+            foreach (uint pid in ids)
+                if (IsDesktopExecutableProcess(executablePath, pid)) return true;
             return false;
         }
 
-        private static bool IsDesktopExecutableProcess(string executablePath, uint processId)
+        internal static unsafe bool IsDesktopExecutableProcess(string executablePath, uint processId)
         {
+            IntPtr handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+            if (handle == IntPtr.Zero) return false;
             try
             {
-                using var process = Process.GetProcessById(checked((int)processId));
-                string? runningPath = process.MainModule?.FileName;
-                return runningPath != null && string.Equals(
-                    NormalizeExecutablePath(runningPath),
-                    executablePath,
-                    StringComparison.OrdinalIgnoreCase);
+                char* path = stackalloc char[1024];
+                uint length = 1024;
+                if (QueryFullProcessImageName(handle, 0, path, ref length))
+                    return string.Equals(new string(path, 0, (int)length), executablePath,
+                        StringComparison.OrdinalIgnoreCase);
+
+                if (Marshal.GetLastWin32Error() != ErrorInsufficientBuffer) return false;
+                char[] largePath = System.Buffers.ArrayPool<char>.Shared.Rent(32768);
+                try
+                {
+                    length = 32768;
+                    fixed (char* buffer = largePath)
+                        return QueryFullProcessImageName(handle, 0, buffer, ref length) &&
+                            string.Equals(new string(buffer, 0, (int)length), executablePath,
+                                StringComparison.OrdinalIgnoreCase);
+                }
+                finally { System.Buffers.ArrayPool<char>.Shared.Return(largePath); }
             }
-            catch
+            finally
             {
-                return false;
+                CloseHandle(handle);
             }
         }
 
-        [DllImport("kernel32.dll", EntryPoint = "K32EnumProcesses", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool EnumProcesses([Out] uint[] lpidProcess, uint cb, out uint lpcbNeeded);
-
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)> _packageFamilyByPidCache = new();
 
-        private static bool IsPackageFamilyRunning(string packageFamily)
+        private bool IsPackageFamilyRunning(string packageFamily)
         {
             if (string.IsNullOrWhiteSpace(packageFamily)) return false;
 
-            uint[] pids = new uint[1024];
-            if (!EnumProcesses(pids, (uint)(pids.Length * sizeof(uint)), out uint bytesNeeded))
-            {
-                return false;
-            }
-
-            int count = (int)(bytesNeeded / sizeof(uint));
-            for (int i = 0; i < count; i++)
-            {
-                uint pid = pids[i];
-                if (pid == 0) continue;
-
-                if (IsPackageFamilyProcess(packageFamily, pid))
-                    return true;
-            }
+            _processIdsByName ??= PrivacyProcessSnapshot.Capture();
+            foreach (var ids in _processIdsByName.Values)
+                foreach (uint pid in ids)
+                    if (IsPackageFamilyProcess(packageFamily, pid)) return true;
             return false;
         }
 

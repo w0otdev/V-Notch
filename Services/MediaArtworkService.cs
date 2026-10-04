@@ -243,7 +243,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
     private Int32Rect DetermineCropRect(BitmapSource workingSource, int width, int height, int squareSize, double aspect, bool forceCenterCrop)
     {
-        if (EnableSmartCrop && _smartCropAvailable && aspect > 1.4 && !forceCenterCrop)
+        if (EnableSmartCrop && aspect > 1.4 && !forceCenterCrop)
         {
             BitmapImage? workingBitmap = workingSource as BitmapImage ?? ConvertToBitmapImage(workingSource);
             if (workingBitmap != null)

@@ -18,8 +18,13 @@ public sealed class LiquidGlassInteractionTests
         var effect = new LiquidGlassRefractionEffect();
         var window = new BackgroundWindow
         {
-            Width = 100, Height = 100, Left = -10000, Top = -10000,
-            ShowActivated = false, ShowInTaskbar = false, Content = source
+            Width = 100,
+            Height = 100,
+            Left = -10000,
+            Top = -10000,
+            ShowActivated = false,
+            ShowInTaskbar = false,
+            Content = source
         };
         using var controller = new LiquidGlassInteractionController(source, source, effect);
         try
@@ -29,12 +34,12 @@ public sealed class LiquidGlassInteractionTests
             window.UpdateLayout();
             Assert.False(controller.IsRenderingSubscribed);
             source.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
-                { RoutedEvent = Mouse.MouseMoveEvent });
+            { RoutedEvent = Mouse.MouseMoveEvent });
             Assert.True(controller.IsRenderingSubscribed);
             PumpUntil(() => !controller.IsRenderingSubscribed);
             Assert.Equal(1, effect.PointerActive);
             source.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
-                { RoutedEvent = Mouse.PreviewMouseDownEvent });
+            { RoutedEvent = Mouse.PreviewMouseDownEvent });
             Assert.True(controller.IsRenderingSubscribed);
             window.Hide();
             Assert.False(controller.IsRenderingSubscribed);
@@ -43,7 +48,7 @@ public sealed class LiquidGlassInteractionTests
             window.Show();
             AnimationConfig.SetReduceMotion(true);
             source.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)
-                { RoutedEvent = Mouse.MouseMoveEvent });
+            { RoutedEvent = Mouse.MouseMoveEvent });
             Assert.False(controller.IsRenderingSubscribed);
             Assert.Equal(1, effect.PointerActive);
         }

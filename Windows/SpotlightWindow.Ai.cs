@@ -11,7 +11,7 @@ public partial class SpotlightWindow
     private static readonly TimeSpan AiRequestTimeout = TimeSpan.FromSeconds(60);
     private bool _aiMode;
     private readonly List<SpotlightAiMessage> _aiHistory = new();
-    private readonly SpotlightAiService _aiService = new();
+    private readonly SpotlightAiService _aiService;
     private CancellationTokenSource? _aiRequest;
     private string _aiConversationProvider = "";
     private string _aiConversationModel = "";
@@ -258,6 +258,7 @@ public partial class SpotlightWindow
         string receivedText = "";
         int revealedLength = 0;
         bool revealCaughtUp = false;
+        AiUsageSnapshot? receivedUsage = null;
         var revealTimer = new System.Windows.Threading.DispatcherTimer
         { Interval = TimeSpan.FromMilliseconds(110) };
         void RevealText(bool finish = false)
@@ -303,13 +304,17 @@ public partial class SpotlightWindow
             var geminiParts = new List<System.Text.Json.JsonElement>();
             var response = new System.Text.StringBuilder();
             cts.CancelAfter(AiRequestTimeout);
-            await foreach (string delta in _aiService.StreamAsync(settings, history, cts.Token, parts => geminiParts.AddRange(parts), usage => Dispatcher.BeginInvoke(() =>
+            await foreach (string delta in _aiService.StreamAsync(settings, history, cts.Token, parts => geminiParts.AddRange(parts), usage =>
             {
-                if (!ReferenceEquals(_aiRequest, cts)) return;
-                _usageSnapshot = usage;
-                _usageIdentity = UsageIdentity(settings);
-                UpdateAiUsage();
-            })))
+                receivedUsage = usage;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (!ReferenceEquals(_aiRequest, cts)) return;
+                    _usageSnapshot = usage;
+                    _usageIdentity = UsageIdentity(settings);
+                    UpdateAiUsage();
+                });
+            }))
             {
                 if (!ReferenceEquals(_aiRequest, cts) || cts.IsCancellationRequested) return;
                 cts.CancelAfter(AiRequestTimeout); // Timeout means no new text, not total generation time.
@@ -379,6 +384,14 @@ public partial class SpotlightWindow
                 liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText);
             if (ReferenceEquals(_aiRequest, cts))
             {
+                // A buffered response can finish before queued usage callbacks run.
+                // Preserve its final usage while this request still owns the UI.
+                if (receivedUsage != null)
+                {
+                    _usageSnapshot = receivedUsage;
+                    _usageIdentity = UsageIdentity(settings);
+                    UpdateAiUsage();
+                }
                 _aiRequest = null;
                 SaveAiHistory();
                 if (liveView == null) RenderAiHistory();

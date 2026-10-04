@@ -17,8 +17,22 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private const string TitlePropertyName = "title";
     private const string DurationPropertyName = "duration";
 
-    private static readonly HttpClient _httpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
-    private static readonly HttpClient KeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }));
+    private static readonly HttpClient SharedHttpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
+    private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }));
+    private readonly HttpClient _httpClient;
+    private readonly HttpClient _keyClient;
+    private readonly Func<bool> _artworkAllowed;
+    private readonly Func<string?> _apiKey;
+
+    public MediaMetadataLookupService() : this(SharedHttpClient, SharedKeyClient, IsOnlineArtworkAllowed, GetYouTubeApiKey) { }
+
+    internal MediaMetadataLookupService(HttpClient httpClient, HttpClient keyClient, Func<bool> artworkAllowed, Func<string?> apiKey)
+    {
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _keyClient = keyClient ?? throw new ArgumentNullException(nameof(keyClient));
+        _artworkAllowed = artworkAllowed ?? throw new ArgumentNullException(nameof(artworkAllowed));
+        _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
+    }
 
     internal static HttpRequestMessage CreateYouTubeApiRequest(string url, string apiKey)
     {
@@ -36,15 +50,15 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     static MediaMetadataLookupService()
     {
-        if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
+        if (SharedHttpClient.DefaultRequestHeaders.UserAgent.Count == 0)
         {
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            SharedHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
     }
 
     public async Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
     {
-        if (!IsOnlineArtworkAllowed())
+        if (!_artworkAllowed())
             return null;
 
         try
@@ -81,7 +95,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     public async Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default)
     {
-        if (!IsOnlineArtworkAllowed() || string.IsNullOrWhiteSpace(title))
+        if (!_artworkAllowed() || string.IsNullOrWhiteSpace(title))
             return null;
 
         try
@@ -90,7 +104,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 ? title
                 : $"{title} {artist}";
 
-            string? apiKey = GetYouTubeApiKey();
+            string? apiKey = _apiKey();
             if (!string.IsNullOrEmpty(apiKey) && !IsQuotaCooldownActive())
             {
                 var apiResult = await TrySearchViaDataApiAsync(query, title, apiKey, ct);
@@ -126,7 +140,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
 
             using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await KeyClient.SendAsync(request, timeoutCts.Token);
+            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
                 string body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
@@ -584,7 +598,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             return cached;
         }
 
-        string? apiKey = GetYouTubeApiKey();
+        string? apiKey = _apiKey();
         if (!string.IsNullOrEmpty(apiKey))
         {
             var apiResult = await TryGetVideoFromDataApiAsync(videoId, apiKey, ct);
@@ -687,7 +701,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             timeoutCts.CancelAfter(2500);
 
             using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await KeyClient.SendAsync(request, timeoutCts.Token);
+            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
             string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
             if (!response.IsSuccessStatusCode)
@@ -825,7 +839,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             timeoutCts.CancelAfter(2000);
 
             using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await KeyClient.SendAsync(request, timeoutCts.Token);
+            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
             response.EnsureSuccessStatusCode();
             string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
             if (string.IsNullOrWhiteSpace(json))
@@ -928,7 +942,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 #pragma warning disable S3776
     public async Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default)
     {
-        if (!IsOnlineArtworkAllowed())
+        if (!_artworkAllowed())
             return null;
 
         try
@@ -1056,7 +1070,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     private readonly record struct SoundCloudCandidateProbe(int Index, string? ThumbnailUrl, bool IsMatch);
 
-    private static async Task<SoundCloudCandidateProbe> ProbeSoundCloudCandidateAsync(
+    private async Task<SoundCloudCandidateProbe> ProbeSoundCloudCandidateAsync(
         string url,
         int candidateScore,
         int index,
@@ -1095,7 +1109,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
     }
 
-    private static async Task<string?> GetStringWithTimeoutAsync(string url, int timeoutMs, CancellationToken ct)
+    private async Task<string?> GetStringWithTimeoutAsync(string url, int timeoutMs, CancellationToken ct)
     {
         try
         {
@@ -1124,7 +1138,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private static string NormalizeSoundCloudArtworkUrl(string url)
         => SoundCloudMatching.NormalizeArtworkUrl(url);
 
-    private static async Task<(string? ThumbnailUrl, string? Title, string? Author)> TryGetSoundCloudOEmbedAsync(string trackUrl, CancellationToken ct)
+    private async Task<(string? ThumbnailUrl, string? Title, string? Author)> TryGetSoundCloudOEmbedAsync(string trackUrl, CancellationToken ct)
     {
         try
         {
