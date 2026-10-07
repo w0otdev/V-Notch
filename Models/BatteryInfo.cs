@@ -16,9 +16,11 @@ public class BatteryInfo
 
     public bool IsFullyCharged => HasBattery && IsPluggedIn && Percentage >= 99;
 
+    public bool IsPowerConnected => HasBattery && (IsPluggedIn || IsCharging);
+
     public string GetBatteryIcon()
     {
-        if (IsCharging) return "⚡";
+        if (IsPowerConnected) return "⚡";
         if (Percentage >= 80) return "🔋";
         if (Percentage >= 50) return "🔋";
         if (Percentage >= 20) return "🪫";

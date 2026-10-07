@@ -9,7 +9,7 @@ using System.Windows;
 namespace VNotch.Services;
 
 #pragma warning disable S1075 // Public GitHub Releases API endpoints
-public class UpdateService : IUpdateService
+public class UpdateService : IUpdateService, IDisposable
 {
     private const string LogCategory = "UPDATER";
     private static readonly Uri GithubLatestReleaseUri = new("https://api.github.com/repos/rainaku/V-Notch/releases/latest");
@@ -27,7 +27,14 @@ public class UpdateService : IUpdateService
     private UpdateInfo? _cachedLatestRelease;
     private DateTime _lastCheckUtc = DateTime.MinValue;
 
-    public UpdateService() : this(CreateHttpClient(), UpdateSecurityPolicy.FromEnvironment()) { }
+    private readonly bool _ownsHttpClient;
+
+    public UpdateService() : this(CreateHttpClient(), UpdateSecurityPolicy.FromEnvironment()) { _ownsHttpClient = true; }
+
+    public void Dispose()
+    {
+        if (_ownsHttpClient) _httpClient.Dispose();
+    }
 
     internal UpdateService(HttpClient httpClient, UpdateSecurityPolicy securityPolicy,
         Func<string, (bool IsValid, string Reason)>? signatureValidator = null,
@@ -161,7 +168,7 @@ public class UpdateService : IUpdateService
             if (process == null) throw new InvalidOperationException("Could not start verified installer.");
             installerStarted = true;
             RuntimeLog.Log(LogCategory, $"Starting verified installer {updateInfo.InstallerName}.");
-            Application.Current?.Shutdown();
+            await App.RequestShutdownAsync();
             return true;
         }
         catch (OperationCanceledException) { RuntimeLog.Warn(LogCategory, "Update download canceled; current application remains open."); return false; }
@@ -335,17 +342,57 @@ public class UpdateService : IUpdateService
     private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
     internal static int CompareVersions(string left, string right)
     {
-        if (!Version.TryParse(left, out var a) || !Version.TryParse(right, out var b))
+        if (!TryParseReleaseVersion(left, out var a, out var aPre) ||
+            !TryParseReleaseVersion(right, out var b, out var bPre))
             return 0;
-
-        int aBuild = a.Build < 0 ? 0 : a.Build;
-        int bBuild = b.Build < 0 ? 0 : b.Build;
-        int aRev = a.Revision < 0 ? 0 : a.Revision;
-        int bRev = b.Revision < 0 ? 0 : b.Revision;
-
-        var normA = new Version(a.Major, a.Minor, aBuild, aRev);
-        var normB = new Version(b.Major, b.Minor, bBuild, bRev);
-        return normA.CompareTo(normB);
+        int comparison = a.CompareTo(b);
+        if (comparison != 0) return comparison;
+        if (aPre.Length == 0 || bPre.Length == 0)
+            return aPre.Length == bPre.Length ? 0 : aPre.Length == 0 ? 1 : -1;
+        for (int i = 0; i < Math.Min(aPre.Length, bPre.Length); i++)
+        {
+            bool aNumeric = aPre[i].All(char.IsAsciiDigit);
+            bool bNumeric = bPre[i].All(char.IsAsciiDigit);
+            if (aNumeric && bNumeric)
+            {
+                comparison = aPre[i].Length.CompareTo(bPre[i].Length);
+                if (comparison == 0) comparison = string.CompareOrdinal(aPre[i], bPre[i]);
+            }
+            else if (aNumeric != bNumeric) comparison = aNumeric ? -1 : 1;
+            else comparison = string.CompareOrdinal(aPre[i], bPre[i]);
+            if (comparison != 0) return comparison;
+        }
+        return aPre.Length.CompareTo(bPre.Length);
     }
+
+    private static bool TryParseReleaseVersion(string value, out Version version, out string[] prerelease)
+    {
+        version = new Version(0, 0, 0, 0);
+        prerelease = [];
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        value = value.Trim();
+        if (value.StartsWith('v') || value.StartsWith('V')) value = value[1..];
+        int metadata = value.IndexOf('+');
+        if (metadata >= 0)
+        {
+            if (!ValidIdentifiers(value[(metadata + 1)..], numericLeadingZerosAllowed: true)) return false;
+            value = value[..metadata];
+        }
+        int suffix = value.IndexOf('-');
+        if (suffix >= 0)
+        {
+            string pre = value[(suffix + 1)..];
+            if (!ValidIdentifiers(pre, numericLeadingZerosAllowed: false)) return false;
+            prerelease = pre.Split('.');
+            value = value[..suffix];
+        }
+        if (!Version.TryParse(value, out var parsed)) return false;
+        version = new Version(parsed.Major, parsed.Minor, Math.Max(0, parsed.Build), Math.Max(0, parsed.Revision));
+        return true;
+    }
+
+    private static bool ValidIdentifiers(string value, bool numericLeadingZerosAllowed) => value.Split('.').All(part =>
+        part.Length > 0 && part.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') &&
+        (numericLeadingZerosAllowed || part.Length == 1 || part[0] != '0' || !part.All(char.IsAsciiDigit)));
     private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion };
 }

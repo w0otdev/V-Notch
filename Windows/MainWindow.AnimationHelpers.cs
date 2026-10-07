@@ -21,7 +21,7 @@ public partial class MainWindow
 
     private void AnimateNotchHover(bool isHovered)
     {
-        if (_isExpanded || _isAnimating || _isGreetingActive) return;
+        if (_isExpanded || _isAnimating || _isGreetingActive || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
         if (!isHovered && _isGestureActive) return;
 
@@ -54,9 +54,9 @@ public partial class MainWindow
 
         if (!isHovered && _isGestureActive) return;
 
-        if (!IsScreenshotPillActive) ResetAnimationThumbnailOverlay();
+        ResetAnimationThumbnailOverlay();
 
-        if (!IsScreenshotPillActive && !_isThumbnailSwitchActive)
+        if (!_isThumbnailSwitchActive)
         {
             ResetCompactThumbnailNextLayer();
         }
@@ -93,46 +93,7 @@ public partial class MainWindow
         // Same as AnimateNotchHover: keep the glass at full rate for the resize.
 
         BeginGlassHoverMotion(widthAnim);
-        if (IsScreenshotPillActive)
-        {
-            // Screenshot hover uses the compact thumbnail's geometry and spring,
-            // without entering an expanded view or replacing the pill content.
-            _screenshotCompact!.BeginAnimation(HeightProperty,
-                MakeAnim(notchHeight, duration, isHovered ? _easeExpOut6 : _easeQuadOut, animFps));
 
-            var bounds = GetScreenshotCompactThumbnailBounds();
-            double targetTop = isHovered ? Math.Max(0, (notchHeight - 22) / 2.0) : bounds.Top;
-            var marginAnim = new System.Windows.Media.Animation.ThicknessAnimation
-            {
-                To = new Thickness(0, targetTop, 0, 0),
-                Duration = duration,
-                EasingFunction = isHovered ? _easeExpOut6 : _easeQuadOut
-            };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(marginAnim, animFps);
-            if (!isHovered)
-            {
-                marginAnim.Completed += (s, e) =>
-                {
-                    if (_isCompactThumbnailHovered) return;
-                    _screenshotThumbnail?.BeginAnimation(FrameworkElement.MarginProperty, null);
-                    if (_screenshotThumbnail != null)
-                        _screenshotThumbnail.Margin = new Thickness(0, bounds.Top, 0, 0);
-                };
-            }
-            _screenshotThumbnail?.BeginAnimation(FrameworkElement.MarginProperty, marginAnim);
-
-            _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty,
-                MakeAnim(thumbScale, duration, easing, animFps));
-            _screenshotThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty,
-                MakeAnim(thumbScale, duration, easing, animFps));
-            double screenshotRadius = _cornerRadiusCollapsed;
-            if (isHovered)
-            {
-                screenshotRadius = islandMode ? notchHeight / 2.0 : 24;
-            }
-            AnimateCornerRadius(screenshotRadius, duration.TimeSpan);
-            return;
-        }
         if (isHovered)
         {
             ApplyCompactTitleContainerWidth(notchWidth);

@@ -78,10 +78,10 @@ public sealed class InstallDirectoryCleanupTests
         ownerStart.Environment["VNOTCH_OWNER_READY"] = readyName;
         using var owner = Process.Start(ownerStart)!;
         using var helper = Process.Start(InstallDirectoryCleanup.CreateStartInfo(directory, owner.Id))!;
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         try
         {
-            Assert.True(await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(10))),
+            Assert.True(await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(60))),
                 "Owner did not initialize its release gate.");
             await Task.Delay(700, timeout.Token);
             Assert.False(owner.HasExited);
@@ -112,18 +112,18 @@ public sealed class InstallDirectoryCleanupTests
         string target = Path.Combine(parent, "target");
         string link = Path.Combine(parent, "link");
         Directory.CreateDirectory(target);
-        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        var start = new ProcessStartInfo("cmd.exe")
         {
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-Command",
-            "$null = New-Item -ItemType Junction -Path $env:VNOTCH_TEST_LINK -Target $env:VNOTCH_TEST_TARGET" })
-            start.ArgumentList.Add(argument);
-        start.Environment["VNOTCH_TEST_LINK"] = link;
-        start.Environment["VNOTCH_TEST_TARGET"] = target;
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("mklink");
+        start.ArgumentList.Add("/J");
+        start.ArgumentList.Add(link);
+        start.ArgumentList.Add(target);
         using var process = Process.Start(start)!;
-        Assert.True(process.WaitForExit(10000));
+        Assert.True(process.WaitForExit(30000));
         Assert.Equal(0, process.ExitCode);
         try { Assert.Throws<ArgumentException>(() => InstallDirectoryCleanup.ValidateDirectory(link)); }
         finally

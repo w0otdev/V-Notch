@@ -14,12 +14,10 @@ public sealed class NetworkPrivacyTests
     {
         var old = System.Text.Json.JsonSerializer.Deserialize<NotchSettings>("{}")!;
         Assert.True(old.AllowOnlineAi);
-        Assert.True(old.AllowCopilot);
         Assert.True(old.SaveAiChatHistory);
         var settings = new NotchSettings
         {
             AllowOnlineAi = false,
-            AllowCopilot = false,
             AllowOnlineCanvas = false,
             AllowOnlineSubtitles = false,
             AllowOnlineWeather = false,
@@ -27,7 +25,6 @@ public sealed class NetworkPrivacyTests
         };
         var saved = System.Text.Json.JsonSerializer.Deserialize<NotchSettings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
         Assert.False(saved.AllowOnlineAi);
-        Assert.False(saved.AllowCopilot);
         Assert.False(saved.AllowOnlineCanvas);
         Assert.False(saved.AllowOnlineSubtitles);
         Assert.False(saved.AllowOnlineWeather);
@@ -64,12 +61,12 @@ public sealed class NetworkPrivacyTests
             })));
         var request = client.GetAsync("https://example.invalid");
         await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        var oldPermission = policy.Acquire(NetworkFeature.Copilot);
+        var oldPermission = policy.Acquire(NetworkFeature.Ai);
         policy.Apply(new NotchSettings { EnableLocalOnlyMode = true });
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
         Assert.True(oldPermission.IsCancellationRequested);
         policy.Apply(new NotchSettings());
-        Assert.False(policy.Acquire(NetworkFeature.Copilot).IsCancellationRequested);
+        Assert.False(policy.Acquire(NetworkFeature.Ai).IsCancellationRequested);
         Assert.True(oldPermission.IsCancellationRequested);
     }
 
@@ -89,20 +86,20 @@ public sealed class NetworkPrivacyTests
     [Fact]
     public void IndividualControlsDoNotErasePreferencesOrDisableUnrelatedFeatures()
     {
-        var settings = new NotchSettings { AllowCopilot = false, AllowOnlineCanvas = false, SaveAiChatHistory = false };
+        var settings = new NotchSettings { AllowOnlineCanvas = false, SaveAiChatHistory = false };
         Assert.True(NetworkPrivacy.Allows(settings, NetworkFeature.Ai));
-        Assert.False(NetworkPrivacy.Allows(settings, NetworkFeature.Copilot));
         Assert.False(NetworkPrivacy.Allows(settings, NetworkFeature.Canvas));
         settings.EnableLocalOnlyMode = true;
         Assert.All(Enum.GetValues<NetworkFeature>(), feature => Assert.False(NetworkPrivacy.Allows(settings, feature)));
         settings.EnableLocalOnlyMode = false;
-        Assert.False(settings.AllowCopilot);
         Assert.False(settings.Clone().SaveAiChatHistory);
     }
 
     [Theory]
     [InlineData("OpenAI")]
-    [InlineData("GitHub Copilot")]
+    [InlineData("Gemini")]
+    [InlineData("Claude")]
+    [InlineData("DeepSeek")]
     public async Task AiCannotBypassOfflineWithInjectedHttpClient(string provider)
     {
         var settings = new NotchSettings { EnableLocalOnlyMode = true, SpotlightAiProvider = provider };

@@ -13,6 +13,22 @@ namespace VNotch.Tests;
 public class MediaDetectionServiceLifecycleTests
 {
     [Fact]
+    public async Task ApplicationShutdownWaitsForWorkerBeyondBestEffortDisposeTimeout()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = CreateTestService(async _ => { await release.Task; return null; });
+        service.Start();
+        var drain = service.DrainShutdownAsync();
+        try
+        {
+            await service.DisposeAsync();
+            Assert.False(drain.IsCompleted);
+        }
+        finally { release.TrySetResult(); }
+        await drain.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void DisposeAllowsAWorkerToFinishOnTheUiDispatcher() => SharedStaTestRunner.RunAsync(async () =>
     {
         var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;

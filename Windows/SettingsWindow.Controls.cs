@@ -23,6 +23,27 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
+    private void ClipboardSetting_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings || _isSyncingCameraVisibility) return;
+        _settings.HideCamera = HideCameraCheck.IsChecked == true;
+        PopulateNavTabsSettings();
+        PushLivePreview();
+    }
+
+    private void ClipboardHotkey_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        string gesture = ClipboardHotkeyBox.Text.Trim();
+        if (gesture.Length > 0 && !ClipboardHotkeyController.TryParse(gesture, out _, out _))
+        {
+            ClipboardHotkeyHint.Text = Loc.Get("clipboard.invalidHotkey");
+            return;
+        }
+        ApplyPreview(ReadSettingsFromUi());
+        ClipboardHotkeyHint.Text = ClipboardHotkeyController.RegistrationError ?? Loc.Get("settings.clipboardHotkey.hint");
+    }
+
     #region Slider Value Changed Handlers
 
     private void WidthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -343,45 +364,7 @@ public partial class SettingsWindow
         }
     }
 
-    private void PopulateShelfWidgetCombo()
-    {
-        if (ShelfWidgetCombo == null) return;
-        ShelfWidgetCombo.Items.Clear();
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.camera"), Tag = "camera" });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.sysmon"), Tag = WidgetSysMon });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.weather"), Tag = WidgetWeather });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.clock"), Tag = WidgetClock });
-        ShelfWidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.shelfWidget.none"), Tag = "none" });
 
-        ShelfWidgetCombo.SelectedIndex = (_settings.ShelfWidget ?? "camera").ToLowerInvariant() switch
-        {
-            WidgetSysMon => 1,
-            WidgetWeather => 2,
-            WidgetClock => 3,
-            "none" => 4,
-            _ => 0
-        };
-    }
-
-    private void RepopulateShelfWidgetComboPreservingSelection()
-    {
-        if (ShelfWidgetCombo == null) return;
-        bool wasLoading = _isLoadingSettings;
-        _isLoadingSettings = true;
-        PopulateShelfWidgetCombo();
-        _isLoadingSettings = wasLoading;
-    }
-
-    private void ShelfWidgetCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (_isLoadingSettings) return;
-        if (ShelfWidgetCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string widget)
-        {
-            if (widget == _settings.ShelfWidget) return;
-            _settings.ShelfWidget = widget;
-            PushLivePreview();
-        }
-    }
 
     private void PopulateClockPageStyleCombo()
     {
@@ -845,7 +828,6 @@ public partial class SettingsWindow
 
             (NavTabsLabel, () => { NavTabsLabel.Text = Loc.Get("settings.navTabs"); NavTabsHint.Text = Loc.Get("settings.navTabs.hint"); ResetTabOrderButton.Content = Loc.Get("settings.tab.reset"); PopulateNavTabsSettings(); }),
             (ExpandedWidgetLabel, () => { ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget"); ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint"); RepopulateWidgetComboPreservingSelection(); }),
-            (ShelfWidgetLabel, () => { ShelfWidgetLabel.Text = Loc.Get("settings.shelfWidget"); ShelfWidgetHint.Text = Loc.Get("settings.shelfWidget.hint"); RepopulateShelfWidgetComboPreservingSelection(); }),
             (ClockPageStyleLabel, () => { ClockPageStyleLabel.Text = Loc.Get("settings.clockPageStyle"); ClockPageStyleHint.Text = Loc.Get("settings.clockPageStyle.hint"); RepopulateClockPageStyleComboPreservingSelection(); }),
             (WidthLabel, () => { WidthLabel.Text = Loc.Get("settings.width"); WidthSlider.Label = Loc.Get("settings.width"); WidthSlider.Description = Loc.Get("settings.width.hint"); }),
             (DynamicIslandWidthLabel, () => { DynamicIslandWidthLabel.Text = Loc.Get("settings.dynamicIslandWidth"); DynamicIslandWidthSlider.Label = Loc.Get("settings.dynamicIslandWidth"); DynamicIslandWidthSlider.Description = Loc.Get("settings.dynamicIslandWidth.hint"); }),
@@ -916,8 +898,6 @@ public partial class SettingsWindow
             (HideOnWindowedFullscreenHint, () => HideOnWindowedFullscreenHint.Text = Loc.Get("settings.hideWindowedFs.hint")),
             (MusicNotifyHint, () => MusicNotifyHint.Text = Loc.Get("settings.musicNotify.hint")),
             (SystemNotifyHint, () => SystemNotifyHint.Text = Loc.Get("settings.systemNotify.hint")),
-            (ShelfUnlockHint, () => ShelfUnlockHint.Text = Loc.Get("settings.shelfUnlock.hint")),
-            (CopyShelfClipboardHint, () => CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint")),
             (ShowBatteryHint, () => ShowBatteryHint.Text = Loc.Get("settings.showBattery.hint")),
             (EnableSpotlightHint, () => EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint")),
             (SpotlightAiHint, LocalizeSpotlightAiSettings),
@@ -1034,13 +1014,7 @@ public partial class SettingsWindow
         staggerMs += staggerStep;
         AnimateContentChange(SystemNotifyCheck, () => SystemNotifyCheck.Content = Loc.Get("settings.systemNotify"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        AnimateContentChange(ShelfUnlockCheck, () => ShelfUnlockCheck.Content = Loc.Get("settings.shelfUnlock"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
-        ScreenshotTrayCheck.Content = Loc.Get("settings.screenshotTray");
-        ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
-        ScreenshotTrayDurationSlider.Label = Loc.Get("settings.screenshotTrayDuration");
-        ScreenshotTrayDurationSlider.Description = Loc.Get("settings.screenshotTrayDuration.hint");
-        AnimateContentChange(CopyShelfClipboardCheck, () => CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps);
         staggerMs += staggerStep;

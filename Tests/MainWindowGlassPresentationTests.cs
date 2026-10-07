@@ -17,6 +17,24 @@ public sealed class MainWindowGlassPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public void VisibleTrayAvoidsWholeContentShadowAndRestoresItWhenClosed() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        window.ShowActivated = false;
+        window.Show();
+        window.SecondaryContent.Visibility = Visibility.Visible;
+        Assert.True(window.ClipboardTrayView.IsVisible);
+        Invoke(window, "ApplyGlassContentShadow", true);
+        Assert.Null(window.NotchContent.Effect);
+        window.SecondaryContent.Visibility = Visibility.Collapsed;
+        Invoke(window, "ApplyGlassContentShadow", true);
+        Assert.IsType<DropShadowEffect>(window.NotchContent.Effect);
+        Invoke(window, "ApplyGlassContentShadow", false);
+        Assert.Null(window.NotchContent.Effect);
+    });
+
+    [Fact]
     public void GlassMaterialsPreserveAndRestoreTheOriginalPanelAndCountdownAppearance() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();
@@ -36,7 +54,6 @@ public sealed class MainWindowGlassPresentationTests
             Assert.IsType<DropShadowEffect>(window.NotchContent.Effect);
             Assert.IsType<DropShadowEffect>(window.AnimationThumbnailBorder.Effect);
             Assert.Equal(new Thickness(1), window.CameraSection.BorderThickness);
-            Assert.Equal(new Thickness(1), window.FileShelf.BorderThickness);
             Assert.Equal(new Thickness(0.5), window.CompactThumbnailRim.BorderThickness);
             Assert.Equal(Brushes.Transparent, window.CameraOverlay.Background);
             Assert.Equal(0, window.TimerControlBarShadow.Opacity);

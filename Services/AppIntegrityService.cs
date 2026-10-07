@@ -226,14 +226,6 @@ public static class AppIntegrityService
         if (Environment.GetEnvironmentVariable("VNOTCH_SKIP_INTEGRITY_CHECK") == "1")
             return true;
 
-        var path = Environment.ProcessPath ?? "";
-        if (path.Contains(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase) ||
-            path.Contains(@"\bin\Release\", StringComparison.OrdinalIgnoreCase) ||
-            path.Contains(@"\TestResults\", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
         return false;
 #endif
     }

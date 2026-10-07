@@ -739,16 +739,6 @@ public partial class MainWindow
                 if (CameraOverlay != null)
                     CameraOverlay.Background = System.Windows.Media.Brushes.Transparent;
             }
-
-            if (FileShelf != null)
-            {
-                FileShelf.Background = _glassPanelBg;
-                FileShelf.BorderBrush = _glassPanelBorder;
-                FileShelf.BorderThickness = new Thickness(1);
-            }
-
-            if (FileShelfDashedBorder != null)
-                FileShelfDashedBorder.Stroke = _glassDashStroke;
         }
         else
         {
@@ -760,16 +750,6 @@ public partial class MainWindow
                 if (CameraOverlay != null)
                     CameraOverlay.Background = _cameraOverlayDefault;
             }
-
-            if (FileShelf != null)
-            {
-                FileShelf.Background = _defaultPanelBg;
-                FileShelf.BorderBrush = null;
-                FileShelf.BorderThickness = new Thickness(0);
-            }
-
-            if (FileShelfDashedBorder != null)
-                FileShelfDashedBorder.Stroke = _defaultDashStroke;
         }
     }
 
@@ -949,7 +929,10 @@ public partial class MainWindow
     {
         if (NotchContent != null)
         {
-            NotchContent.Effect = enable ? GetOrCreateGlassContentShadow() : null;
+            // The tray already supplies card contrast. A shadow on the entire
+            // scrolling subtree forces a large intermediate render surface.
+            NotchContent.Effect = enable && ClipboardTrayView?.IsVisible != true
+                ? GetOrCreateGlassContentShadow() : null;
         }
 
         if (AnimationThumbnailBorder != null)
@@ -1237,7 +1220,7 @@ public partial class MainWindow
     {
         if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
 
-        // True Apple HIG Materials rely on the internal shader's Brightness/Saturation variables 
+        // True Apple HIG Materials rely on the internal shader's Brightness/Saturation variables
         if (GlassDarkOverlay.Opacity > 0)
         {
             GlassDarkOverlay.BeginAnimation(OpacityProperty, null);

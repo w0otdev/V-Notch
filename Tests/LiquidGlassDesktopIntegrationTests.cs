@@ -50,10 +50,10 @@ public sealed class LiquidGlassDesktopIntegrationTests
 
                 backdrop = new Window
                 {
-                    Left = host.Left - 300,
-                    Top = host.Top,
-                    Width = 1000,
-                    Height = 500,
+                    Left = SystemParameters.VirtualScreenLeft,
+                    Top = SystemParameters.VirtualScreenTop,
+                    Width = SystemParameters.VirtualScreenWidth,
+                    Height = SystemParameters.VirtualScreenHeight,
                     WindowStyle = WindowStyle.None,
                     ShowActivated = false,
                     ShowInTaskbar = false,
@@ -76,6 +76,9 @@ public sealed class LiquidGlassDesktopIntegrationTests
                     "_liquidGlass", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 await WpfFrameWaiter.UntilAsync(() => controllerField.GetValue(host) is LiquidGlassController controller &&
                     controller.HasPresentedFrame && host.NotchBorder.ActualHeight >= 140, "glass presentation or transition completion", cancellationToken);
+                // Native window entrance and the spring can still be moving after
+                // the first presented frame. Sample only after both have settled.
+                await Task.Delay(1000, cancellationToken);
                 await WpfFrameWaiter.NextAsync(cancellationToken);
 
                 var controller = Assert.IsType<LiquidGlassController>(controllerField.GetValue(host));

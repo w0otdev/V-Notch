@@ -38,7 +38,7 @@ public partial class MainWindow
         try
         {
             var owner = _compactPillArbiter.ActiveSlot;
-            if (owner is CompactPillSlot.Bluetooth or CompactPillSlot.Charging or CompactPillSlot.Greeting or CompactPillSlot.Screenshot)
+            if (owner is CompactPillSlot.Bluetooth or CompactPillSlot.Charging or CompactPillSlot.Greeting)
             {
                 HideCompactSurface(MusicCompactContent);
                 HideCompactSurface(CollapsedContent);

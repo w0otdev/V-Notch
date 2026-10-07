@@ -62,7 +62,7 @@ public sealed class NotchDesignAcceptanceTests
         PumpFor(TimeSpan.FromMilliseconds(800));
         Assert.Equal(info.CurrentTrack, ((ShellViewModel)window.DataContext).Media.Title);
         Assert.Equal(info.CurrentTrack, Field<MediaInfo>(window, "_currentMediaInfo").CurrentTrack);
-        Invoke(window, "ExpandNotch", null, NotchView.Media);
+        Invoke(window, "ExpandNotch", null, NotchView.Media, NotchView.Compact);
         CaptureTransitionIfRequested(window, language, dpi);
         PumpUntil(() => !IsAnimating(window));
         PumpFor(TimeSpan.FromMilliseconds(650));
@@ -71,9 +71,9 @@ public sealed class NotchDesignAcceptanceTests
         Assert.Equal(info.CurrentTrack, title.Text);
         Assert.True(Math.Max(window.TrackTitleLayer.Opacity, window.TrackTitleNextLayer.Opacity) > .99);
         AssertMediaInk(window, hasArtwork: true);
-        Assert.Equal(.45, window.FileShelfIconButton.Opacity, 3);
+        Assert.Equal(.45, window.ClipboardIconButton.Opacity, 3);
         Assert.Equal(1, window.HomeIconButton.Opacity, 3);
-        var navInk = Assert.IsType<SolidColorBrush>(((System.Windows.Shapes.Path)((System.Windows.Controls.Viewbox)window.FileShelfIconButton.Child).Child).Fill);
+        var navInk = Assert.IsType<SolidColorBrush>(((System.Windows.Shapes.Path)((System.Windows.Controls.Viewbox)window.ClipboardIconButton.Child).Child).Fill);
         Assert.Equal(Colors.White, navInk.Color);
         SaveFrame(window, language, dpi, "artwork");
         Invoke(window, "HideMediaBackground");

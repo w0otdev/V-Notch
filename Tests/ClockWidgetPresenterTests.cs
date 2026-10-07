@@ -36,6 +36,7 @@ public sealed class ClockWidgetPresenterTests
         public int WindowWidth => 600;
         public int WindowHeight { get; set; } = 300;
         public double ExpandedHeight => 240;
+        public double MaxExpandedHeight => 378;
 
         public Window Window { get; set; } = null!;
     }
@@ -181,6 +182,42 @@ public sealed class ClockWidgetPresenterTests
             presenter.ApplyExpandedWidgetMode();
 
             Assert.Equal(Visibility.Collapsed, greetingSection.Visibility);
+        });
+    }
+
+    [Fact]
+    public void ResizeHostWindowHeight_DoesNotResizeWindow_WhenAlreadySatisfiesMaxExpandedHeight()
+    {
+        RunSta(() =>
+        {
+            var host = new FakeClockHost();
+            var window = new Window { Height = 458 };
+            host.Window = window;
+            double dpiScale = VisualTreeHelper.GetDpi(window).DpiScaleX;
+            if (dpiScale <= 0) dpiScale = 1.0;
+            int expectedPixelHeight = (int)Math.Round(458 * dpiScale);
+            host.WindowHeight = expectedPixelHeight;
+
+            var refs = new ClockWidgetViewRefs
+            {
+                ClockWidget = new Grid(),
+                CalendarStripContainer = new Grid(),
+                CalendarWidget = new Border(),
+                NotchBorder = new Border(),
+                Window = window
+            };
+
+            using var presenter = new ClockWidgetPresenter(host, refs);
+
+            // Simulating switching from Camera view (328) to Media view (150)
+            presenter.ResizeHostWindowHeight(150);
+            Assert.Equal(458, window.Height);
+            Assert.Equal(expectedPixelHeight, host.WindowHeight);
+
+            // Simulating switching to Secondary / ClipboardTray view (268)
+            presenter.ResizeHostWindowHeight(268);
+            Assert.Equal(458, window.Height);
+            Assert.Equal(expectedPixelHeight, host.WindowHeight);
         });
     }
 

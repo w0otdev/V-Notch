@@ -344,7 +344,7 @@
                               SelectionChanged="ViewStateComboBox_SelectionChanged">
                         <ComboBoxItem Content="Current" Tag="Current" IsSelected="True"/>
                         <ComboBoxItem Content="Media Player" Tag="MediaExpanded"/>
-                        <ComboBoxItem Content="File Shelf" Tag="SecondaryShelf"/>
+                        <ComboBoxItem Content="Clipboard tray" Tag="SecondaryClipboard"/>
                         <ComboBoxItem Content="Timer &amp; Clock" Tag="TimerStopwatch"/>
                         <ComboBoxItem Content="Audio Router" Tag="AudioRouting"/>
                         <ComboBoxItem Content="Compact Pill" Tag="CompactMusicPill"/>

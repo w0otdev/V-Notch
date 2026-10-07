@@ -118,15 +118,18 @@ public sealed class SpotlightAiPresentationTests
         window.SearchBox.Text = "Pending draft";
         var sending = (Task)Invoke(window, "SendAiAsync")!;
         await started.Task.WaitAsync(ct);
-        Invoke(window, "RefreshAiPanel");
         Assert.Equal(Visibility.Visible, window.AiStopButton.Visibility);
         Assert.False(window.AiSendButton.IsEnabled);
+        window.SearchBox.Text = "Next question";
+        Assert.Equal(Visibility.Visible, window.AiBottomActionRow.Visibility);
+        Assert.Equal(Visibility.Visible, window.AiStopButton.Visibility);
+        window.SearchBox.Clear();
         Assert.NotNull(Field<Border?>(window, "_aiThinkingCard"));
         Invoke(window, "ShowAiThinking");
         Assert.Equal(2, window.AiTranscript.Children.Count);
         Invoke(window, "UpdateAiActivity");
         Assert.Equal(!reducedMotion, Field<bool>(window, "_aiActivityAnimating"));
-        Invoke(window, "EscapeAiMode");
+        Invoke(window, "AiStop_Click", window.AiStopButton, new RoutedEventArgs());
         await sending;
         Assert.True(cancelled);
         Assert.Equal("Pending draft", window.SearchBox.Text);
@@ -135,7 +138,8 @@ public sealed class SpotlightAiPresentationTests
         Assert.False(Field<bool>(window, "_aiActivityAnimating"));
         Assert.True(Field<bool>(window, "_aiMode"));
         Invoke(window, "EscapeAiMode");
-        Assert.False(Field<bool>(window, "_aiMode"));
+        await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "Escape dismisses Spotlight", ct);
+        Assert.True(Field<bool>(window, "_aiMode"));
     });
 
     [Theory]
@@ -238,6 +242,69 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal("Follow up", history[^2].Content);
         Assert.Equal("Answer", history[^1].Content);
         await WpfFrameWaiter.NextAsync(ct);
+    });
+
+    [Theory]
+    [InlineData(false, "hotkey")]
+    [InlineData(true, "hotkey")]
+    [InlineData(false, "escape")]
+    [InlineData(true, "escape")]
+    [InlineData(false, "deactivate")]
+    [InlineData(true, "deactivate")]
+    public void DismissedRequestCompletesAndReopeningPreservesItsTranscript(bool reopenBeforeCompletion, string dismissal) => Run(true, async ct =>
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken requestToken = default;
+        using var client = new HttpClient(new Handler(async (_, token) =>
+        {
+            requestToken = token;
+            started.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return Stream("Completed in the background");
+        }));
+        var settings = Settings();
+        settings.SpotlightDefaultAi = false;
+        using var fixture = new SpotlightWindowFixture(settings, new SpotlightAiService(client), saveChatHistory: true);
+        var window = fixture.Window;
+        window.ShowSpotlight();
+        Invoke(window, "ToggleAiMode");
+        window.SearchBox.Text = "Keep working";
+        var sending = (Task)Invoke(window, "SendAiAsync")!;
+        await started.Task.WaitAsync(ct);
+        var thinking = Field<Border?>(window, "_aiThinkingCard");
+        if (dismissal == "escape") window.HandleGlobalEscape();
+        else if (dismissal == "deactivate") Invoke(window, "Window_Deactivated", window, EventArgs.Empty);
+        else window.ToggleFromHotkey();
+        await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "Spotlight dismissed", ct);
+        Assert.False(requestToken.IsCancellationRequested);
+        Assert.NotNull(Field<object?>(window, "_aiRequest"));
+        if (reopenBeforeCompletion)
+        {
+            window.ShowSpotlight();
+            Assert.True(Field<bool>(window, "_aiMode"));
+            Assert.Contains(thinking!, window.AiTranscript.Children.Cast<UIElement>());
+            Assert.Equal(Visibility.Visible, window.AiStopButton.Visibility);
+            Assert.False(requestToken.IsCancellationRequested);
+        }
+        release.TrySetResult();
+        await sending.WaitAsync(ct);
+        if (!reopenBeforeCompletion)
+        {
+            Assert.False(window.IsSpotlightOpen);
+            window.ShowSpotlight();
+            Invoke(window, "ToggleAiMode");
+        }
+        var history = Field<List<SpotlightAiMessage>>(window, "_aiHistory");
+        Assert.Equal(2, history.Count);
+        Assert.Equal("Keep working", history[0].Content);
+        Assert.Equal("Completed in the background", history[1].Content);
+        Assert.False(history[1].IsIncomplete);
+        Assert.Contains("Completed in the background", new TextRange(
+            Descendants<RichTextBox>(window.AiTranscript).Single().Document.ContentStart,
+            Descendants<RichTextBox>(window.AiTranscript).Single().Document.ContentEnd).Text);
+        Assert.Null(Field<object?>(window, "_aiRequest"));
+        Assert.Equal(history, new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc")).Load().Single().Messages);
     });
 
     private static NotchSettings Settings()

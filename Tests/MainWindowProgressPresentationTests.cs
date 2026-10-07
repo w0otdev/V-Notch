@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
+using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.Tests.Fakes;
@@ -133,6 +134,91 @@ public sealed class MainWindowProgressPresentationTests
         Invoke(window, "ResetProgressUI");
         Assert.Equal(Visibility.Collapsed, window.IndeterminateProgress.Visibility);
         await WpfFrameWaiter.NextAsync(ct);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TimelineUpdatesRejectStalePositionsAndPreserveArtistOnlyCorrections(bool expanded) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        var window = fixture.Window;
+        Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
+            expanded ? NotchView.Media : NotchView.Compact,
+            expanded ? NotchShapeState.Expanded : NotchShapeState.Collapsed, "progress fixture");
+        var info = new MediaInfo
+        {
+            CurrentTrack = "Track", CurrentArtist = "Unknown", SourceAppId = "player", SessionInstanceKey = "session-a",
+            Position = TimeSpan.FromSeconds(30), Duration = TimeSpan.FromSeconds(100),
+            IsPlaying = true, IsAnyMediaPlaying = true, IsSeekEnabled = true, LastUpdated = DateTimeOffset.UtcNow
+        };
+        Invoke(window, "UpdateProgressTracking", info);
+        Assert.Equal("0:30", window.CurrentTimeText.Text);
+        long generation = Field<long>(window, "_trackChangeSequence");
+        info.CurrentArtist = "Resolved artist";
+        info.LastUpdated = DateTimeOffset.UtcNow;
+        Invoke(window, "UpdateProgressTracking", info);
+        Assert.Equal(generation, Field<long>(window, "_trackChangeSequence"));
+        var acceptedTimestamp = Field<DateTimeOffset>(window, "_lastProgressTimelineUpdated");
+        info.Position = TimeSpan.FromSeconds(10);
+        info.LastUpdated = acceptedTimestamp.AddSeconds(-5);
+        Invoke(window, "UpdateProgressTracking", info);
+        Assert.Equal(acceptedTimestamp, Field<DateTimeOffset>(window, "_lastProgressTimelineUpdated"));
+        Assert.InRange(Field<ProgressEngine>(window, "_progressEngine").GetUiFrame().Position.TotalSeconds, 29, 35);
+        info.SessionInstanceKey = "session-b";
+        info.LastUpdated = DateTimeOffset.UtcNow;
+        Invoke(window, "UpdateProgressTracking", info);
+        Assert.Equal("session-b", Field<string>(window, "_lastProgressSessionInstanceKey"));
+        Assert.Equal(generation, Field<long>(window, "_trackChangeSequence"));
+        info.CurrentTrack = "Next track";
+        info.Position = TimeSpan.Zero;
+        info.LastUpdated = DateTimeOffset.UtcNow;
+        Invoke(window, "UpdateProgressTracking", info);
+        Assert.Equal(generation + 1, Field<long>(window, "_trackChangeSequence"));
+        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isRewindAnimating"), "new track rewind", ct);
+        Assert.InRange(window.ProgressBarScale.ScaleX, 0, .1);
+        Assert.Equal("1:40", window.RemainingTimeText.Text);
+    });
+
+    [Theory]
+    [InlineData(true, "LIVE")]
+    [InlineData(false, "0:00")]
+    public void UnknownDurationDistinguishesLivePlaybackFromPausedMedia(bool playing, string expected) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        var window = fixture.Window;
+        Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = "Live program" });
+        Field<ProgressEngine>(window, "_progressEngine").OnMediaSnapshot(new ProgressSnapshot
+        {
+            Position = TimeSpan.Zero, Duration = TimeSpan.Zero, IsPlaying = playing,
+            Timestamp = DateTime.UtcNow, SequenceNumber = 1
+        });
+        Invoke(window, "RenderProgressBar");
+        Assert.Equal(expected, window.RemainingTimeText.Text);
+        Assert.Equal(0, window.ProgressBarScale.ScaleX);
+    });
+
+    [Theory]
+    [InlineData(30, 50, true)]
+    [InlineData(30, 20, true)]
+    [InlineData(60, 0, false)]
+    [InlineData(70, 10, false)]
+    public void PlaybackJumpsAnimateOnlyPlausibleExternalSeeks(double displayed, double reported, bool animate) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        var window = fixture.Window;
+        Prepare(window, reported, true, false);
+        Field<ProgressEngine>(window, "_progressEngine").GetUiFrame();
+        Set(window, "_progressDisplayRatio", displayed / 100);
+        window.ProgressBarScale.ScaleX = displayed / 100;
+        Invoke(window, "RenderProgressBar");
+        Assert.Equal(animate, Field<bool>(window, "_isRewindAnimating"));
+        if (animate)
+        {
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isRewindAnimating"), "external timeline seek", ct);
+            Assert.InRange(window.ProgressBarScale.ScaleX, reported / 100, reported / 100 + .02);
+        }
+        else Assert.Equal(displayed / 100, window.ProgressBarScale.ScaleX);
     });
 
     private static void Prepare(MainWindow window, double seconds, bool playing, bool browser)

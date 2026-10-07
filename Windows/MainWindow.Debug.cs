@@ -75,14 +75,14 @@ public partial class MainWindow
                     OnClose = () =>
                     {
                         _settings.EnableDebugMode = false;
-                        _settingsService.Save(_settings);
+                        _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
                         ToggleDebugMode(false);
                     },
                     OnPositionChanged = (x, y) =>
                     {
                         _settings.DebugWindowX = x;
                         _settings.DebugWindowY = y;
-                        _settingsService.Save(_settings);
+                        _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
                     },
                     LiveMetricsProvider = () =>
                     {
@@ -158,7 +158,8 @@ public partial class MainWindow
                 if (!_isExpanded) ExpandNotch();
                 if (_isSecondaryView) SwitchToPrimaryView();
                 break;
-            case "SecondaryShelf":
+            case "SecondaryShelf": // Existing debug automation alias.
+            case "SecondaryClipboard":
                 if (!_isExpanded) ExpandNotch();
                 SwitchToSecondaryView();
                 break;

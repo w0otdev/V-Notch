@@ -88,14 +88,13 @@ public partial class SettingsWindow
             MusicNotifyCheck.IsChecked = defaults.ShowMusicNotifications;
             SystemNotifyCheck.IsChecked = defaults.ShowSystemNotifications;
             StayBehindWindowsCheck.IsChecked = defaults.StayBehindWindows;
-            ShelfUnlockCheck.IsChecked = defaults.IsShelfUploadLimitUnlocked;
-            ScreenshotTrayCheck.IsChecked = defaults.EnableScreenshotTray;
-            ScreenshotTrayDurationSlider.Value = defaults.ScreenshotTrayDurationSeconds;
-            CopyShelfClipboardCheck.IsChecked = defaults.CopyShelfFilesToClipboard;
             EnableSpotlightCheck.IsChecked = defaults.EnableSpotlight;
             LoadSpotlightAiSettings(defaults);
             EnableDebugModeCheck.IsChecked = defaults.EnableDebugMode;
             ShowBatteryCheck.IsChecked = defaults.ShowBatteryIndicator;
+            HideCameraCheck.IsChecked = defaults.HideCamera;
+            ClipboardHotkeyBox.Text = defaults.ClipboardHotkey;
+            LoadTrayAdvanced(defaults);
             _settings.BatteryDeviceId = defaults.BatteryDeviceId;
             HideOnExclusiveFullscreenCheck.IsChecked = defaults.HideOnExclusiveFullscreen;
             HideOnWindowedFullscreenCheck.IsChecked = defaults.HideOnWindowedFullscreen;
@@ -125,7 +124,6 @@ public partial class SettingsWindow
             }
             LanguageCombo.SelectedIndex = defLangIndex;
             _settings.ExpandedWidget = defaults.ExpandedWidget;
-            _settings.ShelfWidget = defaults.ShelfWidget;
             _settings.ClockPageStyle = defaults.ClockPageStyle;
             _settings.NavTabOrder = defaults.NavTabOrder;
             _settings.VisibleNavTabs = defaults.VisibleNavTabs;
@@ -139,7 +137,6 @@ public partial class SettingsWindow
                 "none" => 6,
                 _ => 0
             };
-            PopulateShelfWidgetCombo();
             PopulateClockPageStyleCombo();
             PopulateNavTabsSettings();
         }
@@ -388,6 +385,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCard,
             NavSectionPrivacy => PrivacyCard,
             NavSectionSpotlight => SpotlightCard,
+            NavSectionFileTray => FileTrayCard,
             NavSectionAdvanced => AdvancedCard,
             NavSectionPerformance => PerformanceCard,
             NavSectionDonating => DonatingCard,
@@ -404,6 +402,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCardTranslate,
             NavSectionPrivacy => PrivacyCardTranslate,
             NavSectionSpotlight => SpotlightCardTranslate,
+            NavSectionFileTray => FileTrayCardTranslate,
             NavSectionAdvanced => AdvancedCardTranslate,
             NavSectionPerformance => PerformanceCardTranslate,
             NavSectionDonating => DonatingCardTranslate,
@@ -599,11 +598,13 @@ public partial class SettingsWindow
         snapshot.IdleAutoHideDelay = Math.Max(1000, (int)(IdleAutoHideDelaySlider.Value * 1000));
         snapshot.ShowMusicNotifications = MusicNotifyCheck.IsChecked ?? true;
         snapshot.ShowSystemNotifications = SystemNotifyCheck.IsChecked ?? true;
-        snapshot.IsShelfUploadLimitUnlocked = ShelfUnlockCheck.IsChecked ?? false;
-        snapshot.EnableScreenshotTray = ScreenshotTrayCheck.IsChecked ?? true;
-        snapshot.ScreenshotTrayDurationSeconds = Math.Clamp((int)Math.Round(ScreenshotTrayDurationSlider.Value), 2, 120);
-        snapshot.CopyShelfFilesToClipboard = CopyShelfClipboardCheck.IsChecked ?? false;
         snapshot.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;
+        snapshot.HideCamera = HideCameraCheck.IsChecked ?? false;
+        snapshot.ClipboardHotkey = ClipboardHotkeyBox.Text.Trim();
+        snapshot.ClipboardCaptureText = TrayTextCheck.IsChecked == true;
+        snapshot.ClipboardCaptureImages = TrayImagesCheck.IsChecked == true;
+        snapshot.ClipboardCaptureFiles = TrayFilesCheck.IsChecked == true;
+        snapshot.ClipboardCaptureDelay = (int)TrayDelaySlider.Value;
 
         snapshot.EnableWeather = EnableWeatherCheck.IsChecked ?? false;
         snapshot.ManualCity = ManualCityTextBox.Text?.Trim() ?? string.Empty;
@@ -627,8 +628,6 @@ public partial class SettingsWindow
         if (WidgetCombo.SelectedItem is System.Windows.Controls.ComboBoxItem widgetItem && widgetItem.Tag is string widgetCode)
             snapshot.ExpandedWidget = widgetCode;
 
-        if (ShelfWidgetCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem shelfItem && shelfItem.Tag is string shelfCode)
-            snapshot.ShelfWidget = shelfCode;
 
         if (ClockPageStyleCombo?.SelectedItem is System.Windows.Controls.ComboBoxItem clockItem && clockItem.Tag is string clockCode)
             snapshot.ClockPageStyle = clockCode;

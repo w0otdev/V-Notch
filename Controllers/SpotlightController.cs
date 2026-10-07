@@ -104,8 +104,7 @@ internal sealed class SpotlightController : ISpotlightController
             if (_nativeRegistered)
             {
                 RuntimeLog.Log(LogTag, "Alt+Space registered with Windows");
-                if (!EnsureKeyboardHook())
-                    RuntimeLog.Warn(LogTag, "Global Escape shortcut is unavailable");
+                UpdateKeyboardHook();
                 return;
             }
 
@@ -160,6 +159,40 @@ internal sealed class SpotlightController : ISpotlightController
         RuntimeLog.Warn(LogTag,
             $"Could not install keyboard hook (Win32={Marshal.GetLastWin32Error()})");
         return false;
+    }
+
+    private void UpdateKeyboardHook()
+    {
+        if (_disposed || _settings?.EnableSpotlight != true || _hwnd == IntPtr.Zero)
+        {
+            RemoveKeyboardHook();
+            return;
+        }
+        if (!_nativeRegistered || _window?.IsSpotlightOpen == true)
+        {
+            EnsureKeyboardHook();
+            return;
+        }
+        RemoveKeyboardHook();
+    }
+
+    private void Window_OpenStateChanged(object? sender, EventArgs e) => UpdateKeyboardHook();
+    private void Window_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateKeyboardHook();
+
+    private SpotlightWindow CreateWindow()
+    {
+        var window = _windowFactory();
+        window.OpenStateChanged += Window_OpenStateChanged;
+        window.IsVisibleChanged += Window_IsVisibleChanged;
+        return window;
+    }
+
+    private void RemoveKeyboardHook()
+    {
+        if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
+        _keyboardHook = IntPtr.Zero;
+        _keyboardProc = null;
+        _escapeDown = false;
     }
 
     private bool TryHandleEscapeHook(KBDLLHOOKSTRUCT key, int message)
@@ -227,14 +260,16 @@ internal sealed class SpotlightController : ISpotlightController
 
     internal void ToggleSpotlight()
     {
+        if (_host is MainWindow { IsGreetingInteractionBlocked: true }) return;
         if (_disposed || _settings?.EnableSpotlight != true) return;
         if (_window == null)
         {
-            _window = _windowFactory();
+            _window = CreateWindow();
             if (_host != null) _window.Owner = _host;
             if (_settings != null) _window.ApplySettings(_settings);
         }
         _window.ToggleFromHotkey();
+        UpdateKeyboardHook();
     }
 
     private void QueuePreparation()
@@ -251,7 +286,7 @@ internal sealed class SpotlightController : ISpotlightController
             {
                 if (_window == null)
                 {
-                    _window = _windowFactory();
+                    _window = CreateWindow();
                     _window.Owner = _host;
                     _window.ApplySettings(_settings);
                 }
@@ -268,9 +303,7 @@ internal sealed class SpotlightController : ISpotlightController
     {
         if (_nativeRegistered) UnregisterHotKey(_hwnd, HotkeyId);
         _nativeRegistered = false;
-        if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
-        _keyboardHook = IntPtr.Zero;
-        _keyboardProc = null;
+        RemoveKeyboardHook();
         _fallbackSpaceDown = false;
         _escapeDown = false;
         _lastFallbackSpaceEventTime = 0;
@@ -295,6 +328,11 @@ internal sealed class SpotlightController : ISpotlightController
         if (_disposed) return;
         _disposed = true;
         DetachHost();
+        if (_window != null)
+        {
+            _window.OpenStateChanged -= Window_OpenStateChanged;
+            _window.IsVisibleChanged -= Window_IsVisibleChanged;
+        }
         _window?.Shutdown();
         _window = null;
     }

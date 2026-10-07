@@ -47,7 +47,6 @@ public static class SettingsMigrator
 
     private static JsonObject MigrateV1(JsonObject root)
     {
-        EnsureProperty(root, nameof(NotchSettings.IsShelfUploadLimitUnlocked), false);
         return root;
     }
 

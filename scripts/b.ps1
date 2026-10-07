@@ -18,7 +18,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$restoreArguments = if ($LockedRestore) { @('-p:RestoreLockedMode=true') } else { @() }
+# Capture the conditional output as an array: a single string splats into
+# individual characters when passed to a native command such as dotnet.
+$restoreArguments = @(if ($LockedRestore) { '-p:RestoreLockedMode=true' })
 if ($RequireAuthenticode -and -not $CertificateThumbprint) {
     throw 'A trusted certificate thumbprint is required for a public release.'
 }
@@ -130,12 +132,12 @@ if (-not (Test-Path "installers")) {
     New-Item -ItemType Directory -Path "installers" | Out-Null
 }
 
-# Build installer
+# Read the UTF-8 source explicitly; ANSI decoding turns the copyright sign into mojibake.
 if ($SelfContained) {
     # Tell NSIS to skip the .NET runtime check/install (runtime is bundled).
-    & $nsisPath "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "V-Notch-Setup.nsi"
+    & $nsisPath "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "V-Notch-Setup.nsi"
 } else {
-    & $nsisPath "/DAPP_VERSION_FULL=$installerVersion" "V-Notch-Setup.nsi"
+    & $nsisPath "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "V-Notch-Setup.nsi"
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      NSIS build failed!" -ForegroundColor Red

@@ -14,6 +14,16 @@ public partial class MainWindow
     #region Greeting Animation (Apple-style "Hello" handwriting on startup)
 
     private bool _isGreetingActive = false;
+    internal bool IsGreetingInteractionBlocked => _isGreetingActive;
+
+    private void BlockGreetingInput(object sender, System.Windows.Input.PreProcessInputEventArgs e)
+    {
+        if (_isGreetingActive && e.StagingItem.Input is
+            System.Windows.Input.MouseEventArgs or System.Windows.Input.KeyboardEventArgs or
+            System.Windows.Input.TextCompositionEventArgs or System.Windows.Input.TouchEventArgs or
+            System.Windows.Input.StylusEventArgs)
+            e.Cancel();
+    }
     private DispatcherTimer? _greetingDismissTimer;
     private bool _isVietnameseGreeting = false;
     private int _greetingGeneration;
@@ -338,6 +348,7 @@ public partial class MainWindow
 
     private void DisposeGreetingLifecycle()
     {
+        System.Windows.Input.InputManager.Current.PreProcessInput -= BlockGreetingInput;
         ++_greetingGeneration;
         _greetingDismissTimer?.Stop();
         _greetingDismissTimer = null;

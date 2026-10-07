@@ -347,7 +347,6 @@ public partial class MainWindow
         _isScrollSessionLocked = true;
 
         UpdateNavIconsActiveState();
-        UpdateShelfCapacityIndicator();
 
         double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _audioViewWidth;
         double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _audioViewHeight;

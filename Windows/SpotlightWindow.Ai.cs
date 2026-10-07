@@ -46,8 +46,7 @@ public partial class SpotlightWindow
 
     private void EscapeAiMode()
     {
-        if (_aiRequest != null) CancelAiRequest();
-        else ToggleAiMode();
+        DismissFromGlobalShortcut();
     }
 
     private void ToggleAiMode()
@@ -148,7 +147,8 @@ public partial class SpotlightWindow
         UpdateAiUsage();
         AiSendButton.IsEnabled = _aiRequest == null && !string.IsNullOrWhiteSpace(SearchBox.Text);
         AiSendButton.Visibility = AiSendButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
-        var rowVisibility = SearchBox.Text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+        AiStopButton.Visibility = _aiRequest == null ? Visibility.Collapsed : Visibility.Visible;
+        var rowVisibility = _aiRequest == null && SearchBox.Text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
         if (AiBottomActionRow.Visibility != rowVisibility)
         {
             AiBottomActionRow.Visibility = rowVisibility;
@@ -244,6 +244,7 @@ public partial class SpotlightWindow
         ShowAiThinking();
         using var cts = new CancellationTokenSource();
         _aiRequest = cts;
+        RefreshAiPanel();
         var started = System.Diagnostics.Stopwatch.StartNew();
         var progressTimer = new System.Windows.Threading.DispatcherTimer
         { Interval = TimeSpan.FromSeconds(1) };

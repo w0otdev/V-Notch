@@ -1,11 +1,16 @@
 import json
+import contextlib
+import io
 from pathlib import Path
+import sys
 import tempfile
 import subprocess
 import unittest
 
 from check_sarif import check
 from ci_scope import needs_windows, release_eligible, scope
+
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 class PipelineChecks(unittest.TestCase):
@@ -27,7 +32,7 @@ class PipelineChecks(unittest.TestCase):
             root = Path(temporary).resolve()
             self.assertTrue(root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
             def git(*args):
-                return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+                return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True, creationflags=CREATE_NO_WINDOW).stdout.strip()
             def commit():
                 git("add", ".")
                 git("-c", "user.name=Scope Test", "-c", "user.email=scope@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Scope test")
@@ -39,6 +44,16 @@ class PipelineChecks(unittest.TestCase):
             (root / "README.md").write_text("Updated documentation", encoding="utf-8")
             docs = commit()
             self.assertFalse(scope(base, docs, "refs/heads/main", root))
+            # A syntactically valid SHA need not exist in the checkout (for
+            # example, the previous tip after a force-push).
+            missing = "f" * 40
+            for before, after in ((missing, docs), (base, missing)):
+                with self.subTest(base=before, head=after):
+                    diagnostic = io.StringIO()
+                    with contextlib.redirect_stderr(diagnostic):
+                        self.assertTrue(scope(before, after, "refs/heads/main", root))
+                    self.assertIn("requiring full validation", diagnostic.getvalue())
+                    self.assertIn("git diff exited 128", diagnostic.getvalue())
             (root / "docs").mkdir()
             git("mv", "App.cs", "docs/App.md")
             renamed = commit()

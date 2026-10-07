@@ -32,7 +32,7 @@ public partial class MainWindow
         foreach (var (element, key) in new (DependencyObject, string)[]
         {
             (SettingsButton, "tooltip.settings"), (BatterySection, "settings.batteryDevice.system"),
-            (HomeIconButton, "nav.media"), (FileShelfIconButton, "nav.shelf"),
+            (HomeIconButton, "nav.media"), (ClipboardIconButton, "nav.clipboard"), (CameraIconButton, "nav.camera"),
             (TimerIconButton, "nav.timer"), (AudioIconButton, "nav.audio"),
             (CameraSection, "settings.camera"), (UpdateNotificationButton, "tooltip.downloadUpdate"),
             (PrevButton, "media.previous"), (InlinePrevButton, "media.previous"),
@@ -56,7 +56,7 @@ public partial class MainWindow
     {
         ++_volumeInteractionVersion;
         _currentVolume = (float)e.NewValue;
-        VolumeBarScale.ScaleX = _currentVolume;
+        SetVolumeFill(VolumeBarScale, _currentVolume);
         UpdateVolumeIcon(_currentVolume, false);
         float volume = _currentVolume;
         _audioWrites.Post("accessible-volume", () => _mediaService.TrySetCurrentSessionVolume(volume));

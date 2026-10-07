@@ -1,7 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <None Update="Assets\Licenses\GitHub-Copilot-*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-  </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -55,7 +52,6 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="GitHub.Copilot.SDK" Version="1.0.16" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
     <PackageReference Include="Markdig" Version="0.41.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
@@ -167,13 +163,4 @@
     <Copy SourceFiles="$(IntermediateOutputPath)Package.appxmanifest" DestinationFolder="$(OutDir)" />
   </Target>
 
-  <!-- Copilot launches a separate process and resolves adjacent native assets by path. -->
-  <Target Name="KeepCopilotRuntimeOutsideBundle" BeforeTargets="_ComputeFilesToBundle">
-    <ItemGroup>
-      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
-          Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('/', '\').StartsWith('runtimes\$(RuntimeIdentifier)\native\'))">
-        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-      </ResolvedFileToPublish>
-    </ItemGroup>
-  </Target>
 </Project>

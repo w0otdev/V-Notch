@@ -168,9 +168,9 @@ public sealed class SecurityAuditTests
     [InlineData(@"//attacker-server/share/file.txt", true)]
     [InlineData(@"C:\Users\User\file.txt", false)]
     [InlineData(@"D:\Folder\Subfolder\file.zip", false)]
-    public void FileShelfController_IsUncPath_DetectsUncCorrectly(string path, bool expectedUnc)
+    public void LocalPathPolicy_IsUncPath_DetectsUncCorrectly(string path, bool expectedUnc)
     {
-        bool isUnc = FileShelfController.IsUncPath(path);
+        bool isUnc = LocalPathPolicy.IsUncPath(path);
         Assert.Equal(expectedUnc, isUnc);
     }
 

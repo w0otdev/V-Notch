@@ -43,15 +43,6 @@ public static class PipDetector
         "chromium", "whale", "yandex", "wavebox", "helium", "supermium", "browser"
     };
 
-    private static readonly HashSet<string> PipWindowClasses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Chrome_WidgetWin_1",
-        "MozillaDialogClass",
-        "MozillaWindowClass",
-        "ApplicationFrameWindow",
-        "Windows.UI.Core.CoreWindow"
-    };
-
 #pragma warning disable S3267 // Keyword lookup does not iterate loops
     public static bool IsPipTitle(string? title)
     {
@@ -119,18 +110,8 @@ public static class PipDetector
             return true;
         }
 
-        // Document PiP or custom PiP window fallback:
-        // Topmost browser window with known PiP class and typical floating overlay dimensions
-        string className = GetWindowClassName(hWnd);
-        if (PipWindowClasses.Contains(className) &&
-            !string.IsNullOrWhiteSpace(title) &&
-            GetWindowRect(hWnd, out RECT rect) &&
-            rect.Right - rect.Left is >= 100 and <= 1600 &&
-            rect.Bottom - rect.Top is >= 60 and <= 1200)
-        {
-            return true;
-        }
-
+        // Browser window classes and dimensions also match ordinary topmost windows.
+        // Require a PiP title or the active media title instead of guessing from size.
         return false;
     }
 

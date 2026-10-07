@@ -29,8 +29,6 @@ public partial class MainWindow
     private readonly WebcamCaptureController _camera = new();
 
     private bool _cameraPreviewMorphPending = false;
-    private bool _isCameraSectionAnimating = false;
-    private const int CameraSectionExpandDurationMs = 420;
     private const int CameraSectionCollapseDurationMs = 420;
 
     private WriteableBitmap? _cameraWriteableBitmap;
@@ -114,290 +112,29 @@ public partial class MainWindow
         CameraSection.Clip = clipRect;
     }
 
-    private void AnimateCameraSectionToShelf(bool expand)
-    {
-        if (!_isSecondaryView || _isAnimating) return;
-        if (_isCameraSectionAnimating) return;
-        if (expand == _isCameraSectionExpanded) return;
-
-        int token = ++_cameraSectionAnimToken;
-        _isCameraSectionAnimating = true;
-        var duration = new Duration(TimeSpan.FromMilliseconds(expand ? CameraSectionExpandDurationMs : CameraSectionCollapseDurationMs));
-        var easing = (IEasingFunction)_easeExpOut6;
-
-        CameraSection.BeginAnimation(WidthProperty, null);
-        CameraSection.BeginAnimation(HeightProperty, null);
-        CameraSection.BeginAnimation(MarginProperty, null);
-        CameraSectionScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        CameraSectionScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        FileShelf.BeginAnimation(OpacityProperty, null);
-        ApplyCameraCornerRadius(expand);
-
-        if (expand)
-        {
-            double compactWidth = CameraSection.ActualWidth;
-            if (compactWidth <= 1)
-            {
-                compactWidth = _cameraSectionCompactWidth > 1 ? _cameraSectionCompactWidth : 120;
-            }
-            double compactHeight = CameraSection.ActualHeight;
-            if (compactHeight <= 1)
-            {
-                compactHeight = _cameraSectionCompactHeight > 1 ? _cameraSectionCompactHeight : 100;
-            }
-            _cameraSectionCompactWidth = compactWidth;
-            _cameraSectionCompactHeight = compactHeight;
-            _cameraSectionCompactMargin = CameraSection.Margin;
-
-            double targetWidth = SecondaryContent.ActualWidth;
-            if (targetWidth <= 1)
-            {
-                SecondaryContent.UpdateLayout();
-                targetWidth = SecondaryContent.ActualWidth;
-            }
-            if (targetWidth <= 1)
-            {
-                double shelfWidth = FileShelf.ActualWidth;
-                targetWidth = shelfWidth > 1 ? (shelfWidth + compactWidth) : Math.Max(compactWidth, 320);
-            }
-            targetWidth = Math.Max(compactWidth, targetWidth);
-
-            double targetHeight = targetWidth;
-
-            double notchTargetHeight = targetHeight + 30 + 12 + 2;
-            double currentNotchHeight = _expandedHeight;
-
-            double newWindowHeightDip = notchTargetHeight + 80;
-            _overlayWindow.ResizeHeight(newWindowHeightDip);
-
-            NotchBorder.BeginAnimation(HeightProperty, null);
-            NotchBorder.Height = currentNotchHeight;
-            var notchHeightAnim = MakeAnim(currentNotchHeight, notchTargetHeight, duration, easing, null);
-            NotchBorder.BeginAnimation(HeightProperty, notchHeightAnim, HandoffBehavior.SnapshotAndReplace);
-
-            FileShelf.Visibility = Visibility.Visible;
-            FileShelf.IsHitTestVisible = false;
-
-            CameraSection.Width = compactWidth;
-            CameraSection.Height = compactHeight;
-            CameraSection.VerticalAlignment = VerticalAlignment.Top;
-            CameraSection.HorizontalAlignment = HorizontalAlignment.Left;
-            CameraSection.Margin = _cameraSectionCompactMargin;
-            Grid.SetColumn(CameraSection, 0);
-            Grid.SetColumnSpan(CameraSection, 2);
-            Panel.SetZIndex(CameraSection, 10);
-
-            var widthAnim = MakeAnim(compactWidth, targetWidth, duration, easing, null);
-            var heightAnim = MakeAnim(compactHeight, targetHeight, duration, easing, null);
-            var marginAnim = new ThicknessAnimation(CameraSection.Margin, new Thickness(0, 0, 0, 0), duration)
-            {
-                EasingFunction = easing
-            };
-            Timeline.SetDesiredFrameRate(marginAnim, VNotch.Services.AnimationConfig.TargetFps);
-
-            var shelfFadeOut = MakeAnim(FileShelf.Opacity, 0.0, new Duration(TimeSpan.FromMilliseconds(220)), _easeQuadOut, null);
-
-            var squashX = new DoubleAnimationUsingKeyFrames { Duration = duration };
-            squashX.KeyFrames.Add(new EasingDoubleKeyFrame(CameraSectionScale.ScaleX, KeyTime.FromPercent(0.0)));
-            squashX.KeyFrames.Add(new EasingDoubleKeyFrame(0.985, KeyTime.FromPercent(0.34), _easeSineInOut));
-            squashX.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromPercent(1.0), _easeSineInOut));
-            Timeline.SetDesiredFrameRate(squashX, VNotch.Services.AnimationConfig.TargetFps);
-
-            var squashY = new DoubleAnimationUsingKeyFrames { Duration = duration };
-            squashY.KeyFrames.Add(new EasingDoubleKeyFrame(CameraSectionScale.ScaleY, KeyTime.FromPercent(0.0)));
-            squashY.KeyFrames.Add(new EasingDoubleKeyFrame(0.96, KeyTime.FromPercent(0.34), _easeSineInOut));
-            squashY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromPercent(1.0), _easeSineInOut));
-            Timeline.SetDesiredFrameRate(squashY, VNotch.Services.AnimationConfig.TargetFps);
-
-            widthAnim.Completed += (s, e) =>
-            {
-                if (token != _cameraSectionAnimToken) return;
-                _isCameraSectionExpanded = true;
-                _isCameraSectionAnimating = false;
-                CameraSection.BeginAnimation(WidthProperty, null);
-                CameraSection.BeginAnimation(HeightProperty, null);
-                CameraSection.Width = targetWidth;
-                CameraSection.Height = targetHeight;
-                CameraSection.BeginAnimation(MarginProperty, null);
-                CameraSection.Margin = new Thickness(0);
-                CameraSectionScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                CameraSectionScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                CameraSectionScale.ScaleX = 1.0;
-                CameraSectionScale.ScaleY = 1.0;
-                ApplyCameraCornerRadius(true);
-                FileShelf.BeginAnimation(OpacityProperty, null);
-                FileShelf.Opacity = 0;
-                FileShelf.Visibility = Visibility.Collapsed;
-
-                NotchBorder.BeginAnimation(HeightProperty, null);
-                NotchBorder.Height = notchTargetHeight;
-            };
-
-            CameraSection.BeginAnimation(WidthProperty, widthAnim, HandoffBehavior.SnapshotAndReplace);
-            CameraSection.BeginAnimation(HeightProperty, heightAnim, HandoffBehavior.SnapshotAndReplace);
-            CameraSection.BeginAnimation(MarginProperty, marginAnim, HandoffBehavior.SnapshotAndReplace);
-            CameraSectionScale.BeginAnimation(ScaleTransform.ScaleXProperty, squashX, HandoffBehavior.SnapshotAndReplace);
-            CameraSectionScale.BeginAnimation(ScaleTransform.ScaleYProperty, squashY, HandoffBehavior.SnapshotAndReplace);
-            FileShelf.BeginAnimation(OpacityProperty, shelfFadeOut, HandoffBehavior.SnapshotAndReplace);
-            return;
-        }
-
-        double currentWidth = CameraSection.ActualWidth;
-        if (currentWidth <= 1)
-        {
-            if (!double.IsNaN(CameraSection.Width) && CameraSection.Width > 1)
-            {
-                currentWidth = CameraSection.Width;
-            }
-            else
-            {
-                currentWidth = _cameraSectionCompactWidth > 1 ? _cameraSectionCompactWidth : 120;
-            }
-        }
-        double collapsedWidth = _cameraSectionCompactWidth > 1 ? _cameraSectionCompactWidth : currentWidth;
-
-        double currentHeight = CameraSection.ActualHeight;
-        if (currentHeight <= 1)
-        {
-            if (!double.IsNaN(CameraSection.Height) && CameraSection.Height > 1)
-            {
-                currentHeight = CameraSection.Height;
-            }
-            else
-            {
-                currentHeight = _cameraSectionCompactHeight > 1 ? _cameraSectionCompactHeight : 100;
-            }
-        }
-        double collapsedHeight = _cameraSectionCompactHeight > 1 ? _cameraSectionCompactHeight : currentHeight;
-
-        FileShelf.Visibility = Visibility.Visible;
-        FileShelf.IsHitTestVisible = false;
-        CameraSection.Width = currentWidth;
-        CameraSection.Height = currentHeight;
-        CameraSection.VerticalAlignment = VerticalAlignment.Top;
-        CameraSection.HorizontalAlignment = HorizontalAlignment.Left;
-        Grid.SetColumn(CameraSection, 0);
-        Grid.SetColumnSpan(CameraSection, 2);
-        Panel.SetZIndex(CameraSection, 10);
-
-        double collapseNotchHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight;
-        NotchBorder.BeginAnimation(HeightProperty, null);
-        var notchHeightCollapseAnim = MakeAnim(collapseNotchHeight, _expandedHeight, duration, easing, null);
-        notchHeightCollapseAnim.Completed += (s, e) =>
-        {
-            if (token != _cameraSectionAnimToken) return;
-            NotchBorder.BeginAnimation(HeightProperty, null);
-            NotchBorder.Height = _expandedHeight;
-            double windowHeightDip = _expandedHeight + 80;
-            _overlayWindow.ResizeHeight(windowHeightDip);
-        };
-        NotchBorder.BeginAnimation(HeightProperty, notchHeightCollapseAnim, HandoffBehavior.SnapshotAndReplace);
-
-        var widthCollapseAnim = MakeAnim(currentWidth, collapsedWidth, duration, easing, null);
-        var heightCollapseAnim = MakeAnim(currentHeight, collapsedHeight, duration, easing, null);
-        var marginCollapseAnim = new ThicknessAnimation(CameraSection.Margin, _cameraSectionCompactMargin, duration)
-        {
-            EasingFunction = easing
-        };
-        Timeline.SetDesiredFrameRate(marginCollapseAnim, VNotch.Services.AnimationConfig.TargetFps);
-
-        var shelfFadeIn = MakeAnim(FileShelf.Opacity, 1.0, new Duration(TimeSpan.FromMilliseconds(260)), _easePowerOut3, null);
-
-        var settleX = new DoubleAnimationUsingKeyFrames { Duration = duration };
-        settleX.KeyFrames.Add(new EasingDoubleKeyFrame(CameraSectionScale.ScaleX, KeyTime.FromPercent(0.0)));
-        settleX.KeyFrames.Add(new EasingDoubleKeyFrame(0.99, KeyTime.FromPercent(0.36), _easeSineInOut));
-        settleX.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromPercent(1.0), _easeSineInOut));
-        Timeline.SetDesiredFrameRate(settleX, VNotch.Services.AnimationConfig.TargetFps);
-
-        var settleY = new DoubleAnimationUsingKeyFrames { Duration = duration };
-        settleY.KeyFrames.Add(new EasingDoubleKeyFrame(CameraSectionScale.ScaleY, KeyTime.FromPercent(0.0)));
-        settleY.KeyFrames.Add(new EasingDoubleKeyFrame(0.94, KeyTime.FromPercent(0.36), _easeSineInOut));
-        settleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromPercent(1.0), _easeSineInOut));
-        Timeline.SetDesiredFrameRate(settleY, VNotch.Services.AnimationConfig.TargetFps);
-
-        widthCollapseAnim.Completed += (s, e) =>
-        {
-            if (token != _cameraSectionAnimToken) return;
-            _isCameraSectionExpanded = false;
-            ResetCameraSectionLayoutInstant();
-        };
-
-        CameraSection.BeginAnimation(WidthProperty, widthCollapseAnim, HandoffBehavior.SnapshotAndReplace);
-        CameraSection.BeginAnimation(HeightProperty, heightCollapseAnim, HandoffBehavior.SnapshotAndReplace);
-        CameraSection.BeginAnimation(MarginProperty, marginCollapseAnim, HandoffBehavior.SnapshotAndReplace);
-        CameraSectionScale.BeginAnimation(ScaleTransform.ScaleXProperty, settleX, HandoffBehavior.SnapshotAndReplace);
-        CameraSectionScale.BeginAnimation(ScaleTransform.ScaleYProperty, settleY, HandoffBehavior.SnapshotAndReplace);
-        FileShelf.BeginAnimation(OpacityProperty, shelfFadeIn, HandoffBehavior.SnapshotAndReplace);
-    }
-
     private void ResetCameraSectionLayoutInstant()
     {
-        bool wasCameraSectionAnimating = _isCameraSectionAnimating;
-        _cameraSectionAnimToken++;
-        _isCameraSectionAnimating = false;
-        _isCameraSectionExpanded = false;
-
-        CameraSection.BeginAnimation(WidthProperty, null);
-        CameraSection.BeginAnimation(HeightProperty, null);
-        CameraSection.BeginAnimation(MarginProperty, null);
-        CameraSection.Width = double.NaN;
-        CameraSection.Height = double.NaN;
-        CameraSection.Margin = _cameraSectionCompactMargin;
-        CameraSection.HorizontalAlignment = HorizontalAlignment.Stretch;
-        CameraSection.VerticalAlignment = VerticalAlignment.Stretch;
-        Grid.SetColumn(CameraSection, 0);
-        Grid.SetColumnSpan(CameraSection, 1);
-        Panel.SetZIndex(CameraSection, 0);
-        ApplyCameraCornerRadius(false);
-
-        CameraSectionScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        CameraSectionScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        CameraSectionScale.ScaleX = 1.0;
-        CameraSectionScale.ScaleY = 1.0;
-
-        double currentNotchH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : NotchBorder.Height;
-        if (wasCameraSectionAnimating || currentNotchH > _expandedHeight + 1)
-        {
-            NotchBorder.BeginAnimation(HeightProperty, null);
-            NotchBorder.Height = _expandedHeight;
-            double windowHeightDip = _expandedHeight + 80;
-            _overlayWindow.ResizeHeight(windowHeightDip);
-        }
-
-        FileShelf.BeginAnimation(OpacityProperty, null);
-        FileShelf.Opacity = 1.0;
-        FileShelf.Visibility = Visibility.Visible;
-        FileShelf.IsHitTestVisible = true;
-
+        if (!double.IsNaN(CameraSection.Width)) CameraSection.Width = double.NaN;
+        if (!double.IsNaN(CameraSection.Height)) CameraSection.Height = double.NaN;
+        if (CameraSection.Margin != new Thickness(0)) CameraSection.Margin = new Thickness(0);
+        ApplyCameraCornerRadius(true);
         if (!IsCameraPreviewLifecycleActive)
         {
-            CameraPreviewImage.BeginAnimation(OpacityProperty, null);
-            CameraPreviewScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            CameraPreviewScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            CameraPreviewBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            CameraOverlay.BeginAnimation(OpacityProperty, null);
-
-            CameraPreviewImage.Opacity = 0;
-            CameraPreviewImage.Source = null;
-            CameraPreviewScale.ScaleX = 1.06;
-            CameraPreviewScale.ScaleY = 1.06;
-            CameraPreviewBlur.Radius = _settings.EnableBlurEffects ? 16.0 : 0.0;
             CameraOverlay.Visibility = Visibility.Visible;
-            CameraOverlay.Opacity = 1.0;
-            CameraErrorOverlay.Visibility = Visibility.Collapsed;
+            CameraOverlay.Opacity = 1;
         }
     }
+
 
     private void CameraSection_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
 
-        if (_isAnimating || !_isSecondaryView || _isCameraSectionAnimating) return;
+        if (_isAnimating || !_isCameraView) return;
         if (_camera.IsStarting || _camera.IsStopping) return;
 
         if (!_isCameraActive)
         {
-            AnimateCameraSectionToShelf(true);
             StartCameraPreview().SafeFireAndForget("CAMERA-START");
         }
         else
@@ -408,7 +145,8 @@ public partial class MainWindow
 
     private void CameraSection_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplyCameraCornerRadius(_isCameraSectionExpanded);
+        if (CameraContent == null || CameraContent.Visibility != Visibility.Visible || CameraContent.Opacity < 0.01) return;
+        ApplyCameraCornerRadius(true);
     }
 
     private async Task StartCameraPreview()
@@ -423,7 +161,7 @@ public partial class MainWindow
             PrimeCameraPreviewMorphIn();
             CameraErrorOverlay.Visibility = Visibility.Collapsed;
 
-            string? error = await _camera.StartAsync(_settings.CameraDeviceId, () => _isSecondaryView);
+            string? error = await _camera.StartAsync(_settings.CameraDeviceId, () => _isCameraView);
             if (error != null)
             {
                 throw new InvalidOperationException(error);
@@ -432,7 +170,7 @@ public partial class MainWindow
         catch (Exception ex)
         {
             StopCameraPreviewSafe();
-            if (_isSecondaryView)
+            if (_isCameraView)
             {
                 CameraErrorOverlay.Visibility = Visibility.Visible;
             }
@@ -444,10 +182,62 @@ public partial class MainWindow
         }
     }
 
+    private bool _pendingCameraPreviewVisualTeardown;
+
     private void StopCameraPreviewForViewExit(bool resetLayout = true)
     {
+        _pendingCameraPreviewVisualTeardown = false;
         StopCameraPreviewSafe();
         if (resetLayout)
+        {
+            ResetCameraSectionLayoutInstant();
+        }
+    }
+
+    private void StopCameraPreviewForViewTransition()
+    {
+        _pendingCameraPreviewVisualTeardown = true;
+        DetachCameraHardwareForExit();
+    }
+
+    private void DetachCameraHardwareForExit()
+    {
+        _cameraPreviewMorphPending = false;
+        _cameraWriteableBitmap = null;
+        _cameraBitmapAllocW = 0;
+        _cameraBitmapAllocH = 0;
+        _cameraFrameDispatchPending = false;
+
+        var (reader, capture, initializingCapture) = _camera.DetachForSafeStop();
+
+        _ = WebcamCaptureController.DisposeResourcesAsync(reader, capture);
+        if (initializingCapture != null && !ReferenceEquals(initializingCapture, capture))
+        {
+            _ = WebcamCaptureController.DisposeResourcesAsync(null, initializingCapture);
+        }
+    }
+
+    private void FinalizePendingCameraPreviewTeardown()
+    {
+        if (!_pendingCameraPreviewVisualTeardown) return;
+        _pendingCameraPreviewVisualTeardown = false;
+
+        CameraPreviewImage.BeginAnimation(OpacityProperty, null);
+        CameraPreviewScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        CameraPreviewScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        CameraPreviewBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+        CameraOverlay.BeginAnimation(OpacityProperty, null);
+
+        CameraPreviewImage.Opacity = 0;
+        CameraPreviewImage.Source = null;
+        CameraPreviewScale.ScaleX = 1.06;
+        CameraPreviewScale.ScaleY = 1.06;
+        CameraPreviewBlur.Radius = _settings.EnableBlurEffects ? 16.0 : 0.0;
+        CameraOverlay.Opacity = 1;
+        CameraOverlay.Visibility = Visibility.Visible;
+        CameraErrorOverlay.Visibility = Visibility.Collapsed;
+
+        if (CameraContent.Visibility == Visibility.Visible)
         {
             ResetCameraSectionLayoutInstant();
         }
@@ -550,7 +340,6 @@ public partial class MainWindow
 
         try
         {
-            AnimateCameraSectionToShelf(false);
             _cameraPreviewMorphPending = false;
             _cameraWriteableBitmap = null;
             _cameraBitmapAllocW = 0;

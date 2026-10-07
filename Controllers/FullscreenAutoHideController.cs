@@ -13,6 +13,7 @@ public sealed class FullscreenAutoHideController : IDisposable
     private const int PollIntervalMs = 300;
 
     private readonly Func<IntPtr> _getNotchHwnd;
+    private readonly Func<bool>? _isAutoHideSuppressed;
     private NotchSettings _settings;
     private readonly DispatcherTimer _pollTimer;
 
@@ -27,9 +28,11 @@ public sealed class FullscreenAutoHideController : IDisposable
 
     public event Action? RecheckNeeded;
 
-    public FullscreenAutoHideController(Func<IntPtr> getNotchHwnd, NotchSettings settings)
+    public FullscreenAutoHideController(Func<IntPtr> getNotchHwnd, NotchSettings settings,
+        Func<bool>? isAutoHideSuppressed = null)
     {
         _getNotchHwnd = getNotchHwnd ?? throw new ArgumentNullException(nameof(getNotchHwnd));
+        _isAutoHideSuppressed = isAutoHideSuppressed;
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
         _pollTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -57,7 +60,8 @@ public sealed class FullscreenAutoHideController : IDisposable
         IntPtr notchHwnd = _getNotchHwnd();
         if (notchHwnd == IntPtr.Zero) return false;
 
-        if (!_settings.HideOnExclusiveFullscreen && !_settings.HideOnWindowedFullscreen)
+        if (_isAutoHideSuppressed?.Invoke() == true ||
+            (!_settings.HideOnExclusiveFullscreen && !_settings.HideOnWindowedFullscreen))
         {
             if (_isHiddenByFullscreen)
             {

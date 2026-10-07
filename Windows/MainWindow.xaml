@@ -372,6 +372,8 @@
                   MouseWheel="NotchWrapper_MouseWheel"
                   AllowDrop="True"
                   DragEnter="NotchWrapper_DragEnter"
+                  PreviewDragOver="NotchWrapper_PreviewDragOver"
+                  PreviewDrop="NotchWrapper_PreviewDrop"
                   DragOver="NotchWrapper_DragOver"
                   DragLeave="NotchWrapper_DragLeave"
                   Drop="NotchWrapper_DragDrop">
@@ -405,6 +407,20 @@
 
                 <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" ClipToBounds="True" Background="Transparent" UseLayoutRounding="False" SnapsToDevicePixels="False">
                     <Grid SnapsToDevicePixels="False">
+
+                        <Border x:Name="ClipboardDropGlow" Panel.ZIndex="100"
+                                IsHitTestVisible="False" Opacity="0" Margin="2"
+                                CornerRadius="{Binding CornerRadius, ElementName=NotchBorder}"
+                                BorderBrush="#90FFFFFF" BorderThickness="1.5" Background="#0CFFFFFF"/>
+                        <Border x:Name="ClipboardDropBadge" Panel.ZIndex="101"
+                                IsHitTestVisible="False" Opacity="0" Width="28" Height="28"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,14,0"
+                                CornerRadius="14" Background="#EEFFFFFF" RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform><ScaleTransform x:Name="ClipboardDropBadgeScale"/></Border.RenderTransform>
+                            <Path Data="M 0,5 L 4,9 L 11,1" Stroke="#FF151519" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Width="12" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
 
                         <Border x:Name="NotchBackground"
                                 Background="{StaticResource NotchGradient}"
@@ -587,7 +603,6 @@
                         <!-- Add live widgets inside this group; startup greetings hide the group. -->
                         <Grid x:Name="NotchLiveContent">
                         <Border x:Name="VolumeIndicatorContainer"
-                                SizeChanged="VolumeIndicator_SizeChanged"
                                 VerticalAlignment="Center"
                                 HorizontalAlignment="Stretch"
                                 Height="14"
@@ -607,10 +622,13 @@
                                     Height="6"
                                     VerticalAlignment="Center">
                                 <Border x:Name="VolumeIndicatorFill"
-                                        HorizontalAlignment="Left"
+                                        HorizontalAlignment="Stretch"
                                         CornerRadius="3"
                                         Height="6"
-                                        Width="0">
+                                        RenderTransformOrigin="0,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="VolumeIndicatorScale" ScaleX="0"/>
+                                    </Border.RenderTransform>
                                     <Border.Background>
                                         <LinearGradientBrush x:Name="VolumeIndicatorGradient" StartPoint="0,0" EndPoint="1,0">
                                             <GradientStop x:Name="VolumeIndicatorGradientStart" Color="White" Offset="0"/>
@@ -659,7 +677,7 @@
 
                         <Grid x:Name="SpotlightReturnContentHost">
                         <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="False" SnapsToDevicePixels="False">
-                            
+
 
 
                     <Border x:Name="NavIconsBackground"
@@ -714,7 +732,7 @@
                                           Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
                                 </Viewbox>
                             </ctrl:ActionBorder>
-                            <ctrl:ActionBorder x:Name="FileShelfIconButton"
+                            <ctrl:ActionBorder x:Name="ClipboardIconButton"
                                     Tag="Secondary"
                                     Width="22" Height="22"
                                     Background="Transparent"
@@ -726,7 +744,7 @@
                                     PreviewMouseMove="NavIcon_PreviewMouseMove"
                                     PreviewMouseLeftButtonUp="NavIcon_PreviewMouseLeftButtonUp"
                                     LostMouseCapture="NavIcon_LostMouseCapture"
-                                    Click="FileShelfIconButton_Click">
+                                    Click="ClipboardIconButton_Click">
                                 <Border.RenderTransform>
                                     <TransformGroup>
                                         <ScaleTransform ScaleX="1" ScaleY="1"/>
@@ -795,6 +813,34 @@
                                 <Viewbox Width="15" Height="15" Stretch="Uniform"
                                          HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Data="M13.5 2.5C13.5 2.1 13.05 1.86 12.72 2.09L6.8 6.2H3.5C2.95 6.2 2.5 6.65 2.5 7.2V12.8C2.5 13.35 2.95 13.8 3.5 13.8H6.8L12.72 17.91C13.05 18.14 13.5 17.9 13.5 17.5V2.5ZM16.04 6.05C15.74 5.79 15.28 5.82 15.02 6.13C14.76 6.43 14.79 6.89 15.1 7.15C16.0 7.93 16.5 8.93 16.5 10C16.5 11.07 16.0 12.07 15.1 12.85C14.79 13.11 14.76 13.57 15.02 13.87C15.28 14.18 15.74 14.21 16.04 13.95C17.25 12.91 18 11.5 18 10C18 8.5 17.25 7.09 16.04 6.05Z"
+                                          Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
+                                </Viewbox>
+                            </ctrl:ActionBorder>
+                            <ctrl:ActionBorder x:Name="CameraIconButton"
+                                    Tag="Camera"
+                                    Width="22" Height="22"
+                                    Background="Transparent"
+                                    Cursor="Hand"
+                                    Margin="0,0,4,0"
+                                    Opacity="0.45"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    PreviewMouseLeftButtonDown="NavIcon_PreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="NavIcon_PreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="NavIcon_PreviewMouseLeftButtonUp"
+                                    LostMouseCapture="NavIcon_LostMouseCapture"
+                                    Click="CameraIconButton_Click">
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform X="0" Y="0"/>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
+                                <Border.Effect>
+                                    <DropShadowEffect Color="Black" BlurRadius="8" ShadowDepth="0" Opacity="0.9"/>
+                                </Border.Effect>
+                                <Viewbox Width="15" Height="15" Stretch="Uniform"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Path Data="F0 M28,4 L25,4 L24,2 C23.411,0.837 23.104,0 22,0 L10,0 C8.896,0 8.53,0.954 8,2 L7,4 L4,4 C1.791,4 0,5.791 0,8 L0,24 C0,26.209 1.791,28 4,28 L28,28 C30.209,28 32,26.209 32,24 L32,8 C32,5.791 30.209,4 28,4 Z M16,24 C11.582,24 8,20.418 8,16 C8,11.582 11.582,8 16,8 C20.418,8 24,11.582 24,16 C24,20.418 20.418,24 16,24 Z M16,10 C12.687,10 10,12.687 10,16 C10,19.313 12.687,22 16,22 C19.313,22 22,19.313 22,16 C22,12.687 19.313,10 16,10 L16,10 Z"
                                           Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
                                 </Viewbox>
                             </ctrl:ActionBorder>
@@ -1997,6 +2043,7 @@
                                                           FlowDirection="LeftToRight" Value="{Binding AudioMixer.CurrentVolume, Mode=OneWay}"
                                                           ValueRequested="AccessibleVolume_ValueRequested"
                                                           Background="Transparent"
+                                                          MouseWheel="VolumeBar_MouseWheel"
                                                           MouseLeftButtonDown="VolumeBar_MouseDown"
                                                           MouseMove="VolumeBar_MouseMove"
                                                           MouseLeftButtonUp="VolumeBar_MouseUp">
@@ -2725,32 +2772,14 @@
                         </Grid>
                     </Grid>
 
-                    <Grid x:Name="SecondaryContent"
-                          Opacity="0"
-                          Visibility="Collapsed"
-                          Margin="12,6,12,12"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Stretch"
-                          Width="556"
-                          MouseLeftButtonDown="SecondaryContent_Click"
-                          RenderOptions.ClearTypeHint="Enabled"
-                          UseLayoutRounding="False"
-                          SnapsToDevicePixels="False">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="28"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1*" x:Name="SecondaryLeftCol"/>
-                            <ColumnDefinition Width="3*" x:Name="SecondaryRightCol"/>
-                        </Grid.ColumnDefinitions>
-
+                    <Grid x:Name="SecondaryContent" Opacity="0" Visibility="Collapsed" Margin="14,0,14,16" HorizontalAlignment="Center" VerticalAlignment="Stretch" Width="888" MouseLeftButtonDown="SecondaryContent_Click">
+                        <ctrl:ClipboardTray x:Name="ClipboardTrayView" NavigationWidth="{Binding ActualWidth, ElementName=NavTabsStackPanel}"/>
+                    </Grid>
+                    <Grid x:Name="CameraContent" Opacity="0" Visibility="Collapsed" Margin="16,36,16,16" HorizontalAlignment="Center" VerticalAlignment="Stretch" Width="488">
                         <ctrl:ActionBorder x:Name="CameraSection"
-                                Grid.Row="1"
-                                Grid.Column="0"
                                 Background="#1A1A1A"
                                 CornerRadius="12"
-                                Margin="0,0,8,0"
+                                Margin="0"
                                 ClipToBounds="True"
                                 Cursor="Hand"
                                 RenderTransformOrigin="0.5,0.5"
@@ -2795,289 +2824,6 @@
 
                             </Grid>
                         </ctrl:ActionBorder>
-
-                        <Border x:Name="ShelfSysMonSection"
-                                Grid.Row="1"
-                                Grid.Column="0"
-                                Background="#1A1A1A"
-                                CornerRadius="12"
-                                Margin="0,0,8,0"
-                                ClipToBounds="True"
-                                Visibility="Collapsed">
-                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10,0">
-                                <StackPanel Orientation="Vertical" Margin="0,0,0,8">
-                                    <Grid Width="110">
-                                        <TextBlock Text="CPU" Style="{StaticResource SmallText}" FontSize="10" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
-                                        <TextBlock x:Name="ShelfSysMonCpuText" Text="0%" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" HorizontalAlignment="Right"/>
-                                    </Grid>
-                                    <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
-                                        <Border x:Name="ShelfSysMonCpuBar" Width="0" Height="4" CornerRadius="2" Background="White" HorizontalAlignment="Left"/>
-                                    </Border>
-                                </StackPanel>
-                                <StackPanel Orientation="Vertical" Margin="0,0,0,8">
-                                    <Grid Width="110">
-                                        <TextBlock Text="RAM" Style="{StaticResource SmallText}" FontSize="10" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
-                                        <TextBlock x:Name="ShelfSysMonRamText" Text="—" Style="{StaticResource SmallText}" FontSize="11" FontWeight="Bold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" HorizontalAlignment="Right"/>
-                                    </Grid>
-                                    <Border Width="110" Height="4" CornerRadius="2" Margin="0,4,0,0" Background="#33FFFFFF" HorizontalAlignment="Left">
-                                        <Border x:Name="ShelfSysMonRamBar" Width="0" Height="4" CornerRadius="2" Background="White" HorizontalAlignment="Left"/>
-                                    </Border>
-                                </StackPanel>
-                                <Grid Width="110">
-                                    <TextBlock x:Name="ShelfSysMonNetDownText" Text="↓ 0 B/s" Style="{StaticResource SmallText}" FontSize="9" Foreground="#99FFFFFF" HorizontalAlignment="Left"/>
-                                    <TextBlock x:Name="ShelfSysMonNetUpText" Text="↑ 0 B/s" Style="{StaticResource SmallText}" FontSize="9" Foreground="#99FFFFFF" HorizontalAlignment="Right"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <Border x:Name="ShelfWeatherSection"
-                                Grid.Row="1"
-                                Grid.Column="0"
-                                Background="#1A1A1A"
-                                CornerRadius="12"
-                                Margin="0,0,8,0"
-                                ClipToBounds="True"
-                                Visibility="Collapsed">
-                            <Grid VerticalAlignment="Center" HorizontalAlignment="Center">
-                                <StackPanel x:Name="ShelfWeatherSkeleton"
-                                            VerticalAlignment="Center"
-                                            HorizontalAlignment="Center"
-                                            Visibility="Collapsed">
-                                    <Border Width="42" Height="22" CornerRadius="6" Background="#5EFFFFFF" HorizontalAlignment="Center" Margin="0,0,0,4"/>
-                                    <Border Width="56" Height="10" CornerRadius="5" Background="#46FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                    <Border Width="38" Height="9" CornerRadius="4" Background="#38FFFFFF" HorizontalAlignment="Center" Margin="0,3,0,0"/>
-                                </StackPanel>
-                                <StackPanel x:Name="ShelfWeatherActualContent"
-                                            VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
-                                    <TextBlock x:Name="ShelfWeatherTempText" Text="--°" Style="{StaticResource TitleText}" FontSize="24" FontWeight="Bold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" HorizontalAlignment="Center"/>
-                                    <TextBlock x:Name="ShelfWeatherDescText" Text="Weather" Style="{StaticResource SmallText}" FontSize="11" Foreground="#CCFFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock x:Name="ShelfWeatherCityText" Text="" Style="{StaticResource SmallText}" FontSize="9" Foreground="#88FFFFFF" HorizontalAlignment="Center" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <Border x:Name="ShelfClockSection"
-                                Grid.Row="1"
-                                Grid.Column="0"
-                                Background="#1A1A1A"
-                                CornerRadius="12"
-                                Margin="0,0,8,0"
-                                ClipToBounds="True"
-                                Visibility="Collapsed">
-                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8,0">
-                                <TextBlock x:Name="ShelfClockTimeText" Text="12:00" Style="{StaticResource TitleText}" FontSize="22" FontWeight="Bold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="ShelfClockDateText" Text="Mon, Jan 1" Style="{StaticResource SmallText}" FontSize="10" Foreground="#AAFFFFFF" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border x:Name="FileShelf"
-                                Grid.Row="0"
-                                Grid.RowSpan="2"
-                                Grid.Column="1"
-                                Margin="0,6,0,0"
-                                Background="#1A1A1A"
-                                CornerRadius="16"
-                                AllowDrop="True"
-                                BorderThickness="0"
-                                DragEnter="FileShelf_DragEnter"
-                                DragOver="FileShelf_DragOver"
-                                DragLeave="FileShelf_DragLeave"
-                                Drop="FileShelf_Drop">
-                            <Grid x:Name="FileShelfGrid"
-                                  Background="Transparent"
-                                  MouseLeftButtonDown="FileShelf_MouseDown"
-                                  MouseMove="FileShelf_MouseMove"
-                                  MouseLeftButtonUp="FileShelf_MouseUp"
-                                  LostMouseCapture="FileShelfGrid_LostMouseCapture">
-
-                                <Border x:Name="ShelfCountBadge"
-                                        Height="18"
-                                        MinWidth="34"
-                                        Margin="0,6,8,0"
-                                        Padding="7,2"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Top"
-                                        Background="#CC1A1A1A"
-                                        BorderBrush="#44FFFFFF"
-                                        BorderThickness="1"
-                                        CornerRadius="9"
-                                        Visibility="Collapsed"
-                                        IsHitTestVisible="False"
-                                        Panel.ZIndex="50">
-                                    <TextBlock x:Name="ShelfCountText"
-                                               Text="0/30"
-                                               Style="{StaticResource SmallText}"
-                                               FontSize="9.5"
-                                               FontWeight="Bold"
-                                               Foreground="{x:Static svc:UiPalette.PrimaryBrush}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                </Border>
-
-                                <Rectangle x:Name="FileShelfDashedBorder"
-                                           Stroke="#333333"
-                                           StrokeThickness="1.5"
-                                           StrokeDashArray="4 3"
-                                           RadiusX="16" RadiusY="16"/>
-
-                                <StackPanel x:Name="ShelfPlaceholderPanel"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center">
-                                    <Viewbox Width="28" Height="28" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,0,0,6">
-                                        <Path Data="M479.66,268.7l-32-151.81C441.48,83.77,417.68,64,384,64H128c-16.8,0-31,4.69-42.1,13.94s-18.37,22.31-21.58,38.89l-32,151.87A16.65,16.65,0,0,0,32,272V384a64,64,0,0,0,64,64H416a64,64,0,0,0,64-64V272A16.65,16.65,0,0,0,479.66,268.7Zm-384-145.4c0-.1,0-.19,0-.28,3.55-18.43,13.81-27,32.29-27H384c18.61,0,28.87,8.55,32.27,26.91,0,.13.05.26.07.39l26.93,127.88a4,4,0,0,1-3.92,4.82H320a15.92,15.92,0,0,0-16,15.82,48,48,0,1,1-96,0A15.92,15.92,0,0,0,192,256H72.65a4,4,0,0,1-3.92-4.82Z"
-                                              Fill="#555555"/>
-                                    </Viewbox>
-                                    <TextBlock x:Name="ShelfPlaceholder"
-                                               Text=""
-                                               HorizontalAlignment="Center"
-                                               Foreground="#555555"
-                                               Style="{StaticResource SubtitleText}"/>
-                                </StackPanel>
-
-                                <TextBlock x:Name="ShelfStatusText"
-                                           Text="Shelf full"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           Margin="16,0,16,0"
-                                           Panel.ZIndex="10"
-                                           TextAlignment="Center"
-                                           TextWrapping="Wrap"
-                                           Visibility="Collapsed"
-                                           Style="{StaticResource SmallText}"
-                                           Foreground="#FFC478"/>
-
-                                <ScrollViewer x:Name="ShelfScrollViewer"
-                                             Background="Transparent"
-                                             HorizontalScrollBarVisibility="Auto"
-                                             VerticalScrollBarVisibility="Disabled"
-                                             Padding="0"
-                                             ScrollChanged="ShelfScrollViewer_ScrollChanged"
-                                             PreviewMouseWheel="ShelfScrollViewer_PreviewMouseWheel">
-                                    <ScrollViewer.Resources>
-
-                                        <Style TargetType="ScrollBar">
-                                            <Setter Property="Background" Value="Transparent"/>
-                                            <Setter Property="Width" Value="6"/>
-                                            <Setter Property="Height" Value="4"/>
-                                            <Setter Property="MinHeight" Value="4"/>
-                                            <Setter Property="MinWidth" Value="4"/>
-                                            <Setter Property="Opacity" Value="0"/>
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="ScrollBar">
-                                                        <Grid Background="Transparent">
-                                                            <Track x:Name="PART_Track" IsDirectionReversed="False">
-                                                                <Track.Thumb>
-                                                                    <Thumb>
-                                                                        <Thumb.Template>
-                                                                            <ControlTemplate TargetType="Thumb">
-                                                                                <Border Background="#60FFFFFF"
-                                                                                        CornerRadius="2"
-                                                                                        Margin="0,1"
-                                                                                        MinWidth="20"/>
-                                                                            </ControlTemplate>
-                                                                        </Thumb.Template>
-                                                                    </Thumb>
-                                                                </Track.Thumb>
-                                                            </Track>
-                                                        </Grid>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Trigger.EnterActions>
-                                                        <BeginStoryboard>
-                                                            <Storyboard>
-                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </Trigger.EnterActions>
-                                                    <Trigger.ExitActions>
-                                                        <BeginStoryboard>
-                                                            <Storyboard>
-                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.4" BeginTime="0:0:0.8"/>
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </Trigger.ExitActions>
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </ScrollViewer.Resources>
-                                    <Canvas x:Name="ShelfItemsContainer"
-                                            Background="Transparent"
-                                            Height="112"
-                                            Margin="8,4"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Center"/>
-                                </ScrollViewer>
-
-                                <Canvas x:Name="SelectionCanvas"
-                                        Visibility="Collapsed"
-                                        IsHitTestVisible="False"
-                                        Panel.ZIndex="1000"
-                                        HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Stretch"
-                                        Background="Transparent">
-                                    <Border x:Name="SelectionRect" Background="#24FFFFFF" BorderBrush="#99FFFFFF" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="3"/>
-                                </Canvas>
-
-                                <Border x:Name="ShelfUnlockBanner"
-                                        Visibility="Collapsed"
-                                        Background="#E6181818"
-                                        CornerRadius="14"
-                                        Padding="16,12"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Panel.ZIndex="3000"
-                                        MaxWidth="340">
-                                    <StackPanel HorizontalAlignment="Center">
-                                        <TextBlock x:Name="ShelfUnlockMessageText"
-                                                   Text=""
-                                                   Style="{StaticResource SubtitleText}"
-                                                   FontSize="11"
-                                                   Foreground="#FFC478"
-                                                   TextWrapping="Wrap"
-                                                   TextAlignment="Center"
-                                                   Margin="0,0,0,10"/>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <Border Background="#333333"
-                                                    CornerRadius="8"
-                                                    Padding="12,6"
-                                                    Cursor="Hand"
-                                                    MouseLeftButtonDown="ShelfUnlockButton_Click"
-                                                    Margin="0,0,8,0">
-                                                <TextBlock x:Name="ShelfUnlockButtonText"
-                                                           Text="Unlock Limit"
-                                                           Foreground="{x:Static svc:UiPalette.SecondaryBrush}"
-                                                           FontSize="11"
-                                                           FontWeight="Bold"
-                                                           FontFamily="{StaticResource MainSystemFont}"/>
-                                            </Border>
-                                            <Border Background="#333333"
-                                                    CornerRadius="8"
-                                                    Padding="12,6"
-                                                    Cursor="Hand"
-                                                    MouseLeftButtonDown="ShelfUnlockDismiss_Click">
-                                                <TextBlock x:Name="ShelfUnlockDismissText"
-                                                           Text="Dismiss"
-                                                           Foreground="{x:Static svc:UiPalette.SecondaryBrush}"
-                                                           FontSize="11"
-                                                           FontWeight="Bold"
-                                                           FontFamily="{StaticResource MainSystemFont}"/>
-                                            </Border>
-                                        </StackPanel>
-                                        <TextBlock x:Name="ShelfUnlockSettingsHint"
-                                                   Text="You can also customize this in Settings."
-                                                   Style="{StaticResource SmallText}"
-                                                   FontSize="9.5"
-                                                   Foreground="{x:Static svc:UiPalette.TertiaryBrush}"
-                                                   TextAlignment="Center"
-                                                   Margin="0,8,0,0"/>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Border>
                     </Grid>
 
                     <Grid x:Name="TimerContent"

@@ -10,6 +10,7 @@ public sealed record SettingsUpdateViewRefs(Window Owner, TextBlock Status, Butt
 public sealed class SettingsUpdatePresenter : IDisposable
 {
     private readonly IUpdateService _service;
+    private readonly bool _ownsService;
     private readonly Func<bool> _canUseNetwork;
     private SettingsUpdateViewRefs? _refs;
     private UpdateInfo? _availableUpdate;
@@ -18,9 +19,10 @@ public sealed class SettingsUpdatePresenter : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private UpdateDownloadWindow? _progressWindow;
 
-    public SettingsUpdatePresenter(IUpdateService service, SettingsUpdateViewRefs refs, Func<bool>? canUseNetwork = null)
+    public SettingsUpdatePresenter(IUpdateService service, SettingsUpdateViewRefs refs, Func<bool>? canUseNetwork = null, bool ownsService = false)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
+        _ownsService = ownsService;
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
         _canUseNetwork = canUseNetwork ?? (() => NetworkPrivacy.Current.IsAllowed(NetworkFeature.Updates));
     }
@@ -135,5 +137,6 @@ public sealed class SettingsUpdatePresenter : IDisposable
         _lifetime.Dispose();
         _progressWindow?.Close();
         _progressWindow = null;
+        if (_ownsService && _service is IDisposable disposable) disposable.Dispose();
     }
 }

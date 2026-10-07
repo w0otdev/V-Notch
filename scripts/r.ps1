@@ -9,6 +9,11 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
 $ErrorActionPreference = "Continue"
 
+# Suppress background console window popups from Git / tools
+$env:GIT_TERMINAL_PROMPT = "0"
+$env:GCM_INTERACTIVE = "never"
+$env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\mingw64\bin" }) -join ";"
+
 # --- Configuration ---------------------------------------------------------
 $repoRoot    = Split-Path $PSScriptRoot -Parent
 $processName = "V-Notch"
@@ -36,7 +41,6 @@ Write-Host "`n>>> Stopping old V-Notch instances..." -ForegroundColor Cyan
 $running = Get-Process -Name $processName -ErrorAction SilentlyContinue
 if ($running) {
     $running | Stop-Process -Force -ErrorAction SilentlyContinue
-    taskkill /F /IM "$processName.exe" /T 2>$null | Out-Null
 
     if (-not (Wait-VNotchExit -TimeoutMs 7000)) {
         Write-Host "[!] Process still alive after 7s - aborting." -ForegroundColor Red
@@ -101,8 +105,11 @@ Write-Host ">>> Launching V-Notch (press Ctrl+C to stop)..." -ForegroundColor Gr
 try {
     if (Test-Path $exePath) {
         Write-Host ">>> Launching: $exePath" -ForegroundColor Gray
-        $proc = Start-Process -FilePath $exePath -PassThru
-        $proc | Wait-Process
+        $psi = [System.Diagnostics.ProcessStartInfo]::new($exePath)
+        $psi.UseShellExecute = $false
+        $psi.WorkingDirectory = Split-Path $exePath -Parent
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        Wait-Process -Id $proc.Id
     } else {
         Write-Host ">>> Exe not found, running via dotnet run --no-build..." -ForegroundColor Yellow
         dotnet run --project (Join-Path $repoRoot "V-Notch.csproj") --no-build
@@ -110,6 +117,5 @@ try {
 }
 finally {
     Write-Host "`n>>> Cleaning up task..." -ForegroundColor Yellow
-    taskkill /F /IM "$processName.exe" /T 2>$null | Out-Null
-    Stop-Process -Name $processName -Force -ErrorAction SilentlyContinue
+    Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }

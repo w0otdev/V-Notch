@@ -139,7 +139,7 @@ internal sealed class AppSearchProvider : ISpotlightProvider
 
     private static string ResolveTarget(string path, string appId)
     {
-        if (FileShelfController.IsUncPath(path)) return string.Empty;
+        if (LocalPathPolicy.IsUncPath(path)) return string.Empty;
         if (path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)) return path;
         if (File.Exists(path) || Directory.Exists(path)) return path;
         string identity = appId.Length > 0 ? appId : path;

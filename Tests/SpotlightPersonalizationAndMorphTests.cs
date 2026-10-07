@@ -195,6 +195,75 @@ public sealed class SpotlightPersonalizationAndMorphTests
         finally { AnimationConfig.SetReduceMotion(previous); }
     });
 
+    [Fact]
+    public void DynamicIslandExitRemovesAiOutlineAndReversalRestoresIt() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new SpotlightWindowFixture(new NotchSettings
+            {
+                EnableDynamicIslandMode = true, SpotlightDefaultAi = true, AutoCheckUpdates = false
+            });
+            var window = fixture.Window;
+            window.MorphHostOverride = new MorphHost(false);
+            window.ShowSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "AI entrance", ct);
+            Assert.Equal(Visibility.Visible, window.AiGlowBorder.Visibility);
+            window.HideSpotlight();
+            Assert.Equal(Visibility.Collapsed, window.AiGlowBorder.Visibility);
+            Assert.Equal(Visibility.Collapsed, window.GlassRimBorder.Visibility);
+            Assert.Equal(0, window.AiGlowBorder.Opacity);
+            window.ToggleFromHotkey();
+            Assert.Equal(Visibility.Visible, window.AiGlowBorder.Visibility);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "AI reversed entrance", ct);
+            window.HideSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "AI return to island", ct);
+            Assert.Equal(Visibility.Collapsed, window.AiGlowBorder.Visibility);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void WideFileTrayMorphFitsTheWindowInBothDirections() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new SpotlightWindowFixture(new NotchSettings { EnableSpotlightHistory = false, AutoCheckUpdates = false });
+            var window = fixture.Window;
+            window.MorphHostOverride = new MorphHost(true, 920, 268);
+            window.ShowSpotlight();
+            window.UpdateLayout();
+            AssertShellFits(window);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "wide tray entrance", ct);
+            window.UpdateLayout();
+            Assert.Equal(720, window.Shell.ActualWidth, 1);
+
+            window.HideSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => window.Shell.ActualWidth > 880, "wide tray exit geometry", ct);
+            AssertShellFits(window);
+            window.ToggleFromHotkey();
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "wide tray reversed entrance", ct);
+            window.UpdateLayout();
+            Assert.Equal(720, window.Shell.ActualWidth, 1);
+            window.HideSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "wide tray return", ct);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    private static void AssertShellFits(SpotlightWindow window)
+    {
+        var bounds = window.Shell.TransformToAncestor(window).TransformBounds(new Rect(window.Shell.RenderSize));
+        Assert.True(bounds.Left >= 0 && bounds.Right <= window.ActualWidth,
+            $"Shell {bounds} exceeds window width {window.ActualWidth}");
+        var clip = System.Windows.Controls.Primitives.LayoutInformation.GetLayoutClip(window.Shell);
+        if (clip != null) Assert.True(clip.Bounds.Width >= window.Shell.ActualWidth - 1);
+    }
+
     private static void WithFixture(Func<SpotlightWindowFixture, CancellationToken, Task> action) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new SpotlightWindowFixture(new NotchSettings { EnableSpotlightHistory = false, AutoCheckUpdates = false });
@@ -222,12 +291,12 @@ public sealed class SpotlightPersonalizationAndMorphTests
         return new SpotlightSearchItem(name, SpotlightResultKind.Application, name + ".exe", "", path);
     }
 
-    private sealed class MorphHost(bool snapshot) : ISpotlightMorphHost
+    private sealed class MorphHost(bool snapshot, double width = 230, double height = 34) : ISpotlightMorphHost
     {
         internal bool SessionActive { get; private set; }
         internal bool MorphActive { get; private set; }
         internal List<TimeSpan> Handoffs { get; } = [];
-        public (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius) GetSpotlightMorphRect() => (240, 0, 230, 34, 0, 12);
+        public (double Left, double Top, double Width, double Height, double TopCornerRadius, double BottomCornerRadius) GetSpotlightMorphRect() => (240, 0, width, height, 0, 12);
         public ImageSource? CaptureSpotlightMorphVisual()
         {
             if (!snapshot) return null;

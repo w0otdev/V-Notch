@@ -100,6 +100,7 @@ public partial class SpotlightWindow : Window
     internal ISpotlightMorphHost? MorphHostOverride { get; set; }
     internal bool SuppressForegroundActivationForTests { get; set; }
     internal bool IsSpotlightOpen => IsVisible && !_isParked;
+    internal event EventHandler? OpenStateChanged;
 
     internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null,
         SpotlightAiService? aiService = null, SpotlightChatStore? chatStore = null)
@@ -195,16 +196,17 @@ public partial class SpotlightWindow : Window
     {
         if (_isClosing) return;
 
-        // A reopened surface must not inherit request ownership from its hidden session.
-        CancelAiRequest();
-        bool modeChanged = _aiMode != _settings.SpotlightDefaultAi;
-        _aiMode = _settings.SpotlightDefaultAi;
+        // Dismissing the surface does not end its conversation or active stream.
+        bool reopenAi = _aiRequest != null || _settings.SpotlightDefaultAi;
+        bool modeChanged = _aiMode != reopenAi;
+        _aiMode = reopenAi;
         if (modeChanged) _lastDismissedQuery = string.Empty;
         AiPanel.Visibility = _aiMode ? Visibility.Visible : Visibility.Collapsed;
         LocalizeAi();
         UpdateAiAmbientGlow(_aiMode);
         SearchBox.IsEnabled = true;
-        if (_aiMode) RenderAiHistory();
+        // The stream owns its live transcript control until it completes.
+        if (_aiMode && _aiRequest == null) RenderAiHistory();
         SyncSearchIconState(animate: false);
         _glassResourceExpiry?.Stop();
         PlaySpotlightClickSfx();
@@ -226,6 +228,10 @@ public partial class SpotlightWindow : Window
         SearchBox.Text = restoreQuery ? _lastDismissedQuery : string.Empty;
         if (restoreQuery) SearchBox.SelectAll();
         else if (!_aiMode) _ = _viewModel.SearchAsync(string.Empty);
+
+        // Search mode may have left the results list/status visible. Re-sync
+        // the whole surface so AI mode never reopens showing stale search UI.
+        if (_aiMode) RefreshAiPanel();
 
         _preparingGlassEntrance = true;
         ApplyLiquidGlassSkin();
@@ -474,7 +480,6 @@ public partial class SpotlightWindow : Window
     internal void HideSpotlight()
     {
         if (!IsSpotlightOpen || _isClosing) return;
-        CancelAiRequest();
         SaveAiHistory();
         StopAiActivity();
         _lastDismissedQuery = SearchBox.Text;
@@ -572,6 +577,7 @@ public partial class SpotlightWindow : Window
         _unparkedWindowHitTesting = IsHitTestVisible;
         _unparkedWindowFocusable = Focusable;
         _isParked = true;
+        OpenStateChanged?.Invoke(this, EventArgs.Empty);
 
         Keyboard.ClearFocus();
         Focusable = false;
@@ -602,16 +608,21 @@ public partial class SpotlightWindow : Window
         IsHitTestVisible = _unparkedWindowHitTesting;
 
         _isParked = false;
+        OpenStateChanged?.Invoke(this, EventArgs.Empty);
         ApplyLiquidGlassSkin();
     }
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        // CompleteHide clears the input while closing. Reset its overlays even
+        // then: reopening with an already-empty input raises no TextChanged.
+        PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AutocompleteText.Visibility = Visibility.Collapsed;
         if (_allowClose || _isClosing) return;
         if (_aiMode)
         {
-            PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text) ? Visibility.Visible : Visibility.Collapsed;
-            AutocompleteText.Visibility = Visibility.Collapsed;
             UpdateGlowingCaret();
             PlayTypingAnimation();
             UpdateAiSendButtonState();
@@ -620,11 +631,6 @@ public partial class SpotlightWindow : Window
         PlayTypingAnimation();
         UpdateGlowingCaret();
         CancelSearchingGrace();
-        PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        // The visible suggestion belongs to the previous query; hide it until
-        AutocompleteText.Visibility = Visibility.Collapsed;
         _pendingLaunchQuery = null;
         ClearLaunchFailure();
 
@@ -863,7 +869,7 @@ public partial class SpotlightWindow : Window
         int generation = _animationGeneration;
         Dispatcher.BeginInvoke(() =>
         {
-            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen || _aiMode) return;
+            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen) return;
             HideSpotlight();
         }, DispatcherPriority.Input);
     }
@@ -1844,6 +1850,7 @@ public partial class SpotlightWindow : Window
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
+        Shell.Margin = MorphShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
         if (morphsFromNotch)
@@ -1982,12 +1989,14 @@ public partial class SpotlightWindow : Window
         SearchBox.IsEnabled = true;
         SetResultsDimmed(false, animate: false);
         ApplyLiquidGlassSkin();
+        UpdateAiAmbientGlow(_aiMode);
         AnimateGlassReadability(true);
         _liquidGlass?.SetAnimating(true);
 
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
+        Shell.Margin = MorphShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
         ResetNotchMorphSnapshot();
@@ -2061,8 +2070,14 @@ public partial class SpotlightWindow : Window
         FocusSearchBox(generation);
     }
 
+    // The resting search surface remains 720 DIPs wide inside the wider HWND.
+    // Explicit morph widths need the full canvas, including the 920-DIP tray.
+    private static readonly Thickness RestingShellMargin = new(124, 16, 124, 0);
+    private static readonly Thickness MorphShellMargin = new(24, 16, 24, 0);
+
     private Size MeasureEntranceShell()
     {
+        Shell.Margin = RestingShellMargin;
         // Include the resting border in the target and keep it during the morph.
         // Adding it only at handoff grows the auto-height shell by two DIPs.
         Shell.BorderThickness = new Thickness(IsLiquidGlassEnabled ? 0 : 1);
@@ -2081,6 +2096,16 @@ public partial class SpotlightWindow : Window
 
     private void PlayExit(int generation)
     {
+        if (_settings.EnableDynamicIslandMode)
+        {
+            // Spotlight's decorative rims do not belong to the destination pill.
+            // The shell border fade alone does not affect these separate layers.
+            SetOpticalRimVisibility(Visibility.Collapsed);
+            AiGlowBorder.BeginAnimation(OpacityProperty, null);
+            AiGlowEffect.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
+            AiGlowBorder.Opacity = 0;
+            AiGlowBorder.Visibility = Visibility.Collapsed;
+        }
         AnimateGlassReadability(false);
         if (IsLiquidGlassEnabled && GlassMaterialClipHost.Visibility == Visibility.Visible)
         {
@@ -2116,6 +2141,7 @@ public partial class SpotlightWindow : Window
         Shell.RenderTransformOrigin = new Point(0.5, 0.0);
         Shell.CacheMode = null;
         ShellContent.CacheMode = new BitmapCache { EnableClearType = false, SnapsToDevicePixels = true };
+        Shell.Margin = MorphShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
         AnimateMorphShadow(
@@ -2267,6 +2293,7 @@ public partial class SpotlightWindow : Window
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
         Shell.Effect = null;
+        Shell.Margin = RestingShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         // Top-aligned auto-height: the shell hugs its content inside the
         Shell.VerticalAlignment = VerticalAlignment.Top;
@@ -2326,6 +2353,7 @@ public partial class SpotlightWindow : Window
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
+        Shell.Margin = RestingShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.Visibility = Visibility.Hidden;

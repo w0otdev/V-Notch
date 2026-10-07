@@ -39,6 +39,7 @@ public partial class SettingsWindow
         _navPanels[NavSectionSystem] = PanelSystem;
         _navPanels[NavSectionPrivacy] = PanelPrivacy;
         _navPanels[NavSectionSpotlight] = PanelSpotlight;
+        _navPanels[NavSectionFileTray] = PanelFileTray;
         _navPanels[NavSectionAdvanced] = PanelAdvanced;
         _navPanels[NavSectionPerformance] = PanelPerformance;
         _navPanels[NavSectionDonating] = PanelDonating;
@@ -52,6 +53,7 @@ public partial class SettingsWindow
         _navButtons[NavSectionSystem] = NavSystem;
         _navButtons[NavSectionPrivacy] = NavPrivacy;
         _navButtons[NavSectionSpotlight] = NavSpotlight;
+        _navButtons[NavSectionFileTray] = NavFileTray;
         _navButtons[NavSectionAdvanced] = NavAdvanced;
         _navButtons[NavSectionPerformance] = NavPerformance;
         _navButtons[NavSectionDonating] = NavDonating;
@@ -75,7 +77,7 @@ public partial class SettingsWindow
     private static readonly string[] _navOrder =
     {
         NavSectionSearching, NavSectionAppearance, NavSectionSkins, NavSectionBehavior, NavSectionDevices,
-        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
+        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
     };
 
     private int _navTransitionVersion;
@@ -209,6 +211,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCard,
             NavSectionPrivacy => PrivacyCard,
             NavSectionSpotlight => SpotlightCard,
+            NavSectionFileTray => FileTrayCard,
             NavSectionAdvanced => AdvancedCard,
             NavSectionPerformance => PerformanceCard,
             NavSectionDonating => DonatingCard,
@@ -226,6 +229,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCardTranslate,
             NavSectionPrivacy => PrivacyCardTranslate,
             NavSectionSpotlight => SpotlightCardTranslate,
+            NavSectionFileTray => FileTrayCardTranslate,
             NavSectionAdvanced => AdvancedCardTranslate,
             NavSectionPerformance => PerformanceCardTranslate,
             NavSectionDonating => DonatingCardTranslate,

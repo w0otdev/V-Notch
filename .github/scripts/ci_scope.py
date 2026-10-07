@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 
 DOCUMENTATION = {
@@ -38,10 +39,17 @@ def scope(base, head, ref, directory=None):
         return True
     if not re.fullmatch(r"[0-9a-f]{40}", head or ""):
         raise ValueError("A complete commit SHA is required.")
-    result = subprocess.run(
-        ["git", "diff", "--no-renames", "--name-only", "-z", base, head, "--"],
-        cwd=directory, check=True, capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--no-renames", "--name-only", "-z", base, head, "--"],
+            cwd=directory, check=True, capture_output=True,
+        )
+    except subprocess.CalledProcessError as error:
+        # Full history may still omit the old tip after a force-push. Only
+        # skip validation when a successful diff proves the change is docs-only.
+        detail = error.stderr.decode("utf-8", errors="replace").strip()
+        print(f"Cannot determine changed files; requiring full validation (git diff exited {error.returncode}): {detail}", file=sys.stderr)
+        return True
     return needs_windows([p.decode("utf-8") for p in result.stdout.split(b"\0") if p])
 
 

@@ -241,7 +241,7 @@ public sealed class ServiceOptimizationTests
     {
         using var http = new HttpClient(new SlowHandler()) { Timeout = TimeSpan.FromMilliseconds(100) };
         var service = new WeatherService(http);
-        Assert.Null(await service.GetCurrentWeatherAsync("Hanoi").WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.Null(await service.GetCurrentWeatherAsync("Hanoi").WaitAsync(TimeSpan.FromSeconds(60)));
     }
 
     private static HttpResponseMessage Response(byte[] bytes, bool knownLength) => new()

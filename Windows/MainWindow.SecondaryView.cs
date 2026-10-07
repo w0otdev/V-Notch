@@ -14,7 +14,7 @@ public partial class MainWindow
 {
     private void NotchWrapper_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (IsScreenshotPillActive) { e.Handled = true; return; }
+
         if (_isAudioView && e.OriginalSource is Visual v && AudioScrollViewer != null && v.IsDescendantOf(AudioScrollViewer))
         {
             return;
@@ -52,7 +52,8 @@ public partial class MainWindow
         if (activeTabs.Count <= 1) return;
 
         NotchView currentView = NotchView.Media;
-        if (_isAudioView)
+        if (_isCameraView) currentView = NotchView.Camera;
+        else if (_isAudioView)
         {
             currentView = NotchView.AudioMixer;
         }
@@ -115,6 +116,7 @@ public partial class MainWindow
     private void HomeIconButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        if (_isCameraView && !_isAnimating) { SwitchToPrimaryView(); return; }
         if (_isAudioView && !_isAnimating)
         {
             SwitchFromAudioToPrimaryView();
@@ -130,7 +132,7 @@ public partial class MainWindow
         }
     }
 
-    private void FileShelfIconButton_Click(object sender, MouseButtonEventArgs e)
+    private void ClipboardIconButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
         if (_isAudioView && !_isAnimating)
@@ -149,236 +151,16 @@ public partial class MainWindow
 
     private void SwitchToSecondaryView(long? transitionId = null)
     {
-        if (transitionId == null)
-        {
-            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Secondary, "SwitchToSecondaryView");
-            return;
-        }
-
-        int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
-        _isSecondaryView = true;
-        _isTimerView = false;
-        _isAudioView = false;
-        _isAnimating = true;
-        SuspendSpotifyCanvasLifecycle();
-        _lastViewSwitchUtc = DateTime.UtcNow;
-        _isScrollSessionLocked = true;
-
-        HideMediaBackground();
-        if (LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
-        {
-            LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
-            LyricsBlurBackground.Opacity = 0;
-            LyricsBlurBackground.Visibility = Visibility.Collapsed;
-        }
-
-        UpdateShelfCapacityIndicator();
-
-        UpdateNavIconsActiveState();
-        NavIconsPanel.Visibility = Visibility.Visible;
-        NavIconsPanel.Opacity = 1;
-
-        NavIconsBackground.BeginAnimation(OpacityProperty, null);
-        NavIconsBackground.Opacity = 0;
-        NavIconsBackground.Visibility = Visibility.Visible;
-        var navBgFadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
-        {
-            EasingFunction = _easePowerOut3,
-            BeginTime = TimeSpan.FromMilliseconds(200)
-        };
-        Timeline.SetDesiredFrameRate(navBgFadeIn, VNotch.Services.AnimationConfig.TargetFps);
-        NavIconsBackground.BeginAnimation(OpacityProperty, navBgFadeIn);
-
-        NotchBorder.IsHitTestVisible = false;
-
-        var durOut = new Duration(TimeSpan.FromMilliseconds(170));
-        var durIn = new Duration(TimeSpan.FromMilliseconds(440));
-        var inDelay = TimeSpan.FromMilliseconds(40);
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-
-        var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY);
-        ExpandedContent.RenderTransform = primaryTranslate;
-
-        var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
-        var slideUp = MakeAnim(ExpandedContentRestY, ExpandedContentRestY - 10, durOut, _easeAppleIn);
-        Timeline.SetDesiredFrameRate(slideUp, fps);
-
-        var expandedBlur = ExpandedContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-        ExpandedContent.Effect = expandedBlur;
-        var blurOutAnim = MakeAnim(0, _settings.EnableBlurEffects ? 6 : 0, durOut, _easeAppleIn);
-
-        fadeOut.Completed += (s, e) =>
-        {
-            if (generation != _viewTransitionGeneration) return;
-            ExpandedContent.Visibility = Visibility.Collapsed;
-            ExpandedContent.RenderTransform = null;
-            ExpandedContent.Effect = null;
-            expandedBlur.Radius = 0;
-        };
-
-        ExpandedContent.BeginAnimation(OpacityProperty, fadeOut);
-        primaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-        expandedBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
-
-        SecondaryContent.Visibility = Visibility.Visible;
-        SecondaryContent.BeginAnimation(OpacityProperty, null);
-        SecondaryContent.Opacity = 0;
-        SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
-        SecondaryContent.VerticalAlignment = VerticalAlignment.Stretch;
-        SecondaryContent.Width = _expandedWidth - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
-        EnableKeyboardInput();
-
-        var secondaryTranslate = new TranslateTransform(0, 16);
-        SecondaryContent.RenderTransform = secondaryTranslate;
-        // Prepare hidden view while transparent so animated frames contain
-        // fresh content instead of cached surfaces.
-        SecondaryContent.UpdateLayout();
-
-        var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
-        var springSlide = MakeAnim(16, 0, durIn, _easeAppleOut, inDelay);
-        Timeline.SetDesiredFrameRate(fadeIn, fps);
-        Timeline.SetDesiredFrameRate(springSlide, fps);
-
-        fadeIn.Completed += (s, e) =>
-        {
-            if (generation != _viewTransitionGeneration) return;
-            _isAnimating = false;
-            _isScrollSessionLocked = false;
-            NotchBorder.IsHitTestVisible = true;
-            SecondaryContent.Opacity = 1;
-            SecondaryContent.BeginAnimation(OpacityProperty, null);
-            SecondaryContent.RenderTransform = null;
-            _transitionCoordinator.CompleteTransition(generation);
-
-            if (_pendingFlipThumbnail != null)
-            {
-                var thumb = _pendingFlipThumbnail;
-                _pendingFlipThumbnail = null;
-                AnimateThumbnailSwitchOnly(thumb, force: true);
-            }
-
-            if (IsCameraPreviewLifecycleActive)
-            {
-                StopCameraPreviewForViewExit();
-            }
-            ResetCameraSectionLayoutInstant();
-        };
-
-        SecondaryContent.BeginAnimation(OpacityProperty, fadeIn);
-        secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+        if (transitionId == null) _transitionCoordinator.RequestView(NotchView.Secondary, "SwitchToSecondaryView");
+        else ExpandNotch(transitionId, targetView: NotchView.Secondary);
     }
 
     private void SwitchToPrimaryView(long? transitionId = null)
     {
-        if (transitionId == null)
-        {
-            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Media, "SwitchToPrimaryView");
-            return;
-        }
-
-        int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
-        _isSecondaryView = false;
-        _isAnimating = true;
-        _lastViewSwitchUtc = DateTime.UtcNow;
-        _isScrollSessionLocked = true;
-
-        if (IsCameraPreviewLifecycleActive)
-        {
-            StopCameraPreviewForViewExit();
-        }
-        else
-        {
-            ResetCameraSectionLayoutInstant();
-        }
-
-        UpdateNavIconsActiveState();
-        NavIconsBackground.BeginAnimation(OpacityProperty, null);
-        NavIconsBackground.Opacity = 0;
-        NavIconsBackground.Visibility = Visibility.Collapsed;
-
-        MusicCompactContent.BeginAnimation(OpacityProperty, null);
-        MusicCompactContent.Opacity = 0;
-        MusicCompactContent.Visibility = Visibility.Collapsed;
-        CollapsedContent.BeginAnimation(OpacityProperty, null);
-        CollapsedContent.Opacity = 0;
-        CollapsedContent.Visibility = Visibility.Collapsed;
-
-        NotchBorder.IsHitTestVisible = false;
-
-        var durOut = new Duration(TimeSpan.FromMilliseconds(170));
-        var durIn = new Duration(TimeSpan.FromMilliseconds(440));
-        var inDelay = TimeSpan.FromMilliseconds(40);
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-
-        var secondaryTranslate = new TranslateTransform(0, 0);
-        SecondaryContent.RenderTransform = secondaryTranslate;
-
-        var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
-        var slideDown = MakeAnim(0, 10, durOut, _easeAppleIn);
-        Timeline.SetDesiredFrameRate(slideDown, fps);
-
-        var secondaryBlur = SecondaryContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-        SecondaryContent.Effect = secondaryBlur;
-        var blurOutAnim = MakeAnim(0, _settings.EnableBlurEffects ? 6 : 0, durOut, _easeAppleIn);
-
-        fadeOut.Completed += (s, e) =>
-        {
-            if (generation != _viewTransitionGeneration) return;
-            SecondaryContent.Visibility = Visibility.Collapsed;
-            SecondaryContent.RenderTransform = null;
-            SecondaryContent.Effect = null;
-            secondaryBlur.Radius = 0;
-            DisableKeyboardInput();
-        };
-
-        SecondaryContent.BeginAnimation(OpacityProperty, fadeOut);
-        secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideDown);
-        secondaryBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
-
-        ExpandedContent.Visibility = Visibility.Visible;
-        ExpandedContent.BeginAnimation(OpacityProperty, null);
-        ExpandedContent.Opacity = 0;
-        ExpandedContent.Effect = null;
-
-        var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY - 16);
-        ExpandedContent.RenderTransform = primaryTranslate;
-
-        PrepareExpandedContentLayoutForReveal();
-
-        var fadeIn = MakeAnim(0, 1, durIn, _easeAppleOut, inDelay);
-        var springSlide = MakeAnim(ExpandedContentRestY - 16, ExpandedContentRestY, durIn, _easeAppleOut, inDelay);
-        Timeline.SetDesiredFrameRate(fadeIn, fps);
-        Timeline.SetDesiredFrameRate(springSlide, fps);
-
-        fadeIn.Completed += (s, e) =>
-        {
-            if (generation != _viewTransitionGeneration) return;
-            _isAnimating = false;
-            _isScrollSessionLocked = false;
-            NotchBorder.IsHitTestVisible = true;
-            ExpandedContent.Opacity = 1;
-            ExpandedContent.BeginAnimation(OpacityProperty, null);
-            RestoreExpandedContentRestLayout();
-            ResumeSpotifyCanvasLifecycle();
-            _transitionCoordinator.CompleteTransition(generation);
-
-            ShowMediaBackground();
-
-            FadeInLyricsBlurBackgroundIfActive();
-
-            if (_pendingFlipThumbnail != null)
-            {
-                var thumb = _pendingFlipThumbnail;
-                _pendingFlipThumbnail = null;
-                AnimateThumbnailSwitchOnly(thumb, force: true);
-            }
-        };
-
-        ExpandedContent.BeginAnimation(OpacityProperty, fadeIn);
-        primaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+        if (transitionId == null) _transitionCoordinator.RequestView(NotchView.Media, "SwitchToPrimaryView");
+        else ExpandNotch(transitionId, targetView: NotchView.Media);
     }
+
 
     private void AnimateNavIconOpacity(FrameworkElement? icon, double targetOpacity, bool animate)
     {
@@ -405,46 +187,33 @@ public partial class MainWindow
         icon.BeginAnimation(UIElement.OpacityProperty, anim);
     }
 
+    private VNotch.Models.NotchView? _navigationVisualTarget;
+
     private void UpdateNavIconsActiveState(bool animate = true)
     {
-        if (HomeIconButton == null || FileShelfIconButton == null || TimerIconButton == null || AudioIconButton == null)
+        if (HomeIconButton == null || ClipboardIconButton == null || TimerIconButton == null || AudioIconButton == null)
             return;
 
-        var showShelfCountBadge = false;
+
         double homeTarget = 0.45;
-        double shelfTarget = 0.45;
+        double clipboardTarget = 0.45;
         double timerTarget = 0.45;
         double audioTarget = 0.45;
 
-        if (_isAudioView)
-        {
-            audioTarget = 1.0;
-        }
-        else if (_isTimerView)
-        {
-            timerTarget = 1.0;
-        }
-        else if (_isSecondaryView)
-        {
-            shelfTarget = 1.0;
-            showShelfCountBadge = ShelfUnlockBanner?.Visibility != Visibility.Visible;
-        }
-        else
-        {
-            homeTarget = 1.0;
-        }
+        var target = _navigationVisualTarget ?? (_isCameraView ? NotchView.Camera : _isAudioView ? NotchView.AudioMixer :
+            _isTimerView ? NotchView.Timer : _isSecondaryView ? NotchView.Secondary : NotchView.Media);
+        homeTarget = target == NotchView.Media ? 1 : 0.45;
+        clipboardTarget = target == NotchView.Secondary ? 1 : 0.45;
+        timerTarget = target == NotchView.Timer ? 1 : 0.45;
+        audioTarget = target == NotchView.AudioMixer ? 1 : 0.45;
+        if (_navDragItem != CameraIconButton) AnimateNavIconOpacity(CameraIconButton, target == NotchView.Camera ? 1 : 0.45, animate);
 
         // Only update opacity on items not currently being dragged by the user
         if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, homeTarget, animate);
-        if (_navDragItem != FileShelfIconButton) AnimateNavIconOpacity(FileShelfIconButton, shelfTarget, animate);
+        if (_navDragItem != ClipboardIconButton) AnimateNavIconOpacity(ClipboardIconButton, clipboardTarget, animate);
         if (_navDragItem != TimerIconButton) AnimateNavIconOpacity(TimerIconButton, timerTarget, animate);
         if (_navDragItem != AudioIconButton) AnimateNavIconOpacity(AudioIconButton, audioTarget, animate);
 
-        if (!_isAnimating)
-        {
-            ShelfCountBadge.Visibility = showShelfCountBadge
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        }
+
     }
 }

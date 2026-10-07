@@ -20,6 +20,7 @@ public sealed class OverlayWindowController : IDisposable
     private HwndSource? _source;
     private bool _displayUpdatePending;
     public Func<System.Windows.Forms.Screen>? TargetScreen { get; set; }
+    public Func<bool>? IsZOrderSuspended { get; set; }
 
 #pragma warning disable S107 // Component wiring constructor delegates lifecycle and placement actions
     public OverlayWindowController(
@@ -153,7 +154,7 @@ public sealed class OverlayWindowController : IDisposable
 
     private void ApplyPreferredZOrder()
     {
-        if (_state.Hwnd == IntPtr.Zero)
+        if (_state.Hwnd == IntPtr.Zero || IsZOrderSuspended?.Invoke() == true)
             return;
 
         bool positioned = _stayBehindWindows()
@@ -289,7 +290,11 @@ public sealed class OverlayWindowController : IDisposable
             pos.cy = _state.WindowHeight;
         }
 
-        if ((pos.flags & SWP_NOZORDER) == 0)
+        // Popup promotion can reposition its owner too. Keep geometry fixed without
+        // putting the notch back above its open context menu or submenu.
+        if (IsZOrderSuspended?.Invoke() == true)
+            pos.flags |= SWP_NOZORDER;
+        else if ((pos.flags & SWP_NOZORDER) == 0)
             pos.hwndInsertAfter = PreferredZOrder;
 
         Marshal.StructureToPtr(pos, lParam, false);
@@ -304,7 +309,7 @@ public sealed class OverlayWindowController : IDisposable
             case WM_WINDOWPOSCHANGING when lParam != IntPtr.Zero && _state.HasFixedBounds:
                 HandleWindowPosChanging(lParam);
                 break;
-            case WM_ACTIVATE when _isVisible():
+            case WM_ACTIVATE when _isVisible() && IsZOrderSuspended?.Invoke() != true:
                 SetWindowPos(_state.Hwnd, PreferredZOrder, 0, 0, 0, 0,
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
                 break;

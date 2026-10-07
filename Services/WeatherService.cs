@@ -9,12 +9,18 @@ using VNotch.Models;
 namespace VNotch.Services;
 
 #pragma warning disable S1075 // Public Weather and Geolocation API endpoints
-public sealed class WeatherService : IWeatherService
+public sealed class WeatherService : IWeatherService, IDisposable
 {
     private const string LogCategory = "WEATHER";
     private readonly HttpClient _http;
+    private readonly bool _ownsHttpClient;
 
-    public WeatherService() : this(CreateHttpClient()) { }
+    public WeatherService() : this(CreateHttpClient()) { _ownsHttpClient = true; }
+
+    public void Dispose()
+    {
+        if (_ownsHttpClient) _http.Dispose();
+    }
 
     internal WeatherService(HttpClient httpClient) => _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 

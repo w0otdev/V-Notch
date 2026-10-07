@@ -16,6 +16,8 @@ public sealed class ZOrderManager : IDisposable
 
     private IntPtr _foregroundWinEventHook = IntPtr.Zero;
     private WinEventDelegate? _foregroundWinEventProc;
+    private IntPtr _pendingForegroundWindow;
+    private int _foregroundDispatchQueued;
 
     private DateTime _burstUntilUtc = DateTime.MinValue;
     private DateTime _fastUntilUtc = DateTime.MinValue;
@@ -43,7 +45,7 @@ public sealed class ZOrderManager : IDisposable
 
         _fastTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(16)
+            Interval = TopmostThrottle
         };
         _fastTimer.Tick += FastTimer_Tick;
     }
@@ -112,9 +114,15 @@ public sealed class ZOrderManager : IDisposable
         if (eventType != EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero || hwnd == _getHwnd())
             return;
 
-        System.Windows.Application.Current?.Dispatcher?.BeginInvoke(
-            new Action(() => _onForegroundChanged(hwnd)),
-            DispatcherPriority.Send);
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (_disposed || dispatcher == null || dispatcher.HasShutdownStarted) return;
+        System.Threading.Interlocked.Exchange(ref _pendingForegroundWindow, hwnd);
+        if (System.Threading.Interlocked.Exchange(ref _foregroundDispatchQueued, 1) != 0) return;
+        dispatcher.BeginInvoke(new Action(() =>
+        {
+            System.Threading.Interlocked.Exchange(ref _foregroundDispatchQueued, 0);
+            if (!_disposed) _onForegroundChanged(_pendingForegroundWindow);
+        }), DispatcherPriority.Background);
     }
 
     private void WatchdogTimer_Tick(object? sender, EventArgs e)
@@ -164,7 +172,7 @@ public sealed class ZOrderManager : IDisposable
             return;
         }
 
-        EnsureTopmost(force: true);
+        EnsureTopmost();
     }
 
     private bool _disposed;

@@ -11,6 +11,23 @@ namespace VNotch.Tests;
 
 public sealed class SpotlightAiTests
 {
+    [Fact]
+    public void RemovedProviderSettingsCannotSendWithAnotherProvidersCredentials()
+    {
+        var settings = JsonSerializer.Deserialize<NotchSettings>(
+            """{"SpotlightAiProvider":"GitHub Copilot","SpotlightCopilotModel":"old-model","AllowCopilot":true}""")!;
+        settings.SpotlightOpenAIApiKey = "private-key";
+        Assert.DoesNotContain(settings.SpotlightAiProvider, SpotlightAiService.Providers);
+        Assert.False(SpotlightAiService.IsConfigured(settings));
+        Assert.Equal(("", ""), SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider));
+        var error = Assert.Throws<SpotlightAiException>(() =>
+            SpotlightAiService.CreateRequest(settings, [new("user", "hello")]));
+        Assert.Equal("spotlight.ai.configure", error.Message);
+        string saved = JsonSerializer.Serialize(settings);
+        Assert.DoesNotContain("SpotlightCopilotModel", saved);
+        Assert.DoesNotContain("AllowCopilot", saved);
+    }
+
     [Theory]
     [InlineData("OpenAI", "api.openai.com", "Authorization")]
     [InlineData("DeepSeek", "api.deepseek.com", "Authorization")]
@@ -124,7 +141,7 @@ public sealed class SpotlightAiTests
         string exported = service.ExportSettingsToString(settings);
         foreach (string provider in SpotlightAiService.Providers)
         {
-            Assert.Equal(provider == SpotlightAiService.CopilotProvider ? "" : "test-secret-" + provider,
+            Assert.Equal("test-secret-" + provider,
                 SpotlightAiService.Configuration(restored, provider).Key);
             Assert.DoesNotContain("Spotlight" + provider + "ApiKey", exported);
         }

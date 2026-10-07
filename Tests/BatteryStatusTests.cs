@@ -1,11 +1,40 @@
 using VNotch.Models;
 using VNotch.Services;
+using VNotch.ViewModels;
 using Xunit;
 
 namespace VNotch.Tests;
 
 public sealed class BatteryStatusTests
 {
+    [Theory]
+    [InlineData(1, 1, 100, true, false)]
+    [InlineData(1, 1, 80, true, false)]
+    [InlineData(1, 2, 10, true, false)]
+    [InlineData(0, 2, 10, false, true)]
+    [InlineData(0, 9, 50, true, false)]
+    [InlineData(1, 128, 100, false, false)]
+    [InlineData(1, 255, 255, false, false)]
+    public void BatteryPresentationShowsConnectedPowerEvenWhenTheChargingFlagIsClear(
+        byte ac, byte flags, byte percentage, bool connected, bool low)
+    {
+        var info = new BatteryInfo();
+        BatteryServiceImpl.ApplySystemPowerStatus(info, new()
+        {
+            ACLineStatus = ac,
+            BatteryFlag = flags,
+            BatteryLifePercent = percentage,
+            BatteryLifeTime = -1
+        });
+        var viewModel = new SecondaryViewModel(new BatteryServiceImpl());
+        viewModel.UpdateBattery(info);
+        Assert.Equal(connected, info.IsPowerConnected);
+        Assert.Equal(connected, info.GetBatteryIcon() == "⚡");
+        Assert.Equal(connected, viewModel.IsBatteryCharging);
+        Assert.Equal(low, viewModel.IsBatteryLow);
+        Assert.Equal(info.HasBattery && (flags & 8) != 0, info.IsCharging);
+    }
+
     [Theory]
     [InlineData(255, 255)]
     [InlineData(128, 100)]

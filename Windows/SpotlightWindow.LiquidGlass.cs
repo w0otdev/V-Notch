@@ -71,8 +71,7 @@ public partial class SpotlightWindow
     internal void ApplySettings(NotchSettings settings)
     {
         bool restoreSavedChats = !_settings.SaveAiChatHistory && settings.SaveAiChatHistory;
-        if (settings.EnableLocalOnlyMode || !settings.AllowOnlineAi ||
-            (settings.SpotlightAiProvider == VNotch.Services.Spotlight.SpotlightAiService.CopilotProvider && !settings.AllowCopilot))
+        if (settings.EnableLocalOnlyMode || !settings.AllowOnlineAi)
             CancelAiRequest();
         if (_settings.SaveAiChatHistory != settings.SaveAiChatHistory)
         {

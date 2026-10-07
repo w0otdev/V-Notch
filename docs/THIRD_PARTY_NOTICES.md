@@ -30,8 +30,6 @@ is implied. Verify **each file** against its original source URL, creator, preci
 
 ## NuGet libraries
 
-GitHub Copilot support uses `GitHub.Copilot.SDK` 1.0.16 (MIT, Copyright GitHub, Inc.) and the SDK-pinned GitHub Copilot CLI runtime 1.0.90. License texts are distributed in `Assets/Licenses/GitHub-Copilot-SDK.txt` and `Assets/Licenses/GitHub-Copilot-CLI.txt`. The runtime is an unmodified third-party component under the GitHub Copilot CLI License, not V-Notch's Apache-2.0 license. GitHub Copilot service access requires separate authorization and applicable service terms. GitHub and Copilot names identify the integration and do not imply endorsement.
-
 | Library | License | Source |
 | --- | --- | --- |
 | CommunityToolkit.Mvvm 8.4.0 | MIT | <https://github.com/CommunityToolkit/dotnet> |

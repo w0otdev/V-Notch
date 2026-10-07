@@ -18,6 +18,30 @@ function Write-Coverage([int]$Covered, [int]$Valid = 100, [string]$Package = 'V-
 }
 
 try {
+    # Exercise the build script's actual argument initialization against MSBuild,
+    # without publishing or touching the existing release output.
+    $buildAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $repository 'scripts/b.ps1'), [ref]$null, [ref]$null)
+    $restoreAssignment = $buildAst.Find({ param($node)
+        $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -eq '$restoreArguments'
+    }, $true)
+    if (-not $restoreAssignment) { throw 'Build restore argument initialization was not found.' }
+    $probeProject = Join-Path $temporary 'RestoreArguments.proj'
+    Set-Content -LiteralPath $probeProject -Value '<Project />'
+    foreach ($locked in @($false, $true)) {
+        & {
+            $LockedRestore = $locked
+            . ([scriptblock]::Create($restoreAssignment.Extent.Text))
+            $actual = & dotnet msbuild $probeProject -nologo -getProperty:RestoreLockedMode @restoreArguments
+            if ($LASTEXITCODE -ne 0) { throw "Build arguments were rejected by MSBuild (LockedRestore=$locked)." }
+            $expected = if ($locked) { 'true' } else { '' }
+            if (($actual -join '').Trim() -ne $expected) {
+                throw "Incorrect RestoreLockedMode passed to MSBuild (LockedRestore=$locked)."
+            }
+        }
+    }
+
     $coverageScript = Join-Path $repository 'Tools/Assert-Coverage.ps1'
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'No Cobertura'
     Write-Coverage 70

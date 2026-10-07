@@ -230,6 +230,9 @@ public sealed class LiquidGlassPacingTests
                 // Pump until at least one frame is presented
                 PumpUntil(() => controller.HasPresentedFrame, TimeSpan.FromSeconds(5));
 
+                // DWM animates a newly shown backdrop. Do not count those real
+                // content changes as redundant uploads of an unchanged frame.
+                PumpFor(TimeSpan.FromMilliseconds(1000));
                 int initialUploads = Volatile.Read(ref uploadCount);
                 Assert.True(initialUploads >= 1);
 

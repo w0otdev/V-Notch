@@ -80,7 +80,7 @@ public sealed class SettingsSearchMatcherTests
         string[] panelNames =
         {
             "PanelAppearance", "PanelBehavior", "PanelSkins", "PanelDevices", "PanelSystem", "PanelPrivacy", "PanelSpotlight",
-            "PanelAdvanced", "PanelPerformance", "PanelDonating", "PanelUpdates"
+            "PanelFileTray", "PanelAdvanced", "PanelPerformance", "PanelDonating", "PanelUpdates"
         };
 
         foreach (string panelName in panelNames)

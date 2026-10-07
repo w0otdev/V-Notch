@@ -4,12 +4,12 @@ import sys
 from pathlib import Path
 
 def validate_locale(lang_code):
-    with open('Locales/en.json', encoding='utf-8') as f:
+    with open('Locales/en.json', encoding='utf-8-sig') as f:
         en = json.load(f)
 
     path = f'Locales/{lang_code}.json'
     try:
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding='utf-8-sig') as f:
             target = json.load(f)
     except Exception as e:
         return False, f"Failed to load {path}: {e}"

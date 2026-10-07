@@ -16,7 +16,38 @@ public partial class App : Application
 {
     private SingleInstanceGuard? _guard;
     private static int _fatalUiExceptionInProgress;
-    private static readonly string MutexName = SingleInstanceGuard.GetCurrentUserMutexName();
+    private static string MutexName => SingleInstanceGuard.GetCurrentUserMutexName();
+    private Task? _shutdownTask;
+    private bool _servicesDisposed;
+    internal bool IsShutdownRequested => _shutdownTask != null;
+
+    internal static Task RequestShutdownAsync()
+    {
+        if (Current is not App app) return Task.CompletedTask;
+        if (!app.Dispatcher.CheckAccess())
+            return app.Dispatcher.InvokeAsync(RequestShutdownAsync).Task.Unwrap();
+        return app._shutdownTask ??= app.ShutdownCoreAsync();
+    }
+
+    private async Task ShutdownCoreAsync()
+    {
+        // Keep the dispatcher pumping until queued disk writes and media shutdown finish.
+        await Task.Yield();
+        try
+        {
+            if (MainWindow is MainWindow window) await window.CleanupAsync();
+            if (Services?.GetService<IMediaDetectionService>() is MediaDetectionService media)
+                await media.DrainShutdownAsync();
+            if (Services is IAsyncDisposable asyncDisposable)
+                await asyncDisposable.DisposeAsync();
+            else if (Services is IDisposable disposable)
+                disposable.Dispose();
+            _servicesDisposed = true;
+            await GpuMonitorService.DisposeSharedAsync();
+        }
+        catch (Exception ex) { RuntimeLog.Error("APP-SHUTDOWN", ex, "Cleanup failed"); }
+        finally { Shutdown(); }
+    }
 
     private const int LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
     private const int LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800;
@@ -59,7 +90,10 @@ public partial class App : Application
 
             System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
 
-            using var earlySettings = new SettingsService();
+            var services = new ServiceCollection();
+            ServiceConfigurator.ConfigureServices(services);
+            SetServices(services.BuildServiceProvider());
+            var earlySettings = Services.GetRequiredService<ISettingsService>();
             var loadedSettings = earlySettings.Load();
             NetworkPrivacy.Current.Apply(loadedSettings);
             LocalizedPresentation.Initialize();
@@ -101,16 +135,12 @@ public partial class App : Application
             RuntimeLog.InitializeNewSession("vnotch-debug.log");
             RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
 
-            var services = new ServiceCollection();
-            ServiceConfigurator.ConfigureServices(services);
-            SetServices(services.BuildServiceProvider());
-
+            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
             ServicePrewarmer.Prewarm(Services);
 
             var mainWindow = Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
 
-            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
             _ = AppIntegrityService.StartBackgroundCheckAsync();
 
             base.OnStartup(e);
@@ -363,7 +393,7 @@ public partial class App : Application
     {
         try
         {
-            if (Services is IDisposable disposable)
+            if (!_servicesDisposed && Services is IDisposable disposable)
             {
                 disposable.Dispose();
             }
@@ -405,7 +435,7 @@ public partial class App : Application
             return;
         }
 
-        Current?.Shutdown();
+        RequestShutdownAsync().SafeFireAndForget("APP-RESTART");
     }
 
     private static bool IsRecoverableException(Exception ex)
@@ -415,7 +445,7 @@ public partial class App : Application
             or System.Runtime.InteropServices.COMException;
     }
 
-    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, SettingsService settingsService)
+    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, ISettingsService settingsService)
     {
         try
         {
@@ -433,7 +463,7 @@ public partial class App : Application
 
             if (needSave)
             {
-                settingsService.Save(settings);
+                settingsService.SaveAsync(settings).SafeFireAndForget("POST-UPDATE-SAVE");
             }
         }
         catch (System.Exception ex)

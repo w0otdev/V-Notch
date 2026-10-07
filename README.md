@@ -196,7 +196,7 @@ V-Notch does not collect telemetry or analytics, or track you. It makes network 
 | YouTube / SoundCloud                                 | Public thumbnails and captions                                                     |
 | Spotify Web Services                                 | Experimental Canvas, off by default; explicit opt-in; session encrypted with Windows DPAPI |
 | Open-Meteo / ipwho.is                                | Optional weather                                                                   |
-| OpenAI / Google Gemini / Anthropic Claude / DeepSeek / GitHub Copilot | Optional AI messages and conversation context; DeepSeek balance refresh on request |
+| OpenAI / Google Gemini / Anthropic Claude / DeepSeek | Optional AI messages and conversation context; DeepSeek balance refresh on request |
 
 Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted AI chat history is stored separately at `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. Other component caches and temporary files are described in the Privacy Policy. Local Spotlight Search does not upload queries; Spotlight AI sends the content you submit to your selected provider.
 
@@ -204,20 +204,6 @@ Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted 
 
 > [!NOTE]
 > **API Key Safety:** User-provided API credentials (OpenAI, Gemini, Claude, DeepSeek, YouTube) are encrypted locally with Windows DPAPI. V-Notch maintains no intermediary servers. Maintainers assume no liability for third-party billing, quota exhaustion, or credentials leaked from user environments or pre-release testing builds. Please configure spending caps on your provider accounts.
-
-### GitHub Copilot in Spotlight
-
-1. Install the [official GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli) and run `copilot login` with your own GitHub account. Your account must have Copilot access and your organization must permit this usage.
-2. Restart V-Notch, open **Settings → Spotlight**, and select **GitHub Copilot**. No API key is stored by V-Notch for this provider.
-3. Leave the model blank for the runtime default, or enter a model ID available to your Copilot account. Open Spotlight, press Tab for AI, and send a message.
-
-The integration uses the official `GitHub.Copilot.SDK` 1.0.16 and its bundled, pinned CLI runtime (1.0.90), over local stdio. Builds download and verify the runtime through the SDK's MSBuild targets; distribution must include the generated `runtimes` directory and `Assets/Licenses/GitHub-Copilot-*.txt`. Runtime files are separate from V-Notch's single executable. The SDK is MIT-licensed; the CLI runtime has its own redistribution license, included with the app. V-Notch remains independently licensed.
-
-Each send passes the recent chat transcript as JSON context to a fresh session. This is chat only: tool availability, file hooks, skills, configuration discovery, git context, cross-session memory and session telemetry are disabled, and permission requests are denied. Completion or cancellation attempts to abort and delete that session. Copilot's own local session/log files may remain after failures or crashes and are not covered by V-Notch's chat encryption/deletion controls. No account-wide Copilot quota is displayed; check your GitHub billing settings.
-
-Authentication uses the official CLI login in the standard user profile. V-Notch launches only its bundled runtime over stdio with an explicit operating-system environment allowlist. Inherited API tokens, `COPILOT_HOME`, endpoint/BYOK overrides, proxies, TLS overrides, loader variables and `NODE_OPTIONS` are not forwarded. Custom CLI locations and environment-only authentication are intentionally unsupported in Spotlight. V-Notch does not extract editor tokens or use reverse-engineered Copilot HTTP endpoints. See [authentication](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli).
-
-**Policy review (2026-10-03):** GitHub explicitly provides its [SDK for embedding Copilot in applications](https://github.com/github/copilot-sdk). This integration follows that supported route; we found no blanket prohibition on this use. This is conditional on authorized account access, applicable usage limits, organization policies, acceptable use and output licensing obligations. It is not a guarantee that every use is compliant. Individual users are covered by [GitHub Terms of Service, including section J](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#j-ai-features-training-and-your-data); direct volume-license customers by [GitHub Generative AI Services Terms](https://github.com/customer-terms/github-generative-ai-services-terms); Microsoft purchasers by their Microsoft agreement. SDK prompts consume the user's Copilot allowance under [Copilot billing](https://docs.github.com/en/billing/concepts/product-billing/github-copilot-billing). Review account data-training preferences before sending sensitive content. Bundling the unmodified runtime as part of this independently licensed app is subject to [CLI redistribution conditions](https://github.com/github/copilot-cli/blob/main/LICENSE.md), including retaining licenses and attribution.
 
 Privacy dots use capture reports from Windows and recording signals from Bandicam, OBS Studio, and FFmpeg. See [recording detection coverage and limitations](RECORDING_DETECTION.md).
 
@@ -249,8 +235,7 @@ V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOT
 </p>
 
 
-Security limits: Spotlight validates model identifiers, transcript roles and input sizes before starting Copilot. Output buffering is bounded and requests have a five-minute overall deadline. These restrictions reduce the attack surface; they are not an OS sandbox or a guarantee against vulnerabilities in the SDK/runtime. The child process runs with the current Windows user's privileges. Malware or an attacker able to modify application/runtime files or the user's CLI credentials is outside these controls. Authenticated end-to-end runtime isolation has not been verified by the unit tests.
 
 ### Privacy and offline controls
 
-Settings → Privacy now controls online AI, Copilot, subtitles, Spotify Canvas/sign-in, weather and AI chat history independently. Strict Local-Only Mode overrides online permissions, cancels app-managed requests (including streamed responses), blocks manual AI/balance/update requests and prevents Copilot from starting. It also blocks online links opened through the app. Turning offline mode off restores your individual choices. Disabling AI history starts an in-memory session; previous saved chats remain on disk and can be accessed again by enabling history. Copilot has separate retention controls. Offline mode is an application policy, not a Windows firewall; it cannot govern other apps or guarantee that third-party runtime background traffic is absent.
+Settings → Privacy now controls online AI, subtitles, Spotify Canvas/sign-in, weather and AI chat history independently. Strict Local-Only Mode overrides online permissions, cancels app-managed requests (including streamed responses), blocks manual AI/balance/update requests. It also blocks online links opened through the app. Turning offline mode off restores your individual choices. Disabling AI history starts an in-memory session; previous saved chats remain on disk and can be accessed again by enabling history. Offline mode is an application policy, not a Windows firewall; it cannot govern other apps or guarantee that third-party runtime background traffic is absent.

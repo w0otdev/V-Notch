@@ -15,37 +15,15 @@ public sealed class MainWindowCameraPresentationTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void CameraExpansionCollapseAndInterruptedExpansionRestoreShelfLayout(bool blur) => SharedStaTestRunner.RunAsync(async ct =>
+    [Fact]
+    public void CameraIsASeparateViewAndDoesNotOpenTheDeviceByDefault() => SharedStaTestRunner.Run(() =>
     {
-        using var fixture = CreateFixture(blur);
+        using var fixture = CreateFixture(false);
         var window = fixture.Window;
-        Set(window, "_isSecondaryView", true);
-        window.SecondaryContent.Visibility = Visibility.Visible;
-        window.SecondaryContent.Measure(new Size(400, 180));
-        window.SecondaryContent.Arrange(new Rect(0, 0, 400, 180));
-        Invoke(window, "AnimateCameraSectionToShelf", true);
-        Assert.True(Field<bool>(window, "_isCameraSectionAnimating"));
-        Assert.False(window.FileShelf.IsHitTestVisible);
-        Invoke(window, "AnimateCameraSectionToShelf", true);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isCameraSectionAnimating"), "camera expansion", ct);
-        Assert.True(Field<bool>(window, "_isCameraSectionExpanded"));
-        Assert.Equal(window.CameraSection.Width, window.CameraSection.Height);
-        Assert.Equal(2, Grid.GetColumnSpan(window.CameraSection));
-        Assert.Equal(Visibility.Collapsed, window.FileShelf.Visibility);
-        Invoke(window, "AnimateCameraSectionToShelf", false);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isCameraSectionAnimating"), "camera collapse", ct);
-        AssertShelfRestored(window, blur);
-        Invoke(window, "AnimateCameraSectionToShelf", true);
-        await WpfFrameWaiter.NextAsync(ct);
-        Invoke(window, "ResetCameraSectionLayoutInstant");
-        await WpfFrameWaiter.NextAsync(ct);
-        AssertShelfRestored(window, blur);
-        var camera = Field<WebcamCaptureController>(window, "_camera");
-        Assert.False(camera.IsLifecycleActive);
-        Assert.False(camera.HasReader);
+        Assert.True(window.CameraContent.IsAncestorOf(window.CameraSection));
+        Assert.False(window.SecondaryContent.IsAncestorOf(window.CameraSection));
+        Assert.False(Field<WebcamCaptureController>(window, "_camera").IsLifecycleActive);
+        Assert.NotNull(window.ClipboardTrayView);
     });
 
     [Theory]
@@ -55,6 +33,7 @@ public sealed class MainWindowCameraPresentationTests
     {
         using var fixture = CreateFixture(blur);
         var window = fixture.Window;
+        Set(window, "_isCameraView", true);
         var camera = Field<WebcamCaptureController>(window, "_camera");
         // Simulate the presentation state after capture starts; no device is opened.
         typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
@@ -96,18 +75,36 @@ public sealed class MainWindowCameraPresentationTests
         Assert.Equal(Visibility.Collapsed, window.CameraOverlay.Visibility);
     });
 
-    private static void AssertShelfRestored(MainWindow window, bool blur)
+    [Fact]
+    public void CameraPreviewExitTransitionDefersVisualTeardownAndRestoresCleanlyOnCompletion() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        Assert.False(Field<bool>(window, "_isCameraSectionExpanded"));
-        Assert.True(double.IsNaN(window.CameraSection.Width));
-        Assert.True(double.IsNaN(window.CameraSection.Height));
-        Assert.Equal(1, Grid.GetColumnSpan(window.CameraSection));
-        Assert.Equal(Visibility.Visible, window.FileShelf.Visibility);
-        Assert.True(window.FileShelf.IsHitTestVisible);
+        using var fixture = CreateFixture(false);
+        var window = fixture.Window;
+        Set(window, "_isCameraView", true);
+        var camera = Field<WebcamCaptureController>(window, "_camera");
+
+        typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
+        Invoke(window, "PrimeCameraPreviewMorphIn");
+        Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 55), 4, 3, camera.FadeToken);
+        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "camera frame received", ct);
+        Assert.NotNull(window.CameraPreviewImage.Source);
+        Assert.True(camera.IsLifecycleActive);
+
+        // When switching views away from camera, transition begins:
+        Invoke(window, "StopCameraPreviewForViewTransition");
+        // Hardware is stopped immediately:
+        Assert.False(camera.IsLifecycleActive);
+        // But preview bitmap remains frozen for the exit crossfade:
+        Assert.NotNull(window.CameraPreviewImage.Source);
+        Assert.True(Field<bool>(window, "_pendingCameraPreviewVisualTeardown"));
+
+        // On transition completion:
+        Invoke(window, "FinalizePendingCameraPreviewTeardown");
+        Assert.False(Field<bool>(window, "_pendingCameraPreviewVisualTeardown"));
         Assert.Null(window.CameraPreviewImage.Source);
-        Assert.Equal(blur ? 16 : 0, window.CameraPreviewBlur.Radius);
-        Assert.Equal(Visibility.Collapsed, window.CameraErrorOverlay.Visibility);
-    }
+        Assert.Equal(Visibility.Visible, window.CameraOverlay.Visibility);
+    });
+
     private static byte[] Pixels(int width, int height, byte value) => Enumerable.Repeat(value, width * height * 4).ToArray();
     private static byte[] CopyPixels(WriteableBitmap bitmap)
     {
@@ -116,7 +113,7 @@ public sealed class MainWindowCameraPresentationTests
         return bytes;
     }
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture(bool blur) => new("en", greeting: false,
-        configureSettings: settings => { settings.EnableLocalOnlyMode = true; settings.EnableBlurEffects = blur; settings.ShelfWidget = "none"; },
+        configureSettings: settings => { settings.EnableLocalOnlyMode = true; settings.EnableBlurEffects = blur; },
         configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value)

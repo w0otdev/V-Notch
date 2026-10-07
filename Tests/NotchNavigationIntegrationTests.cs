@@ -28,7 +28,6 @@ public sealed class NotchNavigationIntegrationTests
                 settings.EnableLocalOnlyMode = true;
                 settings.DisableMouseLeaveAutoClose = true;
                 settings.EnableBlurEffects = blurEnabled;
-                settings.ShelfWidget = "none";
             },
             services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         var window = fixture.Window;
@@ -37,7 +36,7 @@ public sealed class NotchNavigationIntegrationTests
         typeof(MainWindow).GetField("_masterVolumeCached", Private)!.SetValue(window, new Fakes.FakeVolumeService());
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
-        var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer };
+        var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera };
         async Task Navigate(NotchView view)
         {
             if (coordinator.CurrentView != view)
@@ -64,6 +63,7 @@ public sealed class NotchNavigationIntegrationTests
                     NotchView.Media => window.ExpandedContent,
                     NotchView.Secondary => window.SecondaryContent,
                     NotchView.Timer => window.TimerContent,
+                    NotchView.Camera => window.CameraContent,
                     _ => window.AudioContent
                 };
                 Assert.Equal(Visibility.Visible, content.Visibility);

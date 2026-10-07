@@ -89,7 +89,6 @@ public partial class MainWindow : Window
     private readonly MediaDisplayController _mediaDisplayController;
     private readonly FullscreenAutoHideController _fullscreenController;
     private readonly BluetoothNotificationController _bluetoothController;
-    private DragDropController _dragDropController;
     private readonly TimerManager _timerManager;
 
     // Greeting, hover and in-view effects also animate without navigation.
@@ -234,9 +233,12 @@ public partial class MainWindow : Window
         WeatherModule weatherModule,
         SystemMonitorModule systemMonitorModule,
         ISpotlightController spotlightController,
-        VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null)
+        VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null,
+        VNotch.Services.Clipboard.ClipboardHistoryStore? clipboardHistoryStore = null)
     {
         InitializeComponent();
+        System.Windows.Input.InputManager.Current.PreProcessInput += BlockGreetingInput;
+        ClipboardTrayView.IsVisibleChanged += (_, _) => ApplyGlassContentShadow(IsLiquidGlassEnabled);
         _glassMaterialPresenter = new(GlassMaterialClipHost,
             GlassBackdropHost, GlassTintOverlay, GlassGrainOverlay,
             GlassDepthRimBorder, GlassCoolRimBorder, GlassWarmRimBorder,
@@ -249,8 +251,7 @@ public partial class MainWindow : Window
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
         _canInitiateTransition = (target, reason) =>
         {
-            if (IsScreenshotPillActive && (_screenshotReturnPending || _screenshotMorphReturning) &&
-                target != VNotch.Models.NotchView.Compact && reason != "ScreenshotExplicitOpen") return false;
+
             if (_isGreetingActive) return false;
             if (_isDebugViewLocked && target == VNotch.Models.NotchView.Compact) return false;
             return true;
@@ -271,11 +272,11 @@ public partial class MainWindow : Window
         _notchContentPresenter = new VNotch.Presenters.NotchContentTransitionPresenter(new VNotch.Presenters.NotchContentViewRefs
         {
             ExpandedContent = ExpandedContent,
-            ExpandedContentOverride = () => IsScreenshotPillActive ? _screenshotTray : null,
             TimerContent = TimerContent,
             AudioContent = AudioContent,
             AudioScrollViewer = AudioScrollViewer,
             SecondaryContent = SecondaryContent,
+            CameraContent = CameraContent,
             IsSessionCurrent = sessionId => !_cleanedUp && sessionId == _transitionCoordinator.ActiveTransitionId
         });
         _viewModel = viewModel;
@@ -296,7 +297,7 @@ public partial class MainWindow : Window
             {
                 _settings.MonitorDeviceId = preferred.Id;
                 _settings.MonitorIndex = preferred.Index;
-                _settingsService.Save(_settings);
+                _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
             }
         }
         _notchManager = new NotchManager(this, _settings, _transitionCoordinator);
@@ -306,7 +307,8 @@ public partial class MainWindow : Window
 
         _mediaDisplayController = new MediaDisplayController();
         InitializeCameraController();
-        _fullscreenController = new FullscreenAutoHideController(() => _hwnd, _settings);
+        _fullscreenController = new FullscreenAutoHideController(() => _hwnd, _settings,
+            isAutoHideSuppressed: () => _isSecondaryView || _transitionCoordinator.TargetView == VNotch.Models.NotchView.Secondary);
         _fullscreenController.HideStateChanged += FullscreenController_HideStateChanged;
         _fullscreenController.RecheckNeeded += ScheduleFullscreenRecheck;
         _timerManager = new TimerManager(Dispatcher);
@@ -348,13 +350,14 @@ public partial class MainWindow : Window
         };
         _updateCheckTimer.Tick += UpdateCheckTimer_Tick;
 
+        Func<bool> isTopmostSuspended = () => _isTrayMenuOpen || _isUpdateTooltipOpen ||
+            (ClipboardTrayView?.IsContextMenuOpen ?? false) || DateTime.UtcNow < _suspendTopmostUntilUtc;
         _zOrderManager = new ZOrderManager(
             getHwnd: () => _hwnd,
             isEffectivelyVisible: () => IsEffectivelyNotchVisible,
-            isSuspended: () => _isTrayMenuOpen || _isUpdateTooltipOpen || DateTime.UtcNow < _suspendTopmostUntilUtc,
+            isSuspended: isTopmostSuspended,
             stayBehindWindows: () => ShouldStayOnDesktopLayer,
             onForegroundChanged: OnForegroundWindowChanged);
-        InitializeScreenshotTray();
         _clipboardListener = new ClipboardListenerController(
             () => _hwnd,
             () =>
@@ -374,8 +377,9 @@ public partial class MainWindow : Window
                 InvalidateGlassDpiScale();
                 PositionAtTop();
             },
-            HandleScreenshotClipboardUpdated);
+            HandleClipboardUpdated);
         _overlayWindow.TargetScreen = () => MonitorSelection.Resolve(_settings);
+        _overlayWindow.IsZOrderSuspended = isTopmostSuspended;
         _overlayWindow.IsPointInteractive = IsPointInteractive;
 
         _lyricsTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -400,13 +404,8 @@ public partial class MainWindow : Window
             _hoverCollapseTimer.Stop();
             if (IsKeyboardFocusWithin) return;
             _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
-            if (IsScreenshotPillActive)
-            {
-                if (!_settings.DisableMouseLeaveAutoClose && !IsCursorInsideNotchVisual())
-                    CollapseScreenshotPreview();
-                return;
-            }
-            if (_isDebugViewLocked || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+
+            if (_isDebugViewLocked || _isSecondaryView || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_isExpanded && !NotchWrapper.IsMouseOver)
             {
                 if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
@@ -438,11 +437,7 @@ public partial class MainWindow : Window
         _hoverThumbnailDelayTimer.Tick += (s, e) =>
         {
             _hoverThumbnailDelayTimer.Stop();
-            if (IsScreenshotPillActive)
-            {
-                if (IsCursorInsideCompactThumbnailExitZone()) ExpandScreenshotPreview();
-                return;
-            }
+
             if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
             {
                 ExpandNotch();
@@ -459,7 +454,7 @@ public partial class MainWindow : Window
         };
         _compactThumbnailHoverLeaveTimer.Tick += (s, e) =>
         {
-            if (!_isExpanded && !_isAnimating && (_isMusicCompactMode || IsScreenshotPillActive) && IsCursorInsideCompactThumbnailExitZone())
+            if (!_isExpanded && !_isAnimating && (_isMusicCompactMode) && IsCursorInsideCompactThumbnailExitZone())
             {
                 return;
             }
@@ -475,9 +470,7 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         Deactivated += MainWindow_Deactivated;
 
-        InitializeFileShelfController();
-        _dragDropController = new DragDropController(_fileShelf);
-        InitializeDragDropController();
+        InitializeClipboardHistory(clipboardHistoryStore);
         InitializeGestureController();
         _bluetoothController = new BluetoothNotificationController();
         InitializeBluetoothNotificationController();
@@ -500,18 +493,18 @@ public partial class MainWindow : Window
             if (System.IO.File.Exists(iconPath))
             {
                 var icon = new System.Drawing.Icon(iconPath);
-                TrayIcon.Icon = icon;
+                SetTrayIcon(icon);
 
                 this.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(iconPath));
             }
             else
             {
-                TrayIcon.Icon = IconGenerator.CreateNotchIcon(16);
+                SetTrayIcon(IconGenerator.CreateNotchIcon(16));
             }
         }
         catch
         {
-            TrayIcon.Icon = IconGenerator.CreateNotchIcon(16);
+            SetTrayIcon(IconGenerator.CreateNotchIcon(16));
         }
 
         ApplySettings();
@@ -535,6 +528,7 @@ public partial class MainWindow : Window
 
         Dispatcher.BeginInvoke(new Action(() =>
         {
+            if (_cleanedUp) return;
             UpdateLayout();
             UpdateNotchClip();
             UpdateMediaBackgroundFootprint();
@@ -553,7 +547,8 @@ public partial class MainWindow : Window
 
     private void HandleAppDeactivated()
     {
-        if (IsScreenshotPillActive) { ReturnScreenshotToWaiting(); return; }
+        if (_clipboardHistory?.IsDragging == true || ClipboardTrayView.IsContextMenuOpen) return;
+
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
@@ -571,7 +566,8 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
-        if (IsScreenshotPillActive) { ReturnScreenshotToWaiting(); return; }
+        if (_clipboardHistory?.IsDragging == true || ClipboardTrayView.IsContextMenuOpen) return;
+
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
                 _spotlightMorphOwnsNotchVisibility,
@@ -597,7 +593,9 @@ public partial class MainWindow : Window
         bool isAnimating) =>
         !spotlightMorphSessionActive
         && !spotlightMorphOwnsNotchVisibility
-        && (isSecondaryView || isTimerView)
+        // Focus can be taken by another app without an outside click.
+        && !isSecondaryView
+        && isTimerView
         && (isExpanded || isMusicExpanded)
         && !isAnimating;
 
@@ -609,11 +607,29 @@ public partial class MainWindow : Window
     }
 
     private bool _cleanedUp;
+    private System.Drawing.Icon? _ownedTrayIcon;
+
+    private void SetTrayIcon(System.Drawing.Icon icon)
+    {
+        try { TrayIcon.Icon = icon; }
+        catch { icon.Dispose(); throw; }
+        var previous = _ownedTrayIcon;
+        _ownedTrayIcon = icon;
+        previous?.Dispose();
+    }
+    private Task _clipboardShutdown = Task.CompletedTask;
+
+    internal Task CleanupAsync()
+    {
+        PerformCleanup();
+        return _clipboardShutdown;
+    }
 
     private void PerformCleanup()
     {
         if (_cleanedUp) return;
         _cleanedUp = true;
+        _moduleHost.StopAll();
         DisposeGreetingLifecycle();
         DisposeSessionUnlockFeedback();
         _mediaUpdates.Dispose();
@@ -635,7 +651,10 @@ public partial class MainWindow : Window
 
         InputMonitorService.MouseActionTriggered -= GlobalMouseHook_MouseLeftButtonDown;
 
-        DisposeScreenshotTray();
+        ClipboardTrayView.Dispose();
+        _clipboardShutdown = _clipboardHistory?.DisposeAsync().AsTask() ?? Task.CompletedTask;
+        _clipboardShutdown.SafeFireAndForget("CLIPBOARD-SHUTDOWN");
+        DisposeClipboardHotkey();
         _clipboardListener.Dispose();
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
@@ -648,6 +667,8 @@ public partial class MainWindow : Window
         _notchManager?.Dispose();
         _zOrderManager?.Dispose();
         TrayIcon?.Dispose();
+        _ownedTrayIcon?.Dispose();
+        _ownedTrayIcon = null;
         _updateTimer?.Stop();
         _updateCheckTimer?.Stop();
         _hoverCollapseTimer?.Stop();
@@ -662,7 +683,6 @@ public partial class MainWindow : Window
         _camera?.Dispose();
         _timerManager?.Dispose();
         DisposeGestureController();
-        DisposeAllShelfWatchers();
         CancelDragDropTimers();
         _countdownController?.Dispose();
         _countdownPresenter?.Dispose();
@@ -692,6 +712,8 @@ public partial class MainWindow : Window
     private void ApplyCoordinatorSnapshot(VNotch.Controllers.NotchTransitionSnapshot snapshot)
     {
         if (_cleanedUp || snapshot != _transitionCoordinator.Snapshot) return;
+        if (snapshot.TargetView == VNotch.Models.NotchView.Compact) ResetClipboardDropFeedback();
+        _isCameraView = snapshot.CurrentView == VNotch.Models.NotchView.Camera;
         _localAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
         _localSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
         _localTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
@@ -738,6 +760,14 @@ public partial class MainWindow : Window
     {
         if (_cleanedUp || !_transitionCoordinator.IsTransitionActive ||
             args.TransitionId != _transitionCoordinator.ActiveTransitionId) return;
+        _navigationVisualTarget = args.TargetView == VNotch.Models.NotchView.Compact ? null : args.TargetView;
+        UpdateNavIconsActiveState();
+        if (args.FromView == VNotch.Models.NotchView.Secondary && args.TargetView != VNotch.Models.NotchView.Secondary)
+            ClipboardTrayView.BeginExit();
+        if (args.TargetView != VNotch.Models.NotchView.Secondary &&
+            _clipboardHistory?.Store.IsPersonalUnlocked == true)
+            _ = _clipboardHistory.LockPersonalAsync();
+        NavTabsStackPanel.Margin = new Thickness(14, 3, 0, 0);
         // Direct view switches do not always start another presenter animation.
         // Detach its old clocks first so HoldEnd cannot override the new view.
         _notchShellPresenter?.CancelCurrentAnimation();
@@ -751,6 +781,16 @@ public partial class MainWindow : Window
                 or VNotch.Controllers.NotchShapeState.Collapsing
                 or VNotch.Controllers.NotchShapeState.MusicExpanding
                 or VNotch.Controllers.NotchShapeState.MusicCollapsing;
+        if (args.TargetView != VNotch.Models.NotchView.Camera && IsCameraPreviewLifecycleActive)
+            StopCameraPreviewForViewTransition();
+        else if (args.TargetView == VNotch.Models.NotchView.Camera && _pendingCameraPreviewVisualTeardown)
+            FinalizePendingCameraPreviewTeardown();
+        if (args.TargetView != VNotch.Models.NotchView.Compact && args.Reason != "CountdownCompletion" &&
+            (args.TargetView is VNotch.Models.NotchView.Secondary or VNotch.Models.NotchView.Camera || args.FromView is VNotch.Models.NotchView.Secondary or VNotch.Models.NotchView.Camera))
+        {
+            ExpandNotch(args.TransitionId, targetView: args.TargetView, fromView: args.FromView);
+            return;
+        }
         switch (args.TargetView)
         {
             case VNotch.Models.NotchView.Compact:
@@ -765,8 +805,7 @@ public partial class MainWindow : Window
                 {
                     CollapseMusicWidget(args.TransitionId);
                 }
-                else if (requiresExpansion ||
-                    args.Reason == "ScreenshotExplicitOpen")
+                else if (requiresExpansion)
                 {
                     ExpandNotch(args.TransitionId);
                 }
@@ -853,6 +892,16 @@ public partial class MainWindow : Window
 
     // The ViewModel is the single production subscriber to media state.  This window
     private void ViewModel_MediaInfoUpdated(object? sender, MediaInfo info) => OnMediaChanged(info);
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (!e.Cancel && Application.Current is App { IsShutdownRequested: false })
+        {
+            e.Cancel = true;
+            App.RequestShutdownAsync().SafeFireAndForget("APP-CLOSE");
+        }
+    }
 
     protected override void OnClosed(EventArgs e)
     {
@@ -1079,10 +1128,16 @@ public partial class MainWindow : Window
         return processName.Contains("mydockfinder", StringComparison.OrdinalIgnoreCase);
     }
 
+    private double MaxExpandedNotchHeight =>
+        Math.Max(CameraViewHeight,
+        Math.Max(ClipboardTrayHeight,
+        Math.Max(_clockViewHeight,
+        Math.Max(_expandedHeight, _audioViewMaxHeight))));
+
     private void PositionAtTop()
     {
-        double notchSurfaceWidth = Math.Max(Math.Max(_expandedWidth, _clockViewWidth), _audioViewWidth);
-        _overlayWindow.PositionAtTop(notchSurfaceWidth, _expandedHeight);
+        double notchSurfaceWidth = Math.Max(ClipboardTrayWidth, Math.Max(Math.Max(_expandedWidth, _clockViewWidth), _audioViewWidth));
+        _overlayWindow.PositionAtTop(notchSurfaceWidth, MaxExpandedNotchHeight);
 
         // Initialize the global hover/top-edge bounds at startup as well as after
         _notchManager.UpdatePosition();
@@ -1137,6 +1192,17 @@ public partial class MainWindow : Window
         if (active) CompleteSpotlightReturnScaleHandoff();
         _spotlightMorphSessionActive = active;
         if (!active) return;
+
+        // Match the unscaled geometry used by Spotlight for both ends of the morph.
+        // A hover clock must not keep stretching the hidden destination shell.
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        NotchScale.ScaleX = NotchScale.ScaleY = 1;
+        NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
+        HoverGlow.BeginAnimation(OpacityProperty, null);
+        HoverGlow.Opacity = 0;
 
         // This guard is acquired before Spotlight calls Show(). Showing or
         _hoverCollapseTimer.Stop();
@@ -1332,11 +1398,13 @@ public partial class MainWindow : Window
 #pragma warning disable S3776 // Complex modal settings configuration and reactive subsystem update dispatch
     private void OpenAppSettings()
     {
+        if (IsGreetingInteractionBlocked) return;
         var settingsWindow = new SettingsWindow(
             _settings,
             _settingsService,
             _bluetoothModule,
-            _spotlightController.IsHotkeyRegistered)
+            _spotlightController.IsHotkeyRegistered,
+            _updateService)
         {
             Owner = this
         };
@@ -1360,12 +1428,12 @@ public partial class MainWindow : Window
             bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
             string oldSubtitlePriority = oldSettings.SubtitlePriority ?? "";
             _settings = newSettings.Clone();
+            _clipboardHotkey?.Apply(_settings.ClipboardHotkey);
+            _clipboardHistory?.ApplySettings(_settings);
+            if (_settings.HideCamera && IsCameraPreviewLifecycleActive) StopCameraPreviewForViewExit();
             NetworkPrivacy.Current.Apply(_settings);
 
-            if (oldSettings.IsShelfUploadLimitUnlocked != newSettings.IsShelfUploadLimitUnlocked)
-            {
-                _fileShelf.UpdateSettings(_settings);
-            }
+
 
             if (oldSettings.HideOnExclusiveFullscreen != newSettings.HideOnExclusiveFullscreen
                 || oldSettings.HideOnWindowedFullscreen != newSettings.HideOnWindowedFullscreen)
@@ -1503,15 +1571,12 @@ public partial class MainWindow : Window
             ApplyExpandedWidgetMode();
         }
 
-        if (oldSettings == null || !string.Equals(oldSettings.NavTabOrder, _settings.NavTabOrder, StringComparison.Ordinal) || !string.Equals(oldSettings.VisibleNavTabs, _settings.VisibleNavTabs, StringComparison.Ordinal))
+        if (oldSettings == null || oldSettings.HideCamera != _settings.HideCamera || !string.Equals(oldSettings.NavTabOrder, _settings.NavTabOrder, StringComparison.Ordinal) || !string.Equals(oldSettings.VisibleNavTabs, _settings.VisibleNavTabs, StringComparison.Ordinal))
         {
             ApplyNavTabOrderAndVisibility();
         }
 
-        if (oldSettings == null || !string.Equals(oldSettings.ShelfWidget, _settings.ShelfWidget, StringComparison.Ordinal))
-        {
-            ApplyShelfWidgetMode();
-        }
+
 
         if (oldSettings == null || !string.Equals(oldSettings.ClockPageStyle, _settings.ClockPageStyle, StringComparison.Ordinal))
         {
@@ -1891,18 +1956,15 @@ public partial class MainWindow : Window
 
     private void RefreshNotchLocalization()
     {
+        ClipboardTrayView.ApplyLocalization();
         LocalizedPresentation.Apply(this);
         RefreshAccessibleNames();
-        UpdateShelfCapacityIndicator();
         EventText.Text = Loc.Get("greeting.enjoyDay");
         ChargingStatusText.Text = Loc.Get("battery.charging");
         ClipboardCopiedText.Text = Loc.Get("clipboard.copied");
         CameraErrorText.Text = Loc.Get("notch.camera.error");
         CameraRetryText.Text = Loc.Get("notch.camera.retry");
         AudioLoadingText.Text = Loc.Get("audio.loading");
-        ShelfUnlockButtonText.Text = Loc.Get("shelf.unlockButton");
-        ShelfUnlockDismissText.Text = Loc.Get("shelf.unlockDismiss");
-        ShelfUnlockSettingsHint.Text = Loc.Get("shelf.unlockSettingsHint");
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
         MenuResetText.Text = Loc.Get("tray.reset");
         MenuSettingsText.Text = Loc.Get("tray.settings");
@@ -1973,7 +2035,6 @@ public partial class MainWindow : Window
             double islandTop = Math.Max(0, (GetCollapsedHeight() - 22) / 2.0);
             MusicCompactContent.VerticalAlignment = VerticalAlignment.Top;
             MusicCompactContent.Margin = islandMode ? new Thickness(12, islandTop, 12, 0) : new Thickness(8, 4, 8, 4);
-            AlignScreenshotCompactThumbnail();
         }
 
         if (CompactHoverInfo != null)
@@ -2027,14 +2088,7 @@ public partial class MainWindow : Window
 
     private void NotchBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (IsScreenshotPillActive)
-        {
-            if (_isAnimating) { e.Handled = true; return; }
-            if (_isExpanded) CollapseScreenshotPreview(fromClick: true);
-            else OpenScreenshotFromClick();
-            e.Handled = true;
-            return;
-        }
+
         if (_isDebugDraggable)
         {
             var hit = e.OriginalSource as DependencyObject;
@@ -2151,7 +2205,7 @@ public partial class MainWindow : Window
 
     private void NotchWrapper_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (IsScreenshotPillActive) { LeaveScreenshotHover(); return; }
+
         _hoverThumbnailDelayTimer.Stop();
         if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
@@ -2183,7 +2237,7 @@ public partial class MainWindow : Window
 
     private void QueueHoverExpand()
     {
-        if (IsScreenshotPillActive) return;
+
         if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
         {
             _hoverThumbnailDelayTimer.Stop();
@@ -2218,7 +2272,7 @@ public partial class MainWindow : Window
 
     private void CompactThumbnailBorder_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode || IsScreenshotPillActive))
+        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode))
         {
             _compactThumbnailHoverLeaveTimer.Stop();
             _hoverThumbnailDelayTimer.Stop();
@@ -2229,7 +2283,7 @@ public partial class MainWindow : Window
     private void CompactThumbnailBorder_MouseLeave(object sender, MouseEventArgs e)
     {
         _hoverThumbnailDelayTimer.Stop();
-        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode || IsScreenshotPillActive))
+        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode))
         {
             _compactThumbnailHoverLeaveTimer.Stop();
             _compactThumbnailHoverLeaveTimer.Start();
@@ -2250,7 +2304,7 @@ public partial class MainWindow : Window
 
     private bool IsCursorInsideCompactThumbnailExitZone()
     {
-        FrameworkElement? thumbnail = IsScreenshotPillActive ? _screenshotThumbnail : CompactThumbnailBorder;
+        FrameworkElement? thumbnail = CompactThumbnailBorder;
         if (thumbnail == null || NotchBorder == null) return false;
 
         Point cursor = Mouse.GetPosition(NotchBorder);
@@ -2269,7 +2323,7 @@ public partial class MainWindow : Window
 
         Rect exitBounds = thumbnailBounds;
 
-        if ((_settings.EnableDynamicIslandMode || IsScreenshotPillActive) && _isCompactThumbnailHovered)
+        if ((_settings.EnableDynamicIslandMode) && _isCompactThumbnailHovered)
         {
             double notchWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : NotchBorder.Width;
             double notchHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : NotchBorder.Height;
@@ -2481,8 +2535,7 @@ public partial class MainWindow : Window
 
     private void UpdateNotchClip()
     {
-        if (_screenshotHost != null)
-            _screenshotHost.Clip = BuildNotchClipGeometry(_screenshotHost.ActualWidth, _screenshotHost.ActualHeight);
+
         if (NotchContent == null || NotchBorder == null) return;
 
         double w = NotchContent.ActualWidth;
@@ -2517,6 +2570,11 @@ public partial class MainWindow : Window
 
     private void TrayContextMenu_Opened(object sender, RoutedEventArgs e)
     {
+        if (IsGreetingInteractionBlocked)
+        {
+            if (sender is System.Windows.Controls.ContextMenu menu) menu.IsOpen = false;
+            return;
+        }
         _isTrayMenuOpen = true;
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
     }
@@ -2530,6 +2588,7 @@ public partial class MainWindow : Window
 
     private void ToggleNotch_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGreetingInteractionBlocked) return;
         _isNotchVisible = !_isNotchVisible;
         if (!_isNotchVisible && (_isExpanded || _isMusicExpanded) && !_isAnimating)
         {
@@ -2553,17 +2612,20 @@ public partial class MainWindow : Window
 
     private void ResetPosition_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGreetingInteractionBlocked) return;
         ResetPosition();
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGreetingInteractionBlocked) return;
         CleanupBeforeShutdown();
-        System.Windows.Application.Current.Shutdown();
+        App.RequestShutdownAsync().SafeFireAndForget("APP-SHUTDOWN");
     }
 
     private void Restart_Click(object sender, RoutedEventArgs e)
     {
+        if (IsGreetingInteractionBlocked) return;
         CleanupBeforeShutdown();
         App.RestartApplication();
     }
