@@ -750,6 +750,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         if (!AcceptsMediaUpdate(info)) return false;
         bool metadataChanged = currentSignature != _lastPublishedSignature;
+        bool thumbnailChanged = !ReferenceEquals(info.Thumbnail, _lastPublishedInfo?.Thumbnail);
         bool playbackChanged = info.IsPlaying != _lastIsPlaying;
         bool sourceChanged = info.MediaSource != _lastSource;
         bool seekCapabilityChanged = info.IsSeekEnabled != _lastSeekEnabled;
@@ -762,7 +763,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                                    (info.Duration.TotalSeconds > 0 || info.Position.TotalSeconds > 0) &&
                                    Math.Abs((info.Position - _lastPosition).TotalSeconds) >= 0.2;
 
-        if (!(forceRefresh || metadataChanged || playbackChanged || sourceChanged || pipChanged || (significantJump && !info.IsThrottled) || seekCapabilityChanged || throttleChanged || startupTimelineSync))
+        if (!(forceRefresh || metadataChanged || thumbnailChanged || playbackChanged || sourceChanged || pipChanged || (significantJump && !info.IsThrottled) || seekCapabilityChanged || throttleChanged || startupTimelineSync))
         {
             return true;
         }
@@ -779,9 +780,9 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             return false;
         }
 
-        CommitPublishedState(info, currentSignature);
-
         SuppressIntermediateYouTubeThumbnail(info, isNewTrackForThumbnail);
+
+        CommitPublishedState(info, currentSignature);
 
         await FireMediaChangedAsync(info);
 
@@ -1343,12 +1344,16 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         try
         {
+            // Accept the artist this lookup resolved as well as the original SMTC
+            // artist, while retaining the track, session and generation checks.
             bool IsCurrentFetch() =>
                 !token.IsCancellationRequested &&
                 generationAtStart == Volatile.Read(ref _thumbnailFetchGeneration) &&
                 fetchGeneration == Volatile.Read(ref _youTubeFetchGeneration) &&
-                IsStillSamePublishedTrack(
-                    trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch);
+                (IsStillSamePublishedTrack(
+                    trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch) ||
+                 IsStillSamePublishedTrack(
+                    trackDuringFetch, info.CurrentArtist, sourceAppDuringFetch, sessionKeyDuringFetch));
 
             async Task<bool> ApplyIfCurrentAsync(Action apply)
             {
@@ -2177,7 +2182,6 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             StabilizeArtist(info);
 
-            string currentTrackOnlyIdentityForThumb = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
             var pinned = Volatile.Read(ref _pinnedSession);
             if (pinned != null && pinned.Key == info.SessionInstanceKey && !string.IsNullOrWhiteSpace(info.CurrentTrack))
             {
@@ -2191,7 +2195,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 }
             }
 
-            bool trackChangedForThisPass = InvalidateThumbnailStateIfTrackChanged(currentTrackOnlyIdentityForThumb);
+            bool trackChangedForThisPass = InvalidateThumbnailStateIfTrackChanged(info);
 
             ResolveBrowserMediaSource(
                 info,
@@ -2202,7 +2206,6 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             await ApplySessionThumbnailAsync(info, mediaProperties, trackChangedForThisPass);
 
             _lastTrackSignature = info.GetSignature();
-            _lastThumbTrackIdentity = currentTrackOnlyIdentityForThumb;
             return false;
         }
         catch (Exception ex)
@@ -2447,8 +2450,12 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         }
     }
 
-    private bool InvalidateThumbnailStateIfTrackChanged(string currentTrackOnlyIdentityForThumb)
+    private bool InvalidateThumbnailStateIfTrackChanged(MediaInfo info)
     {
+        // Browser artist metadata can be enriched while artwork is downloading.
+        // Native players retain the artist identity for equally named songs.
+        bool isBrowserSession = IsBrowserSourceApp(info.SourceAppId) || info.Platform is MediaPlatform.Browser or MediaPlatform.YouTube;
+        string currentTrackOnlyIdentityForThumb = BuildTrackIdentity(info.CurrentTrack, isBrowserSession ? "" : info.CurrentArtist);
         bool trackChangedForThisPass = !string.Equals(currentTrackOnlyIdentityForThumb, _lastThumbTrackIdentity, StringComparison.Ordinal);
         if (trackChangedForThisPass)
         {
@@ -2467,6 +2474,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             RuntimeLog.Debug("MEDIA-THUMB-INVALIDATE", () =>
                 $"Track changed: old='{_lastThumbTrackIdentity}' new='{currentTrackOnlyIdentityForThumb}' — cleared all thumbnail state");
         }
+        _lastThumbTrackIdentity = currentTrackOnlyIdentityForThumb;
         return trackChangedForThisPass;
     }
 
@@ -3602,6 +3610,13 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     }
 
     public ValueTask DisposeAsync() => new(GetDisposalTask());
+    private Task _workerResourceReleaseTask = Task.CompletedTask;
+
+    internal async Task DrainShutdownAsync()
+    {
+        await DisposeAsync().ConfigureAwait(false);
+        await _workerResourceReleaseTask.ConfigureAwait(false);
+    }
 
     private Task GetDisposalTask()
     {
@@ -3704,7 +3719,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         // 4. Dispose CTS
         // A timed-out worker may still use its token and release the update lock.
         // Release those objects only after the captured workers actually exit.
-        _ = ReleaseWorkerResourcesAsync(allTasks, ctsToCancel, isDisposing);
+        _workerResourceReleaseTask = ReleaseWorkerResourcesAsync(allTasks, ctsToCancel, isDisposing);
 
         // 5. Complete the channel or drain it for a later restart.
         if (isDisposing)

@@ -9,6 +9,8 @@ public interface IUpdateService
     Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync();
     Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default);
     string CurrentVersion { get; }
+    event EventHandler<UpdateInfo?>? UpdateCheckCompleted;
+    UpdateInfo? LatestUpdateInfo { get; }
 }
 
 public class UpdateInfo

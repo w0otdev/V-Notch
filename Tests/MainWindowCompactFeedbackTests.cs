@@ -76,6 +76,34 @@ public sealed class MainWindowCompactFeedbackTests
     });
 
     [Theory]
+    [InlineData(100)]
+    [InlineData(80)]
+    [InlineData(10)]
+    public void PluggedInBatteryKeepsItsBoltWhenActiveChargingStops(int percentage) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = percentage, IsPluggedIn = true });
+        await WpfFrameWaiter.UntilAsync(() => window.ChargingBolt.Opacity == 1, "plugged-in battery bolt", ct);
+        Assert.False(Field<bool>(window, "_chargingPulseWanted"));
+        var fillColor = ((SolidColorBrush)window.BatteryFill.Background).Color;
+        Assert.Equal(((byte)0x30, (byte)0xD1, (byte)0x58), (fillColor.R, fillColor.G, fillColor.B));
+        Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = percentage });
+        await WpfFrameWaiter.UntilAsync(() => window.ChargingBolt.Opacity == 0, "unplugged battery bolt", ct);
+    });
+
+    [Fact]
+    public void PluggingInAFullBatteryShowsFullyChargedGlanceWithoutAChargingFlag() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 100 });
+        Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 100, IsPluggedIn = true });
+        Assert.True(Field<bool>(window, "_isChargingNotificationVisible"));
+        Assert.Equal(Loc.Get("battery.fullyCharged"), window.ChargingStatusText.Text);
+    });
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void CopyFeedbackRestoresArtworkAfterTimerOrImmediateCancellation(bool cancel) => SharedStaTestRunner.RunAsync(async ct =>

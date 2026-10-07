@@ -123,32 +123,28 @@ public partial class MainWindow
 
     private void VolumeSyncTimer_Tick(object? sender, EventArgs e)
     {
-        if (_isExpanded && _isMusicExpanded && !_isDraggingVolume &&
+        if (_isExpanded && _isMusicExpanded && !_isDraggingVolume && DateTime.UtcNow >= _volumeScrollSyncAfterUtc &&
             _mediaService.TryGetCurrentSessionVolume(out float volume, out bool isMuted))
         {
             _currentVolume = volume;
-            VolumeBarScale.ScaleX = _currentVolume;
+            SetVolumeFill(VolumeBarScale, _currentVolume);
             UpdateVolumeIcon(_currentVolume, isMuted);
         }
     }
 
-    private DateTime _lastOutsideClickTime = DateTime.MinValue;
     private readonly Queue<OutsideClickSnapshot> _outsideClicks = new();
     private Action? _drainOutsideClicks;
     private bool _outsideClickDrainPending;
-    private readonly record struct OutsideClickSnapshot(InputMonitorService.POINT Point,
-        bool ScreenshotClick, bool OutsideScreenshot, bool ScreenshotWasAnimating);
+    private readonly record struct OutsideClickSnapshot(InputMonitorService.POINT Point);
 
     private void GlobalMouseHook_MouseLeftButtonDown(object? sender, InputMonitorService.POINT pt)
     {
+        if (IsGreetingInteractionBlocked) return;
         if (_cleanedUp || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility ||
-            (!IsScreenshotPillActive && !_isExpanded && !_isMusicExpanded)) return;
+            (!_isExpanded && !_isMusicExpanded)) return;
         // Capture against the visible shell at mouse-down, before queued layout
         // or animation work can move/resize it under this click.
-        bool screenshotClick = IsScreenshotPillActive;
-        bool outsideScreenshot = screenshotClick && !IsScreenPointInsideScreenshotShell(pt);
-        bool screenshotWasAnimating = screenshotClick && (_isAnimating || _screenshotMorphRunning || _transitionCoordinator.IsTransitionActive);
-        _outsideClicks.Enqueue(new OutsideClickSnapshot(pt, screenshotClick, outsideScreenshot, screenshotWasAnimating));
+        _outsideClicks.Enqueue(new OutsideClickSnapshot(pt));
         if (_outsideClickDrainPending) return;
         _outsideClickDrainPending = true;
         Dispatcher.BeginInvoke(DispatcherPriority.Input, _drainOutsideClicks ??= DrainOutsideClicks);
@@ -170,23 +166,12 @@ public partial class MainWindow
     private void HandleOutsideClick(OutsideClickSnapshot click)
     {
         var pt = click.Point;
+        if (_clipboardHistory?.IsDragging == true || ClipboardTrayView.IsContextMenuOpen || ClipboardTrayView.ContainsMenuPoint(new Point(pt.x, pt.y))) return;
         // Clicks inside Spotlight window must not collapse MainWindow's hidden
         // state while Spotlight temporarily owns the notch surface.
         if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
-        if (IsScreenshotPillActive)
-        {
-            if (click.ScreenshotClick && click.OutsideScreenshot)
-                ReturnScreenshotToWaiting();
-            else if (click.ScreenshotWasAnimating)
-            {
-                if (_screenshotReturnPending || _screenshotMorphReturning)
-                    OpenScreenshotFromClick();
-                else
-                    ReturnScreenshotToWaiting();
-            }
-            return;
-        }
+
 
         if ((_isExpanded || _isMusicExpanded) && !_isAnimating)
         {
@@ -207,59 +192,12 @@ public partial class MainWindow
                     $"isExpanded={_isExpanded} isMusicExpanded={_isMusicExpanded} isSecondary={_isSecondaryView} " +
                     $"isAnimating={_isAnimating}");
 
-                if (_isSecondaryView)
-                {
-                    var now = DateTime.Now;
-                    double doubleClickTime = GetDoubleClickTime();
-
-                    if ((now - _lastOutsideClickTime).TotalMilliseconds < doubleClickTime)
-                    {
-                        RuntimeLog.Log("COLLAPSE-TRIGGER", "Secondary view double-click -> CollapseAll");
-                        CollapseAll();
-                        _lastOutsideClickTime = DateTime.MinValue;
-                    }
-                    else
-                    {
-                        _lastOutsideClickTime = now;
-                    }
-                }
-                else
-                {
-                    RuntimeLog.Log("COLLAPSE-TRIGGER", "Normal view single outside click -> CollapseAll");
-                    CollapseAll();
-                }
+                CollapseAll();
             }
         }
     }
 
-    private bool IsScreenPointInsideScreenshotShell(InputMonitorService.POINT pt)
-    {
-        if (_hwnd == IntPtr.Zero || NotchBorder.ActualWidth <= 0 || NotchBorder.ActualHeight <= 0)
-            return false;
-        try
-        {
-            var local = NotchBorder.PointFromScreen(new Point(pt.x, pt.y));
-            return ScreenshotShellContains(local, new Size(NotchBorder.ActualWidth, NotchBorder.ActualHeight),
-                NotchBorder.CornerRadius);
-        }
-        catch (InvalidOperationException) { return false; }
-    }
 
-    internal static bool ScreenshotShellContains(Point point, Size size, CornerRadius corners)
-    {
-        if (!new Rect(size).Contains(point)) return false;
-        double limit = Math.Min(size.Width, size.Height) / 2;
-        bool InCorner(double x, double y, double radius)
-        {
-            radius = Math.Min(radius, limit);
-            if (x >= radius || y >= radius) return true;
-            return (x - radius) * (x - radius) + (y - radius) * (y - radius) <= radius * radius;
-        }
-        return InCorner(point.X, point.Y, corners.TopLeft) &&
-            InCorner(size.Width - point.X, point.Y, corners.TopRight) &&
-            InCorner(point.X, size.Height - point.Y, corners.BottomLeft) &&
-            InCorner(size.Width - point.X, size.Height - point.Y, corners.BottomRight);
-    }
 
     private bool IsScreenPointInsideNotchVisual(InputMonitorService.POINT pt)
     {

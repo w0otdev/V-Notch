@@ -48,6 +48,8 @@ public sealed class SettingsUpdatePresenterTests
         public int CheckCount { get; private set; }
         public TaskCompletionSource<UpdateInfo?> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string CurrentVersion => "1.0";
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public UpdateInfo? LatestUpdateInfo => null;
         public Task<UpdateInfo?> CheckForUpdatesAsync() { CheckCount++; return Result.Task; }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
         public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo info, IProgress<double>? progress = null, CancellationToken cancellationToken = default)

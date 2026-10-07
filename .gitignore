@@ -98,3 +98,6 @@ build-installer.ps1
 /.nuget/packages/
 __pycache__/
 /.codegraph
+/.artifacts
+awesome-codex-skills/
+

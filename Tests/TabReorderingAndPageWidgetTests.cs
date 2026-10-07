@@ -16,9 +16,10 @@ public sealed class TabReorderingAndPageWidgetTests
     {
         var settings = new NotchSettings();
 
-        Assert.Equal("Media,Secondary,Timer,AudioMixer", settings.NavTabOrder);
-        Assert.Equal("Media,Secondary,Timer,AudioMixer", settings.VisibleNavTabs);
-        Assert.Equal("camera", settings.ShelfWidget);
+        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera", settings.NavTabOrder);
+        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera", settings.VisibleNavTabs);
+        Assert.False(settings.HideCamera);
+        Assert.Empty(settings.ClipboardHotkey);
         Assert.Equal("analog", settings.ClockPageStyle);
     }
 
@@ -29,7 +30,8 @@ public sealed class TabReorderingAndPageWidgetTests
         {
             NavTabOrder = "AudioMixer,Timer,Secondary,Media",
             VisibleNavTabs = "Media,AudioMixer",
-            ShelfWidget = "sysmon",
+            HideCamera = true,
+            ClipboardHotkey = "Ctrl+Alt+V",
             ClockPageStyle = "digital"
         };
 
@@ -37,7 +39,8 @@ public sealed class TabReorderingAndPageWidgetTests
 
         Assert.Equal("AudioMixer,Timer,Secondary,Media", clone.NavTabOrder);
         Assert.Equal("Media,AudioMixer", clone.VisibleNavTabs);
-        Assert.Equal("sysmon", clone.ShelfWidget);
+        Assert.True(clone.HideCamera);
+        Assert.Equal("Ctrl+Alt+V", clone.ClipboardHotkey);
         Assert.Equal("digital", clone.ClockPageStyle);
     }
 
@@ -82,13 +85,6 @@ public sealed class TabReorderingAndPageWidgetTests
             "settings.tab.moveDown",
             "settings.tab.drag",
             "settings.tab.reset",
-            "settings.shelfWidget",
-            "settings.shelfWidget.hint",
-            "settings.shelfWidget.camera",
-            "settings.shelfWidget.sysmon",
-            "settings.shelfWidget.weather",
-            "settings.shelfWidget.clock",
-            "settings.shelfWidget.none",
             "settings.clockPageStyle",
             "settings.clockPageStyle.hint",
             "settings.clockPageStyle.analog",

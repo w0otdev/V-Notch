@@ -4,9 +4,9 @@
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <!-- Embedded SF Pro Display font - works on all machines without SF Pro installed -->
-        <FontFamily x:Key="SFProDisplay">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI, Arial</FontFamily>
+        <FontFamily x:Key="SFProDisplay">./Fonts/#SF Pro Display, Segoe UI, Arial</FontFamily>
         <!-- SF Pro Text maps to Display since we only ship Display weights -->
-        <FontFamily x:Key="SFProText">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI, Arial</FontFamily>
+        <FontFamily x:Key="SFProText">./Fonts/#SF Pro Display, Segoe UI, Arial</FontFamily>
         <!-- Embedded icon font - works on all machines without Segoe MDL2 Assets or Segoe Fluent Icons installed -->
         <FontFamily x:Key="IconFont">pack://application:,,,/Fonts/#Segoe MDL2 Assets, Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol, Segoe UI</FontFamily>
         <!-- Popup menus do not inherit typography from their placement window. -->

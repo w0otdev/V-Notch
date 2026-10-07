@@ -1,199 +1,91 @@
-using System;
 using System.Windows;
 using System.Windows.Threading;
-using VNotch.Controllers;
+using VNotch.Models;
+using VNotch.Services.Clipboard;
 
 namespace VNotch;
 
 public partial class MainWindow
 {
-    #region Drag-to-Open
-
-    private DispatcherTimer? _dragWaitTimer;
-    private DispatcherTimer? _dragCollapseTimer;
-    private DispatcherTimer? _dropProcessTimer;
-    private DispatcherTimer? _shelfReadyTimer;
-    private DispatcherTimer? _collapseWaitTimer;
-
+    private DispatcherTimer? _clipboardDragTimer;
+    private bool _clipboardDragAutoExpanded;
+    private bool _clipboardDragCanDrop;
     internal void CancelDragDropTimers()
     {
-        _dragWaitTimer?.Stop();
-        _dragWaitTimer = null;
-        _dragCollapseTimer?.Stop();
-        _dragCollapseTimer = null;
-        _dropProcessTimer?.Stop();
-        _dropProcessTimer = null;
-        _shelfReadyTimer?.Stop();
-        _shelfReadyTimer = null;
-        _collapseWaitTimer?.Stop();
-        _collapseWaitTimer = null;
+        _clipboardDragTimer?.Stop();
+        _clipboardDragTimer = null;
     }
-
-    private void InitializeDragDropController()
-    {
-        _dragDropController.ExpandRequested += () => ExpandNotch();
-        _dragDropController.SwitchToSecondaryRequested += () => SwitchToSecondaryView();
-        _dragDropController.SwitchToPrimaryRequested += () => SwitchToPrimaryView();
-        _dragDropController.CollapseRequested += () => CollapseNotch();
-        _dragDropController.FilesAccepted += files => _fileShelf.EnqueueFiles(files);
-        _dragDropController.UnlockPromptRequested += (files, count) =>
-        {
-            _pendingUnlockFiles = files;
-            ShowShelfUnlockBanner(count);
-        };
-        _dragDropController.DropRejected += msg => SetShelfDropRejectVisualState(msg);
-    }
-
     private void NotchWrapper_DragEnter(object sender, DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-        e.Effects = DragDropEffects.Copy;
-        e.Handled = true;
-
-        _dragCollapseTimer?.Stop();
-        _dragCollapseTimer = null;
-
-        bool wasExpanded = _isExpanded;
-
-        bool handled = _dragDropController.HandleDragEnter(
-            hasFiles: true,
-            isExpanded: _isExpanded,
-            isAnimating: _isAnimating,
-            isSecondaryView: _isSecondaryView);
-
-        if (handled && ((!wasExpanded && _dragDropController.IsDragAutoExpanded) || (_isExpanded && _isAnimating)))
-        {
-            StartDragWaitForShelf();
-        }
-    }
-
-    private void NotchWrapper_DragOver(object sender, DragEventArgs e)
-    {
+        if (_clipboardHistory?.IsDragging == true) return;
+        _clipboardDragCanDrop = ClipboardDropReader.Supports(e.Data);
         if (e.Data.GetDataPresent(DataFormats.FileDrop))
-            e.Effects = DragDropEffects.Copy;
-        e.Handled = true;
+            _clipboardDragCanDrop = e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files
+                && files.All(ClipboardImportPaths.IsLocal) && files.Length <= ClipboardHistoryStore.MaxImportItems;
+        e.Effects = _clipboardDragCanDrop ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true;
+        if (!_clipboardDragCanDrop) return;
+        SetClipboardDropHover(true);
+        KeepClipboardDropTargetOpen();
+        _clipboardDragAutoExpanded |= !_isExpanded;
+        _transitionCoordinator.RequestView(NotchView.Secondary, "ClipboardDragEnter");
     }
-
-    private void NotchWrapper_DragLeave(object sender, DragEventArgs e)
-    {
-        if (!_dragDropController.HandleDragLeave()) return;
-
-        _dragCollapseTimer?.Stop();
-        _dragCollapseTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(150)
-        };
-        _dragCollapseTimer.Tick += (s, args) =>
-        {
-            _dragCollapseTimer?.Stop();
-            _dragCollapseTimer = null;
-            _dragDropController.AutoCollapseAfterDrag(_isExpanded, _isSecondaryView, _isAnimating);
-
-            if (_isExpanded && !_isSecondaryView && _isAnimating)
-            {
-                _collapseWaitTimer?.Stop();
-                var collapseDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
-                _collapseWaitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
-                _collapseWaitTimer.Tick += (s2, args2) =>
-                {
-                    if (!_isAnimating || DateTime.UtcNow >= collapseDeadlineUtc)
-                    {
-                        _collapseWaitTimer?.Stop();
-                        _collapseWaitTimer = null;
-                        _dragDropController.CollapseAfterViewSwitch(_isSecondaryView, _isAnimating);
-                    }
-                };
-                _collapseWaitTimer.Start();
-            }
-        };
-        _dragCollapseTimer.Start();
-    }
-
-    private void NotchWrapper_DragDrop(object sender, DragEventArgs e)
+    private void KeepClipboardDropTargetOpen()
     {
         CancelDragDropTimers();
-
-        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
-        {
-            e.Handled = true;
-            _dragDropController.Reset();
-            return;
-        }
-
-        e.Effects = DragDropEffects.Copy;
-        e.Handled = true;
-
-        var files = e.Data.GetData(DataFormats.FileDrop) as string[];
-        if (files == null || files.Length == 0)
-        {
-            return;
-        }
-
-        if (!_isExpanded)
-        {
-            ExpandNotch();
-        }
-
-        var dropDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
-        _dropProcessTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(40)
-        };
-        _dropProcessTimer.Tick += (s, args) =>
-        {
-            if (!_isAnimating || DateTime.UtcNow >= dropDeadlineUtc)
-            {
-                _dropProcessTimer?.Stop();
-                _dropProcessTimer = null;
-
-                if (!_isSecondaryView)
-                {
-                    SwitchToSecondaryView();
-                    var shelfDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
-                    _shelfReadyTimer?.Stop();
-                    _shelfReadyTimer = new DispatcherTimer
-                    {
-                        Interval = TimeSpan.FromMilliseconds(40)
-                    };
-                    _shelfReadyTimer.Tick += (s2, args2) =>
-                    {
-                        if (!_isAnimating || DateTime.UtcNow >= shelfDeadlineUtc)
-                        {
-                            _shelfReadyTimer?.Stop();
-                            _shelfReadyTimer = null;
-                            _dragDropController.HandleDrop(files);
-                        }
-                    };
-                    _shelfReadyTimer.Start();
-                }
-                else
-                {
-                    _dragDropController.HandleDrop(files);
-                }
-            }
-        };
-        _dropProcessTimer.Start();
+        _hoverCollapseTimer.Stop();
+        _hoverThumbnailDelayTimer.Stop();
     }
+    private void NotchWrapper_PreviewDragOver(object sender, DragEventArgs e)
+        => KeepClipboardDropTargetOpen();
 
-    private void StartDragWaitForShelf()
+    private void NotchWrapper_PreviewDrop(object sender, DragEventArgs e)
     {
-        _dragWaitTimer?.Stop();
-        var waitDeadlineUtc = DateTime.UtcNow.AddMilliseconds(1500);
-        _dragWaitTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(40)
-        };
-        _dragWaitTimer.Tick += (s, args) =>
-        {
-            if ((_isExpanded && !_isAnimating) || DateTime.UtcNow >= waitDeadlineUtc)
-            {
-                _dragWaitTimer?.Stop();
-                _dragWaitTimer = null;
-                _dragDropController.OnAnimationCompleted(_isExpanded, _isSecondaryView);
-            }
-        };
-        _dragWaitTimer.Start();
+        // Category buttons handle Drop themselves, so clean up before bubbling.
+        KeepClipboardDropTargetOpen();
+        _clipboardDragAutoExpanded = false;
+        _clipboardDragCanDrop = false;
+        SetClipboardDropHover(false);
     }
-
-    #endregion
+    private void NotchWrapper_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = _clipboardHistory?.IsDragging != true && _clipboardDragCanDrop
+            ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+    private void NotchWrapper_DragLeave(object sender, DragEventArgs e)
+    {
+        CancelDragDropTimers();
+        // OLE drag/drop does not reliably update WPF IsMouseOver. Moving between
+        // child targets can also raise DragLeave without leaving the notch.
+        // Defer until the next target can cancel this callback, then use screen geometry.
+        _clipboardDragTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _clipboardDragTimer.Tick += (_, _) =>
+        {
+            if (_isAnimating) return;
+            CompleteClipboardDragLeave(IsCursorInsideNotchVisual());
+        };
+        _clipboardDragTimer.Start();
+    }
+    private void CompleteClipboardDragLeave(bool cursorInside)
+    {
+        CancelDragDropTimers();
+        if (cursorInside) return;
+        SetClipboardDropHover(false);
+        _clipboardDragCanDrop = false;
+        bool collapse = _clipboardDragAutoExpanded;
+        _clipboardDragAutoExpanded = false;
+        if (collapse) CollapseNotch();
+    }
+    private async void NotchWrapper_DragDrop(object sender, DragEventArgs e)
+    {
+        CancelDragDropTimers(); _clipboardDragAutoExpanded = false; _clipboardDragCanDrop = false;
+        e.Handled = true;
+        if (_clipboardHistory == null || _clipboardHistory.IsDragging || !ClipboardDropReader.Supports(e.Data))
+        { e.Effects = DragDropEffects.None; return; }
+        e.Effects = DragDropEffects.Copy;
+        _transitionCoordinator.RequestView(NotchView.Secondary, "ClipboardDrop");
+        if (ClipboardTrayView != null) await ClipboardTrayView.ImportCurrentCategoryDropAsync(e.Data);
+        else await _clipboardHistory.ImportDropAsync(e.Data);
+    }
 }
+

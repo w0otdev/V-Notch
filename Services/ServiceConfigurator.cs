@@ -24,7 +24,7 @@ public static class ServiceConfigurator
         services.AddSingleton<IVolumeService, VolumeService>();
         services.AddSingleton<AudioMixerService>();
         services.AddSingleton<IBatteryService, BatteryServiceImpl>();
-        services.AddSingleton<BluetoothMonitorService>();
+        services.AddSingleton(sp => new BluetoothMonitorService(Application.Current.Dispatcher));
         services.AddSingleton<PrivacyIndicatorService>();
         services.AddSingleton<IDispatcherService>(sp =>
             new DispatcherService(Application.Current.Dispatcher));

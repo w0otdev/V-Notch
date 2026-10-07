@@ -36,6 +36,7 @@ public interface IClockWidgetHost
     int WindowWidth { get; }
     int WindowHeight { get; set; }
     double ExpandedHeight { get; }
+    double MaxExpandedHeight { get; }
 
     Window Window { get; }
 }
@@ -542,9 +543,14 @@ public sealed class ClockWidgetPresenter : IDisposable
         double dpiScale = VisualTreeHelper.GetDpi(_refs.Window).DpiScaleX;
         if (dpiScale <= 0) dpiScale = 1.0;
 
-        double windowHeightDip = notchHeightDip + 80;
-        _refs.Window.Height = windowHeightDip;
-        _host.WindowHeight = (int)Math.Round(windowHeightDip * dpiScale);
+        double targetHeightDip = Math.Max(notchHeightDip, _host.MaxExpandedHeight) + 80;
+        int targetPixelHeight = (int)Math.Round(targetHeightDip * dpiScale);
+
+        if (_refs.Window.Height >= targetHeightDip && _host.WindowHeight >= targetPixelHeight)
+            return;
+
+        _refs.Window.Height = targetHeightDip;
+        _host.WindowHeight = targetPixelHeight;
 
         if (_host.Hwnd != IntPtr.Zero)
             SetWindowPos(_host.Hwnd, HWND_TOPMOST, _host.FixedX, _host.FixedY, _host.WindowWidth, _host.WindowHeight, SWP_NOACTIVATE);

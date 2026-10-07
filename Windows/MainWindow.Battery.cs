@@ -14,7 +14,6 @@ public partial class MainWindow
 {
     private Storyboard? _chargingPulseStoryboard;
     private bool _chargingPulseWanted;
-    private bool _wasCharging = true;
     private bool? _wasPluggedIn = null;
     private bool _isChargingNotificationVisible = false;
     private int _chargingGlanceToken = 0;
@@ -36,8 +35,16 @@ public partial class MainWindow
 
     private void OnReduceMotionChanged()
     {
-        if (Dispatcher.CheckAccess()) RefreshAmbientAnimations();
-        else Dispatcher.BeginInvoke(new Action(RefreshAmbientAnimations));
+        void ApplyMotionPreference()
+        {
+            RefreshAmbientAnimations();
+            if (!AnimationConfig.ReduceMotion) return;
+            SetVolumeFill(VolumeBarScale, (double)VolumeBarScale.GetAnimationBaseValue(ScaleTransform.ScaleXProperty));
+            SetVolumeFill(VolumeIndicatorScale, (double)VolumeIndicatorScale.GetAnimationBaseValue(ScaleTransform.ScaleXProperty));
+            _volumeScrollSyncAfterUtc = DateTime.MinValue;
+        }
+        if (Dispatcher.CheckAccess()) ApplyMotionPreference();
+        else Dispatcher.BeginInvoke(new Action(ApplyMotionPreference));
     }
 
     private void HandleBatteryUpdate(BatteryInfo battery)
@@ -60,13 +67,13 @@ public partial class MainWindow
         SolidColorBrush percentBrush;
         bool showLightning = false;
 
-        if (battery.Percentage >= 0 && battery.Percentage <= 20 && !battery.IsCharging)
+        if (battery.HasBattery && battery.Percentage >= 0 && battery.Percentage <= 20 && !battery.IsPowerConnected)
         {
             fillBrush = _brushLowBattery;
             percentBrush = _brushLowBattery;
             showLightning = false;
         }
-        else if (battery.IsCharging)
+        else if (battery.IsPowerConnected)
         {
             fillBrush = _brushCharging;
             percentBrush = VNotch.Services.UiPalette.PrimaryBrush;
@@ -92,16 +99,15 @@ public partial class MainWindow
             StopChargingPulse();
         }
 
-        if (battery.IsCharging && !_wasCharging)
+        if (battery.IsPowerConnected && _wasPluggedIn == false)
         {
             ShowChargingGlance(battery, ChargingGlanceKind.PluggedIn);
         }
-        else if (_wasPluggedIn == true && !battery.IsPluggedIn)
+        else if (_wasPluggedIn == true && !battery.IsPowerConnected)
         {
             ShowChargingGlance(battery, ChargingGlanceKind.Unplugged);
         }
-        _wasCharging = battery.IsCharging;
-        _wasPluggedIn = battery.IsPluggedIn;
+        _wasPluggedIn = battery.IsPowerConnected;
     }
 
     private enum ChargingGlanceKind

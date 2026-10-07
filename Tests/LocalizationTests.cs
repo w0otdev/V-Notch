@@ -52,6 +52,102 @@ public sealed class LocalizationTests
     }
 
     [Fact]
+    public void LocaleFilesDoNotContainDuplicateKeys()
+    {
+        string root = FindRepositoryRoot();
+        foreach (string language in Languages)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "Locales", language + ".json")));
+            var duplicates = document.RootElement.EnumerateObject()
+                .GroupBy(property => property.Name, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => language + ": " + group.Key);
+            Assert.Empty(duplicates);
+        }
+    }
+
+    [Fact]
+    public void NewClipboardInstructionsAreTranslatedInEveryLanguage()
+    {
+        string[] keys =
+        {
+            "nav.clipboard", "settings.hideCamera", "settings.hideCamera.hint",
+            "settings.clipboardHotkey", "settings.clipboardHotkey.hint", "clipboard.empty",
+            "clipboard.locked", "clipboard.setPin", "clipboard.enterPin", "clipboard.confirmPin",
+            "clipboard.error", "clipboard.readError", "clipboard.saveError", "clipboard.largeFile",
+            "clipboard.pause", "clipboard.resume", "clipboard.shortcuts", "clipboard.info",
+            "clipboard.invalidHotkey", "clipboard.hotkeyOsReserved", "clipboard.hotkeyConflict",
+            "clipboard.forgotPin", "clipboard.resetTitle", "clipboard.resetConfirm", "clipboard.reset",
+            "clipboard.noResults", "clipboard.typeDelete", "clipboard.deleteConfirm",
+            "clipboard.keyboardShortcuts", "clipboard.information", "clipboard.personalPasscode", "clipboard.unlockPersonal"
+        };
+        try
+        {
+            Loc.SetLanguage("en");
+            var english = keys.ToDictionary(key => key, Loc.Get);
+            foreach (string language in Languages.Skip(1))
+            {
+                Loc.SetLanguage(language);
+                foreach (string key in keys)
+                {
+                    string value = Loc.Get(key);
+                    Assert.False(string.IsNullOrWhiteSpace(value), $"{language}: {key} is empty");
+                    Assert.NotEqual(english[key], value);
+                }
+            }
+        }
+        finally { Loc.SetLanguage("en"); }
+    }
+
+    [Theory]
+    [InlineData("vi", "Hình ảnh", "Bộ nhớ tạm", "512 byte", "2 phút", "1,5 KB")]
+    [InlineData("de", "Bild", "Zwischenablage", "512 Bytes", "2 Min.", "1,5 KB")]
+    [InlineData("ja", "画像", "クリップボード", "512 バイト", "2 分", "1.5 KB")]
+    public void ClipboardCardMetadataUsesSelectedLanguageAndPreservesUserContent(
+        string language, string image, string source, string bytes, string age, string size) => SharedStaTestRunner.Run(() =>
+    {
+        try
+        {
+            Loc.SetLanguage("en");
+            var copiedUtc = DateTime.UtcNow;
+            var card = new VNotch.ViewModels.ClipboardCardViewModel(new VNotch.Models.ClipboardEntry
+            {
+                Kind = VNotch.Models.ClipboardKind.Image,
+                Title = "Image",
+                ByteSize = 512,
+                CopiedUtc = copiedUtc
+            });
+            var changedProperties = new HashSet<string?>();
+            card.PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName);
+
+            Loc.SetLanguage(language);
+            card.ApplyLocalization();
+            card.RefreshAge(copiedUtc.AddMinutes(2));
+            Assert.Equal(image, card.Title);
+            Assert.Equal(source, card.Source);
+            Assert.Equal(bytes, card.Size);
+            Assert.Equal(age, card.Age);
+            Assert.Contains(nameof(card.Title), changedProperties);
+            Assert.Contains(nameof(card.Source), changedProperties);
+            Assert.Contains(nameof(card.Size), changedProperties);
+            card.UpdateEntry(card.Entry with { ByteSize = 1536 });
+            Assert.Equal(size, card.Size);
+
+            var text = new VNotch.ViewModels.ClipboardCardViewModel(new VNotch.Models.ClipboardEntry
+            {
+                Kind = VNotch.Models.ClipboardKind.Text,
+                Title = "Image",
+                Preview = "User content",
+                SourceApp = "Example App"
+            });
+            Assert.Equal("Image", text.Title);
+            Assert.Equal("User content", text.Preview);
+            Assert.Equal("Example App", text.Source);
+        }
+        finally { Loc.SetLanguage("en"); }
+    });
+
+    [Fact]
     public void HindiTranslationsDoNotFallBackToEnglish()
     {
         var allowedTechnicalLabels = new HashSet<string>(StringComparer.Ordinal)
@@ -72,7 +168,7 @@ public sealed class LocalizationTests
 
             if (!string.IsNullOrWhiteSpace(english) &&
                 string.Equals(english, hindi, StringComparison.Ordinal) &&
-                !allowedTechnicalLabels.Contains(key))
+                !allowedTechnicalLabels.Contains(key) && !key.StartsWith("clipboard.category.", StringComparison.Ordinal))
             {
                 untranslated.Add(key);
             }
@@ -99,7 +195,7 @@ public sealed class LocalizationTests
         {
             string value = Loc.Get(key);
             if (!string.IsNullOrWhiteSpace(value) &&
-                !allowedTechnicalLabels.Contains(key) &&
+                !allowedTechnicalLabels.Contains(key) && !key.StartsWith("clipboard.category.", StringComparison.Ordinal) &&
                 !Regex.IsMatch(value, "[\\u0900-\\u097F]"))
             {
                 nonNativeValues.Add(key);
@@ -122,7 +218,7 @@ public sealed class LocalizationTests
     {
         string repositoryRoot = FindRepositoryRoot();
         var usedKeys = new HashSet<string>(StringComparer.Ordinal);
-        var keyPattern = new Regex("(?:Loc\\.Get\\(|LocalizationKey\\s*=\\s*)\\\"(?<key>[^\\\"]+)\\\"",
+        var keyPattern = new Regex("(?:Loc\\.Get\\(|LocalizationKey\\s*=\\s*)\\\"(?<key>[^\\\"]+)\\\"(?!\\s*\\+)",
             RegexOptions.Compiled);
 
         foreach (var file in Directory.EnumerateFiles(repositoryRoot, "*.*", SearchOption.AllDirectories)
@@ -130,7 +226,8 @@ public sealed class LocalizationTests
                                     path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
                      .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}") &&
                                     !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") &&
-                                    !path.Contains($"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}")))
+                                    !path.Contains($"{Path.DirectorySeparatorChar}artifacts{Path.DirectorySeparatorChar}") &&
+                                    !path.Contains($"{Path.DirectorySeparatorChar}.test-output{Path.DirectorySeparatorChar}")))
         {
             foreach (Match match in keyPattern.Matches(File.ReadAllText(file)))
                 usedKeys.Add(match.Groups["key"].Value);

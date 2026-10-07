@@ -33,6 +33,7 @@ public partial class SettingsWindow
     private int _settingsNavTargetSlot = -1;
     private double _settingsNavRowPitch = 44.0;
     private readonly Dictionary<FrameworkElement, double> _settingsNavNeighborOffsets = new();
+    private bool _isSyncingCameraVisibility = false;
 
     private void PopulateNavTabsSettings()
     {
@@ -42,9 +43,11 @@ public partial class SettingsWindow
         var tabMetadata = new Dictionary<string, (string title, string iconPath)>
         {
             [NavTabMedia] = ("Home", "M8 0L0 6V8H1V15H4V10H7V15H15V8H16V6L14 4.5V1H11V2.25L8 0ZM9 10H12V13H9V10Z"),
-            ["Secondary"] = ("File Shelf", "M479.66,268.7l-32-151.81C441.48,83.77,417.68,64,384,64H128c-16.8,0-31,4.69-42.1,13.94s-18.37,22.31-21.58,38.89l-32,151.87A16.65,16.65,0,0,0,32,272V384a64,64,0,0,0,64,64H416a64,64,0,0,0,64-64V272A16.65,16.65,0,0,0,479.66,268.7Zm-384-145.4c0-.1,0-.19,0-.28,3.55-18.43,13.81-27,32.29-27H384c18.61,0,28.87,8.55,32.27,26.91,0,.13.05.26.07.39l26.93,127.88a4,4,0,0,1-3.92,4.82H320a15.92,15.92,0,0,0-16,15.82,48,48,0,1,1-96,0A15.92,15.92,0,0,0,192,256H72.65a4,4,0,0,1-3.92-4.82Z"),
+            ["Secondary"] = (Loc.Get("nav.clipboard"), "M479.66,268.7l-32-151.81C441.48,83.77,417.68,64,384,64H128c-16.8,0-31,4.69-42.1,13.94s-18.37,22.31-21.58,38.89l-32,151.87A16.65,16.65,0,0,0,32,272V384a64,64,0,0,0,64,64H416a64,64,0,0,0,64-64V272A16.65,16.65,0,0,0,479.66,268.7Zm-384-145.4c0-.1,0-.19,0-.28,3.55-18.43,13.81-27,32.29-27H384c18.61,0,28.87,8.55,32.27,26.91,0,.13.05.26.07.39l26.93,127.88a4,4,0,0,1-3.92,4.82H320a15.92,15.92,0,0,0-16,15.82,48,48,0,1,1-96,0A15.92,15.92,0,0,0,192,256H72.65a4,4,0,0,1-3.92-4.82Z"),
             ["Timer"] = ("Clock & Timer", "M2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM15.8321 14.5547C15.5257 15.0142 14.9048 15.1384 14.4453 14.8321L11.8451 13.0986C11.3171 12.7466 11 12.1541 11 11.5196V11.5V7C11 6.44772 11.4477 6 12 6C12.5523 6 13 6.44772 13 7V11.4648L15.5547 13.1679C16.0142 13.4743 16.1384 14.0952 15.8321 14.5547Z"),
             ["AudioMixer"] = ("Audio Mixer", "M13.5 2.5C13.5 2.1 13.05 1.86 12.72 2.09L6.8 6.2H3.5C2.95 6.2 2.5 6.65 2.5 7.2V12.8C2.5 13.35 2.95 13.8 3.5 13.8H6.8L12.72 17.91C13.05 18.14 13.5 17.9 13.5 17.5V2.5ZM16.04 6.05C15.74 5.79 15.28 5.82 15.02 6.13C14.76 6.43 14.79 6.89 15.1 7.15C16.0 7.93 16.5 8.93 16.5 10C16.5 11.07 16.0 12.07 15.1 12.85C14.79 13.11 14.76 13.57 15.02 13.87C15.28 14.18 15.74 14.21 16.04 13.95C17.25 12.91 18 11.5 18 10C18 8.5 17.25 7.09 16.04 6.05Z")
+            ,
+            ["Camera"] = (Loc.Get("nav.camera"), "F0 M28,4 L25,4 L24,2 C23.411,0.837 23.104,0 22,0 L10,0 C8.896,0 8.53,0.954 8,2 L7,4 L4,4 C1.791,4 0,5.791 0,8 L0,24 C0,26.209 1.791,28 4,28 L28,28 C30.209,28 32,26.209 32,24 L32,8 C32,5.791 30.209,4 28,4 Z M16,24 C11.582,24 8,20.418 8,16 C8,11.582 11.582,8 16,8 C20.418,8 24,11.582 24,16 C24,20.418 20.418,24 16,24 Z M16,10 C12.687,10 10,12.687 10,16 C10,19.313 12.687,22 16,22 C19.313,22 22,19.313 22,16 C22,12.687 19.313,10 16,10 L16,10 Z")
         };
 
         var orderTokens = (_settings.NavTabOrder ?? DefaultNavTabs)
@@ -59,6 +62,8 @@ public partial class SettingsWindow
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             StringComparer.OrdinalIgnoreCase);
         visibleTokens.Add(NavTabMedia);
+        if (_settings.HideCamera) visibleTokens.Remove("Camera");
+        else visibleTokens.Add("Camera");
 
         for (int i = 0; i < orderTokens.Count; i++)
         {
@@ -100,6 +105,12 @@ public partial class SettingsWindow
             check.Checked += (s, e) =>
             {
                 visibleTokens.Add(capturedToken);
+                if (capturedToken == "Camera")
+                {
+                    _isSyncingCameraVisibility = true;
+                    try { _settings.HideCamera = false; HideCameraCheck.IsChecked = false; }
+                    finally { _isSyncingCameraVisibility = false; }
+                }
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
                 _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVTABS");
                 (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
@@ -107,6 +118,12 @@ public partial class SettingsWindow
             check.Unchecked += (s, e) =>
             {
                 visibleTokens.Remove(capturedToken);
+                if (capturedToken == "Camera")
+                {
+                    _isSyncingCameraVisibility = true;
+                    try { _settings.HideCamera = true; HideCameraCheck.IsChecked = true; }
+                    finally { _isSyncingCameraVisibility = false; }
+                }
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
                 _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVTABS");
                 (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();

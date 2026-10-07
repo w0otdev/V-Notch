@@ -229,7 +229,19 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
     private void ExecuteSave(NotchSettings settings, bool keepExistingBackup)
     {
-        var tempPath = _settingsPath + ".tmp";
+        // Serialize the replace and backup transaction across service instances/processes.
+        var pathKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(_settingsPath).ToUpperInvariant())));
+        using var mutex = new Mutex(false, @"Local\VNotch_Settings_" + pathKey);
+        try { mutex.WaitOne(); }
+        catch (AbandonedMutexException) { /* The previous writer exited; this thread owns the mutex. */ }
+        try { ExecuteSaveCore(settings, keepExistingBackup); }
+        finally { mutex.ReleaseMutex(); }
+    }
+
+    private void ExecuteSaveCore(NotchSettings settings, bool keepExistingBackup)
+    {
+        var tempPath = _settingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
         try
         {
@@ -423,8 +435,6 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             changed = true;
         }
 
-        int clampedScreenshotDuration = Math.Clamp(settings.ScreenshotTrayDurationSeconds, 2, 120);
-        if (clampedScreenshotDuration != settings.ScreenshotTrayDurationSeconds) { settings.ScreenshotTrayDurationSeconds = clampedScreenshotDuration; changed = true; }
 
         int clampedNotif = Math.Clamp(settings.NotificationDuration, 1000, 30000);
         if (clampedNotif != settings.NotificationDuration) { settings.NotificationDuration = clampedNotif; changed = true; }

@@ -153,7 +153,7 @@ internal sealed class SpotlightSearchService
     {
         string? path = item.IconPath;
         if (item.Icon != null) return item;
-        if (string.IsNullOrEmpty(path) || FileShelfController.IsUncPath(path) ||
+        if (string.IsNullOrEmpty(path) || LocalPathPolicy.IsUncPath(path) ||
             (!File.Exists(path) && !Directory.Exists(path))) return item;
         return item with { Icon = FileIconProvider.GetFileIcon(path) };
     }

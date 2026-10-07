@@ -19,12 +19,7 @@ public partial class MainWindow
             SysMonRamValueText,
             SysMonRamBar,
             SysMonNetDownText,
-            SysMonNetUpText)
-        {
-            Shelf = new SystemMonitorShelfViewRefs(ShelfSysMonSection, ShelfSysMonCpuText,
-                ShelfSysMonCpuBar, ShelfSysMonRamText, ShelfSysMonRamBar,
-                ShelfSysMonNetDownText, ShelfSysMonNetUpText)
-        };
+            SysMonNetUpText);
 
         _systemMonitorPresenter = new SystemMonitorPresenter(_systemMonitorModule, new DispatcherService(Dispatcher), refs);
     }

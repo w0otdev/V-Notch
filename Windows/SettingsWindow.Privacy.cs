@@ -8,7 +8,7 @@ namespace VNotch;
 public partial class SettingsWindow
 {
     private readonly Dictionary<string, (CheckBox Check, TextBlock Hint)> _privacyOptions = new();
-    private static readonly string[] PrivacyOptionNames = ["ai", "copilot", "subtitles", "canvas", "weather", "chatHistory"];
+    private static readonly string[] PrivacyOptionNames = ["ai", "subtitles", "canvas", "weather", "chatHistory"];
 
     private void LoadAdditionalPrivacy(NotchSettings settings)
     {
@@ -29,7 +29,6 @@ public partial class SettingsWindow
             }
         }
         _privacyOptions["ai"].Check.IsChecked = settings.AllowOnlineAi;
-        _privacyOptions["copilot"].Check.IsChecked = settings.AllowCopilot;
         _privacyOptions["subtitles"].Check.IsChecked = settings.AllowOnlineSubtitles;
         _privacyOptions["canvas"].Check.IsChecked = settings.AllowOnlineCanvas;
         _privacyOptions["weather"].Check.IsChecked = settings.AllowOnlineWeather;
@@ -49,7 +48,6 @@ public partial class SettingsWindow
     {
         if (_privacyOptions.Count == 0) return;
         settings.AllowOnlineAi = _privacyOptions["ai"].Check.IsChecked == true;
-        settings.AllowCopilot = _privacyOptions["copilot"].Check.IsChecked == true;
         settings.AllowOnlineSubtitles = _privacyOptions["subtitles"].Check.IsChecked == true;
         settings.AllowOnlineCanvas = _privacyOptions["canvas"].Check.IsChecked == true;
         settings.AllowOnlineWeather = _privacyOptions["weather"].Check.IsChecked == true;

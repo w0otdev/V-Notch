@@ -36,8 +36,10 @@ public sealed class SettingsWindowControlTests
     [InlineData("IdleAutoHideCheck", "EnableIdleAutoHide")]
     [InlineData("MusicNotifyCheck", "ShowMusicNotifications")]
     [InlineData("SystemNotifyCheck", "ShowSystemNotifications")]
-    [InlineData("ScreenshotTrayCheck", "EnableScreenshotTray")]
-    [InlineData("CopyShelfClipboardCheck", "CopyShelfFilesToClipboard")]
+    [InlineData("HideCameraCheck", "HideCamera")]
+    [InlineData("TrayTextCheck", "ClipboardCaptureText")]
+    [InlineData("TrayImagesCheck", "ClipboardCaptureImages")]
+    [InlineData("TrayFilesCheck", "ClipboardCaptureFiles")]
     [InlineData("ShowBatteryCheck", "ShowBatteryIndicator")]
     [InlineData("EnableWeatherCheck", "EnableWeather")]
     [InlineData("AutoCheckUpdatesCheck", "AutoCheckUpdates")]
@@ -76,7 +78,7 @@ public sealed class SettingsWindowControlTests
     [InlineData("AnimationFpsSlider", "AnimationFps", 60, 60)]
     [InlineData("HoverDelaySlider", "HoverExpandDelay", 500, 500)]
     [InlineData("IdleAutoHideDelaySlider", "IdleAutoHideDelay", 5, 5000)]
-    [InlineData("ScreenshotTrayDurationSlider", "ScreenshotTrayDurationSeconds", 10, 10)]
+    [InlineData("TrayDelaySlider", "ClipboardCaptureDelay", 700, 700)]
     public void SlidersConvertDisplayUnitsToSettings(string controlName, string settingName, double value, double expected) => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new Fixture();
@@ -89,7 +91,6 @@ public sealed class SettingsWindowControlTests
 
     [Theory]
     [InlineData("WidgetCombo", "ExpandedWidget")]
-    [InlineData("ShelfWidgetCombo", "ShelfWidget")]
     [InlineData("ClockPageStyleCombo", "ClockPageStyle")]
     public void EveryWidgetOptionSurvivesPreviewAndLocalization(string controlName, string settingName) => SharedStaTestRunner.Run(() =>
     {
@@ -105,7 +106,6 @@ public sealed class SettingsWindowControlTests
             Invoke(fixture.Window, controlName switch
             {
                 "WidgetCombo" => "RepopulateWidgetComboPreservingSelection",
-                "ShelfWidgetCombo" => "RepopulateShelfWidgetComboPreservingSelection",
                 _ => "RepopulateClockPageStyleComboPreservingSelection"
             });
             Assert.Equal(tag, Assert.IsType<ComboBoxItem>(combo.SelectedItem).Tag);
@@ -173,14 +173,12 @@ public sealed class SettingsWindowControlTests
         using var fixture = new Fixture();
         var window = fixture.Window;
         window.WidgetCombo.SelectedIndex = 2;
-        window.ShelfWidgetCombo.SelectedIndex = 3;
         foreach (string language in new[] { "vi", "ja", "en" })
         {
             window.LanguageCombo.SelectedItem = window.LanguageCombo.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == language);
             await WpfFrameWaiter.UntilAsync(() => window.WidthLabel.Text == Loc.Get("settings.width"), "localized width label", ct);
             Assert.Equal(language, window.ReadSettingsFromUi().Language);
             Assert.Equal("wordclock", window.ReadSettingsFromUi().ExpandedWidget);
-            Assert.Equal("clock", window.ReadSettingsFromUi().ShelfWidget);
             Assert.Equal(Loc.Get("settings.windowTitle"), window.Title);
             Assert.Equal(language, fixture.Service.Applied!.Language);
         }
@@ -554,7 +552,7 @@ public sealed class SettingsWindowControlTests
         Invoke(window, "EndSettingsNavRowDrag");
         await WpfFrameWaiter.UntilAsync(() => fixture.Service.Applied?.NavTabOrder == string.Join(',', expected), "settings tab order persisted", ct);
         Assert.Equal(expected, window.NavTabsSettingsContainer.Children.OfType<Border>().Select(child => child.Tag.ToString()!));
-        foreach (var restored in window.NavTabsSettingsContainer.Children.OfType<Border>())
+        foreach (var restored in window.NavTabsSettingsContainer.Children.OfType<Border>().ToList())
         {
             var check = ((StackPanel)((Grid)restored.Child).Children[0]).Children.OfType<CheckBox>().Single();
             if ((string)restored.Tag == "Media") { Assert.False(check.IsEnabled); Assert.True(check.IsChecked); continue; }
@@ -565,6 +563,55 @@ public sealed class SettingsWindowControlTests
             Assert.Null(restored.Effect);
             Assert.Equal(0, Panel.GetZIndex(restored));
         }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResetRequiresConfirmationAndRestoresEditableDefaults(bool confirm) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.WidthSlider.Value = 350;
+        window.HeightSlider.Value = 48;
+        window.DynamicIslandModeCheck.IsChecked = true;
+        window.HideCameraCheck.IsChecked = true;
+        window.IgnoreYouTubeAutoSubtitlesCheck.IsChecked = true;
+        window.Show();
+        window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        var before = window.ReadSettingsFromUi();
+        bool answered = false;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+        timer.Tick += (_, _) =>
+        {
+            var dialog = Application.Current.Windows.OfType<VNotch.Windows.ConfirmationDialog>().SingleOrDefault();
+            if (dialog == null) return;
+            timer.Stop();
+            BackgroundTestWindows.ProtectInput(dialog);
+            answered = true;
+            typeof(VNotch.Windows.ConfirmationDialog).GetMethod(confirm ? "ConfirmButton_Click" : "CancelButton_Click", Private)!
+                .Invoke(dialog, new object[] { dialog, new RoutedEventArgs() });
+        };
+        timer.Start();
+        try { Invoke(window, "Reset_Click", window, new RoutedEventArgs()); }
+        finally { timer.Stop(); }
+        Assert.True(answered);
+        var result = window.ReadSettingsFromUi();
+        if (!confirm)
+        {
+            Assert.True(before.ValueEquals(result));
+            return;
+        }
+        var defaults = new NotchSettings();
+        Assert.Equal(defaults.Width, result.Width);
+        Assert.Equal(defaults.Height, result.Height);
+        Assert.Equal(defaults.EnableDynamicIslandMode, result.EnableDynamicIslandMode);
+        Assert.Equal(defaults.HideCamera, result.HideCamera);
+        Assert.Equal(defaults.IgnoreYouTubeAutoSubtitles, result.IgnoreYouTubeAutoSubtitles);
+        Assert.Equal(defaults.ExpandedWidget, result.ExpandedWidget);
+        Assert.Equal(defaults.NavTabOrder, result.NavTabOrder);
+        Assert.Equal(defaults.SubtitlePriority, result.SubtitlePriority);
+        Assert.False(result.EnableSpotifyCanvas);
     });
 
     private sealed class RecordingService : ISettingsApplicationService

@@ -27,11 +27,46 @@ public partial class MainWindow
         await CheckForUpdatesAsync();
     }
 
+    private void OnUpdateCheckCompleted(object? sender, UpdateInfo? updateInfo)
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        {
+            SetAvailableUpdate(updateInfo);
+        }));
+    }
+
+    internal void SetAvailableUpdate(UpdateInfo? updateInfo)
+    {
+        if (_isUpdateInstalling) return;
+
+        if (updateInfo != null)
+        {
+            if (updateInfo.IsNewerVersion)
+            {
+                if (_availableUpdate != null &&
+                    UpdateService.CompareVersions(updateInfo.Version, _availableUpdate.Version) < 0)
+                {
+                    return;
+                }
+
+                _isUpdateAvailable = true;
+                _availableUpdate = updateInfo;
+                ShowUpdateNotification();
+            }
+            else
+            {
+                _isUpdateAvailable = false;
+                _availableUpdate = null;
+                HideUpdateNotification();
+            }
+        }
+    }
+
     private async Task CheckForUpdatesAsync()
     {
         int generation = System.Threading.Interlocked.Increment(ref _updateCheckGeneration);
 
-        if (_isUpdateInstalling || !_settings.AutoCheckUpdates || _settings.EnableLocalOnlyMode)
+        if (_updateService == null || _isUpdateInstalling || !_settings.AutoCheckUpdates || _settings.EnableLocalOnlyMode)
             return;
 
         try
@@ -46,18 +81,7 @@ public partial class MainWindow
                 return;
             }
 
-            if (updateInfo != null && updateInfo.IsNewerVersion)
-            {
-                _isUpdateAvailable = true;
-                _availableUpdate = updateInfo;
-                ShowUpdateNotification();
-            }
-            else
-            {
-                _isUpdateAvailable = false;
-                _availableUpdate = null;
-                HideUpdateNotification();
-            }
+            SetAvailableUpdate(updateInfo);
         }
         catch (Exception ex)
         {
@@ -243,7 +267,7 @@ public partial class MainWindow
     {
         e.Handled = true;
 
-        if (_availableUpdate == null || _isUpdateInstalling) return;
+        if (_updateService == null || _availableUpdate == null || _isUpdateInstalling) return;
 
         _isUpdateInstalling = true;
         UpdateNotificationButton.Tag = Loc.Get("update.preparing");

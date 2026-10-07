@@ -12,14 +12,14 @@
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
     <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.14.0" />
-    <!-- Match the application's resolved JSON dependency. -->
+    <!-- Explicit runtime dependencies for the prebuilt application reference. -->
     <PackageReference Include="System.Text.Json" Version="10.0.2" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
     <!-- BenchmarkDotNet changes IntermediateOutputPath for generated builds.
          Reference the prebuilt Release assembly so those builds do not rebuild
-         the WPF application and download its unrelated Copilot CLI assets. -->
+         the WPF application and its unrelated assets. -->
     <Reference Include="V-Notch">
       <HintPath>../../bin/Release/net8.0-windows10.0.19041.0/win-x64/V-Notch.dll</HintPath>
     </Reference>

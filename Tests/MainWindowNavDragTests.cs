@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Models;
 using VNotch.Services;
@@ -80,9 +81,13 @@ public sealed class MainWindowNavDragTests
         settings.NavTabOrder = "timer,Timer,unknown,AudioMixer";
         settings.VisibleNavTabs = "AudioMixer";
         window.ApplyNavTabOrderAndVisibility();
+        Assert.Equal(new[] { NotchView.AudioMixer, NotchView.Media, NotchView.Camera }, window.GetActiveTabSequence());
+        settings.HideCamera = true;
+        window.ApplyNavTabOrderAndVisibility();
         Assert.Equal(new[] { NotchView.AudioMixer, NotchView.Media }, window.GetActiveTabSequence());
+        Assert.Equal(Visibility.Collapsed, window.CameraIconButton.Visibility);
         Assert.Equal(Visibility.Collapsed, window.TimerIconButton.Visibility);
-        Assert.Equal(Visibility.Collapsed, window.FileShelfIconButton.Visibility);
+        Assert.Equal(Visibility.Collapsed, window.ClipboardIconButton.Visibility);
         Assert.Equal(Visibility.Visible, window.HomeIconButton.Visibility);
         window.NavTabsStackPanel.Children.Clear();
         Assert.Equal(new[] { NotchView.Media }, window.GetActiveTabSequence());
@@ -113,6 +118,29 @@ public sealed class MainWindowNavDragTests
         Invoke(window, "AnimateElementToX", plain, 10d);
         Invoke(window, "EndNavDrag", false);
         Invoke(window, "CommitFinalTabOrder");
+    });
+
+    [Fact]
+    public void LeavingDuringDragExpansionStillCollapsesAfterTheAnimation() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool reduceMotion = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = CreateFixture();
+            var window = fixture.Window;
+            Invoke(window, "ExpandNotch", null, null, NotchView.Compact);
+            Assert.True((bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!);
+            Set(window, "_clipboardDragAutoExpanded", true);
+            Invoke(window, "NotchWrapper_DragLeave", window, null);
+            Assert.True(Field<bool>(window, "_clipboardDragAutoExpanded"));
+            Assert.NotNull(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MainWindow).GetProperty("_isExpanded", Private)!.GetValue(window)!
+                && !(bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!, "abandoned drag collapsed", ct);
+            Assert.False(Field<bool>(window, "_clipboardDragAutoExpanded"));
+            Assert.Null(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+        }
+        finally { AnimationConfig.SetReduceMotion(reduceMotion); }
     });
 
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture() => new("en", greeting: false,

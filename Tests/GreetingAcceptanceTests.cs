@@ -21,6 +21,45 @@ public sealed class GreetingAcceptanceTests
         new string?[] { "vi", "VI", " vi ", "en", "ja", "zh", "pt", "ru", "ar", "ko", "es", "fr", "de", "hi", "it", "tr", "pl", "nl", "id", "unknown", null, "" }
             .Select(code => new object?[] { code, code?.Trim().Equals("vi", StringComparison.OrdinalIgnoreCase) == true });
 
+    [Fact]
+    public void SpotlightHandoffRetiresHoverScaleAndBlocksNewHoverClocks() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new MainWindowFixture("en", greeting: false);
+        var window = fixture.Window;
+        window.NotchScale.ScaleX = 1.08;
+        window.NotchShadowScale.ScaleX = 1.08;
+        window.SetSpotlightMorphSessionActive(true);
+        Assert.Equal(1, window.NotchScale.ScaleX);
+        Assert.Equal(1, window.NotchShadowScale.ScaleX);
+        Invoke(window, "AnimateNotchHover", true);
+        Assert.False(window.NotchScale.HasAnimatedProperties);
+        Assert.Equal(0, window.HoverGlow.Opacity);
+        window.SetSpotlightMorphSessionActive(false);
+    });
+
+    [Fact]
+    public void GreetingBlocksKeyboardInputUntilDismissed() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new MainWindowFixture("en");
+        fixture.ShowGreeting();
+        var input = System.Windows.Input.InputManager.Current;
+        int delivered = 0;
+        System.Windows.Input.ProcessInputEventHandler observe = (_, _) => delivered++;
+        input.PostProcessInput += observe;
+        try
+        {
+            input.ProcessInput(new System.Windows.Input.TextCompositionEventArgs(
+                System.Windows.Input.Keyboard.PrimaryDevice,
+                new System.Windows.Input.TextComposition(input, fixture.Window, "test"))
+                { RoutedEvent = System.Windows.Input.TextCompositionManager.TextInputEvent });
+            Assert.Equal(0, delivered);
+            Assert.True(fixture.Window.IsGreetingInteractionBlocked);
+            Invoke(fixture.Window, "DismissGreeting");
+            PumpUntil(() => !fixture.Window.IsGreetingInteractionBlocked, TimeSpan.FromSeconds(4));
+        }
+        finally { input.PostProcessInput -= observe; }
+    });
+
     [Theory]
     [MemberData(nameof(LanguageCases))]
     public void OnlyVietnameseUsesXinChaoAndAllOtherLanguagesUseHello(string? language, bool vietnamese)
@@ -268,7 +307,9 @@ public sealed class GreetingAcceptanceTests
             settings.Save(options);
             var services = new ServiceCollection();
             ServiceConfigurator.ConfigureServices(services);
-            services.AddSingleton<ISettingsService>(settings);
+            // The fixture's provider owns the worker and drains queued saves before deleting its directory.
+            services.AddSingleton<ISettingsService>(_ => settings);
+            services.AddSingleton(_ => new VNotch.Services.Clipboard.ClipboardHistoryStore(System.IO.Path.Combine(_directory, "clipboard")));
             configureServices?.Invoke(services);
             _provider = services.BuildServiceProvider();
             Window = _provider.GetRequiredService<MainWindow>();

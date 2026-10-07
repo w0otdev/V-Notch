@@ -35,11 +35,6 @@ public class BluetoothModule : NotchModuleBase
     {
     }
 
-    protected override void OnDispose()
-    {
-        _bluetoothService.Dispose();
-    }
-
     private void OnDeviceConnected(object? sender, BluetoothDeviceInfo info)
     {
         DeviceConnected?.Invoke(this, info);

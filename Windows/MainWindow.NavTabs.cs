@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using VNotch.Models;
+using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch;
@@ -426,7 +427,8 @@ public partial class MainWindow
         double targetOpacity = 0.45;
         if ((_isAudioView && item == AudioIconButton) ||
             (_isTimerView && item == TimerIconButton) ||
-            (_isSecondaryView && item == FileShelfIconButton) ||
+            (_isSecondaryView && item == ClipboardIconButton) ||
+            (_isCameraView && item == CameraIconButton) ||
             (!_isAudioView && !_isTimerView && !_isSecondaryView && item == HomeIconButton))
         {
             targetOpacity = 1.0;
@@ -541,7 +543,7 @@ public partial class MainWindow
             if (!string.Equals(_settings.NavTabOrder, newOrder, StringComparison.OrdinalIgnoreCase))
             {
                 _settings.NavTabOrder = newOrder;
-                _settingsService.Save(_settings);
+                _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
             }
         }
     }
@@ -565,7 +567,7 @@ public partial class MainWindow
         }
 
         // Determine configured order
-        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer")
+        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer,Camera")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -597,12 +599,14 @@ public partial class MainWindow
 
         // Apply visibility from VisibleNavTabs
         var visibleTokens = new HashSet<string>(
-            (_settings.VisibleNavTabs ?? "Media,Secondary,Timer,AudioMixer")
+            (_settings.VisibleNavTabs ?? "Media,Secondary,Timer,AudioMixer,Camera")
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             StringComparer.OrdinalIgnoreCase);
 
         // Home/Media is always kept visible
         visibleTokens.Add("Media");
+        if (_settings.HideCamera) visibleTokens.Remove("Camera");
+        else visibleTokens.Add("Camera");
 
         foreach (UIElement child in NavTabsStackPanel.Children)
         {
@@ -615,7 +619,7 @@ public partial class MainWindow
         // If the active view's tab was just disabled, return gracefully to Home
         if ((_isAudioView && !visibleTokens.Contains("AudioMixer")) ||
             (_isTimerView && !visibleTokens.Contains("Timer")) ||
-            (_isSecondaryView && !visibleTokens.Contains("Secondary")))
+            (_isSecondaryView && !visibleTokens.Contains("Secondary")) || (_isCameraView && !visibleTokens.Contains("Camera")))
         {
             NavigateToNotchView(NotchView.Media);
         }

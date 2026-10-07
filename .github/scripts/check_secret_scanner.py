@@ -5,7 +5,10 @@ from pathlib import Path
 import random
 import string
 import subprocess
+import sys
 import tempfile
+
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 def main():
@@ -41,11 +44,11 @@ def main():
                 ["git", "add", "."],
                 ["git", "-c", "user.name=Scanner Test", "-c", "user.email=scanner@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Synthetic scanner test"],
             ):
-                subprocess.run(command, cwd=root, check=True, capture_output=True)
+                subprocess.run(command, cwd=root, check=True, capture_output=True, creationflags=CREATE_NO_WINDOW)
             result = subprocess.run(
                 [str(binary), "git", str(root), "--log-opts=--all", "--config", str(config),
                  "--gitleaks-ignore-path", str(ignore), "--redact=100", "--no-banner", "--log-level", "error"],
-                cwd=root, capture_output=True,
+                cwd=root, capture_output=True, creationflags=CREATE_NO_WINDOW,
             )
             if result.returncode != expected:
                 raise RuntimeError(f"Scanner did not enforce the expected gate for {path}: exit {result.returncode}, expected {expected}.")

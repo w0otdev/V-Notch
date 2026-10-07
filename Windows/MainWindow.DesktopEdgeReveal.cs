@@ -60,6 +60,9 @@ public partial class MainWindow
 
     private bool IsDesktopNotchInteractionActive()
     {
+        // Keep the file tray above other windows until the user dismisses it.
+        if (_isSecondaryView) return true;
+
         if (IsStartupHoldActive(_isGreetingActive, _startupHoldUntilUtc, DateTime.UtcNow))
             return true;
 

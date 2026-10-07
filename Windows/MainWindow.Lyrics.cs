@@ -167,7 +167,7 @@ public partial class MainWindow
                          !_isAnimating &&
                          !_isTimerView &&
                          !_isAudioView &&
-                         !_isSecondaryView;
+                         !_isSecondaryView && !_isCameraView;
 
         bool blurFallbackEnabled = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
 

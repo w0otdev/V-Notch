@@ -45,7 +45,7 @@ public partial class SettingsWindow : Window
     }
 
     private const string LogCategory = "SETTINGS";
-    private const string DefaultNavTabs = "Media,Secondary,Timer,AudioMixer";
+    private const string DefaultNavTabs = "Media,Secondary,Timer,AudioMixer,Camera";
     private const string SubtitlePriorityDataFormat = "SubtitlePriorityItem";
     private const string NavTabMedia = "Media";
     private const string WidgetClock = "clock";
@@ -67,6 +67,7 @@ public partial class SettingsWindow : Window
     private const string NavSectionSystem = "System";
     private const string NavSectionPrivacy = "Privacy";
     private const string NavSectionSpotlight = "Spotlight";
+    private const string NavSectionFileTray = "FileTray";
     private const string NavSectionAdvanced = "Advanced";
     private const string NavSectionPerformance = "Performance";
     private const string NavSectionDonating = "Donating";
@@ -102,12 +103,14 @@ public partial class SettingsWindow : Window
 
     public event EventHandler<NotchSettings>? SettingsChanged;
     public event EventHandler? AnimatedClosing;
+    public event EventHandler<UpdateInfo?>? UpdateDetected;
 
     public SettingsWindow(
         NotchSettings settings,
         ISettingsApplicationService settingsAppService,
         BluetoothModule? bluetoothModule = null,
-        bool isSpotlightHotkeyRegistered = true)
+        bool isSpotlightHotkeyRegistered = true,
+        IUpdateService? updateService = null)
     {
         InitializeComponent();
         AnimationPrimitives.ApplyFpsToTree(this);
@@ -119,11 +122,14 @@ public partial class SettingsWindow : Window
         _settingsAppService = settingsAppService ?? throw new ArgumentNullException(nameof(settingsAppService));
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
         _lastAppliedFps = settings.AnimationFps;
-        _updatePresenter = new SettingsUpdatePresenter(new UpdateService(),
-            new SettingsUpdateViewRefs(this, UpdateStatusText, CheckUpdateButton, DownloadUpdateButton));
+        _updatePresenter = new SettingsUpdatePresenter(updateService ?? new UpdateService(),
+            new SettingsUpdateViewRefs(this, UpdateStatusText, CheckUpdateButton, DownloadUpdateButton),
+            ownsService: updateService == null);
+        _updatePresenter.UpdateDetected += (s, update) => UpdateDetected?.Invoke(this, update);
 
         InitializeNavigation();
         LoadSettings();
+        InitializeTrayBadges();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnMonitorConfigurationChanged;
         _appliedSettings = ReadSettingsFromUi();
         _settings = _appliedSettings.Clone();
@@ -135,8 +141,9 @@ public partial class SettingsWindow : Window
         NotchSettings settings,
         ISettingsService settingsService,
         BluetoothModule? bluetoothModule = null,
-        bool isSpotlightHotkeyRegistered = true)
-        : this(settings, new SettingsApplicationService(settingsService), bluetoothModule, isSpotlightHotkeyRegistered)
+        bool isSpotlightHotkeyRegistered = true,
+        IUpdateService? updateService = null)
+        : this(settings, new SettingsApplicationService(settingsService), bluetoothModule, isSpotlightHotkeyRegistered, updateService)
     {
     }
 
@@ -277,15 +284,18 @@ public partial class SettingsWindow : Window
         IdleAutoHideDelaySlider.Opacity = _settings.EnableIdleAutoHide ? 1.0 : 0.4;
         MusicNotifyCheck.IsChecked = _settings.ShowMusicNotifications;
         SystemNotifyCheck.IsChecked = _settings.ShowSystemNotifications;
-        ShelfUnlockCheck.IsChecked = _settings.IsShelfUploadLimitUnlocked;
-        ScreenshotTrayCheck.IsChecked = _settings.EnableScreenshotTray;
-        ScreenshotTrayDurationSlider.Value = _settings.ScreenshotTrayDurationSeconds;
-        CopyShelfClipboardCheck.IsChecked = _settings.CopyShelfFilesToClipboard;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
         LoadSpotlightAiSettings(_settings);
         EnableDebugModeCheck.IsChecked = _settings.EnableDebugMode;
         UpdateSpotlightHotkeyWarning();
         ShowBatteryCheck.IsChecked = _settings.ShowBatteryIndicator;
+        HideCameraCheck.Content = Loc.Get("settings.hideCamera");
+        HideCameraHint.Text = Loc.Get("settings.hideCamera.hint");
+        ClipboardHotkeyLabel.Text = Loc.Get("settings.clipboardHotkey");
+        ClipboardHotkeyHint.Text = ClipboardHotkeyController.RegistrationError ?? Loc.Get("settings.clipboardHotkey.hint");
+        HideCameraCheck.IsChecked = _settings.HideCamera;
+        ClipboardHotkeyBox.Text = _settings.ClipboardHotkey;
+        LoadTrayAdvanced(_settings);
 
         LanguageCombo.Items.Clear();
         var availableLanguages = Loc.GetAvailableLanguages();
@@ -302,7 +312,6 @@ public partial class SettingsWindow : Window
         LanguageCombo.SelectedIndex = selectedIndex;
 
         PopulateWidgetCombo();
-        PopulateShelfWidgetCombo();
         PopulateClockPageStyleCombo();
         PopulateNavTabsSettings();
 
@@ -405,8 +414,6 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(MusicNotifyCheck, "tooltip.musicNotify");
         TooltipHelper.SetLocalizedTooltip(SystemNotifyCheck, "tooltip.systemNotify");
         TooltipHelper.SetLocalizedTooltip(ShowBatteryCheck, "tooltip.showBattery");
-        TooltipHelper.SetLocalizedTooltip(ShelfUnlockCheck, "tooltip.shelfUnlock");
-        TooltipHelper.SetLocalizedTooltip(CopyShelfClipboardCheck, "tooltip.copyShelfClipboard");
         TooltipHelper.SetLocalizedTooltip(HelloGreetingCheck, "tooltip.helloGreeting");
         TooltipHelper.SetLocalizedTooltip(EnableSpotlightCheck, "settings.enableSpotlight.hint");
         TooltipHelper.SetLocalizedTooltip(EnableWeatherCheck, "tooltip.enableWeather");
@@ -435,6 +442,11 @@ public partial class SettingsWindow : Window
 
     private void ApplyLocalization()
     {
+        LocalizeTrayAdvanced();
+        HideCameraCheck.Content = Loc.Get("settings.hideCamera");
+        HideCameraHint.Text = Loc.Get("settings.hideCamera.hint");
+        ClipboardHotkeyLabel.Text = Loc.Get("settings.clipboardHotkey");
+        ClipboardHotkeyHint.Text = ClipboardHotkeyController.RegistrationError ?? Loc.Get("settings.clipboardHotkey.hint");
         LocalizedPresentation.Apply(this);
         ApplySupplementalLocalization();
         string appVersion = GetAppVersion();
@@ -500,12 +512,9 @@ public partial class SettingsWindow : Window
         ResetTabOrderButton.Content = Loc.Get("settings.tab.reset");
         ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget");
         ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint");
-        ShelfWidgetLabel.Text = Loc.Get("settings.shelfWidget");
-        ShelfWidgetHint.Text = Loc.Get("settings.shelfWidget.hint");
         ClockPageStyleLabel.Text = Loc.Get("settings.clockPageStyle");
         ClockPageStyleHint.Text = Loc.Get("settings.clockPageStyle.hint");
         RepopulateWidgetComboPreservingSelection();
-        RepopulateShelfWidgetComboPreservingSelection();
         RepopulateClockPageStyleComboPreservingSelection();
         PopulateNavTabsSettings();
         WidthLabel.Text = Loc.Get(LocKeyWidth);
@@ -624,14 +633,6 @@ public partial class SettingsWindow : Window
         MusicNotifyHint.Text = Loc.Get("settings.musicNotify.hint");
         SystemNotifyCheck.Content = Loc.Get("settings.systemNotify");
         SystemNotifyHint.Text = Loc.Get("settings.systemNotify.hint");
-        ShelfUnlockCheck.Content = Loc.Get("settings.shelfUnlock");
-        ShelfUnlockHint.Text = Loc.Get("settings.shelfUnlock.hint");
-        ScreenshotTrayCheck.Content = Loc.Get("settings.screenshotTray");
-        ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
-        ScreenshotTrayDurationSlider.Label = Loc.Get("settings.screenshotTrayDuration");
-        ScreenshotTrayDurationSlider.Description = Loc.Get("settings.screenshotTrayDuration.hint");
-        CopyShelfClipboardCheck.Content = Loc.Get("settings.copyShelfClipboard");
-        CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         ShowBatteryCheck.Content = Loc.Get("settings.showBattery");
         ShowBatteryHint.Text = Loc.Get("settings.showBattery.hint");
         LanguageLabel.Text = Loc.Get("settings.language");
@@ -1094,10 +1095,6 @@ public partial class SettingsWindow : Window
         SpotifyCanvasAccountHint.Text = Loc.Get("settings.spotifyCanvasAccount.hint");
         SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect");
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
-        ScreenshotTrayHint.Text = Loc.Get("settings.screenshotTray.hint");
-        ScreenshotTrayDurationSlider.Label = Loc.Get("settings.screenshotTrayDuration");
-        ScreenshotTrayDurationSlider.Description = Loc.Get("settings.screenshotTrayDuration.hint");
-        CopyShelfClipboardHint.Text = Loc.Get("settings.copyShelfClipboard.hint");
         if (YouTubeSubtitlesAlphaBadge != null)
             YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
 

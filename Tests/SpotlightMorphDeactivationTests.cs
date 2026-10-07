@@ -49,10 +49,9 @@ public sealed class SpotlightMorphDeactivationTests
     }
 
     [Theory]
-    [InlineData(true, false, true, false)]
     [InlineData(false, true, true, false)]
-    [InlineData(true, false, false, true)]
-    public void ViewDeactivation_StillCollapsesWithoutSpotlight(
+    [InlineData(false, true, false, true)]
+    public void TimerDeactivation_StillCollapsesWithoutSpotlight(
         bool isSecondaryView,
         bool isTimerView,
         bool isExpanded,
@@ -63,6 +62,21 @@ public sealed class SpotlightMorphDeactivationTests
             spotlightMorphOwnsNotchVisibility: false,
             isSecondaryView,
             isTimerView,
+            isExpanded,
+            isMusicExpanded,
+            isAnimating: false));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void FileTrayStaysOpenWhenAnotherAppTakesFocus(bool isExpanded, bool isMusicExpanded)
+    {
+        Assert.False(MainWindow.ShouldCollapseOnDeactivation(
+            spotlightMorphSessionActive: false,
+            spotlightMorphOwnsNotchVisibility: false,
+            isSecondaryView: true,
+            isTimerView: false,
             isExpanded,
             isMusicExpanded,
             isAnimating: false));

@@ -141,7 +141,7 @@ internal sealed class SpotlightLauncher
     {
         if (string.IsNullOrWhiteSpace(item.Target)
             || item.Target.IndexOfAny(['\0', '\r', '\n']) >= 0
-            || FileShelfController.IsUncPath(item.Target))
+            || LocalPathPolicy.IsUncPath(item.Target))
         {
             return false;
         }

@@ -102,26 +102,7 @@ public partial class MainWindow
         WeatherWidgetSkeleton.BeginAnimation(OpacityProperty, null);
     }
 
-    internal void StartShelfWeatherSkeletonAnimation()
-    {
-        if (ShelfWeatherSkeleton == null) return;
-        if (ShelfWeatherSkeleton.Visibility != Visibility.Visible) return;
 
-        var anim = new DoubleAnimation(0.55, 1.0, new Duration(TimeSpan.FromMilliseconds(950)))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-        };
-        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
-        ShelfWeatherSkeleton.BeginAnimation(OpacityProperty, anim);
-    }
-
-    internal void StopShelfWeatherSkeletonAnimation()
-    {
-        if (ShelfWeatherSkeleton == null) return;
-        ShelfWeatherSkeleton.BeginAnimation(OpacityProperty, null);
-    }
 
     private void UpdateWeatherSkeletonState()
     {
@@ -176,7 +157,6 @@ public partial class MainWindow
         WeatherConditionText.Text = Loc.Get(isEnabled ? "weather.retryLater" : "weather.enableInSettings");
         WeatherHiLoText.Text = string.Empty;
 
-        RefreshShelfWeatherData();
     }
 
     private void UpdateWeatherUI(WeatherInfo weather)
@@ -193,7 +173,6 @@ public partial class MainWindow
         else
             UpdateWeatherSkeletonState();
 
-        RefreshShelfWeatherData();
     }
 
     private void RevealWeatherContent()

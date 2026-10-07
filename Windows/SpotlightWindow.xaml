@@ -5,7 +5,7 @@
         xmlns:controls="clr-namespace:VNotch.Controls"
         xmlns:local="clr-namespace:VNotch"
         Title="V-Notch Spotlight"
-        Width="768"
+        Width="968"
         Height="650"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -151,23 +151,30 @@
         </Style>
 
         <Style x:Key="AiStopButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="28"/>
-            <Setter Property="Height" Value="28"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bg" CornerRadius="5" Background="Transparent" BorderThickness="0">
-                            <Rectangle x:Name="StopGlyph" Width="8" Height="8" RadiusX="1.5" RadiusY="1.5" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="Bg" CornerRadius="20" Background="#FF4B4B" BorderThickness="1" BorderBrush="#40FFFFFF">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#FF4545" BlurRadius="14" ShadowDepth="0" Opacity="0.4"/>
+                            </Border.Effect>
+                            <Rectangle Width="13" Height="13" RadiusX="2" RadiusY="2" Fill="#FFF0F0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#1AFFFFFF"/>
-                                <Setter TargetName="StopGlyph" Property="Fill" Value="{x:Static local:SpotlightWindow.ChatActiveIconBrush}"/>
+                                <Setter TargetName="Bg" Property="Background" Value="#FF6262"/>
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Opacity" Value="0.6"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="White"/>
+                                <Setter TargetName="Bg" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#DC3636"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -332,8 +339,8 @@
         </Style>
     </Window.Resources>
 
-    <!-- Fixed-size transparent canvas where only shell resizes to prevent
-         stuttering from re-uploading the layered HWND surface during resizing. -->
+    <!-- Fit the 920-DIP file tray plus shadow space in both morph directions.
+         Keep the HWND fixed while the shell resizes to avoid surface uploads. -->
     <AdornerDecorator>
     <Grid>
         <!-- Match NotchShadowWrapper: a solid silhouette behind the shell,
@@ -361,7 +368,7 @@
                     CornerRadius="{Binding CornerRadius, ElementName=Shell}"/>
         </Grid>
     <Border x:Name="Shell"
-            Margin="24,16,24,0"
+            Margin="124,16,124,0"
             CornerRadius="14"
             Background="{StaticResource ShellBrush}"
             BorderBrush="Transparent"
@@ -833,7 +840,7 @@
                                         </Grid>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button x:Name="AiStopButton" Style="{StaticResource AiStopButtonStyle}" Click="AiStop_Click" Margin="0,0,8,0" Visibility="Collapsed"/>
+                                        <Button x:Name="AiStopButton" Style="{StaticResource AiStopButtonStyle}" Click="AiStop_Click" Margin="0,2,0,2" Visibility="Collapsed"/>
                                         <Button x:Name="AiSendButton" Style="{StaticResource AiSendButtonStyle}" Click="AiSend_Click"/>
                                     </StackPanel>
                                 </Grid>

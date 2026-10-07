@@ -44,7 +44,7 @@ public sealed class GlobalizationAccessibilityTests
             {
                 Loc.SetLanguage(code);
                 foreach (string key in new[] { "greeting.hello", "media.play", "media.pause", "media.previous", "media.next",
-                    "media.volume", "media.mute", "nav.media", "nav.shelf", "nav.timer", "nav.audio", "timer.start", "timer.reset" })
+                    "media.volume", "media.mute", "nav.media", "nav.clipboard", "nav.timer", "nav.audio", "timer.start", "timer.reset" })
                     Assert.True(Loc.GetKeys(code).Contains(key) && !string.IsNullOrWhiteSpace(Loc.Get(key)), $"{code}: {key}");
             }
         }

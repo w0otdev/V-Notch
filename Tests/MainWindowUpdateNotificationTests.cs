@@ -113,6 +113,28 @@ public sealed class MainWindowUpdateNotificationTests
         await WpfFrameWaiter.UntilAsync(() => window.UpdateNotificationButton.Visibility == Visibility.Collapsed, "update hidden", ct);
     });
 
+    [Fact]
+    public void ManualUpdateCheckViaServiceOrSettingsRevealsUpdateNotificationEvenWhenAutoCheckDisabled() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var service = new PendingUpdateService();
+        using var fixture = CreateFixture(service);
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.AutoCheckUpdates = false;
+
+        var backgroundCheck = (Task)Invoke(window, "CheckForUpdatesAsync")!;
+        await backgroundCheck;
+        Assert.False(Field<bool>(window, "_isUpdateAvailable"));
+
+        service.RaiseUpdateCheckCompleted(NewRelease("9.5.5"));
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isUpdateAvailable") && window.UpdateNotificationButton.Visibility == Visibility.Visible, "update notification shown via event", ct);
+        Assert.Equal("9.5.5", Field<UpdateInfo>(window, "_availableUpdate").Version);
+
+        Invoke(window, "AnimateStatusBarReveal", true);
+        Assert.Equal(Visibility.Visible, window.UpdateNotificationButton.Visibility);
+        Assert.True(window.UpdateNotificationButton.IsHitTestVisible);
+    });
+
     private static UpdateInfo NewRelease(string version) => new() { Version = version, IsNewerVersion = true };
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture(IUpdateService updates) => new("en", greeting: false,
         configureServices: services => { services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()); services.AddSingleton(updates); });
@@ -124,6 +146,9 @@ public sealed class MainWindowUpdateNotificationTests
         public List<TaskCompletionSource<UpdateInfo?>> Requests { get; } = new();
         public int InstallCalls { get; private set; }
         public string CurrentVersion => "9.5.0";
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted;
+        public UpdateInfo? LatestUpdateInfo => null;
+        public void RaiseUpdateCheckCompleted(UpdateInfo? info) => UpdateCheckCompleted?.Invoke(this, info);
         public Task<UpdateInfo?> CheckForUpdatesAsync()
         {
             var request = new TaskCompletionSource<UpdateInfo?>(TaskCreationOptions.RunContinuationsAsynchronously);

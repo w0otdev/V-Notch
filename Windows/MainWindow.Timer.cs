@@ -341,6 +341,20 @@ public partial class MainWindow
         }
 
         UpdateTimerNavIconsState();
+        NavIconsPanel.Visibility = Visibility.Visible;
+        NavIconsPanel.Opacity = 1;
+
+        NavIconsBackground.BeginAnimation(OpacityProperty, null);
+        NavIconsBackground.Opacity = 0;
+        NavIconsBackground.Visibility = Visibility.Visible;
+        var navBgFadeIn = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(300)))
+        {
+            EasingFunction = _easePowerOut3,
+            BeginTime = TimeSpan.FromMilliseconds(200)
+        };
+        Timeline.SetDesiredFrameRate(navBgFadeIn, VNotch.Services.AnimationConfig.TargetFps);
+        NavIconsBackground.BeginAnimation(OpacityProperty, navBgFadeIn);
+
         NotchBorder.IsHitTestVisible = false;
 
         ApplyClockViewWindowSize();
@@ -418,6 +432,8 @@ public partial class MainWindow
 
         TimerContent.BeginAnimation(OpacityProperty, fadeIn);
         timerTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+
+        PlayClockViewUnfoldIn(inDelay);
 
         UpdateTimerDisplay();
     }
@@ -545,12 +561,11 @@ public partial class MainWindow
         // Expansion can call this before the local view flags are committed.
         // Set the timer state explicitly and release any previous opacity clocks.
         if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, 0.45, animate: false);
-        if (_navDragItem != FileShelfIconButton) AnimateNavIconOpacity(FileShelfIconButton, 0.45, animate: false);
+        if (_navDragItem != ClipboardIconButton) AnimateNavIconOpacity(ClipboardIconButton, 0.45, animate: false);
         if (_navDragItem != TimerIconButton) AnimateNavIconOpacity(TimerIconButton, 1.0, animate: false);
         if (_navDragItem != AudioIconButton) AnimateNavIconOpacity(AudioIconButton, 0.45, animate: false);
         if (!_isAnimating)
         {
-            ShelfCountBadge.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -645,7 +660,6 @@ public partial class MainWindow
         SecondaryContent.BeginAnimation(OpacityProperty, fadeIn);
         secondaryTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
 
-        UpdateShelfCapacityIndicator();
     }
 
     #endregion
@@ -1349,7 +1363,6 @@ public partial class MainWindow
             NavIconsBackground.BeginAnimation(OpacityProperty, null);
             NavIconsBackground.Opacity = 0;
             NavIconsBackground.Visibility = Visibility.Collapsed;
-            ShelfCountBadge.Visibility = Visibility.Collapsed;
             DisableKeyboardInput();
 
             if (_isMusicCompactMode)

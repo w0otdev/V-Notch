@@ -392,14 +392,21 @@ public partial class MainWindow
 
     private bool _volumeBaselinePending;
     private int _volumeBaselineVersion;
-    private float _volumeIndicatorRatio;
+    private DateTime _volumeScrollSyncAfterUtc = DateTime.MinValue;
 
-    private void VolumeIndicator_SizeChanged(object sender, SizeChangedEventArgs e)
+    private static void SetVolumeFill(ScaleTransform scale, double volume, bool animate = false)
     {
-        // A hidden indicator can retain the expanded notch's measured width.
-        // Recompute throughout the resize instead of waiting for another wheel event.
-        if (VolumeIndicatorFill != null)
-            VolumeIndicatorFill.Width = Math.Max(0, e.NewSize.Width * _volumeIndicatorRatio);
+        double target = Math.Clamp(volume, 0, 1);
+        double current = scale.ScaleX;
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        scale.ScaleX = target;
+        if (!animate || AnimationConfig.ReduceMotion || Math.Abs(current - target) < 0.0001) return;
+
+        // Retarget from the visible fill while keeping the final value on the
+        // base property, so a drag or keyboard update can take over immediately.
+        var animation = MakeAnim(current, target, _dur150, _easeAppleOut);
+        animation.FillBehavior = FillBehavior.Stop;
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void AdjustVolumeByScroll(int delta)
@@ -435,6 +442,7 @@ public partial class MainWindow
     private void ApplyVolumeStep(int delta)
     {
         _volumeInteractionVersion++;
+        _volumeScrollSyncAfterUtc = AnimationConfig.ReduceMotion ? DateTime.MinValue : DateTime.UtcNow.Add(_dur150.TimeSpan);
         float step = (delta / 120f) * VolumeScrollStep;
         float newVolume = Math.Clamp(_currentVolume + step, 0f, 1f);
         _currentVolume = newVolume;
@@ -449,7 +457,7 @@ public partial class MainWindow
 
         if (_isExpanded)
         {
-            VolumeBarScale.ScaleX = newVolume;
+            SetVolumeFill(VolumeBarScale, newVolume, animate: true);
             UpdateVolumeIcon(newVolume, false);
         }
     }
@@ -459,7 +467,7 @@ public partial class MainWindow
         if (!_isMusicCompactMode) return;
         if (_isExpanded || _isAnimating) return;
 
-        _volumeIndicatorRatio = Math.Clamp(volume, 0f, 1f);
+        bool animateFill = _isVolumeIndicatorActive;
 
         if (!_isVolumeIndicatorActive)
         {
@@ -506,9 +514,6 @@ public partial class MainWindow
                 AnimateCompactWidth(_collapsedWidth + 20, _dur350, _easeExpOut6, _volumeIndicatorToken);
             }
 
-            double initContainerWidth = _collapsedWidth - 32;
-            VolumeIndicatorFill.Width = Math.Max(0, initContainerWidth * volume);
-
             MusicViz.BeginAnimation(OpacityProperty, null);
             var vizOut = MakeAnim(1.0, 0.0, _dur200, _easeQuadOut);
             vizOut.Completed += (s, e) =>
@@ -534,12 +539,7 @@ public partial class MainWindow
             VolumeIndicatorContainer.BeginAnimation(OpacityProperty, indicatorIn);
         }
 
-        double containerWidth = VolumeIndicatorContainer.ActualWidth;
-        if (containerWidth <= 0)
-        {
-            containerWidth = _collapsedWidth - 32;
-        }
-        VolumeIndicatorFill.Width = Math.Max(0, containerWidth * volume);
+        SetVolumeFill(VolumeIndicatorScale, volume, animate: animateFill);
 
         if (_volumeIndicatorHideTimer == null)
         {
@@ -705,9 +705,7 @@ public partial class MainWindow
         double position = FlowDirection == FlowDirection.RightToLeft ? containerWidth - pos.X : pos.X;
         float newVolume = (float)Math.Clamp(position / containerWidth, 0.0, 1.0);
         _currentVolume = newVolume;
-        _volumeIndicatorRatio = newVolume;
-
-        VolumeIndicatorFill.Width = Math.Max(0, containerWidth * newVolume);
+        SetVolumeFill(VolumeIndicatorScale, newVolume);
 
         float volumeToSet = newVolume;
         System.Threading.ThreadPool.QueueUserWorkItem(_ =>
@@ -717,7 +715,7 @@ public partial class MainWindow
 
         if (_isExpanded)
         {
-            VolumeBarScale.ScaleX = newVolume;
+            SetVolumeFill(VolumeBarScale, newVolume);
             UpdateVolumeIcon(newVolume, false);
         }
     }
@@ -772,6 +770,13 @@ public partial class MainWindow
         SetVolumeFromMousePosition(e);
     }
 
+    private void VolumeBar_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        if (e.Delta == 0 || _isDraggingVolume || _isAnimating) return;
+        ApplyVolumeStep(e.Delta);
+    }
+
     private void VolumeBar_MouseMove(object sender, MouseEventArgs e)
     {
         if (_isDraggingVolume && e.LeftButton == MouseButtonState.Pressed)
@@ -798,7 +803,7 @@ public partial class MainWindow
         float newVolume = (float)Math.Clamp(pos.X / volumeBarWidth, 0.0, 1.0);
 
         _currentVolume = newVolume;
-        VolumeBarScale.ScaleX = newVolume;
+        SetVolumeFill(VolumeBarScale, newVolume);
         UpdateVolumeIcon(newVolume, false);
 
         float volumeToSet = newVolume;
@@ -830,7 +835,7 @@ public partial class MainWindow
             if (result.success)
             {
                 _currentVolume = result.volume;
-                VolumeBarScale.ScaleX = _currentVolume;
+                SetVolumeFill(VolumeBarScale, _currentVolume);
                 UpdateVolumeIcon(_currentVolume, result.muted);
             }
         }

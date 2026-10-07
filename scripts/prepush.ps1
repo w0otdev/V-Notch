@@ -8,6 +8,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+$env:GIT_TERMINAL_PROMPT = "0"
+$env:GCM_INTERACTIVE = "never"
+$env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\mingw64\bin" }) -join ";"
 $repository = Split-Path $PSScriptRoot -Parent
 
 Write-Host "`n=== [1/5] Restoring Solution Dependencies ===" -ForegroundColor Cyan

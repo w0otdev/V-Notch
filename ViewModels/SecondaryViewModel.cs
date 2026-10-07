@@ -37,8 +37,8 @@ public partial class SecondaryViewModel : ObservableObject
     {
         BatteryPercentText = battery.GetPercentageText();
         BatteryFillWidth = Math.Max(2, battery.Percentage / 100.0 * 26);
-        IsBatteryCharging = battery.IsCharging;
-        IsBatteryLow = battery.Percentage < 20;
+        IsBatteryCharging = battery.IsPowerConnected;
+        IsBatteryLow = battery.HasBattery && battery.Percentage >= 0 && battery.Percentage < 20 && !battery.IsPowerConnected;
     }
 
     public void UpdateCalendar(DateTime? value = null)

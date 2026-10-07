@@ -88,6 +88,7 @@ public sealed class MediaThumbnailPipelineTests
     [InlineData("thumbnail")]
     [InlineData("fetch")]
     [InlineData("track")]
+    [InlineData("artist")]
     [InlineData("session")]
     public void PendingYouTubeMetadataCannotOverwriteAChangedOrCancelledTrack(string invalidation) => SharedStaTestRunner.RunAsync(async ct =>
     {
@@ -103,6 +104,7 @@ public sealed class MediaThumbnailPipelineTests
         if (invalidation == "thumbnail") Set(fixture.Service, "_thumbnailFetchGeneration", 1);
         if (invalidation == "fetch") Set(fixture.Service, "_youTubeFetchGeneration", 1);
         if (invalidation == "track") Set(fixture.Service, "_lastPublishedTrackIdentity", "different track");
+        if (invalidation == "artist") Set(fixture.Service, "_lastPublishedTrackIdentity", MediaHeuristics.BuildTrackIdentity(info.CurrentTrack, "Different artist"));
         if (invalidation == "session") Set(fixture.Service, "_lastPublishedSessionInstanceKey", "replacement session");
         pending.SetResult(Result(info.CurrentTrack));
         await fetch;
@@ -211,6 +213,65 @@ public sealed class MediaThumbnailPipelineTests
         Assert.Null(info.Thumbnail);
         Assert.Equal(2, fixture.Metadata.TrackCalls);
         Assert.Equal(0, Field<int>(fixture.Service, "_youTubeFetchInFlight"));
+    });
+
+    [Theory]
+    [InlineData("YouTube")]
+    [InlineData("Browser")]
+    public void YouTubeArtworkSurvivesPublishingResolvedArtistWhileDownloadIsPending(string source) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        fixture.PublishIdentity(info);
+        Set(fixture.Service, "_lastThumbTrackIdentity", MediaHeuristics.BuildTrackIdentity(info.CurrentTrack, ""));
+        fixture.Metadata.TrackResult = Result(info.CurrentTrack);
+        var pending = new TaskCompletionSource<BitmapImage?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Artwork.Download = _ => pending.Task;
+        var fetch = FetchYouTube(fixture.Service, info, ct);
+        await WpfFrameWaiter.UntilAsync(() => fixture.Artwork.Downloads.Count == 1, "artwork download started", ct);
+        Assert.Single(fixture.Artwork.Downloads);
+        Assert.Equal("Fixture artist - Topic", info.CurrentArtist);
+        Assert.False((bool)Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info)!);
+        fixture.PublishIdentity(info);
+        var image = Bitmap(640, 360);
+        pending.SetResult(image);
+        await fetch;
+        Assert.Same(image, fixture.Service.CachedThumbnail);
+        Assert.Same(image, info.Thumbnail);
+        Assert.Contains(fixture.Updates, update => update.IsThumbnailOnlyUpdate && ReferenceEquals(update.Thumbnail, image));
+        var replacement = info.Clone();
+        replacement.CurrentTrack = "Replacement track";
+        Assert.True((bool)Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", replacement)!);
+        Assert.Null(fixture.Service.CachedThumbnail);
+    });
+
+    [Fact]
+    public void LateSessionArtworkIsPublishedEvenWhenMetadataAndPlaybackAreUnchanged() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("Spotify");
+        Set(fixture.Service, "_bgCts", new CancellationTokenSource());
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, true)!;
+        Assert.Single(fixture.Updates);
+        info.Thumbnail = Bitmap(300, 300);
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, false)!;
+        Assert.Equal(2, fixture.Updates.Count);
+        Assert.Same(info.Thumbnail, fixture.Updates.Last().Thumbnail);
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, false)!;
+        Assert.Equal(2, fixture.Updates.Count);
+    });
+
+    [Fact]
+    public void NativePlayerChangingArtistForTheSameTitleInvalidatesItsArtwork() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("Spotify");
+        info.SourceAppId = "Spotify.exe";
+        Set(fixture.Service, "_lastThumbTrackIdentity", MediaHeuristics.BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist));
+        Assert.False((bool)Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info)!);
+        info.CurrentArtist = "Different artist";
+        Assert.True((bool)Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info)!);
+        Assert.False((bool)Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info)!);
     });
 
     private static YouTubeLookupResult Result(string title, string id = "abcdefghijk") => new() { Id = id, Title = title, Author = "Fixture artist - Topic", Duration = TimeSpan.FromSeconds(123), Source = YouTubeLookupSource.DataApi, ThumbnailUrl = "https://fixture.invalid/preferred.jpg" };

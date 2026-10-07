@@ -6,63 +6,8 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    public void ApplyShelfWidgetMode()
-    {
-        if (SecondaryContent == null || SecondaryLeftCol == null || SecondaryRightCol == null) return;
 
-        string mode = (_settings.ShelfWidget ?? "camera").ToLowerInvariant();
 
-        switch (mode)
-        {
-            case "sysmon":
-                SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
-                SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
-                if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
-                if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
-                if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Visible;
-                RefreshShelfSysMonData();
-                break;
-
-            case "weather":
-                SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
-                SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
-                if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
-                if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) ShelfWeatherSection.Visibility = Visibility.Visible;
-                RefreshShelfWeatherData();
-                break;
-
-            case "clock":
-                SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
-                SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
-                if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
-                if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
-                if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Visible;
-                RefreshShelfClockData();
-                break;
-
-            case "none":
-                SecondaryLeftCol.Width = new GridLength(0);
-                SecondaryRightCol.Width = new GridLength(1, GridUnitType.Star);
-                if (CameraSection != null) CameraSection.Visibility = Visibility.Collapsed;
-                if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
-                if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
-                break;
-
-            default:
-                SecondaryLeftCol.Width = new GridLength(1, GridUnitType.Star);
-                SecondaryRightCol.Width = new GridLength(3, GridUnitType.Star);
-                if (ShelfSysMonSection != null) ShelfSysMonSection.Visibility = Visibility.Collapsed;
-                if (ShelfWeatherSection != null) { ShelfWeatherSection.Visibility = Visibility.Collapsed; StopShelfWeatherSkeletonAnimation(); }
-                if (ShelfClockSection != null) ShelfClockSection.Visibility = Visibility.Collapsed;
-                if (CameraSection != null) CameraSection.Visibility = Visibility.Visible;
-                break;
-        }
-    }
 
     public void ApplyClockPageStyle()
     {
@@ -99,71 +44,5 @@ public partial class MainWindow
         }
     }
 
-    private void RefreshShelfSysMonData()
-    {
-        if (ShelfSysMonSection == null || ShelfSysMonSection.Visibility != Visibility.Visible) return;
 
-        // Populate from existing stats if SysMonCpuValueText has value
-        if (SysMonCpuValueText != null && ShelfSysMonCpuText != null)
-        {
-            ShelfSysMonCpuText.Text = SysMonCpuValueText.Text;
-        }
-        if (SysMonRamValueText != null && ShelfSysMonRamText != null)
-        {
-            ShelfSysMonRamText.Text = SysMonRamValueText.Text;
-        }
-        if (SysMonNetDownText != null && ShelfSysMonNetDownText != null)
-        {
-            ShelfSysMonNetDownText.Text = $"↓ {SysMonNetDownText.Text}";
-        }
-        if (SysMonNetUpText != null && ShelfSysMonNetUpText != null)
-        {
-            ShelfSysMonNetUpText.Text = $"↑ {SysMonNetUpText.Text}";
-        }
-    }
-
-    private void RefreshShelfWeatherData()
-    {
-        if (ShelfWeatherSection == null || ShelfWeatherSection.Visibility != Visibility.Visible) return;
-
-        if (!_hasWeatherData)
-        {
-            if (ShelfWeatherSkeleton != null) ShelfWeatherSkeleton.Visibility = Visibility.Visible;
-            if (ShelfWeatherActualContent != null) ShelfWeatherActualContent.Visibility = Visibility.Collapsed;
-            StartShelfWeatherSkeletonAnimation();
-            return;
-        }
-
-        StopShelfWeatherSkeletonAnimation();
-        if (ShelfWeatherSkeleton != null) ShelfWeatherSkeleton.Visibility = Visibility.Collapsed;
-        if (ShelfWeatherActualContent != null) ShelfWeatherActualContent.Visibility = Visibility.Visible;
-
-        if (WeatherTempText != null && ShelfWeatherTempText != null)
-        {
-            ShelfWeatherTempText.Text = string.IsNullOrWhiteSpace(WeatherTempText.Text) ? "--°" : WeatherTempText.Text;
-        }
-        if (WeatherConditionText != null && ShelfWeatherDescText != null)
-        {
-            ShelfWeatherDescText.Text = string.IsNullOrWhiteSpace(WeatherConditionText.Text) ? "Weather" : WeatherConditionText.Text;
-        }
-        if (ShelfWeatherCityText != null)
-        {
-            ShelfWeatherCityText.Text = string.IsNullOrWhiteSpace(_settings.ManualCity) ? "Local" : _settings.ManualCity;
-        }
-    }
-
-    private void RefreshShelfClockData()
-    {
-        if (ShelfClockSection == null || ShelfClockSection.Visibility != Visibility.Visible) return;
-
-        var now = DateTime.Now;
-        if (ShelfClockTimeText != null)
-        {
-            ShelfClockTimeText.Text = now.ToString("HH:mm");
-        }
-        if (ShelfClockDateText != null)
-        {
-            ShelfClockDateText.Text = now.ToString("ddd, MMM d");
-        }
-    }
 }

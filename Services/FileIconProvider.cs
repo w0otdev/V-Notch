@@ -93,7 +93,60 @@ internal static class FileIconProvider
 
     private static readonly Guid _shellItemImageFactoryIid = new Guid("bcc18b79-ba16-442f-80c4-8746c1f01a3b");
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint ExtractIconEx(string lpszFile, int nIconIndex, IntPtr[]? phiconLarge, IntPtr[]? phiconSmall, uint nIcons);
+
     #endregion
+
+    private static readonly System.Text.RegularExpressions.Regex MscIconPattern = new(
+        "<Icon\\s+Index=\"(-?\\d+)\"\\s+File=\"([^\"]+)\"",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    // The Shell associates every .msc with a generic document icon. Each MMC
+    // console declares its real artwork in its XML (<Icon Index File>).
+    private static ImageSource? TryGetMscIcon(string mscPath, bool small)
+    {
+        if (!Path.GetExtension(mscPath).Equals(".msc", StringComparison.OrdinalIgnoreCase)) return null;
+        try
+        {
+            string? file = null;
+            int index = 0;
+            using (var reader = new StreamReader(mscPath))
+            {
+                // The Icon element sits near the top; avoid reading large embedded binaries.
+                var buffer = new char[64 * 1024];
+                int read = reader.ReadBlock(buffer, 0, buffer.Length);
+                var match = MscIconPattern.Match(new string(buffer, 0, read));
+                if (match.Success)
+                {
+                    index = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    file = Environment.ExpandEnvironmentVariables(match.Groups[2].Value);
+                    // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
+                    if (!File.Exists(file)) file = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
+                }
+            }
+            if (file == null || !File.Exists(file))
+            {
+                file = Path.Combine(Environment.SystemDirectory, "mmc.exe");
+                index = 0;
+            }
+            var handles = new IntPtr[1];
+            uint count = small ? ExtractIconEx(file, index, null, handles, 1) : ExtractIconEx(file, index, handles, null, 1);
+            if (count == 0 || handles[0] == IntPtr.Zero) return null;
+            try
+            {
+                var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                    handles[0], Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                source.Freeze();
+                return source;
+            }
+            finally { DestroyIcon(handles[0]); }
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     public static ImageSource? GetAppIcon(string exePath, bool small = true)
     {
@@ -110,7 +163,35 @@ internal static class FileIconProvider
             if (!File.Exists(exePath)) return null;
             if (_iconCache.Count >= MaxCacheSize) EvictOldest();
 
-            var icon = TryGetShellFileIcon(exePath, small) ?? TryGetAssociatedIcon(exePath);
+            var icon = TryGetMscIcon(exePath, small) ?? TryGetShellFileIcon(exePath, small) ?? TryGetAssociatedIcon(exePath);
+            _iconCache[key] = new CacheEntry
+            {
+                Icon = icon,
+                LastAccess = Interlocked.Increment(ref _accessCounter)
+            };
+            return icon;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    public static ImageSource? GetExtensionIcon(string extension, bool small = false)
+    {
+        if (string.IsNullOrWhiteSpace(extension)) return null;
+        if (!extension.StartsWith('.')) extension = "." + extension;
+        string key = $"ext:{(small ? "s" : "l")}:{extension}";
+        if (_iconCache.TryGetValue(key, out var cached))
+        {
+            cached.LastAccess = Interlocked.Increment(ref _accessCounter);
+            return cached.Icon;
+        }
+
+        try
+        {
+            if (_iconCache.Count >= MaxCacheSize) EvictOldest();
+            var icon = TryGetShellFileIcon(extension, small);
             _iconCache[key] = new CacheEntry
             {
                 Icon = icon,
@@ -160,6 +241,7 @@ internal static class FileIconProvider
                 result ??= TryGetShellFileIcon(filePath, small: false);
             }
 
+            result ??= TryGetMscIcon(filePath, small: false);
             result ??= TryGetAssociatedIcon(filePath);
             result ??= TryGetShellFileIcon(filePath, small: false);
 

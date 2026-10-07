@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using VNotch.Models;
 using VNotch.Presenters;
+using VNotch.Services;
 
 namespace VNotch;
 
@@ -105,7 +106,7 @@ public partial class MainWindow : IClockWidgetHost
     #region IClockWidgetHost (adapter onto the shared shell state)
 
     NotchSettings IClockWidgetHost.Settings => _settings;
-    void IClockWidgetHost.SaveSettings() => _settingsService.Save(_settings);
+    void IClockWidgetHost.SaveSettings() => _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
 
     bool IClockWidgetHost.IsAnimating { get => _isAnimating; set => _isAnimating = value; }
     bool IClockWidgetHost.IsSecondaryView => _isSecondaryView;
@@ -126,6 +127,7 @@ public partial class MainWindow : IClockWidgetHost
     int IClockWidgetHost.WindowWidth => _windowWidth;
     int IClockWidgetHost.WindowHeight { get => _windowHeight; set => _windowHeight = value; }
     double IClockWidgetHost.ExpandedHeight => _expandedHeight;
+    double IClockWidgetHost.MaxExpandedHeight => MaxExpandedNotchHeight;
 
     Window IClockWidgetHost.Window => this;
 

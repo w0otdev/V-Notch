@@ -412,37 +412,40 @@ public sealed class WebcamCaptureController : IDisposable
         }
     }
 
-    public static async Task DisposeResourcesAsync(MediaFrameReader? reader, MediaCapture? capture)
+    public static Task DisposeResourcesAsync(MediaFrameReader? reader, MediaCapture? capture)
     {
-        if (reader != null)
+        return Task.Run(async () =>
         {
-            try
+            if (reader != null)
             {
-                await reader.StopAsync();
-            }
-            catch (Exception)
-            {
-                // FrameReader may already be stopped or in faulted state during teardown.
+                try
+                {
+                    await reader.StopAsync();
+                }
+                catch (Exception)
+                {
+                    // FrameReader may already be stopped or in faulted state during teardown.
+                }
+
+                try
+                {
+                    reader.Dispose();
+                }
+                catch (Exception)
+                {
+                    // FrameReader disposal errors during teardown are safely ignored.
+                }
             }
 
             try
             {
-                reader.Dispose();
+                capture?.Dispose();
             }
             catch (Exception)
             {
-                // FrameReader disposal errors during teardown are safely ignored.
+                // MediaCapture disposal errors during teardown are safely ignored.
             }
-        }
-
-        try
-        {
-            capture?.Dispose();
-        }
-        catch (Exception)
-        {
-            // MediaCapture disposal errors during teardown are safely ignored.
-        }
+        });
     }
 
     private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)

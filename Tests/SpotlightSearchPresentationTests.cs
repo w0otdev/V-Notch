@@ -21,6 +21,43 @@ public sealed class SpotlightSearchPresentationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void SearchSuggestionDoesNotSurviveDismissalAndReopenIntoAi(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            var settings = Settings();
+            settings.SpotlightDefaultAi = true;
+            using var fixture = new SpotlightWindowFixture(settings, searchProvider: new ResultsProvider());
+            var window = fixture.Window;
+            window.ShowSpotlight();
+            Invoke(window, "ToggleAiMode");
+            window.SearchBox.Text = "fixture";
+            await WpfFrameWaiter.UntilAsync(() => window.AutocompleteText.Visibility == Visibility.Visible,
+                "search suggestion shown", ct);
+            window.DismissFromGlobalShortcut();
+            await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen && !Field<bool>(window, "_isClosing"),
+                "search dismissed", ct);
+            window.ShowSpotlight();
+            Assert.True(Field<bool>(window, "_aiMode"));
+            Assert.Equal(string.Empty, window.SearchBox.Text);
+            Assert.Equal(Visibility.Collapsed, window.AutocompleteText.Visibility);
+            Assert.Equal(Visibility.Visible, window.PlaceholderText.Visibility);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "AI reopened", ct);
+            Assert.Equal(Visibility.Collapsed, window.AutocompleteText.Visibility);
+            Invoke(window, "ToggleAiMode");
+            window.SearchBox.Text = "replacement";
+            await WpfFrameWaiter.UntilAsync(() => window.AutocompleteText.Visibility == Visibility.Visible,
+                "new search suggestion shown", ct);
+            Assert.Equal("replacement", window.AutocompleteTypedRun.Text);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ResultsAutocompleteAndKeyboardNavigationStayAlignedThroughReplacementQueries(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;

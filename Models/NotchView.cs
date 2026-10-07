@@ -6,5 +6,6 @@ public enum NotchView
     Media,
     Secondary,
     Timer,
-    AudioMixer
+    AudioMixer,
+    Camera
 }

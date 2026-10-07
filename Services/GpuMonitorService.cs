@@ -8,10 +8,12 @@ using Vortice.DXGI;
 
 namespace VNotch.Services;
 
-public sealed class GpuMonitorService : IDisposable
+public sealed class GpuMonitorService : IDisposable, IAsyncDisposable
 {
-    private static GpuMonitorService? _instance;
-    public static GpuMonitorService Instance => _instance ??= new GpuMonitorService();
+    private static readonly Lazy<GpuMonitorService> SharedInstance = new(() => new GpuMonitorService());
+    public static GpuMonitorService Instance => SharedInstance.Value;
+    internal static ValueTask DisposeSharedAsync() => SharedInstance.IsValueCreated ? SharedInstance.Value.DisposeAsync() : ValueTask.CompletedTask;
+    private volatile bool _disposed;
 
     private string? _gpuName;
     private ulong _dedicatedVramBytes;
@@ -66,17 +68,22 @@ public sealed class GpuMonitorService : IDisposable
     {
         lock (_samplerLock)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             _consumerCount++;
             if (_consumerCount == 1 && !_isRunning)
             {
                 _isRunning = true;
-                _gpuSamplerThread = new Thread(GpuSamplingWorker)
+                if (_gpuSamplerThread == null)
                 {
-                    IsBackground = true,
-                    Name = "VNotch-GpuPerformanceWorker",
-                    Priority = ThreadPriority.Lowest
-                };
-                _gpuSamplerThread.Start();
+                    _gpuSamplerThread = new Thread(GpuSamplingWorker)
+                    {
+                        IsBackground = true,
+                        Name = "VNotch-GpuPerformanceWorker",
+                        Priority = ThreadPriority.Lowest
+                    };
+                    _gpuSamplerThread.Start();
+                }
+                _wakeSamplerEvent.Set();
             }
         }
     }
@@ -85,6 +92,7 @@ public sealed class GpuMonitorService : IDisposable
     {
         lock (_samplerLock)
         {
+            if (_disposed) return;
             if (_consumerCount > 0)
                 _consumerCount--;
 
@@ -92,7 +100,6 @@ public sealed class GpuMonitorService : IDisposable
             {
                 _isRunning = false;
                 _wakeSamplerEvent.Set();
-                _gpuSamplerThread = null;
             }
         }
     }
@@ -101,19 +108,24 @@ public sealed class GpuMonitorService : IDisposable
     {
         lock (_samplerLock)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_consumerCount == 0)
                 _consumerCount = 1;
 
             if (!_isRunning)
             {
                 _isRunning = true;
-                _gpuSamplerThread = new Thread(GpuSamplingWorker)
+                if (_gpuSamplerThread == null)
                 {
-                    IsBackground = true,
-                    Name = "VNotch-GpuPerformanceWorker",
-                    Priority = ThreadPriority.Lowest
-                };
-                _gpuSamplerThread.Start();
+                    _gpuSamplerThread = new Thread(GpuSamplingWorker)
+                    {
+                        IsBackground = true,
+                        Name = "VNotch-GpuPerformanceWorker",
+                        Priority = ThreadPriority.Lowest
+                    };
+                    _gpuSamplerThread.Start();
+                }
+                _wakeSamplerEvent.Set();
             }
         }
     }
@@ -371,8 +383,15 @@ public sealed class GpuMonitorService : IDisposable
 
         try
         {
-            while (_isRunning)
+            while (!_disposed)
             {
+                if (!_isRunning)
+                {
+                    DisposeCounterList(counters);
+                    counters = null;
+                    _wakeSamplerEvent.WaitOne();
+                    continue;
+                }
                 try
                 {
                     long now = Stopwatch.GetTimestamp();
@@ -421,6 +440,7 @@ public sealed class GpuMonitorService : IDisposable
         finally
         {
             DisposeCounterList(counters);
+            lock (_samplerLock) _wakeSamplerEvent.Dispose();
         }
     }
 
@@ -492,11 +512,22 @@ public sealed class GpuMonitorService : IDisposable
     {
         lock (_samplerLock)
         {
+            if (_disposed) return;
+            _disposed = true;
             _isRunning = false;
             _consumerCount = 0;
             _wakeSamplerEvent.Set();
-            _gpuSamplerThread = null;
+            // The worker owns the handle until its final WaitOne has returned.
+            if (_gpuSamplerThread == null) _wakeSamplerEvent.Dispose();
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        Thread? worker;
+        lock (_samplerLock) worker = _gpuSamplerThread;
+        if (worker != null) await System.Threading.Tasks.Task.Run(() => worker.Join()).ConfigureAwait(false);
     }
 }
 

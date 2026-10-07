@@ -43,11 +43,13 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private readonly Dispatcher _dispatcher;
     private readonly TimeSpan _activeInterval;
+    private readonly Func<string, IReadOnlyList<CapabilityUsage>> _scanCapability;
+    private readonly Func<bool>? _registryChanged;
     private readonly MicrophoneActivityGate _microphoneActivityGate = new(
         MicrophoneSignalThreshold,
         MicrophoneSignalHoldDuration);
     private readonly MicrophoneFlowProbe _microphoneFlowProbe = new();
-    private readonly ScreenRecordingProbe _screenRecordingProbe = new();
+    private readonly ScreenRecordingProbe _screenRecordingProbe;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _micFlowGate = new(1, 1);
     private readonly object _lifecycleLock = new();
@@ -77,9 +79,20 @@ public sealed class PrivacyIndicatorService : IDisposable
     public PrivacyIndicatorState CurrentState { get; private set; } = PrivacyIndicatorState.Empty;
 
     public PrivacyIndicatorService(TimeSpan? pollInterval = null)
+        : this(pollInterval, ScanCapability, null, new ScreenRecordingProbe())
+    {
+    }
+
+    internal PrivacyIndicatorService(TimeSpan? pollInterval,
+        Func<string, IReadOnlyList<CapabilityUsage>> scanCapability,
+        Func<bool>? registryChanged,
+        ScreenRecordingProbe screenRecordingProbe)
     {
         _activeInterval = pollInterval ?? ActivePollInterval;
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+        _scanCapability = scanCapability;
+        _registryChanged = registryChanged;
+        _screenRecordingProbe = screenRecordingProbe;
     }
 
     public void Start()
@@ -165,10 +178,11 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private async Task WorkerLoopAsync(int generation, CancellationToken token)
     {
-        using var userChanges = new RegistryChangeMonitor(Registry.CurrentUser, ConsentRoot);
-        using var machineChanges = new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot);
-        IReadOnlyList<CapabilityUsage>[]? capabilities = null;
-        long nextFullScan = 0;
+        using var userChanges = _registryChanged == null
+            ? new RegistryChangeMonitor(Registry.CurrentUser, ConsentRoot) : null;
+        using var machineChanges = _registryChanged == null
+            ? new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot) : null;
+        var capabilityCache = new CapabilityUsageCache(_scanCapability);
         while (!token.IsCancellationRequested)
         {
             PrivacyScanResult? result = null;
@@ -181,18 +195,9 @@ public sealed class PrivacyIndicatorService : IDisposable
                         break;
 
                     DateTime utcNow = DateTime.UtcNow;
-                    bool registryChanged = userChanges.ConsumeChange() | machineChanges.ConsumeChange();
-                    long now = Environment.TickCount64;
-                    if (capabilities == null || registryChanged || now >= nextFullScan)
-                    {
-                        capabilities = new[]
-                        {
-                            ScanCapability("microphone"), ScanCapability("webcam"),
-                            ScanCapability("graphicsCaptureProgrammatic"), ScanCapability("graphicsCaptureWithoutBorder"),
-                            ScanCapability("location")
-                        };
-                        nextFullScan = now + 30_000;
-                    }
+                    bool registryChanged = _registryChanged?.Invoke() ??
+                        (userChanges!.ConsumeChange() | machineChanges!.ConsumeChange());
+                    var capabilities = capabilityCache.GetSnapshot(registryChanged, Environment.TickCount64);
                     // Process exits and recording-duration thresholds still need reconciliation.
                     result = ExecuteBackgroundScan(utcNow, capabilities);
                 }
@@ -232,11 +237,11 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage>[]? capabilities = null)
     {
-        var micUsage = capabilities?[0] ?? ScanCapability("microphone");
-        var camUsage = capabilities?[1] ?? ScanCapability("webcam");
-        var programmaticCapture = capabilities?[2] ?? ScanCapability("graphicsCaptureProgrammatic");
-        var borderlessCapture = capabilities?[3] ?? ScanCapability("graphicsCaptureWithoutBorder");
-        var locationUsage = capabilities?[4] ?? ScanCapability("location");
+        var micUsage = capabilities?[0] ?? _scanCapability("microphone");
+        var camUsage = capabilities?[1] ?? _scanCapability("webcam");
+        var programmaticCapture = capabilities?[2] ?? _scanCapability("graphicsCaptureProgrammatic");
+        var borderlessCapture = capabilities?[3] ?? _scanCapability("graphicsCaptureWithoutBorder");
+        var locationUsage = capabilities?[4] ?? _scanCapability("location");
 
         using var running = new ConsumerProcessProbe();
         var microphoneCandidates = GetRelevantConsumerUsages(
@@ -306,6 +311,9 @@ public sealed class PrivacyIndicatorService : IDisposable
 
         if (_microphoneCandidates.Count > 0)
         {
+            // Camera, capture and location changes must not wait for a microphone
+            // probe, which can fail or block independently of the registry scan.
+            PublishState(CurrentState.MicrophoneInUse, MicrophoneFlowEvidence.Empty);
             lock (_lifecycleLock)
             {
                 StartMicrophoneFlowWorkerLocked();
@@ -500,6 +508,37 @@ public sealed class PrivacyIndicatorService : IDisposable
         bool ScreenRecordingActive,
         IReadOnlyList<string> LocationConsumers,
         DateTime UtcNow);
+
+    internal sealed class CapabilityUsageCache(Func<string, IReadOnlyList<CapabilityUsage>> scanCapability)
+    {
+        private static readonly string[] CapabilityNames =
+        {
+            "microphone", "webcam", "graphicsCaptureProgrammatic", "graphicsCaptureWithoutBorder", "location"
+        };
+        private IReadOnlyList<CapabilityUsage>[]? _snapshot;
+        private long _nextFullScan;
+
+        internal IReadOnlyList<CapabilityUsage>[] GetSnapshot(bool registryChanged, long now)
+        {
+            bool fullScan = _snapshot == null || registryChanged || now >= _nextFullScan;
+            if (!fullScan && !_snapshot!.Any(usages => usages.Count > 0))
+                return _snapshot!;
+
+            // Refresh open intervals each poll without repeatedly scanning idle
+            // capabilities. Full scans still reconcile missed start notifications.
+            var next = new IReadOnlyList<CapabilityUsage>[CapabilityNames.Length];
+            for (int i = 0; i < next.Length; i++)
+                next[i] = fullScan || _snapshot![i].Count > 0
+                    ? scanCapability(CapabilityNames[i])
+                    : _snapshot[i];
+
+            _snapshot = next;
+            if (fullScan)
+                _nextFullScan = now + 30_000;
+
+            return _snapshot;
+        }
+    }
 
     internal static IReadOnlyList<CapabilityUsage> GetRelevantConsumerUsages(
         IEnumerable<CapabilityUsage> usages,

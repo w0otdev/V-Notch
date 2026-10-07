@@ -20,9 +20,13 @@ public sealed class BluetoothMonitorService : IDisposable
     public event EventHandler<BluetoothDeviceInfo>? DeviceConnected;
     public event EventHandler<BluetoothDeviceInfo>? DeviceDisconnected;
 
-    public BluetoothMonitorService()
+    public BluetoothMonitorService() : this(System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher)
     {
-        _dispatcher = Dispatcher.CurrentDispatcher;
+    }
+
+    public BluetoothMonitorService(Dispatcher dispatcher)
+    {
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
     }
 
     public void Start()

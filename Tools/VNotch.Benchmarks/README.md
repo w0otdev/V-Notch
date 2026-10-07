@@ -13,9 +13,8 @@ To recheck a saved run, pass its `results` directory to `check_results.py`.
 
 The wrapper first builds the actual application in Release. The benchmark project
 references that DLL directly: BenchmarkDotNet's generated project otherwise
-redirects WPF intermediate paths and rebuilds the entire application, including
-unrelated Copilot downloads. Rebuild the app before invoking `dotnet run` directly
-after service changes. JSON package versions match the application's lock file.
+redirects WPF intermediate paths and rebuilds the entire application.
+Rebuild the app before invoking `dotnet run` directly after service changes.
 
 Baselines are copied from commit `896c463e2882ac5e0c6e9d5fc8753be81fd993c2`.
 Only class/interface names, kernel accessibility, and extraction of the original

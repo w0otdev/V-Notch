@@ -107,7 +107,7 @@ public sealed class MainWindowModulePresentationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void WeatherRevealStopsSkeletonAndShelfMirrorsDataThenHandlesUnavailableState(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    public void WeatherRevealStopsSkeletonAndHandlesUnavailableState(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
         AnimationConfig.SetReduceMotion(reducedMotion);
@@ -117,23 +117,16 @@ public sealed class MainWindowModulePresentationTests
             var window = fixture.Window;
             var settings = Field<NotchSettings>(window, "_settings");
             settings.EnableWeather = true;
-            settings.ShelfWidget = "weather";
             settings.ManualCity = "Bangkok";
-            window.ApplyShelfWidgetMode();
             Invoke(window, "UpdateWeatherSkeletonState");
             Assert.True(window.WeatherWidgetSkeleton.HasAnimatedProperties);
-            Assert.True(window.ShelfWeatherSkeleton.HasAnimatedProperties);
             var weather = new WeatherInfo { City = "Bangkok", Temperature = 31, High = 35, Low = 26, WeatherCode = 3, IsDay = true };
             Invoke(window, "WeatherModule_WeatherUpdated", null, new WeatherUpdateEventArgs { Weather = weather });
             await WpfFrameWaiter.UntilAsync(() => window.WeatherActualContent.Opacity == 1 && window.WeatherWidgetTranslate.Y == 0, "weather content revealed", ct);
             Assert.Equal("Bangkok", window.WeatherLocationText.Text);
             Assert.Equal("31°", window.WeatherTempText.Text);
             Assert.Equal(WeatherConditionFormatter.Format(3), window.WeatherConditionText.Text);
-            Assert.Equal(window.WeatherTempText.Text, window.ShelfWeatherTempText.Text);
-            Assert.Equal(window.WeatherConditionText.Text, window.ShelfWeatherDescText.Text);
-            Assert.Equal("Bangkok", window.ShelfWeatherCityText.Text);
             Assert.Equal(Visibility.Collapsed, window.WeatherWidgetSkeleton.Visibility);
-            Assert.Equal(Visibility.Collapsed, window.ShelfWeatherSkeleton.Visibility);
             Assert.False(window.WeatherWidgetSkeleton.HasAnimatedProperties);
             Invoke(window, "UpdateWeatherUI", new WeatherInfo { Temperature = 30, High = 35, Low = 25, WeatherCode = 0 });
             Assert.Equal("—", window.WeatherLocationText.Text);
@@ -142,40 +135,16 @@ public sealed class MainWindowModulePresentationTests
             settings.EnableWeather = false;
             Invoke(window, "WeatherModule_WeatherUpdated", null, new WeatherUpdateEventArgs());
             Assert.Equal(Loc.Get("weather.disabled"), window.WeatherLocationText.Text);
-            settings.ShelfWidget = "none";
-            window.ApplyShelfWidgetMode();
-            Assert.False(window.ShelfWeatherSkeleton.HasAnimatedProperties);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });
 
     [Fact]
-    public void ShelfWidgetsSwitchWithoutOpeningCameraAndClockStylesAreExclusive() => SharedStaTestRunner.Run(() =>
+    public void ClockStylesAreExclusiveWithoutOpeningCamera() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
-        window.SysMonCpuValueText.Text = "25%";
-        window.SysMonRamValueText.Text = "50%";
-        window.SysMonNetDownText.Text = "2 MB/s";
-        window.SysMonNetUpText.Text = "1 MB/s";
-        foreach (string widget in new[] { "sysmon", "clock", "weather", "none", "camera" })
-        {
-            settings.ShelfWidget = widget;
-            window.ApplyShelfWidgetMode();
-            Assert.Equal(widget == "camera" ? Visibility.Visible : Visibility.Collapsed, window.CameraSection.Visibility);
-            Assert.Equal(widget == "sysmon" ? Visibility.Visible : Visibility.Collapsed, window.ShelfSysMonSection.Visibility);
-            Assert.Equal(widget == "weather" ? Visibility.Visible : Visibility.Collapsed, window.ShelfWeatherSection.Visibility);
-            Assert.Equal(widget == "clock" ? Visibility.Visible : Visibility.Collapsed, window.ShelfClockSection.Visibility);
-            if (widget == "sysmon")
-            {
-                Assert.Equal("25%", window.ShelfSysMonCpuText.Text);
-                Assert.Equal("50%", window.ShelfSysMonRamText.Text);
-                Assert.Equal("↓ 2 MB/s", window.ShelfSysMonNetDownText.Text);
-                Assert.Equal("↑ 1 MB/s", window.ShelfSysMonNetUpText.Text);
-            }
-            if (widget == "clock") Assert.Matches(@"^\d{2}:\d{2}$", window.ShelfClockTimeText.Text);
-        }
         foreach (string style in new[] { "digital", "wordclock", "analog", "unknown" })
         {
             settings.ClockPageStyle = style;

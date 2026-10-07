@@ -248,6 +248,8 @@ public sealed class DiagnosticAndChangelogWindowTests
         private readonly IReadOnlyList<UpdateInfo> _releases;
         private readonly bool _fail;
         public string CurrentVersion { get; }
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public UpdateInfo? LatestUpdateInfo => null;
         internal ChangelogWindow Window { get; }
         internal ChangelogFixture(string installed, IReadOnlyList<UpdateInfo> releases, bool fail = false)
         {

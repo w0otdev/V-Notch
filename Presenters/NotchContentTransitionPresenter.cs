@@ -13,7 +13,7 @@ namespace VNotch.Presenters;
 public sealed class NotchContentViewRefs
 {
     public required FrameworkElement ExpandedContent { get; init; }
-    public Func<FrameworkElement?>? ExpandedContentOverride { get; init; }
+    public FrameworkElement? CameraContent { get; init; }
     public FrameworkElement? TimerContent { get; init; }
     public FrameworkElement? AudioContent { get; init; }
     public FrameworkElement? AudioScrollViewer { get; init; }
@@ -100,6 +100,13 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         // Cross-fade animation
         int fps = plan.Motion.TargetFps > 0 ? plan.Motion.TargetFps : AnimationConfig.TargetFps;
+        bool switchingExpandedView = plan.FromView != NotchView.Compact && plan.FromView != plan.TargetView;
+        var enterDuration = switchingExpandedView
+            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(320, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
+            : plan.Motion.Duration;
+        var exitDuration = switchingExpandedView
+            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(160, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
+            : plan.Motion.Duration;
 
         // Chuẩn bị target element theo Rule D3: Lấy opacity hiện tại TRƯỚC KHI dừng animation clock
         double targetStartOpacity = targetElement.Visibility == Visibility.Visible ? targetElement.Opacity : 0.0;
@@ -108,9 +115,9 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         targetElement.Opacity = targetStartOpacity;
         ClearTemporaryAnimationTransforms(targetElement);
 
-        var fadeIn = new DoubleAnimation(targetStartOpacity, 1.0, plan.Motion.Duration)
+        var fadeIn = new DoubleAnimation(targetStartOpacity, 1.0, enterDuration)
         {
-            EasingFunction = plan.Motion.Easing,
+            EasingFunction = switchingExpandedView ? new CubicEase { EasingMode = EasingMode.EaseInOut } : plan.Motion.Easing,
             FillBehavior = FillBehavior.HoldEnd
         };
         Timeline.SetDesiredFrameRate(fadeIn, fps);
@@ -158,7 +165,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 el.BeginAnimation(UIElement.OpacityProperty, null);
                 el.Opacity = currentElOpacity;
 
-                var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, plan.Motion.Duration)
+                var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, exitDuration)
                 {
                     EasingFunction = plan.Motion.Easing
                 };
@@ -378,9 +385,10 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     {
         return view switch
         {
-            NotchView.Media => _refs.ExpandedContentOverride?.Invoke() ?? _refs.ExpandedContent,
+            NotchView.Media => _refs.ExpandedContent,
             NotchView.Timer => _refs.TimerContent,
             NotchView.AudioMixer => _refs.AudioContent ?? _refs.AudioScrollViewer,
+            NotchView.Camera => _refs.CameraContent,
             NotchView.Secondary => _refs.SecondaryContent,
             _ => null
         };
@@ -389,7 +397,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     private List<FrameworkElement> GetAllElements()
     {
         var list = new List<FrameworkElement> { _refs.ExpandedContent };
-        if (_refs.ExpandedContentOverride?.Invoke() is { } content && !list.Contains(content)) list.Add(content);
+        if (_refs.CameraContent != null) list.Add(_refs.CameraContent);
         if (_refs.TimerContent != null) list.Add(_refs.TimerContent);
         if (_refs.AudioContent != null) list.Add(_refs.AudioContent);
         else if (_refs.AudioScrollViewer != null) list.Add(_refs.AudioScrollViewer);
