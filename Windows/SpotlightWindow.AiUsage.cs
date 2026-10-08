@@ -42,6 +42,10 @@ public partial class SpotlightWindow
         if (AiUsageRow.Visibility != visibility)
         {
             AiUsageRow.Visibility = visibility;
+            if (visibility == Visibility.Visible && AiBottomActionRow.Visibility != Visibility.Visible)
+            {
+                AiBottomActionRow.Visibility = Visibility.Visible;
+            }
             ScheduleContentResize();
         }
         AiUsageText.ToolTip = Loc.Get("spotlight.ai.usage.scope") +

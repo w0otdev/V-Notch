@@ -148,9 +148,16 @@ public sealed class MainWindowProgressPresentationTests
             expanded ? NotchShapeState.Expanded : NotchShapeState.Collapsed, "progress fixture");
         var info = new MediaInfo
         {
-            CurrentTrack = "Track", CurrentArtist = "Unknown", SourceAppId = "player", SessionInstanceKey = "session-a",
-            Position = TimeSpan.FromSeconds(30), Duration = TimeSpan.FromSeconds(100),
-            IsPlaying = true, IsAnyMediaPlaying = true, IsSeekEnabled = true, LastUpdated = DateTimeOffset.UtcNow
+            CurrentTrack = "Track",
+            CurrentArtist = "Unknown",
+            SourceAppId = "player",
+            SessionInstanceKey = "session-a",
+            Position = TimeSpan.FromSeconds(30),
+            Duration = TimeSpan.FromSeconds(100),
+            IsPlaying = true,
+            IsAnyMediaPlaying = true,
+            IsSeekEnabled = true,
+            LastUpdated = DateTimeOffset.UtcNow
         };
         Invoke(window, "UpdateProgressTracking", info);
         Assert.Equal("0:30", window.CurrentTimeText.Text);
@@ -190,8 +197,11 @@ public sealed class MainWindowProgressPresentationTests
         Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = "Live program" });
         Field<ProgressEngine>(window, "_progressEngine").OnMediaSnapshot(new ProgressSnapshot
         {
-            Position = TimeSpan.Zero, Duration = TimeSpan.Zero, IsPlaying = playing,
-            Timestamp = DateTime.UtcNow, SequenceNumber = 1
+            Position = TimeSpan.Zero,
+            Duration = TimeSpan.Zero,
+            IsPlaying = playing,
+            Timestamp = DateTime.UtcNow,
+            SequenceNumber = 1
         });
         Invoke(window, "RenderProgressBar");
         Assert.Equal(expected, window.RemainingTimeText.Text);

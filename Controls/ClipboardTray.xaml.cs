@@ -260,7 +260,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             // Publish the new collection before revealing it. A private/public
             // category transition must never make the previous results visible.
             Cards.Visibility = Visibility.Visible;
-            TrayDropBorder.Visibility = Visibility.Visible;
+            SetTrayDropBorderVisible(true);
             RevealResults();
             RebuildCategories();
             bool isSearch = !string.IsNullOrWhiteSpace(SearchBox.Text);
@@ -400,11 +400,11 @@ public partial class ClipboardTray : UserControl, IDisposable
         }
         if (!locked)
         {
-            TrayDropBorder.Visibility = Visibility.Visible;
+            SetTrayDropBorderVisible(true);
             return false;
         }
         Cards.Visibility = Visibility.Collapsed;
-        TrayDropBorder.Visibility = Visibility.Collapsed;
+        SetTrayDropBorderVisible(false);
         EmptyText.Visibility = Visibility.Collapsed;
         EmptyDropSilhouette.Visibility = Visibility.Collapsed;
         _cards.Clear();

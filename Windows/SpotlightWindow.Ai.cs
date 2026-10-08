@@ -99,8 +99,6 @@ public partial class SpotlightWindow
         AiWelcomeHint.Text = Loc.Get("spotlight.ai.welcomeHint");
         AiPromptOne.Content = Loc.Get("spotlight.ai.promptOne");
         AiPromptTwo.Content = Loc.Get("spotlight.ai.promptTwo");
-        AiSendButton.ToolTip = Loc.Get("spotlight.ai.send");
-        System.Windows.Automation.AutomationProperties.SetName(AiSendButton, Loc.Get("spotlight.ai.send"));
         AiStopButton.ToolTip = Loc.Get("spotlight.ai.stop");
         System.Windows.Automation.AutomationProperties.SetName(AiStopButton, Loc.Get("spotlight.ai.stop"));
         RenderAiStatus();
@@ -139,19 +137,21 @@ public partial class SpotlightWindow
                 "spotlight.ai.requestTimeout" or "spotlight.ai.timeout" ? "error" : null;
         AiStatus.Text = text;
         AiStatus.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+        if (AiStatus.Visibility == Visibility.Visible && AiBottomActionRow.Visibility != Visibility.Visible)
+        {
+            AiBottomActionRow.Visibility = Visibility.Visible;
+        }
         if (_aiMode) ScheduleContentResize();
     }
 
-    private void UpdateAiSendButtonState()
+    private void UpdateAiActionState()
     {
         UpdateAiUsage();
-        AiSendButton.IsEnabled = _aiRequest == null && !string.IsNullOrWhiteSpace(SearchBox.Text);
-        AiSendButton.Visibility = AiSendButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
-        AiStopButton.Visibility = _aiRequest == null ? Visibility.Collapsed : Visibility.Visible;
-        var rowVisibility = _aiRequest == null && SearchBox.Text.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
-        if (AiBottomActionRow.Visibility != rowVisibility)
+        AiStopButton.SetShown(_aiRequest != null);
+        // Reserve the footer so typing or clearing the draft cannot resize the AI view.
+        if (AiBottomActionRow.Visibility != Visibility.Visible)
         {
-            AiBottomActionRow.Visibility = rowVisibility;
+            AiBottomActionRow.Visibility = Visibility.Visible;
             ScheduleContentResize();
         }
     }
@@ -163,9 +163,8 @@ public partial class SpotlightWindow
         AiPanel.Visibility = Visibility.Visible;
         SetStatusPulse(false);
         UpdateAiActivity();
-        UpdateAiSendButtonState();
+        UpdateAiActionState();
         UpdateAiUsage();
-        AiStopButton.Visibility = _aiRequest == null ? Visibility.Collapsed : Visibility.Visible;
         bool shown = _contentShown;
         SetContentShown(true);
         if (shown) ScheduleContentResize();
@@ -238,7 +237,7 @@ public partial class SpotlightWindow
         _aiHistory.Add(pending);
         AddAiMessage(pending, animate: true);
         SearchBox.Clear();
-        UpdateAiSendButtonState();
+        UpdateAiActionState();
         UpdateAiWelcome();
         UpdateAiMetadata();
         ShowAiThinking();
@@ -426,8 +425,11 @@ public partial class SpotlightWindow
         e.Handled = true;
     }
 
-    private void AiSend_Click(object sender, RoutedEventArgs e) => _ = SendAiAsync();
     private void AiStop_Click(object sender, RoutedEventArgs e) => CancelAiRequest();
+    private void AiStopButton_HideCompleted(object sender, EventArgs e)
+    {
+        if (IsLoaded && _aiMode && !_isClosing) UpdateAiActionState();
+    }
     private async void AiNewChat_Click(object sender, RoutedEventArgs e)
     {
         await TransitionAiPageAsync(CreateNewAiChat);

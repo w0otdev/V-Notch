@@ -113,8 +113,8 @@ public sealed class SpotlightSearchPresentationTests
             var toggle = new KeyEventArgs(Keyboard.PrimaryDevice, new TestPresentationSource(), Environment.TickCount, Key.Tab) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
             Invoke(window, "Window_PreviewKeyDown", window, toggle);
             Assert.True(Field<bool>(window, "_aiMode"));
-            var escape = new KeyEventArgs(Keyboard.PrimaryDevice, new TestPresentationSource(), Environment.TickCount, Key.Escape) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
-            Invoke(window, "Window_PreviewKeyDown", window, escape);
+            var toggleBack = new KeyEventArgs(Keyboard.PrimaryDevice, new TestPresentationSource(), Environment.TickCount, Key.Tab) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+            Invoke(window, "Window_PreviewKeyDown", window, toggleBack);
             Assert.False(Field<bool>(window, "_aiMode"));
         }
         finally { AnimationConfig.SetReduceMotion(previous); }

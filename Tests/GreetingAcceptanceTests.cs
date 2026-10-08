@@ -51,7 +51,7 @@ public sealed class GreetingAcceptanceTests
             input.ProcessInput(new System.Windows.Input.TextCompositionEventArgs(
                 System.Windows.Input.Keyboard.PrimaryDevice,
                 new System.Windows.Input.TextComposition(input, fixture.Window, "test"))
-                { RoutedEvent = System.Windows.Input.TextCompositionManager.TextInputEvent });
+            { RoutedEvent = System.Windows.Input.TextCompositionManager.TextInputEvent });
             Assert.Equal(0, delivered);
             Assert.True(fixture.Window.IsGreetingInteractionBlocked);
             Invoke(fixture.Window, "DismissGreeting");

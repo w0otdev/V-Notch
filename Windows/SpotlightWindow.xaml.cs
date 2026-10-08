@@ -248,6 +248,8 @@ public partial class SpotlightWindow : Window
             if (_isParked) UnparkWindow();
             else if (!IsVisible) Show();
             IntPtr hwnd = EnsureHwnd();
+            // Reserve content against the same inner width used after the morph.
+            Shell.BorderThickness = new Thickness(IsLiquidGlassEnabled ? 0 : 1);
             UpdateLayout();
             FocusSearchBox(generation);
             PrepareEntranceContentReservation();
@@ -625,7 +627,7 @@ public partial class SpotlightWindow : Window
         {
             UpdateGlowingCaret();
             PlayTypingAnimation();
-            UpdateAiSendButtonState();
+            UpdateAiActionState();
             return;
         }
         PlayTypingAnimation();
@@ -1526,7 +1528,8 @@ public partial class SpotlightWindow : Window
         ContentRegion.Height = double.NaN;
         ContentRegion.HorizontalAlignment = HorizontalAlignment.Stretch;
         ContentRegion.ClipToBounds = true;
-        double availableWidth = Math.Max(1, Shell.ActualWidth);
+        double availableWidth = Math.Max(1, Shell.ActualWidth
+            - Shell.BorderThickness.Left - Shell.BorderThickness.Right);
         ContentRegion.Measure(new Size(availableWidth, double.PositiveInfinity));
         double naturalHeight = ContentRegion.DesiredSize.Height;
         if (!double.IsFinite(naturalHeight) || naturalHeight <= 0)
@@ -1891,8 +1894,12 @@ public partial class SpotlightWindow : Window
         }
         ShellContent.Opacity = 0;
         ContentTranslate.Y = 8;
-        var contentBlur = new System.Windows.Media.Effects.BlurEffect { Radius = 10 };
-        ShellContent.Effect = contentBlur;
+        // Keep text laid out at its destination width while the shell expands.
+        // An effect on this subtree also changes text rasterization at handoff.
+        ShellContent.Width = Math.Max(1, finalShellWidth
+            - Shell.BorderThickness.Left - Shell.BorderThickness.Right);
+        ShellContent.HorizontalAlignment = HorizontalAlignment.Left;
+        ShellContent.Effect = null;
 
         var expandWidth = CreateAnimation(startShellWidth, finalShellWidth,
             MorphDuration, morphEase, synchronizedMorph: true);
@@ -1909,8 +1916,6 @@ public partial class SpotlightWindow : Window
         contentFade.BeginTime = TimeSpan.FromMilliseconds(contentDelayMs);
         var contentSlide = CreateAnimation(8, 0, TimeSpan.FromMilliseconds(340), contentEase);
         contentSlide.BeginTime = contentFade.BeginTime;
-        var blurOut = CreateAnimation(10, 0, TimeSpan.FromMilliseconds(340), contentEase);
-        blurOut.BeginTime = contentFade.BeginTime;
         DoubleAnimation? notchFade = hasNotchSnapshot
             ? CreateAnimation(1, 0, TimeSpan.FromMilliseconds(260),
                 new CubicEase { EasingMode = EasingMode.EaseInOut })
@@ -1950,7 +1955,6 @@ public partial class SpotlightWindow : Window
             BeginAnimation(ShellTopCornerRadiusProperty, cornerTop);
             ShellContent.BeginAnimation(OpacityProperty, contentFade);
             ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-            contentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurOut);
             if (notchFade != null)
                 NotchMorphSnapshot.BeginAnimation(OpacityProperty, notchFade);
             // The notch has no light outline; the border only belongs to the
@@ -2020,8 +2024,10 @@ public partial class SpotlightWindow : Window
         double currentEarOpacity = ShellLeftEar?.Opacity ?? 0;
         AnimateMorphEars(currentEarOpacity, 0, TimeSpan.FromMilliseconds(200), TimeSpan.Zero);
         ContentTranslate.Y = current.ContentTranslateY;
-        var contentBlur = EnsureContentBlurEffect();
-        contentBlur.Radius = current.ContentBlurRadius;
+        ShellContent.Width = Math.Max(1, finalSize.Width
+            - Shell.BorderThickness.Left - Shell.BorderThickness.Right);
+        ShellContent.HorizontalAlignment = HorizontalAlignment.Left;
+        ShellContent.Effect = null;
 
         var morphEase = CreateMorphEase();
         var contentEase = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
@@ -2043,8 +2049,6 @@ public partial class SpotlightWindow : Window
             TimeSpan.FromMilliseconds(240), contentEase);
         var contentSlide = CreateAnimation(current.ContentTranslateY, 0,
             TimeSpan.FromMilliseconds(280), contentEase);
-        var blurClear = CreateAnimation(current.ContentBlurRadius, 0,
-            TimeSpan.FromMilliseconds(280), contentEase);
 
         expandWidth.Completed += (_, _) =>
         {
@@ -2061,7 +2065,6 @@ public partial class SpotlightWindow : Window
         Shell.BeginAnimation(OpacityProperty, shellReveal);
         ShellContent.BeginAnimation(OpacityProperty, contentFade);
         ContentTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
-        contentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurClear);
         AnimateShellBorder(current.BorderOpacity, 1, MorphDuration);
         SetNotchMorphActive(true);
 
@@ -2077,6 +2080,7 @@ public partial class SpotlightWindow : Window
 
     private Size MeasureEntranceShell()
     {
+        RestoreShellContentLayout();
         Shell.Margin = RestingShellMargin;
         // Include the resting border in the target and keep it during the morph.
         // Adding it only at handoff grows the auto-height shell by two DIPs.
@@ -2293,6 +2297,7 @@ public partial class SpotlightWindow : Window
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
         Shell.Effect = null;
+        RestoreShellContentLayout();
         Shell.Margin = RestingShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         // Top-aligned auto-height: the shell hugs its content inside the
@@ -2353,6 +2358,7 @@ public partial class SpotlightWindow : Window
         Shell.CacheMode = null;
         ShellContent.CacheMode = null;
         ShellContent.Effect = null;
+        RestoreShellContentLayout();
         Shell.Margin = RestingShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Stretch;
         Shell.VerticalAlignment = VerticalAlignment.Top;
@@ -2368,6 +2374,14 @@ public partial class SpotlightWindow : Window
         if (_shellBorderBrush != null) _shellBorderBrush.Opacity = 1;
         ShellContent.Opacity = 1;
         ContentTranslate.Y = 0;
+    }
+
+    private void RestoreShellContentLayout()
+    {
+        // PlayExit freezes the content width to avoid reflow inside the shrinking shell.
+        // Release that reservation before measuring or presenting an open window again.
+        ShellContent.Width = double.NaN;
+        ShellContent.HorizontalAlignment = HorizontalAlignment.Stretch;
     }
 
     private bool PrepareNotchMorphSnapshot()

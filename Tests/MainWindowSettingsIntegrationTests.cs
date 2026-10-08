@@ -29,7 +29,7 @@ public sealed class MainWindowSettingsIntegrationTests
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
         timer.Tick += (_, _) =>
         {
-            var settings = Application.Current.Windows.OfType<SettingsWindow>().SingleOrDefault();
+            var settings = Application.Current.Windows.OfType<SettingsWindow>().LastOrDefault();
             if (settings == null) return;
             timer.Stop();
             BackgroundTestWindows.ProtectInput(settings);

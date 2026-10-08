@@ -199,6 +199,8 @@ public partial class ConfirmationDialog : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        if (AnimationConfig.ReduceMotion) return;
+
         var easeOut = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
         var dur = TimeSpan.FromMilliseconds(280);
         int fps = AnimationConfig.TargetFps;
@@ -226,6 +228,12 @@ public partial class ConfirmationDialog : Window
 
         Confirmed = confirmed;
 
+        if (AnimationConfig.ReduceMotion)
+        {
+            Close();
+            return;
+        }
+
         var easeIn = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 6 };
         var dur = TimeSpan.FromMilliseconds(180);
         int fps = AnimationConfig.TargetFps;
@@ -240,10 +248,27 @@ public partial class ConfirmationDialog : Window
         Timeline.SetDesiredFrameRate(transY, fps);
         Timeline.SetDesiredFrameRate(opacity, fps);
 
-        opacity.Completed += (s, e) =>
+        bool closed = false;
+        void SafeClose()
         {
+            if (closed) return;
+            closed = true;
             Close();
+        }
+
+        opacity.Completed += (s, e) => SafeClose();
+
+        // Safety fallback in case WPF animation clock doesn't tick (e.g. headless CI)
+        var fallbackTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
         };
+        fallbackTimer.Tick += (_, _) =>
+        {
+            fallbackTimer.Stop();
+            SafeClose();
+        };
+        fallbackTimer.Start();
 
         CardScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
         CardScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);

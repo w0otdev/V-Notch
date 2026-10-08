@@ -204,7 +204,9 @@ public sealed class SpotlightPersonalizationAndMorphTests
         {
             using var fixture = new SpotlightWindowFixture(new NotchSettings
             {
-                EnableDynamicIslandMode = true, SpotlightDefaultAi = true, AutoCheckUpdates = false
+                EnableDynamicIslandMode = true,
+                SpotlightDefaultAi = true,
+                AutoCheckUpdates = false
             });
             var window = fixture.Window;
             window.MorphHostOverride = new MorphHost(false);

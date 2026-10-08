@@ -35,9 +35,7 @@ public sealed class SpotlightAiPresentationTests
         window.ShowSpotlight();
         Invoke(window, "ToggleAiMode");
         Assert.Equal(Visibility.Visible, window.AiWelcome.Visibility);
-        Assert.False(window.AiSendButton.IsEnabled);
         window.SearchBox.Text = "Explain this";
-        Assert.True(window.AiSendButton.IsEnabled);
         await (Task)Invoke(window, "SendAiAsync")!;
         Assert.NotNull(requestBody);
         using var json = JsonDocument.Parse(requestBody!);
@@ -52,6 +50,8 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(Visibility.Collapsed, window.AiWelcome.Visibility);
         Assert.True(window.AiCopyButton.IsEnabled);
         Assert.Null(Field<object?>(window, "_aiRequest"));
+        await WpfFrameWaiter.UntilAsync(() => window.AiStopButton.Visibility == Visibility.Collapsed,
+            "Stop button fades out after completion", ct);
         Assert.Equal(Visibility.Collapsed, window.AiStopButton.Visibility);
         await WpfFrameWaiter.UntilAsync(() => window.AiUsageRow.Visibility == Visibility.Visible, "stream usage published", ct);
         var store = new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc"));
@@ -89,7 +89,6 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(error, Field<string>(window, "_aiStatusKey"));
         Assert.Equal("error", window.AiStatus.Tag);
         Assert.Equal(Visibility.Visible, window.AiWelcome.Visibility);
-        Assert.True(window.AiSendButton.IsEnabled);
         await (Task)Invoke(window, "SendAiAsync")!;
         Assert.Equal(2, attempts);
         Assert.Equal("Retry succeeded", Field<List<SpotlightAiMessage>>(window, "_aiHistory")[1].Content);
@@ -119,7 +118,6 @@ public sealed class SpotlightAiPresentationTests
         var sending = (Task)Invoke(window, "SendAiAsync")!;
         await started.Task.WaitAsync(ct);
         Assert.Equal(Visibility.Visible, window.AiStopButton.Visibility);
-        Assert.False(window.AiSendButton.IsEnabled);
         window.SearchBox.Text = "Next question";
         Assert.Equal(Visibility.Visible, window.AiBottomActionRow.Visibility);
         Assert.Equal(Visibility.Visible, window.AiStopButton.Visibility);
@@ -132,6 +130,9 @@ public sealed class SpotlightAiPresentationTests
         Invoke(window, "AiStop_Click", window.AiStopButton, new RoutedEventArgs());
         await sending;
         Assert.True(cancelled);
+        Assert.False(window.AiStopButton.IsEnabled);
+        await WpfFrameWaiter.UntilAsync(() => window.AiStopButton.Visibility == Visibility.Collapsed,
+            "Stop button fades out after immediate cancellation", ct);
         Assert.Equal("Pending draft", window.SearchBox.Text);
         Assert.Empty(Field<List<SpotlightAiMessage>>(window, "_aiHistory"));
         Assert.Null(Field<Border?>(window, "_aiThinkingCard"));

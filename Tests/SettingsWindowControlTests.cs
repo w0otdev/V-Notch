@@ -584,7 +584,7 @@ public sealed class SettingsWindowControlTests
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
         timer.Tick += (_, _) =>
         {
-            var dialog = Application.Current.Windows.OfType<VNotch.Windows.ConfirmationDialog>().SingleOrDefault();
+            var dialog = Application.Current.Windows.OfType<VNotch.Windows.ConfirmationDialog>().LastOrDefault();
             if (dialog == null) return;
             timer.Stop();
             BackgroundTestWindows.ProtectInput(dialog);

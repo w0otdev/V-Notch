@@ -28,6 +28,8 @@ public partial class ClipboardTray
     private int _entranceStaggerVersion;
     private readonly HashSet<ListBoxItem> _entranceAnimatedContainers = [];
     private readonly Dictionary<FrameworkElement, object> _dismissingLayers = [];
+    private bool _trayDropBorderVisible = true;
+    private int _trayDropBorderMotionVersion;
 
     private void InitializeComponentMotion()
     {
@@ -137,7 +139,7 @@ public partial class ClipboardTray
         foreach (var panel in new FrameworkElement[] { LockPanel, ApprovalPanel, DetailPanel, EmptyText, EmptyDropSilhouette, StatusPanel, DeleteConfirmationPanel })
             if (panel.IsVisible) AnimateLayer(panel, true, 60, !reversing, 360, 10);
         if (LockPanel.IsVisible) QueuePasscodeFocus();
-        if (TrayDropBorder.Visibility == Visibility.Visible) AnimateTrayDropBorder(true, !reversing);
+        if (_trayDropBorderVisible) AnimateTrayDropBorder(true, !reversing);
     }
 
     public void BeginExit()
@@ -579,55 +581,52 @@ public partial class ClipboardTray
         if (sender is FrameworkElement element) AnimateCardPress(element, false);
     }
 
-    private void AnimateTrayDropBorder(bool entering, bool fresh = false)
+    private void SetTrayDropBorderVisible(bool visible)
+    {
+        if (_trayDropBorderVisible == visible) return;
+        _trayDropBorderVisible = visible;
+        if (!IsLoaded || !IsVisible || _trayLeaving || _disposed)
+        {
+            ++_trayDropBorderMotionVersion;
+            TrayDropBorder.BeginAnimation(OpacityProperty, null);
+            TrayDropBorder.Opacity = visible ? 1 : 0;
+            TrayDropBorder.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+        AnimateTrayDropBorder(visible, collapseOnExit: !visible);
+    }
+
+    private void AnimateTrayDropBorder(bool entering, bool fresh = false, bool collapseOnExit = false)
     {
         if (TrayDropBorder == null || _disposed) return;
-        TrayDropBorder.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, null);
+        int version = ++_trayDropBorderMotionVersion;
+        // Capture the rendered value before removing the clock so rapid reversals
+        // continue from the current fade rather than jumping to its old target.
+        double fromOpacity = fresh || TrayDropBorder.Visibility != Visibility.Visible ? 0 : TrayDropBorder.Opacity;
+        double targetOpacity = entering ? 1 : 0;
         TrayDropBorder.BeginAnimation(OpacityProperty, null);
+        TrayDropBorder.Opacity = targetOpacity;
+        if (entering) TrayDropBorder.Visibility = Visibility.Visible;
 
-        if (entering)
+        if (fromOpacity == targetOpacity)
         {
-            if (TrayDropBorder.Visibility != Visibility.Visible)
-                TrayDropBorder.Visibility = Visibility.Visible;
-
-            double fromOpacity = fresh ? 0 : TrayDropBorder.Opacity;
-            TrayDropBorder.Opacity = 1.0;
-            TrayDropBorder.StrokeDashOffset = 0;
-
-            if (AnimationConfig.ReduceMotion) return;
-
-            int duration = 320;
-            var fade = new DoubleAnimation(fromOpacity, 1.0, TimeSpan.FromMilliseconds(duration))
-            {
-                EasingFunction = TrayEase,
-                FillBehavior = FillBehavior.Stop
-            };
-            Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
-            TrayDropBorder.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
-
-            var dashAnim = new DoubleAnimation(16, 0, TimeSpan.FromMilliseconds(duration))
-            {
-                EasingFunction = TrayEase,
-                FillBehavior = FillBehavior.Stop
-            };
-            Timeline.SetDesiredFrameRate(dashAnim, AnimationConfig.TargetFps);
-            TrayDropBorder.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, dashAnim, HandoffBehavior.SnapshotAndReplace);
+            if (collapseOnExit) TrayDropBorder.Visibility = Visibility.Collapsed;
+            return;
         }
-        else
+
+        var fade = new DoubleAnimation(fromOpacity, targetOpacity,
+            TimeSpan.FromMilliseconds(AnimationConfig.ReduceMotion ? 80 : MotionStandard))
         {
-            double fromOpacity = TrayDropBorder.Opacity;
-            TrayDropBorder.Opacity = 0.0;
-            TrayDropBorder.StrokeDashOffset = 0;
-
-            if (AnimationConfig.ReduceMotion || fromOpacity <= 0.01) return;
-
-            var fade = new DoubleAnimation(fromOpacity, 0.0, TimeSpan.FromMilliseconds(MotionStandard))
+            EasingFunction = TrayMotion.EaseOut,
+            FillBehavior = FillBehavior.Stop
+        };
+        if (collapseOnExit)
+            fade.Completed += (_, _) =>
             {
-                EasingFunction = TrayEase,
-                FillBehavior = FillBehavior.Stop
+                if (!_disposed && version == _trayDropBorderMotionVersion && !_trayDropBorderVisible)
+                    TrayDropBorder.Visibility = Visibility.Collapsed;
             };
-            Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
-            TrayDropBorder.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
-        }
+        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
+        TrayDropBorder.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
     }
 }

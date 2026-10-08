@@ -16,6 +16,46 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class ClipboardTrayMotionRegressionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DropBorderFadesAcrossLockChangesAndReversesWithoutStaleDismissal(bool reducedMotion) => RunWithCards(0, async (tray, list, cards) =>
+    {
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        var border = (System.Windows.Shapes.Rectangle)tray.FindName("TrayDropBorder");
+        border.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.4, 0.4, TimeSpan.FromSeconds(1)));
+        await NextRenderFrame();
+        Assert.Equal(0.4, border.Opacity);
+
+        SetField(tray, "_category", "Personal");
+        Invoke(tray, "UpdateCategoryLockState");
+        Assert.Equal(Visibility.Visible, border.Visibility);
+        await NextRenderFrame();
+        Assert.InRange(border.Opacity, 0, 0.4);
+
+        SetField(tray, "_category", "All");
+        Invoke(tray, "UpdateCategoryLockState");
+        await Task.Delay(240);
+        await NextRenderFrame();
+        Assert.Equal(Visibility.Visible, border.Visibility);
+        Assert.Equal(1, border.Opacity);
+        Assert.False(border.IsHitTestVisible);
+
+        SetField(tray, "_category", "Personal");
+        Invoke(tray, "UpdateCategoryLockState");
+        await Task.Delay(240);
+        await NextRenderFrame();
+        Assert.Equal(Visibility.Collapsed, border.Visibility);
+        Assert.Equal(0, border.Opacity);
+
+        SetField(tray, "_category", "All");
+        Invoke(tray, "UpdateCategoryLockState");
+        Assert.Equal(Visibility.Visible, border.Visibility);
+        await Task.Delay(240);
+        await NextRenderFrame();
+        Assert.Equal(1, border.Opacity);
+    });
+
     [Fact]
     public void SmallScrollStepsSettleEvenWhenLayoutRoundsTheOffset() => RunWithCards(20, async (tray, list, cards) =>
     {

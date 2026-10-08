@@ -144,7 +144,9 @@ public sealed class ClipboardTrayFileDropTests
         using var tray = new ClipboardTray();
         var card = new ClipboardCardViewModel(new ClipboardEntry
         {
-            Kind = ClipboardKind.File, FileCount = fileCount, PrimaryExtension = ".sha256",
+            Kind = ClipboardKind.File,
+            FileCount = fileCount,
+            PrimaryExtension = ".sha256",
             Title = "V-Notch-Setup.exe.manifest.json, V-Notch-Setup.exe.manifest.sig"
         });
         var cards = (ObservableCollection<ClipboardCardViewModel>)typeof(ClipboardTray).GetField("_cards", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tray)!;
