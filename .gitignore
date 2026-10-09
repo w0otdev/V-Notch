@@ -90,6 +90,7 @@ update_settings.ps1
 !/Tools/StressRunner/
 !/Tools/SystemMonitorLifetimeProbe/
 !/Tools/UpdateCompatibility/
+!/Tools/TranslationBench/
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json

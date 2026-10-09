@@ -1,0 +1,132 @@
+<Window x:Class="VNotch.TranslationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:VNotch.Controls"
+        Title="Live translation" WindowStyle="None" ResizeMode="NoResize"
+        AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
+        ShowActivated="False" Topmost="True" SizeToContent="Height" Width="132" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI" FontWeight="Bold" Foreground="#F2F2F2" PreviewKeyDown="Window_KeyDown">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/V-Notch;component/Controls/SettingsComboBoxStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+            <SolidColorBrush x:Key="SettingsTextBrush" Color="#C8C8C8"/>
+            <SolidColorBrush x:Key="SurfaceBrush" Color="#141414"/>
+            <SolidColorBrush x:Key="SurfaceBrushHover" Color="#1B1B1B"/>
+        <sys:Double x:Key="ComboChevronThickness" xmlns:sys="clr-namespace:System;assembly=System.Runtime">2.5</sys:Double>
+        <Style x:Key="BoldIcon" TargetType="Path"><Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/><Setter Property="StrokeThickness" Value="2.5"/><Setter Property="StrokeStartLineCap" Value="Round"/><Setter Property="StrokeEndLineCap" Value="Round"/><Setter Property="StrokeLineJoin" Value="Round"/><Setter Property="Width" Value="16"/><Setter Property="Height" Value="16"/><Setter Property="Stretch" Value="Uniform"/><Setter Property="Margin" Value="0,0,8,0"/></Style>
+        <Style x:Key="ActionButton" TargetType="Button">
+            <EventSetter Event="MouseEnter" Handler="ButtonMotion"/>
+            <EventSetter Event="MouseLeave" Handler="ButtonMotion"/>
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ButtonMotion"/>
+            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="ButtonMotion"/>
+            <Setter Property="Foreground" Value="#F2F2F2"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,9"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.85"/><Setter TargetName="Surface" Property="Background" Value="#12FFFFFF"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#FFFFFF"/><Setter TargetName="Surface" Property="BorderThickness" Value="1"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid>
+        <Border Margin="26" Background="#080808" CornerRadius="22" IsHitTestVisible="False"
+                Opacity="{Binding Opacity, ElementName=PopupSurface}" RenderTransform="{Binding RenderTransform, ElementName=PopupSurface}"
+                RenderTransformOrigin="{Binding RenderTransformOrigin, ElementName=PopupSurface}">
+            <Border.CacheMode><BitmapCache/></Border.CacheMode>
+            <Border.Effect><DropShadowEffect Color="Black" BlurRadius="24" ShadowDepth="6" Direction="270" Opacity="0.65" RenderingBias="Performance"/></Border.Effect>
+        </Border>
+    <Border x:Name="PopupSurface" Margin="26" Background="#FA080808" BorderThickness="0" CornerRadius="22" Padding="18" RenderTransformOrigin="0.5,0">
+        <Border.RenderTransform><TranslateTransform x:Name="PopupOffset"/></Border.RenderTransform>
+        <Grid>
+            <Grid x:Name="SelectionChip">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions>
+                <Button x:Name="OpenButton" Style="{StaticResource ActionButton}" Background="Transparent" Padding="0,2" Click="Open_Click"/>
+                <Button Grid.Column="1" Style="{StaticResource ActionButton}"  Padding="0" Background="Transparent" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+            </Grid>
+            <Grid x:Name="TranslationPanel" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <DockPanel x:Name="TranslationDragHandle" Margin="0,0,0,14" Background="Transparent" Cursor="SizeAll"
+                           MouseLeftButtonDown="PopupDragStarted" MouseMove="PopupDragMoved"
+                           MouseLeftButtonUp="PopupDragEnded" LostMouseCapture="PopupDragCaptureLost">
+                    <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource ActionButton}"  Padding="7" Background="Transparent" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+                    <TextBlock x:Name="LanguageSummary" Foreground="#8C959E" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </DockPanel>
+                <Grid Grid.Row="1" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="28"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <ComboBox x:Name="SourceLanguageCombo" DisplayMemberPath="Name" SelectedValuePath="Code" TextSearch.TextPath="Code" IsTextSearchEnabled="True" MinHeight="28" BorderThickness="0" SelectionChanged="Language_Changed"/>
+                    <Path Grid.Column="1" Data="M 1,7 L 13,7 M 8,2 L 13,7 L 8,12" Stroke="#8C959E" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <ComboBox x:Name="TargetLanguageCombo" Grid.Column="2" DisplayMemberPath="Name" SelectedValuePath="Code" TextSearch.TextPath="Code" IsTextSearchEnabled="True" MinHeight="28" BorderThickness="0" SelectionChanged="Language_Changed"/>
+                </Grid>
+                <Expander x:Name="OriginalExpander" Grid.Row="2" Foreground="#8C959E" Margin="0,0,0,10" Expanded="OriginalExpansionChanged" Collapsed="OriginalExpansionChanged">
+                    <Expander.Template><ControlTemplate TargetType="Expander"><StackPanel>
+                        <ToggleButton x:Name="OriginalToggle" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" Cursor="Hand" Foreground="{TemplateBinding Foreground}">
+                            <ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border Background="Transparent" Padding="0,6"><StackPanel Orientation="Horizontal">
+                                <Path x:Name="OriginalChevron" Data="M 2,4 L 7,9 L 12,4" Stroke="{TemplateBinding Foreground}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="14" Height="14" Margin="0,0,8,0" RenderTransformOrigin="0.5,0.5"><Path.RenderTransform><RotateTransform Angle="-90"/></Path.RenderTransform></Path>
+                                <ContentPresenter Content="{Binding Header, RelativeSource={RelativeSource AncestorType=Expander}}" VerticalAlignment="Center"/>
+                            </StackPanel></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="#F2F2F2"/></Trigger></ControlTemplate.Triggers></ControlTemplate></ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter x:Name="OriginalContent" ContentSource="Content" Visibility="Collapsed"/>
+                    </StackPanel><ControlTemplate.Triggers><Trigger Property="IsExpanded" Value="True"><Setter TargetName="OriginalContent" Property="Visibility" Value="Visible"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Expander.Template>
+                    <ScrollViewer MaxHeight="110" VerticalScrollBarVisibility="Auto">
+                        <TextBlock x:Name="OriginalText" TextWrapping="Wrap" FontSize="13" Margin="0,6,0,0"/>
+                    </ScrollViewer>
+                </Expander>
+                <Grid x:Name="ResultViewport" Grid.Row="3" ClipToBounds="True">
+                    <ScrollViewer x:Name="ResultScroll" MaxHeight="260" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" FontSize="19" FontWeight="Bold"
+                                 Background="Transparent" Foreground="#F2F2F2" BorderThickness="0" Padding="0"/>
+                    </ScrollViewer>
+                    <!-- The gradient itself provides softness; blurring the overlay thins its outer edges and exposes text. -->
+                    <Border x:Name="ResultTopFade" Height="28" VerticalAlignment="Top" Opacity="0" IsHitTestVisible="False">
+                        <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#FF080808" Offset="0"/><GradientStop Color="#A6080808" Offset="0.3"/><GradientStop Color="#40080808" Offset="0.65"/><GradientStop Color="#00080808" Offset="1"/>
+                        </LinearGradientBrush></Border.Background>
+                    </Border>
+                    <Border x:Name="ResultBottomFade" Height="28" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False">
+                        <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00080808" Offset="0"/><GradientStop Color="#40080808" Offset="0.35"/><GradientStop Color="#A6080808" Offset="0.7"/><GradientStop Color="#FF080808" Offset="1"/>
+                        </LinearGradientBrush></Border.Background>
+                    </Border>
+                </Grid>
+                <Grid x:Name="TranslationStatusRow" Grid.Row="4" Margin="0,10,0,0" MinHeight="24">
+                    <Grid.Style><Style TargetType="Grid"><Style.Triggers>
+                        <MultiDataTrigger><MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding Text, ElementName=StatusText}" Value=""/>
+                            <Condition Binding="{Binding Visibility, ElementName=LoadingIndicator}" Value="Collapsed"/>
+                        </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Collapsed"/></MultiDataTrigger>
+                    </Style.Triggers></Style></Grid.Style>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <controls:DotLoadingIndicator x:Name="LoadingIndicator" Visibility="Collapsed" IsActive="False"
+                                                  Margin="0,0,10,0" VerticalAlignment="Center" AutomationProperties.Name="Loading"/>
+                    <TextBlock x:Name="StatusText" Grid.Column="1" TextWrapping="Wrap" Foreground="#8C959E" FontSize="12" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+                </Grid>
+                <WrapPanel x:Name="TranslationActions" Grid.Row="5" Margin="0,12,0,0">
+                    <Button x:Name="ReplaceButton" Style="{StaticResource ActionButton}" Margin="0,0,8,8" Click="Replace_Click" IsEnabled="False"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 2,4 L 14,4 M 11,1 L 14,4 L 11,7 M 14,12 L 2,12 M 5,9 L 2,12 L 5,15"/><TextBlock x:Name="ReplaceLabel" VerticalAlignment="Center"/></StackPanel></Button>
+                    <Button x:Name="CopyButton" Style="{StaticResource ActionButton}" Margin="0,0,8,8" Click="Copy_Click" IsEnabled="False"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 5,5 L 14,5 L 14,15 L 5,15 Z M 2,11 L 2,2 L 11,2"/><TextBlock x:Name="CopyLabel" VerticalAlignment="Center"/></StackPanel></Button>
+                    <Button x:Name="TranslateButton" Style="{StaticResource ActionButton}" Margin="0,0,0,8" Click="Translate_Click"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 1,3 L 9,3 M 5,1 L 5,3 M 7,3 C 7,8 4,10 1,11 M 3,6 L 8,11 M 9,15 L 12,7 L 15,15 M 10,12 L 14,12"/><TextBlock x:Name="TranslateLabel" VerticalAlignment="Center"/></StackPanel></Button>
+                    <Button x:Name="CancelButton" Style="{StaticResource ActionButton}" Margin="0,0,0,8" Visibility="Collapsed" Click="Cancel_Click"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 4,4 L 12,4 L 12,12 L 4,12 Z"/><TextBlock x:Name="CancelLabel" VerticalAlignment="Center"/></StackPanel></Button>
+                </WrapPanel>
+            </Grid>
+        </Grid>
+    </Border>
+    </Grid>
+</Window>

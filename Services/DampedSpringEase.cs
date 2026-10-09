@@ -15,8 +15,10 @@ internal sealed class DampedSpringEase : EasingFunctionBase
 
     public DampedSpringEase() : this(0.82) { }
 
-    private DampedSpringEase(double dampingRatio)
+    internal DampedSpringEase(double dampingRatio)
     {
+        if (!double.IsFinite(dampingRatio) || dampingRatio <= 0 || dampingRatio > 1)
+            throw new ArgumentOutOfRangeException(nameof(dampingRatio));
         DampingRatio = dampingRatio;
         _dampedFrequency = NaturalFrequency * Math.Sqrt(1 - dampingRatio * dampingRatio);
         _endResponse = StepResponse(1);
@@ -32,7 +34,9 @@ internal sealed class DampedSpringEase : EasingFunctionBase
         return 1 - StepResponse(1 - time) / _endResponse;
     }
 
-    private double StepResponse(double time) => 1 - Math.Exp(-DampingRatio * NaturalFrequency * time)
+    private double StepResponse(double time) => DampingRatio == 1
+        ? 1 - Math.Exp(-NaturalFrequency * time) * (1 + NaturalFrequency * time)
+        : 1 - Math.Exp(-DampingRatio * NaturalFrequency * time)
         * (Math.Cos(_dampedFrequency * time)
             + DampingRatio * NaturalFrequency / _dampedFrequency * Math.Sin(_dampedFrequency * time));
 

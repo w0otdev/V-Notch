@@ -14,6 +14,4 @@ internal interface ISpotlightMorphHost
     void SetSpotlightMorphActive(bool active);
 
     void BeginSpotlightReturnHandoff(TimeSpan duration);
-
-    ImageSource? GetGlassBackdropImageSource() => null;
 }

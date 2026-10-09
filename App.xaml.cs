@@ -57,6 +57,7 @@ public partial class App : Application
 
     public App()
     {
+        WindowAnimationPolicy.Initialize();
         try
         {
             if (OperatingSystem.IsWindows())
@@ -134,6 +135,7 @@ public partial class App : Application
 
             RuntimeLog.InitializeNewSession("vnotch-debug.log");
             RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
+            Services.GetRequiredService<AppFileCleanupService>().Start();
 
             CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
             ServicePrewarmer.Prewarm(Services);

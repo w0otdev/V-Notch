@@ -1,0 +1,56 @@
+[
+  {
+    "repository": "Kutalia/madlad400-3b-mt-onnx",
+    "revision": "066656188a5390d1d0af6e824707a12cf28fc309",
+    "file": "tokenizer.json",
+    "localFile": "tokenizer.json",
+    "url": "https://huggingface.co/Kutalia/madlad400-3b-mt-onnx/resolve/066656188a5390d1d0af6e824707a12cf28fc309/tokenizer.json",
+    "bytes": 16613995,
+    "sha256": "03f5d7dc88da0cb4bb6b7a1d9d66ee62f5bd339ef0aaaf6e89d74829df5830c0"
+  },
+  {
+    "repository": "Kutalia/madlad400-3b-mt-onnx",
+    "revision": "066656188a5390d1d0af6e824707a12cf28fc309",
+    "file": "config.json",
+    "localFile": "config.json",
+    "url": "https://huggingface.co/Kutalia/madlad400-3b-mt-onnx/resolve/066656188a5390d1d0af6e824707a12cf28fc309/config.json",
+    "bytes": 850,
+    "sha256": "a7f208db9a60aad30bdbbdd6beb1de5c92a14e1a4c85ce37de7201ea6c3712d9"
+  },
+  {
+    "repository": "Kutalia/madlad400-3b-mt-onnx",
+    "revision": "066656188a5390d1d0af6e824707a12cf28fc309",
+    "file": "tokenizer_config.json",
+    "localFile": "tokenizer_config.json",
+    "url": "https://huggingface.co/Kutalia/madlad400-3b-mt-onnx/resolve/066656188a5390d1d0af6e824707a12cf28fc309/tokenizer_config.json",
+    "bytes": 928,
+    "sha256": "21de89977129392c6f079c6fe3f8f5f616dd09c7c85d468084aec278111dcb1a"
+  },
+  {
+    "repository": "google/madlad400-3b-mt",
+    "revision": "fa184c675da0b5c9e1c8694fccd4e12e2d422094",
+    "file": "spiece.model",
+    "localFile": "spiece.model",
+    "url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/spiece.model",
+    "bytes": 4427844,
+    "sha256": "ef11ac9a22c7503492f56d48dce53be20e339b63605983e9f27d2cd0e0f3922c"
+  },
+  {
+    "repository": "google/madlad400-3b-mt",
+    "revision": "fa184c675da0b5c9e1c8694fccd4e12e2d422094",
+    "file": "tokenizer_config.json",
+    "localFile": "official-tokenizer_config.json",
+    "url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/tokenizer_config.json",
+    "bytes": 830,
+    "sha256": "641fc660745306dfb935f666a68f8bc10a44c39241cfb357be518fda8c09662d"
+  },
+  {
+    "repository": "google/madlad400-3b-mt",
+    "revision": "fa184c675da0b5c9e1c8694fccd4e12e2d422094",
+    "file": "README.md",
+    "localFile": "official-README.md",
+    "url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/README.md",
+    "bytes": 9666,
+    "sha256": "7579fd7a40ebb96bc9098b1c817825c572a20763aa8fc80c5261a0517e224979"
+  }
+]

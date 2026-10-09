@@ -37,6 +37,40 @@ public class NotchSettings
     public int ClipboardCaptureDelay { get => _clipboardCaptureDelay; set => _clipboardCaptureDelay = Math.Clamp(value, 100, 2000); }
     public string ClipboardHotkey { get; set; } = "";
 
+    public string TranslationModelId { get; set; } = "qwen3-4b-instruct-2507-q4km-v1";
+    public bool EnableLiveTranslation { get; set; } = false;
+    public bool AutoLiveTranslation { get; set; } = false;
+    public bool FormatTranslationText { get; set; } = true;
+    public string TranslationSourceLanguage { get; set; } = "auto";
+    public string TranslationTargetLanguage { get; set; } = "vi";
+    private int _translationModelIdleMinutes = 5;
+    public int TranslationModelIdleMinutes { get => _translationModelIdleMinutes; set => _translationModelIdleMinutes = Math.Clamp(value, 0, 60); }
+    private int _translationCacheMinutes = 30;
+    public int TranslationCacheMinutes { get => _translationCacheMinutes; set => _translationCacheMinutes = Math.Clamp(value, 1, 240); }
+    private int _translationCacheEntries = 128;
+    public int TranslationCacheEntries { get => _translationCacheEntries; set => _translationCacheEntries = Math.Clamp(value, 0, 512); }
+    private int _translationGpuLayers = 36;
+    public int TranslationGpuLayers { get => _translationGpuLayers; set => _translationGpuLayers = Math.Clamp(value, 0, 128); }
+    private int _translationThreads = 0;
+    public int TranslationThreads { get => _translationThreads; set => _translationThreads = Math.Clamp(value, 0, 64); }
+    private int _translationBatchThreads = 0;
+    public int TranslationBatchThreads { get => _translationBatchThreads; set => _translationBatchThreads = Math.Clamp(value, 0, 64); }
+    private int _translationContextSize = 2048;
+    public int TranslationContextSize { get => _translationContextSize; set => _translationContextSize = Math.Clamp(value, 2048, 8192); }
+    private int _translationBatchSize = 512;
+    public int TranslationBatchSize { get => _translationBatchSize; set => _translationBatchSize = Math.Clamp(value, 32, 512); }
+    private int _translationOutputTokens = 768;
+    public int TranslationOutputTokens { get => _translationOutputTokens; set => _translationOutputTokens = Math.Clamp(value, 128, 1024); }
+    private int _translationTemperaturePercent = 20;
+    public int TranslationTemperaturePercent { get => _translationTemperaturePercent; set => _translationTemperaturePercent = Math.Clamp(value, 0, 100); }
+    private int _translationTopPPercent = 80;
+    public int TranslationTopPPercent { get => _translationTopPPercent; set => _translationTopPPercent = Math.Clamp(value, 1, 100); }
+    private int _translationTopK = 20;
+    public int TranslationTopK { get => _translationTopK; set => _translationTopK = Math.Clamp(value, 1, 100); }
+    private int _translationTimeoutSeconds = 90;
+    public int TranslationTimeoutSeconds { get => _translationTimeoutSeconds; set => _translationTimeoutSeconds = Math.Clamp(value, 15, 600); }
+
+
     public string CameraDeviceId { get; set; } = "";
     public string VisualizerAudioDeviceId { get; set; } = "";
     public string BatteryDeviceId { get; set; } = SystemBatteryDeviceId;

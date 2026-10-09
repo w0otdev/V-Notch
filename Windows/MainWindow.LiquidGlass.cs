@@ -15,11 +15,15 @@ public partial class MainWindow
     private LiquidGlassRefractionEffect? _glassRefractionEffect;
     private LiquidGlassInteractionController? _glassInteractionController;
     private bool _gpuRefractionConfigured;
+    private bool _gpuRefractionFailed;
+    private System.Windows.Threading.DispatcherTimer? _glassGpuRetryTimer;
+    private int _glassGpuRetrySeconds = 5;
+    private bool _glassRendererRebuildQueued;
     private bool _glassInitialFramePending;
     private double _glassConfiguredOpacity = 1.0;
 
     private bool UseGpuRefraction =>
-        (_settings.LiquidGlass?.UseGpuRefraction ?? true) &&
+        !_gpuRefractionFailed && (_settings.LiquidGlass?.UseGpuRefraction ?? true) &&
         LiquidGlassRefractionEffect.IsAvailable;
 
     private bool IsLiquidGlassEnabled =>
@@ -27,6 +31,7 @@ public partial class MainWindow
 
     private void ApplyLiquidGlassSkin()
     {
+        if (_cleanedUp) return;
         if (GlassBackdropHost == null) return;
 
         if (IsLiquidGlassEnabled)
@@ -53,8 +58,7 @@ public partial class MainWindow
                 SetOpticalRimVisibility(Visibility.Collapsed);
                 if (GlassDarkOverlay != null) GlassDarkOverlay.Visibility = Visibility.Collapsed;
 
-                _liquidGlass?.Stop();
-                DetachGpuRefraction();
+                StopLiquidGlass();
                 return;
             }
 
@@ -71,7 +75,7 @@ public partial class MainWindow
             CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
 
             int targetFps = _settings.LiquidGlass?.TargetFps ?? 0;
-            if (targetFps <= 0 || targetFps == 60) targetFps = VNotch.Services.AnimationConfig.TargetFps;
+            if (targetFps <= 0) targetFps = VNotch.Services.AnimationConfig.TargetFps;
 
             _liquidGlass ??= new LiquidGlassController(
                 GlassBackdropImage,
@@ -79,18 +83,21 @@ public partial class MainWindow
                 GetGlassCaptureRegion,
                 // This is a hard render cadence: unchanged desktop frames are still
                 activeFps: Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps),
-                logTag: "ISLAND");
+                logTag: "ISLAND",
+                maxRegionWidth: (int)Math.Ceiling(1600 * GetGlassDpiScale()),
+                maxRegionHeight: (int)Math.Ceiling(600 * GetGlassDpiScale()));
 
             // Magnifier capture excludes the notch internally while the user-facing
             _liquidGlass.HideFromScreenCapture = false;
 
             // Match the controller to the notch's current motion state so it starts
-            _liquidGlass.SetAnimating(_isAnimating);
+            UpdateGlassMotionState();
 
             ConfigureGpuRefraction();
 
             ApplyLiquidGlassConfig();
             _liquidGlass.Start();
+            if (_gpuRefractionFailed) ScheduleGlassGpuRetry();
             _glassMaterialPresenter.SyncCornerRadius(NotchBorder.CornerRadius);
             ApplyGlassContentShadow(true);
             ApplyGlassToTimerBar(true);
@@ -104,10 +111,7 @@ public partial class MainWindow
         {
             GlassMaterialClipHost.Visibility = Visibility.Collapsed;
             _glassInitialFramePending = false;
-            _liquidGlass?.Stop();
-            DetachGpuRefraction();
-
-            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+            StopLiquidGlass();
 
             ApplyGlassContentShadow(false);
             ApplyGlassToTimerBar(false);
@@ -140,6 +144,9 @@ public partial class MainWindow
     {
         if (GlassBackdropHost == null) return;
         var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
+        _glassMaterialPresenter.PowerFactor = cfg.PowerFactor;
+        UpdateNotchClip();
+        UpdateGlassClip();
 
         double dipRadius = Math.Clamp(cfg.BlurAmount, 0, 1) * 28.0;
         double dpiScale = GetGlassDpiScale();
@@ -149,7 +156,7 @@ public partial class MainWindow
             _liquidGlass.SetBlur(gaussianSigma);
 
             int targetFps = cfg.TargetFps;
-            if (targetFps <= 0 || targetFps == 60) targetFps = VNotch.Services.AnimationConfig.TargetFps;
+            if (targetFps <= 0) targetFps = VNotch.Services.AnimationConfig.TargetFps;
 
             _liquidGlass.UpdateFps(Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps));
             if (UseGpuRefraction)
@@ -253,35 +260,79 @@ public partial class MainWindow
 
             if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure))
             {
-                DetachGpuRefraction();
-                _liquidGlass.SetGpuMode(false, null);
-                ApplyGpuBlur(0.0);
+                OnGpuRefractionFailure(new InvalidOperationException("GPU presenter unavailable."));
                 return;
             }
 
             VNotch.Services.RuntimeLog.Log("LIQUIDGLASS",
                 $"GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS");
             _gpuRefractionConfigured = true;
+            _glassGpuRetryTimer?.Stop();
+            _glassGpuRetrySeconds = 5;
         }
         catch (Exception ex)
         {
-            VNotch.Services.RuntimeLog.Log("LIQUIDGLASS", $"GPU effect attach failed; using CPU fallback: {ex.Message}");
-            DetachGpuRefraction();
-            _liquidGlass.SetGpuMode(false, null);
+            OnGpuRefractionFailure(ex);
         }
     }
 
     private void OnGpuRefractionFailure(Exception ex)
     {
+        if (_cleanedUp) return;
+        _gpuRefractionFailed = true;
         VNotch.Services.RuntimeLog.Log("LIQUIDGLASS", $"GPU render failed; switched to CPU fallback: {ex.Message}");
         DetachGpuRefraction();
         _liquidGlass?.SetGpuMode(false, null);
-        ApplyGpuBlur(0.0);
+        ApplyLiquidGlassConfig();
+        ScheduleGlassGpuRetry();
+    }
+
+    private void ScheduleGlassGpuRetry()
+    {
+        if (_cleanedUp || !IsLiquidGlassEnabled ||
+            !(_settings.LiquidGlass?.UseGpuRefraction ?? true) || !LiquidGlassRefractionEffect.IsAvailable) return;
+        if (_glassGpuRetryTimer == null)
+        {
+            _glassGpuRetryTimer = new System.Windows.Threading.DispatcherTimer(
+                System.Windows.Threading.DispatcherPriority.Background, Dispatcher);
+            _glassGpuRetryTimer.Tick += OnGlassGpuRetry;
+        }
+        if (_glassGpuRetryTimer.IsEnabled) return;
+        _glassGpuRetryTimer.Interval = TimeSpan.FromSeconds(_glassGpuRetrySeconds);
+        _glassGpuRetrySeconds = Math.Min(60, _glassGpuRetrySeconds * 2);
+        _glassGpuRetryTimer.Start();
+    }
+
+    private void OnGlassGpuRetry(object? sender, EventArgs e)
+    {
+        _glassGpuRetryTimer?.Stop();
+        if (_cleanedUp || _liquidGlass?.IsActive != true || !IsLiquidGlassEnabled ||
+            !(_settings.LiquidGlass?.UseGpuRefraction ?? true) || !IsSystemTransparencyEnabled()) return;
+        _gpuRefractionFailed = false;
+        ConfigureGpuRefraction();
+        ApplyLiquidGlassConfig();
+        _liquidGlass.ForceRefresh();
+    }
+
+    private void StopLiquidGlass()
+    {
+        _glassGpuRetryTimer?.Stop();
+        CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+        SetGlassRegionPush(false);
+        _liquidGlass?.Stop();
+        DetachGpuRefraction();
+        if (_cleanedUp && _glassGpuRetryTimer != null)
+        {
+            _glassGpuRetryTimer.Tick -= OnGlassGpuRetry;
+            _glassGpuRetryTimer = null;
+        }
     }
 
     private void DetachGpuRefraction()
     {
         _gpuRefractionConfigured = false;
+        _lastGpuGeometry = null;
+        _lastAppliedGpuOptics = null;
 
         _glassInteractionController?.Dispose();
         _glassInteractionController = null;
@@ -363,6 +414,7 @@ public partial class MainWindow
 
     private void UpdateShaderGeometryPerFrame()
     {
+        if (!UseGpuRefraction) return;
         var fx = _glassRefractionEffect;
         var lg = _liquidGlass;
         if (fx == null || lg == null || GlassBackdropHost == null) return;
@@ -860,6 +912,7 @@ public partial class MainWindow
                       _glassGestureSnapBackMotion || _glassHoverMotion;
 
         _liquidGlass?.SetAnimating(motion);
+        if (_liquidGlass != null) _liquidGlass.CaptureFullSurface = motion;
         // We no longer pause presentation during hover, DXGI handles it smoothly.
         SetGlassRegionPush(motion && _liquidGlass != null && IsLiquidGlassEnabled);
     }
@@ -1075,6 +1128,7 @@ public partial class MainWindow
         double exactH = notchH * dpiScale;
         int physW = Math.Max(1, (int)Math.Round(exactW));
         int physH = Math.Max(1, (int)Math.Round(exactH));
+        QueueGlassRendererRebuildIfTooSmall(physW, physH, dpiScale);
 
         var (screenLeft, screenTop) = GetNotchScreenPosition(exactW, dpiScale);
 
@@ -1084,8 +1138,6 @@ public partial class MainWindow
         double subX = screenLeft - physLeft;
         double subY = screenTop - physTop;
 
-        if (physTop < 0) { physH += physTop; physTop = 0; }
-        if (physLeft < 0) { physW += physLeft; physLeft = 0; }
         if (physW <= 1 || physH <= 1) return null;
 
         return new LiquidGlassController.CaptureRegion(
@@ -1093,6 +1145,28 @@ public partial class MainWindow
             NotchBorder.CornerRadius.TopLeft,
             NotchBorder.CornerRadius.BottomLeft,
             subX, subY);
+    }
+
+    internal static (int Width, int Height) GetGlassCaptureCapacity(int width, int height, double dpiScale) =>
+        (Math.Clamp(Math.Max(width, (int)Math.Ceiling(1600 * dpiScale)), 64, 4096),
+         Math.Clamp(Math.Max(height, (int)Math.Ceiling(600 * dpiScale)), 64, 4096));
+
+    private void QueueGlassRendererRebuildIfTooSmall(int width, int height, double dpiScale)
+    {
+        if (_liquidGlass == null || _glassRendererRebuildQueued || _cleanedUp) return;
+        var (requiredW, requiredH) = GetGlassCaptureCapacity(width, height, dpiScale);
+        if (_liquidGlass.MaxRegionWidth >= requiredW && _liquidGlass.MaxRegionHeight >= requiredH) return;
+        _glassRendererRebuildQueued = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, (Action)(() =>
+        {
+            _glassRendererRebuildQueued = false;
+            if (_cleanedUp || !IsLiquidGlassEnabled) return;
+            StopLiquidGlass();
+            _liquidGlass = new LiquidGlassController(GlassBackdropImage, () => _hwnd, GetGlassCaptureRegion,
+                logTag: "ISLAND", maxRegionWidth: requiredW, maxRegionHeight: requiredH);
+            _lastAppliedDpiScale = -1;
+            ApplyLiquidGlassSkin();
+        }));
     }
 
     private static bool IsSystemTransparencyEnabled()

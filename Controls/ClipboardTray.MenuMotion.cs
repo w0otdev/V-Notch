@@ -15,7 +15,7 @@ public partial class ClipboardTray
     private readonly Dictionary<ContextMenu, FrameworkElement> _menuAnimationTargets = [];
     private static bool MenuKeyboardInput => InputManager.Current.MostRecentInputDevice is KeyboardDevice;
 
-    private static readonly BackEase AppleSpring = CreateAppleSpring();
+    internal static readonly BackEase AppleSpring = CreateAppleSpring();
 
     private static BackEase CreateAppleSpring()
     {
@@ -62,7 +62,7 @@ public partial class ClipboardTray
         popup.PopupAnimation = !AnimationConfig.ReduceMotion ? PopupAnimation.Fade : PopupAnimation.None;
     }
 
-    private static void AnimateMenuSurface(FrameworkElement surface, FrameworkElement? target, bool fresh, bool submenu = false)
+    internal static void AnimateMenuSurface(FrameworkElement surface, FrameworkElement? target, bool fresh, bool submenu = false)
     {
         double opacity = fresh ? 0 : surface.Opacity;
         var rendered = surface.RenderTransform.Value;
@@ -119,7 +119,7 @@ public partial class ClipboardTray
         }
     }
 
-    private static DoubleAnimation MenuAnimation(double from, double to, int duration, IEasingFunction? easing = null)
+    internal static DoubleAnimation MenuAnimation(double from, double to, int duration, IEasingFunction? easing = null)
     {
         var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(duration))
         {

@@ -1,9 +1,10 @@
 # Chính Sách Bảo Mật — V-Notch
 
-**Ngày hiệu lực:** 2 tháng 10 năm 2026  
-**Bản công bố trước:** 22 tháng 9 năm 2026
+**Ngày hiệu lực:** 9 tháng 10 năm 2026
 
-**Phạm vi:** Mã nguồn hiện tại ngày 2 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
+**Bản công bố trước:** 2 tháng 10 năm 2026
+
+**Phạm vi:** Mã nguồn hiện tại ngày 9 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
 
 **Nhà phát triển:** rainaku  
 **Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -41,6 +42,7 @@ Chính sách này dùng các thuật ngữ sau:
 | **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có — `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
 | **Kiểm tra & tải cập nhật** | Chỉ header HTTP tiêu chuẩn | Có — GitHub Releases API | Thông tin phiên bản trong bộ nhớ; bộ cài tải vào thư mục tạm khi cập nhật |
 | **Spotlight AI (tùy chọn)** | Tin nhắn gửi, ngữ cảnh gần đây, khóa API, model | Có — nhà cung cấp AI được chọn (§4.8) | Khóa và lịch sử chat mã hóa cục bộ (§5.6) |
+| **Dịch trực tiếp (tùy chọn)** | Văn bản được chọn qua UI Automation; clipboard chỉ khi bạn yêu cầu | Không gửi văn bản; tải model tùy chọn kết nối Hugging Face | Chỉ model/cấu hình; cache bản dịch nằm trong RAM |
 | **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (Windows Search / Everything), biểu thức toán | Không | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
 | **Chụp nền hiệu ứng Liquid Glass** | Pixel màn hình ngay dưới vùng notch (DXGI / Magnification API) | Không | Không (xử lý theo từng frame trên GPU/CPU và giải phóng ngay) |
 | **Giám sát phần cứng hệ thống** | Tỷ lệ dùng CPU, mức RAM, tải GPU (Windows performance counters / DXGI) | Không | Không (tạm thời trong bộ nhớ) |
@@ -49,7 +51,7 @@ Chính sách này dùng các thuật ngữ sau:
 | **Âm lượng & Audio Mixer** | Đọc/điều chỉnh âm lượng tổng và từng ứng dụng (Core Audio) | Không | Không |
 | **Phát hiện nguồn phát** | Tiêu đề cửa sổ đang hiển thị; URL trình duyệt (UI Automation) | Không | Có thể: ánh xạ tiêu đề media/nguồn trong cache (§5.3); nhật ký chẩn đoán nếu bật (§5.4) |
 | **Bluetooth & trạng thái pin** | Tên thiết bị, loại, mức pin phụ kiện, trạng thái kết nối | Không | Không (tạm thời trong bộ nhớ) |
-| **Chỉ báo & Xem trước Clipboard** | Trình lắng nghe định dạng clipboard / sự kiện copy | Không | Không (nội dung clipboard không bao giờ được tải lên hay lưu lại) |
+| **Lịch sử, Chỉ báo & Xem trước Clipboard** | Văn bản, HTML/RTF, ảnh, tệp/thư mục đã sao chép và metadata ứng dụng nguồn | Lịch sử Clipboard không tự động tải nội dung lên | Có — tại `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
 | **Chỉ báo quyền riêng tư** | Micro, camera, hoặc quay màn hình có đang hoạt động không | Không | Không (tạm thời trong bộ nhớ) |
 | **Đồng hồ, Lịch, Hẹn giờ** | Giờ hệ thống, bộ đếm ngược, bấm giờ | Không | Cấu hình hẹn giờ lưu trong cài đặt |
 | **Cử chỉ chuột** | Di chuyển/nhấp chuột trên vùng notch | Không | Không |
@@ -114,9 +116,13 @@ V-Notch dùng API Windows Core Audio (qua NAudio) để đọc âm lượng tổ
 
 V-Notch theo dõi các sự kiện kết nối/ngắt kết nối Bluetooth bằng API liệt kê thiết bị của Windows để hiển thị thông báo kết nối (ví dụ khi tai nghe của bạn kết nối) và mức pin của phụ kiện. Ứng dụng đọc tên hiển thị của thiết bị, loại thiết bị (tai nghe, loa, bàn phím...), trạng thái kết nối và phần trăm pin khi được hỗ trợ. Thông tin này chỉ được dùng tạm thời trên màn hình và không được lưu hay truyền đi.
 
-### 3.10 Chỉ báo & Xem trước Clipboard
+### 3.10 Lịch sử, Chỉ báo & Xem trước Clipboard
 
-V-Notch đăng ký một trình lắng nghe định dạng clipboard của Windows để hiển thị một huy hiệu hoạt ảnh "Copied" ngắn và xem trước nhanh tùy chọn khi clipboard thay đổi. Ứng dụng phản ứng với *sự kiện* clipboard được cập nhật; tính năng này chỉ dùng để phản hồi thị giác và không tải lên, không ghi nhật ký hay lưu trữ nội dung clipboard của bạn.
+V-Notch đăng ký trình lắng nghe định dạng Clipboard của Windows để hiển thị huy hiệu "Copied", xem trước và lưu lịch sử Clipboard. Khi thu thập đang hoạt động (thu thập văn bản, ảnh và tệp được bật mặc định), ứng dụng đọc các định dạng được hỗ trợ và lưu bản sao cục bộ: văn bản thuần, HTML/RTF, ảnh và nội dung tệp/thư mục đã sao chép, kèm thời gian và tên/đường dẫn tệp thực thi của ứng dụng nguồn. Lịch sử vẫn còn sau khi khởi động lại ứng dụng. Bạn cũng có thể nhập mục bằng kéo thả.
+
+Trước khi đọc nội dung để lưu lịch sử, V-Notch bỏ qua mục có cờ `ExcludeClipboardContentFromMonitorProcessing` hoặc `Clipboard Viewer Ignore`, hoặc DWORD `CanIncludeInClipboardHistory` bằng 0. Cờ lịch sử không đọc được cũng khiến mục bị bỏ qua. Cơ chế này phụ thuộc ứng dụng nguồn cung cấp cờ; không thể nhận diện mọi mật khẩu hay nội dung nhạy cảm. Lịch sử Clipboard không tự động tải nội dung lên. Nội dung bạn dán vào tin nhắn AI trực tuyến rồi gửi sẽ được truyền theo §4.8.
+
+Tạm dừng thu thập trong khay Clipboard hoặc tắt từng loại văn bản/ảnh/tệp trong cài đặt Clipboard để ngừng thu thập mới. Các công tắc này không xóa lịch sử đã lưu. Đường dẫn, thời hạn lưu và cách xóa được mô tả tại §5.7.
 
 ### 3.11 Chỉ báo quyền riêng tư (Mic / Camera / Quay màn hình)
 
@@ -258,7 +264,7 @@ Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi l
 
 Nếu có, tệp mô hình cắt ảnh thông minh (`yolo11n.onnx`) được lưu cục bộ cùng với ứng dụng và chỉ dùng cho mục đích phân tích nhận diện hình ảnh trực tiếp trên thiết bị.
 
-Bạn có thể xóa toàn bộ dữ liệu đã lưu bất cứ lúc nào bằng cách xóa thư mục `%APPDATA%\V-Notch\` và thư mục cài đặt ứng dụng.
+Để xóa dữ liệu do ứng dụng quản lý, hãy thoát V-Notch trước, rồi kiểm tra và xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\`, kho lịch sử AI tại §5.6 và thư mục cài đặt. Cần kiểm tra riêng cache, bản sao lưu và dữ liệu đã xuất; xóa thư mục ứng dụng không xóa các bản sao này.
 
 ---
 
@@ -272,6 +278,14 @@ Xóa hội thoại sẽ ghi lại lịch sử cục bộ khi thao tác lưu thà
 
 DPAPI bảo vệ dữ liệu khi lưu trên đĩa, không bảo vệ trước phần mềm chạy dưới tài khoản của bạn hoặc thiết bị/tài khoản đã bị xâm nhập. Khóa và nội dung chat phải có trong bộ nhớ khi sử dụng. Đây không phải mã hóa đầu cuối đối với nhà cung cấp AI. Nhật ký AI được thiết kế để ghi nhà cung cấp, trạng thái và loại lỗi thay vì câu hỏi hay toàn bộ nội dung lỗi từ nhà cung cấp; che thông tin xác thực là biện pháp giảm rủi ro, không đảm bảo mọi nhật ký đều không có dữ liệu nhạy cảm.
 
+### 5.7 Lịch sử Clipboard (`%LOCALAPPDATA%\V-Notch\Clipboard\`)
+
+Thư mục con `items` lưu lịch sử thông thường: JSON metadata/nội dung, ảnh và bản sao cục bộ của tệp/thư mục. **V-Notch không mã hóa lịch sử thông thường.** Chuyển mục sang Personal sẽ mã hóa nội dung và metadata trong `personal` bằng AES-GCM; kho dùng mã sáu chữ số cùng một bí mật được Windows DPAPI bảo vệ cho tài khoản Windows hiện tại. Các mục tự động thu thập không được đưa vào Personal mặc định. Nội dung đã mở khóa có mặt trong bộ nhớ; sao chép/kéo thả tệp Personal tạo bản xuất tạm đã giải mã tại `exports\personal`.
+
+Các mục không ghim, không lưu trữ (Archived), không thuộc Personal và đã quá 30 ngày được dọn khi khởi động và trong lần dọn định kỳ mỗi giờ. Các mục ghim, Archived và Personal được giữ đến khi bạn xóa. Ứng dụng thử dọn bản xuất cũ khi khởi động và định kỳ; tệp đang được sử dụng có thể làm chậm việc xóa. Thư mục gốc còn chứa `staging`, `exports` và cấu hình kho Personal.
+
+Xóa từng mục trong khay Clipboard; thao tác đặt lại Personal xóa kho Personal cùng nội dung bên trong. Để xóa toàn bộ lịch sử Clipboard, **thoát V-Notch trước**, rồi xóa `%LOCALAPPDATA%\V-Notch\Clipboard\` cùng các thư mục con. Chỉ xóa `%APPDATA%\V-Notch\` không xóa lịch sử Clipboard. Tạm dừng, công tắc loại nội dung và chế độ Strict Local-Only không xóa lịch sử đã lưu. Xóa dữ liệu không ghi đè an toàn và không xóa bản sao lưu, bản đã xuất hay lịch sử Clipboard của ứng dụng khác.
+
 ## 6. Dữ liệu mà V-Notch KHÔNG thu thập
 
 V-Notch **không được thiết kế để**:
@@ -282,7 +296,7 @@ V-Notch **không được thiết kế để**:
 - đọc, tải lên, hay sao lưu nội dung bên trong các tệp tin của bạn;
 - truy cập tọa độ GPS chính xác của thiết bị;
 - tạo tài khoản, hồ sơ cá nhân, hay mã định danh quảng cáo;
-- lưu trữ hoặc tải lên nội dung clipboard;
+- tự động tải nội dung lịch sử Clipboard lên (lưu trữ cục bộ được mô tả tại §5.7);
 - gửi từ khóa Spotlight Search hay dữ liệu chỉ mục tệp qua mạng; tin nhắn AI bạn chủ động gửi thuộc tính năng riêng (§4.8);
 - bán, cho thuê, hoặc "chia sẻ" (theo định nghĩa của CCPA/CPRA và các luật tương tự) bất kỳ thông tin cá nhân nào — trong phạm vi xác minh được đối với ứng dụng chính thức; dữ liệu bạn tự gửi tới GitHub được xử lý theo chính sách của GitHub.
 
@@ -301,7 +315,7 @@ V-Notch **không được thiết kế để**:
 | **Hệ thống tệp (File System)** | Khay chứa tệp tạm thời File Shelf (kéo và thả) | Opt-in (tùy chọn dùng) |
 | **UI Automation** | Phát hiện URL phát nhạc trong các trình duyệt web được hỗ trợ | Phục vụ phát hiện media |
 | **Bluetooth (Liệt kê thiết bị)** | Thông báo kết nối/ngắt kết nối thiết bị & mức pin phụ kiện | Tùy chọn |
-| **Trình lắng nghe Clipboard** | Hoạt ảnh thông báo "Copied" & huy hiệu xem trước | Tùy chọn |
+| **Trình lắng nghe Clipboard** | Lịch sử Clipboard cục bộ, hoạt ảnh "Copied" & huy hiệu xem trước | Tùy chọn |
 | **Windows Performance Counters** | Đo thông số phần cứng thời gian thực (CPU, RAM, GPU) | Tùy chọn |
 
 ---
@@ -345,7 +359,7 @@ Vì V-Notch ưu tiên xử lý cục bộ và không yêu cầu tài khoản V-N
 
 - Để **xem dữ liệu nào đang được lưu**, hãy xem Mục 5 (Lưu trữ dữ liệu cục bộ) và Mục 2 (Bảng tổng quan).
 - Để **xóa dữ liệu cục bộ cụ thể**, dùng các công cụ xóa một chạm tại Mục 8 (lịch sử Spotlight, nhật ký chẩn đoán) hoặc chỉnh sửa/xóa từng mục trong `settings.json`.
-- Để **xóa dữ liệu cục bộ do ứng dụng quản lý**, hãy thoát V-Notch, ngắt kết nối Spotify trong Cài đặt (nếu có), rồi xóa `%APPDATA%\V-Notch\` và thư mục cài đặt. Cần kiểm tra riêng thư mục tạm Windows, cache WebView/trình duyệt, bản sao lưu và dữ liệu đã đăng trên GitHub; thao tác này không bảo đảm xóa các bản sao bên ngoài. Thao tác xóa sẽ làm mất cấu hình.
+- Để **xóa dữ liệu cục bộ do ứng dụng quản lý**, hãy thoát V-Notch, ngắt kết nối Spotify trong Cài đặt (nếu có), rồi xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\` và thư mục cài đặt. Cần kiểm tra riêng thư mục tạm Windows, cache WebView/trình duyệt, bản sao lưu và dữ liệu đã đăng trên GitHub; thao tác này không bảo đảm xóa các bản sao bên ngoài. Thao tác xóa sẽ làm mất cấu hình.
 
 Đối với phần dữ liệu giới hạn rời khỏi thiết bị của bạn để thực hiện một tính năng bạn đã bật (mô tả tại Mục 4), vai trò pháp lý của nhà phát triển và nhà cung cấp phải được xác định theo thực tế xử lý và luật áp dụng, không thể mặc nhiên kết luận mọi bên thứ ba là bên kiểm soát độc lập. Để thực hiện quyền đối với dữ liệu do các dịch vụ đó nắm giữ (ví dụ: một truy vấn tìm kiếm được cache bởi một instance front-end YouTube, hoặc một tra cứu dựa trên IP do `ipwho.is` thực hiện), vui lòng liên hệ trực tiếp với dịch vụ đó qua các liên kết tại Mục 4 ở trên.
 
@@ -363,7 +377,7 @@ V-Notch xử lý dữ liệu cục bộ trên thiết bị của bạn. Dữ li�
 
 Chính sách bảo mật này có thể được cập nhật định kỳ khi ứng dụng có thêm tính năng mới. Các thay đổi quan trọng sẽ được phản ánh chi tiết trong tài liệu này, trong changelog của ứng dụng, đồng thời cập nhật ngày hiệu lực và số phiên bản ở đầu tài liệu. Các thay đổi đáng kể sẽ được thông báo trước hoặc khi triển khai nếu khả thi; khi pháp luật yêu cầu sự đồng ý, việc tiếp tục sử dụng đơn thuần không được thay thế sự đồng ý hợp lệ. Có thể tra cứu bản cũ trong lịch sử Git.
 
-**Ghi chú sửa đổi (bản cập nhật này):** bổ sung Spotlight AI cho bốn nhà cung cấp, phạm vi dữ liệu gửi, giới hạn thông tin usage, mã hóa khóa và lịch sử chat, đường dẫn lưu trữ, cách xóa dữ liệu và giới hạn các công tắc ngoại tuyến.
+**Ghi chú sửa đổi (09/10/2026):** sửa mô tả lịch sử Clipboard, đường dẫn lưu, dữ liệu không mã hóa/Personal, thời hạn lưu, các cờ loại trừ và cách quản lý/xóa dữ liệu. Bản trước đã bổ sung Spotlight AI cho bốn nhà cung cấp, phạm vi dữ liệu gửi, giới hạn thông tin usage, mã hóa khóa và lịch sử chat, đường dẫn lưu trữ, cách xóa dữ liệu và giới hạn các công tắc ngoại tuyến.
 
 ---
 
@@ -377,3 +391,15 @@ Mọi câu hỏi hoặc yêu cầu liên quan đến dữ liệu có thể gửi
 ### Bổ sung tùy chọn Privacy (03/10/2026)
 
 Có công tắc riêng cho AI trực tuyến, phụ đề, Spotify Canvas/đăng nhập và thời tiết. Ngoại tuyến ưu tiên chặn mà không xóa lựa chọn riêng. Tắt **Lưu lịch sử chat AI** sẽ ngừng đọc/ghi lịch sử V-Notch. Đổi tùy chọn xóa hội thoại/bản nháp đang ở bộ nhớ để tránh lưu lại về sau; tệp lịch sử cũ được giữ. Bật lại để truy cập và xóa hội thoại đã lưu. Tùy chọn không kiểm soát lưu trữ riêng của nhà cung cấp.
+
+### Dịch trực tiếp — bổ sung ngày 09/10/2026
+
+Dịch trực tiếp và Auto mặc định tắt. Khi bật và đã cài model, tính năng đọc vùng chọn của app đang ở phía trước qua Windows UI Automation sau khoảng nghỉ 300 ms. Bỏ qua ô mật khẩu; không chụp màn hình, OCR, chặn Enter toàn hệ thống hay theo dõi clipboard liên tục. Với app không cung cấp vùng chọn, phím tắt Shift hai lần có thể dùng fallback Copy mô tả bên dưới; **Dịch văn bản trong clipboard** vẫn có trong Settings. **Thay thế** kiểm tra lại vùng chọn còn đúng trước khi ghi vào ô chỉnh sửa; không gửi tin nhắn chat.
+
+Nhận diện ngôn ngữ và dịch dùng model đã cài riêng và được chọn trong Settings. Văn bản gốc/bản dịch không gửi đến API AI, ghi vào nhật ký hay lưu thành lịch sử dịch. Mặc định cache tối đa 128 kết quả trong RAM trong 30 phút; model được giải phóng sau 5 phút không dịch. Cài đặt nâng cao cho phép thay đổi giới hạn, tắt cache hoặc giữ model trong RAM. Chuyển model xóa cache dịch. Đóng popup xóa văn bản đang hiển thị. Bộ nhớ hoán đổi, crash dump của hệ điều hành và lưu trữ của app khác nằm ngoài kiểm soát của tính năng.
+
+Model không nằm trong bộ cài. Chỉ khi bấm **Tải model**, app mới kết nối HTTPS đến Hugging Face và các miền phân phối tệp của họ. Nhà cung cấp nhận IP và metadata yêu cầu mạng thông thường, không nhận vùng văn bản bạn chọn. Phiên bản, kích thước và SHA-256 của tệp được cố định. Chế độ chỉ nội bộ chặn tải; vẫn có thể nhập tệp offline. Model và phần tải dở lưu tại `%LOCALAPPDATA%\VNotch\translation-models\<model-id>\`. **Xóa model** xóa các tệp model/phần tải dở đã biết.
+
+**Copy** ghi bản dịch được yêu cầu vào clipboard Windows, kèm các cờ loại trừ khỏi theo dõi, lịch sử và đồng bộ cloud. Lịch sử Clipboard của V-Notch tôn trọng các cờ này; app khác có thể bỏ qua chúng và đọc/lưu văn bản. Lựa chọn ngôn ngữ và trạng thái bật/Auto được lưu cùng cấu hình thông thường.
+
+Luồng đọc thử UI Automation tại nguồn sự kiện, phần tử đang focus và (khi nhấn phím tắt) phần tử dưới con trỏ, sau đó thử đọc vùng chọn từ ô Edit Windows gốc. Nhiều vùng chọn được ghép trong giới hạn 2.000 ký tự; thiếu tọa độ không làm mất văn bản hợp lệ. Khi người dùng nhấn Shift hai lần mà các bộ đọc chưa lấy được vùng chọn, app có thể gửi phím Copy đến app nguồn. Terminal được nhận diện dùng Ctrl+Insert thay cho Ctrl+C. Chỉ nội dung clipboard mới do tiến trình nguồn tạo cho yêu cầu này được dùng. App cố gắng khôi phục các định dạng clipboard cũ nếu chưa có lần copy mới; bỏ qua fallback nếu không sao lưu an toàn được clipboard. Bản sao tạm không được ghi vào lịch sử clipboard của V-Notch. Lịch sử Windows hoặc trình quản lý clipboard bên ngoài vẫn có thể nhận lần Copy do app nguồn tạo. Fallback không chạy tự động theo vùng chọn và không hỗ trợ Replace.

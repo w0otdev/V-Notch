@@ -46,6 +46,11 @@ internal sealed class SpotlightChatStore
                 return true;
             }
             catch { RuntimeLog.Warn("SPOTLIGHT-CHAT", "Could not save chat history."); return false; }
+            finally
+            {
+                try { File.Delete(_path + ".tmp"); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
         }
     }
 }

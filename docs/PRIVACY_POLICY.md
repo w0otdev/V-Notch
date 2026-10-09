@@ -1,9 +1,10 @@
 # Privacy Policy — V-Notch
 
-**Effective date:** October 2, 2026  
-**Previous published version:** September 22, 2026
+**Effective date:** October 9, 2026
 
-**Scope:** Current source tree as of October 2, 2026; feature availability depends on the installed build.
+**Previous published version:** October 2, 2026
+
+**Scope:** Current source tree as of October 9, 2026; feature availability depends on the installed build.
 
 **Developer:** rainaku  
 **Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -39,6 +40,7 @@ This policy uses the following terms:
 | **Weather (opt-in)** | Approximate IP-based location (`ipwho.is`) or manual city name | Yes — `ipwho.is`, Open-Meteo | No (transient in memory) |
 | **Update check & download** | Standard HTTP headers only | Yes — GitHub Releases API | Version info in memory; installer in temp directory on update |
 | **Spotlight AI (opt-in)** | Submitted messages, recent context, API key, selected model | Yes — selected AI provider (§4.8) | Keys and chat history encrypted locally (§5.6) |
+| **Live translation (opt-in)** | Selected text exposed by UI Automation; clipboard text only on an explicit command | No text upload; optional model download contacts Hugging Face | Model/configuration only; translation cache stays in RAM |
 | **Spotlight search & launcher** | Local app names, local file metadata (Windows Search / Everything), math expressions | No | Recent launch frequency stored locally (max 100 entries, see §5) |
 | **Liquid Glass backdrop capture** | Screen pixels directly under the notch area (DXGI / Magnification API) | No | No (processed per-frame on GPU/CPU and discarded immediately) |
 | **System hardware monitor** | CPU usage, RAM usage, GPU utilization (Windows performance counters / DXGI) | No | No (transient in memory) |
@@ -47,7 +49,7 @@ This policy uses the following terms:
 | **System audio & mixer** | Read/adjust master and per-app audio endpoint volume (Core Audio) | No | No |
 | **Media source detection** | Visible window titles; active browser URLs (UI Automation) | No | Potentially: derived media-title/source mapping in local cache (§5.3); diagnostic logs if enabled (§5.4) |
 | **Bluetooth & battery status** | Connected device name, type, battery level, state | No | No (transient in memory) |
-| **Clipboard indicator & peek** | Clipboard format listener / copy event | No | No (clipboard content is never uploaded or saved) |
+| **Clipboard history, indicator & peek** | Copied text, HTML/RTF, images, files/folders and source-app metadata | No automatic upload by Clipboard history | Yes — local history at `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
 | **Privacy indicators** | Whether microphone, camera, or screen recording is active | No | No (transient in memory) |
 | **Clock, Calendar, Timer** | Local system time, countdown timers, stopwatch | No | Timer presets in settings |
 | **Gestures & mouse input** | Mouse movement/clicks over the notch | No | No |
@@ -110,9 +112,13 @@ V-Notch uses the Windows Core Audio API (via NAudio) to read the current system 
 
 V-Notch watches for Bluetooth connect/disconnect events using the Windows device enumeration API in order to show a connection notification (for example, when your headphones connect) and accessory battery levels. It reads the device's display name, a category guess (headphones, speaker, keyboard, etc.), connection state, and battery percentage when available. This information is used transiently for the on-screen notification and widget, and is not stored or transmitted.
 
-### 3.10 Clipboard Change Indicator & Peek
+### 3.10 Clipboard History, Change Indicator & Peek
 
-V-Notch registers a Windows clipboard format listener so it can show a brief "Copied" confirmation badge and optional preview when the clipboard changes. It reacts to the *event* that the clipboard was updated; this feature is used for visual feedback only and does not upload, log, or persist clipboard contents.
+V-Notch registers a Windows clipboard format listener for the "Copied" badge, preview and persistent Clipboard history. While capture is active (text, image and file capture are enabled by default), it reads supported clipboard content and saves local copies: plain text, HTML/RTF, images and the contents of copied files/folders, together with timestamps and source application name/executable path. History remains available after restarting the app. Items can also be imported by drag and drop.
+
+Before reading content for history, V-Notch skips clipboard items carrying `ExcludeClipboardContentFromMonitorProcessing` or `Clipboard Viewer Ignore`, or a `CanIncludeInClipboardHistory` DWORD of zero. Unreadable history markers are also skipped. These safeguards depend on the source app providing the markers; they cannot identify every password or sensitive copy. Clipboard history does not automatically upload its contents. Content you paste into an online AI message and submit is sent as described in §4.8.
+
+Pause capture in the Clipboard tray or disable individual text/image/file capture types in Clipboard settings to stop new captures. These controls do not erase existing history. Storage, retention and deletion are described in §5.7.
 
 ### 3.11 Privacy Indicators (Mic / Camera / Screen Capture)
 
@@ -254,7 +260,7 @@ Located in the application's program folder, this log records technical applicat
 
 If present, the smart-crop model file (`yolo11n.onnx`) is stored locally alongside the app and is used purely for on-device image analysis.
 
-To remove application-managed local data, close V-Notch, disconnect Spotify within Settings where available, and remove `%APPDATA%\V-Notch\` and the installation directory. Also check Windows temporary files, WebView/browser caches, backups, and any files submitted to GitHub; removal of these is not guaranteed by deleting the app directory. Deleting the folder permanently discards preferences.
+To remove application-managed local data, close V-Notch, disconnect Spotify within Settings where available, and remove `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\`, the separate AI history store in §5.6, and the installation directory. Also check Windows temporary files, WebView/browser caches, backups, and any files submitted to GitHub; removal of these is not guaranteed by deleting the app directory. Deleting these folders permanently discards preferences and saved history.
 
 ---
 
@@ -268,6 +274,14 @@ Deleting a conversation rewrites local history when saving succeeds. Starting a 
 
 DPAPI protects data at rest, not against software running as you or a compromised account/device. Keys and chat contents must be available in memory while used. This is not end-to-end encryption against the AI provider. AI diagnostic messages are designed to record provider/status/error type rather than prompts or raw provider error bodies; credential redaction is a safeguard, not a guarantee that every diagnostic file is free of sensitive information.
 
+### 5.7 Clipboard History (`%LOCALAPPDATA%\V-Notch\Clipboard\`)
+
+The `items` subdirectory stores ordinary history: metadata/content JSON, images and local copies of files/folders. **Ordinary history is not encrypted by V-Notch.** Moving an item to Personal encrypts its stored content and metadata in `personal` using AES-GCM; the vault uses a six-digit passcode with a secret protected by Windows DPAPI for the current user. Automatically captured items are not placed in Personal by default. Unlocked content is available in memory, and copying/dragging Personal files creates temporary decrypted exports under `exports\personal`.
+
+Unpinned, unarchived, non-Personal entries older than 30 days are pruned at startup and during hourly cleanup. Pinned, archived and Personal items remain until you delete them. Cleanup of old exports is attempted at startup and during periodic cleanup; files still in use can delay deletion. The root also contains `staging`, `exports` and the Personal vault configuration.
+
+Delete individual items in the Clipboard tray; the Personal reset action deletes the Personal vault and its contents. To remove all Clipboard history, **exit V-Notch first**, then delete `%LOCALAPPDATA%\V-Notch\Clipboard\`, including its subdirectories. Removing only `%APPDATA%\V-Notch\` does not clear Clipboard history. Pause/type controls and Strict Local-Only Mode do not remove saved history. Deletion does not securely overwrite data or erase backups, exported copies or another application's clipboard history.
+
 ## 6. Data V-Notch Does NOT Collect
 
 V-Notch does **not**:
@@ -278,7 +292,7 @@ V-Notch does **not**:
 - read, upload, or back up the contents of your files;
 - access precise device GPS location;
 - create user accounts, profiles, or advertising identifiers;
-- store or upload clipboard contents;
+- automatically upload Clipboard history contents (local storage is described in §5.7);
 - send local Spotlight Search queries or file index data over a network; explicitly submitted AI messages are a separate feature (§4.8).
 
 ---
@@ -296,7 +310,7 @@ V-Notch does **not**:
 | **File System Access** | File Shelf drag-and-drop file staging | Opt-in |
 | **UI Automation** | Detect active media playback URLs in supported web browsers | Used for media detection |
 | **Bluetooth (Device Enumeration)** | Device connection/disconnection alerts & accessory battery | Optional |
-| **Clipboard Format Listener** | "Copied" confirmation animation & preview badge | Optional |
+| **Clipboard Format Listener** | Local Clipboard history, "Copied" confirmation animation & preview badge | Optional |
 | **Windows Performance Counters** | Real-time CPU/RAM/GPU system monitor stats | Optional |
 
 ---
@@ -334,7 +348,7 @@ V-Notch is a general-purpose desktop utility, not directed specifically to child
 
 ## 11. Privacy Rights and Requests
 
-Depending on your jurisdiction and the developer's actual role, applicable law may grant rights to notice, access, rectification, erasure, objection, withdrawal of consent, portability, complaint, and other protections. This policy does not waive these rights or imply that local storage automatically fulfills them. You can use Settings to disable features and delete available local history/log files. To inspect/delete remaining application-managed files, close the app, disconnect Spotify, and review `%APPDATA%\V-Notch\`, the installation directory and relevant Windows temporary storage. Take care not to disclose private data in public Issues; use a private contact channel if provided on the repository. For information held by independent services, review their privacy notices and contact them as applicable. We will review requests concerning information under our control in accordance with applicable law; identity verification may be necessary if justified.
+Depending on your jurisdiction and the developer's actual role, applicable law may grant rights to notice, access, rectification, erasure, objection, withdrawal of consent, portability, complaint, and other protections. This policy does not waive these rights or imply that local storage automatically fulfills them. You can use Settings to disable features and delete available local history/log files. To inspect/delete remaining application-managed files, close the app, disconnect Spotify, and review `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\`, the AI history store in §5.6, the installation directory and relevant Windows temporary storage. Take care not to disclose private data in public Issues; use a private contact channel if provided on the repository. For information held by independent services, review their privacy notices and contact them as applicable. We will review requests concerning information under our control in accordance with applicable law; identity verification may be necessary if justified.
 
 ---
 
@@ -350,8 +364,22 @@ We will update this effective date and describe material changes in the document
 
 ---
 
+**Revision note (October 9, 2026):** corrected Clipboard history collection, storage paths, ordinary/Personal encryption, retention, exclusion markers and data deletion guidance.
+
 ## 14. Contact
 
 For questions or rights requests, use [GitHub Issues](https://github.com/rainaku/V-Notch/issues); **do not post secrets, session cookies, passwords or sensitive personal information publicly**. For security-sensitive reports, seek a private contact method listed on the maintainer's GitHub profile if available. We do not promise a private contact method that has not been verified.
 
 <!-- Publication checklist: validate network behavior, settings toggles, log paths and local deletion against the exact release binary before publication. -->
+
+## Live translation added October 9, 2026
+
+Live translation and its Auto option are off by default. When enabled and a model is installed, it observes the foreground application's selection through Windows UI Automation after a 300 ms pause. It excludes password controls and does not use screen capture, OCR, global Enter interception, or clipboard polling. For apps that do not expose selected text, the explicit double-Shift shortcut can use the Copy fallback described below; **Translate clipboard text** also remains available in Settings. **Replace** only acts on the selected editable control after checking that the original selection is still current; it does not submit chat messages.
+
+Language detection and translation run locally using the separately installed model selected in Settings. Source text and results are not sent to an AI API, written to diagnostic logs, or saved as translation history. By default, up to 128 completed results are cached in memory for 30 minutes, and model resources are released after five idle minutes. Advanced settings can change these limits, disable caching, or keep the model loaded. Switching models clears the translation cache. Dismissing the popup clears its text. OS paging, crash dumps and unrelated applications' storage are outside this feature's control.
+
+The model is not included in the installer. **Download model** makes an explicit HTTPS request to Hugging Face and its file delivery domains; those providers receive IP addresses and ordinary request metadata, never selected text. The model repository revision, byte size and SHA-256 are pinned. Local-only mode blocks downloads; offline file import remains available. Files, including resumable partial downloads, live at `%LOCALAPPDATA%\VNotch\translation-models\<model-id>\`. **Remove model** deletes the known model and partial files.
+
+**Copy** writes the requested translation to the Windows clipboard with exclusion markers for clipboard monitoring, history and cloud upload. V-Notch Clipboard history honors these markers. Other clipboard clients may still read or retain the text if they ignore the markers. Language preferences and enable/Auto choices are saved with the ordinary application settings.
+
+Selection capture tries UI Automation across the event source, focused control and (for manual requests) control under the pointer, then native Windows Edit selection messages. Multiple selected ranges are combined within the 2,000-character limit; missing rectangle metadata does not discard otherwise valid text. When the user presses Shift twice and those readers cannot read the selection, the app may send a Copy shortcut to the foreground application. Recognized terminals use Ctrl+Insert rather than Ctrl+C. Only a new clipboard result owned by the source process for that request is used. The app attempts to restore the previous clipboard formats if no newer copy has occurred, and skips the fallback if those formats cannot be safely snapshotted. Temporary copies are excluded from V-Notch clipboard history. Windows history and external clipboard managers may still observe the copy made by the source application. This fallback does not run on automatic selection events and does not support Replace.

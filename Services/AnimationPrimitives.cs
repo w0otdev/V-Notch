@@ -19,6 +19,7 @@ internal static class AnimationPrimitives
     public static readonly PowerEase _easePowerIn2 = Freeze(new PowerEase { EasingMode = EasingMode.EaseIn, Power = 2 });
     public static readonly PowerEase _easePowerOut3 = Freeze(new PowerEase { EasingMode = EasingMode.EaseOut, Power = 3 });
     public static readonly DampedSpringEase _easeSpring = Freeze(new DampedSpringEase());
+    public static readonly DampedSpringEase _easeMoveSpring = Freeze(new DampedSpringEase(1));
     public static readonly DampedSpringEase _easeSoftSpring = Freeze(new DampedSpringEase());
     public static readonly DampedSpringEase _easeMenuSpring = Freeze(new DampedSpringEase());
     public static readonly DampedSpringEase _easeThumbSpring = Freeze(new DampedSpringEase());
@@ -26,6 +27,8 @@ internal static class AnimationPrimitives
     public static readonly DampedSpringEase _easeHapticBounce = Freeze(new DampedSpringEase());
     public static readonly CubicBezierEase _easeAppleOut =
         Freeze(CubicBezierEase.FromEaseOutCurve(0.32, 0.72, 0.0, 1.0));
+    public static readonly CubicBezierEase _easeUiOut =
+        Freeze(CubicBezierEase.FromEaseOutCurve(0.23, 1.0, 0.32, 1.0));
 
     public static readonly CubicBezierEase _easeAppleInOut =
         Freeze(CubicBezierEase.FromEaseOutCurve(0.4, 0.0, 0.2, 1.0));

@@ -93,6 +93,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     {
         if (_disposed || _isWritingClipboard) return;
         uint sequence = GetClipboardSequenceNumber();
+        if (VNotch.Services.Translation.SelectionClipboardCapture.IgnoreClipboardCapture(sequence)) return;
         if (sequence != 0 && sequence != _ownSequence)
         {
             _personalClipboardSequence = 0;
@@ -110,9 +111,40 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         _debounceTimer.Stop();
         if (_disposed || IsPaused || _isWritingClipboard) return;
         uint sequence = _pendingSequence;
+        if (VNotch.Services.Translation.SelectionClipboardCapture.IgnoreClipboardCapture(sequence)) return;
         if (sequence == 0 || sequence == _lastSequence || sequence == _ownSequence) return;
         _lastSequence = sequence;
         CaptureAsync(sequence).SafeFireAndForget("CLIPBOARD-CAPTURE");
+    }
+
+    internal static bool ShouldIgnoreClipboardData(IDataObject data)
+    {
+        // Check privacy markers before reading any text, image, or file payload.
+        if (data.GetDataPresent("ExcludeClipboardContentFromMonitorProcessing", false)
+            || data.GetDataPresent("Clipboard Viewer Ignore", false)) return true;
+        const string historyFormat = "CanIncludeInClipboardHistory";
+        if (!data.GetDataPresent(historyFormat, false)) return false;
+
+        // Windows defines this format as a serialized, little-endian DWORD.
+        // WPF exposes native registered formats as streams; in-process producers
+        // can also supply byte arrays or integers. Unreadable markers fail closed.
+        var value = data.GetData(historyFormat, false);
+        if (value is int signed) return signed == 0;
+        if (value is uint unsigned) return unsigned == 0;
+        if (value is byte[] bytes)
+            return bytes.Length < sizeof(uint) || System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes) == 0;
+        if (value is not Stream stream || !stream.CanRead || !stream.CanSeek) return true;
+
+        long position = stream.Position;
+        try
+        {
+            stream.Position = 0;
+            Span<byte> flag = stackalloc byte[sizeof(uint)];
+            stream.ReadExactly(flag);
+            return System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(flag) == 0;
+        }
+        catch (EndOfStreamException) { return true; }
+        finally { stream.Position = position; }
     }
 
     private async Task CaptureAsync(uint sequence)
@@ -123,7 +155,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             try
             {
                 var data = System.Windows.Clipboard.GetDataObject();
-                if (data == null || data.GetDataPresent("ExcludeClipboardContentFromMonitorProcessing")) return;
+                if (data == null || ShouldIgnoreClipboardData(data)) return;
                 string text = data.GetData(DataFormats.UnicodeText) as string ?? data.GetData(DataFormats.Text) as string ?? "";
                 string[] paths = data.GetData(DataFormats.FileDrop) as string[] ?? [];
                 bool isScreenshotTempFile = paths.Length == 1 && IsTemporaryScreenshotPath(paths[0]);

@@ -9,6 +9,48 @@ namespace VNotch.Tests;
 public sealed class RuntimeLogTests
 {
     [Fact]
+    public async Task LongRunningSession_RotatesAtSizeLimit_AndBoundsOversizedEntries()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"vnotch-log-cap-{Guid.NewGuid():N}.log");
+        var previous = RuntimeLog.MinimumLevel;
+        const int limit = 5 * 1024 * 1024;
+        try
+        {
+            RuntimeLog.MinimumLevel = LogLevel.Info;
+            RuntimeLog.InitializeNewSession(path);
+            File.WriteAllText(path, new string('x', limit - 100));
+            RuntimeLog.Info("SIZE-TEST", new string('y', 200));
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(File.Exists(path + ".old"));
+            Assert.True(new FileInfo(path).Length <= limit);
+            Assert.True(new FileInfo(path + ".old").Length <= limit);
+            Assert.Contains("SIZE-TEST", File.ReadAllText(path));
+
+            RuntimeLog.Info("OVERSIZED-TEST", new string('z', limit + 1));
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(new FileInfo(path).Length <= limit);
+            Assert.Contains("[truncated]", File.ReadAllText(path));
+
+            File.WriteAllText(path, new string('x', limit - 100));
+            using (var lockedBackup = new FileStream(path + ".old", FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                RuntimeLog.Info("LOCKED-BACKUP", new string('a', 200));
+                await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.Equal(limit - 100, new FileInfo(path).Length);
+            }
+            RuntimeLog.Info("AFTER-UNLOCK", new string('b', 200));
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains("AFTER-UNLOCK", File.ReadAllText(path));
+        }
+        finally
+        {
+            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            RuntimeLog.MinimumLevel = previous;
+            File.Delete(path); File.Delete(path + ".old");
+        }
+    }
+
+    [Fact]
     public async Task FlushAsync_WritesQueuedEntriesInOrder()
     {
         string logPath = Path.Combine(Path.GetTempPath(), $"vnotch-runtime-log-{Guid.NewGuid():N}.log");

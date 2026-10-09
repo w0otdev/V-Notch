@@ -9,6 +9,22 @@ namespace VNotch.Tests;
 public sealed class GlassMaterialClipPresenterTests
 {
     [Fact]
+    public void ChangingPowerRebuildsClipAtSameSizeAndRadius() => SharedStaTestRunner.Run(() =>
+    {
+        var host = new Grid();
+        host.Measure(new Size(300, 100));
+        host.Arrange(new Rect(0, 0, 300, 100));
+        var presenter = new GlassMaterialClipPresenter(host);
+        presenter.UpdateClip(new CornerRadius(40));
+        var circular = host.Clip;
+        Assert.False(circular.FillContains(new Point(10, 10)));
+        presenter.PowerFactor = 3;
+        presenter.UpdateClip(new CornerRadius(40));
+        Assert.NotSame(circular, host.Clip);
+        Assert.True(host.Clip.FillContains(new Point(10, 10)));
+    });
+
+    [Fact]
     public void HiddenMaterialSkipsUpdatesAndSynchronizesWhenRevealed() => SharedStaTestRunner.Run(() =>
     {
         var host = new Grid { Visibility = Visibility.Collapsed };

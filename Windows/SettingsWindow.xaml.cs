@@ -286,6 +286,7 @@ public partial class SettingsWindow : Window
         SystemNotifyCheck.IsChecked = _settings.ShowSystemNotifications;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
         LoadSpotlightAiSettings(_settings);
+        LoadTranslationSettings();
         EnableDebugModeCheck.IsChecked = _settings.EnableDebugMode;
         UpdateSpotlightHotkeyWarning();
         ShowBatteryCheck.IsChecked = _settings.ShowBatteryIndicator;
@@ -464,6 +465,7 @@ public partial class SettingsWindow : Window
         EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight");
         EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint");
         LocalizeSpotlightAiSettings();
+        LocalizeTranslationSettings();
         SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict");
         SearchingHeader.Text = Loc.Get(LocKeySearching);
         SearchingEmptyText.Text = Loc.Get("settings.search.noResults");

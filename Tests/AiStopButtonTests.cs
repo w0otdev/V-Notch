@@ -1,7 +1,7 @@
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Reflection;
 using VNotch.Services;
 using Xunit;
 

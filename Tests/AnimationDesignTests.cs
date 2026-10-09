@@ -76,6 +76,24 @@ public sealed class AnimationDesignTests
                 $"{i / 1000d},{AnimationPrimitives._easeAppleOut.Ease(i / 1000d)},{AnimationPrimitives._easeSpring.Ease(i / 1000d)}"))));
     }
 
+    [Fact]
+    public void PositionSpringAcceleratesFromRestAndSettlesWithoutLeavingItsBounds()
+    {
+        var spring = AnimationPrimitives._easeMoveSpring;
+        Assert.True(spring.IsFrozen);
+        Assert.Equal(1, spring.DampingRatio);
+        Assert.Equal(0, spring.Ease(0));
+        Assert.Equal(1, spring.Ease(1));
+        var samples = Enumerable.Range(0, 1001).Select(i => spring.Ease(i / 1000d)).ToArray();
+        Assert.All(samples, value => Assert.InRange(value, 0, 1));
+        Assert.All(samples.Zip(samples.Skip(1)), pair => Assert.True(pair.Second >= pair.First));
+        double start = spring.Ease(.01), accelerating = spring.Ease(.03) - spring.Ease(.02);
+        double settling = spring.Ease(1) - spring.Ease(.99);
+        Assert.True(accelerating > start);
+        Assert.True(settling < start / 100);
+        Assert.Equal(spring.Ease(.4), ((DampedSpringEase)spring.Clone()).Ease(.4));
+    }
+
     private static double Bezier(double t, double p1, double p2) =>
         3 * (1 - t) * (1 - t) * t * p1 + 3 * (1 - t) * t * t * p2 + t * t * t;
 }

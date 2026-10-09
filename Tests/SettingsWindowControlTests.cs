@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using VNotch.Models;
 using VNotch.Services;
+using VNotch.Services.Translation;
 using Xunit;
 
 namespace VNotch.Tests;
@@ -13,6 +14,181 @@ namespace VNotch.Tests;
 public sealed class SettingsWindowControlTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+    [Fact]
+    public void TranslationModelsAreGroupedAndSelectionSurvivesHardwareRefresh() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        Assert.Equal(9, window.TranslationModelCombo.Items.Count);
+        Assert.Equal(2, window.TranslationModelCombo.Items.Groups!.Count);
+        foreach (var model in TranslationModelCatalog.All)
+        {
+            window.TranslationModelCombo.SelectedValue = model.Id;
+            Assert.Equal(model.Id, window.ReadSettingsFromUi().TranslationModelId);
+            Assert.Equal(model.Id, Field<TranslationModelStore>(window, "_translationStore").Profile.Id);
+            Assert.Contains(model.DisplayName, window.TranslationModelHint.Text);
+        }
+        typeof(SettingsWindow).GetField("_translationHardware", Private)!.SetValue(window, new TranslationHardware(16, 8, 8, "GPU"));
+        typeof(SettingsWindow).GetMethod("RefreshTranslationModelDetails", Private)!.Invoke(window, null);
+        Assert.Equal("gemma4-31b", window.ReadSettingsFromUi().TranslationModelId);
+        Assert.Single(window.TranslationModelCombo.Items.Cast<object>().Where(x => x.ToString()!.Contains(Loc.Get("translation.recommended"))));
+    });
+
+    [Fact]
+    public void AdvancedTranslationControlsClampPersistAndResetOnlyAdvancedValues() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.EnableTranslationCheck.IsChecked = true;
+        var inputs = Field<Dictionary<string, (TextBlock Label, TextBox Input)>>(window, "_translationAdvancedInputs");
+        Assert.Equal(13, inputs.Count);
+        inputs["GpuLayers"].Input.Text = "-10";
+        inputs["CacheEntries"].Input.Text = "300";
+        inputs["TimeoutSeconds"].Input.Text = "invalid";
+        var snapshot = window.ReadSettingsFromUi();
+        Assert.Equal(0, snapshot.TranslationGpuLayers);
+        Assert.Equal(300, snapshot.TranslationCacheEntries);
+        Assert.Equal(90, snapshot.TranslationTimeoutSeconds);
+        window.ApplyPreview(snapshot);
+        Assert.Equal("300", inputs["CacheEntries"].Input.Text);
+        window.TranslationAdvancedReset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        snapshot = window.ReadSettingsFromUi();
+        Assert.True(snapshot.EnableLiveTranslation);
+        Assert.Equal(TranslationOptions.From(new NotchSettings()), TranslationOptions.From(snapshot));
+    });
+
+
+    [Fact]
+    public void InstalledModelKeepsAVisibleConfirmationAndOffersTheNextAction() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.PresentTranslationModelAvailability(true);
+        Assert.Equal(Visibility.Visible, window.TranslationReadyCard.Visibility);
+        Assert.Equal(Loc.Get("translation.installComplete"), window.TranslationReadyTitle.Text);
+        Assert.Equal(Visibility.Collapsed, window.TranslationDownloadButton.Visibility);
+        Assert.Equal(Visibility.Collapsed, window.TranslationModelStatus.Visibility);
+        Assert.Equal(Loc.Get("translation.enable"), window.TranslationReadyActionButton.Content);
+        window.TranslationReadyActionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(window.ReadSettingsFromUi().EnableLiveTranslation);
+        Assert.Equal(Loc.Get("translation.tryClipboard"), window.TranslationReadyActionButton.Content);
+        Assert.Equal(Loc.Get("translation.readyManualHint"), window.TranslationReadyHint.Text);
+        bool preview = false;
+        window.TranslationPreviewRequested += () => preview = true;
+        window.TranslationReadyActionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(preview);
+        window.AutoTranslationCheck.IsChecked = true;
+        Assert.Equal(Loc.Get("translation.readyAutoHint"), window.TranslationReadyHint.Text);
+        window.PresentTranslationModelAvailability(true); // refresh preserves confirmation
+        Assert.Equal(Visibility.Visible, window.TranslationReadyCard.Visibility);
+        window.PresentTranslationModelAvailability(false);
+        Assert.Equal(Visibility.Collapsed, window.TranslationReadyCard.Visibility);
+        Assert.Equal(Visibility.Visible, window.TranslationDownloadButton.Visibility);
+    });
+
+    [Fact]
+    public void DownloadCaptionAndPercentageUseTheSameRoundingAndAppPalette() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.ShowTranslationDownloadProgress(new(TranslationDownloadStage.Downloading, 321_600_000, 2_500_000_000));
+        Assert.Equal("12%", window.TranslationProgressPercent.Text);
+        Assert.Equal(Loc.Get("translation.downloadingTitle"), window.TranslationProgressCaption.Text);
+        Assert.Equal(Loc.Get("translation.downloading", 12), window.TranslationModelStatus.Text);
+        Assert.Same(window.Resources["SurfaceBrush"], window.TranslationProgressCard.Background);
+        Assert.Same(window.Resources["AccentBrush"], window.TranslationModelProgress.Foreground);
+        Assert.Same(window.Resources["TrackBg"], window.TranslationModelProgress.Background);
+    });
+
+    [Theory]
+    [InlineData("http", "translation.downloadHttpError")]
+    [InlineData("network", "translation.downloadConnectionError")]
+    [InlineData("access", "translation.modelAccessDenied")]
+    [InlineData("io", "translation.modelIoFailed")]
+    [InlineData("unexpected", "translation.installUnexpected")]
+    public void ModelInstallationErrorsExplainTheActualFailureCategory(string category, string key) => SharedStaTestRunner.RunAsync(async _ =>
+    {
+        using var fixture = new Fixture();
+        Exception error = category switch
+        {
+            "http" => new System.Net.Http.HttpRequestException("message must not be shown", null, System.Net.HttpStatusCode.Forbidden),
+            "network" => new System.Net.Http.HttpRequestException("message must not be shown"),
+            "access" => new UnauthorizedAccessException("private path"),
+            "io" => new System.IO.IOException("private path"),
+            _ => new NullReferenceException("internal details")
+        };
+        await fixture.Window.RunTranslationModelActionAsync(_ => throw error);
+        Assert.Equal(category == "http" ? Loc.Get(key, 403) : Loc.Get(key), fixture.Window.TranslationModelStatus.Text);
+        Assert.Equal(Visibility.Collapsed, fixture.Window.TranslationProgressCard.Visibility);
+        Assert.True(fixture.Window.TranslationImportButton.IsEnabled);
+    });
+
+    [Fact]
+    public void ModelDownloadShowsFeedbackBeforeNetworkRepliesAndStopsAnimationOnCancel() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool reducedMotion = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        var card = window.TranslationProgressCard;
+        var parent = (Panel)card.Parent;
+        int index = parent.Children.IndexOf(card);
+        parent.Children.Remove(card);
+        var host = new BackgroundWindow { Width = 480, Height = 150, Content = card };
+        host.Show();
+        Task? download = null;
+        try
+        {
+            download = window.RunTranslationModelActionAsync(token => Task.Delay(Timeout.Infinite, token), "translation.connecting");
+            Assert.Equal(Visibility.Visible, card.Visibility);
+            Assert.Equal(Loc.Get("translation.connecting"), window.TranslationProgressCaption.Text);
+            Assert.Equal(Loc.Get("translation.cancel"), window.TranslationDownloadButton.Content);
+            Assert.False(window.TranslationImportButton.IsEnabled);
+            await WpfFrameWaiter.UntilAsync(() => window.TranslationProgressPulse.IsVisible, "download connecting animation", ct);
+            Assert.True(window.TranslationPulseOffset.HasAnimatedProperties);
+            window.ShowTranslationDownloadProgress(new(TranslationDownloadStage.Downloading, 1_000_000_000, 2_500_000_000, 10_000_000));
+            Assert.Equal("40%", window.TranslationProgressPercent.Text);
+            Assert.Contains("1.00 GB / 2.50 GB", window.TranslationProgressDetail.Text);
+            Assert.Contains("10.0 MB/s", window.TranslationProgressDetail.Text);
+            Assert.Equal(Visibility.Collapsed, window.TranslationProgressPulse.Visibility);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.TranslationModelProgress.Value - 40) < .01, "animated download percentage", ct);
+            window.TranslationModelProgress.ApplyTemplate();
+            window.TranslationModelProgress.UpdateLayout();
+            var fill = (FrameworkElement)window.TranslationModelProgress.Template.FindName("PART_Indicator", window.TranslationModelProgress);
+            Assert.InRange(fill.ActualWidth / window.TranslationModelProgress.ActualWidth, .39, .41);
+            window.ShowTranslationDownloadProgress(new(TranslationDownloadStage.Verifying, 2_500_000_000, 2_500_000_000));
+            Assert.Equal(Loc.Get("translation.verifying"), window.TranslationProgressCaption.Text);
+            Assert.Equal(Visibility.Visible, window.TranslationProgressPulse.Visibility);
+            AnimationConfig.SetReduceMotion(true);
+            await WpfFrameWaiter.UntilAsync(() => !window.TranslationPulseOffset.HasAnimatedProperties, "reduced motion stops download sweep", ct);
+            window.TranslationDownloadButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await download;
+            Assert.Equal(Visibility.Collapsed, card.Visibility);
+            Assert.Equal(Loc.Get("translation.downloadCancelled"), window.TranslationModelStatus.Text);
+            Assert.True(window.TranslationImportButton.IsEnabled);
+            Assert.False(window.TranslationPulseOffset.HasAnimatedProperties);
+            await window.RunTranslationModelActionAsync(_ =>
+            {
+                Invoke(window, "TranslationModelChanged");
+                throw new TranslationException("translation.downloadTimeout");
+            });
+            await window.Dispatcher.InvokeAsync(() => { });
+            Assert.Equal(Loc.Get("translation.downloadTimeout"), window.TranslationModelStatus.Text);
+        }
+        finally
+        {
+            if (download is { IsCompleted: false })
+            {
+                window.TranslationDownloadButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await download;
+            }
+            host.Content = null;
+            host.Close();
+            parent.Children.Insert(index, card);
+            AnimationConfig.SetReduceMotion(reducedMotion);
+        }
+    });
 
     [Theory]
     [InlineData("EnableBlurEffectsCheck", "EnableBlurEffects")]
@@ -49,6 +225,8 @@ public sealed class SettingsWindowControlTests
     [InlineData("EnableBrowserUrlInspectionCheck", "EnableBrowserUrlInspection")]
     [InlineData("EnableDiagnosticLoggingCheck", "EnableDiagnosticLogging")]
     [InlineData("EnableSpotlightHistoryCheck", "EnableSpotlightHistory")]
+    [InlineData("EnableTranslationCheck", "EnableLiveTranslation")]
+    [InlineData("AutoTranslationCheck", "AutoLiveTranslation")]
     public void ToggleValuesRoundTripThroughPreviewAndPersistence(string controlName, string settingName) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new Fixture();

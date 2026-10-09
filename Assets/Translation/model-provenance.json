@@ -1,0 +1,25 @@
+{
+  "repository": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+  "revision": "a06e946bb6b655725eafa393f4a9745d460374c9",
+  "filename": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+  "sizeBytes": 2497281120,
+  "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+  "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+  "license": "Apache-2.0",
+  "baseRepository": "Qwen/Qwen3-4B-Instruct-2507",
+  "baseRevision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+  "baseConfigDtype": "bfloat16",
+  "headerFinetune": "Instruct",
+  "headerLicense": "apache-2.0",
+  "provenanceLimit": "Base model and header indicate BF16 official source and no AWQ variant; conversion execution was not independently reproduced.",
+  "runtime": {
+    "backendPackages": [
+      "LLamaSharp.Backend.Cpu 0.27.0",
+      "LLamaSharp.Backend.Vulkan.Windows 0.27.0"
+    ],
+    "exactBinarySbomSupplied": false,
+    "declaredLlamaCppRevision": "3f7c29d318e317b63f54c558bc69803963d7d88c",
+    "managed": "LLamaSharp 0.27.0",
+    "tagSubmoduleRevision": "73c9eb8ceda397b651dbb6661b2935f0283a2b1d"
+  }
+}

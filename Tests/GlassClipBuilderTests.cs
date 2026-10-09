@@ -7,6 +7,22 @@ namespace VNotch.Tests;
 
 public sealed class GlassClipBuilderTests
 {
+    [Theory]
+    [InlineData(1.5)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void SquircleClipMatchesShaderBoundary(double power)
+    {
+        const double radius = 40;
+        var geometry = GlassClipBuilder.CreateClip(new Size(200, 100), new CornerRadius(radius), power)!;
+        Assert.Equal(new Rect(0, 0, 200, 100), geometry.Bounds);
+        // Samples on either side of the analytical superellipse diagonal.
+        double shoulder = radius - radius / Math.Pow(2, 1 / power);
+        Assert.True(geometry.FillContains(new Point(shoulder + 0.5, shoulder + 0.5)));
+        Assert.False(geometry.FillContains(new Point(shoulder - 0.5, shoulder - 0.5)));
+        Assert.True(geometry.IsFrozen);
+    }
+
     [Fact]
     public void RadiusChangesRebuildSilhouetteAtTheSameSize()
     {

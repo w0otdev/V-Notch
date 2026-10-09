@@ -53,6 +53,10 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    <PackageReference Include="LanguageDetection.Ai" Version="1.1.0" />
+    <PackageReference Include="LLamaSharp" Version="0.27.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
+    <PackageReference Include="LLamaSharp.Backend.Vulkan.Windows" Version="0.27.0" />
     <PackageReference Include="Markdig" Version="0.41.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.17.1" />
@@ -76,6 +80,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="VNotch.Tests" />
     <InternalsVisibleTo Include="VNotch.Benchmarks" />
+    <InternalsVisibleTo Include="VNotch.TranslationBench" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
     <EmbeddedResource Include="docs\TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />
     <EmbeddedResource Include="docs\TERMS_OF_SERVICE_VI.md" LogicalName="VNotch.TERMS_OF_SERVICE_VI.md" />
@@ -88,8 +93,14 @@
     <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="docs\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
     <None Update="Introduction\**\*" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <None Update="Assets\Translation\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="Locales\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="KeepTranslationNativeLibrariesBesideExecutable" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <Content Update="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Contains('LLamaSharpRuntimes'))" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <None Update="Models\yolox_nano.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

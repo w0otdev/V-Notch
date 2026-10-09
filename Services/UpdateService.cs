@@ -169,6 +169,7 @@ public class UpdateService : IUpdateService, IDisposable
     {
         string? directory = null;
         string? installerPath = null;
+        IDisposable? cleanupLease = null;
         var installerStarted = false;
         try
         {
@@ -181,6 +182,7 @@ public class UpdateService : IUpdateService, IDisposable
                 throw new InvalidOperationException("Invalid installer file name.");
             }
             directory = Path.Combine(Path.GetTempPath(), "V-Notch", Guid.NewGuid().ToString("N"));
+            cleanupLease = AppFileCleanupService.Protect(directory);
             Directory.CreateDirectory(directory);
             installerPath = Path.Combine(directory, safeInstallerName);
             await DownloadAndVerifyInstallerAsync(updateInfo, installerPath, progress, cancellationToken);
@@ -198,6 +200,7 @@ public class UpdateService : IUpdateService, IDisposable
         finally
         {
             if (directory != null && !installerStarted) DeleteDirectory(directory);
+            cleanupLease?.Dispose();
         }
     }
 

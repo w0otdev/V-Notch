@@ -91,6 +91,7 @@ public sealed class LiquidGlassController
     private readonly Func<CaptureRegion?> _regionProvider;
 
     private double _activeIntervalMs;
+    private int _configuredFps;
     private double _frameWorkMs;
     private long _nextDisplayRefreshProbe;
     private int _displayRefreshHz;
@@ -161,7 +162,7 @@ public sealed class LiquidGlassController
     private long _nextMagnifierRetryTicks;
     private int _magnifierInitQueued;
 
-    private bool _hideFromCapture;
+    private volatile bool _hideFromCapture;
     private volatile bool _exactBitBltCapture;
     private int _currentDisplayAffinity = -1;
     private int _captureAffinityFlushPending;
@@ -173,7 +174,12 @@ public sealed class LiquidGlassController
             if (_hideFromCapture == value) return;
             _hideFromCapture = value;
             if (_isActive)
-                SetWindowDisplayAffinitySafe(WDA_NONE);
+            {
+                _exactBitBltCapture = value && SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+                if (!value) SetWindowDisplayAffinitySafe(WDA_NONE);
+                if (!_exactBitBltCapture && _mag == null) RequestMagnifierFallback();
+                ForceRefresh();
+            }
         }
     }
 
@@ -415,12 +421,14 @@ public sealed class LiquidGlassController
 
         _gpuMode = false;
         _mapsDirty = true;
+        int failureGeneration = Volatile.Read(ref _renderGeneration);
 
         void NotifyFailure()
         {
+            if (failureGeneration != Volatile.Read(ref _renderGeneration)) return;
             try { _onGpuFailure?.Invoke(ex); }
             catch { /* fallback must not take down the UI thread */ }
-            if (!_exactBitBltCapture && _mag == null)
+            if (_isActive && !_exactBitBltCapture && _mag == null)
             {
                 try
                 {
@@ -467,22 +475,21 @@ public sealed class LiquidGlassController
         _maxRegionW = Math.Clamp(maxRegionWidth, 64, 4096);
         _maxRegionH = Math.Clamp(maxRegionHeight, 64, 4096);
 
-        int target = (activeFps <= 0 || activeFps == 60) ? AnimationConfig.TargetFps : activeFps;
-        int active = Math.Clamp(target, AnimationConfig.MinFps, MaxTargetFps);
-        _activeIntervalMs = 1000.0 / active;
+        UpdateFps(activeFps);
     }
 
     private readonly string _logTag;
 
     public void UpdateFps(int activeFps)
     {
-        int target = (activeFps <= 0 || activeFps == 60) ? AnimationConfig.TargetFps : activeFps;
+        int target = activeFps <= 0 ? AnimationConfig.TargetFps : activeFps;
         int active = Math.Clamp(target, AnimationConfig.MinFps, MaxTargetFps);
-        // A configured value is only a fallback when display detection fails.
-        // Live glass follows its own monitor, independently of UI animation caps.
-        if (Volatile.Read(ref _displayRefreshHz) == 0)
-            Volatile.Write(ref _activeIntervalMs, 1000.0 / active);
+        Volatile.Write(ref _configuredFps, active);
+        Volatile.Write(ref _activeIntervalMs, ComputeCaptureIntervalMs(active, Volatile.Read(ref _displayRefreshHz)));
     }
+
+    internal static double ComputeCaptureIntervalMs(int configuredFps, int displayRefreshHz) =>
+        1000.0 / (displayRefreshHz > 0 ? Math.Min(configuredFps, displayRefreshHz) : configuredFps);
 
     private void RefreshDisplayCadence()
     {
@@ -490,11 +497,11 @@ public sealed class LiquidGlassController
         if (now < _nextDisplayRefreshProbe) return;
         _nextDisplayRefreshProbe = now + 1000;
         int? detected = GlassDisplayCadence.GetRefreshRate(_getHwnd());
-        if (detected is not { } hz) return;
+        int hz = detected ?? 0;
         if (hz == _displayRefreshHz) return;
         Volatile.Write(ref _displayRefreshHz, hz);
-        Volatile.Write(ref _activeIntervalMs, 1000.0 / hz);
-        RuntimeLog.Log(LogCategory, $"[{_logTag}] Capture cadence follows current display: {hz} Hz");
+        Volatile.Write(ref _activeIntervalMs, ComputeCaptureIntervalMs(Volatile.Read(ref _configuredFps), hz));
+        RuntimeLog.Log(LogCategory, $"[{_logTag}] Display: {hz} Hz; capture limit: {Volatile.Read(ref _configuredFps)} FPS");
     }
 
     internal static double ChooseLockedFrameIntervalMs(double configuredIntervalMs) =>
@@ -585,7 +592,8 @@ public sealed class LiquidGlassController
         _forceRefreshNeeded = true;
         _idleWakeEvent.Set();
 
-        _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+        _exactBitBltCapture = _hideFromCapture && SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+        if (!_hideFromCapture) SetWindowDisplayAffinitySafe(WDA_NONE);
         if (!_exactBitBltCapture && _mag == null)
         {
             try
@@ -607,7 +615,6 @@ public sealed class LiquidGlassController
         _captureVisibilityUntilTicks = 0;
         _overlayActiveCached = false;
         _lastOverlayCheckTicks = 0;
-        _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
         StartWorkerIfNeeded();
     }
 
@@ -858,6 +865,13 @@ public sealed class LiquidGlassController
 
     private bool HandleCaptureOverlay(double frameIntervalMs)
     {
+        if (!_hideFromCapture)
+        {
+            _exactBitBltCapture = false;
+            SetWindowDisplayAffinitySafe(WDA_NONE);
+            if (_mag == null) RequestMagnifierFallback();
+            return false;
+        }
         if (IsCaptureOverlayActive())
         {
             _exactBitBltCapture = false;
@@ -1501,6 +1515,8 @@ public sealed class LiquidGlassController
         int physSrcH = (int)Math.Round(srcH * inv);
 
         int requestedSrcX = region.X - physNotchOffX - physMargin;
+        if (gpuMode && CaptureFullSurface)
+            requestedSrcX -= (_maxRegionW - displayW) / 2;
         int requestedSrcY = region.Y - physMargin;
         int srcX = ClampCaptureOriginToVirtualDesktop(requestedSrcX, physSrcW, horizontal: true);
         int srcY = ClampCaptureOriginToVirtualDesktop(requestedSrcY, physSrcH, horizontal: false);

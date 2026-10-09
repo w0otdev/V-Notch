@@ -150,7 +150,7 @@ public partial class SpotlightWindow
             CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
 
             int targetFps = _settings.LiquidGlass?.TargetFps ?? 0;
-            if (targetFps <= 0 || targetFps == 60) targetFps = AnimationConfig.TargetFps;
+            if (targetFps <= 0) targetFps = AnimationConfig.TargetFps;
 
             IntPtr hwnd = EnsureHwnd();
 
@@ -165,7 +165,7 @@ public partial class SpotlightWindow
 
             UpdateGlassCaptureExtent();
 
-            _liquidGlass.HideFromScreenCapture = false;
+            _liquidGlass.HideFromScreenCapture = _settings.LiquidGlass?.HideFromScreenCapture ?? false;
             _liquidGlass.SetAnimating(_entranceActive || _isClosing);
 
             ConfigureGpuRefraction();
@@ -216,9 +216,10 @@ public partial class SpotlightWindow
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
+            _liquidGlass.HideFromScreenCapture = cfg.HideFromScreenCapture;
 
             int targetFps = cfg.TargetFps;
-            if (targetFps <= 0 || targetFps == 60) targetFps = AnimationConfig.TargetFps;
+            if (targetFps <= 0) targetFps = AnimationConfig.TargetFps;
 
             _liquidGlass.UpdateFps(Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps));
             if (UseGpuRefraction)
@@ -816,7 +817,8 @@ public partial class SpotlightWindow
         if (!double.IsFinite(w) || w <= 0) w = 720;
         if (!double.IsFinite(h) || h <= 0) h = 64;
 
-        var geometry = GlassClipBuilder.CreateClip(new Size(w, h), Shell.CornerRadius);
+        var geometry = GlassClipBuilder.CreateClip(new Size(w, h), Shell.CornerRadius,
+            _settings.LiquidGlass?.PowerFactor ?? 3);
         GlassMaterialClipHost.Clip = geometry;
     }
 

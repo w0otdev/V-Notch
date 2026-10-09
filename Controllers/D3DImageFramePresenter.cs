@@ -346,8 +346,9 @@ internal sealed class D3DImageFramePresenter : IDisposable
                     // Transfer full visible region on resize/recovery; otherwise transfer
                     // only rows modified since the last successful present.
                     bool fullDirty = frameWidth != _lastDirtyWidth || frameHeight != _lastDirtyHeight;
-                    int dirtyTop = fullDirty ? 0 : Math.Min(_pendingDirtyRows.Top, frameHeight - 1);
-                    int dirtyBottom = fullDirty ? frameHeight : Math.Min(_pendingDirtyRows.Bottom, frameHeight);
+                    var dirtyRows = NormalizeDirtyRows(_pendingDirtyRows, frameHeight, fullDirty);
+                    int dirtyTop = dirtyRows.Top;
+                    int dirtyBottom = dirtyRows.Bottom;
                     var frameRect = new Vortice.Direct3D9.Rect(
                         0, dirtyTop, frameWidth, dirtyBottom);
                     _device.UpdateSurface(
@@ -408,6 +409,15 @@ internal sealed class D3DImageFramePresenter : IDisposable
         // All callers run on the dispatcher. Reuse one timer instead of creating
         // Task/continuation/closure objects during every buffer-contention retry.
         _retryTimer.Start();
+    }
+
+    internal static GlassDirtyRows NormalizeDirtyRows(GlassDirtyRows rows, int frameHeight, bool fullDirty)
+    {
+        if (frameHeight <= 0) throw new ArgumentOutOfRangeException(nameof(frameHeight));
+        int top = Math.Clamp(rows.Top, 0, frameHeight);
+        int bottom = Math.Clamp(rows.Bottom, 0, frameHeight);
+        // Invalid/empty metadata must not lose a frame or disable the presenter.
+        return fullDirty || bottom <= top ? new GlassDirtyRows(0, frameHeight) : new GlassDirtyRows(top, bottom);
     }
 
     internal void PrepareResources() => EnsureResources();

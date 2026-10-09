@@ -282,23 +282,26 @@ public static class RuntimeLog
         }
     }
 
-    private static void RotateIfNeeded(bool forceSessionRotation = false)
+    private static bool RotateIfNeeded(bool forceSessionRotation = false, string? path = null, int incomingBytes = 0)
     {
+        path ??= _logPath;
         try
         {
-            if (!File.Exists(_logPath)) return;
-            var info = new FileInfo(_logPath);
-            if (!forceSessionRotation && info.Length <= MaxLogSizeBytes) return;
-            if (info.Length == 0) return;
+            if (!File.Exists(path)) return true;
+            var info = new FileInfo(path);
+            if (!forceSessionRotation && info.Length + incomingBytes <= MaxLogSizeBytes) return true;
+            if (info.Length == 0) return true;
 
-            var backupPath = _logPath + ".old";
+            var backupPath = path + ".old";
             if (File.Exists(backupPath))
                 File.Delete(backupPath);
-            File.Move(_logPath, backupPath);
+            File.Move(path, backupPath);
+            return true;
         }
         catch (Exception)
         {
             // Ignore rotation failures when log files are locked or inaccessible
+            return false;
         }
     }
 
@@ -341,6 +344,8 @@ public static class RuntimeLog
                 return false;
             }
 
+            if (line.Length > MaxBatchCharacters)
+                line = line[..MaxBatchCharacters] + " [truncated]" + Environment.NewLine;
             _queue.Enqueue(new QueueItem(line, null));
             SignalIfQueueWasEmpty(count);
             return true;
@@ -431,7 +436,9 @@ public static class RuntimeLog
             {
                 if (batch.Length > 0)
                 {
-                    await File.AppendAllTextAsync(_path, batch.ToString(), _utf8WithoutBom).ConfigureAwait(false);
+                    string text = batch.ToString();
+                    if (RotateIfNeeded(path: _path, incomingBytes: _utf8WithoutBom.GetByteCount(text)))
+                        await File.AppendAllTextAsync(_path, text, _utf8WithoutBom).ConfigureAwait(false);
                 }
             }
             catch (Exception)

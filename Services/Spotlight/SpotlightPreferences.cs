@@ -176,6 +176,11 @@ internal sealed class SpotlightPreferences
                     File.Move(temp, _path, true);
                 }
                 catch (Exception ex) { RuntimeLog.Error("SPOTLIGHT-PREFERENCES", ex, "Failed to save preferences"); }
+                finally
+                {
+                    try { File.Delete(temp); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                }
             }
         });
     }

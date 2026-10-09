@@ -25,6 +25,7 @@ public partial class SpotifyLoginWindow : Window
     private readonly DispatcherTimer _cookieTimer;
     private bool _cookieCheckInProgress;
     private string? _userDataFolder;
+    private IDisposable? _profileCleanupLease;
 
     public string SpotifySpDc { get; private set; } = "";
 
@@ -135,6 +136,7 @@ public partial class SpotifyLoginWindow : Window
                 "V-Notch",
                 "SpotifyWebView2",
                 Guid.NewGuid().ToString("N"));
+            _profileCleanupLease = AppFileCleanupService.Protect(_userDataFolder);
             Directory.CreateDirectory(_userDataFolder);
 
             CoreWebView2Environment environment =
@@ -274,6 +276,8 @@ public partial class SpotifyLoginWindow : Window
 
         if (_userDataFolder != null)
             DeleteTemporaryProfileAsync(_userDataFolder).SafeFireAndForget("SPOTIFY-LOGIN-CLEANUP");
+        _profileCleanupLease?.Dispose();
+        _profileCleanupLease = null;
     }
 
     private static async Task DeleteTemporaryProfileAsync(string userDataFolder)

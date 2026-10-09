@@ -489,6 +489,7 @@ public partial class MainWindow : Window
         InitializeSessionUnlockFeedback();
         _overlayWindow.Initialize();
         _spotlightController.Initialize(this, _settings);
+        InitializeLiveTranslation();
         _clipboardListener.Start();
 
         try
@@ -637,6 +638,7 @@ public partial class MainWindow : Window
     {
         if (_cleanedUp) return;
         _cleanedUp = true;
+        StopLiquidGlass();
         _moduleHost.StopAll();
         DisposeGreetingLifecycle();
         DisposeSessionUnlockFeedback();
@@ -663,6 +665,8 @@ public partial class MainWindow : Window
         _clipboardShutdown = _clipboardHistory?.DisposeAsync().AsTask() ?? Task.CompletedTask;
         _clipboardShutdown.SafeFireAndForget("CLIPBOARD-SHUTDOWN");
         DisposeClipboardHotkey();
+        _liveTranslation?.Dispose();
+        _liveTranslation = null;
         _clipboardListener.Dispose();
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
@@ -1408,7 +1412,7 @@ public partial class MainWindow : Window
     }
 
 #pragma warning disable S3776 // Complex modal settings configuration and reactive subsystem update dispatch
-    private void OpenAppSettings()
+    private void OpenAppSettings(bool showTranslation = false)
     {
         if (IsGreetingInteractionBlocked) return;
         var settingsWindow = new SettingsWindow(
@@ -1428,6 +1432,9 @@ public partial class MainWindow : Window
                 SetAvailableUpdate(updateInfo);
             }));
         };
+
+        settingsWindow.TranslationPreviewRequested += () => _liveTranslation?.OpenFromClipboard();
+        if (showTranslation) settingsWindow.NavigateToTranslation();
 
         settingsWindow.SettingsChanged += (s, newSettings) =>
         {
@@ -1452,6 +1459,7 @@ public partial class MainWindow : Window
             _clipboardHistory?.ApplySettings(_settings);
             if (_settings.HideCamera && IsCameraPreviewLifecycleActive) StopCameraPreviewForViewExit();
             NetworkPrivacy.Current.Apply(_settings);
+            _liveTranslation?.ApplySettings(_settings);
 
 
 
@@ -2592,7 +2600,8 @@ public partial class MainWindow : Window
     }
 
     private StreamGeometry? BuildNotchClipGeometry(double w, double h) =>
-        GlassClipBuilder.CreateClip(new Size(Math.Max(0, w), Math.Max(0, h)), NotchBorder.CornerRadius);
+        GlassClipBuilder.CreateClip(new Size(Math.Max(0, w), Math.Max(0, h)), NotchBorder.CornerRadius,
+            IsLiquidGlassEnabled ? _settings.LiquidGlass?.PowerFactor ?? 3 : 2);
 
     #endregion
 

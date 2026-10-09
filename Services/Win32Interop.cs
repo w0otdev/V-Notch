@@ -347,6 +347,9 @@ internal static class Win32Interop
     [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
     public static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
 
+    [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
+    public static extern int DwmSetWindowAttributeInt(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
     [DllImport("dwmapi.dll")]
     public static extern int DwmFlush();
 
@@ -406,6 +409,7 @@ internal static class Win32Interop
     public const uint KEYEVENTF_KEYUP = 0x0002;
     public const int VK_LBUTTON = 0x01;
     public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+    public const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
     public const int DWMWA_CLOAKED = 14;
     public const uint MOD_ALT = 0x0001;
     public const uint MOD_NOREPEAT = 0x4000;

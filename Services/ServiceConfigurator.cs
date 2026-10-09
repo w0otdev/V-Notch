@@ -29,6 +29,7 @@ public static class ServiceConfigurator
         services.AddSingleton<IDispatcherService>(sp =>
             new DispatcherService(Application.Current.Dispatcher));
         services.AddSingleton<IUpdateService, UpdateService>();
+        services.AddSingleton<AppFileCleanupService>();
         services.AddSingleton<IWeatherService, WeatherService>();
         services.AddSingleton<ISpotlightProvider, AppSearchProvider>();
         services.AddSingleton<ISpotlightProvider, SystemCommandProvider>();

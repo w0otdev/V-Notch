@@ -591,6 +591,7 @@ public partial class SettingsWindow
         snapshot.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
         snapshot.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;
         ReadSpotlightAiSettings(snapshot);
+        ReadTranslationSettings(snapshot);
         snapshot.EnableDebugMode = EnableDebugModeCheck.IsChecked ?? false;
         snapshot.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
         snapshot.HideOnWindowedFullscreen = HideOnWindowedFullscreenCheck.IsChecked ?? true;

@@ -150,6 +150,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 
         Guid id = Guid.NewGuid();
         string staging = Path.Combine(_root, "staging", id.ToString("N"));
+        using var cleanupLease = AppFileCleanupService.Protect(staging);
         Directory.CreateDirectory(staging);
         try
         {
@@ -391,6 +392,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         var content = ReadContent(entry);
         EnsureDiskSpace(checked(entry.ByteSize * (content.Files.Any(file => file.IsDirectory) ? 2 : 1)));
         string export = Path.Combine(_root, "exports", entry.IsPersonal ? "personal" : "public", Guid.NewGuid().ToString("N"));
+        using var cleanupLease = AppFileCleanupService.Protect(export);
         Directory.CreateDirectory(export);
         var paths = new List<string>();
         var personalExport = entry.IsPersonal ? new ClipboardPersonalExport() : null;
@@ -498,6 +500,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         var moved = entry with { IsPersonal = personal };
         EnsureDiskSpace(checked(entry.ByteSize + (entry.ByteSize / (1024 * 1024) + 1) * 28 + 64 * 1024));
         string staging = Path.Combine(_root, "staging", Guid.NewGuid().ToString("N"));
+        using var cleanupLease = AppFileCleanupService.Protect(staging);
         Directory.CreateDirectory(staging);
         try
         {

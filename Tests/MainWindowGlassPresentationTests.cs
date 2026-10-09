@@ -17,6 +17,43 @@ public sealed class MainWindowGlassPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public void CleanupStopsGlassAndCancelsGpuRecovery() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.NotchStyle = "liquidglass";
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
+        var controller = new LiquidGlassController(window.GlassBackdropImage, () => hwnd, () => null);
+        Set(window, "_liquidGlass", controller);
+        controller.Start();
+        Set(window, "_glassHoverMotion", true);
+        Invoke(window, "UpdateGlassMotionState");
+        Assert.True(controller.CaptureFullSurface);
+        Assert.True(Field<bool>(window, "_glassRegionPushActive"));
+        Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("temporary device loss"));
+        Assert.True(Field<bool>(window, "_gpuRefractionFailed"));
+        var timer = Field<System.Windows.Threading.DispatcherTimer?>(window, "_glassGpuRetryTimer");
+        if (LiquidGlassRefractionEffect.IsAvailable)
+        {
+            Assert.NotNull(timer);
+            Assert.True(timer.IsEnabled);
+            Assert.Equal(TimeSpan.FromSeconds(5), timer.Interval);
+        }
+        Invoke(window, "PerformCleanup");
+        Assert.False(controller.IsActive);
+        Assert.False(Field<bool>(window, "_glassRegionPushActive"));
+        Assert.Null(Field<System.Windows.Threading.DispatcherTimer?>(window, "_glassGpuRetryTimer"));
+        Assert.Null(window.GlassBackdropImage.Effect);
+        if (timer != null) Assert.False(timer.IsEnabled);
+        // A queued failure or timer tick must not recreate GPU resources after closing.
+        Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("late failure"));
+        Invoke(window, "OnGlassGpuRetry", null, EventArgs.Empty);
+        Assert.False(controller.IsActive);
+        Assert.Null(Field<System.Windows.Threading.DispatcherTimer?>(window, "_glassGpuRetryTimer"));
+    });
+
+    [Fact]
     public void VisibleTrayAvoidsWholeContentShadowAndRestoresItWhenClosed() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();

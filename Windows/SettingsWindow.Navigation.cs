@@ -39,6 +39,7 @@ public partial class SettingsWindow
         _navPanels[NavSectionSystem] = PanelSystem;
         _navPanels[NavSectionPrivacy] = PanelPrivacy;
         _navPanels[NavSectionSpotlight] = PanelSpotlight;
+        _navPanels["Translation"] = PanelTranslation;
         _navPanels[NavSectionFileTray] = PanelFileTray;
         _navPanels[NavSectionAdvanced] = PanelAdvanced;
         _navPanels[NavSectionPerformance] = PanelPerformance;
@@ -53,6 +54,7 @@ public partial class SettingsWindow
         _navButtons[NavSectionSystem] = NavSystem;
         _navButtons[NavSectionPrivacy] = NavPrivacy;
         _navButtons[NavSectionSpotlight] = NavSpotlight;
+        _navButtons["Translation"] = NavTranslation;
         _navButtons[NavSectionFileTray] = NavFileTray;
         _navButtons[NavSectionAdvanced] = NavAdvanced;
         _navButtons[NavSectionPerformance] = NavPerformance;
@@ -77,7 +79,7 @@ public partial class SettingsWindow
     private static readonly string[] _navOrder =
     {
         NavSectionSearching, NavSectionAppearance, NavSectionSkins, NavSectionBehavior, NavSectionDevices,
-        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
+        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, "Translation", NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
     };
 
     private int _navTransitionVersion;
@@ -211,6 +213,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCard,
             NavSectionPrivacy => PrivacyCard,
             NavSectionSpotlight => SpotlightCard,
+            "Translation" => TranslationCard,
             NavSectionFileTray => FileTrayCard,
             NavSectionAdvanced => AdvancedCard,
             NavSectionPerformance => PerformanceCard,
@@ -229,6 +232,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCardTranslate,
             NavSectionPrivacy => PrivacyCardTranslate,
             NavSectionSpotlight => SpotlightCardTranslate,
+            "Translation" => TranslationCardTranslate,
             NavSectionFileTray => FileTrayCardTranslate,
             NavSectionAdvanced => AdvancedCardTranslate,
             NavSectionPerformance => PerformanceCardTranslate,
