@@ -19,7 +19,7 @@ public sealed class ServicePrewarmerTests
         ServicePrewarmer.Prewarm(provider);
         Assert.True(provider.Requests.Count >= 20);
         await WaitForBackgroundWarmups(provider);
-        Assert.True(provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)) >= 2);
+        Assert.Equal(1, provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)));
         Assert.Contains(typeof(IBatteryService), provider.Requests);
         Assert.Contains(typeof(IWindowTitleScanner), provider.Requests);
         Assert.Contains(typeof(AudioMixerService), provider.Requests);
@@ -46,10 +46,30 @@ public sealed class ServicePrewarmerTests
         Assert.Equal(enabled ? 2 : 1, provider.Requests.Count(type => type == typeof(VNotch.Services.Spotlight.SpotlightSearchService)));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PrivacyWorkerRemainsOwnedByItsModuleDuringBackgroundWarmup(bool enabled)
+    {
+        int scans = 0;
+        using var privacy = new PrivacyIndicatorService(TimeSpan.FromMilliseconds(20),
+            _ => Array.Empty<CapabilityUsage>(), () => false,
+            new ScreenRecordingProbe(() => { Interlocked.Increment(ref scans); return false; }));
+        var provider = new RecordingProvider(false, new Dictionary<Type, object>
+        {
+            [typeof(ISettingsService)] = new FakeSettingsService(new() { EnablePrivacyIndicators = enabled, EnableSpotlight = false }),
+            [typeof(PrivacyIndicatorService)] = privacy
+        });
+        ServicePrewarmer.Prewarm(provider);
+        await WaitForBackgroundWarmups(provider);
+        Assert.Equal(0, Volatile.Read(ref scans));
+        Assert.Equal(1, provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)));
+    }
+
     private static async Task WaitForBackgroundWarmups(RecordingProvider provider)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        while (provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)) < 2) await Task.Delay(10, timeout.Token);
+        while (provider.Requests.Count(type => type == typeof(AudioMixerService)) < 2) await Task.Delay(10, timeout.Token);
     }
 
     private sealed class RecordingProvider(bool throws, Dictionary<Type, object>? registrations = null) : IServiceProvider

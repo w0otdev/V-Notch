@@ -76,7 +76,6 @@ internal static class ServicePrewarmer
         WarmupWindowTitleScanner(provider);
         WarmupBluetooth(provider);
         WarmupAudioMixer(provider);
-        WarmupPrivacyIndicator(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
     }
@@ -196,18 +195,6 @@ internal static class ServicePrewarmer
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategory, ex, "Audio mixer warmup failed");
-        }
-    }
-
-    private static void WarmupPrivacyIndicator(IServiceProvider provider)
-    {
-        try
-        {
-            provider.GetService<PrivacyIndicatorService>()?.Start();
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(LogCategory, ex, "Privacy indicator warmup failed");
         }
     }
 

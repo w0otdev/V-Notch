@@ -52,6 +52,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="ComputeSharp.D2D1" Version="3.2.0" />
     <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
     <PackageReference Include="LanguageDetection.Ai" Version="1.1.0" />
     <PackageReference Include="LLamaSharp" Version="0.27.0" />
@@ -63,6 +64,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Data.OleDb" Version="8.0.1" />
+    <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D9" Version="3.8.3" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -72,6 +73,26 @@ internal sealed class PrivacyProcessSnapshot : IDisposable
             while (length < 260 && name[length] != '\0') length++;
             return new ReadOnlySpan<char>(name, length).Equals(executableName, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    internal Process[] GetProcessesByExecutableName(string executableName, string? alternativeName = null)
+    {
+        List<Process>? matches = null;
+        for (int i = 0; i < Count; i++)
+        {
+            if (!MatchesExecutableName(i, executableName) &&
+                (alternativeName == null || !MatchesExecutableName(i, alternativeName))) continue;
+            try
+            {
+                var process = Process.GetProcessById(checked((int)GetProcessId(i)));
+                (matches ??= new List<Process>()).Add(process);
+            }
+            catch (ArgumentException)
+            {
+                // The process may have exited after the snapshot was captured.
+            }
+        }
+        return matches?.ToArray() ?? Array.Empty<Process>();
     }
 
     public void Dispose()

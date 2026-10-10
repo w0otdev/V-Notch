@@ -100,6 +100,9 @@ public sealed class PrivacyIndicatorService : IDisposable
         lock (_lifecycleLock)
         {
             if (_disposed || _started) return;
+            // A resumed worker must publish fresh evidence even when it matches
+            // the state observed before its indicator was disabled.
+            CurrentState = PrivacyIndicatorState.Empty;
             _started = true;
             _currentGeneration++;
             int generation = _currentGeneration;
@@ -256,7 +259,7 @@ public sealed class PrivacyIndicatorService : IDisposable
         var locationConsumers = GetConsumerNames(GetRelevantConsumerUsages(locationUsage, running.IsRunning));
         bool screenRecordingActive = DetectScreenRecording(
             programmaticCapture.Concat(borderlessCapture), running, utcNow) ||
-            _screenRecordingProbe.IsRecording();
+            _screenRecordingProbe.IsRecording(running.GetProcessSnapshot);
 
         return new PrivacyScanResult(
             MicrophoneCandidates: microphoneCandidates,
@@ -780,6 +783,9 @@ public sealed class PrivacyIndicatorService : IDisposable
         private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, bool> _processMatchCache = new(StringComparer.OrdinalIgnoreCase);
         private PrivacyProcessSnapshot? _processSnapshot;
+
+        internal PrivacyProcessSnapshot GetProcessSnapshot()
+            => _processSnapshot ??= PrivacyProcessSnapshot.Capture();
 
         public bool IsRunning(string rawConsumer)
         {

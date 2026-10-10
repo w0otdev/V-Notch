@@ -118,6 +118,7 @@ public sealed class MusicVisualizerAudioPipelineTests
             visualizer.SetCopiedFeedback(true);
             await WpfFrameWaiter.UntilAsync(() => (double)typeof(MusicVisualizer).GetField("_checkMix", instance)!.GetValue(visualizer)! == 1, "copied visualizer morph", ct);
             Assert.True((bool)typeof(MusicVisualizer).GetField("_copiedFeedback", instance)!.GetValue(visualizer)!);
+            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!, "settled copied feedback releases rendering", ct);
             visualizer.SetCopiedFeedback(false);
             await WpfFrameWaiter.UntilAsync(() => (double)typeof(MusicVisualizer).GetField("_iconMix", instance)!.GetValue(visualizer)! == 0, "return to paused bars", ct);
         }
@@ -125,6 +126,34 @@ public sealed class MusicVisualizerAudioPipelineTests
         await WpfFrameWaiter.NextAsync(ct);
         Assert.False((bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!);
         Assert.False((bool)typeof(MusicVisualizer).GetField("_holdsCaptureLease", instance)!.GetValue(visualizer)!);
+    });
+
+    [Fact]
+    public void HiddenLoadedVisualizerReleasesItsLeaseAndCannotAcquireFromPlaybackChanges() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        var visualizer = new MusicVisualizer { TrackId = "Fixture paused track", Width = 80, Height = 40 };
+        var host = new BackgroundWindow { Width = 100, Height = 60, Content = visualizer };
+        var holdsLease = typeof(MusicVisualizer).GetField("_holdsCaptureLease", instance)!;
+        try
+        {
+            host.Show();
+            await WpfFrameWaiter.UntilAsync(() => visualizer.IsLoaded, "visualizer host loaded", ct);
+            // A lease alone does not start the driver, so this exercises the
+            // lifecycle without opening an audio device in the regression test.
+            typeof(MusicVisualizer).GetMethod("AcquireCaptureLease", instance)!.Invoke(visualizer, null);
+            Assert.True((bool)holdsLease.GetValue(visualizer)!);
+            visualizer.Visibility = System.Windows.Visibility.Collapsed;
+            Assert.True(visualizer.IsLoaded);
+            Assert.False((bool)holdsLease.GetValue(visualizer)!);
+            Assert.False((bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!);
+            visualizer.IsPlaying = true;
+            visualizer.IsBuffering = true;
+            Assert.False((bool)holdsLease.GetValue(visualizer)!);
+            visualizer.IsBuffering = false;
+            visualizer.IsPlaying = false;
+        }
+        finally { host.Close(); }
     });
 
     private static void WithAudioState(Action action)

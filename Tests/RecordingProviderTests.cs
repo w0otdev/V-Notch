@@ -38,6 +38,24 @@ public sealed class RecordingProviderTests
         Assert.True(new ScreenRecordingProbe(() => throw new IOException(), () => true).IsRecording());
         Assert.False(new ScreenRecordingProbe(() => throw new IOException(), () => false).IsRecording());
         Assert.False(new ScreenRecordingProbe(() => false, () => false).IsRecording());
+        Assert.True(new ScreenRecordingProbe(() => true).IsRecording(
+            () => throw new InvalidOperationException("Injected providers do not need a process snapshot.")));
+    }
+
+    [Fact]
+    public void NativeProvidersShareOneSnapshotAndDoNotOwnItsLifetime()
+    {
+        using var snapshot = PrivacyProcessSnapshot.Capture();
+        snapshot.Dispose(); // An empty process snapshot rules out every native recorder.
+        int calls = 0;
+        Assert.False(new ScreenRecordingProbe().IsRecording(() => { calls++; return snapshot; }));
+        Assert.Equal(1, calls);
+        Assert.False(new ScreenRecordingProbe().IsRecording(() => throw new IOException("Snapshot unavailable.")));
+
+        using var live = PrivacyProcessSnapshot.Capture();
+        new ScreenRecordingProbe().IsRecording(() => live);
+        Assert.Contains((uint)Environment.ProcessId,
+            Enumerable.Range(0, live.Count).Select(live.GetProcessId));
     }
 
     [Theory]
@@ -101,6 +119,24 @@ public sealed class RecordingProviderTests
             File.WriteAllText(path, "new session\n");
             state.Read(path);
             Assert.False(state.Active);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Obs_UnchangedFilePreservesAnIncompleteActivityMarker()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            var state = new ObsRecordingProbe.LogState();
+            File.WriteAllText(path, "12:00:00.000: ==== Recording Sta");
+            state.Read(path);
+            state.Read(path);
+            Assert.False(state.Active);
+            File.AppendAllText(path, "rt ===============================================\n");
+            state.Read(path);
+            Assert.True(state.Active);
         }
         finally { File.Delete(path); }
     }

@@ -11,9 +11,9 @@ internal sealed class FfmpegRecordingProbe
 {
     private readonly Dictionary<(int Id, long Start), bool> _cache = new();
 
-    internal bool IsRecording()
+    internal bool IsRecording(PrivacyProcessSnapshot snapshot)
     {
-        var processes = Process.GetProcessesByName("ffmpeg");
+        var processes = snapshot.GetProcessesByExecutableName("ffmpeg.exe");
         var seen = new HashSet<(int, long)>();
         bool active = false;
         try

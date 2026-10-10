@@ -9,9 +9,9 @@ namespace VNotch.Services;
 // Its last output path alone is historical: require a live recorder holding that file.
 internal static class BandicamRecordingProbe
 {
-    internal static bool IsRecording()
+    internal static bool IsRecording(PrivacyProcessSnapshot snapshot)
     {
-        var processes = Process.GetProcessesByName("bdcam");
+        var processes = snapshot.GetProcessesByExecutableName("bdcam.exe");
         try
         {
             if (processes.Length == 0) return false;

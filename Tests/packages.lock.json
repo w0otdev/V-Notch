@@ -50,6 +50,19 @@
         "resolved": "8.4.0",
         "contentHash": "tqVU8yc/ADO9oiTRyTnwhFN68hCwvkliMierptWOudIAvWY1mWCh5VFh+guwHJmpMwfg0J0rY+yyd5Oy7ty9Uw=="
       },
+      "ComputeSharp.Core": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "ImIKT+x8IpWG+i/D8bIBtxeZ7FwlzcpKtoOgLzrwgJu0XopoVLsh3Xu6uzgZQIgtegFZK15PYqpgZKhMu2UTcg=="
+      },
+      "ComputeSharp.D2D1": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "wvBSCHuJ6OXC5F1FsrlxAnUeOTyULR0+bidV+Elouzw9u7drPjfrfqu5jVvjiubaa4GjW1aPi28iD37vIfijmA==",
+        "dependencies": {
+          "ComputeSharp.Core": "3.2.0"
+        }
+      },
       "Hardcodet.NotifyIcon.Wpf": {
         "type": "Transitive",
         "resolved": "1.1.0",
@@ -396,6 +409,15 @@
           "System.Text.Encodings.Web": "10.0.4"
         }
       },
+      "Vortice.Direct2D1": {
+        "type": "Transitive",
+        "resolved": "3.8.3",
+        "contentHash": "SDHEmNUT3A4P8yj+g7q3AnRZ9fvqOOe/EoWjsgkHlQ3C9Tkc51rTeZXC9bQPySli+/lFTui8vMs9tpWZqf+AwQ==",
+        "dependencies": {
+          "SharpGen.Runtime": "2.4.2-beta",
+          "Vortice.DXGI": "3.8.3"
+        }
+      },
       "Vortice.Direct3D11": {
         "type": "Transitive",
         "resolved": "3.8.3",
@@ -493,6 +515,7 @@
         "dependencies": {
           "AngleSharp": "[1.8.2, )",
           "CommunityToolkit.Mvvm": "[8.4.0, )",
+          "ComputeSharp.D2D1": "[3.2.0, )",
           "Hardcodet.NotifyIcon.Wpf": "[1.1.0, )",
           "LLamaSharp": "[0.27.0, )",
           "LLamaSharp.Backend.Cpu": "[0.27.0, )",
@@ -505,6 +528,7 @@
           "NAudio": "[2.2.1, )",
           "System.Data.OleDb": "[8.0.1, )",
           "Vortice.DXGI": "[3.8.3, )",
+          "Vortice.Direct2D1": "[3.8.3, )",
           "Vortice.Direct3D11": "[3.8.3, )",
           "Vortice.Direct3D9": "[3.8.3, )",
           "YoutubeExplode": "[6.6.0, )"

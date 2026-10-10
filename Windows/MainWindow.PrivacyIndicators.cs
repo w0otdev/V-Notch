@@ -55,9 +55,36 @@ public partial class MainWindow
             RestorePrivacyDotVisibility();
     }
 
+    private int _privacyPresentationGeneration;
+    private bool? _appliedPrivacyIndicatorsEnabled;
+
     private void PrivacyModule_StateChanged(object? sender, PrivacyIndicatorState state)
     {
-        Dispatcher.BeginInvoke(() => UpdatePrivacyIndicators(state));
+        int generation = _privacyPresentationGeneration;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!_cleanedUp && generation == _privacyPresentationGeneration)
+                UpdatePrivacyIndicators(state);
+        });
+    }
+
+    private void ApplyPrivacyIndicatorSettings()
+    {
+        if (_cleanedUp) return;
+        if (_appliedPrivacyIndicatorsEnabled != _settings.EnablePrivacyIndicators)
+        {
+            _appliedPrivacyIndicatorsEnabled = _settings.EnablePrivacyIndicators;
+            _privacyPresentationGeneration++;
+        }
+        if (_settings.EnablePrivacyIndicators)
+        {
+            if (_coreModulesStarted) _privacyModule.Start();
+        }
+        else
+        {
+            _privacyModule.Stop();
+            UpdatePrivacyIndicators(PrivacyIndicatorState.Empty);
+        }
     }
 
     private void UpdatePrivacyIndicators(PrivacyIndicatorState state)

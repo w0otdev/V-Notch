@@ -204,7 +204,7 @@ namespace VNotch.Controls
         }
 
         private bool ShouldCaptureAudio =>
-            _state == VisualizerState.Playing || _state == VisualizerState.Seeking;
+            IsLoaded && IsVisible && (_state == VisualizerState.Playing || _state == VisualizerState.Seeking);
 
         private void UpdateRenderingState()
         {
@@ -212,6 +212,7 @@ namespace VNotch.Controls
             {
                 ResetPlaybackFeedback();
                 StopRendering();
+                ReleaseCaptureLease();
                 return;
             }
 
@@ -259,8 +260,11 @@ namespace VNotch.Controls
             for (int i = 0; i < BarCount; i++)
                 drawSettled &= Math.Abs(_smoothedHeights[i] - _currentHeights[i]) <= MinHeightChangeThreshold;
             bool opacityChanged = Math.Abs(oldOpacity - _currentOpacity) > 0.0001;
+            bool copiedFeedbackSettled = _copiedFeedback && _iconMix == 1 && _checkMix == 1 &&
+                _playMix == (IsPlaying ? 1 : 0);
 
-            if (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused)
+            if (copiedFeedbackSettled ||
+                (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused))
             {
                 InvalidateVisual();
                 StopRendering();
@@ -272,7 +276,9 @@ namespace VNotch.Controls
                 Math.Abs(oldIconMix - _iconMix) > 0.0001 ||
                 Math.Abs(oldCheckMix - _checkMix) > 0.0001 ||
                 Math.Abs(oldPlayMix - _playMix) > 0.0001)
-                InvalidateVisual();
+            {
+                if (NeedsDrawingUpdate()) InvalidateVisual();
+            }
         }
 
         private void ResetPlaybackFeedback()
@@ -755,6 +761,7 @@ namespace VNotch.Controls
         private void PrepareDrawHeights()
         {
             double smoothingFactor = Math.Pow(0.56, _lastDtMs / ReferenceFrameMs);
+            double smallBarSmoothingDelta = double.NaN;
             for (int i = 0; i < BarCount; i++)
             {
                 double targetSmoothing = smoothingFactor;
@@ -762,8 +769,9 @@ namespace VNotch.Controls
                 if (refHeight < SmallBarHeightThreshold)
                 {
                     double smallness = 1.0 - (refHeight / SmallBarHeightThreshold);
-                    double extra = Math.Pow(0.58, _lastDtMs / ReferenceFrameMs) - smoothingFactor;
-                    targetSmoothing = Math.Min(0.78, smoothingFactor + (extra * smallness));
+                    if (double.IsNaN(smallBarSmoothingDelta))
+                        smallBarSmoothingDelta = Math.Pow(0.58, _lastDtMs / ReferenceFrameMs) - smoothingFactor;
+                    targetSmoothing = Math.Min(0.78, smoothingFactor + (smallBarSmoothingDelta * smallness));
                 }
 
                 _smoothedHeights[i] = (_smoothedHeights[i] * targetSmoothing) + (_currentHeights[i] * (1 - targetSmoothing));
@@ -844,6 +852,7 @@ namespace VNotch.Controls
 
                 _cachedBarGradient = new LinearGradientBrush(baseColor, darkColor, 90.0);
                 _cachedBarGradient.MappingMode = BrushMappingMode.RelativeToBoundingBox;
+                _cachedBarGradient.Freeze();
             }
 
             return _cachedBarGradient;
@@ -855,8 +864,37 @@ namespace VNotch.Controls
             _cachedDpi = newDpi;
         }
 
-        protected override void OnRender(DrawingContext drawingContext)
+        protected override void OnRender(DrawingContext drawingContext) => RenderFrame(drawingContext);
+
+        private readonly Rect[] _renderedBarBounds = new Rect[BarCount];
+        private bool _hasRenderedBars;
+        private double _renderedWidth, _renderedHeight, _renderedOpacity;
+        private DpiScale _renderedDpi;
+        private Color _renderedBaseColor;
+
+        // The bars are snapped to device pixels. Their smoothed amplitudes can
+        // advance several frames before a drawn edge moves by even one pixel.
+        // Keep the current drawing until its exact bounds, opacity or color differ.
+        internal bool NeedsDrawingUpdate()
         {
+            if (!_hasRenderedBars || _iconMix != 0 || _renderedOpacity != _currentOpacity ||
+                _renderedWidth != ActualWidth || _renderedHeight != ActualHeight || ActiveBrush == null)
+                return true;
+            DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
+            if (dpi.DpiScaleX != _renderedDpi.DpiScaleX || dpi.DpiScaleY != _renderedDpi.DpiScaleY ||
+                (ActiveBrush is SolidColorBrush brush ? brush.Color : Colors.White) != _renderedBaseColor)
+                return true;
+            double barWidth = ActualWidth * BarWidthRatio;
+            double spacing = ActualWidth * BarSpacingRatio + 0.2;
+            double startX = (ActualWidth - (barWidth * BarCount + spacing * (BarCount - 1))) / 2;
+            for (int i = 0; i < BarCount; i++)
+                if (_renderedBarBounds[i] != GetBarBounds(i, ActualHeight, startX, barWidth, spacing)) return true;
+            return false;
+        }
+
+        internal void RenderFrame(DrawingContext drawingContext)
+        {
+            _hasRenderedBars = false;
             double width = ActualWidth;
             double height = ActualHeight;
 
@@ -892,17 +930,22 @@ namespace VNotch.Controls
             drawingContext.PushOpacity(1 - morphOpacity);
             var gradientBrush = GetBarGradientBrush();
 
+            double radius = snappedW * CornerRadiusRatio;
             for (int i = 0; i < BarCount; i++)
             {
-                double radius = snappedW * CornerRadiusRatio;
-
+                Rect bounds = GetBarBounds(i, height, startX, barWidth, spacing);
+                _renderedBarBounds[i] = bounds;
                 drawingContext.DrawRoundedRectangle(gradientBrush, null,
-                    GetBarBounds(i, height, startX, barWidth, spacing),
-                    radius, radius);
+                    bounds, radius, radius);
             }
-
             drawingContext.Pop();
             drawingContext.Pop();
+            _hasRenderedBars = morphOpacity == 0;
+            _renderedWidth = width;
+            _renderedHeight = height;
+            _renderedOpacity = _currentOpacity;
+            _renderedDpi = dpi;
+            _renderedBaseColor = _cachedGradientBaseColor;
         }
 
         private Rect GetBarBounds(int index, double height, double startX, double barWidth, double spacing)

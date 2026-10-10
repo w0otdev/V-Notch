@@ -11,9 +11,9 @@ internal sealed class ObsRecordingProbe
 {
     private readonly Dictionary<string, LogState> _logs = new(StringComparer.OrdinalIgnoreCase);
 
-    internal bool IsRecording()
+    internal bool IsRecording(PrivacyProcessSnapshot snapshot)
     {
-        var processes = Process.GetProcessesByName("obs64").Concat(Process.GetProcessesByName("obs32")).ToArray();
+        var processes = snapshot.GetProcessesByExecutableName("obs64.exe", "obs32.exe");
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool active = false;
         try
@@ -89,6 +89,7 @@ internal sealed class ObsRecordingProbe
                     _position = stream.Position;
                 }
             }
+            if (length == _position) return;
             stream.Position = _position;
             var bytes = new byte[(int)(length - _position)];
             int read = 0, count;
@@ -99,21 +100,26 @@ internal sealed class ObsRecordingProbe
 
         internal void Feed(string text)
         {
-            string[] lines = (_partialLine + text).Split('\n');
-            _partialLine = lines[^1].Length <= 4096 ? lines[^1] : "";
-            foreach (string line in lines.Take(lines.Length - 1))
+            if (text.Length == 0) return;
+            ReadOnlySpan<char> remaining = _partialLine.Length == 0 ? text : _partialLine + text;
+            int newline;
+            while ((newline = remaining.IndexOf('\n')) >= 0)
             {
-                Apply(line, "Recording", ref _recording);
-                Apply(line, "Streaming", ref _streaming);
-                Apply(line, "Replay Buffer", ref _replay);
+                var line = remaining[..newline];
+                Apply(line, ": ==== Recording Start ===", ": ==== Recording Stop ===", ref _recording);
+                Apply(line, ": ==== Streaming Start ===", ": ==== Streaming Stop ===", ref _streaming);
+                Apply(line, ": ==== Replay Buffer Start ===", ": ==== Replay Buffer Stop ===", ref _replay);
+                remaining = remaining[(newline + 1)..];
             }
+            _partialLine = remaining.Length <= 4096 ? remaining.ToString() : "";
         }
 
-        private static void Apply(string line, string activity, ref bool active)
+        private static void Apply(ReadOnlySpan<char> line, ReadOnlySpan<char> startMarker,
+            ReadOnlySpan<char> stopMarker, ref bool active)
         {
             // Exact logger marker, not arbitrary mentions of recording in configuration.
-            if (line.Contains($": ==== {activity} Start ===", StringComparison.Ordinal)) active = true;
-            if (line.Contains($": ==== {activity} Stop ===", StringComparison.Ordinal)) active = false;
+            if (line.Contains(startMarker, StringComparison.Ordinal)) active = true;
+            if (line.Contains(stopMarker, StringComparison.Ordinal)) active = false;
         }
     }
 }

@@ -86,6 +86,7 @@ update_settings.ps1
 !/Tools/Assert-UpdateCompatibility.ps1
 !/Tools/validate_locales.py
 !/Tools/ReportBenchmark/
+!/Tools/RenderPerformanceBenchmark/
 !/Tools/VNotch.Benchmarks/
 !/Tools/StressRunner/
 !/Tools/TestSupport/

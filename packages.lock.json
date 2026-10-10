@@ -14,6 +14,15 @@
         "resolved": "8.4.0",
         "contentHash": "tqVU8yc/ADO9oiTRyTnwhFN68hCwvkliMierptWOudIAvWY1mWCh5VFh+guwHJmpMwfg0J0rY+yyd5Oy7ty9Uw=="
       },
+      "ComputeSharp.D2D1": {
+        "type": "Direct",
+        "requested": "[3.2.0, )",
+        "resolved": "3.2.0",
+        "contentHash": "wvBSCHuJ6OXC5F1FsrlxAnUeOTyULR0+bidV+Elouzw9u7drPjfrfqu5jVvjiubaa4GjW1aPi28iD37vIfijmA==",
+        "dependencies": {
+          "ComputeSharp.Core": "3.2.0"
+        }
+      },
       "Hardcodet.NotifyIcon.Wpf": {
         "type": "Direct",
         "requested": "[1.1.0, )",
@@ -117,6 +126,16 @@
           "System.Diagnostics.PerformanceCounter": "8.0.1"
         }
       },
+      "Vortice.Direct2D1": {
+        "type": "Direct",
+        "requested": "[3.8.3, )",
+        "resolved": "3.8.3",
+        "contentHash": "SDHEmNUT3A4P8yj+g7q3AnRZ9fvqOOe/EoWjsgkHlQ3C9Tkc51rTeZXC9bQPySli+/lFTui8vMs9tpWZqf+AwQ==",
+        "dependencies": {
+          "SharpGen.Runtime": "2.4.2-beta",
+          "Vortice.DXGI": "3.8.3"
+        }
+      },
       "Vortice.Direct3D11": {
         "type": "Direct",
         "requested": "[3.8.3, )",
@@ -162,6 +181,11 @@
         "type": "Transitive",
         "resolved": "8.4.2",
         "contentHash": "2hmtrrU18x6NL3mbuAqwy0KpnoEEJOuK6sH5RKQfD/jHijn2pqvqBUC7WGy9dgNBL9BDA7eOC0kirsNPMp2f4Q=="
+      },
+      "ComputeSharp.Core": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "ImIKT+x8IpWG+i/D8bIBtxeZ7FwlzcpKtoOgLzrwgJu0XopoVLsh3Xu6uzgZQIgtegFZK15PYqpgZKhMu2UTcg=="
       },
       "JsonExtensions": {
         "type": "Transitive",

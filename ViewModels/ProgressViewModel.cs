@@ -13,6 +13,10 @@ public partial class ProgressViewModel : ObservableObject
     private DateTime _seekDebounceUntil = DateTime.MinValue;
     private bool _isDragging;
     private string _lastSignature = "";
+    private long _formattedPositionSecond = long.MinValue;
+    private long _formattedDurationSecond = long.MinValue;
+    private string _formattedPosition = "";
+    private string _formattedDuration = "";
 
     [ObservableProperty]
     private double _position;
@@ -128,8 +132,8 @@ public partial class ProgressViewModel : ObservableObject
 
         display = TimeSpan.FromTicks(Math.Clamp(display.Ticks, 0, _lastKnownDuration.Ticks));
         Position = display.TotalSeconds / _lastKnownDuration.TotalSeconds;
-        CurrentTimeText = FormatTime(display);
-        RemainingTimeText = FormatTime(_lastKnownDuration);
+        CurrentTimeText = FormatCachedTime(display, ref _formattedPositionSecond, ref _formattedPosition);
+        RemainingTimeText = FormatCachedTime(_lastKnownDuration, ref _formattedDurationSecond, ref _formattedDuration);
     }
 
     public void StartDragging() => _isDragging = true;
@@ -139,7 +143,8 @@ public partial class ProgressViewModel : ObservableObject
     {
         if (_lastKnownDuration <= TimeSpan.Zero) return;
         Position = Math.Clamp(ratio, 0, 1);
-        CurrentTimeText = FormatTime(TimeSpan.FromSeconds(_lastKnownDuration.TotalSeconds * Position));
+        CurrentTimeText = FormatCachedTime(TimeSpan.FromSeconds(_lastKnownDuration.TotalSeconds * Position),
+            ref _formattedPositionSecond, ref _formattedPosition);
     }
 
     public TimeSpan GetDragSeekPosition(double ratio) =>
@@ -172,6 +177,17 @@ public partial class ProgressViewModel : ObservableObject
 
     public bool ShouldShow => CurrentMediaInfo?.IsAnyMediaPlaying == true &&
         (CurrentMediaInfo.HasTimeline || CurrentMediaInfo.IsIndeterminate);
+
+    private static string FormatCachedTime(TimeSpan time, ref long cachedSecond, ref string cachedText)
+    {
+        long second = time.Ticks / TimeSpan.TicksPerSecond;
+        if (second != cachedSecond)
+        {
+            cachedText = FormatTime(time);
+            cachedSecond = second;
+        }
+        return cachedText;
+    }
 
     private static string FormatTime(TimeSpan time) =>
         time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");

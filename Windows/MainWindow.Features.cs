@@ -2,11 +2,14 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    private bool _coreModulesStarted;
+
     private void StartCoreModules()
     {
+        _coreModulesStarted = true;
         _batteryModule.Start();
         _bluetoothModule.Start();
-        _privacyModule.Start();
+        ApplyPrivacyIndicatorSettings();
     }
 
     private void EnsureCalendarFeatureLoaded()
