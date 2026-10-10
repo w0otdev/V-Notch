@@ -26,6 +26,7 @@ public class UpdateService : IUpdateService, IDisposable
     private string? _latestReleaseEtag;
     private UpdateInfo? _cachedLatestRelease;
     private DateTime _lastCheckUtc = DateTime.MinValue;
+    private bool _cachedIncludesPrereleases;
 
     private readonly bool _ownsHttpClient;
 
@@ -56,60 +57,69 @@ public class UpdateService : IUpdateService, IDisposable
     public event EventHandler<UpdateInfo?>? UpdateCheckCompleted;
     public UpdateInfo? LatestUpdateInfo => _cachedLatestRelease != null ? Clone(_cachedLatestRelease) : null;
 
-    private static string GetAppVersion()
-    {
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        if (version == null)
-            return "0.0.0";
+    private static string GetAppVersion() => AppVersion.Current;
 
-        if (version.Revision > 0)
-            return $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
-        return $"{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
-    }
-
-    public async Task<UpdateInfo?> CheckForUpdatesAsync()
+    public async Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
     {
         UpdateInfo? result = null;
         await _checkLock.WaitAsync();
         try
         {
+            if (_cachedIncludesPrereleases != includePrereleases)
+            {
+                _cachedIncludesPrereleases = includePrereleases;
+                _cachedLatestRelease = null;
+                _latestReleaseEtag = null;
+                _lastCheckUtc = DateTime.MinValue;
+            }
             var now = DateTime.UtcNow;
             if (_cachedLatestRelease != null && now - _lastCheckUtc < MinRefreshInterval)
             {
                 result = Clone(_cachedLatestRelease);
                 return result;
             }
-            using var request = new HttpRequestMessage(HttpMethod.Get, GithubLatestReleaseUri);
+            using var request = new HttpRequestMessage(HttpMethod.Get, includePrereleases
+                ? new Uri(GithubAllReleasesUri + "?per_page=100&page=1") : GithubLatestReleaseUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
-            if (!string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
+            if (!includePrereleases && !string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
             using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
-            _lastCheckUtc = now;
             if (response.StatusCode == HttpStatusCode.NotModified && _cachedLatestRelease != null)
             {
+                _lastCheckUtc = now;
                 result = Clone(_cachedLatestRelease);
                 return result;
             }
             response.EnsureSuccessStatusCode();
-            _latestReleaseEtag = response.Headers.ETag?.ToString();
             await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             using var jsonDoc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
-            var root = jsonDoc.RootElement;
-            var (installer, checksum) = SelectReleaseAssets(root);
-            var info = new UpdateInfo
+            UpdateInfo? info;
+            if (includePrereleases)
             {
-                Version = root.GetProperty("tag_name").GetString()?.TrimStart('v') ?? string.Empty,
-                DownloadUrl = installer?.Url ?? string.Empty,
-                ChecksumUrl = checksum?.Url ?? string.Empty,
-                ManifestUrl = FindAssetUrl(root, installer?.Name + SignedUpdateManifest.ManifestSuffix),
-                ManifestSignatureUrl = FindAssetUrl(root, installer?.Name + SignedUpdateManifest.SignatureSuffix),
-                InstallerName = installer?.Name ?? string.Empty,
-                ReleaseNotes = root.GetProperty("body").GetString() ?? string.Empty,
-                PublishedAt = root.GetProperty("published_at").GetDateTime()
-            };
-            info.IsNewerVersion = IsApprovedUpdate(info) && CompareVersions(info.Version, CurrentVersion) > 0;
-            if (!IsApprovedUpdate(info)) RuntimeLog.Warn(LogCategory, "Latest release is missing signed update assets; update is unavailable.");
+                info = SelectLatestRelease(jsonDoc.RootElement, null);
+                int count = jsonDoc.RootElement.GetArrayLength();
+                for (int page = 2; count == 100; page++)
+                {
+                    using var pageRequest = new HttpRequestMessage(HttpMethod.Get, new Uri(GithubAllReleasesUri + $"?per_page=100&page={page}"));
+                    pageRequest.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
+                    using var pageResponse = await SendHttpsAsync(pageRequest, CancellationToken.None).ConfigureAwait(false);
+                    pageResponse.EnsureSuccessStatusCode();
+                    await using var pageStream = await pageResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                    using var pageJson = await JsonDocument.ParseAsync(pageStream).ConfigureAwait(false);
+                    info = SelectLatestRelease(pageJson.RootElement, info);
+                    count = pageJson.RootElement.GetArrayLength();
+                }
+            }
+            else
+            {
+                var root = jsonDoc.RootElement;
+                info = IsDraft(root) ? null : ReadRelease(root);
+                if (info?.IsPrerelease == true) info = null;
+            }
+            if (info != null && !IsApprovedUpdate(info)) RuntimeLog.Warn(LogCategory, "Latest release is missing signed update assets; update is unavailable.");
+            _lastCheckUtc = now;
+            _latestReleaseEtag = info != null && !includePrereleases ? response.Headers.ETag?.ToString() : null;
             _cachedLatestRelease = info;
-            result = Clone(info);
+            result = info != null ? Clone(info) : null;
             return result;
         }
         catch (Exception ex)
@@ -124,6 +134,40 @@ public class UpdateService : IUpdateService, IDisposable
             try { UpdateCheckCompleted?.Invoke(this, result != null ? Clone(result) : null); }
             catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "UpdateCheckCompleted handler threw"); }
         }
+    }
+
+    private UpdateInfo? SelectLatestRelease(JsonElement releases, UpdateInfo? latest)
+    {
+        foreach (var release in releases.EnumerateArray())
+        {
+            if (IsDraft(release)) continue;
+            var candidate = ReadRelease(release);
+            if (!TryParseReleaseVersion(candidate.Version, out _, out _) || !IsApprovedUpdate(candidate)) continue;
+            if (latest == null || CompareVersions(candidate.Version, latest.Version) > 0) latest = candidate;
+        }
+        return latest;
+    }
+
+    private static bool IsDraft(JsonElement release) => release.TryGetProperty("draft", out var draft) && draft.GetBoolean();
+
+    private UpdateInfo ReadRelease(JsonElement release)
+    {
+        var (installer, checksum) = SelectReleaseAssets(release);
+        var info = new UpdateInfo
+        {
+            Version = release.GetProperty("tag_name").GetString()?.TrimStart('v', 'V') ?? string.Empty,
+            DownloadUrl = installer?.Url ?? string.Empty,
+            ChecksumUrl = checksum?.Url ?? string.Empty,
+            ManifestUrl = FindAssetUrl(release, installer?.Name + SignedUpdateManifest.ManifestSuffix),
+            ManifestSignatureUrl = FindAssetUrl(release, installer?.Name + SignedUpdateManifest.SignatureSuffix),
+            InstallerName = installer?.Name ?? string.Empty,
+            ReleaseNotes = release.GetProperty("body").GetString() ?? string.Empty,
+            PublishedAt = release.GetProperty("published_at").GetDateTime(),
+            IsPrerelease = (release.TryGetProperty("prerelease", out var pre) && pre.GetBoolean()) ||
+                (TryParseReleaseVersion(release.GetProperty("tag_name").GetString() ?? "", out _, out var suffix) && suffix.Length > 0)
+        };
+        info.IsNewerVersion = IsApprovedUpdate(info) && CompareVersions(info.Version, CurrentVersion) > 0;
+        return info;
     }
 
     public async Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync()
@@ -141,20 +185,7 @@ public class UpdateService : IUpdateService, IDisposable
 
             foreach (var release in jsonDoc.RootElement.EnumerateArray())
             {
-                var (installer, checksum) = SelectReleaseAssets(release);
-                var info = new UpdateInfo
-                {
-                    Version = release.GetProperty("tag_name").GetString()?.TrimStart('v') ?? string.Empty,
-                    DownloadUrl = installer?.Url ?? string.Empty,
-                    ChecksumUrl = checksum?.Url ?? string.Empty,
-                    ManifestUrl = FindAssetUrl(release, installer?.Name + SignedUpdateManifest.ManifestSuffix),
-                    ManifestSignatureUrl = FindAssetUrl(release, installer?.Name + SignedUpdateManifest.SignatureSuffix),
-                    InstallerName = installer?.Name ?? string.Empty,
-                    ReleaseNotes = release.GetProperty("body").GetString() ?? string.Empty,
-                    PublishedAt = release.GetProperty("published_at").GetDateTime()
-                };
-                info.IsNewerVersion = IsApprovedUpdate(info) && CompareVersions(info.Version, CurrentVersion) > 0;
-                releases.Add(info);
+                if (!IsDraft(release)) releases.Add(ReadRelease(release));
             }
             return releases;
         }
@@ -390,7 +421,7 @@ public class UpdateService : IUpdateService, IDisposable
         return aPre.Length.CompareTo(bPre.Length);
     }
 
-    private static bool TryParseReleaseVersion(string value, out Version version, out string[] prerelease)
+    internal static bool TryParseReleaseVersion(string value, out Version version, out string[] prerelease)
     {
         version = new Version(0, 0, 0, 0);
         prerelease = [];
@@ -419,5 +450,5 @@ public class UpdateService : IUpdateService, IDisposable
     private static bool ValidIdentifiers(string value, bool numericLeadingZerosAllowed) => value.Split('.').All(part =>
         part.Length > 0 && part.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') &&
         (numericLeadingZerosAllowed || part.Length == 1 || part[0] != '0' || !part.All(char.IsAsciiDigit)));
-    private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion };
+    private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion, IsPrerelease = source.IsPrerelease };
 }

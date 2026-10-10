@@ -13,7 +13,7 @@ Start-Process -FilePath $exe -ArgumentList @('default', $result) -WindowStyle Hi
 python Tools/StressRunner/analyze.py $result
 ```
 
-Use `liquidglass` instead of `default` for a glass run. The WPF window is deliberately visible, while the helper console is hidden. Run one instance at a time. Paths should not contain spaces when invoking this simple PowerShell example.
+Use `liquidglass` instead of `default` for a glass run. The harness assigns its UI thread to a private Windows desktop before creating WPF objects. It never switches the user's desktop, so windows, dialogs and menus stay in the background. The executable has no console window; CPU helpers also run hidden. If isolation fails, the run stops instead of opening UI on the user's desktop. Run one instance at a time. Paths should not contain spaces when invoking this simple PowerShell example.
 
 Phases: stable media display 15 s; transition requests targeting 50 Hz for 30 s; media update requests targeting 1000/s for 30 s; mixed media/view/theme churn 30 s; contention from a separate bounded CPU process 30 s; active recovery 30 s; collapsed recovery 15 s; synthetic playing state 15 s. The initial stable media and active recovery use a paused MediaInfo (`IsAnyMediaPlaying=true`, `IsPlaying=false`); the final playing phase uses `IsPlaying=true`. There is no real music playback. The media flood changes track/artwork every 20 submitted events, drawing from 24 frozen 256px images.
 

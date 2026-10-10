@@ -440,11 +440,5 @@ public static class AppIntegrityService
         }
     }
 
-    public static string GetAppVersion()
-    {
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        if (version == null) return "0.0.0";
-        if (version.Revision > 0) return $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}";
-        return $"{version.Major}.{version.Minor}.{version.Build}";
-    }
+    public static string GetAppVersion() => AppVersion.Current;
 }

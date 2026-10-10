@@ -19,7 +19,9 @@
 !ifndef APP_VERSION_FULL
   !error "APP_VERSION_FULL must be supplied by build-installer.ps1"
 !endif
-!define APP_VERSION "${APP_VERSION_FULL}"
+!ifndef APP_VERSION
+  !define APP_VERSION "${APP_VERSION_FULL}"
+!endif
 
 !include "LogicLib.nsh"
 !include "x64.nsh"
@@ -32,7 +34,7 @@ VIAddVersionKey "CompanyName"      "${APP_PUBLISHER}"
 VIAddVersionKey "LegalCopyright"   "Copyright © 2026 ${APP_PUBLISHER}"
 VIAddVersionKey "FileDescription"  "${APP_NAME} Installer"
 VIAddVersionKey "FileVersion"      "${APP_VERSION_FULL}"
-VIAddVersionKey "ProductVersion"   "${APP_VERSION_FULL}"
+VIAddVersionKey "ProductVersion"   "${APP_VERSION}"
 VIAddVersionKey "OriginalFilename" "V-Notch-Setup.exe"
 VIAddVersionKey "InternalName"     "V-Notch-Setup"
 

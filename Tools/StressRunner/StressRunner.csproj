@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -8,4 +8,5 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../V-Notch.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../TestSupport/BackgroundTestDesktop.cs" Link="BackgroundTestDesktop.cs" /></ItemGroup>
 </Project>

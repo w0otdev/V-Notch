@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using VNotch.TestSupport;
 
 namespace VNotch.Tests;
 
@@ -72,17 +73,26 @@ internal static class SharedStaTestRunner
     {
         if (_thread?.IsAlive == true && _dispatcher != null && !_dispatcher.HasShutdownStarted) return;
         using var ready = new ManualResetEventSlim(false);
+        Exception? startupFailure = null;
         _thread = new Thread(() =>
         {
-            SynchronizationContext.SetSynchronizationContext(
-                new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-            _dispatcher = Dispatcher.CurrentDispatcher;
-            ready.Set();
+            try
+            {
+                if (!DesktopTestMode.Enabled) BackgroundTestDesktop.AttachCurrentThread();
+                SynchronizationContext.SetSynchronizationContext(
+                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+                _dispatcher = Dispatcher.CurrentDispatcher;
+            }
+            catch (Exception ex) { startupFailure = ex; }
+            finally { ready.Set(); }
+            if (startupFailure != null) return;
             Dispatcher.Run();
         })
         { IsBackground = true, Name = "VNotchSharedStaRunner" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
         ready.Wait();
+        if (startupFailure != null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(startupFailure).Throw();
     }
 }

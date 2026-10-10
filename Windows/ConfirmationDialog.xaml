@@ -245,7 +245,7 @@
                                     VerticalAlignment="Center"
                                     Visibility="Collapsed">
                                 <TextBlock x:Name="BadgeText"
-                                           Text="ALPHA"
+                                           Text="EXPERIMENTAL"
                                            FontSize="11"
                                            FontWeight="Bold"
                                            Foreground="#1A1A1A"

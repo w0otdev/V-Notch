@@ -487,7 +487,7 @@ public partial class SettingsWindow
 
         if (SkinHeader != null) SkinHeader.Text = Loc.Get("settings.skins");
         SkinLabel.Text = Loc.Get("settings.skin");
-        if (SkinAlphaBadge != null) SkinAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+        if (SkinExperimentalBadge != null) SkinExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
         SkinHint.Text = Loc.Get("settings.skin.hint");
         if (SkinWarningNote != null) SkinWarningNote.Text = Loc.Get("settings.skin.warning");
 

@@ -26,6 +26,8 @@ public sealed class TranslationInteractionTests
             var before = Bounds(window);
             window.ShowResult(new(LongResult, "en", "vi", true));
             await WpfFrameWaiter.NextAsync(ct);
+            await WpfFrameWaiter.UntilAsync(() => Bounds(window).Bottom <= work.Bottom + 1 && !window.IsPresentationAnimating,
+                "result layout and placement settle inside the screen", ct);
             var after = Bounds(window);
             Assert.Equal(before.Left, after.Left);
             Assert.True(after.Top <= before.Top);
@@ -76,9 +78,13 @@ public sealed class TranslationInteractionTests
             window.ShowResult(new(LongResult, "en", "vi", true));
             await window.WaitForEntranceAsync(ct);
             await WpfFrameWaiter.NextAsync(ct);
+            await WpfFrameWaiter.UntilAsync(() => Bounds(window).Bottom <= work.Bottom + 1 && !window.IsPresentationAnimating,
+                "dragged result layout and placement settle inside the screen", ct);
             var after = Bounds(window);
             Assert.Equal(dragged.Left, after.Left);
-            Assert.Equal(dragged.Top, after.Top);
+            // A small desktop may require moving up just enough to fit the taller result.
+            int expectedTop = Math.Clamp(dragged.Top, work.Top, Math.Max(work.Top, work.Bottom - (after.Bottom - after.Top)));
+            Assert.Equal(expectedTop, after.Top);
             Assert.Equal(1, window.PopupSurface.RenderTransform.Value.M11, 3);
             Assert.Equal(1, window.PopupSurface.RenderTransform.Value.M22, 3);
             Assert.False(window.TranslationDragHandle.IsMouseCaptured);

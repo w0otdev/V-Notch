@@ -12,7 +12,11 @@ if ($installer.Name -cnotin @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.
     throw 'Unexpected installer name.'
 }
 $parsedVersion = $null
-if (-not [Version]::TryParse($Version, [ref]$parsedVersion)) { throw 'Invalid release version.' }
+$identifier = '(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+$versionPattern = "^(?<core>[0-9]+\.[0-9]+(?:\.[0-9]+){0,2})(?:-$identifier(?:\.$identifier)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`$"
+if ($Version -cnotmatch $versionPattern -or -not [Version]::TryParse($Matches['core'], [ref]$parsedVersion)) {
+    throw 'Invalid release version.'
+}
 if ($installer.Length -le 0 -or $installer.Length -gt 500MB) { throw 'Invalid installer size.' }
 $privatePem = if ($PrivateKeyPath) { [IO.File]::ReadAllText([IO.Path]::GetFullPath($PrivateKeyPath)) } else { $env:VNOTCH_UPDATE_SIGNING_KEY_PEM }
 if ([string]::IsNullOrWhiteSpace($privatePem)) { throw 'VNOTCH_UPDATE_SIGNING_KEY_PEM is required. Unsigned releases are not published.' }

@@ -8,8 +8,8 @@ name: CI
     tags: ['v*']
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -170,6 +170,13 @@ jobs:
       - name: Verify updates remain compatible with the installed 1.9.3 client
         shell: pwsh
         run: ./Tools/Assert-UpdateCompatibility.ps1
+
+      - name: Verify beta to stable promotion with both update preferences
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content -LiteralPath V-Notch.csproj
+          $version = [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+          ./Tools/Assert-UpdateCompatibility.ps1 -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe"
 
       - name: Retain test and coverage evidence
         if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}

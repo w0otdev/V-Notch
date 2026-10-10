@@ -28,8 +28,20 @@ public sealed class PerformanceBenchmarkTests
     public void Benchmark_ProcessEnumeration_OptimizedVsLegacy()
     {
         // 1. Benchmark Optimized Approach (K32EnumProcesses + PID array)
-        const int iterations = 10;
-        long memBeforeOpt = GC.GetTotalMemory(true);
+        const int warmupIterations = 5;
+        const int iterations = 50;
+
+        // Warmup JIT and P/Invoke marshalling stubs for both paths
+        uint[] warmupPids = new uint[1024];
+        for (int i = 0; i < warmupIterations; i++)
+        {
+            _ = EnumProcesses(warmupPids, (uint)(warmupPids.Length * sizeof(uint)), out _);
+            var warmProcs = Process.GetProcesses();
+            foreach (var p in warmProcs) p.Dispose();
+        }
+
+        // 1. Benchmark Optimized Approach (K32EnumProcesses + PID array)
+        long memBeforeOpt = GC.GetAllocatedBytesForCurrentThread();
         var swOpt = Stopwatch.StartNew();
         int totalPidsOpt = 0;
         for (int i = 0; i < iterations; i++)
@@ -45,12 +57,12 @@ public sealed class PerformanceBenchmarkTests
             }
         }
         swOpt.Stop();
-        long memAfterOpt = GC.GetTotalMemory(false);
-        double avgOptMs = (double)swOpt.ElapsedMilliseconds / iterations;
+        long memAfterOpt = GC.GetAllocatedBytesForCurrentThread();
+        double avgOptMs = swOpt.Elapsed.TotalMilliseconds / iterations;
         long allocOptBytes = Math.Max(0, memAfterOpt - memBeforeOpt);
 
         // 2. Legacy Approach simulation (Process.GetProcesses() creating Managed Process instances)
-        long memBeforeLegacy = GC.GetTotalMemory(true);
+        long memBeforeLegacy = GC.GetAllocatedBytesForCurrentThread();
         var swLegacy = Stopwatch.StartNew();
         int totalPidsLegacy = 0;
         for (int i = 0; i < iterations; i++)
@@ -72,8 +84,8 @@ public sealed class PerformanceBenchmarkTests
             }
         }
         swLegacy.Stop();
-        long memAfterLegacy = GC.GetTotalMemory(false);
-        double avgLegacyMs = (double)swLegacy.ElapsedMilliseconds / iterations;
+        long memAfterLegacy = GC.GetAllocatedBytesForCurrentThread();
+        double avgLegacyMs = swLegacy.Elapsed.TotalMilliseconds / iterations;
         long allocLegacyBytes = Math.Max(0, memAfterLegacy - memBeforeLegacy);
 
         _output.WriteLine("================================================================================");
@@ -86,7 +98,10 @@ public sealed class PerformanceBenchmarkTests
         }
         _output.WriteLine("================================================================================");
 
-        Assert.True(avgOptMs <= avgLegacyMs * 1.5, "Optimized scan should be faster or comparable to legacy scan.");
+        Assert.True(totalPidsOpt > 0, "Optimized scan should enumerate running processes.");
+        Assert.True(totalPidsLegacy > 0, "Legacy scan should enumerate running processes.");
+        Assert.True(allocOptBytes < allocLegacyBytes, "Optimized scan should allocate significantly less memory than legacy Process.GetProcesses().");
+        Assert.True(avgOptMs <= Math.Max(avgLegacyMs * 1.5, 5.0), "Optimized scan should be faster or comparable to legacy scan.");
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -34,6 +34,7 @@ public sealed class LiquidGlassPacingTests
         {
             try
             {
+                if (!DesktopTestMode.Enabled) VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
                 action();
             }
             catch (Exception ex)

@@ -13,6 +13,7 @@ internal static class SelectionSmoke
 {
     internal static void RunHost()
     {
+        RequireDisposableSession();
         var thread = new Thread(() =>
         {
             var app = new Application();
@@ -38,6 +39,7 @@ internal static class SelectionSmoke
 
     internal static async Task RunAsync()
     {
+        RequireDisposableSession();
         IntPtr priorWindow = GetForegroundWindow();
         string executable = Environment.ProcessPath!;
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden, RedirectStandardOutput = true };
@@ -89,6 +91,12 @@ internal static class SelectionSmoke
             if (!host.WaitForExit(3000)) host.Kill();
             if (priorWindow != IntPtr.Zero) SetForegroundWindow(priorWindow);
         }
+    }
+
+    private static void RequireDisposableSession()
+    {
+        if (Environment.UserInteractive)
+            throw new InvalidOperationException("Foreground UIA smoke tests are disabled on the user's desktop. Use a disposable non-interactive Windows test session.");
     }
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();

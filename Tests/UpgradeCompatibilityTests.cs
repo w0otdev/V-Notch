@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using VNotch.Models;
 using VNotch.Services;
@@ -80,10 +81,40 @@ public sealed class UpgradeCompatibilityTests : IDisposable
     [Fact]
     public void InstalledVersionDoesNotOfferItselfAgain()
     {
-        var service = new UpdateService();
+        using var service = new UpdateService();
         Assert.Equal(AppIntegrityService.GetAppVersion(), service.CurrentVersion);
-        string releaseVersion = typeof(UpdateService).Assembly.GetName().Version!.ToString(3);
+        string releaseVersion = typeof(UpdateService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!
+            .InformationalVersion.Split('+')[0];
         Assert.Equal(0, UpdateService.CompareVersions(releaseVersion, service.CurrentVersion));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StableSetupPreservesBetaSettingsAndUpdatePreference(bool includePrereleases)
+    {
+        var path = Path.Combine(_directory, "settings.json");
+        var beta = new NotchSettings
+        {
+            SettingsVersion = SettingsMigrator.CurrentVersion,
+            LastRunVersion = "2.0.1-beta.184.1",
+            IncludePrereleaseUpdates = includePrereleases,
+            Language = "vi",
+            Width = 270,
+            EnableSpotlight = false
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(beta));
+        var original = File.ReadAllBytes(path);
+
+        SetupOperations.InitializeSettingsFile(path, "en");
+        Assert.Equal(original, File.ReadAllBytes(path));
+        using var service = new SettingsService(path);
+        var settings = service.Load();
+        Assert.Equal(includePrereleases, settings.IncludePrereleaseUpdates);
+        Assert.Equal(beta.LastRunVersion, settings.LastRunVersion);
+        Assert.Equal("vi", settings.Language);
+        Assert.Equal(270, settings.Width);
+        Assert.False(settings.EnableSpotlight);
     }
 
     public void Dispose() => Directory.Delete(_directory, true);

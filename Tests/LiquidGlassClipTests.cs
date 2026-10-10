@@ -68,6 +68,7 @@ public sealed class LiquidGlassClipTests
         {
             try
             {
+                VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
                 leakedCornerAlpha = RenderBlurredPill(useFinalClip: false).CornerAlpha;
                 (clippedCornerAlpha, clippedCenterAlpha) = RenderBlurredPill(useFinalClip: true);
             }

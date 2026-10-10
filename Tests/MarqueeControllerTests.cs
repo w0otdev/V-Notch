@@ -99,11 +99,11 @@ public class MarqueeControllerTests
         Exception? failure = null;
         var thread = new Thread(() =>
         {
-            SynchronizationContext.SetSynchronizationContext(
-                new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-
             try
             {
+                VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
+                SynchronizationContext.SetSynchronizationContext(
+                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
                 action();
             }
             catch (Exception ex)

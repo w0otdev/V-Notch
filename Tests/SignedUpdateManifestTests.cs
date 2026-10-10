@@ -167,8 +167,10 @@ public sealed class SignedUpdateManifestTests
         Assert.False(UpdateService.IsApprovedUpdate(update));
     }
 
-    [Fact]
-    public async Task ReleaseSigningScript_ProducesManifestAcceptedByUpdater_AndLegacyChecksum()
+    [Theory]
+    [InlineData("99.0.0")]
+    [InlineData("99.0.0-beta.2")]
+    public async Task ReleaseSigningScript_ProducesManifestAcceptedByUpdater_AndLegacyChecksum(string version)
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root != null && !File.Exists(Path.Combine(root.FullName, "V-Notch.csproj"))) root = root.Parent;
@@ -192,7 +194,7 @@ public sealed class SignedUpdateManifestTests
                 RedirectStandardError = true
             };
             foreach (string argument in new[] { "-NoProfile", "-File", Path.Combine(root.FullName, "scripts", "Sign-UpdateManifest.ps1"),
-                "-InstallerPath", installerPath, "-Version", "99.0.0", "-PrivateKeyPath", privatePath, "-PublicKeyPath", publicPath })
+                "-InstallerPath", installerPath, "-Version", version, "-PrivateKeyPath", privatePath, "-PublicKeyPath", publicPath })
                 start.ArgumentList.Add(argument);
             using var process = Process.Start(start)!;
             var output = process.StandardOutput.ReadToEndAsync();
@@ -205,7 +207,7 @@ public sealed class SignedUpdateManifestTests
             var verified = SignedUpdateManifest.Verify(
                 await File.ReadAllBytesAsync(installerPath + SignedUpdateManifest.ManifestSuffix),
                 await File.ReadAllBytesAsync(installerPath + SignedUpdateManifest.SignatureSuffix),
-                key.ExportSubjectPublicKeyInfoPem(), "99.0.0", UpdateService.SetupName, "1.9.2");
+                key.ExportSubjectPublicKeyInfoPem(), version, UpdateService.SetupName, "1.9.2");
             Assert.Equal(Manifest.Size, verified.Size);
             string sidecar = await File.ReadAllTextAsync(installerPath + ".sha256");
             Assert.Equal(Manifest.Sha256.ToLowerInvariant() + "  " + UpdateService.SetupName, sidecar);

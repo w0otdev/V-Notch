@@ -1534,7 +1534,18 @@ public partial class MainWindow : Window
             }
 
             bool autoCheckUpdatesChanged = oldSettings.AutoCheckUpdates != newSettings.AutoCheckUpdates;
-            if (autoCheckUpdatesChanged && newSettings.AutoCheckUpdates)
+            bool updateChannelChanged = oldSettings.IncludePrereleaseUpdates != newSettings.IncludePrereleaseUpdates;
+            if (updateChannelChanged)
+            {
+                System.Threading.Interlocked.Increment(ref _updateCheckGeneration);
+                if (!_isUpdateInstalling)
+                {
+                    _isUpdateAvailable = false;
+                    _availableUpdate = null;
+                    HideUpdateNotification();
+                }
+            }
+            if ((autoCheckUpdatesChanged || updateChannelChanged) && newSettings.AutoCheckUpdates)
             {
                 CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-AUTOCHECK-ENABLED");
             }

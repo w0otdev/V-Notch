@@ -451,10 +451,7 @@ public partial class App : Application
     {
         try
         {
-            var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            if (currentVersion == null) return;
-
-            var currentVersionStr = FormatVersion(currentVersion);
+            var currentVersionStr = AppVersion.Current;
             bool needSave = false;
 
             if (settings.LastRunVersion != currentVersionStr)

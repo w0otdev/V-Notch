@@ -9,13 +9,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+  group: release-${{ github.event.workflow_run.head_sha }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   verify-validation:
     if: >-
       github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.conclusion == 'success' &&
       (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
@@ -25,6 +26,11 @@ jobs:
       actions: read
     outputs:
       eligible: ${{ steps.validation.outputs.eligible }}
+      version: ${{ steps.identity.outputs.version }}
+      tag: ${{ steps.identity.outputs.tag }}
+      windows_version: ${{ steps.identity.outputs.windows_version }}
+      informational_version: ${{ steps.identity.outputs.informational_version }}
+      prerelease: ${{ steps.identity.outputs.prerelease }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -42,6 +48,19 @@ jobs:
         run: |
           gh api "repos/$GH_REPO/actions/runs/$CI_RUN_ID/jobs?filter=latest&per_page=100" > "$RUNNER_TEMP/ci-jobs.json"
           python .github/scripts/ci_scope.py release "$RUNNER_TEMP/ci-jobs.json"
+
+      - name: Allocate immutable release identity
+        id: identity
+        if: steps.validation.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_RUN_NUMBER: ${{ github.run_number }}
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_RUN_ID: ${{ github.run_id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python .github/scripts/release_version.py
 
   build-installer:
     needs: verify-validation
@@ -102,6 +121,9 @@ jobs:
           VNOTCH_CODE_SIGNING_PASSWORD: ${{ secrets.VNOTCH_CODE_SIGNING_PASSWORD }}
           VNOTCH_CODE_SIGNING_THUMBPRINT: ${{ vars.VNOTCH_CODE_SIGNING_THUMBPRINT || secrets.VNOTCH_CODE_SIGNING_THUMBPRINT }}
           NSIS_MAKENSIS: ${{ steps.nsis.outputs.makensis }}
+          RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
+          WINDOWS_VERSION: ${{ needs.verify-validation.outputs.windows_version }}
+          INFORMATIONAL_VERSION: ${{ needs.verify-validation.outputs.informational_version }}
         run: |
           $ErrorActionPreference = 'Stop'
           $rawThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT
@@ -111,7 +133,11 @@ jobs:
           $certificateFile = Join-Path $env:RUNNER_TEMP 'vnotch-signing.pfx'
           $imported = @()
           try {
-            $buildArguments = @{ NsisPath = $env:NSIS_MAKENSIS; LockedRestore = $true }
+            $buildArguments = @{
+              NsisPath = $env:NSIS_MAKENSIS; LockedRestore = $true
+              ReleaseVersion = $env:RELEASE_VERSION; WindowsVersion = $env:WINDOWS_VERSION
+              InformationalVersion = $env:INFORMATIONAL_VERSION
+            }
             if ('${{ matrix.variant }}' -eq 'self-contained') { $buildArguments.SelfContained = $true }
 
             if ($hasCert) {
@@ -146,20 +172,21 @@ jobs:
           Set-Content -Path "installers\$exeShaName" -Value "$appExeHash  V-Notch.exe`n" -NoNewline
 
           "name=$out" >> $env:GITHUB_OUTPUT
+          "app_checksum=$exeShaName" >> $env:GITHUB_OUTPUT
 
       # actions/upload-artifact@v4.6.2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ steps.artifact.outputs.name }}
+          name: ${{ steps.artifact.outputs.name }}-${{ needs.verify-validation.outputs.tag }}
           path: |
             installers/${{ steps.artifact.outputs.name }}
             installers/${{ steps.artifact.outputs.name }}.sha256
-            installers/*.sha256
+            installers/${{ steps.artifact.outputs.app_checksum }}
           if-no-files-found: error
           retention-days: 7
 
   sign-updates:
-    needs: build-installer
+    needs: [verify-validation, build-installer]
     if: needs.build-installer.result == 'success'
     runs-on: windows-latest
     timeout-minutes: 15
@@ -179,36 +206,42 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: signed-assets
+          pattern: V-Notch-Setup*-${{ needs.verify-validation.outputs.tag }}
           merge-multiple: true
 
       - name: Sign update manifests
         shell: pwsh
         env:
           VNOTCH_UPDATE_SIGNING_KEY_PEM: ${{ secrets.VNOTCH_UPDATE_SIGNING_KEY_PEM }}
-          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
         run: |
-          [xml]$project = Get-Content V-Notch.csproj
-          $version = [string]$project.Project.PropertyGroup.Version
-          if ($env:RELEASE_BRANCH.StartsWith('v') -and $env:RELEASE_BRANCH.Substring(1) -ne $version) {
-            throw 'Release tag/branch version must equal the application version.'
-          }
           foreach ($name in @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.exe')) {
-            ./scripts/Sign-UpdateManifest.ps1 -InstallerPath "signed-assets/$name" -Version $version
+            ./scripts/Sign-UpdateManifest.ps1 -InstallerPath "signed-assets/$name" -Version $env:RELEASE_VERSION
           }
 
-      - name: Verify signed release assets with the original 1.9.3 updater
+      - name: Verify signed release assets with the channel's updater
         shell: pwsh
-        run: ./Tools/Assert-UpdateCompatibility.ps1 -AssetsDirectory signed-assets
+        env:
+          RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
+          IS_PRERELEASE: ${{ needs.verify-validation.outputs.prerelease }}
+        run: ./Tools/Assert-UpdateCompatibility.ps1 -AssetsDirectory signed-assets -ReleaseVersion $env:RELEASE_VERSION -Prerelease:($env:IS_PRERELEASE -eq 'true')
+
+      - name: Verify beta clients can upgrade to the signed stable release
+        if: needs.verify-validation.outputs.prerelease == 'false'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
+        run: ./Tools/Assert-UpdateCompatibility.ps1 -AssetsDirectory signed-assets -ReleaseVersion $env:RELEASE_VERSION -InstalledVersion "$($env:RELEASE_VERSION)-beta.65534.65534+build.promotion-probe"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: signed-update-assets
+          name: signed-update-assets-${{ needs.verify-validation.outputs.tag }}
           path: signed-assets/*
           if-no-files-found: error
           retention-days: 7
 
   release:
-    needs: sign-updates
+    needs: [verify-validation, sign-updates]
     if: needs.sign-updates.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -217,29 +250,26 @@ jobs:
       # actions/download-artifact@v4.3.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: signed-update-assets
+          name: signed-update-assets-${{ needs.verify-validation.outputs.tag }}
           path: release-assets
           merge-multiple: true
 
       - name: Publish release
+        shell: bash
         run: |
-          cat release-assets/*.sha256 > release-assets/checksums.txt || true
-          if [ "${{ startsWith(github.event.workflow_run.head_branch, 'v') }}" = "true" ]; then
-            printf "Release %s from commit \`%s\`.\n\n- \`V-Notch-Setup.exe\` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- \`V-Notch-Setup-SelfContained.exe\` (runtime bundled)\n- SHA256 checksums are attached for verification.\n" "${{ github.event.workflow_run.head_branch }}" "${{ github.event.workflow_run.head_sha }}" > release-notes.md
-            gh release create "${{ github.event.workflow_run.head_branch }}" release-assets/* \
-              --title "V-Notch ${{ github.event.workflow_run.head_branch }}" \
-              --target "${{ github.event.workflow_run.head_sha }}" \
-              --latest \
+          set -euo pipefail
+          cat release-assets/*.sha256 > release-assets/checksums.txt
+          printf 'Release %s from commit `%s`.\n\n- `V-Notch-Setup.exe` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- `V-Notch-Setup-SelfContained.exe` (runtime bundled)\n- Signed update manifests and SHA256 checksums are attached.\n' "$RELEASE_VERSION" "$HEAD_SHA" > release-notes.md
+          if [ "$IS_PRERELEASE" = 'true' ]; then
+            printf '\nBeta testing build. Enable pre-release updates in Settings to receive these builds.\nBuild: %s\n' "$INFORMATIONAL_VERSION" >> release-notes.md
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --title "V-Notch $RELEASE_VERSION (beta)" \
+              --target "$HEAD_SHA" --prerelease --latest=false \
               --notes-file release-notes.md
           else
-            gh release delete nightly --cleanup-tag --yes || true
-            gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/nightly || true
-            sleep 2
-            printf "Automated build from commit \`%s\` on branch \`%s\`.\n\n- \`V-Notch-Setup.exe\` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- \`V-Notch-Setup-SelfContained.exe\` (runtime bundled)\n- SHA256 checksums are attached for verification.\n" "${{ github.event.workflow_run.head_sha }}" "${{ github.event.workflow_run.head_branch }}" > release-notes.md
-            gh release create nightly release-assets/* \
-              --title "Nightly build (latest main)" \
-              --target "${{ github.event.workflow_run.head_sha }}" \
-              --prerelease \
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --title "V-Notch $RELEASE_VERSION" \
+              --target "$HEAD_SHA" --latest \
               --notes-file release-notes.md
           fi
         env:
@@ -247,4 +277,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
+          RELEASE_TAG: ${{ needs.verify-validation.outputs.tag }}
+          IS_PRERELEASE: ${{ needs.verify-validation.outputs.prerelease }}
+          INFORMATIONAL_VERSION: ${{ needs.verify-validation.outputs.informational_version }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
 

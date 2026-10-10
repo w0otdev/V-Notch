@@ -16,7 +16,8 @@ public sealed class TranslationStartupTests
     {
         using var fixture = new ModelFixture();
         using var engine = new PreparedEngine();
-        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        var foreground = new IntPtr(42);
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, () => foreground);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi" });
         // Inject an unwired watcher so real desktop selection events cannot steer this fixture.
         typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!
@@ -28,11 +29,10 @@ public sealed class TranslationStartupTests
         BackgroundTestWindows.ProtectInput(window);
         window.Opacity = 0;
         window.ShowActivated = false;
-        var foreground = VNotch.Services.Win32Interop.GetForegroundWindow();
         var selection = new TranslationSelection(1, "hello", new System.Windows.Rect(100, 100, 100, 20), foreground, false);
         var present = typeof(LiveTranslationController).GetMethod("PresentSelection", BindingFlags.NonPublic | BindingFlags.Instance)!;
         present.Invoke(controller, [selection, true, null]);
-        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "vi result", "manual translation settles", ct);
+        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "vi result" && !window.IsPresentationAnimating, "manual translation settles", ct);
         for (int i = 2; i < 14; i++)
         {
             present.Invoke(controller, [selection with { Id = i }, true, null]);

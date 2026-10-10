@@ -73,7 +73,8 @@ public partial class SettingsWindow
     {
         LocalizeTranslationAdvanced();
         NavTranslationText.Text = Loc.Get("translation.title");
-        EnableTranslationCheck.Content = Loc.Get("translation.enable");
+        EnableTranslationLabel.Text = Loc.Get("translation.enable");
+        TranslationExperimentalBadge.Text = Loc.Get("settings.badge.experimental");
         TranslationEnableHint.Text = Loc.Get("translation.enableHint");
         AutoTranslationCheck.Content = Loc.Get("translation.auto");
         TranslationAutoHint.Text = Loc.Get("translation.autoHint");

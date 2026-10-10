@@ -18,6 +18,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        try { VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread(); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            Environment.ExitCode = 1;
+            return;
+        }
         if (args.Contains("--check-unlock"))
         {
             // STA-only initialization check: no Application, Window or session event.
@@ -172,7 +179,7 @@ internal sealed class StressApp(string style, string output) : Application
             var currentSettings = (NotchSettings)typeof(MainWindow).GetField("_settings", PrivateInstance)!.GetValue(_window)!;
             currentSettings.NotchStyle = style;
             typeof(MainWindow).GetMethod("ApplySettings", PrivateInstance, null, new[] { typeof(bool) }, null)!.Invoke(_window, new object[] { false });
-            using (var burn = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--burn") { UseShellExecute = false, CreateNoWindow = true }))
+            using (var burn = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--burn") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden }))
                 await Phase("cpu-contention", 30, true, 2, false);
             _view("MediaExpanded");
             ApplyMedia(100_000);

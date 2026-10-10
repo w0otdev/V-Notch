@@ -5,8 +5,9 @@ namespace VNotch.Tests;
 internal static class DesktopTestMode
 {
     internal const string EnvironmentVariable = "VNOTCH_RUN_DESKTOP_TESTS";
-    internal const string SkipReason = "Requires visible desktop windows. Opt in with Tests/Desktop.runsettings.";
-    internal static bool Enabled => Environment.GetEnvironmentVariable(EnvironmentVariable) == "1";
+    internal const string SkipReason = "Visible desktop/GPU tests require a disposable non-interactive Windows session; they cannot run on the user's desktop.";
+    internal static bool Enabled => !Environment.UserInteractive &&
+        Environment.GetEnvironmentVariable(EnvironmentVariable) == "1";
 }
 
 public sealed class DesktopFactAttribute : FactAttribute

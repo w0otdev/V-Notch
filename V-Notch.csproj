@@ -165,9 +165,9 @@
     <Exec Condition="('$(FxcPath)' == '' Or !Exists('$(FxcPath)'))" Command="dotnet run --project &quot;tools\ShaderCompiler\ShaderCompiler.csproj&quot;" ContinueOnError="true" />
   </Target>
 
-  <Target Name="SetPackageManifestVersion" BeforeTargets="Build" Inputs="$(MSBuildProjectFullPath);Package.appxmanifest" Outputs="$(IntermediateOutputPath)Package.appxmanifest;$(OutDir)Package.appxmanifest">
+  <Target Name="SetPackageManifestVersion" BeforeTargets="Build">
     <PropertyGroup>
-      <PackageManifestVersion>$(Version).0</PackageManifestVersion>
+      <PackageManifestVersion Condition="'$(PackageManifestVersion)' == ''">$(Version).0</PackageManifestVersion>
     </PropertyGroup>
     <Copy SourceFiles="Package.appxmanifest" DestinationFiles="$(IntermediateOutputPath)Package.appxmanifest" />
     <XmlPoke XmlInputPath="$(IntermediateOutputPath)Package.appxmanifest" Query="/*[local-name()='Package']/*[local-name()='Identity']/@Version" Value="$(PackageManifestVersion)" />

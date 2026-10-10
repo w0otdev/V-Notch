@@ -612,6 +612,7 @@ public partial class SettingsWindow
 
         snapshot.EnableLocalOnlyMode = LocalOnlyModeCheck.IsChecked ?? false;
         snapshot.AutoCheckUpdates = AutoCheckUpdatesCheck.IsChecked ?? true;
+        snapshot.IncludePrereleaseUpdates = IncludePrereleaseUpdatesCheck.IsChecked == true;
         snapshot.EnableOnlineArtworkLookup = EnableOnlineArtworkCheck.IsChecked ?? true;
         snapshot.EnableOnlineLyrics = EnableOnlineLyricsCheck.IsChecked ?? true;
         snapshot.EnablePrivacyIndicators = EnablePrivacyIndicatorsCheck.IsChecked ?? true;

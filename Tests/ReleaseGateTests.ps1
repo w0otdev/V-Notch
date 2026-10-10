@@ -43,6 +43,25 @@ try {
     }
 
     $coverageScript = Join-Path $repository 'Tools/Assert-Coverage.ps1'
+    $versionAssignment = $buildAst.Find({ param($node)
+        $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -eq '$versionArguments'
+    }, $true)
+    if (-not $versionAssignment) { throw 'Build version argument initialization was not found.' }
+    & {
+        $ReleaseVersion = '2.0.1-beta.184.2'
+        $assemblyVersion = '2.0.0.0'
+        $installerVersion = '2.0.184.2'
+        $InformationalVersion = "$ReleaseVersion+build.1234567890.2.sha.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        . ([scriptblock]::Create($versionAssignment.Extent.Text))
+        $actual = & dotnet msbuild $probeProject -nologo -getProperty:Version,AssemblyVersion,FileVersion,InformationalVersion,PackageManifestVersion @versionArguments
+        if ($LASTEXITCODE -ne 0) { throw 'Build version arguments were rejected by MSBuild.' }
+        $properties = ($actual -join "`n" | ConvertFrom-Json).Properties
+        if ($properties.Version -ne $ReleaseVersion -or $properties.AssemblyVersion -ne $assemblyVersion -or
+            $properties.FileVersion -ne $installerVersion -or $properties.PackageManifestVersion -ne $installerVersion -or
+            $properties.InformationalVersion -ne $InformationalVersion) { throw 'Build identity was not passed intact to MSBuild.' }
+    }
+
     Expect-Failure { & $coverageScript -ResultsDirectory $temporary } 'No Cobertura'
     Write-Coverage 70
     & $coverageScript -ResultsDirectory $temporary

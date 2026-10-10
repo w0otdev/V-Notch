@@ -88,7 +88,7 @@ public sealed class SpotlightSelectionReproTests
         Exception? failure = null;
         var thread = new Thread(() =>
         {
-            try { action(); }
+            try { VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread(); action(); }
             catch (Exception ex) { failure = ex; }
             finally { Dispatcher.CurrentDispatcher.InvokeShutdown(); }
         });

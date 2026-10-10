@@ -155,6 +155,7 @@ public sealed class LocalizationTests
             "settings.skin.liquidglass",
             "settings.youtubeApiKey",
             "settings.enableSpotifyCanvas",
+            "translation.downloadSize", // Numeric progress uses the same language-neutral separators.
             "greeting.hello" // Greetings intentionally fall back to English outside Vietnamese.
         };
         var untranslated = new List<string>();
@@ -186,6 +187,7 @@ public sealed class LocalizationTests
             "settings.skin.liquidglass",
             "settings.youtubeApiKey",
             "settings.enableSpotifyCanvas",
+            "translation.downloadSize", // Numeric progress uses the same language-neutral separators.
             "greeting.hello" // Greetings intentionally fall back to English outside Vietnamese.
         };
         var nonNativeValues = new List<string>();

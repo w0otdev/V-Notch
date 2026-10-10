@@ -19,6 +19,7 @@ public sealed class AiStopButtonTests
         try
         {
             AnimationConfig.SetReduceMotion(reducedMotion);
+            using var request = new CancellationTokenSource();
             using var fixture = new SpotlightWindowFixture(new());
             var window = fixture.Window;
             window.ShowSpotlight();
@@ -26,7 +27,7 @@ public sealed class AiStopButtonTests
             var button = window.AiStopButton;
             for (int attempt = 0; attempt < 3; attempt++)
             {
-                button.SetShown(true);
+                SetRequestActive(window, request);
                 window.UpdateLayout();
                 await WpfFrameWaiter.UntilAsync(() => button.IsLoaded && button.IsVisible, "Stop button is presented", ct);
                 await WpfFrameWaiter.NextAsync(ct);
@@ -36,7 +37,7 @@ public sealed class AiStopButtonTests
                 Assert.False(scale.IsFrozen);
                 await WpfFrameWaiter.UntilAsync(() => surface.Opacity == 1 && scale.ScaleX == 1,
                     "Stop button reveal completes", ct);
-                button.SetShown(false);
+                SetRequestActive(window, null);
                 Assert.False(button.IsEnabled);
                 await WpfFrameWaiter.UntilAsync(() => button.Visibility == Visibility.Collapsed,
                     "Stop button exit completes", ct);
@@ -58,11 +59,12 @@ public sealed class AiStopButtonTests
         try
         {
             AnimationConfig.SetReduceMotion(false);
+            using var request = new CancellationTokenSource();
             using var fixture = new SpotlightWindowFixture(new());
             var window = fixture.Window;
             window.ShowSpotlight();
             typeof(SpotlightWindow).GetMethod("ToggleAiMode", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
-            window.AiStopButton.SetShown(true);
+            SetRequestActive(window, request);
             window.UpdateLayout();
             await WpfFrameWaiter.UntilAsync(() => window.AiStopButton.IsLoaded && window.AiStopButton.IsVisible,
                 "Stop button is presented", ct);
@@ -87,33 +89,42 @@ public sealed class AiStopButtonTests
         try
         {
             AnimationConfig.SetReduceMotion(false);
+            using var request = new CancellationTokenSource();
             using var fixture = new SpotlightWindowFixture(new());
             var window = fixture.Window;
             window.ShowSpotlight();
             typeof(SpotlightWindow).GetMethod("ToggleAiMode", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
             var button = window.AiStopButton;
-            button.SetShown(true);
+            SetRequestActive(window, request);
             window.UpdateLayout();
             await WpfFrameWaiter.UntilAsync(() => button.IsLoaded && button.IsVisible, "Stop button is presented", ct);
             await WpfFrameWaiter.NextAsync(ct);
             var surface = (Grid)button.Template.FindName("RevealSurface", button);
             await WpfFrameWaiter.UntilAsync(() => surface.Opacity == 1, "Stop button shown", ct);
 
-            button.SetShown(false);
+            SetRequestActive(window, null);
             Assert.Equal(Visibility.Visible, button.Visibility);
             Assert.False(button.IsEnabled);
             Assert.False(button.IsHitTestVisible);
-            button.SetShown(true);
+            SetRequestActive(window, request);
             await WpfFrameWaiter.NextAsync(ct);
             await WpfFrameWaiter.UntilAsync(() => surface.Opacity == 1, "Stop button exit reversed", ct);
             Assert.Equal(Visibility.Visible, button.Visibility);
             Assert.True(button.IsEnabled);
             var glow = (FrameworkElement)button.Template.FindName("BreathingGlow", button);
             Assert.True(glow.HasAnimatedProperties);
-            button.SetShown(false);
+            SetRequestActive(window, null);
             await WpfFrameWaiter.UntilAsync(() => button.Visibility == Visibility.Collapsed, "Stop button hidden", ct);
             Assert.False(glow.HasAnimatedProperties);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });
+
+    private static void SetRequestActive(SpotlightWindow window, CancellationTokenSource? request)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        // Window refreshes derive the button state from the active request, including during entrance.
+        typeof(SpotlightWindow).GetField("_aiRequest", flags)!.SetValue(window, request);
+        typeof(SpotlightWindow).GetMethod("UpdateAiActionState", flags)!.Invoke(window, null);
+    }
 }
