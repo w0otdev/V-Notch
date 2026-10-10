@@ -43,7 +43,8 @@ class PipelineChecks(unittest.TestCase):
             base = commit()
             (root / "README.md").write_text("Updated documentation", encoding="utf-8")
             docs = commit()
-            self.assertFalse(scope(base, docs, "refs/heads/main", root))
+            self.assertTrue(scope(base, docs, "refs/heads/main", root))
+            self.assertFalse(scope(base, docs, "refs/pull/1/merge", root))
             # A syntactically valid SHA need not exist in the checkout (for
             # example, the previous tip after a force-push).
             missing = "f" * 40
@@ -51,7 +52,7 @@ class PipelineChecks(unittest.TestCase):
                 with self.subTest(base=before, head=after):
                     diagnostic = io.StringIO()
                     with contextlib.redirect_stderr(diagnostic):
-                        self.assertTrue(scope(before, after, "refs/heads/main", root))
+                        self.assertTrue(scope(before, after, "refs/pull/1/merge", root))
                     self.assertIn("requiring full validation", diagnostic.getvalue())
                     self.assertIn("git diff exited 128", diagnostic.getvalue())
             (root / "docs").mkdir()

@@ -39,6 +39,17 @@ public partial class MainWindow
     {
         if (_isUpdateInstalling) return;
 
+        if (updateInfo?.IsPrerelease == true && !_settings.IncludePrereleaseUpdates)
+        {
+            if (_availableUpdate?.IsPrerelease == true)
+            {
+                _isUpdateAvailable = false;
+                _availableUpdate = null;
+                HideUpdateNotification();
+            }
+            return;
+        }
+
         if (updateInfo != null)
         {
             if (updateInfo.IsNewerVersion)
@@ -71,12 +82,13 @@ public partial class MainWindow
 
         try
         {
-            var updateInfo = await _updateService.CheckForUpdatesAsync();
+            bool includePrereleases = _settings.IncludePrereleaseUpdates;
+            var updateInfo = await _updateService.CheckForUpdatesAsync(includePrereleases);
 
             // A later manual/timer check owns the UI state. Never let an older
             // response overwrite it, or alter the notification during install.
             if (generation != System.Threading.Volatile.Read(ref _updateCheckGeneration) ||
-                _isUpdateInstalling)
+                _isUpdateInstalling || includePrereleases != _settings.IncludePrereleaseUpdates)
             {
                 return;
             }

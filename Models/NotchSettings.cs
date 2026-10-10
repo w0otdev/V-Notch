@@ -197,6 +197,7 @@ public class NotchSettings
     public bool AllowOnlineWeather { get; set; } = true;
     public bool SaveAiChatHistory { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;
+    public bool IncludePrereleaseUpdates { get; set; } = false;
     public bool EnableOnlineArtworkLookup { get; set; } = true;
     public bool EnableOnlineLyrics { get; set; } = true;
     public bool EnableBrowserUrlInspection { get; set; } = true;

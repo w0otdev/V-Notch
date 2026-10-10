@@ -83,7 +83,7 @@ public partial class SettingsWindow : Window
     private const string LocKeyOpacity = "settings.opacity";
     private const string LocKeyBlurBrightness = "settings.blurBrightness";
     private const string LocKeyLyricsDarkOverlay = "settings.lyricsDarkOverlay";
-    private const string LocKeyBadgeAlpha = "settings.badge.alpha";
+    private const string LocKeyBadgeExperimental = "settings.badge.experimental";
     private const string LocKeyExpandDelay = "settings.expandDelay";
     private const string LocKeyAnimationFps = "settings.animationFps";
 
@@ -124,7 +124,7 @@ public partial class SettingsWindow : Window
         _lastAppliedFps = settings.AnimationFps;
         _updatePresenter = new SettingsUpdatePresenter(updateService ?? new UpdateService(),
             new SettingsUpdateViewRefs(this, UpdateStatusText, CheckUpdateButton, DownloadUpdateButton),
-            ownsService: updateService == null);
+            ownsService: updateService == null, includePrereleases: () => _settings.IncludePrereleaseUpdates);
         _updatePresenter.UpdateDetected += (s, update) => UpdateDetected?.Invoke(this, update);
 
         InitializeNavigation();
@@ -331,6 +331,7 @@ public partial class SettingsWindow : Window
 
         LocalOnlyModeCheck.IsChecked = _settings.EnableLocalOnlyMode;
         AutoCheckUpdatesCheck.IsChecked = _settings.AutoCheckUpdates;
+        IncludePrereleaseUpdatesCheck.IsChecked = _settings.IncludePrereleaseUpdates;
         EnableOnlineArtworkCheck.IsChecked = _settings.EnableOnlineArtworkLookup;
         EnableOnlineLyricsCheck.IsChecked = _settings.EnableOnlineLyrics;
         EnablePrivacyIndicatorsCheck.IsChecked = _settings.EnablePrivacyIndicators;
@@ -345,11 +346,7 @@ public partial class SettingsWindow : Window
         ApplyLocalization();
     }
 
-    private static string GetAppVersion()
-    {
-        var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        return v != null ? FormatVersion(v) : "2.0";
-    }
+    private static string GetAppVersion() => AppVersion.Current;
 
     private static string FormatVersion(Version v)
     {
@@ -492,6 +489,8 @@ public partial class SettingsWindow : Window
         PrivacyNetworkHeader.Text = Loc.Get("settings.privacy.section.network");
         AutoCheckUpdatesCheck.Content = Loc.Get("settings.privacy.autoUpdates");
         AutoCheckUpdatesHint.Text = Loc.Get("settings.privacy.autoUpdates.hint");
+        IncludePrereleaseUpdatesCheck.Content = Loc.Get("settings.updates.prerelease");
+        IncludePrereleaseUpdatesHint.Text = Loc.Get("settings.updates.prerelease.hint");
         EnableOnlineArtworkCheck.Content = Loc.Get("settings.privacy.onlineArtwork");
         EnableOnlineArtworkHint.Text = Loc.Get("settings.privacy.onlineArtwork.hint");
         EnableOnlineLyricsCheck.Content = Loc.Get("settings.privacy.onlineLyrics");
@@ -548,7 +547,7 @@ public partial class SettingsWindow : Window
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
         BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground");
         if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
-        if (SpotifyCanvasAlphaBadge != null) SpotifyCanvasAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+        if (SpotifyCanvasExperimentalBadge != null) SpotifyCanvasExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
         EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint");
         SpotifyCanvasBrightnessSlider.Label = Loc.Get("settings.spotifyCanvasBrightness");
         SpotifyCanvasBrightnessSlider.Description = Loc.Get("settings.spotifyCanvasBrightness.hint");
@@ -558,7 +557,7 @@ public partial class SettingsWindow : Window
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
         UpdateSpotifyCanvasConnectionStatus();
         EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles");
-        if (YouTubeSubtitlesAlphaBadge != null) YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+        if (YouTubeSubtitlesExperimentalBadge != null) YouTubeSubtitlesExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
         EnableYouTubeSubtitlesHint.Text = Loc.Get("settings.enableYouTubeSubtitles.hint");
         IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles");
         IgnoreYouTubeAutoSubtitlesHint.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles.hint");
@@ -713,6 +712,7 @@ public partial class SettingsWindow : Window
         UpdateLocalOnlyActiveBadge(isLocalOnly, animate);
 
         if (AutoCheckUpdatesCheck != null) AutoCheckUpdatesCheck.IsEnabled = !isLocalOnly;
+        if (IncludePrereleaseUpdatesCheck != null) IncludePrereleaseUpdatesCheck.IsEnabled = !isLocalOnly;
         if (EnableOnlineArtworkCheck != null) EnableOnlineArtworkCheck.IsEnabled = !isLocalOnly;
         if (EnableOnlineLyricsCheck != null) EnableOnlineLyricsCheck.IsEnabled = !isLocalOnly;
         if (CheckUpdateButton != null) CheckUpdateButton.IsEnabled = !isLocalOnly;
@@ -944,6 +944,14 @@ public partial class SettingsWindow : Window
         PushLivePreview();
     }
 
+    private void IncludePrereleaseUpdatesCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        _settings.IncludePrereleaseUpdates = IncludePrereleaseUpdatesCheck.IsChecked == true;
+        PushLivePreview();
+        _updatePresenter.RefreshUpdateChannelAsync().SafeFireAndForget("SETTINGS-UPDATE-CHANNEL");
+    }
+
     private void EnableOnlineArtworkCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
@@ -1091,14 +1099,14 @@ public partial class SettingsWindow : Window
         GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
 
         if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
-        if (SpotifyCanvasAlphaBadge != null) SpotifyCanvasAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+        if (SpotifyCanvasExperimentalBadge != null) SpotifyCanvasExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
         EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint");
         SpotifyCanvasAccountLabel.Text = Loc.Get("settings.spotifyCanvasAccount");
         SpotifyCanvasAccountHint.Text = Loc.Get("settings.spotifyCanvasAccount.hint");
         SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect");
         SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
-        if (YouTubeSubtitlesAlphaBadge != null)
-            YouTubeSubtitlesAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+        if (YouTubeSubtitlesExperimentalBadge != null)
+            YouTubeSubtitlesExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
 
         ApplyGpuAndProcessLocalization();
         ApplyBackupSectionLocalization();

@@ -17,7 +17,7 @@ dotnet .artifacts/translation-bench/VNotch.TranslationBench.dll --uia-smoke
 dotnet .artifacts/translation-bench/VNotch.TranslationBench.dll .artifacts/translation-benchmark/qwen-instruct --instruct --gpu --engine-smoke
 ```
 
-Preview renders a human-authored UI fixture; it does not establish model quality. UIA smoke temporarily focuses a separate WPF text fixture, captures a selection, replaces only that text, rejects a stale request, closes its own host and restores the previous foreground window. Run while not typing into other apps. No user text is modified.
+Preview renders a human-authored UI fixture on a private background Windows desktop; it does not establish model quality or show a window on the user's desktop. The executable creates no console window. Foreground UIA smoke and its host refuse to run in an interactive user session; they require a disposable non-interactive Windows test session. There they capture a fixture selection, replace only that text, reject a stale request and close their own host.
 
 Engine smoke checks cancellation and subsequent inference using the real local model. Publish this runner with `-p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --no-self-contained` to exercise the native DLL sidecar layout. Run one model benchmark at a time; concurrent models can exhaust VRAM and distort timings.
 

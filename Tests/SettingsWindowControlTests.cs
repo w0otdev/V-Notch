@@ -523,17 +523,52 @@ public sealed class SettingsWindowControlTests
     {
         internal RecordingService Service { get; } = new();
         internal SettingsWindow Window { get; }
-        internal Fixture()
+        internal Fixture(IUpdateService? updates = null)
         {
             Loc.SetLanguage("en");
             var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
             app.Resources["SFProText"] = new FontFamily("Segoe UI");
             app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-            Window = new SettingsWindow(new NotchSettings { Language = "en", AutoCheckUpdates = false, EnableWeather = false }, Service);
+            Window = new SettingsWindow(new NotchSettings { Language = "en", AutoCheckUpdates = false, EnableWeather = false }, Service, updateService: updates);
             BackgroundTestWindows.ProtectInput(Window);
         }
         public void Dispose() { Window.Close(); Loc.SetLanguage("en"); }
+    }
+
+    [Fact]
+    public void PrereleasePreferencePersistsAndTranslationShowsVietnameseExperimentalBadge() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var updates = new PrereleasePreferenceUpdateService();
+        using var fixture = new Fixture(updates);
+        var window = fixture.Window;
+        Assert.False(window.IncludePrereleaseUpdatesCheck.IsChecked);
+        window.IncludePrereleaseUpdatesCheck.IsChecked = true;
+        var snapshot = window.ReadSettingsFromUi();
+        Assert.True(snapshot.IncludePrereleaseUpdates);
+        await window.SaveAsync(snapshot, ct);
+        Assert.True(fixture.Service.Applied!.IncludePrereleaseUpdates);
+        Loc.SetLanguage("vi");
+        Invoke(window, "ApplyLocalization");
+        Assert.Equal("THỬ NGHIỆM", window.TranslationExperimentalBadge.Text);
+        Assert.Contains("pre-release", window.IncludePrereleaseUpdatesCheck.Content.ToString());
+        window.LocalOnlyModeCheck.IsChecked = true;
+        Assert.False(window.IncludePrereleaseUpdatesCheck.IsEnabled);
+    });
+
+    private sealed class PrereleasePreferenceUpdateService : IUpdateService
+    {
+        public bool IncludePrereleases { get; private set; }
+        public string CurrentVersion => "1.0.0";
+        public UpdateInfo? LatestUpdateInfo => null;
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
+        {
+            IncludePrereleases = includePrereleases;
+            return Task.FromResult<UpdateInfo?>(null);
+        }
+        public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
+        public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 
     [Theory]

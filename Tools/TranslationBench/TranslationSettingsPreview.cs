@@ -16,6 +16,7 @@ internal static class TranslationSettingsPreview
         {
             try
             {
+                VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
                 SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(
                     System.Windows.Threading.Dispatcher.CurrentDispatcher));
                 var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };

@@ -10,6 +10,12 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+if (Environment.UserInteractive && (args.Contains("--uia-host") || args.Contains("--uia-smoke")))
+{
+    Console.Error.WriteLine("Foreground UIA smoke tests are disabled on the user's desktop. Use a disposable non-interactive Windows test session.");
+    Environment.ExitCode = 1;
+    return;
+}
 if (args.Contains("--uia-host")) { SelectionSmoke.RunHost(); return; }
 if (args.Contains("--uia-smoke")) { await SelectionSmoke.RunAsync(); return; }
 if (args.Contains("--settings-preview")) { TranslationSettingsPreview.Run(); return; }
@@ -62,6 +68,7 @@ if (args.Contains("--preview"))
     {
         try
         {
+            VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
             Loc.SetLanguage("vi");
             var window = new TranslationWindow("zh", "vi") { Width = 500 };
             window.TranslationPanel.Visibility = Visibility.Visible;

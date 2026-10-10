@@ -136,21 +136,67 @@ public sealed class MainWindowUpdateNotificationTests
     });
 
     private static UpdateInfo NewRelease(string version) => new() { Version = version, IsNewerVersion = true };
+
+    [Fact]
+    public void OptingOutIgnoresLateBetaEventsAndClearsBetaNotification() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var service = new PendingUpdateService();
+        using var fixture = CreateFixture(service);
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.IncludePrereleaseUpdates = true;
+        var beta = new UpdateInfo { Version = "99.1.0-beta.1", IsNewerVersion = true, IsPrerelease = true };
+        window.SetAvailableUpdate(beta);
+        Assert.True(Field<bool>(window, "_isUpdateAvailable"));
+        settings.IncludePrereleaseUpdates = false;
+        window.SetAvailableUpdate(beta);
+        Assert.False(Field<bool>(window, "_isUpdateAvailable"));
+        Assert.Null(Field<UpdateInfo?>(window, "_availableUpdate"));
+        service.RaiseUpdateCheckCompleted(beta);
+        await WpfFrameWaiter.UntilAsync(() => window.UpdateNotificationButton.Visibility == Visibility.Collapsed, "beta notification dismissed", ct);
+        Assert.False(Field<bool>(window, "_isUpdateAvailable"));
+        window.SetAvailableUpdate(NewRelease("99.0.0"));
+        window.SetAvailableUpdate(beta);
+        Assert.Equal("99.0.0", Field<UpdateInfo>(window, "_availableUpdate").Version);
+        Assert.True(Field<bool>(window, "_isUpdateAvailable"));
+    });
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture(IUpdateService updates) => new("en", greeting: false,
         configureServices: services => { services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()); services.AddSingleton(updates); });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StablePromotionReplacesBetaNotificationRegardlessOfBetaPreference(bool includePrereleases) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = CreateFixture(new PendingUpdateService());
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.IncludePrereleaseUpdates = true;
+        window.SetAvailableUpdate(new() { Version = "99.0.0-beta.65534.65534", IsNewerVersion = true, IsPrerelease = true });
+        settings.IncludePrereleaseUpdates = includePrereleases;
+        window.SetAvailableUpdate(NewRelease("99.0.0"));
+        await WpfFrameWaiter.UntilAsync(() => window.UpdateNotificationButton.Visibility == Visibility.Visible, "stable promotion notification shown", ct);
+        var available = Field<UpdateInfo>(window, "_availableUpdate");
+        Assert.Equal("99.0.0", available.Version);
+        Assert.False(available.IsPrerelease);
+        Assert.True(Field<bool>(window, "_isUpdateAvailable"));
+        Assert.Contains("99.0.0", window.UpdateNotificationButton.Tag.ToString());
+    });
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
     private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
     private sealed class PendingUpdateService : IUpdateService
     {
         public List<TaskCompletionSource<UpdateInfo?>> Requests { get; } = new();
+        public List<bool> Channels { get; } = new();
         public int InstallCalls { get; private set; }
         public string CurrentVersion => "9.5.0";
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted;
         public UpdateInfo? LatestUpdateInfo => null;
         public void RaiseUpdateCheckCompleted(UpdateInfo? info) => UpdateCheckCompleted?.Invoke(this, info);
-        public Task<UpdateInfo?> CheckForUpdatesAsync()
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
         {
+            Channels.Add(includePrereleases);
             var request = new TaskCompletionSource<UpdateInfo?>(TaskCreationOptions.RunContinuationsAsynchronously);
             Requests.Add(request);
             return request.Task;
@@ -162,4 +208,20 @@ public sealed class MainWindowUpdateNotificationTests
             throw new InvalidOperationException("Notification tests must never install an update.");
         }
     }
+
+    [Fact]
+    public void BackgroundCheckUsesBetaPreferenceAndDropsResultAfterOptOut() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var service = new PendingUpdateService();
+        using var fixture = CreateFixture(service);
+        var settings = Field<NotchSettings>(fixture.Window, "_settings");
+        settings.AutoCheckUpdates = true;
+        settings.IncludePrereleaseUpdates = true;
+        var pending = (Task)Invoke(fixture.Window, "CheckForUpdatesAsync")!;
+        Assert.True(Assert.Single(service.Channels));
+        settings.IncludePrereleaseUpdates = false;
+        service.Requests[0].SetResult(new() { Version = "99.1.0-beta.1", IsNewerVersion = true, IsPrerelease = true });
+        await pending;
+        Assert.False(Field<bool>(fixture.Window, "_isUpdateAvailable"));
+    });
 }

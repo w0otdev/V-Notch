@@ -258,7 +258,7 @@ public sealed class DiagnosticAndChangelogWindowTests
         }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => _fail
             ? Task.FromException<IReadOnlyList<UpdateInfo>>(new InvalidOperationException("test failure")) : Task.FromResult(_releases);
-        public Task<UpdateInfo?> CheckForUpdatesAsync() => Task.FromResult<UpdateInfo?>(null);
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false) => Task.FromResult<UpdateInfo?>(null);
         public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public void Dispose() => Window.Close();
     }

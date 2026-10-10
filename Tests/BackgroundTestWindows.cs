@@ -18,11 +18,15 @@ internal static class BackgroundTestWindows
         EnsureApplicationResources();
         if (_initialized) return;
         if (DesktopTestMode.Enabled) { _initialized = true; return; }
-        // Run before any test action constructs MainWindow. This metadata exists
+        // Run before any test action constructs a production window. This metadata exists
         // only in the testhost process; the application assembly stays unchanged.
-        RuntimeHelpers.RunClassConstructor(typeof(MainWindow).TypeHandle);
-        OverrideMetadata(typeof(MainWindow));
-        EventManager.RegisterClassHandler(typeof(MainWindow), FrameworkElement.LoadedEvent,
+        foreach (var windowType in typeof(MainWindow).Assembly.GetTypes()
+                     .Where(type => !type.IsAbstract && type.IsSubclassOf(typeof(Window))))
+        {
+            RuntimeHelpers.RunClassConstructor(windowType.TypeHandle);
+            OverrideMetadata(windowType);
+        }
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
             new RoutedEventHandler((sender, _) => ProtectInput((Window)sender)));
         _initialized = true;
     }
@@ -52,8 +56,10 @@ internal static class BackgroundTestWindows
     {
         if (ProtectedWindows.TryGetValue(window, out _)) return;
         ProtectedWindows.Add(window, new object());
+        window.Opacity = 0;
         window.ShowActivated = false;
         window.ShowInTaskbar = false;
+        window.Topmost = false;
         void AttachInputHook()
         {
             var hwnd = new WindowInteropHelper(window).Handle;

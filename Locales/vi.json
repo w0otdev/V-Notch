@@ -37,6 +37,9 @@
   "translation.advanced.TimeoutSeconds": "Thời gian chờ dịch (giây) [15–600]",
 
   "translation.title": "Dịch trực tiếp",
+  "settings.badge.experimental": "THỬ NGHIỆM",
+  "settings.updates.prerelease": "Nhận bản cập nhật pre-release (thử nghiệm beta)",
+  "settings.updates.prerelease.hint": "Truy cập sớm các tính năng mới trong bản beta. Các phiên bản này có thể còn lỗi. Tắt để chỉ nhận bản cập nhật ổn định; phiên bản đã cài sẽ không bị hạ cấp.",
   "translation.enable": "Bật dịch offline",
   "translation.enableHint": "Bôi đen văn bản trong app khác rồi nhấn Shift hai lần để dịch. Khi bật Tự động dịch, vùng chọn được dịch ngay. Bỏ qua ô mật khẩu.",
   "translation.auto": "Tự động dịch vùng chọn",
@@ -212,7 +215,6 @@
   "settings.appearance": "GIAO DIỆN",
   "settings.autoStart": "Khởi động cùng Windows",
   "settings.autoStart.hint": "Tự động chạy khi bạn đăng nhập.",
-  "settings.badge.alpha": "THỬ NGHIỆM",
   "settings.badge.restartRequired": "CẦN KHỞI ĐỘNG LẠI",
   "settings.batteryDevice": "Pin của thiết bị",
   "settings.batteryDevice.auto": "Tự động chọn thiết bị liên kết",

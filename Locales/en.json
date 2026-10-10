@@ -37,6 +37,9 @@
   "translation.advanced.TimeoutSeconds": "Request timeout (seconds) [15–600]",
 
   "translation.title": "Live translation",
+  "settings.badge.experimental": "EXPERIMENTAL",
+  "settings.updates.prerelease": "Receive pre-release updates (beta testing)",
+  "settings.updates.prerelease.hint": "Get early access to new features in beta releases. These versions may contain bugs. Turn this off to receive only stable updates; the installed version will not be downgraded.",
   "translation.enable": "Enable offline translation",
   "translation.enableHint": "Select text in another app to show a translation button. Open the popup and press Enter to translate. Password fields are excluded.",
   "translation.auto": "Auto live translation",
@@ -215,7 +218,6 @@
   "settings.appearance": "APPEARANCE",
   "settings.autoStart": "Start with Windows",
   "settings.autoStart.hint": "Launch automatically when you sign in.",
-  "settings.badge.alpha": "ALPHA",
   "settings.badge.restartRequired": "RESTART REQUIRED",
   "settings.batteryDevice": "Battery source",
   "settings.batteryDevice.auto": "Auto-select a linked device",

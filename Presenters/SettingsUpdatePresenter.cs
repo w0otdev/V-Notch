@@ -12,6 +12,7 @@ public sealed class SettingsUpdatePresenter : IDisposable
     private readonly IUpdateService _service;
     private readonly bool _ownsService;
     private readonly Func<bool> _canUseNetwork;
+    private readonly Func<bool> _includePrereleases;
     private SettingsUpdateViewRefs? _refs;
     private UpdateInfo? _availableUpdate;
     private bool _checking;
@@ -21,25 +22,27 @@ public sealed class SettingsUpdatePresenter : IDisposable
 
     public event EventHandler<UpdateInfo?>? UpdateDetected;
 
-    public SettingsUpdatePresenter(IUpdateService service, SettingsUpdateViewRefs refs, Func<bool>? canUseNetwork = null, bool ownsService = false)
+    public SettingsUpdatePresenter(IUpdateService service, SettingsUpdateViewRefs refs, Func<bool>? canUseNetwork = null, bool ownsService = false, Func<bool>? includePrereleases = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _ownsService = ownsService;
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
         _canUseNetwork = canUseNetwork ?? (() => NetworkPrivacy.Current.IsAllowed(NetworkFeature.Updates));
+        _includePrereleases = includePrereleases ?? (() => false);
     }
 
     public async Task CheckForUpdatesAsync()
     {
         if (_refs == null || _checking || _downloading || !_canUseNetwork()) return;
         _checking = true;
+        bool includePrereleases = _includePrereleases();
         _refs.Status.Text = Loc.Get("settings.checkingUpdates");
         _refs.Check.IsEnabled = false;
         _refs.Download.Visibility = Visibility.Collapsed;
         try
         {
-            var update = await _service.CheckForUpdatesAsync();
-            if (_refs == null || !_canUseNetwork()) return;
+            var update = await _service.CheckForUpdatesAsync(includePrereleases);
+            if (_refs == null || !_canUseNetwork() || includePrereleases != _includePrereleases()) return;
             _availableUpdate = update;
             _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") :
                 update.IsNewerVersion ? Loc.Get("settings.updateAvailable", update.Version) : Loc.Get("settings.upToDate");
@@ -55,8 +58,20 @@ public sealed class SettingsUpdatePresenter : IDisposable
         finally
         {
             _checking = false;
-            if (_refs != null) _refs.Check.IsEnabled = true;
+            if (_refs != null) _refs.Check.IsEnabled = _canUseNetwork();
+            if (_refs != null && includePrereleases != _includePrereleases()) await CheckForUpdatesAsync();
         }
+    }
+
+    public Task RefreshUpdateChannelAsync()
+    {
+        _availableUpdate = null;
+        if (_refs != null)
+        {
+            _refs.Download.Visibility = Visibility.Collapsed;
+            _refs.Status.Text = Loc.Get("settings.checkUpdate");
+        }
+        return CheckForUpdatesAsync();
     }
 
     public async Task DownloadUpdateAsync()

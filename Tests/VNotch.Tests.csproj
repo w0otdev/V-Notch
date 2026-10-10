@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\V-Notch.csproj" />
+    <Compile Include="../Tools/TestSupport/BackgroundTestDesktop.cs" Link="BackgroundTestDesktop.cs" />
     <Compile Include="../Tools/VNotch.Benchmarks/Baselines/BaselineFastBlurService.cs" Link="Baselines/BaselineFastBlurService.cs" />
     <Compile Include="../Tools/VNotch.Benchmarks/Baselines/BaselineColorExtractionService.cs" Link="Baselines/BaselineColorExtractionService.cs" />
     <None Update="Fixtures\white-mat-artwork.png" CopyToOutputDirectory="PreserveNewest" />

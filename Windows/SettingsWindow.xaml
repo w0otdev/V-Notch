@@ -1337,7 +1337,7 @@
                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                     <TextBlock x:Name="SkinLabel" Text="Notch skin" Style="{StaticResource SettingTitleText}" VerticalAlignment="Top"/>
                                                     <Border CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center" Background="#C8C8C8">
-                                                        <TextBlock x:Name="SkinAlphaBadge" Text="ALPHA" FontSize="11" FontWeight="Bold"
+                                                        <TextBlock x:Name="SkinExperimentalBadge" Text="EXPERIMENTAL" FontSize="11" FontWeight="Bold"
                                                                    Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
                                                     </Border>
                                                 </StackPanel>
@@ -1868,7 +1868,15 @@
                                     <StackPanel>
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
-                                                <CheckBox x:Name="EnableTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <CheckBox x:Name="EnableTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock x:Name="EnableTranslationLabel" VerticalAlignment="Center"/>
+                                                        <Border Background="#C8C8C8" CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                            <TextBlock x:Name="TranslationExperimentalBadge" Text="EXPERIMENTAL" FontSize="11" FontWeight="Bold"
+                                                                       Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </CheckBox>
                                                 <TextBlock x:Name="TranslationEnableHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
@@ -2040,7 +2048,7 @@
                                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                         <TextBlock x:Name="EnableSpotifyCanvasLabel" Text="Spotify Canvas" VerticalAlignment="Center"/>
                                                         <Border Background="#C8C8C8" CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                            <TextBlock x:Name="SpotifyCanvasAlphaBadge" Text="ALPHA" FontSize="11" FontWeight="Bold"
+                                                            <TextBlock x:Name="SpotifyCanvasExperimentalBadge" Text="EXPERIMENTAL" FontSize="11" FontWeight="Bold"
                                                                        Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
                                                         </Border>
                                                     </StackPanel>
@@ -2140,7 +2148,7 @@
                                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                         <TextBlock x:Name="EnableYouTubeSubtitlesLabel" Text="Show YouTube subtitles" VerticalAlignment="Center"/>
                                                         <Border Background="#C8C8C8" CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                            <TextBlock x:Name="YouTubeSubtitlesAlphaBadge" Text="ALPHA" FontSize="11" FontWeight="Bold"
+                                                            <TextBlock x:Name="YouTubeSubtitlesExperimentalBadge" Text="EXPERIMENTAL" FontSize="11" FontWeight="Bold"
                                                                        Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
                                                         </Border>
                                                     </StackPanel>
@@ -2788,6 +2796,14 @@
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="UpdatesHeader" Text="UPDATES &amp; REPORT BUG" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <CheckBox x:Name="IncludePrereleaseUpdatesCheck" Content="Receive pre-release updates (beta testing)"
+                                                          Checked="IncludePrereleaseUpdatesCheck_Changed" Unchecked="IncludePrereleaseUpdatesCheck_Changed"/>
+                                                <TextBlock x:Name="IncludePrereleaseUpdatesHint" Style="{StaticResource SettingHintText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
 
                                             <Border Style="{StaticResource SettingRowBorder}">
                                                 <StackPanel>

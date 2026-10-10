@@ -214,6 +214,7 @@ public sealed class PrivacySettingsTests
         {
             try
             {
+                VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
                 action();
             }
             catch (Exception ex) { failure = ex; }

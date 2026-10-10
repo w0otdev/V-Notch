@@ -146,7 +146,7 @@ public partial class SettingsWindow
             Loc.Get("settings.enableSpotifyCanvas.hint"),
             new VNotch.Windows.ConfirmationDialog.DialogOptions(
                 Title: Loc.Get("settings.enableSpotifyCanvas"),
-                BadgeText: Loc.Get(LocKeyBadgeAlpha),
+                BadgeText: Loc.Get(LocKeyBadgeExperimental),
                 ConfirmText: Loc.Get("dialog.confirm"),
                 CancelText: Loc.Get("dialog.cancel"),
                 Icon: VNotch.Windows.ConfirmationDialog.DialogIcon.Warning,
@@ -842,7 +842,7 @@ public partial class SettingsWindow
             (EnableSpotifyCanvasHint, () => EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint")),
             (EnableYouTubeSubtitlesHint, () => EnableYouTubeSubtitlesHint.Text = Loc.Get("settings.enableYouTubeSubtitles.hint")),
             (IgnoreYouTubeAutoSubtitlesHint, () => IgnoreYouTubeAutoSubtitlesHint.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles.hint")),
-            (YouTubeSubtitlesAlphaBadge, () => YouTubeSubtitlesAlphaBadge.Text = Loc.Get("settings.badge.alpha")),
+            (YouTubeSubtitlesExperimentalBadge, () => YouTubeSubtitlesExperimentalBadge.Text = Loc.Get("settings.badge.experimental")),
             (SubtitlePriorityLabel, () => SubtitlePriorityLabel.Text = Loc.Get("settings.subtitlePriority")),
             (SubtitlePriorityHint, () =>
             {
@@ -1038,7 +1038,7 @@ public partial class SettingsWindow
         AnimateContentChange(EnableSpotifyCanvasCheck, () =>
         {
             if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
-            if (SpotifyCanvasAlphaBadge != null) SpotifyCanvasAlphaBadge.Text = Loc.Get(LocKeyBadgeAlpha);
+            if (SpotifyCanvasExperimentalBadge != null) SpotifyCanvasExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
         }, staggerMs, easeOut, fps);
         staggerMs += staggerStep;
         AnimateContentChange(SpotifyConnectButton, () => SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect"), staggerMs, easeOut, fps);

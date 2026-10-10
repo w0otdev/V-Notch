@@ -69,7 +69,7 @@ public sealed class MainWindowSettingsIntegrationTests
             finally { settings.Close(); }
         };
         timer.Start();
-        try { typeof(MainWindow).GetMethod("OpenAppSettings", flags)!.Invoke(window, null); }
+        try { typeof(MainWindow).GetMethod("OpenAppSettings", flags)!.Invoke(window, [false]); }
         finally { timer.Stop(); }
         if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     });

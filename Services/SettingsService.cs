@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -607,20 +606,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         return false;
     }
 
-    private static string GetAppVersion()
-    {
-        var v = Assembly.GetExecutingAssembly().GetName().Version;
-        if (v == null)
-        {
-            return "2.0";
-        }
-
-        if (v.Revision > 0)
-            return $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
-        if (v.Build > 0)
-            return $"{v.Major}.{v.Minor}.{v.Build}";
-        return $"{v.Major}.{v.Minor}";
-    }
+    private static string GetAppVersion() => AppVersion.Current;
 
     private string QuarantineCorruptFile(string rawContents, Exception reason)
     {

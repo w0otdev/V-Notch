@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Explicit opt-in: these tests show windows and cover the physical desktop. -->
+<!-- Only for a disposable non-interactive Windows session. Interactive sessions
+     keep these tests skipped even with this opt-in; ordinary UI tests run on a
+     private background desktop and never switch the user's desktop. -->
 <RunSettings>
   <RunConfiguration>
     <TestCaseFilter>Category=DesktopIntegration</TestCaseFilter>

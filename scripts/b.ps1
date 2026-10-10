@@ -9,6 +9,9 @@ param(
     [switch]$SelfContained,
     [string]$NsisPath = '',
     [switch]$LockedRestore,
+    [string]$ReleaseVersion = '',
+    [string]$WindowsVersion = '',
+    [string]$InformationalVersion = '',
     # Optional code-signing certificate. In CI, pass these from protected secrets.
     [string]$CertificatePath = '',
     [string]$CertificatePassword = '',
@@ -39,6 +42,26 @@ if ($projectVersion -match '^\d+\.\d+\.\d+$') {
 } else {
     throw "V-Notch.csproj Version must use major.minor.patch or major.minor.patch.revision format."
 }
+$assemblyVersion = $installerVersion
+if (-not $ReleaseVersion) { $ReleaseVersion = $projectVersion }
+if ($ReleaseVersion -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
+    throw 'Invalid release version.'
+}
+if ($WindowsVersion) { $installerVersion = $WindowsVersion }
+if ($installerVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' -or
+    @($installerVersion.Split('.') | Where-Object { [long]$_ -gt 65534 }).Count -gt 0) {
+    throw 'Installer version must have four numeric components within Windows version limits.'
+}
+if (-not $InformationalVersion) { $InformationalVersion = $ReleaseVersion }
+if ($InformationalVersion -cne $ReleaseVersion -and
+    ($InformationalVersion -cnotmatch '^[0-9A-Za-z.+-]+$' -or -not $InformationalVersion.StartsWith("$ReleaseVersion+", [StringComparison]::Ordinal))) {
+    throw 'Informational version must match the release version and optional build metadata.'
+}
+$versionArguments = @(
+    "-p:Version=$ReleaseVersion", "-p:AssemblyVersion=$assemblyVersion", "-p:FileVersion=$installerVersion",
+    "-p:InformationalVersion=$InformationalVersion", "-p:IncludeSourceRevisionInInformationalVersion=false",
+    "-p:PackageManifestVersion=$installerVersion"
+)
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "V-Notch Installer Build Script" -ForegroundColor Cyan
@@ -66,17 +89,21 @@ if (Test-Path $publishDir) {
 Write-Host "[2/3] Publishing to $publishDir..." -ForegroundColor Yellow
 if ($SelfContained) {
     # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
-    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments
+    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments @versionArguments
 } else {
     # Framework-dependent single file - requires .NET 8 runtime.
-    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments
+    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments @versionArguments
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      Publish failed!" -ForegroundColor Red
     exit 1
 }
 
-$exeVersion = (Get-Item "$publishDir\V-Notch.exe").VersionInfo.FileVersion
+$publishedVersion = (Get-Item "$publishDir\V-Notch.exe").VersionInfo
+$exeVersion = $publishedVersion.FileVersion
+if ($exeVersion -ne $installerVersion -or $publishedVersion.ProductVersion -cne $InformationalVersion) {
+    throw 'Published application version does not match the installer release identity.'
+}
 $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
 Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
 Write-Host "      Published successfully (v$exeVersion, SHA256: $appExeHash)" -ForegroundColor Green
@@ -84,7 +111,7 @@ Write-Host "      Published successfully (v$exeVersion, SHA256: $appExeHash)" -F
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.
 Write-Host "[2b/3] Publishing uninstaller..." -ForegroundColor Yellow
-dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:Version=$projectVersion -p:AssemblyVersion=$installerVersion -p:FileVersion=$installerVersion -p:InformationalVersion=$projectVersion -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments
+dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments @versionArguments
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      Uninstaller publish failed!" -ForegroundColor Red
     exit 1
@@ -135,9 +162,9 @@ if (-not (Test-Path "installers")) {
 # Read the UTF-8 source explicitly; ANSI decoding turns the copyright sign into mojibake.
 if ($SelfContained) {
     # Tell NSIS to skip the .NET runtime check/install (runtime is bundled).
-    & $nsisPath "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "V-Notch-Setup.nsi"
+    & $nsisPath "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi"
 } else {
-    & $nsisPath "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "V-Notch-Setup.nsi"
+    & $nsisPath "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi"
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Host "      NSIS build failed!" -ForegroundColor Red

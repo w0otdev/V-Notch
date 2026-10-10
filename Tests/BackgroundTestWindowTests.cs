@@ -1,15 +1,79 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using VNotch.TestSupport;
 using Xunit;
 
 namespace VNotch.Tests;
 
 public sealed class BackgroundTestWindowTests
 {
+    [Fact]
+    public void TestWindowsAndModalDialogsStayOutsideTheUsersInputDesktop() => SharedStaTestRunner.Run(() =>
+    {
+        IntPtr inputDesktop = OpenInputDesktop(0, false, 0x0041); // READOBJECTS, ENUMERATE
+        Assert.NotEqual(IntPtr.Zero, inputDesktop);
+        var window = new Window
+        {
+            Width = 120,
+            Height = 80,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Opacity = 1,
+            ShowActivated = true,
+            ShowInTaskbar = true,
+            Topmost = true
+        };
+        try
+        {
+            Assert.Equal(BackgroundTestDesktop.Name, DesktopName(GetThreadDesktop(GetCurrentThreadId())));
+            Assert.NotEqual(BackgroundTestDesktop.Name, DesktopName(inputDesktop));
+            window.Show();
+            window.Activate();
+            AssertNotOnInputDesktop(window, inputDesktop);
+
+            var dialog = new Window
+            {
+                Owner = window,
+                Width = 100,
+                Height = 60,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Opacity = 1,
+                ShowActivated = true,
+                Topmost = true
+            };
+            Exception? modalFailure = null;
+            dialog.Loaded += (_, _) =>
+            {
+                try { AssertNotOnInputDesktop(dialog, inputDesktop); }
+                catch (Exception ex) { modalFailure = ex; }
+                finally { dialog.DialogResult = false; }
+            };
+            Assert.False(dialog.ShowDialog());
+            if (modalFailure != null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(modalFailure).Throw();
+        }
+        finally { window.Close(); CloseDesktop(inputDesktop); }
+    });
+
+    [Fact]
+    public void VisibleDesktopOptInCannotBypassBackgroundModeInAnInteractiveSession()
+    {
+        if (!Environment.UserInteractive) return;
+        string? previous = Environment.GetEnvironmentVariable(DesktopTestMode.EnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(DesktopTestMode.EnvironmentVariable, "1");
+            Assert.False(DesktopTestMode.Enabled);
+            Assert.NotNull(new DesktopFactAttribute().Skip);
+            Assert.NotNull(new DesktopTheoryAttribute().Skip);
+        }
+        finally { Environment.SetEnvironmentVariable(DesktopTestMode.EnvironmentVariable, previous); }
+    }
+
     [Fact]
     public void BackgroundWindowCannotBecomeVisibleOrCaptureInputWhileAnimationStillCompletes() => SharedStaTestRunner.Run(() =>
     {
@@ -79,6 +143,45 @@ public sealed class BackgroundTestWindowTests
         finally { timer.Stop(); }
         Assert.True(condition(), "Background window animation did not complete.");
     }
+
+    private static string DesktopName(IntPtr desktop)
+    {
+        var name = new StringBuilder(256);
+        Assert.True(GetUserObjectInformation(desktop, 2, name, name.Capacity * sizeof(char), out _));
+        return name.ToString();
+    }
+
+    private static void AssertNotOnInputDesktop(Window window, IntPtr inputDesktop)
+    {
+        IntPtr hwnd = new WindowInteropHelper(window).Handle;
+        Assert.NotEqual(IntPtr.Zero, hwnd);
+        bool found = false;
+        Assert.True(EnumDesktopWindows(inputDesktop, (candidate, _) => { found |= candidate == hwnd; return true; }, IntPtr.Zero));
+        Assert.False(found, "A test window escaped onto the user's input desktop.");
+    }
+
+    private delegate bool EnumDesktopWindowCallback(IntPtr hwnd, IntPtr parameter);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr OpenInputDesktop(uint flags, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint access);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDesktop(uint threadId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll", EntryPoint = "GetUserObjectInformationW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetUserObjectInformation(IntPtr handle, int index, StringBuilder information, int length, out int needed);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumDesktopWindows(IntPtr desktop, EnumDesktopWindowCallback callback, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseDesktop(IntPtr desktop);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();

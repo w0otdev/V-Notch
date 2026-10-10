@@ -10,6 +10,7 @@ internal sealed class LiveTranslationController : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _manageModel;
+    private readonly Func<IntPtr> _getForegroundWindow;
     private LocalTranslationService _service;
     private TranslationModelStore _store;
     private readonly bool _injected;
@@ -25,9 +26,10 @@ internal sealed class LiveTranslationController : IDisposable
     private string _text = "";
     private bool _disposed;
 
-    internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null)
+    internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null)
     {
         _dispatcher = dispatcher; _manageModel = manageModel;
+        _getForegroundWindow = getForegroundWindow ?? Win32Interop.GetForegroundWindow;
         _injected = store != null || engine != null;
         _store = store ?? TranslationModelStore.Shared;
         _service = new(engine ?? new QwenTranslationEngine(_store));
@@ -120,10 +122,10 @@ internal sealed class LiveTranslationController : IDisposable
         if (_disposed || _dispatcher.HasShutdownStarted) return;
         _dispatcher.BeginInvoke(async () =>
         {
-            if (_disposed || !_settings.EnableLiveTranslation || _selectionService?.IsManualRequestCurrent(captureVersion) != true || Win32Interop.GetForegroundWindow() != foreground) return;
+            if (_disposed || !_settings.EnableLiveTranslation || _selectionService?.IsManualRequestCurrent(captureVersion) != true || _getForegroundWindow() != foreground) return;
             CancelRequest();
             long version = _requestVersion;
-            bool Current() => !_disposed && version == _requestVersion && _selectionService?.IsManualRequestCurrent(captureVersion) == true && Win32Interop.GetForegroundWindow() == foreground;
+            bool Current() => !_disposed && version == _requestVersion && _selectionService?.IsManualRequestCurrent(captureVersion) == true && _getForegroundWindow() == foreground;
             var selection = await SelectionClipboardCapture.CaptureAsync(foreground, Current);
             if (Current()) PresentSelection(selection, true, Current);
         });
@@ -136,7 +138,7 @@ internal sealed class LiveTranslationController : IDisposable
         {
             if (_disposed || !_settings.EnableLiveTranslation || _selectionService == null) return;
             if (isCurrent != null && !isCurrent()) return;
-            if (manual && selection != null && Win32Interop.GetForegroundWindow() != selection.Window) return;
+            if (manual && selection != null && _getForegroundWindow() != selection.Window) return;
             if (_window?.IsVisible == true)
             {
                 // UIA may issue a new snapshot ID for the same text/range after Shift.
@@ -147,10 +149,10 @@ internal sealed class LiveTranslationController : IDisposable
                 // Empty Shift key-up snapshots must not close an explicitly opened
                 // popup while its source application is still in the foreground.
                 if (selection == null && _manualPresentationWindow != IntPtr.Zero &&
-                    Win32Interop.GetForegroundWindow() == _manualPresentationWindow) return;
+                    _getForegroundWindow() == _manualPresentationWindow) return;
             }
             CancelRequest();
-            _manualPresentationWindow = manual ? selection?.Window ?? Win32Interop.GetForegroundWindow() : IntPtr.Zero;
+            _manualPresentationWindow = manual ? selection?.Window ?? _getForegroundWindow() : IntPtr.Zero;
             if (!manual && !_settings.AutoLiveTranslation)
             {
                 _window?.Dismiss();

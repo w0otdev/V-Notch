@@ -36,9 +36,11 @@ internal sealed record SignedUpdateManifest(int SchemaVersion, string Version, s
         if (manifest.SchemaVersion != 1 ||
             manifest.InstallerName != expectedInstaller ||
             manifest.InstallerName is not (UpdateService.SetupName or UpdateService.SelfContainedSetupName) ||
-            !System.Version.TryParse(manifest.Version, out var version) ||
-            !System.Version.TryParse(expectedVersion, out var expected) || version != expected ||
-            !System.Version.TryParse(currentVersion, out var current) || version <= current ||
+            !UpdateService.TryParseReleaseVersion(manifest.Version, out _, out _) ||
+            !UpdateService.TryParseReleaseVersion(expectedVersion, out _, out _) ||
+            UpdateService.CompareVersions(manifest.Version, expectedVersion) != 0 ||
+            !UpdateService.TryParseReleaseVersion(currentVersion, out _, out _) ||
+            UpdateService.CompareVersions(manifest.Version, currentVersion) <= 0 ||
             manifest.Size <= 0 || manifest.Size > UpdateSecurityPolicy.MaximumInstallerBytes ||
             manifest.Sha256 is not { Length: 64 } || !manifest.Sha256.All(Uri.IsHexDigit))
             throw new InvalidDataException("Update manifest does not match the requested newer release.");

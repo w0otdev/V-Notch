@@ -535,12 +535,12 @@ public sealed class ClipboardTrayRegressionTests
             Loc.SetLanguage("vi");
             tray.ApplyLocalization();
 
-            Assert.Equal("Đặt lại Riêng tư", ((TextBlock)tray.FindName("ResetConfirmationTitle")).Text);
+            Assert.Equal("Đặt lại mục Riêng tư", ((TextBlock)tray.FindName("ResetConfirmationTitle")).Text);
             Assert.Equal(FontWeights.Bold, ((TextBlock)tray.FindName("ResetConfirmationHint")).FontWeight);
             Assert.Equal("DELETE", confirmation.Text);
             Assert.True(((Button)tray.FindName("ResetPersonalButton")).IsEnabled);
-            Assert.Equal("PIN của mục Riêng tư", AutomationProperties.GetName((PasswordBox)tray.FindName("PasscodeBox")));
-            Assert.Equal("Thông tin clipboard", AutomationProperties.GetName((Button)tray.FindName("InfoButton")));
+            Assert.Equal("Mã PIN của mục Riêng tư", AutomationProperties.GetName((PasswordBox)tray.FindName("PasscodeBox")));
+            Assert.Equal("Thông tin khay nhớ tạm", AutomationProperties.GetName((Button)tray.FindName("InfoButton")));
             Assert.Equal(Loc.Get("clipboard.deleteConfirm", 3), ((TextBlock)tray.FindName("DeleteConfirmationText")).Text);
             var categories = (ItemsControl)tray.FindName("CategoryPanel");
             var personal = Assert.Single(categories.Items.Cast<ClipboardCategoryViewModel>(), item => item.Name == "Personal");

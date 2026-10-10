@@ -88,6 +88,7 @@ update_settings.ps1
 !/Tools/ReportBenchmark/
 !/Tools/VNotch.Benchmarks/
 !/Tools/StressRunner/
+!/Tools/TestSupport/
 !/Tools/SystemMonitorLifetimeProbe/
 !/Tools/UpdateCompatibility/
 !/Tools/TranslationBench/
