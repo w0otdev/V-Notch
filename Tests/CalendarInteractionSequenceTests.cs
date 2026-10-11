@@ -27,9 +27,11 @@ public sealed class CalendarInteractionSequenceTests
         var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, delta) { RoutedEvent = Mouse.MouseWheelEvent };
         presenter.HandleMouseWheel(args);
         Assert.True(args.Handled);
-        await WpfFrameWaiter.UntilAsync(() => Math.Abs(fixture.Window.CalendarStripTranslate.X - CalendarScrollMath.GetStripXForIndex(expectedIndex)) < .01,
+        await WpfFrameWaiter.UntilAsync(() =>
+            Math.Abs(fixture.Window.CalendarStripTranslate.X - CalendarScrollMath.GetStripXForIndex(expectedIndex)) < .01 &&
+            Math.Abs(fixture.Window.CalendarHighlightTranslate.X - CalendarScrollMath.GetHighlightXForIndex(expectedIndex)) < .02,
             "calendar scroll settles", ct);
-        Assert.Equal(CalendarScrollMath.GetHighlightXForIndex(expectedIndex), fixture.Window.CalendarHighlightTranslate.X, 2);
+        Assert.Equal(CalendarScrollMath.GetHighlightXForIndex(expectedIndex), fixture.Window.CalendarHighlightTranslate.X, 1);
         presenter.HandleMouseEnter();
         await WpfFrameWaiter.UntilAsync(() => fixture.Window.CalendarWidgetScale.ScaleX > 1.03, "calendar hover", ct);
         presenter.HandleMouseLeave();
