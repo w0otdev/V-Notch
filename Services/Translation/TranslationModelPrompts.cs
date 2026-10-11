@@ -3,13 +3,13 @@ namespace VNotch.Services.Translation;
 internal static class TranslationModelPrompts
 {
     private static readonly HashSet<string> HunyuanLanguages = "zh en fr pt es ja tr ru ar ko th it de vi ms id tl hi pl cs nl km my fa gu ur te mr he bn ta uk bo kk mn ug yue".Split(' ').ToHashSet();
-    internal static string Build(TranslationModelProfile model, string text, string source, string target)
+    internal static string Build(TranslationModelProfile model, string text, string source, string target, bool enableHumanizer = true)
     {
         // Do not let text containing model control tokens break out of the user turn.
         text = text.Replace("<|", "< |", StringComparison.Ordinal).Replace("<start_of_turn>", "< start_of_turn >", StringComparison.Ordinal)
             .Replace("<end_of_turn>", "< end_of_turn >", StringComparison.Ordinal).Replace("<bos>", "< bos >", StringComparison.Ordinal);
         string targetName = TranslationLanguages.EnglishName(target);
-        string meaning = TranslationMeaningIntegrity.Instruction(text, source);
+        string meaning = TranslationMeaningIntegrity.Instruction(text, source, enableHumanizer);
         if (model.PromptKind == TranslationPromptKind.Hunyuan)
         {
             if (!HunyuanLanguages.Contains(target) || (source != "auto" && !HunyuanLanguages.Contains(source)))

@@ -24,8 +24,8 @@ public partial class TranslationWindow : Window
     private string? _deferredStatus, _deferredActivity;
     private bool _placementDirty;
     private Rect _presentationBounds, _workArea;
-    private const int EntranceMilliseconds = 600;
-    private const int ExitMilliseconds = 500;
+    private const int EntranceMilliseconds = 260;
+    private const int ExitMilliseconds = 140;
     private TranslationSelection? _selection;
     private TranslationResult? _result;
     internal event Action? TranslateRequested;
@@ -42,6 +42,16 @@ public partial class TranslationWindow : Window
     {
         WindowAnimationPolicy.Attach(this);
         InitializeComponent();
+        ResultText.TextChanged += (_, _) =>
+        {
+            if (ResultText.Text.Length != 0) return;
+            MarkdownResult.Document.Blocks.Clear();
+            MarkdownResult.Visibility = Visibility.Collapsed;
+            ResultText.Visibility = Visibility.Visible;
+        };
+        MarkdownResult.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy,
+            (_, e) => { CopyText(MarkdownResult.Selection.IsEmpty ? ResultText.Text : MarkdownResult.Selection.Text); e.Handled = true; },
+            (_, e) => { e.CanExecute = _result != null; e.Handled = true; }));
         SourceLanguageCombo.DropDownOpened += LanguageMenuMotion;
         SourceLanguageCombo.DropDownClosed += LanguageMenuMotion;
         TargetLanguageCombo.DropDownOpened += LanguageMenuMotion;
@@ -341,11 +351,6 @@ public partial class TranslationWindow : Window
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
             surface.Opacity = opacity; scale.ScaleX = scale.ScaleY = 1;
-            if (button.Content is System.Windows.Shapes.Path staticIcon && staticIcon.RenderTransform is RotateTransform staticRotation)
-            {
-                staticRotation.BeginAnimation(RotateTransform.AngleProperty, null);
-                staticRotation.Angle = 0;
-            }
             return;
         }
         var fade = Motion(surface.Opacity, opacity, 100);
@@ -353,13 +358,6 @@ public partial class TranslationWindow : Window
         surface.BeginAnimation(OpacityProperty, fade);
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion(scale.ScaleX, pressed ? 0.96 : 1, 100));
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion(scale.ScaleY, pressed ? 0.96 : 1, 100));
-        if (button.Content is System.Windows.Shapes.Path icon)
-        {
-            var rotation = icon.RenderTransform as RotateTransform ?? new RotateTransform();
-            icon.RenderTransform = rotation;
-            icon.RenderTransformOrigin = new Point(0.5, 0.5);
-            rotation.BeginAnimation(RotateTransform.AngleProperty, Motion(rotation.Angle, button.IsMouseOver ? 90 : 0, 180));
-        }
     }
 
     private void LanguageMenuMotion(object? sender, EventArgs e)
@@ -458,6 +456,11 @@ public partial class TranslationWindow : Window
         TranslateButton.IsEnabled = key != "translation.working";
         CancelButton.Visibility = key == "translation.working" ? Visibility.Visible : Visibility.Collapsed;
         if (key == "translation.working") { StopResultReveal(); _result = null; CopyButton.IsEnabled = ReplaceButton.IsEnabled = false; }
+        if (key is "translation.literalsChanged" or "translation.currencyAmbiguous")
+        {
+            StopResultReveal(); _result = null; ResultText.Clear();
+            CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
+        }
     }
 
     private void SetLoading(bool loading)
@@ -481,6 +484,7 @@ public partial class TranslationWindow : Window
             TranslationStage.Waiting => "translation.waitingElapsed",
             TranslationStage.CheckingModel => "translation.checkingElapsed",
             TranslationStage.LoadingModel => "translation.loadingElapsed",
+            TranslationStage.FetchingRates => "translation.currencyWorking",
             _ => "translation.workingElapsed"
         };
         if (_dismissing || _deferredResult != null) return;
@@ -510,7 +514,16 @@ public partial class TranslationWindow : Window
         bool longText = text.Length >= 400 || text.Count(c => c == '\n') >= 5;
         ResultText.FontSize = longText ? 15 : 19;
         ResultText.FontWeight = FontWeights.Bold;
-        ResultText.Text = _formatText ? TranslationTextFormatting.Format(text) : text;
+        bool markdown = _formatText && _result.Currency == null && TranslationStructuredText.HasMarkdown(text);
+        ResultText.Text = _formatText && _result.Currency == null && !markdown ? TranslationTextFormatting.Format(text) : text;
+        MarkdownResult.Visibility = markdown ? Visibility.Visible : Visibility.Collapsed;
+        ResultText.Visibility = markdown ? Visibility.Collapsed : Visibility.Visible;
+        if (markdown)
+        {
+            MarkdownResult.Document = VNotch.Controls.AiMarkdown.Render(text, ResultText.FontFamily, normalBody: true);
+            MarkdownResult.Document.FontSize = longText ? 15 : 19;
+        }
+        else MarkdownResult.Document.Blocks.Clear();
         if (IsVisible) SchedulePresentation();
     }
 
@@ -528,11 +541,20 @@ public partial class TranslationWindow : Window
         PresentResultText();
         ResultScroll.ScrollToTop();
         CopyButton.IsEnabled = true;
-        ReplaceButton.IsEnabled = _selection?.CanReplace == true && result.LiteralsPreserved && result.WeekdaysPreserved;
+        ReplaceButton.IsEnabled = _selection?.CanReplace == true && (result.Currency != null || (result.LiteralsPreserved && result.WeekdaysPreserved));
         TranslateButton.IsEnabled = true;
         CancelButton.Visibility = Visibility.Collapsed;
         LanguageSummary.Text = $"{LanguageName(result.SourceLanguage)} → {LanguageName(result.TargetLanguage)}";
         StatusText.Text = !result.WeekdaysPreserved ? Loc.Get("translation.checkDates") : result.LiteralsPreserved ? "" : Loc.Get("translation.checkFacts");
+        if (result.Currency is { } conversion)
+        {
+            LanguageSummary.Text = conversion.Price.Currency + " → " + conversion.Target;
+            StatusText.Text = conversion.Rate is { } rate
+                ? Loc.Get("translation.currencyRate", rate.Date.ToString("yyyy-MM-dd"), rate.Base, rate.Rate.ToString("G", Loc.GetCulture()), rate.Quote)
+                : Loc.Get("translation.currencySame");
+            if (conversion.Cached) StatusText.Text += " " + Loc.Get("translation.currencyCached");
+            if (conversion.Price.AssumedCurrency) StatusText.Text += " " + Loc.Get("translation.currencyAssumed", conversion.Price.Currency);
+        }
         if (_selection != null) UpdatePresentation(_selection.Bounds);
         QueueResultReveal();
     }
@@ -571,12 +593,13 @@ public partial class TranslationWindow : Window
             CompletePopupMotion(_motionVersion);
         }
         if (!IsVisible || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation) { Finish(); return; }
-        // Match the notch collapse's exponential settling curve.
-        var fade = Motion(PopupSurface.Opacity, 0, ExitMilliseconds, AnimationPrimitives._easeExpOut6);
+        // Hold the current position even when dismissal interrupts the entrance.
+        double x = PopupOffset.X;
+        PopupOffset.BeginAnimation(TranslateTransform.XProperty, null);
+        PopupOffset.X = x;
+        var fade = Motion(PopupSurface.Opacity, 0, ExitMilliseconds, AnimationPrimitives._easeQuadOut);
         fade.Completed += (_, _) => Finish();
         PopupSurface.BeginAnimation(OpacityProperty, fade);
-        var slide = Motion(PopupOffset.X, -24, ExitMilliseconds, AnimationPrimitives._easeExpOut6);
-        PopupOffset.BeginAnimation(TranslateTransform.XProperty, slide);
     }
 
     private void Open_Click(object sender, RoutedEventArgs e) => Expand();

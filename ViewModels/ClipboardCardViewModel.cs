@@ -26,6 +26,11 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     public string Title => Entry.Kind == ClipboardKind.Image && Entry.Title is "Image" or "Screenshot"
         ? Services.Loc.Get(Entry.Title == "Image" ? "clipboard.image" : "clipboard.screenshot") : Entry.Title;
     public string Source => string.IsNullOrEmpty(Entry.SourceApp) ? Services.Loc.Get("clipboard.source") : Entry.SourceApp;
+    public string FooterSource => Entry.IsPersonal ? Services.Loc.Get("clipboard.category.personal") : Source;
+    internal ImageSource? PreferredSourceIcon => TrayAppIcons.FindSource(Entry.SourceApp, Entry.SourceExecutable);
+    internal ImageSource? PreferredFileIcon => TrayAppIcons.FindFile(FileExtension);
+    public ImageSource DisplaySourceIcon => PreferredSourceIcon ?? SourceIcon ?? TrayAppIcons.ForContent(Entry.Kind);
+    public ImageSource FilePreviewIcon => PreferredFileIcon ?? FileIcon ?? TrayAppIcons.Get(TrayAppIconKind.Document);
     public string Size => Entry.ByteSize < 1024 ? Services.Loc.Get("clipboard.bytes", Entry.ByteSize) : Entry.ByteSize < 1024 * 1024
         ? (Entry.ByteSize / 1024d).ToString("0.#", Services.Loc.GetCulture()) + " KB"
         : (Entry.ByteSize / (1024d * 1024)).ToString("0.#", Services.Loc.GetCulture()) + " MB";
@@ -142,14 +147,18 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     {
         RefreshAge(DateTime.UtcNow);
         foreach (string property in new[] { nameof(MoreLabel), nameof(DetailsLabel), nameof(PinLabel), nameof(GroupsLabel),
-            nameof(PersonalLabel), nameof(ArchiveLabel), nameof(DeleteLabel), nameof(CopiedLabel), nameof(Title), nameof(Source), nameof(Size), nameof(FileTypeTag) })
+            nameof(PersonalLabel), nameof(ArchiveLabel), nameof(DeleteLabel), nameof(CopiedLabel), nameof(Title), nameof(Source), nameof(FooterSource), nameof(Size), nameof(FileTypeTag) })
             OnPropertyChanged(property);
     }
     public FontFamily ContentFont => SharedContentFont;
     public Brush CardBrush => _cardBrush ??= CreateCardBrush(Entry);
     [ObservableProperty] private ImageSource? _image;
-    [ObservableProperty] private ImageSource? _sourceIcon;
-    [ObservableProperty] private ImageSource? _fileIcon;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplaySourceIcon))]
+    private ImageSource? _sourceIcon;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FilePreviewIcon))]
+    private ImageSource? _fileIcon;
     public string CopiedLabel => Services.Loc.Get("clipboard.copied");
     [ObservableProperty] private bool _isCopied;
     [ObservableProperty] private bool _isMenuOpen;

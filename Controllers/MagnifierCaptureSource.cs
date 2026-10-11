@@ -344,17 +344,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
         lock (_frameLock)
         {
-            if (!_hasCompletedFrame ||
-                _completedFilterVersion != Volatile.Read(ref _filterVersion) ||
-                Environment.TickCount64 - _completedFrameTicks > 500) return false;
-
-            if (IsEffectivelyBlackCrop(_completedBuffer, _completedWidth, _completedHeight,
-                    _completedX, _completedY, x, y, w, h))
-            {
-                // Do not return pre-filter snapshot as it would report stale pixels
-                // and block the controller from recovering its live backend.
-                return false;
-            }
+            if (!HasUsableFrameCore(x, y, w, h)) return false;
 
             return CopyDesktopCrop(_completedBuffer, _completedWidth, _completedHeight,
                 _completedX, _completedY, x, y, w, h, destBits);
@@ -363,6 +353,22 @@ public sealed class MagnifierCaptureSource : IDisposable
 
     public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits) =>
         CaptureInto(x, y, w, h, destBits, out _, out _);
+
+    // Recovery probes must not wait for a callback or interrupt the working backend.
+    internal bool HasUsableFrame(int x, int y, int width, int height)
+    {
+        if (!IsReady || !_running || width <= 0 || height <= 0) return false;
+        _request.Set();
+        lock (_frameLock)
+            return HasUsableFrameCore(x, y, width, height);
+    }
+
+    private bool HasUsableFrameCore(int x, int y, int width, int height) =>
+        _hasCompletedFrame &&
+        _completedFilterVersion == Volatile.Read(ref _filterVersion) &&
+        Environment.TickCount64 - _completedFrameTicks <= 500 &&
+        !IsEffectivelyBlackCrop(_completedBuffer, _completedWidth, _completedHeight,
+            _completedX, _completedY, x, y, width, height);
 
 #pragma warning disable S3776 // Win32 message pump STA loop handles device lifecycle, window layout, and DWM sync
     private void PumpThread()

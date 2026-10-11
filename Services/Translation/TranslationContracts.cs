@@ -3,8 +3,11 @@ using System.Windows;
 namespace VNotch.Services.Translation;
 
 // This flag checks numbers, currencies, codes and links; it is not semantic validation.
-internal sealed record TranslationResult(string Text, string SourceLanguage, string TargetLanguage, bool LiteralsPreserved, bool WeekdaysPreserved = true);
-internal enum TranslationStage { Waiting, CheckingModel, LoadingModel, Translating }
+internal sealed record TranslationResult(string Text, string SourceLanguage, string TargetLanguage, bool LiteralsPreserved, bool WeekdaysPreserved = true)
+{
+    internal CurrencyConversion? Currency { get; init; }
+}
+internal enum TranslationStage { Waiting, CheckingModel, LoadingModel, Translating, FetchingRates }
 
 internal interface ILocalTranslationEngine : IDisposable
 {

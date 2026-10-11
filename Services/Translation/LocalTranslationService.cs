@@ -37,6 +37,7 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
     {
         if (string.IsNullOrWhiteSpace(text)) throw new TranslationException("translation.noSelection");
         if (text.Length > 2000) throw new TranslationException("translation.textTooLong");
+        if (TranslationCurrencies.HasConflictingCurrency(text, source)) throw new TranslationException("translation.currencyAmbiguous");
         if (!TranslationLanguages.IsSupported(target)) throw new TranslationException("translation.languageUnsupported");
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -53,12 +54,16 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
                 if (_expires[key] > DateTime.UtcNow) { _order.AddLast(key); return existing; }
                 _cache.Remove(key); _expires.Remove(key);
             }
-            string translated = source == target ? text : await engine.TranslateAsync(text, source, target, ct).ConfigureAwait(false);
+            string translated = source == target ? text : await TranslationStructuredText.TranslateAsync(text,
+                (prose, token) => engine.TranslateAsync(prose, source, target, token), ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             translated = TranslationTextIntegrity.Clean(translated);
             if (!TranslationMeaningIntegrity.PreservesStatement(text, source, translated))
                 throw new TranslationException("translation.meaningChanged");
-            var result = new TranslationResult(translated, source, target, TranslationTextIntegrity.Verify(text, translated),
+            // Never present or cache a model-generated change to amounts, currencies or other facts.
+            if (!TranslationTextIntegrity.Verify(text, translated))
+                throw new TranslationException("translation.literalsChanged");
+            var result = new TranslationResult(translated, source, target, true,
                 TranslationDateIntegrity.PreservesWeekdays(text, source == "auto" ? TranslationLanguages.Detect(text) ?? source : source, translated, target));
             if (_options.CacheEntries > 0)
             {

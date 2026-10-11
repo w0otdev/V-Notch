@@ -11,6 +11,129 @@ namespace VNotch.Tests;
 
 public sealed class TranslationStartupTests
 {
+    [Theory]
+    [InlineData("auto", "VND")]
+    [InlineData("JPY", "JPY")]
+    public void SelectedPriceBypassesMissingModelAndRespectsCurrencyOverride(string choice, string target) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        File.Delete(fixture.Path);
+        using var engine = new PreparedEngine();
+        var privacy = new VNotch.Services.NetworkPrivacy();
+        privacy.Apply(new NotchSettings());
+        using var client = new System.Net.Http.HttpClient(new CurrencyHandler(target));
+        var rates = new CurrencyRateService(client, privacy, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(fixture.Path)!, "rates"),
+            () => new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero));
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, currencyRates: rates);
+        controller.ApplySettings(new NotchSettings { TranslationTargetLanguage = "vi", TranslationTargetCurrency = choice });
+        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        window.ShowActivated = false;
+        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
+        window.ShowClipboard("USD 10");
+        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text.EndsWith(target), "currency result without model", ct);
+        Assert.Equal(0, engine.Calls);
+        Assert.False(engine.Preparing.Task.IsCompleted);
+        Assert.Equal("USD → " + target, window.LanguageSummary.Text);
+        Assert.Contains("2026-10-11", window.StatusText.Text);
+        Assert.Contains("Frankfurter", window.StatusText.Text);
+        Assert.True(window.CopyButton.IsEnabled);
+        Assert.False(window.ReplaceButton.IsEnabled);
+    });
+
+    [Theory]
+    [InlineData(true, "vi")]
+    [InlineData(false, "vi")]
+    [InlineData(false, "am")]
+    public void UnavailableOrUnmappedCurrencyFallsBackToLocalTranslation(bool localOnly, string target) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { Echo = true };
+        var privacy = new VNotch.Services.NetworkPrivacy();
+        privacy.Apply(new NotchSettings { EnableLocalOnlyMode = localOnly });
+        using var client = new System.Net.Http.HttpClient(new UnavailableCurrencyHandler());
+        var rates = new CurrencyRateService(client, privacy, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(fixture.Path)!, "rates"));
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, currencyRates: rates);
+        controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = target });
+        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        window.ShowActivated = false;
+        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
+        window.ShowClipboard("USD 10");
+        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "USD 10", "local fallback", ct);
+        Assert.Equal(1, engine.Calls);
+    });
+
+    private sealed class UnavailableCurrencyHandler : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+            => throw new System.Net.Http.HttpRequestException("offline");
+    }
+
+    private sealed class CurrencyHandler(string target) : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+        {
+            Assert.Equal("https://api.frankfurter.dev/v2/rate/USD/" + target, request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new System.Net.Http.StringContent($"{{\"base\":\"USD\",\"quote\":\"{target}\",\"rate\":25000,\"date\":\"2026-10-11\"}}")
+            });
+        }
+    }
+
+    [Fact]
+    public async Task TestActualGemmaInference()
+    {
+        string userModelDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "translation-models", "translategemma-4b");
+        if (!Directory.Exists(userModelDir)) return;
+        var profile = TranslationModelCatalog.Find("translategemma-4b")!;
+        var store = new TranslationModelStore(userModelDir, profile: profile);
+        using var engine = new QwenTranslationEngine(store);
+        using var service = new LocalTranslationService(engine);
+        service.Configure(new TranslationOptions { GpuLayers = 36, ContextSize = 2048 });
+        string text = "Bây giờ bạn có thể thử bôi đen lại 1000 dollar hoặc bất kỳ văn bản nào khác, ứng dụng sẽ hoạt động bình thường mà không bị báo lỗi VC++ nữa.";
+        var result = await service.TranslateAsync(text, "auto", "vi", default);
+        Assert.NotNull(result.Text);
+        Assert.NotEmpty(result.Text);
+    }
+
+    [Fact]
+    public void StartupPreparesInstalledModelOffDispatcherWithTranslationDisabled() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { BlockPreparation = true };
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        controller.ApplySettings(new NotchSettings { EnableLiveTranslation = false });
+        int uiThread = Environment.CurrentManagedThreadId;
+        var preparation = controller.PrepareModelAsync();
+        Assert.Same(preparation, controller.PrepareModelAsync());
+        await engine.Preparing.Task.WaitAsync(ct);
+        Assert.NotEqual(uiThread, engine.PreparationThread);
+        Assert.False(preparation.IsCompleted);
+        Assert.Equal(0, engine.Calls);
+        engine.Prepared.TrySetResult();
+        await preparation.WaitAsync(ct);
+    });
+
+    [Fact]
+    public void StartupSkipsMissingOrDisposedModel() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine();
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        File.Delete(fixture.Path);
+        await controller.PrepareModelAsync().WaitAsync(ct);
+        Assert.False(engine.Preparing.Task.IsCompleted);
+        controller.Dispose();
+        await controller.PrepareModelAsync().WaitAsync(ct);
+        Assert.False(engine.Preparing.Task.IsCompleted);
+    });
+
     [Fact]
     public void RepeatedManualRequestsAndEmptyKeyUpSnapshotsKeepTheExistingPopupAndResult() => SharedStaTestRunner.RunAsync(async ct =>
     {
@@ -107,7 +230,7 @@ public sealed class TranslationStartupTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void TranslationStartsOnlyAfterTheEntranceFinishes(bool reduced) => SharedStaTestRunner.RunAsync(async ct =>
+    public void TranslationRunsOffDispatcherWithoutWaitingForEntrance(bool reduced) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = VNotch.Services.AnimationConfig.ReduceMotion;
         VNotch.Services.AnimationConfig.SetReduceMotion(reduced);
@@ -119,18 +242,22 @@ public sealed class TranslationStartupTests
         BackgroundTestWindows.ProtectInput(window);
         window.Opacity = 0;
         window.ShowActivated = false;
-        bool startedDuringAnimation = false;
-        engine.OnTranslate = () => startedDuringAnimation = window.IsPresentationAnimating;
+        int uiThread = Environment.CurrentManagedThreadId, inferenceThread = uiThread;
+        engine.OnTranslate = () => inferenceThread = Environment.CurrentManagedThreadId;
         try
         {
             typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
             window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
+            // Hold the entrance gate without pumping WPF. Translation must still
+            // begin on a worker thread, independently of render/animation progress.
+            var entrance = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            typeof(TranslationWindow).GetField("_entranceCompletion", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(window, entrance);
             window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-            Assert.True(window.IsPresentationAnimating);
-            Assert.Equal(0, engine.Calls);
-            Assert.False(engine.Preparing.Task.IsCompleted);
-            await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "vi result", "translation after entrance", ct);
-            Assert.False(startedDuringAnimation);
+            Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
+            Assert.False(entrance.Task.IsCompleted);
+            Assert.NotEqual(uiThread, inferenceThread);
+            entrance.TrySetResult();
+            await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "vi result", "translation overlaps entrance", ct);
             Assert.False(window.IsPresentationAnimating);
             Assert.Equal(1, engine.Calls);
         }
@@ -141,10 +268,10 @@ public sealed class TranslationStartupTests
     [InlineData("cancel")]
     [InlineData("dismiss")]
     [InlineData("close")]
-    public void CancellingDuringEntranceDoesNotStartModelWork(string action) => SharedStaTestRunner.RunAsync(async ct =>
+    public void CancellingDuringEntranceCancelsModelWorkAndSuppressesResult(string action) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new ModelFixture();
-        using var engine = new PreparedEngine();
+        using var engine = new PreparedEngine { BlockFirstTranslation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
         BackgroundTestWindows.ProtectInput(window);
@@ -154,12 +281,16 @@ public sealed class TranslationStartupTests
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
         window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
         Assert.True(window.IsPresentationAnimating);
+        Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
         if (action == "cancel") window.CancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
         else if (action == "dismiss") window.Dismiss();
         else window.Close();
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
         if (action != "close") await WpfFrameWaiter.UntilAsync(() => !window.IsPresentationAnimating, "cancelled entrance settles", ct);
-        Assert.Equal(0, engine.Calls);
+        await engine.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(3), ct);
+        Assert.True(engine.FirstCancelled);
+        Assert.Equal(1, engine.Calls);
+        Assert.Empty(window.ResultText.Text);
         Assert.False(engine.Preparing.Task.IsCompleted);
     });
 
@@ -206,10 +337,13 @@ public sealed class TranslationStartupTests
 
     private sealed class PreparedEngine : ILocalTranslationEngine
     {
+        internal bool Echo;
         internal bool BlockPreparation;
+        internal int PreparationThread;
         internal Action? OnTranslate;
         internal bool BlockFirstTranslation;
         internal bool FirstCancelled;
+        internal TaskCompletionSource Cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Translating = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int Calls;
         internal string LastSource = "";
@@ -217,6 +351,7 @@ public sealed class TranslationStartupTests
         internal TaskCompletionSource Prepared = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public async Task PrepareAsync(CancellationToken ct)
         {
+            PreparationThread = Environment.CurrentManagedThreadId;
             Preparing.TrySetResult();
             if (BlockPreparation) await Prepared.Task.WaitAsync(ct);
         }
@@ -225,13 +360,13 @@ public sealed class TranslationStartupTests
             OnTranslate?.Invoke();
             Calls++;
             LastSource = source;
+            Translating.TrySetResult();
             if (BlockFirstTranslation && Calls == 1)
             {
-                Translating.TrySetResult();
                 try { await Task.Delay(Timeout.Infinite, ct); }
-                catch (OperationCanceledException) { FirstCancelled = true; throw; }
+                catch (OperationCanceledException) { FirstCancelled = true; Cancelled.TrySetResult(); throw; }
             }
-            return target + " result";
+            return Echo ? text : target + " result";
         }
         public void ReleaseIdleResources() { }
         public void Dispose() { }

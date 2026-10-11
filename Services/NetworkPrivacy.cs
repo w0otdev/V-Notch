@@ -5,7 +5,7 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-internal enum NetworkFeature { Updates, Artwork, Lyrics, Subtitles, Canvas, Weather, Ai, ExternalLinks, TranslationModels }
+internal enum NetworkFeature { Updates, Artwork, Lyrics, Subtitles, Canvas, Weather, Ai, ExternalLinks, TranslationModels, CurrencyRates }
 
 // One policy for production HTTP clients and out-of-process network features.
 // Deny until startup has loaded the user's persisted settings.
@@ -25,6 +25,7 @@ internal sealed class NetworkPrivacy
         NetworkFeature.Canvas => s.AllowOnlineCanvas && s.EnableSpotifyCanvas && SpotifyCanvasConsent.HasAccepted(s),
         NetworkFeature.Weather => s.AllowOnlineWeather,
         NetworkFeature.Ai => s.AllowOnlineAi,
+        NetworkFeature.CurrencyRates => s.EnableCurrencyConversion,
         _ => true
     };
 

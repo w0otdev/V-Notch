@@ -9,5 +9,6 @@ public partial class MainWindow
     {
         _liveTranslation ??= new LiveTranslationController(Dispatcher, () => OpenAppSettings(showTranslation: true));
         _liveTranslation.ApplySettings(_settings);
+        _ = _liveTranslation.PrepareModelAsync();
     }
 }

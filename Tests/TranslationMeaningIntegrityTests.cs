@@ -5,6 +5,63 @@ namespace VNotch.Tests;
 
 public sealed class TranslationMeaningIntegrityTests
 {
+    [Theory]
+    [InlineData("it's about $80 VND")]
+    [InlineData("$80 VND")]
+    [InlineData("It costs EUR 80 USD.")]
+    public async Task ConflictingSourceCurrencyIsRejectedBeforeInference(string input)
+    {
+        using var engine = new WrongMeaningEngine();
+        using var service = new LocalTranslationService(engine);
+        var error = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateAsync(input, "auto", "vi", default));
+        Assert.Equal("translation.currencyAmbiguous", error.MessageKey);
+        Assert.Equal(0, engine.Calls);
+    }
+
+    [Theory]
+    [InlineData("It's about 80 VND", "Giá khoảng 80.000 đồng Việt Nam.")]
+    [InlineData("It's about $80", "Giá khoảng 80.000 VND.")]
+    [InlineData("80 USD", "80 VND")]
+    [InlineData("Invoice 80", "Hóa đơn 80000")]
+    public async Task ChangedFactsAreNeitherPresentedNorCached(string source, string output)
+    {
+        using var engine = new LiteralEngine(output);
+        using var service = new LocalTranslationService(engine);
+        for (int i = 0; i < 2; i++)
+        {
+            var error = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateAsync(source, "auto", "vi", default));
+            Assert.Equal("translation.literalsChanged", error.MessageKey);
+        }
+        Assert.Equal(2, engine.Calls);
+    }
+
+    [Theory]
+    [InlineData("It's about $80 CAD", "Giá khoảng $80 CAD")]
+    [InlineData("It's about 80 VND", "Giá khoảng 80 VND")]
+    [InlineData("It's about $80", "Giá khoảng $80")]
+    public async Task PreservedPricesInSentencesRemainValid(string source, string output)
+    {
+        using var engine = new LiteralEngine(output);
+        using var service = new LocalTranslationService(engine);
+        Assert.Equal(output, (await service.TranslateAsync(source, "auto", "vi", default)).Text);
+    }
+
+    [Fact]
+    public void RestoredPlaceholderCannotAddAnInventedAmount()
+    {
+        var input = TranslationTextIntegrity.Protect("About $80");
+        Assert.Throws<TranslationException>(() => input.Restore(input.Text + " 80000 VND"));
+    }
+
+    private sealed class LiteralEngine(string output) : ILocalTranslationEngine
+    {
+        internal int Calls;
+        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
+        { Calls++; return Task.FromResult(output); }
+        public void ReleaseIdleResources() { }
+        public void Dispose() { }
+    }
+
     private const string Announcement = "Các bạn đang theo dõi giải đấu VALORANT Champions Shanghai, giải đấu quy tụ 16 đội xuất sắc nhất Thế giới";
 
     [Theory]
@@ -51,6 +108,26 @@ public sealed class TranslationMeaningIntegrityTests
             Assert.Equal("translation.meaningChanged", error.MessageKey);
         }
         Assert.Equal(2, engine.Calls);
+    }
+
+    [Fact]
+    public void InstructionIncludesEmojiMarkdownAndHumanizerGuidelines()
+    {
+        string instruction = TranslationMeaningIntegrity.Instruction("Quá là đ@u đớn rồi đấy sếp ơi 😭", "vi");
+        Assert.Contains("emojis", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Markdown", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("human writer", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AI chatbot", instruction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void InstructionOmitsHumanizerGuidelinesWhenDisabled()
+    {
+        string instruction = TranslationMeaningIntegrity.Instruction("Quá là đ@u đớn rồi đấy sếp ơi 😭", "vi", enableHumanizer: false);
+        Assert.Contains("emojis", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Markdown", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("human writer", instruction, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AI chatbot", instruction, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class WrongMeaningEngine : ILocalTranslationEngine

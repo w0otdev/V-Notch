@@ -28,6 +28,9 @@ public partial class SettingsWindow
         EnableTranslationCheck.IsChecked = _settings.EnableLiveTranslation;
         AutoTranslationCheck.IsChecked = _settings.AutoLiveTranslation;
         FormatTranslationCheck.IsChecked = _settings.FormatTranslationText;
+        HumanizerTranslationCheck.IsChecked = _settings.EnableTranslationHumanizer;
+        CurrencyConversionCheck.IsChecked = _settings.EnableCurrencyConversion;
+        LoadTranslationCurrencies(_settings.TranslationTargetCurrency);
         TranslationSourceCombo.ItemsSource = new[] { new TranslationLanguages.Language("auto", Loc.Get("translation.autoDetect")) }.Concat(TranslationLanguages.All);
         TranslationTargetCombo.ItemsSource = TranslationLanguages.All;
         TranslationSourceCombo.SelectedValue = TranslationLanguages.Normalize(_settings.TranslationSourceLanguage, true);
@@ -56,13 +59,16 @@ public partial class SettingsWindow
         snapshot.EnableLiveTranslation = EnableTranslationCheck.IsChecked == true;
         snapshot.AutoLiveTranslation = AutoTranslationCheck.IsChecked == true;
         snapshot.FormatTranslationText = FormatTranslationCheck.IsChecked == true;
+        snapshot.EnableTranslationHumanizer = HumanizerTranslationCheck.IsChecked == true;
+        snapshot.EnableCurrencyConversion = CurrencyConversionCheck.IsChecked == true;
+        snapshot.TranslationTargetCurrency = TranslationCurrencies.Normalize(TranslationCurrencyCombo.SelectedValue as string);
         snapshot.TranslationSourceLanguage = TranslationLanguages.Normalize(TranslationSourceCombo.SelectedValue as string, true);
         snapshot.TranslationTargetLanguage = TranslationLanguages.Normalize(TranslationTargetCombo.SelectedValue as string);
     }
 
     private void TranslationSetting_Changed(object sender, RoutedEventArgs e)
     {
-        if (!_isLoadingSettings) { PushLivePreview(); RefreshTranslationReadyUsage(); }
+        if (!_isLoadingSettings) { PushLivePreview(); RefreshTranslationReadyUsage(); TranslationPreviewButton.IsEnabled = _translationStore.IsInstalled || CurrencyConversionCheck.IsChecked == true; }
     }
     private void TranslationLanguage_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -80,8 +86,14 @@ public partial class SettingsWindow
         TranslationAutoHint.Text = Loc.Get("translation.autoHint");
         FormatTranslationCheck.Content = Loc.Get("translation.formatText");
         TranslationFormatHint.Text = Loc.Get("translation.formatTextHint");
+        HumanizerTranslationCheck.Content = Loc.Get("translation.humanizer");
+        TranslationHumanizerHint.Text = Loc.Get("translation.humanizerHint");
         TranslationSourceLabel.Text = Loc.Get("translation.source");
         TranslationTargetLabel.Text = Loc.Get("translation.target");
+        CurrencyConversionCheck.Content = Loc.Get("translation.currencyEnable");
+        TranslationCurrencyLabel.Text = Loc.Get("translation.currencyTarget");
+        TranslationCurrencyHint.Text = Loc.Get("translation.currencyHint");
+        LoadTranslationCurrencies(TranslationCurrencyCombo.SelectedValue as string ?? _settings.TranslationTargetCurrency);
         RefreshTranslationModelDetails();
         TranslationDownloadPrivacy.Text = Loc.Get("translation.downloadPrivacy");
         TranslationDownloadButton.Content = Loc.Get(_translationDownload != null ? "translation.cancel" : "translation.download");
@@ -116,10 +128,11 @@ public partial class SettingsWindow
         TranslationModelStatus.Text = Loc.Get(installed ? "translation.modelReady" : "translation.modelMissing");
         TranslationModelStatus.Visibility = installed ? Visibility.Collapsed : Visibility.Visible;
         TranslationReadyCard.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
-        TranslationDownloadButton.Visibility = installed ? Visibility.Collapsed : Visibility.Visible;
-        TranslationDownloadButton.IsEnabled = !installed;
+        TranslationDownloadButton.Visibility = installed || _translationStore.Profile.IsCustom ? Visibility.Collapsed : Visibility.Visible;
+        TranslationDownloadButton.IsEnabled = !installed && !_translationStore.Profile.IsCustom;
+        TranslationImportButton.IsEnabled = !_translationStore.Profile.IsCustom && _translationDownload == null;
         TranslationRemoveButton.IsEnabled = installed;
-        TranslationPreviewButton.IsEnabled = installed;
+        TranslationPreviewButton.IsEnabled = installed || CurrencyConversionCheck.IsChecked == true;
         RefreshTranslationReadyUsage();
         if (justInstalled && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
         {
@@ -167,8 +180,17 @@ public partial class SettingsWindow
             await RunTranslationModelActionAsync(ct => _translationStore.ImportAsync(System.IO.Path.GetDirectoryName(dialog.FileName)!, ct));
     }
 
-    private async void TranslationRemove_Click(object sender, RoutedEventArgs e) =>
-        await RunTranslationModelActionAsync(ct => _translationStore.RemoveAsync(ct));
+    private async void TranslationRemove_Click(object sender, RoutedEventArgs e)
+    {
+        bool custom = _translationStore.Profile.IsCustom, removed = false;
+        await RunTranslationModelActionAsync(async ct => { await _translationStore.RemoveAsync(ct); removed = true; });
+        if (!custom || !removed || _translationWindowClosed) return;
+        SelectTranslationStore(TranslationModelProfile.QwenInstruct.Id);
+        PopulateTranslationModelChoices(_translationStore.Profile.Id);
+        RefreshTranslationModelDetails();
+        RefreshTranslationModelStatus();
+        PushLivePreview();
+    }
 
     internal async Task RunTranslationModelActionAsync(Func<CancellationToken, Task> action, string initialStatus = "translation.verifying")
     {
@@ -176,6 +198,7 @@ public partial class SettingsWindow
         using var cancellation = new CancellationTokenSource();
         _translationDownload = cancellation;
         TranslationModelCombo.IsEnabled = false;
+        TranslationCustomImportButton.IsEnabled = TranslationCustomPrompt.IsEnabled = false;
         TranslationDownloadButton.IsEnabled = true;
         TranslationDownloadButton.Content = Loc.Get("translation.cancel");
         TranslationImportButton.IsEnabled = TranslationRemoveButton.IsEnabled = TranslationPreviewButton.IsEnabled = false;
@@ -221,6 +244,7 @@ public partial class SettingsWindow
         {
             _translationDownload = null;
             TranslationModelCombo.IsEnabled = true;
+            TranslationCustomImportButton.IsEnabled = TranslationCustomPrompt.IsEnabled = true;
             if (!_translationWindowClosed)
             {
                 _translationWaiting = false;
@@ -301,4 +325,22 @@ public partial class SettingsWindow
     }
 
     private void TranslationPreview_Click(object sender, RoutedEventArgs e) => TranslationPreviewRequested?.Invoke();
+
+    private void LoadTranslationCurrencies(string? selected)
+    {
+        bool loading = _isLoadingSettings;
+        _isLoadingSettings = true;
+        try
+        {
+            TranslationCurrencyCombo.ItemsSource = new[] { new TranslationLanguages.Language("auto", Loc.Get("translation.currencyAuto")) }
+                .Concat(TranslationCurrencies.Codes.Select(c => new TranslationLanguages.Language(c, c))).ToArray();
+            TranslationCurrencyCombo.SelectedValue = TranslationCurrencies.Normalize(selected);
+        }
+        finally { _isLoadingSettings = loading; }
+    }
+
+    private void TranslationCurrency_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoadingSettings && TranslationCurrencyCombo.SelectedValue != null) PushLivePreview();
+    }
 }

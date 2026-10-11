@@ -5,13 +5,13 @@
         Title="Live translation" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
         ShowActivated="False" Topmost="True" SizeToContent="Height" Width="132" UseLayoutRounding="True" SnapsToDevicePixels="True"
-        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI" FontWeight="Bold" Foreground="#F2F2F2" PreviewKeyDown="Window_KeyDown">
+        FontFamily="pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI Emoji, Nirmala UI, Segoe UI" FontWeight="Bold" Foreground="#F2F2F2" PreviewKeyDown="Window_KeyDown">
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/V-Notch;component/Controls/SettingsComboBoxStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+            <FontFamily x:Key="SettingsFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI Emoji, Nirmala UI, Segoe UI</FontFamily>
             <SolidColorBrush x:Key="SettingsTextBrush" Color="#C8C8C8"/>
             <SolidColorBrush x:Key="SurfaceBrush" Color="#141414"/>
             <SolidColorBrush x:Key="SurfaceBrushHover" Color="#1B1B1B"/>
@@ -42,6 +42,21 @@
                 </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="CloseActionButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.85"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="White"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
         </ResourceDictionary>
     </Window.Resources>
     <Grid>
@@ -57,7 +72,7 @@
             <Grid x:Name="SelectionChip">
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions>
                 <Button x:Name="OpenButton" Style="{StaticResource ActionButton}" Background="Transparent" Padding="0,2" Click="Open_Click"/>
-                <Button Grid.Column="1" Style="{StaticResource ActionButton}"  Padding="0" Background="Transparent" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+                <Button Grid.Column="1" Style="{StaticResource CloseActionButton}" Padding="0" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
             </Grid>
             <Grid x:Name="TranslationPanel" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -67,7 +82,7 @@
                 <DockPanel x:Name="TranslationDragHandle" Margin="0,0,0,14" Background="Transparent" Cursor="SizeAll"
                            MouseLeftButtonDown="PopupDragStarted" MouseMove="PopupDragMoved"
                            MouseLeftButtonUp="PopupDragEnded" LostMouseCapture="PopupDragCaptureLost">
-                    <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource ActionButton}"  Padding="7" Background="Transparent" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+                    <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource CloseActionButton}" Padding="7" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
                     <TextBlock x:Name="LanguageSummary" Foreground="#8C959E" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
                 </DockPanel>
                 <Grid Grid.Row="1" Margin="0,0,0,14">
@@ -92,8 +107,13 @@
                 </Expander>
                 <Grid x:Name="ResultViewport" Grid.Row="3" ClipToBounds="True">
                     <ScrollViewer x:Name="ResultScroll" MaxHeight="260" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" FontSize="19" FontWeight="Bold"
-                                 Background="Transparent" Foreground="#F2F2F2" BorderThickness="0" Padding="0"/>
+                        <Grid>
+                            <TextBox x:Name="ResultText" IsReadOnly="True" TextWrapping="Wrap" FontSize="19" FontWeight="Bold"
+                                     Background="Transparent" Foreground="#F2F2F2" BorderThickness="0" Padding="0"/>
+                            <RichTextBox x:Name="MarkdownResult" IsReadOnly="True" IsDocumentEnabled="False" Visibility="Collapsed"
+                                         Background="Transparent" Foreground="#F2F2F2" BorderThickness="0" Padding="0"
+                                         VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled"/>
+                        </Grid>
                     </ScrollViewer>
                     <!-- The gradient itself provides softness; blurring the overlay thins its outer edges and exposes text. -->
                     <Border x:Name="ResultTopFade" Height="28" VerticalAlignment="Top" Opacity="0" IsHitTestVisible="False">

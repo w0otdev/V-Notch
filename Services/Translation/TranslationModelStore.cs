@@ -33,6 +33,10 @@ internal sealed class TranslationModelStore
     // Called under Gate before removing files; engine releases its file handles synchronously.
     internal event Action? Replacing;
 
+    private string AssetPath(Asset asset) => Path.IsPathFullyQualified(asset.Name)
+        ? asset.Name
+        : Path.Combine(Root, asset.Name);
+
     internal TranslationModelStore(string? root = null, HttpClient? client = null, TranslationModelProfile? profile = null,
         TimeSpan? networkTimeout = null, NetworkPrivacy? privacy = null)
     {
@@ -44,14 +48,14 @@ internal sealed class TranslationModelStore
     }
 
     internal bool IsInstalled => File.Exists(Path.Combine(Root, "verified.txt")) && Assets.All(a =>
-        File.Exists(Path.Combine(Root, a.Name)) && new FileInfo(Path.Combine(Root, a.Name)).Length == a.Size);
+        File.Exists(AssetPath(a)) && new FileInfo(AssetPath(a)).Length == a.Size);
 
     private readonly SemaphoreSlim _verificationGate = new(1, 1);
     private (long Length, DateTime Written, DateTime Created)[]? _verifiedState;
 
     private (long Length, DateTime Written, DateTime Created)[] ReadAssetState() => Assets.Select(asset =>
     {
-        var file = new FileInfo(Path.Combine(Root, asset.Name));
+        var file = new FileInfo(AssetPath(asset));
         return (file.Length, file.LastWriteTimeUtc, file.CreationTimeUtc);
     }).ToArray();
 
@@ -65,7 +69,7 @@ internal sealed class TranslationModelStore
             if (_verifiedState != null && state.SequenceEqual(_verifiedState)) return;
             _verifiedState = null;
             foreach (var asset in Assets)
-                await VerifyAssetAsync(Path.Combine(Root, asset.Name), asset, ct).ConfigureAwait(false);
+                await VerifyAssetAsync(AssetPath(asset), asset, ct).ConfigureAwait(false);
             if (!state.SequenceEqual(ReadAssetState())) throw new TranslationException("translation.modelInvalid");
             _verifiedState = state;
         }
@@ -84,6 +88,7 @@ internal sealed class TranslationModelStore
     internal async Task DownloadAsync(IProgress<double>? progress, CancellationToken ct,
         IProgress<TranslationDownloadProgress>? details = null)
     {
+        if (Profile.IsCustom) throw new TranslationException("translation.customInvalid");
         using var permission = CancellationTokenSource.CreateLinkedTokenSource(ct, _privacy.Acquire(NetworkFeature.TranslationModels));
         ct = permission.Token;
         details?.Report(new(TranslationDownloadStage.Waiting, 0, TotalBytes));
@@ -232,9 +237,17 @@ internal sealed class TranslationModelStore
             File.Delete(Path.Combine(Root, "verified.txt"));
             foreach (var asset in Assets)
             {
+                // A custom model can reference its original file when a hardlink is
+                // unavailable. Removing the registration must never delete that file.
+                if (Path.IsPathFullyQualified(asset.Name)) continue;
                 File.Delete(Path.Combine(Root, asset.Name));
                 File.Delete(Path.Combine(Root, asset.Name + ".part"));
                 File.Delete(Path.Combine(Root, asset.Name + ".install.part"));
+            }
+            if (Profile.IsCustom)
+            {
+                File.Delete(Path.Combine(Root, "custom.json"));
+                CustomTranslationModels.Shared.Forget(Profile.Id);
             }
         }
         finally { Gate.Release(); Changed?.Invoke(); }

@@ -160,6 +160,7 @@ public sealed class LiquidGlassController
     private bool _magReady;
     private int _magFailStreak = 0;
     private long _nextMagnifierRetryTicks;
+    private long _magnifierProbeUntilTicks;
     private int _magnifierInitQueued;
 
     private volatile bool _hideFromCapture;
@@ -1449,13 +1450,23 @@ public sealed class LiquidGlassController
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
-        // With display affinity exclusion, BitBlt captures backdrop directly;
-        // avoid periodic retries to a failing Magnifier to eliminate frame stalls.
-        if (!_exactBitBltCapture && !_magReady && _mag?.IsReady == true && Environment.TickCount64 >= _nextMagnifierRetryTicks)
+        // Keep BitBlt running until the Magnifier has a usable frame for this crop.
+        // IsReady only means initialization succeeded; promoting it blindly every
+        // three seconds used to freeze presentation for another 60 failed captures.
+        long now = Environment.TickCount64;
+        if (!_exactBitBltCapture && !_magReady && _mag?.IsReady == true &&
+            (now >= _nextMagnifierRetryTicks || now < _magnifierProbeUntilTicks))
         {
-            _magReady = true;
-            _magFailStreak = 0;
-            _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
+            if (now >= _nextMagnifierRetryTicks)
+            {
+                _nextMagnifierRetryTicks = now + 3000;
+                // The first probe requests a fresh asynchronous callback. Check
+                // subsequent frames too, before that new frame becomes stale.
+                _magnifierProbeUntilTicks = now + 100;
+            }
+            var probe = ComputeFrameDimensions(region, p, gpuMode, true, displayW, displayH);
+            if (TryRestoreMagnifier(probe.SrcX, probe.SrcY, probe.PhysSrcW, probe.PhysSrcH))
+                _magnifierProbeUntilTicks = 0;
         }
         bool useMag = !_exactBitBltCapture && _magReady && _mag != null;
         var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
@@ -1473,6 +1484,14 @@ public sealed class LiquidGlassController
 
         var ctx = new FrameRenderContext(gpuMode, useMag, mapsChanged, blurSigma, blurPassRadii, displayH);
         return ExecuteFrameRender(p, region, dims, generation, ctx);
+    }
+
+    internal bool TryRestoreMagnifier(int x, int y, int width, int height)
+    {
+        if (_mag?.HasUsableFrame(x, y, width, height) != true) return false;
+        _magFailStreak = 0;
+        _magReady = true;
+        return true;
     }
 
     private FrameDimensions ComputeFrameDimensions(

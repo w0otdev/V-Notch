@@ -27,7 +27,8 @@ public sealed class ClipboardTrayMenuRegressionTests
     public void RotatingMoreDoesNotPaintOutsideTheActionArea() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var tray = new ClipboardTray();
-        var card = new ClipboardCardViewModel(new ClipboardEntry { Title = "Render probe", Kind = ClipboardKind.Text });
+        // Pinned cards keep actions visible, so this comparison isolates rotation from reveal.
+        var card = new ClipboardCardViewModel(new ClipboardEntry { Title = "Render probe", Kind = ClipboardKind.Text, IsPinned = true });
         var cards = (ObservableCollection<ClipboardCardViewModel>)typeof(ClipboardTray).GetField("_cards", Private)!.GetValue(tray)!;
         cards.Add(card);
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };

@@ -9,7 +9,7 @@ namespace VNotch;
 
 public partial class TranslationWindow
 {
-    private const double CharacterFadeMilliseconds = 160;
+    private const double CharacterFadeMilliseconds = 100;
     private static readonly DependencyProperty ResultRevealTimeProperty = DependencyProperty.Register(
         "ResultRevealTime", typeof(double), typeof(TranslationWindow),
         new PropertyMetadata(0d, (owner, e) => ((TranslationWindow)owner).UpdateCharacterFades((double)e.NewValue)));
@@ -21,7 +21,7 @@ public partial class TranslationWindow
     private void QueueResultReveal()
     {
         StopResultReveal();
-        if (!IsVisible || _dismissing || ResultText.Text.Length == 0 ||
+        if (!IsVisible || _dismissing || ResultText.Visibility != Visibility.Visible || ResultText.Text.Length == 0 ||
             AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation) return;
 
         int version = _resultRevealVersion;
@@ -65,7 +65,7 @@ public partial class TranslationWindow
             if (brushes.Count == 0) { StopResultReveal(); return; }
             _resultRevealBrushes = brushes;
             _resultRevealCompleted = 0;
-            _resultRevealInterval = Math.Min(24, 3200d / brushes.Count);
+            _resultRevealInterval = Math.Min(14, 1200d / brushes.Count);
             ResultText.OpacityMask = new DrawingBrush(drawing)
             {
                 ViewboxUnits = BrushMappingMode.Absolute,

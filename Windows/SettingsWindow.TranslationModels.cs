@@ -43,8 +43,8 @@ public partial class SettingsWindow
         try
         {
             string? recommended = _translationHardware?.Recommended()?.Id;
-            var choices = TranslationModelCatalog.All.OrderByDescending(p => p.Category).ThenBy(p => p.MinimumRamGiB).Select(p => new ModelChoice(p.Id,
-                p.DisplayName + " · " + Loc.Get("translation.tier." + p.Tier) +
+            var choices = TranslationModelCatalog.Available.OrderByDescending(p => p.Category).ThenBy(p => p.MinimumRamGiB).Select(p => new ModelChoice(p.Id,
+                p.DisplayName + " · " + (p.IsCustom ? Loc.Get("translation.customUnrated") : Loc.Get("translation.ratingCompact", p.TranslationRating) + " · " + Loc.Get("translation.tier." + p.Tier)) +
                 (p.Id == recommended ? " · " + Loc.Get("translation.recommended") : ""),
                 Loc.Get("translation.category." + p.Category))).ToArray();
             var view = new ListCollectionView(choices);
@@ -81,15 +81,59 @@ public partial class SettingsWindow
         TranslationModelHint.Text = Loc.Get("translation.modelDetails", model.DisplayName,
             _translationStore.TotalBytes / 1_000_000_000d, model.License);
         TranslationModelDetailsButton.Content = Loc.Get("translation.modelSource");
+        TranslationModelRating.Text = Loc.Get("translation.rating", model.TranslationRating);
+        TranslationModelRatingHint.Text = Loc.Get("translation.ratingHint");
+        TranslationCustomImportButton.Content = Loc.Get("translation.customImport");
+        TranslationCustomHint.Text = Loc.Get("translation.customHint");
+        TranslationCustomPromptLabel.Text = Loc.Get("translation.customPrompt");
+        TranslationCustomGeneral.Content = Loc.Get("translation.category.general");
         TranslationHardwareHint.Text = _translationHardware is { RamGiB: > 0 } h
             ? Loc.Get("translation.hardware", h.RamGiB, h.VramGiB, h.LogicalProcessors)
             : Loc.Get("translation.hardwareUnknown");
         string fit = _translationHardware?.Fits(model) == false ? Loc.Get("translation.modelLowMemory") : Loc.Get("translation.modelEstimate");
         TranslationModelFitHint.Text = Loc.Get("translation.modelRequirements", model.MinimumRamGiB, model.GpuGiB) + " " + fit +
             (model.PromptKind == TranslationPromptKind.TranslateGemma ? " " + Loc.Get("translation.modelSourceHint") : "");
+        TranslationModelDetailsButton.Visibility = model.IsCustom ? Visibility.Collapsed : Visibility.Visible;
+        TranslationDownloadPrivacy.Visibility = model.IsCustom ? Visibility.Collapsed : Visibility.Visible;
+        if (model.IsCustom)
+        {
+            TranslationModelRating.Text = Loc.Get("translation.customUnrated");
+            TranslationModelRatingHint.Text = "";
+            TranslationModelHint.Text = model.DisplayName + " · " + FormatTranslationBytes(_translationStore.TotalBytes);
+            TranslationModelFitHint.Text = "";
+        }
         if (TranslationModelCombo.ItemsSource != null) PopulateTranslationModelChoices(model.Id);
     }
 
     private void TranslationModelDetails_Click(object sender, RoutedEventArgs e) =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://huggingface.co/" + _translationStore.Profile.Repository) { UseShellExecute = true });
+
+    private async void TranslationCustomImport_Click(object sender, RoutedEventArgs e)
+    {
+        if (_translationDownload != null) return;
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "GGUF|*.gguf", Title = Loc.Get("translation.customImport"), CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        var kind = TranslationCustomPrompt.SelectedIndex switch
+        { 1 => TranslationPromptKind.TranslateGemma, 2 => TranslationPromptKind.Hunyuan, _ => TranslationPromptKind.General };
+        TranslationModelProfile? imported = null;
+        await RunTranslationModelActionAsync(async ct =>
+        {
+            TranslationProgressDetail.Text = "";
+            var progress = new Progress<double>(percent =>
+            {
+                if (_translationWindowClosed || ct.IsCancellationRequested) return;
+                _translationWaiting = false;
+                UpdateTranslationPulse();
+                TranslationModelProgress.Value = percent;
+                TranslationProgressPercent.Text = $"{percent:0}%";
+            });
+            imported = await Task.Run(() => CustomTranslationModels.Shared.ImportAsync(dialog.FileName, kind, ct, progress), ct);
+        }, "translation.customImport");
+        if (imported == null || _translationWindowClosed) return;
+        SelectTranslationStore(imported.Id);
+        PopulateTranslationModelChoices(imported.Id);
+        RefreshTranslationModelDetails();
+        RefreshTranslationModelStatus();
+        PushLivePreview();
+    }
 }

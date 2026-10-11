@@ -93,6 +93,8 @@ public partial class SettingsWindow
         TranslationAdvancedExpander.Header = Loc.Get("translation.advanced");
         TranslationAdvancedHint.Text = Loc.Get("translation.advancedHint");
         TranslationAdvancedReset.Content = Loc.Get("translation.advancedReset");
+        TranslationFastPreset.Content = Loc.Get("translation.fastPreset");
+        TranslationFastHint.Text = Loc.Get("translation.fastHint");
         foreach (var group in _translationAdvancedGroups)
             group.Value.Text = Loc.Get("translation.advancedGroup." + group.Key);
         foreach (var entry in _translationAdvancedInputs)
@@ -105,5 +107,24 @@ public partial class SettingsWindow
     {
         LoadTranslationAdvanced(new NotchSettings());
         if (!_isLoadingSettings) PushLivePreview();
+    }
+    private void TranslationFastPreset_Click(object sender, RoutedEventArgs e)
+    {
+        var snapshot = _settings.Clone();
+        ReadTranslationAdvanced(snapshot);
+        ApplyFastTranslationPreset(snapshot, Environment.ProcessorCount);
+        LoadTranslationAdvanced(snapshot);
+        if (!_isLoadingSettings) PushLivePreview();
+    }
+
+    internal static void ApplyFastTranslationPreset(NotchSettings settings, int processors)
+    {
+        settings.TranslationModelIdleMinutes = 0;
+        settings.TranslationContextSize = 2048;
+        settings.TranslationBatchSize = 256;
+        settings.TranslationThreads = Math.Clamp(processors / 2, 1, 4);
+        settings.TranslationBatchThreads = Math.Clamp(processors / 2, 1, 4);
+        settings.TranslationCacheEntries = Math.Max(128, settings.TranslationCacheEntries);
+        settings.TranslationCacheMinutes = Math.Max(30, settings.TranslationCacheMinutes);
     }
 }

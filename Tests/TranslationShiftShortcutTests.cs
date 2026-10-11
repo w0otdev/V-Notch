@@ -62,6 +62,17 @@ public sealed class TranslationShiftShortcutTests
     }
 
     [Fact]
+    public async Task ReadyManualSelectionDoesNotWaitForSettling()
+    {
+        int delivered = 0;
+        var selection = new TranslationSelection(1, "selected", new System.Windows.Rect(0, 0, 30, 20), new(1), false);
+        await TranslationSelectionService.CaptureManualAsync(() => true, () => selection,
+            value => { Assert.Same(selection, value); delivered++; },
+            () => throw new InvalidOperationException("Ready selections must not wait"));
+        Assert.Equal(1, delivered);
+    }
+
+    [Fact]
     public async Task ManualSelectionRetriesTransientEmptyResultsAndDeliversOnce()
     {
         int captures = 0, delivered = 0;

@@ -27,8 +27,10 @@ internal static class SelectionClipboardCapture
             var data = System.Windows.Clipboard.GetDataObject();
             backup = Snapshot(data);
             if (!isCurrent() || before != GetClipboardSequenceNumber()) return null;
-            // Never turn a held modifier into Ctrl+Shift+C, or release a user's key.
-            if (new[] { 0x10, 0x11, 0x12, 0x5B, 0x5C, 0x43, 0x2D }.Any(k => (Win32Interop.GetAsyncKeyState(k) & 0x8000) != 0)) return null;
+
+            // Wait briefly for modifiers (like double-Shift) to be released so we never inject Ctrl+Shift+C.
+            if (!await WaitForModifiersUpAsync(isCurrent)) return null;
+
             // Ctrl+C interrupts terminal jobs; Ctrl+Insert is their non-destructive copy command.
             ushort copyKey = IsTerminal(window) ? (ushort)0x2D : (ushort)0x43;
             Input[] keys = [Key(0x11), Key(copyKey), Key(copyKey, true), Key(0x11, true)];
@@ -38,14 +40,14 @@ internal static class SelectionClipboardCapture
                 SendInput(2, release, Marshal.SizeOf<Input>());
                 return null;
             }
-            for (int attempt = 0; attempt < 20; attempt++)
+            for (int attempt = 0; attempt < 30; attempt++)
             {
                 await Task.Delay(30);
                 uint sequence = GetClipboardSequenceNumber();
                 if (sequence == before) continue; // Allow an already-sent Copy to finish so it can be restored.
                 GetWindowThreadProcessId(GetClipboardOwner(), out uint owner);
                 GetWindowThreadProcessId(window, out uint target);
-                if (owner == 0 || owner != target) return null;
+                if (!IsOwnerAcceptable(owner, target)) return null;
                 copiedSequence = sequence;
                 if (!isCurrent()) return null;
                 try
@@ -81,6 +83,32 @@ internal static class SelectionClipboardCapture
         }
     }
 
+    private static async Task<bool> WaitForModifiersUpAsync(Func<bool> isCurrent)
+    {
+        int[] keys = [0x10, 0x11, 0x12, 0x5B, 0x5C, 0x43, 0x2D];
+        for (int i = 0; i < 10; i++)
+        {
+            if (!isCurrent()) return false;
+            if (!keys.Any(k => (Win32Interop.GetAsyncKeyState(k) & 0x8000) != 0)) return true;
+            await Task.Delay(20);
+        }
+        return false;
+    }
+
+    internal static bool IsOwnerAcceptable(uint owner, uint target)
+    {
+        if (owner == 0 || owner == target) return true;
+        try
+        {
+            using var ownerProc = Process.GetProcessById((int)owner);
+            using var targetProc = Process.GetProcessById((int)target);
+            if (string.Equals(ownerProc.ProcessName, targetProc.ProcessName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        catch { }
+        return false;
+    }
+
     internal static bool AcceptCopy(uint before, uint copied, uint current, bool focused, string text) =>
         focused && copied != before && copied == current && !string.IsNullOrWhiteSpace(text) && text.Length <= 2000;
 
@@ -90,20 +118,47 @@ internal static class SelectionClipboardCapture
         if (source == null) return copy;
         foreach (string format in source.GetFormats(false))
         {
-            object? value = source.GetData(format, false);
-            object cloned = value switch
+            try
             {
-                string text => text,
-                byte[] bytes => bytes.Clone(),
-                string[] paths => paths.Clone(),
-                MemoryStream stream => new MemoryStream(stream.ToArray()),
-                BitmapSource bitmap => bitmap.Clone(),
-                null => throw new NotSupportedException("Clipboard format cannot be preserved."),
-                _ => throw new NotSupportedException("Clipboard format cannot be preserved.")
-            };
-            copy.SetData(format, cloned, false);
+                object? value = source.GetData(format, false);
+                if (value == null) continue;
+                object cloned = value switch
+                {
+                    string text => text,
+                    byte[] bytes => bytes.Clone(),
+                    string[] paths => paths.Clone(),
+                    MemoryStream stream => new MemoryStream(stream.ToArray()),
+                    Stream stream => CopyStream(stream),
+                    BitmapSource bitmap => bitmap.Clone(),
+                    System.Drawing.Image image => (System.Drawing.Image)image.Clone(),
+                    ValueType val => val,
+                    _ => throw new NotSupportedException("Clipboard format cannot be preserved.")
+                };
+                copy.SetData(format, cloned, false);
+            }
+            catch (Exception ex) when (ex is NotSupportedException or IOException or System.Runtime.InteropServices.COMException or ArgumentException or InvalidOperationException)
+            {
+                // Format conversion or delayed-rendering read errors on auxiliary formats are safely ignored.
+            }
         }
         return copy;
+    }
+
+    private static MemoryStream CopyStream(Stream stream)
+    {
+        // A non-seekable stream may already be partly consumed; never restore truncated data.
+        if (!stream.CanSeek) throw new NotSupportedException("Clipboard stream cannot be rewound.");
+        var ms = new MemoryStream();
+        long position = stream.Position;
+        try
+        {
+            stream.Position = 0;
+            stream.CopyTo(ms);
+            ms.Position = 0;
+            return ms;
+        }
+        catch { ms.Dispose(); throw; }
+        finally { stream.Position = position; }
     }
 
     private static bool CanCopy(IntPtr window)
@@ -121,7 +176,7 @@ internal static class SelectionClipboardCapture
             using var process = Process.GetProcessById((int)pid);
             return UsesTerminalCopy(process.ProcessName);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { return true; }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
     }
     internal static bool UsesTerminalCopy(string name) => new[] { "WindowsTerminal", "OpenConsole", "conhost", "cmd", "powershell", "pwsh", "mintty", "putty", "wezterm-gui", "alacritty", "Hyper", "Tabby" }.Contains(name, StringComparer.OrdinalIgnoreCase);
     private static Input Key(ushort key, bool up = false) => new() { Type = 1, KeyCode = key, Flags = up ? 2u : 0 };

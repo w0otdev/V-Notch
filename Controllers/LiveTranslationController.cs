@@ -25,10 +25,13 @@ internal sealed class LiveTranslationController : IDisposable
     private long _requestVersion;
     private string _text = "";
     private bool _disposed;
+    private Task? _preparation;
+    private readonly CurrencyRateService _currencyRates;
 
-    internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null)
+    internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null, CurrencyRateService? currencyRates = null)
     {
         _dispatcher = dispatcher; _manageModel = manageModel;
+        _currencyRates = currencyRates ?? CurrencyRateService.Shared;
         _getForegroundWindow = getForegroundWindow ?? Win32Interop.GetForegroundWindow;
         _injected = store != null || engine != null;
         _store = store ?? TranslationModelStore.Shared;
@@ -44,7 +47,9 @@ internal sealed class LiveTranslationController : IDisposable
         bool languagesChanged = _settings.TranslationSourceLanguage != TranslationLanguages.Normalize(settings.TranslationSourceLanguage, true) ||
             _settings.TranslationTargetLanguage != TranslationLanguages.Normalize(settings.TranslationTargetLanguage);
         bool optionsChanged = TranslationOptions.From(_settings) != TranslationOptions.From(settings);
-        bool changed = _settings.EnableLiveTranslation != settings.EnableLiveTranslation || _settings.AutoLiveTranslation != settings.AutoLiveTranslation || optionsChanged;
+        bool changed = _settings.EnableLiveTranslation != settings.EnableLiveTranslation || _settings.AutoLiveTranslation != settings.AutoLiveTranslation || optionsChanged ||
+            _settings.EnableCurrencyConversion != settings.EnableCurrencyConversion || _settings.TranslationTargetCurrency != settings.TranslationTargetCurrency ||
+            _settings.EnableLocalOnlyMode != settings.EnableLocalOnlyMode;
         string modelId = TranslationModelCatalog.Normalize(settings.TranslationModelId);
         if (!_injected && _store.Profile.Id != modelId)
         {
@@ -55,6 +60,7 @@ internal sealed class LiveTranslationController : IDisposable
             Task previousDisposal = _service.Disposal;
             _store = TranslationModelStore.For(modelId);
             _service = new(new QwenTranslationEngine(_store, previousDisposal: previousDisposal));
+            _preparation = null;
             _store.Changed += ModelChanged;
         }
         _service.Configure(TranslationOptions.From(settings));
@@ -81,9 +87,10 @@ internal sealed class LiveTranslationController : IDisposable
 
     private void UpdateWatcher()
     {
-        if (_settings.EnableLiveTranslation && _store.IsInstalled)
+        if (_settings.EnableLiveTranslation && (_store.IsInstalled || _settings.EnableCurrencyConversion))
         {
             _idle.Start();
+            if (!_injected) _ = PrepareModelAsync();
             if (_selectionService == null)
             {
                 _selectionService = new();
@@ -97,6 +104,28 @@ internal sealed class LiveTranslationController : IDisposable
         {
             StopWatcher();
             _service.ReleaseIdleResources();
+        }
+    }
+
+    internal Task PrepareModelAsync()
+    {
+        _dispatcher.VerifyAccess();
+        if (_disposed || !_store.IsInstalled) return Task.CompletedTask;
+        // Startup also prepares manual translation when selection watching is off.
+        // Share an in-flight load with settings changes and retain idle eviction.
+        _idle.Start();
+        if (_preparation?.IsCompleted != false)
+            _preparation = PrepareInBackgroundAsync(_service);
+        return _preparation;
+    }
+
+    private static async Task PrepareInBackgroundAsync(LocalTranslationService service)
+    {
+        try { await Task.Run(() => service.PrepareAsync(CancellationToken.None)).ConfigureAwait(false); }
+        catch (Exception)
+        {
+            // Warm-up is opportunistic. A foreground request reports model errors
+            // through the normal status UI; never leave an unobserved native fault.
         }
     }
 
@@ -188,6 +217,11 @@ internal sealed class LiveTranslationController : IDisposable
         window.CancelRequested += () => { CancelRequest(); window.SetStatus("translation.cancelled"); };
         window.ReplaceRequested += () => _ = ReplaceAsync();
         window.Dismissed += () => { CancelRequest(); _text = ""; _selection = null; _manualPresentationWindow = IntPtr.Zero; };
+        window.Closed += (_, _) =>
+        {
+            CancelRequest(); _window = null;
+            _text = ""; _selection = null; _manualPresentationWindow = IntPtr.Zero;
+        };
         window.LanguagesChanged += (source, target) =>
         {
             CancelRequest();
@@ -222,31 +256,70 @@ internal sealed class LiveTranslationController : IDisposable
         using var request = new CancellationTokenSource();
         _request = request;
         var window = _window;
+        bool convertingCurrency = false;
         window.SetStatus("translation.working");
         var elapsed = new System.Diagnostics.Stopwatch();
         var activity = new DispatcherTimer(DispatcherPriority.Background, _dispatcher) { Interval = TimeSpan.FromSeconds(1) };
         activity.Tick += (_, _) =>
         {
             if (_disposed || version != _requestVersion) { activity.Stop(); return; }
-            window.ShowActivity(_service.Stage, (int)elapsed.Elapsed.TotalSeconds);
+            window.ShowActivity(convertingCurrency ? TranslationStage.FetchingRates : _service.Stage, (int)elapsed.Elapsed.TotalSeconds);
         };
         try
         {
-            await window.WaitForEntranceAsync(request.Token);
             if (_disposed || version != _requestVersion || !window.IsVisible) return;
             request.CancelAfter(TimeSpan.FromSeconds(_settings.TranslationTimeoutSeconds));
             elapsed.Start();
             _idle.Start();
             activity.Start();
-            if (!_store.IsInstalled) throw new TranslationException("translation.modelMissing");
-            var result = await _service.TranslateAsync(_text, window.SourceLanguage, window.TargetLanguage, request.Token).WaitAsync(request.Token);
+            // Snapshot UI state before dispatching. Inference overlaps the entrance;
+            // only presentation waits so a fast cache hit cannot resize the opening popup.
+            var service = _service;
+            string text = _text, source = window.SourceLanguage, target = window.TargetLanguage;
+            if (TranslationCurrencies.HasConflictingCurrency(text, source)) throw new TranslationException("translation.currencyAmbiguous");
+            var token = request.Token;
+            TranslationResult? result = null;
+            if (_settings.EnableCurrencyConversion && TranslationCurrencies.TryParse(text, source, out var price))
+            {
+                string? currency = TranslationCurrencies.Normalize(_settings.TranslationTargetCurrency) is var choice && choice != "auto"
+                    ? choice : TranslationCurrencies.ForLanguage(target);
+                if (currency != null)
+                {
+                    convertingCurrency = true;
+                    try
+                    {
+                        var converted = await Task.Run(() => _currencyRates.ConvertAsync(price, currency, token), token).WaitAsync(token);
+                        string amount = converted.Amount.ToString("N" + TranslationCurrencies.DecimalPlaces(currency), Loc.GetCulture());
+                        result = new TranslationResult((converted.Rate == null ? "" : "≈ ") + amount + " " + currency, source, target, false) { Currency = converted };
+                    }
+                    catch (TranslationException ex) when (ex.MessageKey == "translation.currencyUnavailable") { }
+                    finally { convertingCurrency = false; }
+                }
+            }
+            if (result == null)
+            {
+                if (!_store.IsInstalled) throw new TranslationException("translation.modelMissing");
+                result = await Task.Run(() => service.TranslateAsync(text, source, target, token), token).WaitAsync(token);
+            }
+            await window.WaitForEntranceAsync(token);
             if (!_disposed && version == _requestVersion && window.IsVisible) window.ShowResult(result);
         }
         catch (OperationCanceledException) { if (!_disposed && version == _requestVersion) window.SetStatus("translation.timedOut"); }
         catch (TranslationException ex) { if (!_disposed && version == _requestVersion) window.SetStatus(ex.MessageKey); }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Native exception payloads can contain text; never write them to diagnostic logs.
+            var translationEx = (ex as AggregateException)?.Flatten().InnerExceptions.OfType<TranslationException>().FirstOrDefault();
+            if (translationEx != null)
+            {
+                if (!_disposed && version == _requestVersion) window.SetStatus(translationEx.MessageKey);
+                return;
+            }
+            RuntimeLog.Error("TRANSLATION", "Translation failed; exception payload omitted for privacy.");
+            if (TranslationNativeRuntime.IsLoadFailure(ex))
+            {
+                if (!_disposed && version == _requestVersion) window.SetStatus("translation.runtimeMissing");
+                return;
+            }
             if (!_disposed && version == _requestVersion) window.SetStatus(request.IsCancellationRequested ? "translation.timedOut" : "translation.failed");
         }
         finally { activity.Stop(); if (ReferenceEquals(_request, request)) _request = null; }

@@ -90,8 +90,8 @@ public partial class ClipboardTray
 
     private static bool NeedsCardContent(ClipboardCardViewModel card) =>
         (card.Entry.Kind == ClipboardKind.Image && card.Image == null) ||
-        (card.Entry.Kind == ClipboardKind.File && card.FileIcon == null) ||
-        (card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0);
+        (card.Entry.Kind == ClipboardKind.File && card.PreferredFileIcon == null && card.FileIcon == null) ||
+        (card.PreferredSourceIcon == null && card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0);
 
     private Task LoadCardContentAsync(FrameworkElement element)
     {
@@ -125,13 +125,13 @@ public partial class ClipboardTray
             await _thumbnailSlots.WaitAsync(cancellation);
             acquired = true;
             if (!IsCurrent()) return;
-            if (card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0)
+            if (card.PreferredSourceIcon == null && card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0)
             {
                 var icon = await Task.Run(() => FileIconProvider.GetAppIcon(card.Entry.SourceExecutable), cancellation);
                 if (!IsCurrent()) return;
                 card.SourceIcon = icon;
             }
-            if (card.Entry.Kind == ClipboardKind.File && card.FileIcon == null && !string.IsNullOrEmpty(card.FileExtension))
+            if (card.Entry.Kind == ClipboardKind.File && card.PreferredFileIcon == null && card.FileIcon == null && !string.IsNullOrEmpty(card.FileExtension))
             {
                 var icon = await Task.Run(() => FileIconProvider.GetExtensionIcon(card.FileExtension, small: false), cancellation);
                 if (!IsCurrent()) return;

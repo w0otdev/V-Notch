@@ -109,7 +109,8 @@ public sealed class ClipboardTrayRegressionTests
             var imageCategory = Assert.Single(categories.Items.Cast<ClipboardCategoryViewModel>(), category => category.Name == "Images");
             Assert.Equal(42, imageCategory.Count);
             var imageButton = buttons.Single(button => Equals(button.Tag, "Images"));
-            Assert.Equal(((SolidColorBrush)tray.FindResource("TrayAccent")).Color, ((SolidColorBrush)imageButton.Background).Color);
+            Assert.Equal(Color.FromRgb(245, 245, 247), ((SolidColorBrush)imageButton.Background).Color);
+            Assert.Equal(Color.FromRgb(22, 22, 25), ((SolidColorBrush)imageButton.Foreground).Color);
             Invoke(tray, "Category_Wheel", tray, new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
             { RoutedEvent = UIElement.PreviewMouseWheelEvent });
             Assert.True(Field<bool>(tray, "_categoryScrollActive"));

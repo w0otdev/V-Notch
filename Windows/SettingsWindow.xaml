@@ -1894,6 +1894,12 @@
                                         </Border>
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
+                                                <CheckBox x:Name="HumanizerTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationHumanizerHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
                                                 <TextBlock x:Name="TranslationSourceLabel" Style="{StaticResource SettingTitleText}"/>
                                                 <ComboBox x:Name="TranslationSourceCombo" DisplayMemberPath="Name" SelectedValuePath="Code" MinHeight="36" Margin="0,8,0,14" SelectionChanged="TranslationLanguage_Changed"/>
                                                 <TextBlock x:Name="TranslationTargetLabel" Style="{StaticResource SettingTitleText}"/>
@@ -1902,6 +1908,10 @@
                                         </Border>
                                         <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,20,0,16" Margin="0,12,0,0">
                                             <StackPanel>
+                                                <CheckBox x:Name="CurrencyConversionCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationCurrencyLabel" Style="{StaticResource SettingTitleText}" Margin="0,12,0,0"/>
+                                                <ComboBox x:Name="TranslationCurrencyCombo" DisplayMemberPath="Name" SelectedValuePath="Code" SelectionChanged="TranslationCurrency_Changed" MinHeight="36" Margin="0,8,0,0"/>
+                                                <TextBlock x:Name="TranslationCurrencyHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,20"/>
                                                 <TextBlock x:Name="TranslationModelTitle" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="TranslationHardwareHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,12"/>
                                                 <ComboBox x:Name="TranslationModelCombo" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="TranslationModel_Changed">
@@ -1909,9 +1919,19 @@
                                                         <DataTemplate><TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource SoftText}" Margin="14,12,14,6"/></DataTemplate>
                                                     </GroupStyle.HeaderTemplate></GroupStyle></ComboBox.GroupStyle>
                                                 </ComboBox>
+                                                <TextBlock x:Name="TranslationModelRating" Foreground="{DynamicResource AccentBrushStrong}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                                                <TextBlock x:Name="TranslationModelRatingHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                                 <TextBlock x:Name="TranslationModelFitHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
 
                                                 <TextBlock x:Name="TranslationModelHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,12"/>
+                                                <TextBlock x:Name="TranslationCustomPromptLabel" Style="{StaticResource SettingTitleText}" Margin="0,8,0,0"/>
+                                                <ComboBox x:Name="TranslationCustomPrompt" SelectedIndex="0" MinHeight="36" Margin="0,8,0,8">
+                                                    <ComboBoxItem x:Name="TranslationCustomGeneral"/>
+                                                    <ComboBoxItem Content="TranslateGemma"/>
+                                                    <ComboBoxItem Content="Hunyuan-MT"/>
+                                                </ComboBox>
+                                                <Button x:Name="TranslationCustomImportButton" HorizontalAlignment="Left" Click="TranslationCustomImport_Click"/>
+                                                <TextBlock x:Name="TranslationCustomHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,12"/>
                                                 <TextBlock x:Name="TranslationModelStatus" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
                                                 <Border x:Name="TranslationProgressCard" Visibility="Collapsed" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,14" IsVisibleChanged="TranslationProgress_VisibilityChanged">
                                                     <Border.RenderTransform><TranslateTransform x:Name="TranslationProgressEntrance"/></Border.RenderTransform>
@@ -1985,6 +2005,8 @@
                                                     <StackPanel>
                                                         <TextBlock x:Name="TranslationAdvancedHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,12"/>
                                                         <StackPanel x:Name="TranslationAdvancedFields"/>
+                                                        <Button x:Name="TranslationFastPreset" HorizontalAlignment="Left" Margin="0,12,0,0" Click="TranslationFastPreset_Click"/>
+                                                        <TextBlock x:Name="TranslationFastHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                                         <Button x:Name="TranslationAdvancedReset" HorizontalAlignment="Left" Margin="0,12,0,0" Click="TranslationAdvancedReset_Click"/>
                                                     </StackPanel>
                                                 </Expander>

@@ -10,7 +10,12 @@ internal sealed record TranslationModelProfile(string Id, string Repository, str
     internal string Tier { get; init; } = "light";
     internal string License { get; init; } = "Apache 2.0";
     internal string Category => PromptKind == TranslationPromptKind.General ? "general" : "specialist";
+    // Editorial translation capability estimate, not an IQ or measured benchmark.
+    // See docs/TRANSLATION_MODEL_RATINGS.md for the scale and rationale.
+    internal int TranslationRating { get; init; }
+    internal bool IsCustom { get; init; }
     internal static readonly TranslationModelProfile QwenInstruct = new("qwen3-4b-instruct-2507-q4km-v1", "unsloth/Qwen3-4B-Instruct-2507-GGUF",
         "a06e946bb6b655725eafa393f4a9745d460374c9",
-        [new("Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 2497281120, "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597")], 0, 0, false, 0);
+        [new("Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 2497281120, "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597")], 0, 0, false, 0)
+    { TranslationRating = 3 };
 }

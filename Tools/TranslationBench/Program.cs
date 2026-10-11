@@ -19,6 +19,26 @@ if (Environment.UserInteractive && (args.Contains("--uia-host") || args.Contains
 if (args.Contains("--uia-host")) { SelectionSmoke.RunHost(); return; }
 if (args.Contains("--uia-smoke")) { await SelectionSmoke.RunAsync(); return; }
 if (args.Contains("--settings-preview")) { TranslationSettingsPreview.Run(); return; }
+if (args.Contains("--runtime-smoke"))
+{
+    TranslationRuntimeSmoke.UseAppDllPolicy();
+    string modelId = args.SkipWhile(a => a != "--runtime-smoke").Skip(1).FirstOrDefault() ?? "translategemma-4b";
+    var installed = TranslationModelStore.For(modelId);
+    using var smokeEngine = new QwenTranslationEngine(installed);
+    using var smokeService = new LocalTranslationService(smokeEngine);
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+    try
+    {
+        foreach (string sample in new[] { "Markdown", "Hello", "Hello again" })
+        {
+            var result = await smokeService.TranslateAsync(sample, "auto", "vi", deadline.Token);
+            Console.WriteLine($"{sample} => {result.Text}");
+        }
+    }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    finally { smokeService.Dispose(); await smokeEngine.Disposal; }
+    return;
+}
 if (args.Contains("--quality-regressions")) { await TranslationQualityRegressions.RunAsync(); return; }
 
 string root = Path.GetFullPath(args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? ".artifacts/translation-benchmark/model");
@@ -61,7 +81,7 @@ if (args.Contains("--download-smoke"))
     return;
 }
 var store = new TranslationModelStore(root, profile: args.Contains("--instruct") ? TranslationModelProfile.QwenInstruct : args.Contains("--qwen") ? TranslationResearchProfiles.Qwen : args.Contains("--m2m") ? TranslationResearchProfiles.M2M100 : TranslationResearchProfiles.Madlad);
-if (args.Contains("--preview"))
+if (args.Contains("--preview") || args.Contains("--markdown-preview"))
 {
     Exception? error = null;
     var thread = new Thread(() =>
@@ -76,6 +96,12 @@ if (args.Contains("--preview"))
             window.OriginalText.Text = "您好！这批货总价 ¥2,380，明天下午3点发货。详情：shop.example.cn/item";
             window.ShowResult(new("Chào bạn! Tổng giá đơn hàng là ¥2,380, ngày mai gửi lúc 15:00. Chi tiết: shop.example.cn/item", "zh", "vi", true));
             window.ReplaceButton.IsEnabled = true; // UI fixture, not a model-quality assertion.
+            if (args.Contains("--markdown-preview"))
+            {
+                window.ConfigureLanguages("vi", "en");
+                window.OriginalText.Text = "Quá là đau đớn rồi đấy sếp ơi 😭";
+                window.ShowResult(new("## Update 😭\n\nThis is **really painful**, sir. 👩🏽‍💻\n\n- *Keep the emoji* 🇻🇳\n- ~~Old~~ New\n\n| Item | Status |\n| --- | --- |\n| Translation | Ready ✅ |\n\n```csharp\nvar price = 80;\n```\n\n[Documentation](https://example.com)", "vi", "en", true));
+            }
             var content = (FrameworkElement)window.Content;
             content.Measure(new Size(500, double.PositiveInfinity));
             content.Arrange(new Rect(new Point(), content.DesiredSize));
@@ -83,7 +109,7 @@ if (args.Contains("--preview"))
             var bitmap = new RenderTargetBitmap(1000, (int)Math.Ceiling(content.ActualHeight * 2), 192, 192, PixelFormats.Pbgra32);
             bitmap.Render(content);
             var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
-            string preview = Path.GetFullPath(".artifacts/translation-benchmark/popup-preview.png");
+            string preview = Path.GetFullPath(args.Contains("--markdown-preview") ? ".artifacts/translation-benchmark/markdown-preview.png" : ".artifacts/translation-benchmark/popup-preview.png");
             Directory.CreateDirectory(Path.GetDirectoryName(preview)!);
             using var file = File.Create(preview); png.Save(file);
             Console.WriteLine(preview);

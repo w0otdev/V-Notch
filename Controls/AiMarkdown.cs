@@ -14,27 +14,27 @@ internal static class AiMarkdown
     private static readonly Uri FontsBaseUri = new("pack://application:,,,/V-Notch;component/Fonts/");
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras().Build();
 
-    internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null)
+    internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false)
     {
         var font = fontFamily
             ?? (FontFamily?)Application.Current?.TryFindResource("SFProDisplay")
-            ?? new FontFamily(FontsBaseUri, "./#SF Pro Display, Segoe UI, Arial");
+            ?? new FontFamily(FontsBaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
 
         var doc = new FlowDocument
         {
             PagePadding = new Thickness(0),
             FontSize = 13.5,
-            FontWeight = FontWeights.Bold,
+            FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold,
             FontFamily = font,
             LineHeight = 22,
             Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
             Background = Brushes.Transparent
         };
-        foreach (var block in Markdown.Parse(markdown, Pipeline)) doc.Blocks.Add(RenderBlock(block, font));
+        foreach (var block in Markdown.Parse(markdown, Pipeline)) doc.Blocks.Add(RenderBlock(block, font, normalBody));
         return doc;
     }
 
-    private static WpfBlock RenderBlock(Markdig.Syntax.Block block, FontFamily font)
+    private static WpfBlock RenderBlock(Markdig.Syntax.Block block, FontFamily font, bool normalBody = false)
     {
         if (block is CodeBlock code)
             return new Paragraph(new Run(code.Lines.ToString()))
@@ -54,7 +54,7 @@ internal static class AiMarkdown
             var result = new System.Windows.Documents.List
             {
                 FontFamily = font,
-                FontWeight = FontWeights.Bold,
+                FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold,
                 MarkerStyle = list.IsOrdered ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc,
                 Margin = new Thickness(0, 4, 0, 8),
                 Padding = new Thickness(22, 0, 0, 0)
@@ -62,15 +62,15 @@ internal static class AiMarkdown
             if (list.IsOrdered && int.TryParse(list.OrderedStart, out int start) && start > 0) result.StartIndex = start;
             foreach (var item in list.OfType<ListItemBlock>())
             {
-                var li = new ListItem { FontFamily = font, FontWeight = FontWeights.Bold };
-                foreach (var child in item) li.Blocks.Add(RenderBlock(child, font));
+                var li = new ListItem { FontFamily = font, FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold };
+                foreach (var child in item) li.Blocks.Add(RenderBlock(child, font, normalBody));
                 result.ListItems.Add(li);
             }
             return result;
         }
         if (block is MdTable table)
         {
-            var result = new System.Windows.Documents.Table { FontFamily = font, FontWeight = FontWeights.Bold, CellSpacing = 0, Margin = new Thickness(0, 6, 0, 10) };
+            var result = new System.Windows.Documents.Table { FontFamily = font, FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold, CellSpacing = 0, Margin = new Thickness(0, 6, 0, 10) };
             var rows = new TableRowGroup();
             result.RowGroups.Add(rows);
             foreach (var row in table.OfType<Markdig.Extensions.Tables.TableRow>())
@@ -84,9 +84,9 @@ internal static class AiMarkdown
                         Padding = new Thickness(6),
                         BorderBrush = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)),
                         BorderThickness = new Thickness(0.5),
-                        FontWeight = FontWeights.Bold
+                        FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold
                     };
-                    foreach (var child in cell) target.Blocks.Add(RenderBlock(child, font));
+                    foreach (var child in cell) target.Blocks.Add(RenderBlock(child, font, normalBody));
                     rendered.Cells.Add(target);
                 }
                 rows.Rows.Add(rendered);
@@ -102,7 +102,7 @@ internal static class AiMarkdown
             };
         if (block is ContainerBlock container)
         {
-            var section = new Section { FontFamily = font, FontWeight = FontWeights.Bold };
+            var section = new Section { FontFamily = font, FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold };
             if (block is QuoteBlock)
             {
                 section.BorderBrush = new SolidColorBrush(Color.FromRgb(85, 85, 85));
@@ -110,14 +110,14 @@ internal static class AiMarkdown
                 section.Padding = new Thickness(12, 4, 4, 4);
                 section.Foreground = new SolidColorBrush(Color.FromArgb(215, 255, 255, 255));
             }
-            foreach (var child in container) section.Blocks.Add(RenderBlock(child, font));
+            foreach (var child in container) section.Blocks.Add(RenderBlock(child, font, normalBody));
             return section;
         }
         var p = new Paragraph
         {
             Margin = new Thickness(0, 0, 0, 8),
             FontFamily = font,
-            FontWeight = FontWeights.Bold
+            FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold
         };
         if (block is HeadingBlock heading)
         {
@@ -206,6 +206,8 @@ internal static class AiMarkdown
             switch (inline)
             {
                 case LiteralInline literal: target.Add(new Run(literal.Content.ToString())); break;
+                case HtmlEntityInline entity: target.Add(new Run(entity.Transcoded.ToString())); break;
+                case AutolinkInline autolink: target.Add(new Run(autolink.Url)); break;
                 case CodeInline code:
                     target.Add(new Run(code.Content)
                     {

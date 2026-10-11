@@ -4,9 +4,15 @@ namespace VNotch.Services.Translation;
 
 internal static class TranslationMeaningIntegrity
 {
-    internal static string Instruction(string text, string source)
+    internal static string Instruction(string text, string source, bool enableHumanizer = true)
     {
         string general = "Preserve the speaker, addressee, tense, negation and sentence type. A statement must remain a statement; a question must remain a question. Do not turn an announcement addressed to the reader into a question. Translate standalone common words by their meaning; keep proper names intact. ";
+        general += "Preserve all emojis, emoticons, and symbols intact in their original positions without omitting, altering, or inventing them. ";
+        general += "Preserve all Markdown formatting and syntax intact (including bold, italics, strikethrough, inline code, code blocks, lists, headers, quotes, and links); translate only the text inside without stripping Markdown markers. ";
+        if (enableHumanizer)
+        {
+            general += "Write naturally and idiomatically like a human writer, not an AI chatbot: match the author's real voice, emotion, humor, and register (casual, conversational, slang, or technical). Avoid robotic staging, stiff literal wording, fake formality, AI cliches, or unnecessary explanations. ";
+        }
         if (Regex.IsMatch(text.Trim(), @"^\p{L}+$")) general += "For a standalone word, give its common dictionary translation concisely, rather than a descriptive paraphrase. ";
         if (!IsClearStatement(text, source)) return general;
         return general +

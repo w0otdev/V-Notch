@@ -30,24 +30,24 @@ public sealed class MusicVisualizerRenderingTests
             current.Measure(size);
             current.Arrange(new Rect(size));
             foreach (Color color in new[] { Colors.White, Color.FromArgb(173, 45, 201, 132) })
-            foreach (double iconMix in new[] { 0d, .04, .12, .18, .55, 1d, .08, 0d })
-            foreach (double checkMix in new[] { 0d, .6, 1d })
-            {
-                current.ActiveBrush = new SolidColorBrush(color);
-                Set(current, "_currentOpacity", .63);
-                Set(current, "_iconMix", iconMix);
-                Set(current, "_checkMix", checkMix);
-                Set(current, "_playMix", .37);
-                for (int i = 0; i < heights.Length; i++) heights[i] = .08 + ((i * .17 + iconMix * .3) % .92);
-                if (current.NeedsDrawingUpdate())
-                {
-                    using var dc = newVisual.RenderOpen();
-                    current.RenderFrame(dc);
-                }
-                using (var dc = oldVisual.RenderOpen()) DrawOriginal(dc, size, dpi, heights, color, .63, iconMix, checkMix, .37);
-                Assert.True(Pixels(oldVisual, size, dpiScale).AsSpan().SequenceEqual(Pixels(newVisual, size, dpiScale)),
-                    $"Pixels differ: dpi={dpiScale}, size={size}, color={color}, icon={iconMix}, check={checkMix}");
-            }
+                foreach (double iconMix in new[] { 0d, .04, .12, .18, .55, 1d, .08, 0d })
+                    foreach (double checkMix in new[] { 0d, .6, 1d })
+                    {
+                        current.ActiveBrush = new SolidColorBrush(color);
+                        Set(current, "_currentOpacity", .63);
+                        Set(current, "_iconMix", iconMix);
+                        Set(current, "_checkMix", checkMix);
+                        Set(current, "_playMix", .37);
+                        for (int i = 0; i < heights.Length; i++) heights[i] = .08 + ((i * .17 + iconMix * .3) % .92);
+                        if (current.NeedsDrawingUpdate())
+                        {
+                            using var dc = newVisual.RenderOpen();
+                            current.RenderFrame(dc);
+                        }
+                        using (var dc = oldVisual.RenderOpen()) DrawOriginal(dc, size, dpi, heights, color, .63, iconMix, checkMix, .37);
+                        Assert.True(Pixels(oldVisual, size, dpiScale).AsSpan().SequenceEqual(Pixels(newVisual, size, dpiScale)),
+                            $"Pixels differ: dpi={dpiScale}, size={size}, color={color}, icon={iconMix}, check={checkMix}");
+                    }
         }
     });
 

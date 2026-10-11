@@ -8,15 +8,13 @@ internal static partial class TranslationTextIntegrity
     {
         internal string Restore(string translated)
         {
-            bool missingPlaceholder = false;
             foreach (var (placeholder, original) in Literals)
             {
-                if (!translated.Contains(placeholder, StringComparison.Ordinal)) missingPlaceholder = true;
                 translated = translated.Replace(placeholder, original, StringComparison.Ordinal);
             }
             // Some models emit a literal's original value instead of its placeholder. Accept
             // that only when the complete multiset of observable literals still matches.
-            if (missingPlaceholder && !Verify(Original, translated)) throw new TranslationException("translation.failed");
+            if (!Verify(Original, translated)) throw new TranslationException("translation.literalsChanged");
             return translated;
         }
     }
@@ -38,10 +36,13 @@ internal static partial class TranslationTextIntegrity
     internal static bool Verify(string source, string translated)
     {
         if (string.IsNullOrWhiteSpace(translated)) return false;
-        var original = Facts().Matches(source).Select(x => x.Value.TrimEnd('.', ',', ';', ':', ')', ']', '}', '!', '?')).Order(StringComparer.Ordinal).ToArray();
-        var result = Facts().Matches(translated).Select(x => x.Value.TrimEnd('.', ',', ';', ':', ')', ']', '}', '!', '?')).Order(StringComparer.Ordinal).ToArray();
+        var original = Facts().Matches(source).Select(x => NormalizeFact(x.Value.TrimEnd('.', ',', ';', ':', ')', ']', '}', '!', '?'))).Order(StringComparer.Ordinal).ToArray();
+        var result = Facts().Matches(translated).Select(x => NormalizeFact(x.Value.TrimEnd('.', ',', ';', ':', ')', ']', '}', '!', '?'))).Order(StringComparer.Ordinal).ToArray();
         return original.SequenceEqual(result, StringComparer.Ordinal);
     }
+
+    internal static string NormalizeFact(string fact) =>
+        Regex.Replace(fact, @"(?<=\b\d{1,3})[.,](?=\d{3}(?:\D|$))", "");
 
     // Natural phrasing comes from the translation model. Do not rewrite facts or
     // remove script-specific separators in a separate paraphrasing pass.

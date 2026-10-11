@@ -130,6 +130,7 @@
       <Link>logo.ico</Link>
     </None>
     <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\TrayIcons\*.png" />
     <Resource Include="Assets\QR.PNG" />
     <Resource Include="Assets\vertex_logo.png" />
     <Resource Include="Assets\scrollv_logo.png" />

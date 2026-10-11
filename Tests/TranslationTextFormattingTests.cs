@@ -37,4 +37,14 @@ public sealed class TranslationTextFormattingTests
         Assert.Equal(expected, TranslationTextFormatting.Format(input));
         Assert.Equal(expected, TranslationTextFormatting.Format(expected));
     }
+
+    [Theory]
+    [InlineData("```csharp\nvar x = 1;\nvar y = 2;\n```", "```csharp\nvar x = 1;\nvar y = 2;\n```")]
+    [InlineData("Text before\n```\nline 1\nline 2\n```\nText after", "Text before\n\n```\nline 1\nline 2\n```\n\nText after")]
+    [InlineData("Quá là đ@u đớn rồi đấy sếp ơi 😭", "Quá là đ@u đớn rồi đấy sếp ơi 😭")]
+    [InlineData("**Bold text** and *italic* with 😭\nSecond line 🚀", "**Bold text** and *italic* with 😭\n\nSecond line 🚀")]
+    public void PreservesMarkdownCodeBlocksAndEmojis(string input, string expected)
+    {
+        Assert.Equal(expected, TranslationTextFormatting.Format(input));
+    }
 }

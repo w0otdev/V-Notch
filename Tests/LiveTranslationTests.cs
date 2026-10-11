@@ -11,6 +11,24 @@ namespace VNotch.Tests;
 public sealed class LiveTranslationTests
 {
     [Theory]
+    [InlineData("translation.literalsChanged")]
+    [InlineData("translation.currencyAmbiguous")]
+    public void RejectedPriceClearsPreviousResultAndCopy(string status) => SharedStaTestRunner.Run(() =>
+    {
+        var window = new TranslationWindow("auto", "vi");
+        try
+        {
+            window.ShowResult(new("Giá khoảng 80.000 đồng Việt Nam.", "auto", "vi", false));
+            window.SetStatus(status);
+            Assert.Empty(window.ResultText.Text);
+            Assert.False(window.CopyButton.IsEnabled);
+            Assert.False(window.ReplaceButton.IsEnabled);
+            Assert.Equal(VNotch.Services.Loc.Get(status), window.StatusText.Text);
+        }
+        finally { window.Close(); }
+    });
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void DismissAnimationCannotHideANewerSelection(bool reduceMotion) => SharedStaTestRunner.RunAsync(async ct =>
@@ -269,6 +287,8 @@ public sealed class LiveTranslationTests
     [InlineData("Call 15:00", "Gọi 15:30", false)]
     [InlineData("Balance -$42", "Số dư $42", false)]
     [InlineData("Delta −5%", "Độ lệch 5%", false)]
+    [InlineData("Cost 1000", "Giá 1.000", true)]
+    [InlineData("Cost 1000", "Giá 1,000", true)]
     public void LiteralChangesAreReported(string source, string result, bool safe)
         => Assert.Equal(safe, TranslationTextIntegrity.Verify(source, result));
 

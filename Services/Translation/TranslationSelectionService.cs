@@ -74,10 +74,11 @@ internal sealed class TranslationSelectionService : IDisposable
     internal static async Task CaptureManualAsync(Func<bool> isCurrent, Func<TranslationSelection?> capture,
         Action<TranslationSelection> deliver, Func<Task>? settle = null, Action? unavailable = null)
     {
-        // Providers can report a transient empty selection on Shift key-up.
+        // Try a ready selection immediately; only empty snapshots need to settle
+        // after Shift key-up. Retries stay bounded for slow providers.
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            await (settle?.Invoke() ?? Task.Delay(80));
+            if (attempt > 0) await (settle?.Invoke() ?? Task.Delay(80));
             if (!isCurrent()) return;
             var selection = capture();
             if (!isCurrent()) return;

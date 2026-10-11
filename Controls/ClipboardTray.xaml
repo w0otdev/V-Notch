@@ -407,10 +407,10 @@
   <Style x:Key="CategoryButton" TargetType="Button">
    <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
    <Setter Property="FontWeight" Value="Bold"/>
-   <Setter Property="Margin" Value="0,0,3,0"/>
+   <Setter Property="Margin" Value="0,0,6,0"/>
    <Setter Property="Padding" Value="12,5"/>
    <Setter Property="Background" Value="Transparent"/>
-   <Setter Property="Foreground" Value="#8E8E93"/>
+   <Setter Property="Foreground" Value="#ADADB5"/>
    <Setter Property="Tag" Value="{Binding Name}"/>
    <Setter Property="AllowDrop" Value="True"/>
    <Setter Property="Cursor" Value="Hand"/>
@@ -421,28 +421,31 @@
    <EventSetter Event="DragLeave" Handler="Category_DragLeave"/><EventSetter Event="Drop" Handler="Category_Drop"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
     <Grid>
-    <Border x:Name="CategoryHover" Background="#18FFFFFF" BorderBrush="#28FFFFFF" BorderThickness="1" CornerRadius="13" IsHitTestVisible="False" local:TrayMotion.Opacity="0"/>
-    <Border x:Name="Surface" Background="Transparent" CornerRadius="13"
-     BorderThickness="1" BorderBrush="#05FFFFFF" Padding="{TemplateBinding Padding}">
+    <Border x:Name="Surface" Background="#141416" CornerRadius="13"
+     BorderThickness="1" BorderBrush="#0AFFFFFF" Padding="{TemplateBinding Padding}">
      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
     </Border>
+    <Border x:Name="CategoryHover" Background="#18FFFFFF" BorderBrush="#28FFFFFF" BorderThickness="1" CornerRadius="13" IsHitTestVisible="False" local:TrayMotion.Opacity="0"/>
     </Grid>
     <ControlTemplate.Triggers>
+     <DataTrigger Binding="{Binding IsSelected}" Value="True">
+      <Setter TargetName="Surface" Property="Background" Value="Transparent"/>
+     </DataTrigger>
      <Trigger Property="IsMouseOver" Value="True">
       <Setter TargetName="CategoryHover" Property="local:TrayMotion.Opacity" Value="1"/>
-      <Setter Property="Foreground" Value="White"/>
      </Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#A0FFFFFF"/></Trigger>
      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.Opacity" Value="0.75"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
    <Style.Triggers>
     <DataTrigger Binding="{Binding IsLightSelection}" Value="True">
-     <Setter Property="Background" Value="#30FFFFFF"/>
-     <Setter Property="Foreground" Value="White"/>
+     <Setter Property="Background" Value="#F5F5F7"/>
+     <Setter Property="Foreground" Value="#161619"/>
     </DataTrigger>
     <DataTrigger Binding="{Binding IsAccentSelection}" Value="True">
-     <Setter Property="Background" Value="{StaticResource TrayAccent}"/>
-     <Setter Property="Foreground" Value="{StaticResource TrayOnAccent}"/>
+     <Setter Property="Background" Value="#F5F5F7"/>
+     <Setter Property="Foreground" Value="#161619"/>
     </DataTrigger>
    </Style.Triggers>
   </Style>
@@ -622,7 +625,7 @@
 
   <!-- Row 1: Apple Segmented Pill Track (Plush Rounded Capsule) -->
   <ScrollViewer x:Name="CategoryScroll" Grid.Row="1" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Hidden" ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewMouseWheel="Category_Wheel" Margin="12,3,12,5">
-   <Border CornerRadius="17" Background="#0CFFFFFF" BorderBrush="#14FFFFFF" BorderThickness="1" Padding="3" HorizontalAlignment="Left">
+   <Border Background="Transparent" Padding="0,3" HorizontalAlignment="Left">
     <Grid>
      <Border x:Name="CategorySelection" Width="1" HorizontalAlignment="Left" CornerRadius="13" IsHitTestVisible="False" Opacity="0">
       <Border.RenderTransform><TransformGroup><ScaleTransform x:Name="CategorySelectionScale"/><TranslateTransform x:Name="CategorySelectionOffset"/></TransformGroup></Border.RenderTransform>
@@ -680,7 +683,7 @@
    <local:ClipboardCardListBox x:Name="Cards" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" SnapsToDevicePixels="False" UseLayoutRounding="False" TextOptions.TextRenderingMode="Grayscale"
     ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
     VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Display" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
-    ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionMode="Extended" Margin="8,14,8,16">
+    ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionMode="Extended" Margin="8,7,8,12">
     
     <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
@@ -714,8 +717,8 @@
         </Border>
 
         <!-- Layer 2: Image Thumbnail -->
-        <!-- Fit the entire preview inside the card, clear of actions and metadata. -->
-        <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="Uniform" Margin="8,32,8,34" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        <!-- Edge-to-edge artwork; the footer vignette keeps metadata readable. -->
+        <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
         
         <!-- Layer 3: Protective Vignette for Image readability -->
         <Border CornerRadius="{StaticResource TrayRadiusLarge}" IsHitTestVisible="False">
@@ -742,12 +745,12 @@
         </Border>
 
         <!-- Inset rims avoid overlapping the rounded card clip and losing edge coverage. -->
-        <Rectangle x:Name="BaseRim" RadiusX="14" RadiusY="14" Margin="2" StrokeThickness="2" IsHitTestVisible="False" Panel.ZIndex="2">
+        <Rectangle x:Name="BaseRim" RadiusX="15" RadiusY="15" Margin="0.75" StrokeThickness="1" IsHitTestVisible="False" Panel.ZIndex="2">
          <Rectangle.Stroke>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#70FFFFFF" Offset="0"/>
-           <GradientStop Color="#48FFFFFF" Offset="0.45"/>
-           <GradientStop Color="#38FFFFFF" Offset="1"/>
+           <GradientStop Color="#32FFFFFF" Offset="0"/>
+           <GradientStop Color="#14FFFFFF" Offset="0.45"/>
+           <GradientStop Color="#0AFFFFFF" Offset="1"/>
           </LinearGradientBrush>
          </Rectangle.Stroke>
         </Rectangle>
@@ -775,7 +778,8 @@
         </Rectangle>
 
         <!-- Layer 5: Card Actions (Pin & More) in Top Right -->
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4">
+        <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#E618181E" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
+        <StackPanel Orientation="Horizontal">
          <Button Tag="pin" Style="{StaticResource PinActionButton}" ToolTip="{Binding PinLabel}" Click="CardAction_Click">
           <local:TrayIcon Kind="Pin" Width="14.5" Height="14.5" VerticalAlignment="Center" HorizontalAlignment="Center"/>
          </Button>
@@ -783,9 +787,10 @@
           <local:TrayIcon Kind="More" Width="13" Height="13" VerticalAlignment="Center" HorizontalAlignment="Center"/>
          </Button>
         </StackPanel>
+        </Border>
 
         <!-- Layer 5b: File Card Hero Presentation (Kind == File) -->
-        <Border x:Name="FileBadgePanel" Margin="12,30,12,30" CornerRadius="12" Background="{Binding FileBadgeBackgroundBrush}" BorderThickness="1" BorderBrush="{Binding FileAccentBrush}" Padding="10,6" IsHitTestVisible="False">
+        <Border x:Name="FileBadgePanel" Margin="14,30,14,40" Padding="6,0" IsHitTestVisible="False">
          <Border.Style>
           <Style TargetType="Border">
            <Setter Property="Visibility" Value="Collapsed"/>
@@ -803,20 +808,7 @@
           </Grid.RowDefinitions>
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
           <Grid x:Name="FileHeroIcon" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,7,0">
-           <Image Source="{Binding FileIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-           <TextBlock Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" FontSize="20"
-                      Foreground="{Binding FileAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <TextBlock.Style>
-             <Style TargetType="TextBlock">
-              <Setter Property="Visibility" Value="Collapsed"/>
-              <Style.Triggers>
-               <DataTrigger Binding="{Binding FileIcon}" Value="{x:Null}">
-                <Setter Property="Visibility" Value="Visible"/>
-               </DataTrigger>
-              </Style.Triggers>
-             </Style>
-            </TextBlock.Style>
-           </TextBlock>
+           <Image Source="{Binding FilePreviewIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
           </Grid>
           <Border CornerRadius="4" Background="{Binding FileAccentBrush}" Padding="6,1.5" VerticalAlignment="Center">
            <TextBlock Text="{Binding FileTypeTag}" FontSize="10" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="White"/>
@@ -827,49 +819,28 @@
         </Border>
 
         <!-- Layer 6: Text Preview (High-Contrast SF Pro Typographic Balance) -->
-        <TextBlock x:Name="CardPreviewText" Text="{Binding Preview}" FontFamily="{StaticResource SFProDisplay}" FontSize="12.5" FontWeight="Bold" LineHeight="17.5" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Margin="13,34,13,34" VerticalAlignment="Top" MaxHeight="96" Foreground="#F5F5FA"/>
+        <TextBlock x:Name="CardPreviewText" Text="{Binding Preview}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Margin="14,13,14,42" VerticalAlignment="Top" MaxHeight="96" Foreground="#F5F5FA"/>
 
         <!-- Layer 7: Seamless Frosted Vignette Footer -->
-        <Border VerticalAlignment="Bottom" Height="34" CornerRadius="0,0,16,16">
+        <Border VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,16,16">
          <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
            <GradientStop Color="#0009090D" Offset="0"/>
-           <GradientStop Color="#7009090D" Offset="0.35"/>
-           <GradientStop Color="#EA060609" Offset="1"/>
+           <GradientStop Color="#B009090D" Offset="0.5"/>
+           <GradientStop Color="#F009090D" Offset="1"/>
           </LinearGradientBrush>
          </Border.Background>
-         <Grid Margin="10,0,10,0">
+         <Grid Margin="13,14,13,8">
           <Grid.ColumnDefinitions>
            <ColumnDefinition Width="22"/>
            <ColumnDefinition Width="*"/>
            <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           
-          <Border Width="18" Height="18" CornerRadius="4.5" Background="#18FFFFFF" BorderThickness="0.8" BorderBrush="#20FFFFFF" ClipToBounds="True" ToolTip="{Binding Source}">
-           <Grid>
-            <local:TrayIcon Kind="{Binding IconKind}" Width="10" Height="10" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{Binding FileAccentBrush}">
-             <local:TrayIcon.Style>
-              <Style TargetType="local:TrayIcon">
-               <Setter Property="Visibility" Value="Collapsed"/>
-               <Style.Triggers>
-                <MultiDataTrigger>
-                 <MultiDataTrigger.Conditions>
-                  <Condition Binding="{Binding SourceIcon}" Value="{x:Null}"/>
-                  <Condition Binding="{Binding FileIcon}" Value="{x:Null}"/>
-                 </MultiDataTrigger.Conditions>
-                 <Setter Property="Visibility" Value="Visible"/>
-                </MultiDataTrigger>
-               </Style.Triggers>
-              </Style>
-             </local:TrayIcon.Style>
-            </local:TrayIcon>
-            <Image Source="{Binding FileIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-            <Image Source="{Binding SourceIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-           </Grid>
-          </Border>
+          <Image Width="20" Height="20" Source="{Binding DisplaySourceIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="{Binding Source}"/>
 
-          <TextBlock Grid.Column="1" Text="{Binding Age}" FontFamily="{StaticResource SFProDisplay}" FontSize="11" FontWeight="Bold" Foreground="#C8C8D2" Margin="6,0,4,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-          <TextBlock Grid.Column="2" Text="{Binding Size}" Margin="0,0,2,0" FontSize="10" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource TrayMutedForeground}" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="{Binding FooterSource}" ToolTip="{Binding Age}" FontFamily="{StaticResource SFProDisplay}" FontSize="11.5" FontWeight="SemiBold" Foreground="#DEDEE5" Margin="5,0,6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Grid.Column="2" Text="{Binding Size}" FontSize="10.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="#A8A8B2" VerticalAlignment="Center"/>
          </Grid>
         </Border>
        </Grid>
@@ -893,6 +864,22 @@
       </Grid>
      </Border>
      <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+       <Setter TargetName="CardActions" Property="local:TrayMotion.Opacity" Value="1"/>
+       <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+       <Setter TargetName="CardActions" Property="local:TrayMotion.Opacity" Value="1"/>
+       <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsMenuOpen}" Value="True">
+       <Setter TargetName="CardActions" Property="local:TrayMotion.Opacity" Value="1"/>
+       <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
+      </DataTrigger>
+      <DataTrigger Binding="{Binding Entry.IsPinned}" Value="True">
+       <Setter TargetName="CardActions" Property="local:TrayMotion.Opacity" Value="1"/>
+       <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
+      </DataTrigger>
       <DataTrigger Binding="{Binding Entry.Kind}" Value="Color">
        <Setter TargetName="CardSheen" Property="Visibility" Value="Collapsed"/>
        <Setter TargetName="CardPreviewText" Property="Background" Value="#CC101014"/>

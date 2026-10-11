@@ -28,6 +28,17 @@ public sealed class TranslationAdvancedTests
         Assert.Equal(0, restored.TranslationCacheEntries);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HumanizerSettingRoundTripsThroughSettingsAndOptions(bool enabled)
+    {
+        var settings = new NotchSettings { EnableTranslationHumanizer = enabled };
+        var restored = JsonSerializer.Deserialize<NotchSettings>(JsonSerializer.Serialize(settings))!;
+        Assert.Equal(enabled, restored.EnableTranslationHumanizer);
+        Assert.Equal(enabled, TranslationOptions.From(restored).EnableHumanizer);
+    }
+
     [Fact]
     public async Task CacheEvictsLeastRecentlyUsedAndConfigurationInvalidatesResults()
     {

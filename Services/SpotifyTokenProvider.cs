@@ -22,20 +22,25 @@ internal sealed class SpotifyTokenProvider : IDisposable
     internal SpotifyTokenProvider(HttpClient http) => _http = http;
     internal void ClearCache() => _accessToken = null;
 
-    internal async Task<string?> GetAccessTokenAsync(string sessionCookie, CancellationToken token)
+    internal Task<string?> GetAccessTokenAsync(string sessionCookie, CancellationToken token)
     {
         AccessTokenCache? cached = _accessToken;
         if (cached != null &&
             string.Equals(cached.SessionCookie, sessionCookie, StringComparison.Ordinal) &&
             cached.ExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
         {
-            return cached.Token;
+            return cached.Task;
         }
 
+        return RefreshAccessTokenAsync(sessionCookie, token);
+    }
+
+    private async Task<string?> RefreshAccessTokenAsync(string sessionCookie, CancellationToken token)
+    {
         await _authLock.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            cached = _accessToken;
+            var cached = _accessToken;
             if (cached != null &&
                 string.Equals(cached.SessionCookie, sessionCookie, StringComparison.Ordinal) &&
                 cached.ExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(1))
@@ -75,7 +80,7 @@ internal sealed class SpotifyTokenProvider : IDisposable
                 expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expirationMs);
             }
 
-            _accessToken = new AccessTokenCache(sessionCookie, accessToken, expiresAt);
+            _accessToken = new AccessTokenCache(sessionCookie, accessToken, expiresAt, Task.FromResult<string?>(accessToken));
             return accessToken;
         }
         finally
@@ -144,5 +149,5 @@ internal sealed class SpotifyTokenProvider : IDisposable
 
     public void Dispose() => _authLock.Dispose();
 
-    private sealed record AccessTokenCache(string SessionCookie, string Token, DateTimeOffset ExpiresAtUtc);
+    private sealed record AccessTokenCache(string SessionCookie, string Token, DateTimeOffset ExpiresAtUtc, Task<string?> Task);
 }

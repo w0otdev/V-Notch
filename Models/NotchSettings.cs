@@ -41,8 +41,11 @@ public class NotchSettings
     public bool EnableLiveTranslation { get; set; } = false;
     public bool AutoLiveTranslation { get; set; } = false;
     public bool FormatTranslationText { get; set; } = true;
+    public bool EnableTranslationHumanizer { get; set; } = true;
     public string TranslationSourceLanguage { get; set; } = "auto";
     public string TranslationTargetLanguage { get; set; } = "vi";
+    public bool EnableCurrencyConversion { get; set; } = true;
+    public string TranslationTargetCurrency { get; set; } = "auto";
     private int _translationModelIdleMinutes = 5;
     public int TranslationModelIdleMinutes { get => _translationModelIdleMinutes; set => _translationModelIdleMinutes = Math.Clamp(value, 0, 60); }
     private int _translationCacheMinutes = 30;

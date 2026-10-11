@@ -17,6 +17,7 @@ internal sealed record TranslationOptions
     internal int TopPPercent { get; init; } = 80;
     internal int TopK { get; init; } = 20;
     internal int TimeoutSeconds { get; init; } = 90;
+    internal bool EnableHumanizer { get; init; } = true;
     internal static TranslationOptions From(NotchSettings settings) => new()
     {
         ModelIdleMinutes = settings.TranslationModelIdleMinutes,
@@ -32,5 +33,6 @@ internal sealed record TranslationOptions
         TopPPercent = settings.TranslationTopPPercent,
         TopK = settings.TranslationTopK,
         TimeoutSeconds = settings.TranslationTimeoutSeconds,
+        EnableHumanizer = settings.EnableTranslationHumanizer,
     };
 }
