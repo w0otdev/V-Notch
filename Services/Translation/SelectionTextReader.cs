@@ -8,7 +8,10 @@ namespace VNotch.Services.Translation;
 
 internal static class SelectionTextReader
 {
-    internal sealed record Result(string Text, Rect Bounds, AutomationElement Element, TextPatternRange? Range, bool Editable);
+    internal sealed record Result(string Text, Rect Bounds, AutomationElement Element, TextPatternRange? Range, bool Editable)
+    {
+        internal bool InputTruncated { get; init; }
+    }
 
     internal static Result? Read(IntPtr window, AutomationElement? eventElement, bool manual, out bool protectedInput)
     {
@@ -59,9 +62,10 @@ internal static class SelectionTextReader
             bounds = ValidBounds(controlBounds) ? new Rect(controlBounds.Right, controlBounds.Bottom, 1, 1) : manual ? cursor : Rect.Empty;
         }
         if (bounds.IsEmpty) return null;
-        bool editable = ranges.Length == 1 && ranges[0].GetAttributeValue(TextPattern.IsReadOnlyAttribute) is false &&
+        bool editable = text.Length <= TranslationInput.MaxCharacters && ranges.Length == 1 && ranges[0].GetAttributeValue(TextPattern.IsReadOnlyAttribute) is false &&
             (element.Current.ControlType == ControlType.Edit || element.Current.ControlType == ControlType.Document);
-        return new(text, bounds, element, ranges.Length == 1 ? ranges[0].Clone() : null, editable);
+        return new(TranslationInput.Prefix(text, TranslationInput.MaxCharacters), bounds, element, ranges.Length == 1 ? ranges[0].Clone() : null, editable)
+        { InputTruncated = text.Length > TranslationInput.MaxCharacters };
     }
 
     internal static string? JoinSelection(IEnumerable<string> parts)
@@ -69,7 +73,8 @@ internal static class SelectionTextReader
         var nonempty = parts.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         if (nonempty.Length == 0) return null;
         string text = string.Join("\n", nonempty);
-        return text.Length <= 2000 ? text : null;
+        // One extra character signals truncation without reading an unbounded UIA range.
+        return text[..Math.Min(text.Length, TranslationInput.MaxCharacters + 1)];
     }
     internal static bool ValidBounds(Rect r) => !r.IsEmpty && double.IsFinite(r.X) && double.IsFinite(r.Y) &&
         double.IsFinite(r.Width) && double.IsFinite(r.Height) && r.Width > 0 && r.Height > 0;

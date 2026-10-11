@@ -45,8 +45,8 @@ public sealed class SelectionClipboardCaptureTests
         => Assert.Equal(expected, SelectionClipboardCapture.AcceptCopy(before, copied, current, focused, text));
 
     [Fact]
-    public void OversizeTextIsNotSentToTranslation()
-        => Assert.False(SelectionClipboardCapture.AcceptCopy(1, 2, 2, true, new string('x', 2001)));
+    public void OversizeCopyCanBeAcceptedAndTruncatedByTheInputPipeline()
+        => Assert.True(SelectionClipboardCapture.AcceptCopy(1, 2, 2, true, new string('x', 5000)));
 
     [Fact]
     public void BackupMaterializesTextHtmlAndBinaryFormatsWithoutSharingStreams() => SharedStaTestRunner.Run(() =>

@@ -12,7 +12,7 @@ internal sealed class TranslationShiftShortcut : IDisposable
     private Dispatcher? _dispatcher;
     private IntPtr _hook;
     private volatile bool _disposed;
-    internal TranslationShiftShortcut(Action requested)
+    internal TranslationShiftShortcut(Action requested, Func<IntPtr, bool>? isBlocked = null)
     {
         _callback = (code, message, data) =>
         {
@@ -20,9 +20,14 @@ internal sealed class TranslationShiftShortcut : IDisposable
             {
                 var key = Marshal.PtrToStructure<Win32Interop.KBDLLHOOKSTRUCT>(data);
                 bool otherModifier = IsDown(0x11) || IsDown(0x12) || IsDown(0x5B) || IsDown(0x5C);
+                var foreground = Win32Interop.GetForegroundWindow();
                 if (_detector.Process(key.vkCode, message.ToInt64() is 0x100 or 0x104,
-                    key.time, Win32Interop.GetForegroundWindow(), otherModifier || (key.flags & 0x12) != 0))
-                    _dispatcher!.BeginInvoke(() => { if (!_disposed) requested(); });
+                    key.time, foreground, otherModifier || (key.flags & 0x12) != 0))
+                    _dispatcher!.BeginInvoke(() =>
+                    {
+                        // Process/fullscreen checks stay outside the low-level hook.
+                        if (!_disposed && foreground == Win32Interop.GetForegroundWindow() && isBlocked?.Invoke(foreground) != true) requested();
+                    });
             }
             return Win32Interop.CallNextHookEx(_hook, code, message, data);
         };
@@ -63,13 +68,16 @@ internal sealed class ShiftTapDetector
     private bool _hasTap, _secondTap;
     private bool _waitingForQuiet;
     private uint _lastShiftEvent;
+    private uint _lastOtherEvent;
+    private bool _hasOtherEvent;
     private IntPtr _window;
-    internal void Reset() { ResetTaps(); _waitingForQuiet = false; }
+    internal void Reset() { ResetTaps(); _waitingForQuiet = _hasOtherEvent = false; }
     private void ResetTaps() { _heldKey = 0; _hasTap = _secondTap = false; _window = IntPtr.Zero; }
 
     internal bool Process(uint key, bool down, uint time, IntPtr window, bool blocked = false)
     {
         bool shift = key is 0x10 or 0xA0 or 0xA1;
+        if (!shift) { _lastOtherEvent = time; _hasOtherEvent = true; }
         if (shift)
         {
             // One shortcut per burst, even if focus changes while the popup opens.
@@ -84,6 +92,7 @@ internal sealed class ShiftTapDetector
         if (_window != window) { ResetTaps(); _window = window; }
         if (down)
         {
+            if (!_hasTap && _hasOtherEvent && unchecked(time - _lastOtherEvent) < 500) { ResetTaps(); return false; }
             if (_heldKey == key) return false; // OS key repeat is not another tap.
             if (_heldKey != 0) { ResetTaps(); return false; } // simultaneous left/right Shift
             _secondTap = _hasTap && unchecked(time - _lastTap) <= 500;

@@ -6,6 +6,7 @@ namespace VNotch.Services.Translation;
 internal sealed record TranslationResult(string Text, string SourceLanguage, string TargetLanguage, bool LiteralsPreserved, bool WeekdaysPreserved = true)
 {
     internal CurrencyConversion? Currency { get; init; }
+    internal bool InputTruncated { get; init; }
 }
 internal enum TranslationStage { Waiting, CheckingModel, LoadingModel, Translating, FetchingRates }
 
@@ -13,6 +14,7 @@ internal interface ILocalTranslationEngine : IDisposable
 {
     void Configure(TranslationOptions options) { }
     Task PrepareAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    Task<string> FitInputAsync(string text, CancellationToken cancellationToken) => Task.FromResult(text);
     TranslationStage Stage => TranslationStage.Translating;
     Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken);
     void ReleaseIdleResources();
@@ -24,4 +26,7 @@ internal sealed class TranslationException(string messageKey) : Exception(messag
 }
 
 // Native UIA references stay on the selection worker. The UI receives only this snapshot.
-internal sealed record TranslationSelection(long Id, string Text, Rect Bounds, IntPtr Window, bool CanReplace);
+internal sealed record TranslationSelection(long Id, string Text, Rect Bounds, IntPtr Window, bool CanReplace)
+{
+    internal bool InputTruncated { get; init; }
+}

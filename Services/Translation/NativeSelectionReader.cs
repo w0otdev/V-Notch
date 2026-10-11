@@ -30,7 +30,8 @@ internal static class NativeSelectionReader
         string? text = ReadControl(control);
         if (text == null) return null;
         var cursor = System.Windows.Forms.Cursor.Position;
-        return new(-Environment.TickCount64, text, new Rect(cursor.X, cursor.Y, 1, 1), window, false);
+        return new(-Environment.TickCount64, TranslationInput.Prefix(text, TranslationInput.MaxCharacters), new Rect(cursor.X, cursor.Y, 1, 1), window, false)
+        { InputTruncated = text.Length > TranslationInput.MaxCharacters };
     }
 
     internal static string? ReadControl(IntPtr control)
@@ -42,18 +43,19 @@ internal static class NativeSelectionReader
         uint packed = unchecked((uint)selection.ToInt64());
         if (packed == uint.MaxValue) return null;
         int start = (int)(packed & 0xffff), end = (int)(packed >> 16);
-        if (end <= start || end - start > 2000) return null;
-        var buffer = new StringBuilder(end + 1);
+        if (end <= start) return null;
+        int capturedEnd = Math.Min(end, start + TranslationInput.MaxCharacters + 1);
+        var buffer = new StringBuilder(capturedEnd + 1);
         if (GetTextTimeout(control, 0xD, new IntPtr(buffer.Capacity), buffer, 2, 100, out _) == IntPtr.Zero) return null;
         if (SendMessageTimeout(control, 0xB0, IntPtr.Zero, IntPtr.Zero, 2, 100, out var after) == IntPtr.Zero || after != selection) return null;
         string text = buffer.ToString();
         // RichEdit versions disagree about CR vs CRLF offsets in WM_GETTEXT.
         // Let the selection-aware UIA/Copy paths handle those instead of slicing the wrong text.
         if (ClassName(control).Contains("RichEdit", StringComparison.OrdinalIgnoreCase) && text.Contains('\r')) return null;
-        return Slice(text, start, end);
+        return Slice(text, start, capturedEnd);
     }
-    internal static string? Slice(string text, int start, int end) => start >= 0 && end > start && end <= text.Length && end - start <= 2000 &&
-        !string.IsNullOrWhiteSpace(text[start..end]) ? text[start..end] : null;
+    internal static string? Slice(string text, int start, int end) => start >= 0 && end > start && end <= text.Length &&
+        !string.IsNullOrWhiteSpace(text[start..end]) ? text[start..Math.Min(end, start + TranslationInput.MaxCharacters + 1)] : null;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GuiThreadInfo

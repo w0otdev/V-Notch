@@ -23,14 +23,15 @@ public sealed class TranslationMeaningIntegrityTests
     [InlineData("It's about $80", "Giá khoảng 80.000 VND.")]
     [InlineData("80 USD", "80 VND")]
     [InlineData("Invoice 80", "Hóa đơn 80000")]
-    public async Task ChangedFactsAreNeitherPresentedNorCached(string source, string output)
+    public async Task UnverifiedNumbersAreFlaggedAndNotCached(string source, string output)
     {
         using var engine = new LiteralEngine(output);
         using var service = new LocalTranslationService(engine);
         for (int i = 0; i < 2; i++)
         {
-            var error = await Assert.ThrowsAsync<TranslationException>(() => service.TranslateAsync(source, "auto", "vi", default));
-            Assert.Equal("translation.literalsChanged", error.MessageKey);
+            var result = await service.TranslateAsync(source, "auto", "vi", default);
+            Assert.Equal(output, result.Text);
+            Assert.False(result.LiteralsPreserved);
         }
         Assert.Equal(2, engine.Calls);
     }

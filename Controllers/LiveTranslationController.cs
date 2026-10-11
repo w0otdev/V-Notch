@@ -27,6 +27,9 @@ internal sealed class LiveTranslationController : IDisposable
     private bool _disposed;
     private Task? _preparation;
     private readonly CurrencyRateService _currencyRates;
+    private readonly TranslationAppPolicy _appPolicy = new();
+    private string? _sourceCurrencyOverride, _targetCurrencyOverride;
+    private bool _inputWasTruncated;
 
     internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null, CurrencyRateService? currencyRates = null)
     {
@@ -48,6 +51,7 @@ internal sealed class LiveTranslationController : IDisposable
             _settings.TranslationTargetLanguage != TranslationLanguages.Normalize(settings.TranslationTargetLanguage);
         bool optionsChanged = TranslationOptions.From(_settings) != TranslationOptions.From(settings);
         bool changed = _settings.EnableLiveTranslation != settings.EnableLiveTranslation || _settings.AutoLiveTranslation != settings.AutoLiveTranslation || optionsChanged ||
+            _settings.TranslationIgnoreFullscreen != settings.TranslationIgnoreFullscreen || _settings.TranslationExcludedApps != settings.TranslationExcludedApps ||
             _settings.EnableCurrencyConversion != settings.EnableCurrencyConversion || _settings.TranslationTargetCurrency != settings.TranslationTargetCurrency ||
             _settings.EnableLocalOnlyMode != settings.EnableLocalOnlyMode;
         string modelId = TranslationModelCatalog.Normalize(settings.TranslationModelId);
@@ -65,6 +69,7 @@ internal sealed class LiveTranslationController : IDisposable
         }
         _service.Configure(TranslationOptions.From(settings));
         _settings = settings.Clone();
+        _appPolicy.Configure(_settings);
         _settings.TranslationModelId = modelId;
         _settings.TranslationSourceLanguage = TranslationLanguages.Normalize(settings.TranslationSourceLanguage, true);
         _settings.TranslationTargetLanguage = TranslationLanguages.Normalize(settings.TranslationTargetLanguage);
@@ -87,18 +92,18 @@ internal sealed class LiveTranslationController : IDisposable
 
     private void UpdateWatcher()
     {
-        if (_settings.EnableLiveTranslation && (_store.IsInstalled || _settings.EnableCurrencyConversion))
+        if (_settings.EnableLiveTranslation)
         {
             _idle.Start();
             if (!_injected) _ = PrepareModelAsync();
             if (_selectionService == null)
             {
-                _selectionService = new();
+                _selectionService = new(_appPolicy.IsBlocked);
                 _selectionService.SelectionChanged += SelectionChanged;
                 _selectionService.ManualTranslationRequested += ManualTranslationRequested;
                 _selectionService.ManualSelectionUnavailable += ManualSelectionUnavailable;
             }
-            _shiftShortcut ??= new TranslationShiftShortcut(_selectionService.RequestManualTranslation);
+            _shiftShortcut ??= new TranslationShiftShortcut(_selectionService.RequestManualTranslation, _appPolicy.IsBlocked);
         }
         else
         {
@@ -151,10 +156,10 @@ internal sealed class LiveTranslationController : IDisposable
         if (_disposed || _dispatcher.HasShutdownStarted) return;
         _dispatcher.BeginInvoke(async () =>
         {
-            if (_disposed || !_settings.EnableLiveTranslation || _selectionService?.IsManualRequestCurrent(captureVersion) != true || _getForegroundWindow() != foreground) return;
+            if (_disposed || !_settings.EnableLiveTranslation || _selectionService?.IsManualRequestCurrent(captureVersion) != true || _getForegroundWindow() != foreground || _appPolicy.IsBlocked(foreground)) return;
             CancelRequest();
             long version = _requestVersion;
-            bool Current() => !_disposed && version == _requestVersion && _selectionService?.IsManualRequestCurrent(captureVersion) == true && _getForegroundWindow() == foreground;
+            bool Current() => !_disposed && version == _requestVersion && _selectionService?.IsManualRequestCurrent(captureVersion) == true && _getForegroundWindow() == foreground && !_appPolicy.IsBlocked(foreground);
             var selection = await SelectionClipboardCapture.CaptureAsync(foreground, Current);
             if (Current()) PresentSelection(selection, true, Current);
         });
@@ -168,19 +173,22 @@ internal sealed class LiveTranslationController : IDisposable
             if (_disposed || !_settings.EnableLiveTranslation || _selectionService == null) return;
             if (isCurrent != null && !isCurrent()) return;
             if (manual && selection != null && _getForegroundWindow() != selection.Window) return;
+            if (selection != null && _appPolicy.IsBlocked(selection.Window)) { CancelRequest(); _window?.Dismiss(); return; }
             if (_window?.IsVisible == true)
             {
                 // UIA may issue a new snapshot ID for the same text/range after Shift.
                 // Keep the result and the existing animation instead of restarting it.
                 if (selection != null && _selection != null && selection.Window == _selection.Window &&
                     selection.Text == _selection.Text && selection.Bounds == _selection.Bounds &&
-                    selection.CanReplace == _selection.CanReplace) return;
+                    selection.CanReplace == _selection.CanReplace && selection.InputTruncated == _selection.InputTruncated) return;
                 // Empty Shift key-up snapshots must not close an explicitly opened
                 // popup while its source application is still in the foreground.
                 if (selection == null && _manualPresentationWindow != IntPtr.Zero &&
                     _getForegroundWindow() == _manualPresentationWindow) return;
             }
             CancelRequest();
+            _sourceCurrencyOverride = _targetCurrencyOverride = null;
+            _inputWasTruncated = selection?.InputTruncated == true;
             _manualPresentationWindow = manual ? selection?.Window ?? _getForegroundWindow() : IntPtr.Zero;
             if (!manual && !_settings.AutoLiveTranslation)
             {
@@ -216,6 +224,12 @@ internal sealed class LiveTranslationController : IDisposable
         window.TranslateRequested += () => _ = TranslateAsync();
         window.CancelRequested += () => { CancelRequest(); window.SetStatus("translation.cancelled"); };
         window.ReplaceRequested += () => _ = ReplaceAsync();
+        window.ManageModelRequested += () => { window.Dismiss(); _manageModel(); };
+        window.CurrenciesChanged += (source, target) =>
+        {
+            _sourceCurrencyOverride = source; _targetCurrencyOverride = target;
+            if (_text.Length > 0 && window.IsVisible) _ = TranslateAsync();
+        };
         window.Dismissed += () => { CancelRequest(); _text = ""; _selection = null; _manualPresentationWindow = IntPtr.Zero; };
         window.Closed += (_, _) =>
         {
@@ -238,11 +252,14 @@ internal sealed class LiveTranslationController : IDisposable
         CancelRequest();
         _selection = null;
         _manualPresentationWindow = IntPtr.Zero;
+        _sourceCurrencyOverride = _targetCurrencyOverride = null;
         try
         {
             _text = Clipboard.ContainsText() ? Clipboard.GetText() : "";
-            if (_text.Length > 2000) { _text = ""; EnsureWindow().ShowClipboard(""); _window!.SetStatus("translation.textTooLong"); return; }
+            _inputWasTruncated = _text.Length > TranslationInput.MaxCharacters;
+            _text = TranslationInput.Prefix(_text, TranslationInput.MaxCharacters);
             EnsureWindow().ShowClipboard(_text);
+            _window!.SetInputTruncated(_inputWasTruncated);
             if (_text.Length == 0) _window!.SetStatus("translation.noSelection");
         }
         catch (System.Runtime.InteropServices.COMException) { EnsureWindow().SetStatus("translation.clipboardBusy"); }
@@ -275,14 +292,20 @@ internal sealed class LiveTranslationController : IDisposable
             // Snapshot UI state before dispatching. Inference overlaps the entrance;
             // only presentation waits so a fast cache hit cannot resize the opening popup.
             var service = _service;
-            string text = _text, source = window.SourceLanguage, target = window.TargetLanguage;
+            string text = TranslationInput.Prepare(_text), source = window.SourceLanguage, target = window.TargetLanguage;
+            bool inputTruncated = _inputWasTruncated || text.Length < _text.Length;
+            window.SetInputTruncated(inputTruncated);
             if (TranslationCurrencies.HasConflictingCurrency(text, source)) throw new TranslationException("translation.currencyAmbiguous");
             var token = request.Token;
             TranslationResult? result = null;
-            if (_settings.EnableCurrencyConversion && TranslationCurrencies.TryParse(text, source, out var price))
+            bool hasPrice = TranslationCurrencies.TryParse(text, source, out var price, _sourceCurrencyOverride);
+            bool unresolvedPrice = TranslationCurrencies.HasUnresolvedSymbol(text, source);
+            string? currency = _targetCurrencyOverride ?? (TranslationCurrencies.Normalize(_settings.TranslationTargetCurrency) is var choice && choice != "auto"
+                ? choice : TranslationCurrencies.ForLanguage(target));
+            window.ConfigureCurrencies(_settings.EnableCurrencyConversion && (hasPrice || unresolvedPrice), hasPrice ? price.Currency : null, currency);
+            if (_settings.EnableCurrencyConversion && unresolvedPrice && !hasPrice) throw new TranslationException("translation.currencyChooseSource");
+            if (_settings.EnableCurrencyConversion && hasPrice)
             {
-                string? currency = TranslationCurrencies.Normalize(_settings.TranslationTargetCurrency) is var choice && choice != "auto"
-                    ? choice : TranslationCurrencies.ForLanguage(target);
                 if (currency != null)
                 {
                     convertingCurrency = true;
@@ -297,10 +320,19 @@ internal sealed class LiveTranslationController : IDisposable
                 }
             }
             if (result == null)
+                result = LocalTranslationService.TrySameLanguage(text, source, target);
+            if (result == null)
             {
                 if (!_store.IsInstalled) throw new TranslationException("translation.modelMissing");
-                result = await Task.Run(() => service.TranslateAsync(text, source, target, token), token).WaitAsync(token);
+                // Dismissal cancels this request, while the shared model preparation finishes.
+                Task preparation = PrepareModelAsync();
+                result = await Task.Run(async () =>
+                {
+                    await preparation.WaitAsync(token).ConfigureAwait(false);
+                    return await service.TranslateAsync(text, source, target, token).ConfigureAwait(false);
+                }, token).WaitAsync(token);
             }
+            result = result with { InputTruncated = result.InputTruncated || inputTruncated };
             await window.WaitForEntranceAsync(token);
             if (!_disposed && version == _requestVersion && window.IsVisible) window.ShowResult(result);
         }
@@ -334,7 +366,8 @@ internal sealed class LiveTranslationController : IDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         try
         {
-            bool replaced = await _selectionService.ReplaceAsync(selection, window.ResultText.Text, timeout.Token);
+            if (!window.CanReplaceResult) return;
+            bool replaced = await _selectionService.ReplaceAsync(selection, window.OutputText, timeout.Token);
             if (!_disposed) { if (replaced) window.Dismiss(); else window.SetStatus("translation.replaceUnavailable"); }
         }
         catch (Exception) { if (!_disposed) window.SetStatus("translation.replaceUnavailable"); }

@@ -43,6 +43,33 @@ internal static partial class TranslationLanguages
         if (script != null) return script;
         if (text.Count(char.IsLetter) < 12) return null;
         string? code = Detector.Value.Detect(text);
+        return FromDetectorCode(code);
+    }
+
+    // Passing through text skips the model entirely, so require stronger evidence
+    // than the optional language hints used in prompts. Short/uncertain selections
+    // and passages with sentences in different languages still reach the model.
+    internal static string? DetectForPassthrough(string text)
+    {
+        if (text.Count(char.IsLetter) < 40) return null;
+        string? language = ConfidentLanguage(text);
+        if (language == null) return null;
+        foreach (string sentence in Regex.Split(text, @"[.!?。！？\r\n]+"))
+        {
+            if (sentence.Count(char.IsLetter) >= 12 && ConfidentLanguage(sentence) != language)
+                return null;
+        }
+        return language;
+    }
+
+    private static string? ConfidentLanguage(string text)
+    {
+        var best = Detector.Value.DetectAll(text).OrderByDescending(x => x.Probability).FirstOrDefault();
+        return best?.Probability >= 0.995 ? FromDetectorCode(best.Language) : null;
+    }
+
+    private static string? FromDetectorCode(string? code)
+    {
         return Codes.FirstOrDefault(candidate =>
         {
             try { return CultureInfo.GetCultureInfo(candidate).ThreeLetterISOLanguageName == code; }

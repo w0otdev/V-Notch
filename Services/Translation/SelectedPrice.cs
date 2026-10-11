@@ -76,7 +76,7 @@ internal static class TranslationCurrencies
         return false;
     }
 
-    internal static bool TryParse(string text, string sourceLanguage, out SelectedPrice price)
+    internal static bool TryParse(string text, string sourceLanguage, out SelectedPrice price, string? currencyOverride = null)
     {
         price = null!;
         if (text.Length > 128) return false;
@@ -89,11 +89,19 @@ internal static class TranslationCurrencies
         bool qualifiedSymbol = (prefix == "$" && explicitCurrency is "USD" or "CAD" or "AUD" or "NZD" or "HKD" or "SGD") ||
             (prefix is "¥" or "￥" && explicitCurrency is "JPY" or "CNY");
         if (qualifiedSymbol) currency = explicitCurrency;
-        if (currency == null || (!qualifiedSymbol && prefix.Length > 0 && suffix.Length > 0 && Resolve(suffix, sourceLanguage) != currency)) return false;
+        if (!qualifiedSymbol && prefix.Length > 0 && suffix.Length > 0 && Resolve(suffix, sourceLanguage) != currency) return false;
+        bool overridden = Supported(currencyOverride);
+        // An unresolved bare symbol can still be converted after the user chooses its currency.
+        if (currency == null && !(prefix is "$" or "¥" or "￥" || suffix is "$" or "¥" or "￥")) return false;
+        if (overridden) currency = currencyOverride;
+        if (currency == null) return false;
         if (!TryAmount(match.Groups["amount"].Value.Trim(), currency, out decimal amount)) return false;
-        price = new(amount, currency, !qualifiedSymbol && (prefix == "$" || suffix == "$" || prefix is "¥" or "￥" || suffix is "¥" or "￥"));
+        price = new(amount, currency, !overridden && !qualifiedSymbol && (prefix == "$" || suffix == "$" || prefix is "¥" or "￥" || suffix is "¥" or "￥"));
         return true;
     }
+
+    internal static bool HasUnresolvedSymbol(string text, string sourceLanguage) =>
+        !TryParse(text, sourceLanguage, out _) && TryParse(text, sourceLanguage, out _, "USD");
 
     private static string? Resolve(string token, string source) => token.Trim().ToUpperInvariant() switch
     {

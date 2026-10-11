@@ -26,6 +26,7 @@ internal sealed class TranslationSelectionService : IDisposable
     private bool _manualCopyAllowed = true;
     private readonly WinEventCallback _foregroundChanged;
     private IntPtr _foregroundHook, _lastExternalWindow;
+    private readonly Func<IntPtr, bool>? _isBlocked;
     internal event Action<TranslationSelection?>? SelectionChanged;
     internal event Action<TranslationSelection?>? ManualTranslationRequested;
     internal event Action<IntPtr, long>? ManualSelectionUnavailable;
@@ -48,7 +49,7 @@ internal sealed class TranslationSelectionService : IDisposable
             if (_disposed || dispatcher.HasShutdownStarted) return;
             await dispatcher.InvokeAsync(() => CaptureManualAsync(
                 () => !_disposed && version == Volatile.Read(ref _manualRequestVersion) && foreground != IntPtr.Zero &&
-                    !IsOwnWindow(foreground) && foreground == Win32Interop.GetForegroundWindow(),
+                    !IsOwnWindow(foreground) && foreground == Win32Interop.GetForegroundWindow() && _isBlocked?.Invoke(foreground) != true,
                 () =>
                 {
                     if ((GetAsyncKeyState(1) & 0x8000) != 0) return null;
@@ -63,7 +64,7 @@ internal sealed class TranslationSelectionService : IDisposable
         {
             // A hung accessibility provider must not disable the explicit shortcut.
             // Retire its queued result before starting clipboard capture.
-            if (!_disposed && foreground == Win32Interop.GetForegroundWindow() &&
+            if (!_disposed && foreground == Win32Interop.GetForegroundWindow() && _isBlocked?.Invoke(foreground) != true &&
                 Interlocked.CompareExchange(ref _manualRequestVersion, version + 1, version) == version)
                 ManualSelectionUnavailable?.Invoke(foreground, version + 1);
         }
@@ -89,8 +90,9 @@ internal sealed class TranslationSelectionService : IDisposable
         if (isCurrent()) unavailable?.Invoke();
     }
 
-    internal TranslationSelectionService()
+    internal TranslationSelectionService(Func<IntPtr, bool>? isBlocked = null)
     {
+        _isBlocked = isBlocked;
         _focusChanged = (_, _) => QueueCapture();
         _selectionChanged = (sender, _) => { _eventElement = sender as AutomationElement; QueueCapture(); };
         _foregroundChanged = (_, _, hwnd, _, _, _, _) =>
@@ -154,6 +156,11 @@ internal sealed class TranslationSelectionService : IDisposable
         {
             IntPtr window = Win32Interop.GetForegroundWindow();
             if (window == IntPtr.Zero || IsOwnWindow(window)) return;
+            if (_isBlocked?.Invoke(window) == true)
+            {
+                _manualCopyAllowed = false;
+                DetachSelection(); Publish(null, !manual); return;
+            }
             _lastExternalWindow = window;
             if ((GetAsyncKeyState(1) & 0x8000) != 0) { _debounce!.Start(); return; }
             if (window != _watchedWindow)
@@ -182,7 +189,7 @@ internal sealed class TranslationSelectionService : IDisposable
             if (_snapshot?.Text == result.Text && _snapshot.Window == window && _element != null &&
                 Automation.Compare(_element, result.Element) && _range != null && result.Range != null && SameRange(_range, result.Range)) return;
             _element = result.Element; _range = result.Range;
-            Publish(new(++_nextId, result.Text, result.Bounds, window, result.Editable), !manual);
+            Publish(new(++_nextId, result.Text, result.Bounds, window, result.Editable) { InputTruncated = result.InputTruncated }, !manual);
         }
         catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException or ArgumentException)
         { Publish(null, !manual); }

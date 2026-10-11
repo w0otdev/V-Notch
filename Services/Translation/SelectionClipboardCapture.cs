@@ -55,7 +55,8 @@ internal static class SelectionClipboardCapture
                     string text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "";
                     if (!AcceptCopy(before, sequence, GetClipboardSequenceNumber(), isCurrent(), text)) return null;
                     var point = System.Windows.Forms.Cursor.Position;
-                    return new(-Environment.TickCount64, text, new Rect(point.X, point.Y, 1, 1), window, false);
+                    return new(-Environment.TickCount64, TranslationInput.Prefix(text, TranslationInput.MaxCharacters), new Rect(point.X, point.Y, 1, 1), window, false)
+                    { InputTruncated = text.Length > TranslationInput.MaxCharacters };
                 }
                 catch (COMException) { } // The source may still hold the clipboard open.
             }
@@ -110,7 +111,7 @@ internal static class SelectionClipboardCapture
     }
 
     internal static bool AcceptCopy(uint before, uint copied, uint current, bool focused, string text) =>
-        focused && copied != before && copied == current && !string.IsNullOrWhiteSpace(text) && text.Length <= 2000;
+        focused && copied != before && copied == current && !string.IsNullOrWhiteSpace(text);
 
     internal static DataObject Snapshot(IDataObject? source)
     {

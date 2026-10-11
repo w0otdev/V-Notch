@@ -35,37 +35,50 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
 
     internal async Task<TranslationResult> TranslateAsync(string text, string source, string target, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(text)) throw new TranslationException("translation.noSelection");
-        if (text.Length > 2000) throw new TranslationException("translation.textTooLong");
+        string prepared = TranslationInput.Prepare(text);
+        bool truncated = prepared.Length < text.Length;
+        text = prepared;
         if (TranslationCurrencies.HasConflictingCurrency(text, source)) throw new TranslationException("translation.currencyAmbiguous");
         if (!TranslationLanguages.IsSupported(target)) throw new TranslationException("translation.languageUnsupported");
+        if (source != "auto" && !TranslationLanguages.IsSupported(source)) throw new TranslationException("translation.languageUnsupported");
+        ct.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (TranslationStructuredText.IsOnlyIcons(TranslationStructuredText.NormalizeSocialIcons(text)))
+            return new(text, source, target, true) { InputTruncated = truncated };
+        if (TrySameLanguage(text, source, target) is { } unchanged)
+        {
+            ct.ThrowIfCancellationRequested();
+            return unchanged with { InputTruncated = truncated };
+        }
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ApplyOptions();
-            // Auto detection is a model task too: short words and ambiguous scripts
-            // must not be rejected or passed through based on a classifier guess.
-            if (source != "auto" && !TranslationLanguages.IsSupported(source)) throw new TranslationException("translation.languageUnsupported");
             var key = (text, source, target);
             if (_cache.TryGetValue(key, out var existing))
             {
                 _order.Remove(key);
-                if (_expires[key] > DateTime.UtcNow) { _order.AddLast(key); return existing; }
+                if (_expires[key] > DateTime.UtcNow) { _order.AddLast(key); return existing with { InputTruncated = existing.InputTruncated || truncated }; }
                 _cache.Remove(key); _expires.Remove(key);
             }
-            string translated = source == target ? text : await TranslationStructuredText.TranslateAsync(text,
+            string fitted = await engine.FitInputAsync(text, ct).ConfigureAwait(false);
+            bool tokenTruncated = fitted.Length < text.Length;
+            text = fitted;
+            string translated = await TranslationStructuredText.TranslateAsync(text,
                 (prose, token) => engine.TranslateAsync(prose, source, target, token), ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             translated = TranslationTextIntegrity.Clean(translated);
             if (!TranslationMeaningIntegrity.PreservesStatement(text, source, translated))
                 throw new TranslationException("translation.meaningChanged");
-            // Never present or cache a model-generated change to amounts, currencies or other facts.
-            if (!TranslationTextIntegrity.Verify(text, translated))
+            // Numeric mismatches remain readable for review, without replacement or caching.
+            bool literalsPreserved = TranslationTextIntegrity.Verify(text, translated);
+            if (!literalsPreserved && !TranslationTextIntegrity.CanPresentUnverifiedNumbers(text, translated))
                 throw new TranslationException("translation.literalsChanged");
-            var result = new TranslationResult(translated, source, target, true,
-                TranslationDateIntegrity.PreservesWeekdays(text, source == "auto" ? TranslationLanguages.Detect(text) ?? source : source, translated, target));
-            if (_options.CacheEntries > 0)
+            var result = new TranslationResult(translated, source, target, literalsPreserved,
+                TranslationDateIntegrity.PreservesWeekdays(text, source == "auto" ? TranslationLanguages.Detect(text) ?? source : source, translated, target))
+            { InputTruncated = tokenTruncated };
+            if (literalsPreserved && _options.CacheEntries > 0)
             {
                 while (_cache.Count >= _options.CacheEntries)
                 {
@@ -76,9 +89,16 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
                 _expires[key] = DateTime.UtcNow.AddMinutes(_options.CacheMinutes);
                 _order.AddLast(key);
             }
-            return result;
+            return result with { InputTruncated = tokenTruncated || truncated };
         }
         finally { _gate.Release(); }
+    }
+
+    internal static TranslationResult? TrySameLanguage(string text, string source, string target)
+    {
+        if (!TranslationLanguages.IsSupported(target)) return null;
+        string? language = source == "auto" ? TranslationLanguages.DetectForPassthrough(text) : source;
+        return language == target ? new(text, language, target, true) : null;
     }
 
     internal void ReleaseIdleResources()

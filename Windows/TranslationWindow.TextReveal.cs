@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
@@ -21,11 +22,12 @@ public partial class TranslationWindow
     private void QueueResultReveal()
     {
         StopResultReveal();
-        if (!IsVisible || _dismissing || ResultText.Visibility != Visibility.Visible || ResultText.Text.Length == 0 ||
+        if (!IsVisible || _dismissing || ResultText.Text.Length == 0 ||
             AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation) return;
 
         int version = _resultRevealVersion;
-        ResultText.Opacity = 0;
+        FrameworkElement target = MarkdownResult.Visibility == Visibility.Visible ? MarkdownResult : ResultText;
+        target.Opacity = 0;
         _resultRevealStart = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
             if (version != _resultRevealVersion) return;
@@ -39,17 +41,12 @@ public partial class TranslationWindow
             // only the alpha of characters in the visible viewport changes per frame.
             var drawing = new DrawingGroup();
             var brushes = new List<SolidColorBrush>();
-            int[] starts = StringInfo.ParseCombiningCharacters(ResultText.Text);
             double viewportHeight = ResultScroll.ViewportHeight;
             using (var context = drawing.Open())
             {
-                context.DrawRectangle(Brushes.Transparent, null, new Rect(ResultText.RenderSize));
-                for (int i = 0; i < starts.Length; i++)
+                context.DrawRectangle(Brushes.Transparent, null, new Rect(target.RenderSize));
+                foreach (var (leading, trailing) in ResultCharacterRects())
                 {
-                    if (char.IsWhiteSpace(ResultText.Text, starts[i])) continue;
-                    int end = i + 1 < starts.Length ? starts[i + 1] : ResultText.Text.Length;
-                    var leading = ResultText.GetRectFromCharacterIndex(starts[i]);
-                    var trailing = ResultText.GetRectFromCharacterIndex(end - 1, trailingEdge: true);
                     // Caret queries can finish a pending layout and trigger cancellation.
                     if (version != _resultRevealVersion) return;
                     if (leading.IsEmpty || trailing.IsEmpty) continue;
@@ -66,19 +63,52 @@ public partial class TranslationWindow
             _resultRevealBrushes = brushes;
             _resultRevealCompleted = 0;
             _resultRevealInterval = Math.Min(14, 1200d / brushes.Count);
-            ResultText.OpacityMask = new DrawingBrush(drawing)
+            target.OpacityMask = new DrawingBrush(drawing)
             {
                 ViewboxUnits = BrushMappingMode.Absolute,
-                Viewbox = new Rect(ResultText.RenderSize),
+                Viewbox = new Rect(target.RenderSize),
                 Stretch = Stretch.Fill
             };
-            ResultText.Opacity = 1;
+            target.Opacity = 1;
             double duration = (brushes.Count - 1) * _resultRevealInterval + CharacterFadeMilliseconds;
             var reveal = new DoubleAnimation(0, duration, TimeSpan.FromMilliseconds(duration)) { FillBehavior = FillBehavior.Stop };
             Timeline.SetDesiredFrameRate(reveal, Math.Min(60, AnimationConfig.TargetFps));
             reveal.Completed += (_, _) => { if (version == _resultRevealVersion) StopResultReveal(); };
             BeginAnimation(ResultRevealTimeProperty, reveal);
         }));
+    }
+
+    private IEnumerable<(Rect Leading, Rect Trailing)> ResultCharacterRects()
+    {
+        if (MarkdownResult.Visibility == Visibility.Visible)
+        {
+            var cursor = MarkdownResult.Document.ContentStart;
+            while (cursor != null && cursor.CompareTo(MarkdownResult.Document.ContentEnd) < 0)
+            {
+                if (cursor.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+                {
+                    string text = cursor.GetTextInRun(LogicalDirection.Forward);
+                    int[] starts = StringInfo.ParseCombiningCharacters(text);
+                    for (int i = 0; i < starts.Length; i++)
+                    {
+                        if (char.IsWhiteSpace(text, starts[i])) continue;
+                        int end = i + 1 < starts.Length ? starts[i + 1] : text.Length;
+                        yield return (cursor.GetPositionAtOffset(starts[i])!.GetCharacterRect(LogicalDirection.Forward),
+                            cursor.GetPositionAtOffset(end)!.GetCharacterRect(LogicalDirection.Backward));
+                    }
+                }
+                cursor = cursor.GetNextContextPosition(LogicalDirection.Forward);
+            }
+            yield break;
+        }
+        int[] plainStarts = StringInfo.ParseCombiningCharacters(ResultText.Text);
+        for (int i = 0; i < plainStarts.Length; i++)
+        {
+            if (char.IsWhiteSpace(ResultText.Text, plainStarts[i])) continue;
+            int end = i + 1 < plainStarts.Length ? plainStarts[i + 1] : ResultText.Text.Length;
+            yield return (ResultText.GetRectFromCharacterIndex(plainStarts[i]),
+                ResultText.GetRectFromCharacterIndex(end - 1, trailingEdge: true));
+        }
     }
 
     private void UpdateCharacterFades(double elapsed)
@@ -102,11 +132,14 @@ public partial class TranslationWindow
         _resultRevealBrushes = null;
         BeginAnimation(ResultRevealTimeProperty, null);
         SetValue(ResultRevealTimeProperty, 0d);
-        double opacity = revealImmediately ? 1 : ResultText.Opacity;
-        ResultText.BeginAnimation(OpacityProperty, null);
-        ResultText.Opacity = opacity;
-        ResultText.OpacityMask = null;
-        ResultText.Clip = null;
+        foreach (FrameworkElement target in new FrameworkElement[] { ResultText, MarkdownResult })
+        {
+            double opacity = revealImmediately ? 1 : target.Opacity;
+            target.BeginAnimation(OpacityProperty, null);
+            target.Opacity = opacity;
+            target.OpacityMask = null;
+            target.Clip = null;
+        }
     }
 
     private void ResultRevealMotionChanged()

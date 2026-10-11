@@ -78,6 +78,8 @@ public partial class TranslationWindow : Window
             RefreshLoadingMotion();
             if (!IsVisible) StopResultReveal();
         };
+        MarkdownResult.PreviewMouseDown += (_, _) => StopResultReveal();
+        MarkdownResult.SizeChanged += (_, _) => { if (_resultRevealBrushes != null) StopResultReveal(); };
         ResultText.PreviewMouseDown += (_, _) => StopResultReveal();
         ResultText.SizeChanged += (_, _) => { if (_resultRevealBrushes != null) StopResultReveal(); };
         ResultScroll.ScrollChanged += (_, e) =>
@@ -97,7 +99,7 @@ public partial class TranslationWindow : Window
         ConfigureLanguages(source, target);
         RefreshLocalization();
         ResultText.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy,
-            (_, e) => { CopyText(ResultText.SelectedText.Length > 0 ? ResultText.SelectedText : ResultText.Text); e.Handled = true; },
+            (_, e) => { CopyText(_result?.Currency != null ? OutputText : ResultText.SelectedText.Length > 0 ? ResultText.SelectedText : ResultText.Text); e.Handled = true; },
             (_, e) => { e.CanExecute = _result != null; e.Handled = true; }));
     }
 
@@ -114,6 +116,7 @@ public partial class TranslationWindow : Window
 
     internal void RefreshLocalization()
     {
+        LocalizeSelectionUx();
         Title = Loc.Get("translation.title");
         OpenButton.Content = Loc.Get("translation.translate");
         ReplaceLabel.Text = Loc.Get("translation.replace");
@@ -134,6 +137,8 @@ public partial class TranslationWindow : Window
         StopResultReveal();
         _selection = selection;
         _result = null;
+        ResetSelectionUx();
+        SetInputTruncated(selection.InputTruncated || selection.Text.Length > TranslationInput.MaxCharacters);
         UpdateLanguageSummary();
         OriginalText.Text = selection.Text;
         ResultText.Clear();
@@ -148,6 +153,8 @@ public partial class TranslationWindow : Window
         ClearDeferredPresentation();
         StopResultReveal();
         _selection = null; _result = null;
+        ResetSelectionUx();
+        SetInputTruncated(text.Length > TranslationInput.MaxCharacters);
         UpdateLanguageSummary();
         OriginalText.Text = text; ResultText.Clear();
         CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
@@ -179,7 +186,7 @@ public partial class TranslationWindow : Window
         PopupSurface.IsHitTestVisible = true;
         TranslationPanel.Visibility = _expanded ? Visibility.Visible : Visibility.Collapsed;
         SelectionChip.Visibility = _expanded ? Visibility.Collapsed : Visibility.Visible;
-        var point = new System.Drawing.Point((int)bounds.Right, (int)bounds.Bottom);
+        var point = new System.Drawing.Point((int)Math.Max(bounds.Left, bounds.Right - 1), (int)Math.Max(bounds.Top, bounds.Bottom - 1));
         var screen = reposition ? System.Windows.Forms.Screen.FromPoint(point) : System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle);
         double scale = MonitorSelection.GetScale(screen);
         var work = screen.WorkingArea;
@@ -189,7 +196,12 @@ public partial class TranslationWindow : Window
         TranslationPanel.MaxHeight = Math.Max(40, MaxHeight - 90);
         double estimateHeight = _expanded ? 440 : 70;
         var placement = ClampPlacement(bounds, _workArea, Width * scale, estimateHeight * scale);
-        if (reposition) { Left = placement.X / scale; Top = placement.Y / scale; }
+        if (reposition)
+        {
+            // Use physical coordinates even before Show; monitor origins do not share a DPI scale.
+            new WindowInteropHelper(this).EnsureHandle();
+            SetPopupPosition(placement);
+        }
         else UpdatePopupLimits();
         if (!IsVisible) Show();
         RefreshLoadingMotion();
@@ -451,6 +463,7 @@ public partial class TranslationWindow : Window
 
     private void ApplyStatus(string key)
     {
+        ManageModelButton.Visibility = key is "translation.modelMissing" or "translation.modelInvalid" ? Visibility.Visible : Visibility.Collapsed;
         SetLoading(key == "translation.working");
         StatusText.Text = Loc.Get(key);
         TranslateButton.IsEnabled = key != "translation.working";
@@ -461,6 +474,7 @@ public partial class TranslationWindow : Window
             StopResultReveal(); _result = null; ResultText.Clear();
             CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
         }
+        UpdateReplacementHint();
     }
 
     private void SetLoading(bool loading)
@@ -520,7 +534,7 @@ public partial class TranslationWindow : Window
         ResultText.Visibility = markdown ? Visibility.Collapsed : Visibility.Visible;
         if (markdown)
         {
-            MarkdownResult.Document = VNotch.Controls.AiMarkdown.Render(text, ResultText.FontFamily, normalBody: true);
+            MarkdownResult.Document = VNotch.Controls.AiMarkdown.Render(text, ResultText.FontFamily);
             MarkdownResult.Document.FontSize = longText ? 15 : 19;
         }
         else MarkdownResult.Document.Blocks.Clear();
@@ -537,17 +551,21 @@ public partial class TranslationWindow : Window
             return;
         }
         SetLoading(false);
+        ManageModelButton.Visibility = Visibility.Collapsed;
         _result = result;
+        SetInputTruncated(result.InputTruncated || _inputTruncated);
         PresentResultText();
         ResultScroll.ScrollToTop();
         CopyButton.IsEnabled = true;
-        ReplaceButton.IsEnabled = _selection?.CanReplace == true && (result.Currency != null || (result.LiteralsPreserved && result.WeekdaysPreserved));
+        ReplaceButton.IsEnabled = CanReplaceResult;
+        UpdateReplacementHint();
         TranslateButton.IsEnabled = true;
         CancelButton.Visibility = Visibility.Collapsed;
         LanguageSummary.Text = $"{LanguageName(result.SourceLanguage)} → {LanguageName(result.TargetLanguage)}";
         StatusText.Text = !result.WeekdaysPreserved ? Loc.Get("translation.checkDates") : result.LiteralsPreserved ? "" : Loc.Get("translation.checkFacts");
         if (result.Currency is { } conversion)
         {
+            ConfigureCurrencies(true, conversion.Price.Currency, conversion.Target);
             LanguageSummary.Text = conversion.Price.Currency + " → " + conversion.Target;
             StatusText.Text = conversion.Rate is { } rate
                 ? Loc.Get("translation.currencyRate", rate.Date.ToString("yyyy-MM-dd"), rate.Base, rate.Rate.ToString("G", Loc.GetCulture()), rate.Quote)
@@ -581,6 +599,7 @@ public partial class TranslationWindow : Window
         RefreshLoadingMotion();
         PopupSurface.IsHitTestVisible = false;
         SourceLanguageCombo.IsDropDownOpen = TargetLanguageCombo.IsDropDownOpen = false;
+        SourceCurrencyCombo.IsDropDownOpen = TargetCurrencyCombo.IsDropDownOpen = false;
         _selection = null; _result = null; _expanded = false;
         Dismissed?.Invoke();
         void Finish()
@@ -610,7 +629,7 @@ public partial class TranslationWindow : Window
     private void Copy_Click(object sender, RoutedEventArgs e)
     {
         if (_result == null) return;
-        CopyText(ResultText.Text);
+        CopyText(OutputText);
     }
     private void CopyText(string text)
     {
@@ -639,13 +658,14 @@ public partial class TranslationWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            if (SourceLanguageCombo.IsDropDownOpen || TargetLanguageCombo.IsDropDownOpen)
-                SourceLanguageCombo.IsDropDownOpen = TargetLanguageCombo.IsDropDownOpen = false;
+            if (SourceLanguageCombo.IsDropDownOpen || TargetLanguageCombo.IsDropDownOpen || SourceCurrencyCombo.IsDropDownOpen || TargetCurrencyCombo.IsDropDownOpen)
+                SourceLanguageCombo.IsDropDownOpen = TargetLanguageCombo.IsDropDownOpen = SourceCurrencyCombo.IsDropDownOpen = TargetCurrencyCombo.IsDropDownOpen = false;
             else Dismiss();
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && TranslateButton.IsEnabled &&
-                 e.OriginalSource is not ComboBoxItem && !SourceLanguageCombo.IsDropDownOpen && !TargetLanguageCombo.IsDropDownOpen)
+                 e.OriginalSource is not ComboBoxItem && !SourceLanguageCombo.IsDropDownOpen && !TargetLanguageCombo.IsDropDownOpen &&
+                 !SourceCurrencyCombo.IsDropDownOpen && !TargetCurrencyCombo.IsDropDownOpen)
         { TranslateRequested?.Invoke(); e.Handled = true; }
     }
 }

@@ -228,7 +228,7 @@ internal static class AiMarkdown
                     // Render labels without fetching remote images or executing generated links.
                     var label = new Span { Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)) };
                     AddInlines(label.Inlines, link);
-                    if (!string.IsNullOrEmpty(link.Url)) label.Inlines.Add(new Run(" (" + link.Url + ")"));
+                    if (!string.IsNullOrEmpty(link.Url) && !VNotch.Services.Translation.TranslationStructuredText.IsSocialIcon(link)) label.Inlines.Add(new Run(" (" + link.Url + ")"));
                     target.Add(label); break;
                 case ContainerInline nested: AddInlines(target, nested); break;
             }

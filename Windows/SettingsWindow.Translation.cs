@@ -27,6 +27,8 @@ public partial class SettingsWindow
         LoadTranslationAdvanced(_settings);
         EnableTranslationCheck.IsChecked = _settings.EnableLiveTranslation;
         AutoTranslationCheck.IsChecked = _settings.AutoLiveTranslation;
+        TranslationIgnoreFullscreenCheck.IsChecked = _settings.TranslationIgnoreFullscreen;
+        TranslationExcludedAppsBox.Text = _settings.TranslationExcludedApps;
         FormatTranslationCheck.IsChecked = _settings.FormatTranslationText;
         HumanizerTranslationCheck.IsChecked = _settings.EnableTranslationHumanizer;
         CurrencyConversionCheck.IsChecked = _settings.EnableCurrencyConversion;
@@ -58,6 +60,8 @@ public partial class SettingsWindow
         snapshot.TranslationModelId = TranslationModelCatalog.Normalize(TranslationModelCombo.SelectedValue as string);
         snapshot.EnableLiveTranslation = EnableTranslationCheck.IsChecked == true;
         snapshot.AutoLiveTranslation = AutoTranslationCheck.IsChecked == true;
+        snapshot.TranslationIgnoreFullscreen = TranslationIgnoreFullscreenCheck.IsChecked == true;
+        snapshot.TranslationExcludedApps = TranslationExcludedAppsBox.Text.Trim();
         snapshot.FormatTranslationText = FormatTranslationCheck.IsChecked == true;
         snapshot.EnableTranslationHumanizer = HumanizerTranslationCheck.IsChecked == true;
         snapshot.EnableCurrencyConversion = CurrencyConversionCheck.IsChecked == true;
@@ -75,6 +79,11 @@ public partial class SettingsWindow
         if (!_isLoadingSettings && TranslationSourceCombo.SelectedValue != null && TranslationTargetCombo.SelectedValue != null) PushLivePreview();
     }
 
+    private void TranslationExcludedApps_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!_isLoadingSettings && _translationInitialized) PushLivePreview();
+    }
+
     private void LocalizeTranslationSettings()
     {
         LocalizeTranslationAdvanced();
@@ -83,6 +92,9 @@ public partial class SettingsWindow
         TranslationExperimentalBadge.Text = Loc.Get("settings.badge.experimental");
         TranslationEnableHint.Text = Loc.Get("translation.enableHint");
         AutoTranslationCheck.Content = Loc.Get("translation.auto");
+        TranslationIgnoreFullscreenCheck.Content = Loc.Get("translation.ignoreFullscreen");
+        TranslationExcludedAppsLabel.Text = Loc.Get("translation.excludedApps");
+        TranslationExcludedAppsHint.Text = Loc.Get("translation.excludedAppsHint");
         TranslationAutoHint.Text = Loc.Get("translation.autoHint");
         FormatTranslationCheck.Content = Loc.Get("translation.formatText");
         TranslationFormatHint.Text = Loc.Get("translation.formatTextHint");

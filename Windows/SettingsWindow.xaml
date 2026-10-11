@@ -1884,6 +1884,10 @@
                                             <StackPanel>
                                                 <CheckBox x:Name="AutoTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
                                                 <TextBlock x:Name="TranslationAutoHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                                <CheckBox x:Name="TranslationIgnoreFullscreenCheck" Margin="0,12,0,0" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationExcludedAppsLabel" Style="{StaticResource SettingHintText}" Margin="0,12,0,6"/>
+                                                <TextBox x:Name="TranslationExcludedAppsBox" MinHeight="30" TextChanged="TranslationExcludedApps_Changed"/>
+                                                <TextBlock x:Name="TranslationExcludedAppsHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
                                         <Border Style="{StaticResource SettingRowBorder}">

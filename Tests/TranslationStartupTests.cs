@@ -291,7 +291,30 @@ public sealed class TranslationStartupTests
         Assert.True(engine.FirstCancelled);
         Assert.Equal(1, engine.Calls);
         Assert.Empty(window.ResultText.Text);
-        Assert.False(engine.Preparing.Task.IsCompleted);
+        Assert.True(engine.Preparing.Task.IsCompleted);
+    });
+
+    [Fact]
+    public void DismissingDuringColdStartKeepsPreparationAndSuppressesTheOldResult() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { BlockPreparation = true };
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
+        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        await engine.Preparing.Task.WaitAsync(ct);
+        var preparation = controller.PrepareModelAsync();
+        window.Dismiss();
+        Assert.False(preparation.IsCompleted);
+        engine.Prepared.TrySetResult();
+        await preparation.WaitAsync(ct);
+        await WpfFrameWaiter.UntilAsync(() => !window.IsVisible, "cold-start popup dismissed", ct);
+        Assert.Equal(0, engine.Calls);
+        Assert.Empty(window.ResultText.Text);
     });
 
     [Fact]
@@ -333,6 +356,57 @@ public sealed class TranslationStartupTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Store.VerifyAsync(cancellation.Token));
+    }
+
+    [Fact]
+    public void ChangingCurrencyCancelsOldRateRequestAndOnlyPresentsNewestPair() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        File.Delete(fixture.Path);
+        using var engine = new PreparedEngine();
+        using var handler = new ChangingCurrencyHandler();
+        using var client = new System.Net.Http.HttpClient(handler);
+        var privacy = new VNotch.Services.NetworkPrivacy();
+        privacy.Apply(new NotchSettings());
+        var rates = new CurrencyRateService(client, privacy, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(fixture.Path)!, "rates"),
+            () => new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero));
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, currencyRates: rates);
+        controller.ApplySettings(new NotchSettings { TranslationTargetCurrency = "VND" });
+        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 50");
+        window.ShowClipboard("USD 50");
+        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        await handler.Started.Task.WaitAsync(ct);
+        window.SourceCurrencyCombo.SelectedValue = "SGD";
+        window.TargetCurrencyCombo.SelectedValue = "EUR";
+        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text.EndsWith("EUR"), "newest currency pair", ct);
+        Assert.Equal("SGD → EUR", window.LanguageSummary.Text);
+        Assert.Equal("500", window.OutputText);
+        Assert.True(handler.FirstCancelled);
+        Assert.Equal(0, engine.Calls);
+    });
+
+    private sealed class ChangingCurrencyHandler : System.Net.Http.HttpMessageHandler
+    {
+        internal TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool FirstCancelled;
+        private int _calls;
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Started.TrySetResult();
+                try { await Task.Delay(Timeout.Infinite, token); }
+                catch (OperationCanceledException) { FirstCancelled = true; throw; }
+            }
+            var parts = request.RequestUri!.AbsolutePath.Split('/');
+            return new(System.Net.HttpStatusCode.OK)
+            {
+                Content = new System.Net.Http.StringContent($"{{\"base\":\"{parts[^2]}\",\"quote\":\"{parts[^1]}\",\"rate\":10,\"date\":\"2026-10-11\"}}")
+            };
+        }
     }
 
     private sealed class PreparedEngine : ILocalTranslationEngine

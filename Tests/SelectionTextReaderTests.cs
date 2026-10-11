@@ -11,9 +11,9 @@ public sealed class SelectionTextReaderTests
         => Assert.Equal("first\nsecond", SelectionTextReader.JoinSelection(["first", "", "second"]));
 
     [Fact]
-    public void CombinedSelectionLimitDoesNotTruncateOrTranslateOnlyTheFirstRange()
+    public void CombinedSelectionKeepsBoundedPrefixWithOverflowMarker()
     {
-        Assert.Null(SelectionTextReader.JoinSelection([new string('a', 1500), new string('b', 600)]));
+        Assert.Equal(new string('a', 1500) + "\n" + new string('b', 500), SelectionTextReader.JoinSelection([new string('a', 1500), new string('b', 600)]));
         Assert.Null(SelectionTextReader.JoinSelection(["", " "]));
     }
 

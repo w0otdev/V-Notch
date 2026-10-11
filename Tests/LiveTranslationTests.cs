@@ -85,14 +85,15 @@ public sealed class LiveTranslationTests
     }
 
     [Fact]
-    public async Task AutoSourceDoesNotSkipInferenceBasedOnADetectorGuess()
+    public async Task AutoSourcePreservesConfidentlyDetectedSameLanguageWithoutInference()
     {
-        using var engine = new FakeEngine((_, source, _, _) =>
-        { Assert.Equal("auto", source); return Task.FromResult("Kết quả"); });
+        using var engine = new FakeEngine((_, _, _, _) => throw new InvalidOperationException("Same-language text must not reach inference."));
         using var service = new LocalTranslationService(engine);
-        var result = await service.TranslateAsync("Đây là một đoạn tiếng Việt đủ dài để bộ nhận diện tìm thấy.", "auto", "vi", default);
-        Assert.Equal("Kết quả", result.Text);
-        Assert.Equal(1, engine.Calls);
+        const string text = "Đây là một đoạn tiếng Việt đủ dài để bộ nhận diện tìm thấy.";
+        var result = await service.TranslateAsync(text, "auto", "vi", default);
+        Assert.Equal(text, result.Text);
+        Assert.Equal("vi", result.SourceLanguage);
+        Assert.Equal(0, engine.Calls);
     }
 
     [Fact]
