@@ -12,7 +12,7 @@ public partial class SettingsWindow
     private bool _translationHardwareStarted, _translationModelLoading;
     private sealed record ModelChoice(string Id, string Name, string Group, bool IsRecommended, string RecommendedLabel)
     {
-        public override string ToString() => Name;
+        public override string ToString() => IsRecommended ? $"{Name} · {RecommendedLabel}" : Name;
     }
 
     private void LoadTranslationModelChoices()

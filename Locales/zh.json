@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ 已复制",
   "clipboard.pin": "固定",
   "clipboard.unpin": "取消固定",
+  "clipboard.revealPassword": "显示密码",
+  "clipboard.hidePassword": "隐藏密码",
   "clipboard.details": "详情",
   "clipboard.groups": "分类",
   "clipboard.movePersonal": "移入私人",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "选择要自动保存的内容。你仍可将项目拖放到文件托盘中，现有历史记录会保留。",
   "settings.trayCaptureText": "自动保存复制的文本和链接",
   "settings.trayCaptureImages": "自动保存复制的图片",
+  "settings.trayDeleteSensitive": "60 秒后删除敏感剪贴板项目",
+  "settings.trayDeleteSensitive.hint": "检测到的敏感信息始终隐藏。删除已保存的项目，包括固定和归档项目；不会清空 Windows 剪贴板。可能无法识别没有标签的密码。",
   "settings.trayCaptureFiles": "自动保存复制的文件和文件夹",
   "settings.trayCaptureDelay": "捕获延迟",
   "settings.trayCaptureDelay.hint": "复制后等待 100 至 2000 毫秒再保存。延迟越长，越容易跳过快速连续复制时的中间内容。"

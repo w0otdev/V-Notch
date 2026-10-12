@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Gekopieerd",
   "clipboard.pin": "Vastzetten",
   "clipboard.unpin": "Losmaken",
+  "clipboard.revealPassword": "Wachtwoord weergeven",
+  "clipboard.hidePassword": "Wachtwoord verbergen",
   "clipboard.details": "Details",
   "clipboard.groups": "Categorieën",
   "clipboard.movePersonal": "Naar Privé verplaatsen",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Kies wat automatisch wordt opgeslagen. Je kunt nog steeds items naar de bestandslade slepen. Je bestaande geschiedenis blijft behouden.",
   "settings.trayCaptureText": "Gekopieerde tekst en links automatisch opslaan",
   "settings.trayCaptureImages": "Gekopieerde afbeeldingen automatisch opslaan",
+  "settings.trayDeleteSensitive": "Gevoelige klemborditems na 60 seconden verwijderen",
+  "settings.trayDeleteSensitive.hint": "Gedetecteerde geheimen worden altijd afgeschermd. Verwijdert opgeslagen items, ook vastgezette en gearchiveerde; het Windows-klembord wordt niet gewist. Wachtwoorden zonder label worden mogelijk niet herkend.",
   "settings.trayCaptureFiles": "Gekopieerde bestanden en mappen automatisch opslaan",
   "settings.trayCaptureDelay": "Opnamevertraging",
   "settings.trayCaptureDelay.hint": "Wacht na het kopiëren 100 tot 2000 ms voordat het item wordt opgeslagen. Een langere wachttijd slaat items over die snel achter elkaar worden gekopieerd."

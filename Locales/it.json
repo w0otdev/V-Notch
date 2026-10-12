@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Copiato",
   "clipboard.pin": "Fissa",
   "clipboard.unpin": "Rimuovi fissaggio",
+  "clipboard.revealPassword": "Mostra password",
+  "clipboard.hidePassword": "Nascondi password",
   "clipboard.details": "Dettagli",
   "clipboard.groups": "Categorie",
   "clipboard.movePersonal": "Sposta in Privato",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Scegli cosa salvare automaticamente. Puoi continuare a trascinare elementi nel vassoio file. La cronologia esistente viene conservata.",
   "settings.trayCaptureText": "Salva automaticamente testi e collegamenti copiati",
   "settings.trayCaptureImages": "Salva automaticamente le immagini copiate",
+  "settings.trayDeleteSensitive": "Elimina gli elementi sensibili dopo 60 secondi",
+  "settings.trayDeleteSensitive.hint": "I segreti rilevati sono sempre mascherati. Elimina gli elementi salvati, inclusi quelli fissati e archiviati; non svuota gli appunti di Windows. Le password senza etichetta potrebbero non essere rilevate.",
   "settings.trayCaptureFiles": "Salva automaticamente file e cartelle copiati",
   "settings.trayCaptureDelay": "Ritardo di acquisizione",
   "settings.trayCaptureDelay.hint": "Attende da 100 a 2000 ms dopo la copia prima di salvare. Un ritardo maggiore salta gli elementi copiati rapidamente in sequenza."

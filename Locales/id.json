@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Disalin",
   "clipboard.pin": "Sematkan",
   "clipboard.unpin": "Lepas sematan",
+  "clipboard.revealPassword": "Tampilkan kata sandi",
+  "clipboard.hidePassword": "Sembunyikan kata sandi",
   "clipboard.details": "Detail",
   "clipboard.groups": "Kategori",
   "clipboard.movePersonal": "Pindahkan ke Pribadi",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Pilih konten yang akan disimpan otomatis. Anda tetap dapat menyeret item ke baki berkas. Riwayat yang ada tetap tersimpan.",
   "settings.trayCaptureText": "Simpan teks dan tautan yang disalin secara otomatis",
   "settings.trayCaptureImages": "Simpan gambar yang disalin secara otomatis",
+  "settings.trayDeleteSensitive": "Hapus item papan klip sensitif setelah 60 detik",
+  "settings.trayDeleteSensitive.hint": "Rahasia yang terdeteksi selalu disamarkan. Menghapus item tersimpan, termasuk yang disematkan dan diarsipkan; tidak mengosongkan papan klip Windows. Kata sandi tanpa label mungkin tidak terdeteksi.",
   "settings.trayCaptureFiles": "Simpan berkas dan folder yang disalin secara otomatis",
   "settings.trayCaptureDelay": "Jeda perekaman",
   "settings.trayCaptureDelay.hint": "Tunggu 100 hingga 2000 ms setelah menyalin sebelum menyimpan. Jeda yang lebih lama melewati item yang disalin dengan cepat secara berurutan."

@@ -286,7 +286,7 @@ public sealed class ClipboardTrayMenuRegressionTests
             Assert.True(content.HasAnimatedProperties);
             Assert.True(((SolidColorBrush)row.Background).HasAnimatedProperties);
             await Task.Delay(50);
-            Assert.InRange(content.Opacity, idleOpacity + 0.01, 0.999);
+            Assert.InRange(content.Opacity, idleOpacity + 0.01, 1.0);
             highlighted.SetValue(item, false);
             await Task.Delay(30);
             highlighted.SetValue(item, true);

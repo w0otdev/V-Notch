@@ -494,7 +494,7 @@ public partial class MainWindow
         ExpandedContent.Opacity = 0;
         ExpandedContent.Visibility = Visibility.Visible;
 
-        if (ShouldShowMediaBlurBackground && LyricsBlurBackground != null)
+        if (LyricsBlurBackground != null)
         {
             _isLyricsBlurFadeInProgress = false;
             LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
@@ -749,6 +749,19 @@ public partial class MainWindow
 
     private bool _isLyricsBlurFadeInProgress = false;
 
+    private void HideLyricsBlurBackgroundImmediately()
+    {
+        _isLyricsBlurFadeInProgress = false;
+        if (LyricsBlurBackground == null) return;
+        LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
+        LyricsBlurBackground.Opacity = 0;
+        LyricsBlurBackground.Visibility = Visibility.Collapsed;
+    }
+
+    private bool CanShowLyricsBlurBackground => _settings.EnableBlurEffects && !IsLiquidGlassEnabled &&
+        ShouldShowMediaBlurBackground && !_isSpotifyCanvasMediaOpen &&
+        _isExpanded && !_isTimerView && !_isAudioView && !_isSecondaryView;
+
     private void FadeInLyricsBlurBackgroundIfActive(bool force = false)
     {
         if (!Dispatcher.CheckAccess())
@@ -757,8 +770,12 @@ public partial class MainWindow
             return;
         }
 
-        if (!_settings.EnableBlurEffects || IsLiquidGlassEnabled || !ShouldShowMediaBlurBackground || _isSpotifyCanvasMediaOpen || LyricsBlurBackground == null) return;
-        if (!_isExpanded || _isTimerView || _isAudioView || _isSecondaryView) return;
+        if (!CanShowLyricsBlurBackground)
+        {
+            HideLyricsBlurBackgroundImmediately();
+            return;
+        }
+        if (LyricsBlurBackground == null) return;
 
         if (LyricsBlurImage != null)
         {
@@ -792,6 +809,11 @@ public partial class MainWindow
         };
         fadeIn.Completed += (s, e) =>
         {
+            if (!CanShowLyricsBlurBackground)
+            {
+                HideLyricsBlurBackgroundImmediately();
+                return;
+            }
             _isLyricsBlurFadeInProgress = false;
             LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
             LyricsBlurBackground.Opacity = 0.55;

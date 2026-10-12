@@ -942,6 +942,8 @@
   "clipboard.copied": "✓ Copied",
   "clipboard.pin": "Pin",
   "clipboard.unpin": "Unpin",
+  "clipboard.revealPassword": "Show password",
+  "clipboard.hidePassword": "Hide password",
   "clipboard.details": "Details",
   "clipboard.groups": "Categories",
   "clipboard.movePersonal": "Move to Private",
@@ -1011,6 +1013,8 @@
   "settings.trayAdvanced.hint": "Choose what to save automatically. You can still drag items into File Tray. Your existing history is kept.",
   "settings.trayCaptureText": "Automatically save copied text and links",
   "settings.trayCaptureImages": "Automatically save copied images",
+  "settings.trayDeleteSensitive": "Delete sensitive clipboard items after 60 seconds",
+  "settings.trayDeleteSensitive.hint": "Detected secrets are always masked. Deletes saved items, including pinned and archived items; does not clear the Windows clipboard. Detection may miss unlabelled passwords.",
   "settings.trayCaptureFiles": "Automatically save copied files and folders",
   "settings.trayCaptureDelay": "Capture delay",
   "settings.trayCaptureDelay.hint": "Wait 100 to 2000 ms after copying before saving. A longer delay skips items copied in quick succession."

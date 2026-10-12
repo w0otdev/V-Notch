@@ -36,6 +36,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private bool _captureText = true, _captureImages = true, _captureFiles = true;
     public void ApplySettings(NotchSettings settings)
     {
+        Store.AutoDeleteSensitive = settings.ClipboardAutoDeleteSensitive;
+        _retentionTimer.Interval = settings.ClipboardAutoDeleteSensitive ? TimeSpan.FromSeconds(1) : TimeSpan.FromHours(1);
         _captureText = settings.ClipboardCaptureText;
         _captureImages = settings.ClipboardCaptureImages;
         _captureFiles = settings.ClipboardCaptureFiles;
@@ -447,11 +449,25 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         if (!_disposed && e.Mode == PowerModes.Suspend)
             await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap();
     }
+    private DateTime _nextHistoryPruneUtc = DateTime.UtcNow.AddHours(1);
+    private bool _pruning;
     private async void RetentionTick(object? sender, EventArgs e)
     {
-        try { await Store.PruneAsync(DateTime.UtcNow); }
+        if (_pruning || _disposed) return;
+        _pruning = true;
+        try
+        {
+            var now = DateTime.UtcNow;
+            await Store.ExpireSensitiveAsync(now);
+            if (now >= _nextHistoryPruneUtc)
+            {
+                await Store.PruneAsync(now);
+                _nextHistoryPruneUtc = now.AddHours(1);
+            }
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
         { Report("clipboard.error"); }
+        finally { _pruning = false; }
     }
     private static bool IsTemporaryScreenshotPath(string path)
     {

@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ تم النسخ",
   "clipboard.pin": "تثبيت",
   "clipboard.unpin": "إلغاء التثبيت",
+  "clipboard.revealPassword": "إظهار كلمة المرور",
+  "clipboard.hidePassword": "إخفاء كلمة المرور",
   "clipboard.details": "التفاصيل",
   "clipboard.groups": "الفئات",
   "clipboard.movePersonal": "نقل إلى الخاص",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "اختر المحتوى الذي يُحفظ تلقائيًا. يمكنك مواصلة سحب العناصر وإفلاتها في صينية الملفات، وسيُحتفظ بالسجل الحالي.",
   "settings.trayCaptureText": "حفظ النصوص والروابط المنسوخة تلقائيًا",
   "settings.trayCaptureImages": "حفظ الصور المنسوخة تلقائيًا",
+  "settings.trayDeleteSensitive": "حذف عناصر الحافظة الحساسة بعد 60 ثانية",
+  "settings.trayDeleteSensitive.hint": "تُخفى الأسرار المكتشفة دائمًا. تُحذف العناصر المحفوظة، بما فيها المثبتة والمؤرشفة، دون مسح حافظة Windows. قد لا تُكتشف كلمات المرور غير المعلّمة.",
   "settings.trayCaptureFiles": "حفظ الملفات والمجلدات المنسوخة تلقائيًا",
   "settings.trayCaptureDelay": "تأخير الالتقاط",
   "settings.trayCaptureDelay.hint": "الانتظار من 100 إلى 2000 مللي ثانية بعد النسخ قبل الحفظ. يؤدي الانتظار مدة أطول إلى تجاوز العناصر الوسيطة عند النسخ السريع المتتابع."

@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Skopiowano",
   "clipboard.pin": "Przypnij",
   "clipboard.unpin": "Odepnij",
+  "clipboard.revealPassword": "Pokaż hasło",
+  "clipboard.hidePassword": "Ukryj hasło",
   "clipboard.details": "Szczegóły",
   "clipboard.groups": "Kategorie",
   "clipboard.movePersonal": "Przenieś do Prywatnych",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Wybierz, co zapisywać automatycznie. Nadal możesz przeciągać elementy do zasobnika plików. Dotychczasowa historia zostanie zachowana.",
   "settings.trayCaptureText": "Automatycznie zapisuj skopiowany tekst i linki",
   "settings.trayCaptureImages": "Automatycznie zapisuj skopiowane obrazy",
+  "settings.trayDeleteSensitive": "Usuwaj poufne elementy schowka po 60 sekundach",
+  "settings.trayDeleteSensitive.hint": "Wykryte sekrety są zawsze maskowane. Usuwa zapisane elementy, także przypięte i zarchiwizowane; nie czyści schowka Windows. Hasła bez etykiety mogą nie zostać wykryte.",
   "settings.trayCaptureFiles": "Automatycznie zapisuj skopiowane pliki i foldery",
   "settings.trayCaptureDelay": "Opóźnienie zapisu",
   "settings.trayCaptureDelay.hint": "Czeka od 100 do 2000 ms po skopiowaniu, zanim zapisze element. Dłuższe opóźnienie pomija elementy kopiowane szybko jeden po drugim."

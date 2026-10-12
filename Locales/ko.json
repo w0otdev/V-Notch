@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ 복사됨",
   "clipboard.pin": "고정",
   "clipboard.unpin": "고정 해제",
+  "clipboard.revealPassword": "비밀번호 표시",
+  "clipboard.hidePassword": "비밀번호 숨기기",
   "clipboard.details": "세부 정보",
   "clipboard.groups": "분류",
   "clipboard.movePersonal": "비공개로 이동",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "자동으로 저장할 내용을 선택하세요. 파일 트레이에 항목을 끌어다 놓는 기능은 계속 사용할 수 있습니다. 기존 기록은 유지됩니다.",
   "settings.trayCaptureText": "복사한 텍스트와 링크 자동 저장",
   "settings.trayCaptureImages": "복사한 이미지 자동 저장",
+  "settings.trayDeleteSensitive": "민감한 클립보드 항목을 60초 후 삭제",
+  "settings.trayDeleteSensitive.hint": "감지된 비밀 정보는 항상 가려집니다. 고정 및 보관된 항목을 포함한 저장 항목을 삭제하며 Windows 클립보드는 비우지 않습니다. 레이블이 없는 암호는 감지되지 않을 수 있습니다.",
   "settings.trayCaptureFiles": "복사한 파일과 폴더 자동 저장",
   "settings.trayCaptureDelay": "캡처 지연",
   "settings.trayCaptureDelay.hint": "복사한 뒤 저장하기까지 100~2000ms 동안 기다립니다. 대기 시간이 길면 빠르게 연속해서 복사한 중간 항목은 저장하지 않습니다."

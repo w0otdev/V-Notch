@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Copié",
   "clipboard.pin": "Épingler",
   "clipboard.unpin": "Désépingler",
+  "clipboard.revealPassword": "Afficher le mot de passe",
+  "clipboard.hidePassword": "Masquer le mot de passe",
   "clipboard.details": "Détails",
   "clipboard.groups": "Catégories",
   "clipboard.movePersonal": "Déplacer vers Privé",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Choisissez les éléments à enregistrer automatiquement. Vous pouvez toujours les glisser dans le bac à fichiers. L’historique existant est conservé.",
   "settings.trayCaptureText": "Enregistrer automatiquement les textes et liens copiés",
   "settings.trayCaptureImages": "Enregistrer automatiquement les images copiées",
+  "settings.trayDeleteSensitive": "Supprimer les éléments sensibles après 60 secondes",
+  "settings.trayDeleteSensitive.hint": "Les secrets détectés sont toujours masqués. Supprime les éléments enregistrés, même épinglés ou archivés, sans vider le presse-papiers Windows. Les mots de passe sans libellé peuvent ne pas être détectés.",
   "settings.trayCaptureFiles": "Enregistrer automatiquement les fichiers et dossiers copiés",
   "settings.trayCaptureDelay": "Délai de capture",
   "settings.trayCaptureDelay.hint": "Attendre de 100 à 2000 ms après la copie avant d'enregistrer. Un délai plus long ignore les éléments copiés rapidement à la suite."

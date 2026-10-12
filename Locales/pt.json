@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Copiado",
   "clipboard.pin": "Fixar",
   "clipboard.unpin": "Desafixar",
+  "clipboard.revealPassword": "Mostrar senha",
+  "clipboard.hidePassword": "Ocultar senha",
   "clipboard.details": "Detalhes",
   "clipboard.groups": "Categorias",
   "clipboard.movePersonal": "Mover para Privado",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Escolha o que salvar automaticamente. Você ainda pode arrastar itens para a bandeja de arquivos. O histórico existente será mantido.",
   "settings.trayCaptureText": "Salvar automaticamente textos e links copiados",
   "settings.trayCaptureImages": "Salvar automaticamente imagens copiadas",
+  "settings.trayDeleteSensitive": "Excluir itens sensíveis da área de transferência após 60 segundos",
+  "settings.trayDeleteSensitive.hint": "Segredos detectados são sempre ocultados. Exclui itens salvos, incluindo fixados e arquivados; não limpa a área de transferência do Windows. Senhas sem rótulo podem não ser detectadas.",
   "settings.trayCaptureFiles": "Salvar automaticamente arquivos e pastas copiados",
   "settings.trayCaptureDelay": "Atraso de captura",
   "settings.trayCaptureDelay.hint": "Aguarda de 100 a 2000 ms após copiar antes de salvar. Um atraso maior ignora os itens copiados rapidamente em sequência."

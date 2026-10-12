@@ -16,6 +16,7 @@ public sealed record ClipboardEntry
     public string[] Groups { get; init; } = [];
     public DateTime CopiedUtc { get; init; } = DateTime.UtcNow;
     public long ByteSize { get; init; }
+    public bool IsSensitive { get; init; }
     public bool IsPinned { get; init; }
     public bool IsPersonal { get; init; }
     public bool IsArchived { get; init; }

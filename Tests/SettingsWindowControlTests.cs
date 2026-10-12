@@ -228,6 +228,7 @@ public sealed class SettingsWindowControlTests
     [InlineData("TrayTextCheck", "ClipboardCaptureText")]
     [InlineData("TrayImagesCheck", "ClipboardCaptureImages")]
     [InlineData("TrayFilesCheck", "ClipboardCaptureFiles")]
+    [InlineData("TraySensitiveCheck", "ClipboardAutoDeleteSensitive")]
     [InlineData("ShowBatteryCheck", "ShowBatteryIndicator")]
     [InlineData("EnableWeatherCheck", "EnableWeather")]
     [InlineData("AutoCheckUpdatesCheck", "AutoCheckUpdates")]

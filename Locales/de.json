@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Kopiert",
   "clipboard.pin": "Anheften",
   "clipboard.unpin": "Lösen",
+  "clipboard.revealPassword": "Passwort anzeigen",
+  "clipboard.hidePassword": "Passwort ausblenden",
   "clipboard.details": "Details",
   "clipboard.groups": "Kategorien",
   "clipboard.movePersonal": "Nach Privat verschieben",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Wählen Sie aus, was automatisch gespeichert wird. Sie können weiterhin Elemente in die Dateiablage ziehen. Der bisherige Verlauf bleibt erhalten.",
   "settings.trayCaptureText": "Kopierte Texte und Links automatisch speichern",
   "settings.trayCaptureImages": "Kopierte Bilder automatisch speichern",
+  "settings.trayDeleteSensitive": "Vertrauliche Zwischenablageeinträge nach 60 Sekunden löschen",
+  "settings.trayDeleteSensitive.hint": "Erkannte Geheimnisse werden immer maskiert. Löscht gespeicherte Einträge, auch angeheftete und archivierte; die Windows-Zwischenablage bleibt unverändert. Unbeschriftete Passwörter werden möglicherweise nicht erkannt.",
   "settings.trayCaptureFiles": "Kopierte Dateien und Ordner automatisch speichern",
   "settings.trayCaptureDelay": "Erfassungsverzögerung",
   "settings.trayCaptureDelay.hint": "Wartet nach dem Kopieren 100 bis 2000 ms vor dem Speichern. Eine längere Wartezeit überspringt Inhalte, die kurz hintereinander kopiert werden."

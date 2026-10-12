@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Copiado",
   "clipboard.pin": "Fijar",
   "clipboard.unpin": "Desfijar",
+  "clipboard.revealPassword": "Mostrar contraseña",
+  "clipboard.hidePassword": "Ocultar contraseña",
   "clipboard.details": "Detalles",
   "clipboard.groups": "Categorías",
   "clipboard.movePersonal": "Mover a Privado",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Elige qué guardar automáticamente. Puedes seguir arrastrando elementos a la bandeja de archivos. El historial existente se conserva.",
   "settings.trayCaptureText": "Guardar automáticamente textos y enlaces copiados",
   "settings.trayCaptureImages": "Guardar automáticamente imágenes copiadas",
+  "settings.trayDeleteSensitive": "Eliminar elementos sensibles del portapapeles tras 60 segundos",
+  "settings.trayDeleteSensitive.hint": "Los secretos detectados siempre se ocultan. Elimina los elementos guardados, incluidos los fijados y archivados; no vacía el portapapeles de Windows. Puede omitir contraseñas sin etiqueta.",
   "settings.trayCaptureFiles": "Guardar automáticamente archivos y carpetas copiados",
   "settings.trayCaptureDelay": "Retardo de captura",
   "settings.trayCaptureDelay.hint": "Espera de 100 a 2000 ms tras copiar antes de guardar. Un retraso mayor omite los elementos copiados rápidamente uno tras otro."

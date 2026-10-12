@@ -939,6 +939,8 @@
   "clipboard.copied": "✓ Đã sao chép",
   "clipboard.pin": "Ghim",
   "clipboard.unpin": "Bỏ ghim",
+  "clipboard.revealPassword": "Xem mật khẩu",
+  "clipboard.hidePassword": "Ẩn mật khẩu",
   "clipboard.details": "Chi tiết",
   "clipboard.groups": "Danh mục",
   "clipboard.movePersonal": "Chuyển vào mục Riêng tư",
@@ -1008,6 +1010,8 @@
   "settings.trayAdvanced.hint": "Chọn loại nội dung được tự động lưu. Bạn vẫn có thể kéo thả vào Khay tệp. Lịch sử hiện có sẽ được giữ lại.",
   "settings.trayCaptureText": "Tự động lưu văn bản và liên kết đã sao chép",
   "settings.trayCaptureImages": "Tự động lưu ảnh đã sao chép",
+  "settings.trayDeleteSensitive": "Xóa mục nhạy cảm sau 60 giây",
+  "settings.trayDeleteSensitive.hint": "Luôn che dữ liệu nhạy cảm được nhận diện. Xóa mục đã lưu, kể cả mục ghim và lưu trữ; không xóa clipboard Windows. Có thể bỏ sót mật khẩu không có nhãn.",
   "settings.trayCaptureFiles": "Tự động lưu tệp và thư mục đã sao chép",
   "settings.trayCaptureDelay": "Thời gian chờ trước khi lưu",
   "settings.trayCaptureDelay.hint": "Chờ từ 100 đến 2000 ms sau khi sao chép rồi mới lưu. Tăng thời gian chờ để bỏ qua các lần sao chép liên tiếp quá nhanh."

@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ कॉपी किया",
   "clipboard.pin": "पिन करें",
   "clipboard.unpin": "पिन हटाएँ",
+  "clipboard.revealPassword": "पासवर्ड दिखाएं",
+  "clipboard.hidePassword": "पासवर्ड छिपाएं",
   "clipboard.details": "विवरण",
   "clipboard.groups": "श्रेणियाँ",
   "clipboard.movePersonal": "निजी श्रेणी में ले जाएँ",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "चुनें कि कौन-सी सामग्री अपने आप सहेजी जाए। आप अब भी आइटम खींचकर फ़ाइल ट्रे में जोड़ सकते हैं। पुराना इतिहास बना रहेगा।",
   "settings.trayCaptureText": "कॉपी किए गए पाठ और लिंक अपने आप सहेजें",
   "settings.trayCaptureImages": "कॉपी की गई छवियाँ अपने आप सहेजें",
+  "settings.trayDeleteSensitive": "संवेदनशील क्लिपबोर्ड आइटम 60 सेकंड बाद हटाएँ",
+  "settings.trayDeleteSensitive.hint": "पहचानी गई गोपनीय जानकारी हमेशा छिपाई जाती है। सहेजे गए आइटम, पिन किए गए और संग्रहित आइटम सहित, हटते हैं; Windows क्लिपबोर्ड साफ़ नहीं होता। बिना लेबल वाले पासवर्ड छूट सकते हैं।",
   "settings.trayCaptureFiles": "कॉपी की गई फ़ाइलें और फ़ोल्डर अपने आप सहेजें",
   "settings.trayCaptureDelay": "सहेजने से पहले विलंब",
   "settings.trayCaptureDelay.hint": "कॉपी करने के बाद सहेजने से पहले 100 से 2000 ms तक इंतज़ार करें। ज़्यादा इंतज़ार रखने पर तेज़ी से लगातार कॉपी किए गए बीच के आइटम सहेजे नहीं जाएँगे।"

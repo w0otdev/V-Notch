@@ -227,7 +227,11 @@ public sealed class ClipboardTrayMotionRegressionTests
         // WPF initializes the replacement animation clock on the next render tick.
         await NextRenderFrame();
         double renderedX = container.TranslatePoint(new Point(), list).X;
-        Assert.InRange(Math.Abs(renderedX - positions[first.Entry.Id]), 0, 100);
+        double targetX = renderedX - motion.X;
+        double travelDistance = Math.Abs(targetX - positions[first.Entry.Id]);
+        Assert.True(travelDistance > 50);
+        Assert.InRange(Math.Abs(renderedX - positions[first.Entry.Id]), 0, travelDistance);
+        Assert.InRange(renderedX, Math.Min(positions[first.Entry.Id], targetX) - 1, Math.Max(positions[first.Entry.Id], targetX) + 1);
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
         Assert.Same(motion, container.RenderTransform);
         Assert.Null(Field<object?>(tray, "_pendingCardPositions"));

@@ -22,9 +22,65 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         RefreshAge(DateTime.UtcNow);
         OnPropertyChanged(string.Empty);
     }
-    public string Preview => Entry.Kind == ClipboardKind.Image ? "" : Entry.Preview;
-    public string Title => Entry.Kind == ClipboardKind.Image && Entry.Title is "Image" or "Screenshot"
-        ? Services.Loc.Get(Entry.Title == "Image" ? "clipboard.image" : "clipboard.screenshot") : Entry.Title;
+    private bool _isRevealed;
+    private string? _revealedText;
+
+    public bool IsRevealed
+    {
+        get => _isRevealed;
+        set
+        {
+            if (SetProperty(ref _isRevealed, value))
+            {
+                OnPropertyChanged(nameof(Preview));
+                OnPropertyChanged(nameof(DisplayPreview));
+                OnPropertyChanged(nameof(BlurRadius));
+                OnPropertyChanged(nameof(RevealIconKind));
+                OnPropertyChanged(nameof(RevealTooltip));
+            }
+        }
+    }
+
+    public double BlurRadius => IsMasked && !IsRevealed ? 12.0 : 0.0;
+
+    public bool IsMasked => Entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(Entry.Preview, Entry.SourceApp, Entry.SourceExecutable);
+
+    public string Preview => IsMasked && !IsRevealed
+        ? Services.Clipboard.ClipboardSensitiveData.Mask
+        : !string.IsNullOrEmpty(_revealedText)
+            ? _revealedText
+            : Entry.Kind == ClipboardKind.Image ? "" : Entry.Preview;
+
+    public string DisplayPreview => !string.IsNullOrEmpty(_revealedText) ? _revealedText : Preview;
+
+    public System.Windows.Visibility MaskActionVisibility => IsMasked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+    public TrayIconKind RevealIconKind => IsRevealed ? TrayIconKind.Lock : TrayIconKind.Unlock;
+
+    public string RevealTooltip => IsRevealed ? Services.Loc.Get("clipboard.hidePassword") : Services.Loc.Get("clipboard.revealPassword");
+
+    public async Task RevealAsync(Services.Clipboard.ClipboardHistoryStore store)
+    {
+        if (!IsMasked) return;
+        if (_revealedText == null)
+        {
+            try
+            {
+                var content = await store.GetContentAsync(Entry.Id);
+                _revealedText = content?.Text ?? "";
+            }
+            catch { _revealedText = ""; }
+        }
+        IsRevealed = true;
+    }
+
+    public void Hide()
+    {
+        IsRevealed = false;
+    }
+
+    public string Title => IsMasked && !IsRevealed ? Services.Clipboard.ClipboardSensitiveData.Mask : Entry.Kind == ClipboardKind.Image && Entry.Title is "Image" or "Screenshot"
+        ? Services.Loc.Get(Entry.Title == "Image" ? "clipboard.image" : "clipboard.screenshot") : !string.IsNullOrEmpty(_revealedText) ? _revealedText : Entry.Title;
     public string Source => string.IsNullOrEmpty(Entry.SourceApp) ? Services.Loc.Get("clipboard.source") : Entry.SourceApp;
     public string FooterSource => Entry.IsPersonal ? Services.Loc.Get("clipboard.category.personal") : Source;
     internal ImageSource? PreferredSourceIcon => TrayAppIcons.FindSource(Entry.SourceApp, Entry.SourceExecutable);
@@ -170,7 +226,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
 
     private static Brush CreateCardBrush(ClipboardEntry entry)
     {
-        if (entry.Kind != ClipboardKind.Color || !Services.Clipboard.ClipboardClassifier.TryParseColor(entry.Preview, out uint argb))
+        if (entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(entry.Preview, entry.SourceApp, entry.SourceExecutable) || entry.Kind != ClipboardKind.Color || !Services.Clipboard.ClipboardClassifier.TryParseColor(entry.Preview, out uint argb))
             return SharedCardBrush;
         var color = Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
         var brush = new SolidColorBrush(color); brush.Freeze(); return brush;

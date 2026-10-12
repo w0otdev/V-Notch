@@ -19,7 +19,7 @@ public partial class ClipboardTray
     {
         while (source != null)
         {
-            if (source is Button) return true;
+            if (source is Button or DustParticleOverlay) return true;
             source = source is Visual ? VisualTreeHelper.GetParent(source) : LogicalTreeHelper.GetParent(source);
         }
         return false;
@@ -34,6 +34,10 @@ public partial class ClipboardTray
         {
             switch (action)
             {
+                case "toggleReveal":
+                    if (card.IsRevealed) card.Hide();
+                    else await card.RevealAsync(_controller.Store);
+                    break;
                 case "details": await ShowDetailsAsync(card); break;
                 case "pin": await _controller.Store.UpdateAsync(card.Entry.Id, pinned: !card.Entry.IsPinned); break;
                 case "archive": await _controller.Store.UpdateAsync(card.Entry.Id, archived: !card.Entry.IsArchived); break;

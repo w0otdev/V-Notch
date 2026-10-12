@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ Kopyalandı",
   "clipboard.pin": "Sabitle",
   "clipboard.unpin": "Sabitlemeyi kaldır",
+  "clipboard.revealPassword": "Şifreyi göster",
+  "clipboard.hidePassword": "Şifreyi gizle",
   "clipboard.details": "Ayrıntılar",
   "clipboard.groups": "Kategoriler",
   "clipboard.movePersonal": "Özel’e taşı",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "Otomatik kaydedilecek içeriği seçin. Öğeleri dosya tepsisine sürükleyip bırakmaya devam edebilirsiniz. Mevcut geçmiş korunur.",
   "settings.trayCaptureText": "Kopyalanan metin ve bağlantıları otomatik kaydet",
   "settings.trayCaptureImages": "Kopyalanan görselleri otomatik kaydet",
+  "settings.trayDeleteSensitive": "Hassas pano öğelerini 60 saniye sonra sil",
+  "settings.trayDeleteSensitive.hint": "Algılanan gizli bilgiler her zaman maskelenir. Sabitlenen ve arşivlenenler dahil kayıtlı öğeleri siler; Windows panosunu temizlemez. Etiketsiz parolalar algılanmayabilir.",
   "settings.trayCaptureFiles": "Kopyalanan dosya ve klasörleri otomatik kaydet",
   "settings.trayCaptureDelay": "Yakalama gecikmesi",
   "settings.trayCaptureDelay.hint": "Kopyaladıktan sonra kaydetmeden önce 100 ila 2000 ms bekler. Daha uzun gecikme, art arda hızla kopyalanan ara öğeleri atlar."

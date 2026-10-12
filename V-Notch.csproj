@@ -8,6 +8,8 @@
     <UseWPF>true</UseWPF>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
+    <!-- Audit snapshots are not application source, XAML pages, or resources. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*</DefaultItemExcludes>
 
     <CETCompat>false</CETCompat>
 

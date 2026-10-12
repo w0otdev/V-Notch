@@ -938,6 +938,8 @@
   "clipboard.copied": "✓ コピーしました",
   "clipboard.pin": "ピン留め",
   "clipboard.unpin": "ピン留めを外す",
+  "clipboard.revealPassword": "パスワードを表示",
+  "clipboard.hidePassword": "パスワードを非表示",
   "clipboard.details": "詳細",
   "clipboard.groups": "カテゴリ",
   "clipboard.movePersonal": "プライベートに移動",
@@ -1007,6 +1009,8 @@
   "settings.trayAdvanced.hint": "自動保存する内容を選びます。ファイルトレイへのドラッグ＆ドロップは引き続き利用できます。既存の履歴は保持されます。",
   "settings.trayCaptureText": "コピーしたテキストとリンクを自動保存",
   "settings.trayCaptureImages": "コピーした画像を自動保存",
+  "settings.trayDeleteSensitive": "機密性の高いクリップボード項目を60秒後に削除",
+  "settings.trayDeleteSensitive.hint": "検出した機密情報は常に非表示になります。ピン留め・アーカイブ済みを含む保存項目を削除します。Windowsのクリップボードは消去しません。ラベルのないパスワードは検出できない場合があります。",
   "settings.trayCaptureFiles": "コピーしたファイルとフォルダーを自動保存",
   "settings.trayCaptureDelay": "保存までの待機時間",
   "settings.trayCaptureDelay.hint": "コピーしてから保存するまで100～2000ミリ秒待機します。待機時間を長くすると、短時間に連続してコピーした途中の内容を保存しません。"

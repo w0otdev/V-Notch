@@ -602,6 +602,7 @@ public partial class SettingsWindow
         snapshot.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;
         snapshot.HideCamera = HideCameraCheck.IsChecked ?? false;
         snapshot.ClipboardHotkey = ClipboardHotkeyBox.Text.Trim();
+        snapshot.ClipboardAutoDeleteSensitive = TraySensitiveCheck.IsChecked == true;
         snapshot.ClipboardCaptureText = TrayTextCheck.IsChecked == true;
         snapshot.ClipboardCaptureImages = TrayImagesCheck.IsChecked == true;
         snapshot.ClipboardCaptureFiles = TrayFilesCheck.IsChecked == true;

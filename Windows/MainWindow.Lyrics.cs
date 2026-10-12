@@ -1148,7 +1148,11 @@ public partial class MainWindow
     private void HideLyricsWidget()
     {
         _subtitleSearchController.Invalidate();
-        if (!_isLyricsActive) return;
+        if (!_isLyricsActive)
+        {
+            if (!IsNoWidgetMode) Dispatcher.Invoke(HideLyricsBlurBackgroundImmediately);
+            return;
+        }
         _isLyricsActive = false;
         _isLyricsBlurFadeInProgress = false;
         UpdateSpotifyCanvasPresentationContext();
@@ -1191,24 +1195,8 @@ public partial class MainWindow
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutLyrics, VNotch.Services.AnimationConfig.TargetFps);
             LyricsWidget.BeginAnimation(OpacityProperty, fadeOutLyrics);
 
-            if (!IsNoWidgetMode && LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
-            {
-                _isLyricsBlurFadeInProgress = false;
-                var fadeOutBlur = new DoubleAnimation(LyricsBlurBackground.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(400)))
-                {
-                    EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
-                };
-                fadeOutBlur.Completed += (s, e) =>
-                {
-                    if (ShouldShowMediaBlurBackground) return;
-                    _isLyricsBlurFadeInProgress = false;
-                    LyricsBlurBackground.Visibility = Visibility.Collapsed;
-                    LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
-                    LyricsBlurBackground.Opacity = 0;
-                };
-                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutBlur, VNotch.Services.AnimationConfig.TargetFps);
-                LyricsBlurBackground.BeginAnimation(OpacityProperty, fadeOutBlur);
-            }
+            // The returning widget must never inherit the lyrics backdrop.
+            if (!IsNoWidgetMode) HideLyricsBlurBackgroundImmediately();
 
             SuspendSpotifyCanvasLifecycle();
 

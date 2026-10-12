@@ -31,6 +31,7 @@ public class NotchSettings
     public string MonitorDeviceId { get; set; } = "";
 
     public bool HideCamera { get; set; } = false;
+    public bool ClipboardAutoDeleteSensitive { get; set; }
     public bool ClipboardCaptureText { get; set; } = true;
     public bool ClipboardCaptureImages { get; set; } = true;
     public bool ClipboardCaptureFiles { get; set; } = true;

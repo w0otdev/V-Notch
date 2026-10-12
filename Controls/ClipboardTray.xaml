@@ -780,6 +780,9 @@
         <!-- Layer 5: Card Actions (Pin & More) in Top Right -->
         <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#E618181E" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
         <StackPanel Orientation="Horizontal">
+         <Button Tag="toggleReveal" Style="{StaticResource MoreActionButton}" ToolTip="{Binding RevealTooltip}" Click="CardAction_Click" Visibility="{Binding MaskActionVisibility}">
+          <local:TrayIcon Kind="{Binding RevealIconKind}" Width="13" Height="13" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+         </Button>
          <Button Tag="pin" Style="{StaticResource PinActionButton}" ToolTip="{Binding PinLabel}" Click="CardAction_Click">
           <local:TrayIcon Kind="Pin" Width="14.5" Height="14.5" VerticalAlignment="Center" HorizontalAlignment="Center"/>
          </Button>
@@ -818,8 +821,21 @@
          </Grid>
         </Border>
 
-        <!-- Layer 6: Text Preview (High-Contrast SF Pro Typographic Balance) -->
-        <TextBlock x:Name="CardPreviewText" Text="{Binding Preview}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Margin="14,13,14,42" VerticalAlignment="Top" MaxHeight="96" Foreground="#F5F5FA"/>
+        <!-- Layer 6: Text Preview Container with Dust Particle Overlay for Passwords -->
+        <Grid Margin="14,13,14,42" VerticalAlignment="Top" MaxHeight="96">
+         <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="#F5F5FA">
+          <TextBlock.Effect>
+           <BlurEffect Radius="{Binding BlurRadius}" RenderingBias="Performance"/>
+          </TextBlock.Effect>
+         </TextBlock>
+
+         <!-- Bụi bay mờ effect overlay: click to dissolve and show password -->
+         <local:DustParticleOverlay x:Name="DustOverlay"
+                                    IsActive="{Binding IsMasked}"
+                                    IsDissolved="{Binding IsRevealed}"
+                                    DissolveRequested="DustOverlay_DissolveRequested"
+                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        </Grid>
 
         <!-- Layer 7: Seamless Frosted Vignette Footer -->
         <Border VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,16,16">

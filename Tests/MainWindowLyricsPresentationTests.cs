@@ -14,6 +14,42 @@ public sealed class MainWindowLyricsPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public void InactiveLyricsClearAStaleBackdropWhenWidgetReturns() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Field<NotchSettings>(window, "_settings").ExpandedWidget = "clock";
+        Set(window, "_isLyricsActive", false);
+        window.LyricsBlurBackground.Visibility = Visibility.Visible;
+        window.LyricsBlurBackground.Opacity = 0.55;
+        Invoke(window, "HideLyricsWidget");
+        Assert.Equal(Visibility.Collapsed, window.LyricsBlurBackground.Visibility);
+        Assert.Equal(0, window.LyricsBlurBackground.Opacity);
+    });
+
+    [Fact]
+    public void ReturningWidgetCancelsBackdropFadeAndLateRefreshCannotRestoreIt() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.ExpandedWidget = "clock";
+        settings.EnableBlurEffects = true;
+        Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
+            VNotch.Models.NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "lyrics test");
+        Set(window, "_isLyricsActive", true);
+        Invoke(window, "FadeInLyricsBlurBackgroundIfActive", true);
+        Assert.Equal(Visibility.Visible, window.LyricsBlurBackground.Visibility);
+        Invoke(window, "HideLyricsWidget");
+        Assert.Equal(Visibility.Collapsed, window.LyricsBlurBackground.Visibility);
+        Invoke(window, "FadeInLyricsBlurBackgroundIfActive", true);
+        await WpfFrameWaiter.UntilAsync(() => window.CalendarWidget.Opacity == 1, "returning widget", ct);
+        Assert.Equal(Visibility.Collapsed, window.LyricsBlurBackground.Visibility);
+        Assert.Equal(0, window.LyricsBlurBackground.Opacity);
+        Assert.False(Field<bool>(window, "_isLyricsBlurFadeInProgress"));
+    });
+
+    [Fact]
     public void IgnoringDuplicateTrackEventsKeepsThePendingFetchGeneration() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();

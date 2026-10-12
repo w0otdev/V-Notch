@@ -118,9 +118,9 @@
         <Style x:Key="NavButton" TargetType="Border">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="MinHeight" Value="32"/>
-            <Setter Property="Padding" Value="12,4"/>
-            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Padding" Value="12,3"/>
+            <Setter Property="Margin" Value="0,1"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
@@ -587,12 +587,10 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <ScrollViewer Grid.Row="0"
-                                      VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      Focusable="False"
-                                      PanningMode="VerticalOnly">
-                            <StackPanel Margin="0,0,4,0">
+                        <!-- Fit every navigation item into the available height, including on smaller displays. -->
+                        <Viewbox Grid.Row="0" Stretch="Uniform" StretchDirection="DownOnly"
+                                 HorizontalAlignment="Left" VerticalAlignment="Top">
+                            <StackPanel Width="174">
                                 <Border x:Name="NavSearching" Style="{StaticResource NavButton}"
                                         Visibility="Collapsed"
                                         Background="{StaticResource NavItemActiveBg}"
@@ -743,7 +741,7 @@
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
-                        </ScrollViewer>
+                        </Viewbox>
 
                         <Border Grid.Row="1" Margin="10,4,10,0" Padding="0,12,0,12"
                                 BorderBrush="#10FFFFFF" BorderThickness="0,1,0,0">
@@ -2057,6 +2055,7 @@
                                         <Grid x:Name="TrayFilesRow" Margin="0,4,0,8" Background="Transparent">
                                             <CheckBox x:Name="TrayFilesCheck" Margin="0,0,48,0" Checked="TrayAdvanced_Changed" Unchecked="TrayAdvanced_Changed"/>
                                         </Grid>
+                                        <CheckBox x:Name="TraySensitiveCheck" Margin="0,4,0,12" Checked="TrayAdvanced_Changed" Unchecked="TrayAdvanced_Changed"/>
                                         <Grid x:Name="TrayDelayRow" Background="Transparent">
                                             <controls:ElasticSlider x:Name="TrayDelaySlider" Margin="0,0,48,0" Minimum="100" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True" Unit=" ms" ValueChanged="TrayDelay_Changed"/>
                                         </Grid>

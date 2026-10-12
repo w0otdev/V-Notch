@@ -650,6 +650,11 @@ public partial class ClipboardTray : UserControl, IDisposable
         _copyOnRelease = false;
         if (copy && Keyboard.Modifiers == ModifierKeys.None && !_selectionModified) await SafeAsync(() => CopyAsync(card));
     }
+    private async void DustOverlay_DissolveRequested(object sender, RoutedEventArgs e)
+    {
+        if (_controller == null || sender is not FrameworkElement { DataContext: ClipboardCardViewModel card }) return;
+        await SafeAsync(() => card.RevealAsync(_controller.Store));
+    }
     private bool _copyOnRelease;
     private async void Card_Move(object sender, MouseEventArgs e)
     {
@@ -925,7 +930,8 @@ public partial class ClipboardTray : UserControl, IDisposable
         CloseDetails();
         detailVersion = _detailDismissVersion;
         DetailTextScroll.Visibility = Visibility.Visible;
-        string text = content == null ? "" : content.Text.Length != 0 ? content.Text : string.Join(Environment.NewLine, content.Files.Select(file => file.Name));
+        bool isSensitive = card.Entry.IsSensitive || (content != null && (ClipboardSensitiveData.IsSensitive(content.Text, card.Entry.SourceApp, card.Entry.SourceExecutable) || ClipboardSensitiveData.IsSensitive(content.Html, card.Entry.SourceApp, card.Entry.SourceExecutable) || ClipboardSensitiveData.IsSensitive(content.Rtf, card.Entry.SourceApp, card.Entry.SourceExecutable)));
+        string text = isSensitive && !card.IsRevealed ? ClipboardSensitiveData.Mask : content == null ? "" : content.Text.Length != 0 ? content.Text : string.Join(Environment.NewLine, content.Files.Select(file => file.Name));
         const int detailPreviewLimit = 16_000;
         DetailText.Text = text.Length > detailPreviewLimit ? text[..detailPreviewLimit] + "\n…" : text;
         if (card.Entry.Kind == ClipboardKind.Image)
