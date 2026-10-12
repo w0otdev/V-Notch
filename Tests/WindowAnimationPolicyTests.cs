@@ -8,6 +8,41 @@ namespace VNotch.Tests;
 
 public sealed class WindowAnimationPolicyTests
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetWindowDisplayAffinity(IntPtr hwnd, out uint affinity);
+
+    [Fact]
+    public void InvisibleModeExcludesCaptureAndRestoresTaskbarAndRequestedAffinity() => SharedStaTestRunner.Run(() =>
+    {
+        var window = new Window { ShowInTaskbar = true, ShowActivated = false, Opacity = 0 };
+        try
+        {
+            new WindowInteropHelper(window).EnsureHandle();
+            WindowAnimationPolicy.Attach(window);
+            WindowAnimationPolicy.SetInvisibleMode(true);
+            WindowAnimationPolicy.Attach(window);
+            var hwnd = new WindowInteropHelper(window).Handle;
+            Assert.False(window.ShowInTaskbar);
+            Assert.NotEqual(0, Win32Interop.GetWindowLong(hwnd, Win32Interop.GWL_EXSTYLE) & Win32Interop.WS_EX_TOOLWINDOW);
+            // Glass cleanup cannot remove the user's capture exclusion.
+            Assert.True(Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_NONE));
+            Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
+            Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+            WindowAnimationPolicy.SetInvisibleMode(false);
+            WindowAnimationPolicy.Attach(window);
+            Assert.True(window.ShowInTaskbar);
+            hwnd = new WindowInteropHelper(window).Handle;
+            Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
+            Assert.Equal(Win32Interop.WDA_NONE, affinity);
+        }
+        finally
+        {
+            WindowAnimationPolicy.SetInvisibleMode(false);
+            window.Close();
+        }
+    });
+
     [Fact]
     public void FutureAuxiliaryWindowsAutomaticallyUseToolWindowStylesAndKeepWpfAnimation() => SharedStaTestRunner.RunAsync(async ct =>
     {

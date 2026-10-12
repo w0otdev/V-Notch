@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "숨김 모드 켜기",
+  "settings.privacy.invisible.disable": "숨김 모드 끄기",
+  "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I로 전환합니다. 숨김 모드를 끄면 시스템 트레이 아이콘이 다시 나타납니다.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I를 사용할 수 없습니다. 노치에서 설정을 열어 숨김 모드를 끄세요.",
+  "settings.privacy.invisible": "숨김 모드",
+  "settings.privacy.invisible.hint": "시스템 트레이 아이콘을 숨기고 작업 표시줄, Alt+Tab 및 지원되는 화면 캡처에서 앱 창을 제외합니다. 노치는 계속 표시됩니다. 이 모드를 끄려면 노치에서 설정을 여세요. 프로세스는 작업 관리자에 계속 표시됩니다. 캡처 제외 여부는 Windows와 캡처 도구에 따라 달라집니다.",
   "translation.getModel": "모델 다운로드 / 가져오기",
   "translation.truncated": "한도를 초과하여 앞부분만 번역합니다.",
   "translation.replaceTruncated": "앞부분만 번역되었습니다. 나머지 선택 내용을 보존하려면 복사를 사용하세요.",

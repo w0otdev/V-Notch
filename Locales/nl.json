@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Onzichtbare modus inschakelen",
+  "settings.privacy.invisible.disable": "Onzichtbare modus uitschakelen",
+  "settings.privacy.invisible.shortcut": "Schakel om met Ctrl + Alt + Shift + I. Als je de onzichtbare modus uitschakelt, verschijnt het systeemvakpictogram weer.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I is niet beschikbaar. Open de instellingen via de notch om de onzichtbare modus uit te schakelen.",
+  "settings.privacy.invisible": "Onzichtbare modus",
+  "settings.privacy.invisible.hint": "Verbergt het systeemvakpictogram en sluit appvensters uit van de taakbalk, Alt+Tab en ondersteunde schermopnamen. De notch blijft zichtbaar; open de instellingen ervan om deze modus uit te schakelen. Het proces blijft zichtbaar in Taakbeheer. Uitsluiting van opnamen hangt af van Windows en het opnameprogramma.",
   "translation.getModel": "Model downloaden / importeren",
   "translation.truncated": "Alleen het begin wordt vertaald; de selectie overschrijdt de limiet.",
   "translation.replaceTruncated": "Deze vertaling bevat alleen het begin. Gebruik Kopiëren om de rest van de selectie te behouden.",

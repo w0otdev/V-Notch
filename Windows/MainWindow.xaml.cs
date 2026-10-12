@@ -287,6 +287,7 @@ public partial class MainWindow : Window
         AnimationPrimitives.ApplyFpsToTree(this);
         _settingsService = settingsService;
         _settings = _settingsService.Load();
+        UpdateInvisibleTrayVisibility();
         if (string.IsNullOrEmpty(_settings.MonitorDeviceId))
         {
             var monitors = MonitorSelection.GetChoices();
@@ -487,6 +488,7 @@ public partial class MainWindow : Window
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeSessionUnlockFeedback();
+        _invisibleHotkey ??= new VNotch.Controllers.InvisibleHotkeyController(this, ToggleInvisibleMode);
         _overlayWindow.Initialize();
         _spotlightController.Initialize(this, _settings);
         InitializeLiveTranslation();
@@ -665,6 +667,8 @@ public partial class MainWindow : Window
         _clipboardShutdown = _clipboardHistory?.DisposeAsync().AsTask() ?? Task.CompletedTask;
         _clipboardShutdown.SafeFireAndForget("CLIPBOARD-SHUTDOWN");
         DisposeClipboardHotkey();
+        _invisibleHotkey?.Dispose();
+        _invisibleHotkey = null;
         _liveTranslation?.Dispose();
         _liveTranslation = null;
         _clipboardListener.Dispose();
@@ -1459,6 +1463,7 @@ public partial class MainWindow : Window
             _clipboardHistory?.ApplySettings(_settings);
             if (_settings.HideCamera && IsCameraPreviewLifecycleActive) StopCameraPreviewForViewExit();
             NetworkPrivacy.Current.Apply(_settings);
+            ApplyInvisibleMode();
             _liveTranslation?.ApplySettings(_settings);
 
 
@@ -2628,6 +2633,8 @@ public partial class MainWindow : Window
             return;
         }
         _isTrayMenuOpen = true;
+        MenuInvisible.Header = Loc.Get(_settings.InvisibleMode ? "settings.privacy.invisible.disable" : "settings.privacy.invisible.enable");
+        MenuInvisible.IsChecked = _settings.InvisibleMode;
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
     }
 

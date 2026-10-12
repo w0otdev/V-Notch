@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Unsichtbaren Modus aktivieren",
+  "settings.privacy.invisible.disable": "Unsichtbaren Modus deaktivieren",
+  "settings.privacy.invisible.shortcut": "Mit Ctrl + Alt + Shift + I umschalten. Beim Deaktivieren erscheint das Symbol im Infobereich wieder.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I ist nicht verfügbar. Öffne die Einstellungen über die Notch, um den unsichtbaren Modus zu deaktivieren.",
+  "settings.privacy.invisible": "Unsichtbarer Modus",
+  "settings.privacy.invisible.hint": "Blendet das Symbol im Infobereich aus und schließt App-Fenster aus der Taskleiste, Alt+Tab und unterstützten Bildschirmaufnahmen aus. Die Notch bleibt sichtbar; öffne ihre Einstellungen, um den Modus zu deaktivieren. Der Prozess bleibt im Task-Manager sichtbar. Der Ausschluss von Aufnahmen hängt von Windows und dem Aufnahmeprogramm ab.",
   "translation.getModel": "Modell herunterladen / importieren",
   "translation.truncated": "Nur der Anfang wird übersetzt; die Auswahl überschreitet das Limit.",
   "translation.replaceTruncated": "Diese Übersetzung enthält nur den Anfang. Verwenden Sie Kopieren, um den Rest der Auswahl zu behalten.",

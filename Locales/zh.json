@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "开启隐身模式",
+  "settings.privacy.invisible.disable": "关闭隐身模式",
+  "settings.privacy.invisible.shortcut": "按 Ctrl + Alt + Shift + I 切换。关闭隐身模式后，系统托盘图标会重新显示。",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I 不可用。请从刘海打开设置以关闭隐身模式。",
+  "settings.privacy.invisible": "隐身模式",
+  "settings.privacy.invisible.hint": "隐藏系统托盘图标，并将应用窗口从任务栏、Alt+Tab 和受支持的屏幕捕获中排除。刘海仍然可见；打开其设置即可关闭此模式。进程仍会显示在任务管理器中。能否从捕获中排除取决于 Windows 和捕获工具。",
   "translation.getModel": "下载 / 导入模型",
   "translation.truncated": "超出限制，仅翻译开头部分。",
   "translation.replaceTruncated": "此译文仅包含开头部分。请复制，以保留其余选中文字。",

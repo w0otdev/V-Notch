@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Włącz tryb niewidoczny",
+  "settings.privacy.invisible.disable": "Wyłącz tryb niewidoczny",
+  "settings.privacy.invisible.shortcut": "Przełączaj za pomocą Ctrl + Alt + Shift + I. Wyłączenie trybu niewidocznego przywraca ikonę w zasobniku systemowym.",
+  "settings.privacy.invisible.shortcutUnavailable": "Skrót Ctrl + Alt + Shift + I jest niedostępny. Otwórz ustawienia z poziomu notcha, aby wyłączyć tryb niewidoczny.",
+  "settings.privacy.invisible": "Tryb niewidoczny",
+  "settings.privacy.invisible.hint": "Ukrywa ikonę w zasobniku systemowym oraz wyklucza okna aplikacji z paska zadań, Alt+Tab i obsługiwanych przechwyceń ekranu. Notch pozostaje widoczny; otwórz jego ustawienia, aby wyłączyć ten tryb. Proces pozostaje widoczny w Menedżerze zadań. Wykluczanie z przechwytywania zależy od systemu Windows i narzędzia do przechwytywania.",
   "translation.getModel": "Pobierz / importuj model",
   "translation.truncated": "Tłumaczony jest tylko początek; zaznaczenie przekroczyło limit.",
   "translation.replaceTruncated": "Tłumaczenie obejmuje tylko początek. Użyj kopiowania, aby zachować resztę zaznaczenia.",

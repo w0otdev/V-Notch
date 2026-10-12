@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "تفعيل الوضع غير المرئي",
+  "settings.privacy.invisible.disable": "إيقاف الوضع غير المرئي",
+  "settings.privacy.invisible.shortcut": "يمكنك التبديل باستخدام Ctrl + Alt + Shift + I. يؤدي إيقاف الوضع غير المرئي إلى إظهار أيقونة علبة النظام مجددًا.",
+  "settings.privacy.invisible.shortcutUnavailable": "الاختصار Ctrl + Alt + Shift + I غير متاح. افتح الإعدادات من النتوء لإيقاف الوضع غير المرئي.",
+  "settings.privacy.invisible": "الوضع غير المرئي",
+  "settings.privacy.invisible.hint": "يخفي أيقونة علبة النظام ونوافذ التطبيق من شريط المهام وAlt+Tab وعمليات التقاط الشاشة المدعومة. يظل النتوء ظاهرًا؛ افتح إعداداته لإيقاف هذا الوضع. تظل العملية ظاهرة في مدير المهام. يعتمد الاستبعاد من الالتقاط على Windows وأداة الالتقاط.",
   "translation.getModel": "تنزيل / استيراد النموذج",
   "translation.truncated": "تُترجم البداية فقط لأن النص المحدد تجاوز الحد.",
   "translation.replaceTruncated": "تحتوي الترجمة على البداية فقط. استخدم النسخ للاحتفاظ ببقية النص المحدد.",

@@ -16,6 +16,23 @@ public sealed class SettingsWindowControlTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
     [Fact]
+    public void InvisibleShortcutPersistsOnlyItsOwnChange() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        double originalWidth = window.ReadSettingsFromUi().Width;
+        window.WidthSlider.Value = originalWidth + 30;
+        await window.ToggleInvisibleFromShortcutAsync();
+        Assert.True(window.ReadSettingsFromUi().InvisibleMode);
+        Assert.True(fixture.Service.Applied!.InvisibleMode);
+        Assert.Equal(originalWidth, fixture.Service.Applied.Width);
+        Assert.Equal(originalWidth + 30, window.ReadSettingsFromUi().Width);
+        await window.ToggleInvisibleFromShortcutAsync();
+        Assert.False(window.ReadSettingsFromUi().InvisibleMode);
+        Assert.False(fixture.Service.Applied.InvisibleMode);
+    });
+
+    [Fact]
     public void TranslationModelsAreGroupedAndSelectionSurvivesHardwareRefresh() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new Fixture();
@@ -60,7 +77,7 @@ public sealed class SettingsWindowControlTests
 
 
     [Fact]
-    public void InstalledModelKeepsAVisibleConfirmationAndOffersTheNextAction() => SharedStaTestRunner.Run(() =>
+    public void InstalledModelKeepsAVisibleConfirmationAndUpdatesUsageHint() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new Fixture();
         var window = fixture.Window;
@@ -69,15 +86,10 @@ public sealed class SettingsWindowControlTests
         Assert.Equal(Loc.Get("translation.installComplete"), window.TranslationReadyTitle.Text);
         Assert.Equal(Visibility.Collapsed, window.TranslationDownloadButton.Visibility);
         Assert.Equal(Visibility.Collapsed, window.TranslationModelStatus.Visibility);
-        Assert.Equal(Loc.Get("translation.enable"), window.TranslationReadyActionButton.Content);
-        window.TranslationReadyActionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(Loc.Get("translation.readyEnableHint"), window.TranslationReadyHint.Text);
+        window.EnableTranslationCheck.IsChecked = true;
         Assert.True(window.ReadSettingsFromUi().EnableLiveTranslation);
-        Assert.Equal(Loc.Get("translation.tryClipboard"), window.TranslationReadyActionButton.Content);
         Assert.Equal(Loc.Get("translation.readyManualHint"), window.TranslationReadyHint.Text);
-        bool preview = false;
-        window.TranslationPreviewRequested += () => preview = true;
-        window.TranslationReadyActionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.True(preview);
         window.AutoTranslationCheck.IsChecked = true;
         Assert.Equal(Loc.Get("translation.readyAutoHint"), window.TranslationReadyHint.Text);
         window.PresentTranslationModelAvailability(true); // refresh preserves confirmation

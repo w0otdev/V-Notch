@@ -8,7 +8,7 @@ namespace VNotch;
 public partial class SettingsWindow
 {
     private readonly Dictionary<string, (CheckBox Check, TextBlock Hint)> _privacyOptions = new();
-    private static readonly string[] PrivacyOptionNames = ["ai", "subtitles", "canvas", "weather", "chatHistory"];
+    private static readonly string[] PrivacyOptionNames = ["invisible", "ai", "subtitles", "canvas", "weather", "chatHistory"];
 
     private void LoadAdditionalPrivacy(NotchSettings settings)
     {
@@ -22,13 +22,14 @@ public partial class SettingsWindow
                 panel.Children.Add(check);
                 panel.Children.Add(hint);
                 var row = new Border { Style = (Style)FindResource("SettingRowBorder"), Child = panel };
-                (name == "chatHistory" ? PrivacyStorageOptions : PrivacyNetworkSection).Children.Add(row);
+                (name is "chatHistory" or "invisible" ? PrivacyStorageOptions : PrivacyNetworkSection).Children.Add(row);
                 check.Checked += AdditionalPrivacyChanged;
                 check.Unchecked += AdditionalPrivacyChanged;
                 _privacyOptions[name] = (check, hint);
             }
         }
         _privacyOptions["ai"].Check.IsChecked = settings.AllowOnlineAi;
+        _privacyOptions["invisible"].Check.IsChecked = settings.InvisibleMode;
         _privacyOptions["subtitles"].Check.IsChecked = settings.AllowOnlineSubtitles;
         _privacyOptions["canvas"].Check.IsChecked = settings.AllowOnlineCanvas;
         _privacyOptions["weather"].Check.IsChecked = settings.AllowOnlineWeather;
@@ -48,6 +49,7 @@ public partial class SettingsWindow
     {
         if (_privacyOptions.Count == 0) return;
         settings.AllowOnlineAi = _privacyOptions["ai"].Check.IsChecked == true;
+        settings.InvisibleMode = _privacyOptions["invisible"].Check.IsChecked == true;
         settings.AllowOnlineSubtitles = _privacyOptions["subtitles"].Check.IsChecked == true;
         settings.AllowOnlineCanvas = _privacyOptions["canvas"].Check.IsChecked == true;
         settings.AllowOnlineWeather = _privacyOptions["weather"].Check.IsChecked == true;
@@ -61,6 +63,21 @@ public partial class SettingsWindow
             string key = "settings.privacy." + name;
             controls.Check.Content = Loc.Get(key);
             controls.Hint.Text = Loc.Get(key + ".hint");
+            if (name == "invisible")
+                controls.Hint.Text += " " + Loc.Get(VNotch.Controllers.InvisibleHotkeyController.IsRegistered
+                    ? "settings.privacy.invisible.shortcut" : "settings.privacy.invisible.shortcutUnavailable");
         }
+    }
+
+    internal async Task ToggleInvisibleFromShortcutAsync()
+    {
+        var check = _privacyOptions["invisible"].Check;
+        bool enabled = check.IsChecked != true;
+        check.IsChecked = enabled;
+        _livePreviewDebounce?.Stop();
+        ApplyPreview(ReadSettingsFromUi());
+        // Persist only this external command; keep other unsaved edits cancellable.
+        _originalSettings.InvisibleMode = enabled;
+        await _settingsAppService.ApplyAsync(_originalSettings.Clone());
     }
 }

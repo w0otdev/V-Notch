@@ -1918,7 +1918,28 @@
                                                 <TextBlock x:Name="TranslationCurrencyHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,20"/>
                                                 <TextBlock x:Name="TranslationModelTitle" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="TranslationHardwareHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,12"/>
-                                                <ComboBox x:Name="TranslationModelCombo" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="TranslationModel_Changed">
+                                                <ComboBox x:Name="TranslationModelCombo" TextSearch.TextPath="Name" SelectedValuePath="Id" SelectionChanged="TranslationModel_Changed">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                                                <Border Background="#C8C8C8" CornerRadius="4" Padding="8,3" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsRecommended}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <TextBlock Text="{Binding RecommendedLabel}" FontSize="11" FontWeight="Bold"
+                                                                               Foreground="#1A1A1A" FontFamily="{StaticResource SFProDisplay}"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
                                                     <ComboBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate>
                                                         <DataTemplate><TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource SoftText}" Margin="14,12,14,6"/></DataTemplate>
                                                     </GroupStyle.HeaderTemplate></GroupStyle></ComboBox.GroupStyle>
@@ -1975,8 +1996,7 @@
                                                         </Border>
                                                         <StackPanel Grid.Column="1">
                                                             <TextBlock x:Name="TranslationReadyTitle" Foreground="{StaticResource AccentBrushStrong}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                                            <TextBlock x:Name="TranslationReadyHint" Foreground="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,12"/>
-                                                            <Button x:Name="TranslationReadyActionButton" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Click="TranslationReadyAction_Click"/>
+                                                            <TextBlock x:Name="TranslationReadyHint" Foreground="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                                         </StackPanel>
                                                     </Grid>
                                                 </Border>

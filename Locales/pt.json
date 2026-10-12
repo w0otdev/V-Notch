@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Ativar modo invisível",
+  "settings.privacy.invisible.disable": "Desativar modo invisível",
+  "settings.privacy.invisible.shortcut": "Alterne com Ctrl + Alt + Shift + I. Desativar o modo invisível restaura o ícone na bandeja do sistema.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I não está disponível. Abra as configurações pelo notch para desativar o modo invisível.",
+  "settings.privacy.invisible": "Modo invisível",
+  "settings.privacy.invisible.hint": "Oculta o ícone da bandeja do sistema e exclui as janelas do aplicativo da barra de tarefas, do Alt+Tab e das capturas de tela compatíveis. O notch permanece visível; abra suas configurações para desativar este modo. O processo continua visível no Gerenciador de Tarefas. A exclusão de capturas depende do Windows e da ferramenta de captura.",
   "translation.getModel": "Baixar / importar modelo",
   "translation.truncated": "Traduzindo apenas o início; a seleção excedeu o limite.",
   "translation.replaceTruncated": "A tradução contém apenas o início. Use Copiar para preservar o restante da seleção.",

@@ -156,9 +156,12 @@ internal static class Win32Interop
     public const int SM_CXVIRTUALSCREEN = 78;
     public const int SM_CYVIRTUALSCREEN = 79;
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", EntryPoint = "SetWindowDisplayAffinity", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+    internal static extern bool SetWindowDisplayAffinityNative(IntPtr hWnd, uint dwAffinity);
+
+    public static bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity) =>
+        WindowAnimationPolicy.SetCaptureAffinity(hWnd, dwAffinity);
 
     public const uint WDA_NONE = 0x00000000;
     public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
@@ -372,6 +375,7 @@ internal static class Win32Interop
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_FRAMECHANGED = 0x0020;
     public const uint SWP_NOOWNERZORDER = 0x0200;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const int GWL_STYLE = -16;

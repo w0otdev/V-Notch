@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Aktifkan mode tak terlihat",
+  "settings.privacy.invisible.disable": "Nonaktifkan mode tak terlihat",
+  "settings.privacy.invisible.shortcut": "Tekan Ctrl + Alt + Shift + I untuk mengaktifkan atau menonaktifkan. Menonaktifkan mode ini akan menampilkan kembali ikon baki sistem.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I tidak tersedia. Buka pengaturan dari notch untuk menonaktifkan mode tak terlihat.",
+  "settings.privacy.invisible": "Mode tak terlihat",
+  "settings.privacy.invisible.hint": "Menyembunyikan ikon baki sistem dan mengecualikan jendela aplikasi dari bilah tugas, Alt+Tab, dan tangkapan layar yang didukung. Notch tetap terlihat; buka pengaturannya untuk menonaktifkan mode ini. Proses tetap terlihat di Pengelola Tugas. Pengecualian tangkapan bergantung pada Windows dan alat penangkap layar.",
   "translation.getModel": "Unduh / impor model",
   "translation.truncated": "Hanya bagian awal diterjemahkan; pilihan melebihi batas.",
   "translation.replaceTruncated": "Terjemahan ini hanya mencakup bagian awal. Gunakan Salin agar sisa pilihan tetap tersimpan.",

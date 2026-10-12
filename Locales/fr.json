@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Activer le mode invisible",
+  "settings.privacy.invisible.disable": "Désactiver le mode invisible",
+  "settings.privacy.invisible.shortcut": "Basculez avec Ctrl + Alt + Shift + I. Désactiver le mode invisible rétablit l’icône dans la zone de notification.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I n’est pas disponible. Ouvrez les paramètres depuis l’encoche pour désactiver le mode invisible.",
+  "settings.privacy.invisible": "Mode invisible",
+  "settings.privacy.invisible.hint": "Masque l’icône de la zone de notification et exclut les fenêtres de l’application de la barre des tâches, d’Alt+Tab et des captures d’écran compatibles. L’encoche reste visible ; ouvrez ses paramètres pour désactiver ce mode. Le processus reste visible dans le Gestionnaire des tâches. L’exclusion des captures dépend de Windows et de l’outil de capture.",
   "translation.getModel": "Télécharger / importer un modèle",
   "translation.truncated": "Seul le début est traduit : la sélection dépasse la limite.",
   "translation.replaceTruncated": "Cette traduction ne couvre que le début. Utilisez Copier pour conserver le reste de la sélection.",

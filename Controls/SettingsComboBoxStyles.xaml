@@ -60,6 +60,7 @@
                                             </Border.RenderTransform>
                                             <Grid>
                                                 <ContentPresenter Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                                   VerticalAlignment="Center"
                                                                   HorizontalAlignment="Left"
                                                                   TextElement.Foreground="{DynamicResource SettingsTextBrush}"/>

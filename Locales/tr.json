@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Görünmez modu aç",
+  "settings.privacy.invisible.disable": "Görünmez modu kapat",
+  "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I ile açıp kapatın. Görünmez modu kapatmak sistem tepsisi simgesini geri getirir.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I kullanılamıyor. Görünmez modu kapatmak için çentikten ayarları açın.",
+  "settings.privacy.invisible": "Görünmez mod",
+  "settings.privacy.invisible.hint": "Sistem tepsisi simgesini gizler ve uygulama pencerelerini görev çubuğu, Alt+Tab ve desteklenen ekran yakalamalarından çıkarır. Çentik görünür kalır; bu modu kapatmak için çentiğin ayarlarını açın. İşlem Görev Yöneticisi’nde görünmeye devam eder. Yakalamadan hariç tutma, Windows’a ve yakalama aracına bağlıdır.",
   "translation.getModel": "Model indir / içe aktar",
   "translation.truncated": "Seçim sınırı aştığı için yalnızca başlangıcı çevriliyor.",
   "translation.replaceTruncated": "Bu çeviri yalnızca başlangıcı kapsar. Seçimin kalanını korumak için Kopyala'yı kullanın.",

@@ -97,6 +97,7 @@ public partial class App : Application
             var earlySettings = Services.GetRequiredService<ISettingsService>();
             var loadedSettings = earlySettings.Load();
             NetworkPrivacy.Current.Apply(loadedSettings);
+            WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
             LocalizedPresentation.Initialize();
             Loc.SetLanguage(loadedSettings.Language);
             AnimationConfig.Configure(loadedSettings.AnimationFps, loadedSettings.AutoAnimationFps);

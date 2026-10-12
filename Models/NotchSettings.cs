@@ -9,6 +9,7 @@ public class NotchSettings
     public const string AutoBluetoothBatteryDeviceId = "__auto_bluetooth__";
 
     public int SettingsVersion { get; set; } = 0;
+    public bool InvisibleMode { get; set; }
 
     public string LastRunVersion { get; set; } = "";
 

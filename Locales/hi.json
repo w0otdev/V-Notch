@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "अदृश्य मोड चालू करें",
+  "settings.privacy.invisible.disable": "अदृश्य मोड बंद करें",
+  "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I से चालू या बंद करें। अदृश्य मोड बंद करने पर सिस्टम ट्रे का आइकन फिर दिखाई देगा।",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I उपलब्ध नहीं है। अदृश्य मोड बंद करने के लिए नॉच से सेटिंग्स खोलें।",
+  "settings.privacy.invisible": "अदृश्य मोड",
+  "settings.privacy.invisible.hint": "सिस्टम ट्रे का आइकन छिपाता है और ऐप की विंडो को टास्कबार, Alt+Tab और समर्थित स्क्रीन कैप्चर से हटाता है। नॉच दिखाई देता रहता है; इस मोड को बंद करने के लिए उसकी सेटिंग्स खोलें। प्रक्रिया टास्क मैनेजर में दिखाई देती रहेगी। कैप्चर से बाहर रखना Windows और कैप्चर टूल पर निर्भर करता है।",
   "translation.getModel": "मॉडल डाउनलोड / आयात करें",
   "translation.truncated": "सीमा से अधिक चयन होने पर केवल शुरुआती भाग का अनुवाद किया जा रहा है।",
   "translation.replaceTruncated": "यह अनुवाद केवल शुरुआती भाग का है। शेष चयन बचाने के लिए कॉपी करें।",

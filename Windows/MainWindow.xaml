@@ -253,6 +253,7 @@
     <Grid RenderOptions.ClearTypeHint="Enabled">
 
         <tb:TaskbarIcon x:Name="TrayIcon"
+                        Visibility="Collapsed"
                         ToolTipText="V-Notch"
                         MenuActivation="RightClick">
             <tb:TaskbarIcon.ContextMenu>
@@ -290,6 +291,8 @@
                         </MenuItem.Header>
                     </MenuItem>
                     <Separator Style="{StaticResource TraySeparatorStyle}"/>
+                    <MenuItem x:Name="MenuInvisible" Style="{StaticResource TrayMenuItemStyle}"
+                              Header="Invisible mode" IsCheckable="True" Click="ToggleInvisible_Click"/>
                     <MenuItem x:Name="MenuRestart" Style="{StaticResource TrayMenuItemStyle}" Click="Restart_Click">
                         <MenuItem.Header>
                             <StackPanel Orientation="Horizontal">

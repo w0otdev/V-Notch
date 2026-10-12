@@ -159,13 +159,6 @@ public partial class SettingsWindow
         bool enabled = EnableTranslationCheck.IsChecked == true;
         TranslationReadyHint.Text = Loc.Get(!enabled ? "translation.readyEnableHint" :
             AutoTranslationCheck.IsChecked == true ? "translation.readyAutoHint" : "translation.readyManualHint");
-        TranslationReadyActionButton.Content = Loc.Get(enabled ? "translation.tryClipboard" : "translation.enable");
-    }
-
-    private void TranslationReadyAction_Click(object sender, RoutedEventArgs e)
-    {
-        if (EnableTranslationCheck.IsChecked != true) EnableTranslationCheck.IsChecked = true;
-        else TranslationPreviewRequested?.Invoke();
     }
 
     private async void TranslationDownload_Click(object sender, RoutedEventArgs e)

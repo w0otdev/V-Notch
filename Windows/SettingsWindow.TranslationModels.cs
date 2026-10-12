@@ -10,7 +10,7 @@ public partial class SettingsWindow
 {
     private TranslationHardware? _translationHardware;
     private bool _translationHardwareStarted, _translationModelLoading;
-    private sealed record ModelChoice(string Id, string Name, string Group)
+    private sealed record ModelChoice(string Id, string Name, string Group, bool IsRecommended, string RecommendedLabel)
     {
         public override string ToString() => Name;
     }
@@ -44,9 +44,8 @@ public partial class SettingsWindow
         {
             string? recommended = _translationHardware?.Recommended()?.Id;
             var choices = TranslationModelCatalog.Available.OrderByDescending(p => p.Category).ThenBy(p => p.MinimumRamGiB).Select(p => new ModelChoice(p.Id,
-                p.DisplayName + " · " + (p.IsCustom ? Loc.Get("translation.customUnrated") : Loc.Get("translation.ratingCompact", p.TranslationRating) + " · " + Loc.Get("translation.tier." + p.Tier)) +
-                (p.Id == recommended ? " · " + Loc.Get("translation.recommended") : ""),
-                Loc.Get("translation.category." + p.Category))).ToArray();
+                p.DisplayName + " · " + (p.IsCustom ? Loc.Get("translation.customUnrated") : Loc.Get("translation.ratingCompact", p.TranslationRating) + " · " + Loc.Get("translation.tier." + p.Tier)),
+                Loc.Get("translation.category." + p.Category), p.Id == recommended, Loc.Get("translation.recommended"))).ToArray();
             var view = new ListCollectionView(choices);
             view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ModelChoice.Group)));
             TranslationModelCombo.ItemsSource = view;

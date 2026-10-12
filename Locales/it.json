@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "Attiva modalità invisibile",
+  "settings.privacy.invisible.disable": "Disattiva modalità invisibile",
+  "settings.privacy.invisible.shortcut": "Attiva o disattiva con Ctrl + Alt + Shift + I. Disattivando la modalità invisibile, l’icona nell’area di notifica riappare.",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I non è disponibile. Apri le impostazioni dal notch per disattivare la modalità invisibile.",
+  "settings.privacy.invisible": "Modalità invisibile",
+  "settings.privacy.invisible.hint": "Nasconde l’icona nell’area di notifica ed esclude le finestre dell’app dalla barra delle applicazioni, da Alt+Tab e dalle acquisizioni dello schermo supportate. Il notch rimane visibile; apri le sue impostazioni per disattivare questa modalità. Il processo rimane visibile in Gestione attività. L’esclusione dalle acquisizioni dipende da Windows e dallo strumento utilizzato.",
   "translation.getModel": "Scarica / importa modello",
   "translation.truncated": "Viene tradotto solo l'inizio; la selezione supera il limite.",
   "translation.replaceTruncated": "Questa traduzione contiene solo l'inizio. Usa Copia per conservare il resto della selezione.",

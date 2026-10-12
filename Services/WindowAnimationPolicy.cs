@@ -14,6 +14,23 @@ internal static class WindowAnimationPolicy
 {
     private static readonly ConditionalWeakTable<Window, WindowLifetime> Windows = new();
     private static int _initialized;
+    internal static bool InvisibleMode { get; private set; }
+
+    internal static void SetInvisibleMode(bool enabled)
+    {
+        InvisibleMode = enabled;
+        if (Application.Current == null) return;
+        Application.Current.Dispatcher.VerifyAccess();
+        foreach (Window window in Application.Current.Windows.Cast<Window>().ToArray()) Attach(window);
+    }
+
+    internal static bool SetCaptureAffinity(IntPtr hwnd, uint affinity)
+    {
+        if (HwndSource.FromHwnd(hwnd)?.RootVisual is Window window)
+            Windows.GetValue(window, static key => new WindowLifetime(key)).CaptureAffinity = affinity;
+        return Win32Interop.SetWindowDisplayAffinityNative(hwnd,
+            InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : affinity);
+    }
 
     internal static void Initialize()
     {
@@ -34,6 +51,10 @@ internal static class WindowAnimationPolicy
     {
         private readonly Window _window;
         private HwndSource? _source;
+        internal uint CaptureAffinity;
+        private bool _invisibleApplied;
+        private bool _originalTaskbar;
+        private int _originalShellStyle;
 
         internal WindowLifetime(Window window)
         {
@@ -46,8 +67,35 @@ internal static class WindowAnimationPolicy
 
         internal void Apply()
         {
+            if (_invisibleApplied != InvisibleMode)
+            {
+                _invisibleApplied = InvisibleMode;
+                if (InvisibleMode)
+                {
+                    _originalTaskbar = _window.ShowInTaskbar;
+                    var originalHandle = new WindowInteropHelper(_window).Handle;
+                    _originalShellStyle = originalHandle == IntPtr.Zero ? 0 :
+                        Win32Interop.GetWindowLong(originalHandle, Win32Interop.GWL_EXSTYLE) &
+                        (Win32Interop.WS_EX_TOOLWINDOW | Win32Interop.WS_EX_APPWINDOW);
+                    _window.ShowInTaskbar = false;
+                }
+                else
+                {
+                    _window.ShowInTaskbar = _originalTaskbar;
+                    var restoredHandle = new WindowInteropHelper(_window).Handle;
+                    if (restoredHandle != IntPtr.Zero)
+                    {
+                        int style = Win32Interop.GetWindowLong(restoredHandle, Win32Interop.GWL_EXSTYLE);
+                        UpdateShellStyle(restoredHandle,
+                            (style & ~(Win32Interop.WS_EX_TOOLWINDOW | Win32Interop.WS_EX_APPWINDOW)) | _originalShellStyle);
+                    }
+                }
+            }
             var hwnd = new WindowInteropHelper(_window).Handle;
             if (hwnd == IntPtr.Zero) return;
+            if (!Win32Interop.SetWindowDisplayAffinityNative(hwnd,
+                InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : CaptureAffinity))
+                RuntimeLog.Log("WINDOW-PRIVACY", $"Capture exclusion failed: {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
             if (_source == null)
             {
                 _source = HwndSource.FromHwnd(hwnd);
@@ -63,8 +111,16 @@ internal static class WindowAnimationPolicy
                 int style = Win32Interop.GetWindowLong(hwnd, Win32Interop.GWL_EXSTYLE);
                 int desired = (style | Win32Interop.WS_EX_TOOLWINDOW) & ~Win32Interop.WS_EX_APPWINDOW;
                 if (desired != style)
-                    Win32Interop.SetWindowLong(hwnd, Win32Interop.GWL_EXSTYLE, desired);
+                    UpdateShellStyle(hwnd, desired);
             }
+        }
+
+        private static void UpdateShellStyle(IntPtr hwnd, int style)
+        {
+            Win32Interop.SetWindowLong(hwnd, Win32Interop.GWL_EXSTYLE, style);
+            Win32Interop.SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                Win32Interop.SWP_FRAMECHANGED | Win32Interop.SWP_NOMOVE | Win32Interop.SWP_NOSIZE |
+                Win32Interop.SWP_NOZORDER | Win32Interop.SWP_NOACTIVATE | Win32Interop.SWP_NOOWNERZORDER);
         }
 
         private void OnSourceInitialized(object? sender, EventArgs e) => Apply();

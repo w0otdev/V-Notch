@@ -11,6 +11,20 @@ namespace VNotch.Tests;
 public sealed class PrivacySettingsTests
 {
     [Fact]
+    public void InvisibleModePersistsAndParticipatesInSettingsDiffs()
+    {
+        var settings = new NotchSettings();
+        Assert.False(settings.InvisibleMode);
+        var enabled = settings.Clone();
+        enabled.InvisibleMode = true;
+        Assert.False(settings.ValueEquals(enabled));
+        Assert.True(enabled.Clone().InvisibleMode);
+        var restored = JsonSerializer.Deserialize<NotchSettings>(JsonSerializer.Serialize(enabled));
+        Assert.NotNull(restored);
+        Assert.True(restored.InvisibleMode);
+    }
+
+    [Fact]
     public void DefaultSettings_HaveExpectedPrivacyDefaults()
     {
         var settings = new NotchSettings();

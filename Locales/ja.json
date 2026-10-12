@@ -1,4 +1,10 @@
 {
+  "settings.privacy.invisible.enable": "非表示モードをオンにする",
+  "settings.privacy.invisible.disable": "非表示モードをオフにする",
+  "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I で切り替えます。非表示モードをオフにすると、システムトレイのアイコンが再表示されます。",
+  "settings.privacy.invisible.shortcutUnavailable": "Ctrl + Alt + Shift + I は利用できません。ノッチから設定を開き、非表示モードをオフにしてください。",
+  "settings.privacy.invisible": "非表示モード",
+  "settings.privacy.invisible.hint": "システムトレイのアイコンを隠し、アプリのウィンドウをタスクバー、Alt+Tab、対応する画面キャプチャから除外します。ノッチは表示されたままです。解除するにはノッチから設定を開いてください。プロセスはタスクマネージャーに表示されます。キャプチャからの除外は、Windows とキャプチャツールに依存します。",
   "translation.getModel": "モデルをダウンロード / インポート",
   "translation.truncated": "上限を超えたため、先頭部分のみ翻訳しています。",
   "translation.replaceTruncated": "この翻訳は先頭部分のみです。残りの選択範囲を残すにはコピーを使用してください。",
