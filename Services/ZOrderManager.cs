@@ -11,17 +11,15 @@ public sealed class ZOrderManager : IDisposable
     private readonly Func<bool> _stayBehindWindows;
     private readonly Action<IntPtr> _onForegroundChanged;
 
-    private readonly DispatcherTimer _watchdogTimer;
-    private readonly DispatcherTimer _fastTimer;
+    private readonly Dispatcher _dispatcher;
 
     private IntPtr _foregroundWinEventHook = IntPtr.Zero;
     private WinEventDelegate? _foregroundWinEventProc;
     private IntPtr _pendingForegroundWindow;
     private int _foregroundDispatchQueued;
 
-    private DateTime _burstUntilUtc = DateTime.MinValue;
-    private DateTime _fastUntilUtc = DateTime.MinValue;
     private DateTime _lastTopmostAssertUtc = DateTime.MinValue;
+    private CancellationTokenSource? _burstCancellation;
 
     private static readonly TimeSpan TopmostThrottle = TimeSpan.FromMilliseconds(80);
     public ZOrderManager(
@@ -36,43 +34,24 @@ public sealed class ZOrderManager : IDisposable
         _isSuspended = isSuspended;
         _stayBehindWindows = stayBehindWindows;
         _onForegroundChanged = onForegroundChanged;
-
-        _watchdogTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
-        _watchdogTimer.Tick += WatchdogTimer_Tick;
-
-        _fastTimer = new DispatcherTimer
-        {
-            Interval = TopmostThrottle
-        };
-        _fastTimer.Tick += FastTimer_Tick;
+        _dispatcher = Dispatcher.CurrentDispatcher;
     }
+
     public void TriggerBurst(TimeSpan duration, bool aggressive = false)
     {
-        var now = DateTime.UtcNow;
-        var until = now + duration;
+        if (_disposed || duration <= TimeSpan.Zero) return;
 
-        if (until > _burstUntilUtc)
-            _burstUntilUtc = until;
-
-        if (aggressive)
-        {
-            var fastDuration = duration.TotalMilliseconds >= 800
-                ? TimeSpan.FromMilliseconds(800)
-                : duration;
-            var fastUntil = now + fastDuration;
-
-            if (fastUntil > _fastUntilUtc)
-                _fastUntilUtc = fastUntil;
-
-            if (!_fastTimer.IsEnabled)
-                _fastTimer.Start();
-        }
+        EnsureTopmost(force: true);
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _burstCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        ReassertAfterForegroundTransitionAsync(duration, aggressive, cancellation.Token)
+            .SafeFireAndForget("ZORDER-BURST");
     }
     public void EnsureTopmost(bool force = false)
     {
+        if (_disposed) return;
         var hwnd = _getHwnd();
         if (hwnd == IntPtr.Zero || !_isEffectivelyVisible()) return;
 
@@ -114,8 +93,8 @@ public sealed class ZOrderManager : IDisposable
         if (eventType != EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero || hwnd == _getHwnd())
             return;
 
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (_disposed || dispatcher == null || dispatcher.HasShutdownStarted) return;
+        var dispatcher = _dispatcher;
+        if (_disposed || dispatcher.HasShutdownStarted) return;
         System.Threading.Interlocked.Exchange(ref _pendingForegroundWindow, hwnd);
         if (System.Threading.Interlocked.Exchange(ref _foregroundDispatchQueued, 1) != 0) return;
         dispatcher.BeginInvoke(new Action(() =>
@@ -125,54 +104,40 @@ public sealed class ZOrderManager : IDisposable
         }), DispatcherPriority.Background);
     }
 
-    private void WatchdogTimer_Tick(object? sender, EventArgs e)
+    private async Task ReassertAfterForegroundTransitionAsync(
+        TimeSpan duration,
+        bool aggressive,
+        CancellationToken cancellationToken)
     {
-        // Reassert desktop mode during Explorer transitions (Win+D/virtual desktops)
-        // so notch stays visible when desktop appears.
-        var burstActive = DateTime.UtcNow <= _burstUntilUtc;
-        if (_stayBehindWindows())
+        try
         {
-            EnsureTopmost(force: burstActive);
-            return;
+            TimeSpan firstDelay = aggressive && duration > TimeSpan.FromMilliseconds(250)
+                ? TimeSpan.FromMilliseconds(250)
+                : duration;
+            await Task.Delay(firstDelay, cancellationToken).ConfigureAwait(false);
+            await ReassertOnDispatcherAsync(cancellationToken).ConfigureAwait(false);
+
+            TimeSpan remaining = duration - firstDelay;
+            if (remaining > TimeSpan.Zero)
+            {
+                await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+                await ReassertOnDispatcherAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
-        if (_isSuspended()) return;
-
-        var hwnd = _getHwnd();
-        if (hwnd == IntPtr.Zero || !_isEffectivelyVisible()) return;
-
-        var hasWindowAbove = Win32Interop.GetWindow(hwnd, GW_HWNDPREV) != IntPtr.Zero;
-
-        if (burstActive || hasWindowAbove)
-            EnsureTopmost(force: burstActive);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
     }
 
-    private void FastTimer_Tick(object? sender, EventArgs e)
+    private Task ReassertOnDispatcherAsync(CancellationToken cancellationToken)
     {
-        if (_stayBehindWindows())
-        {
-            _fastTimer.Stop();
-            return;
-        }
-        if (_isSuspended())
-        {
-            _fastTimer.Stop();
-            return;
-        }
+        if (_disposed || _dispatcher.HasShutdownStarted || cancellationToken.IsCancellationRequested)
+            return Task.CompletedTask;
 
-        var hwnd = _getHwnd();
-        if (hwnd == IntPtr.Zero || !_isEffectivelyVisible())
-        {
-            _fastTimer.Stop();
-            return;
-        }
-
-        if (DateTime.UtcNow > _fastUntilUtc)
-        {
-            _fastTimer.Stop();
-            return;
-        }
-
-        EnsureTopmost();
+        return _dispatcher.InvokeAsync(
+            () => EnsureTopmost(force: true),
+            DispatcherPriority.Background,
+            cancellationToken).Task;
     }
 
     private bool _disposed;
@@ -195,13 +160,14 @@ public sealed class ZOrderManager : IDisposable
                 IntPtr.Zero, _foregroundWinEventProc,
                 0, 0, WINEVENT_OUTOFCONTEXT);
         }
-        _watchdogTimer.Start();
+        AssertNow();
     }
 
     public void Stop()
     {
-        _watchdogTimer.Stop();
-        _fastTimer.Stop();
+        var cancellation = Interlocked.Exchange(ref _burstCancellation, null);
+        cancellation?.Cancel();
+        cancellation?.Dispose();
 
         if (_foregroundWinEventHook != IntPtr.Zero)
         {

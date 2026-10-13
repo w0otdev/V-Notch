@@ -23,15 +23,15 @@ public sealed class MainWindowProgressPresentationTests
     public void UserSeekClampsToTrackAndUpdatesRenderedTime(double requested, double expected) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = CreateFixture(media);
+        await using var fixture = CreateFixture(media);
         var window = fixture.Window;
         Prepare(window, 30, false, false);
         Invoke(window, "RenderProgressBar");
-        Assert.Equal(.3, window.ProgressBarScale.ScaleX, 3);
-        Assert.Equal("0:30", window.CurrentTimeText.Text);
+        Assert.Equal(.3, window.MediaPlayback.ProgressBarScale.ScaleX, 3);
+        Assert.Equal("0:30", window.MediaPlayback.CurrentTimeText.Text);
         await (Task)Invoke(window, "SeekToPosition", TimeSpan.FromSeconds(requested))!;
         Assert.Equal(TimeSpan.FromSeconds(expected), media.LastSeek);
-        Assert.Equal(MediaProgressHelpers.FormatTime(TimeSpan.FromSeconds(expected)), window.CurrentTimeText.Text);
+        Assert.Equal(MediaProgressHelpers.FormatTime(TimeSpan.FromSeconds(expected)), window.MediaPlayback.CurrentTimeText.Text);
         Assert.InRange(Field<double>(window, "_progressTargetRatio"), 0, 1);
         Invoke(window, "StopSpringRenderLoop");
         Invoke(window, "ProgressBar_MouseEnter", window, MouseArgs(Mouse.MouseEnterEvent));
@@ -60,8 +60,8 @@ public sealed class MainWindowProgressPresentationTests
         Set(window, "_allowProgressBackwardRenderUntil", userSeek ? DateTime.Now.AddSeconds(10) : DateTime.MinValue);
         Set(window, "_blockBackwardAfterSeekUntil", postSeek ? DateTime.Now.AddSeconds(10) : DateTime.MinValue);
         Invoke(window, "RenderProgressBar");
-        Assert.InRange(window.ProgressBarScale.ScaleX * 100, expectedSeconds - .05, expectedSeconds + .05);
-        Assert.InRange(window.ProgressBarScale.ScaleX, 0, 1);
+        Assert.InRange(window.MediaPlayback.ProgressBarScale.ScaleX * 100, expectedSeconds - .05, expectedSeconds + .05);
+        Assert.InRange(window.MediaPlayback.ProgressBarScale.ScaleX, 0, 1);
     });
 
     [Theory]
@@ -71,34 +71,34 @@ public sealed class MainWindowProgressPresentationTests
     [InlineData(2)]
     public void ExternalSeekAndTrackRewindAnimationsFinishAtTheirTargets(double target) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        await using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;
         Prepare(window, 30, false, false);
         Invoke(window, "RenderProgressBar");
         Invoke(window, "AnimateExternalSeekTo", target);
         await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isRewindAnimating"), "external seek animation", ct);
-        Assert.Equal(Math.Clamp(target, 0, 1), window.ProgressBarScale.ScaleX, 3);
-        Assert.Equal(MediaProgressHelpers.FormatTime(TimeSpan.FromSeconds(Math.Clamp(target, 0, 1) * 100)), window.CurrentTimeText.Text);
+        Assert.Equal(Math.Clamp(target, 0, 1), window.MediaPlayback.ProgressBarScale.ScaleX, 3);
+        Assert.Equal(MediaProgressHelpers.FormatTime(TimeSpan.FromSeconds(Math.Clamp(target, 0, 1) * 100)), window.MediaPlayback.CurrentTimeText.Text);
         Invoke(window, "AnimateTrackChangeRewindToZero", Math.Clamp(target, 0, 1), TimeSpan.FromSeconds(200));
         await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isRewindAnimating"), "track change rewind", ct);
-        Assert.Equal(0, window.ProgressBarScale.ScaleX);
-        Assert.Equal("0:00", window.CurrentTimeText.Text);
-        Assert.Equal("3:20", window.RemainingTimeText.Text);
+        Assert.Equal(0, window.MediaPlayback.ProgressBarScale.ScaleX);
+        Assert.Equal("0:00", window.MediaPlayback.CurrentTimeText.Text);
+        Assert.Equal("3:20", window.MediaPlayback.RemainingTimeText.Text);
         Invoke(window, "StartProgressCatchUpAnimation");
-        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.ProgressBarScale.ScaleX - .3) < .001, "progress catch up", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.MediaPlayback.ProgressBarScale.ScaleX - .3) < .001, "progress catch up", ct);
         Invoke(window, "StartProgressCatchUpAnimation");
-        Assert.Equal("0:30", window.CurrentTimeText.Text);
+        Assert.Equal("0:30", window.MediaPlayback.CurrentTimeText.Text);
     });
 
     [Fact]
     public void ClickAndDragReleaseDispatchSeekAndClearPendingState() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = CreateFixture(media);
+        await using var fixture = CreateFixture(media);
         var window = fixture.Window;
         Prepare(window, 30, false, false);
-        window.ProgressBarContainer.Measure(new Size(300, 20));
-        window.ProgressBarContainer.Arrange(new Rect(0, 0, 300, 20));
+        window.MediaPlayback.ProgressBarContainer.Measure(new Size(300, 20));
+        window.MediaPlayback.ProgressBarContainer.Arrange(new Rect(0, 0, 300, 20));
         var down = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent };
         Invoke(window, "ProgressBar_MouseDown", window, down);
         Assert.True(down.Handled);
@@ -119,20 +119,20 @@ public sealed class MainWindowProgressPresentationTests
     public void MissingTrackAndTimelineResetProgressWithoutSeeking() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = CreateFixture(media);
+        await using var fixture = CreateFixture(media);
         var window = fixture.Window;
         Prepare(window, 30, false, false);
         Invoke(window, "RenderProgressBar");
         Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = "No media playing" });
         Invoke(window, "RenderProgressBar");
-        Assert.Equal(0, window.ProgressBarScale.ScaleX);
-        Assert.Equal("0:00", window.CurrentTimeText.Text);
+        Assert.Equal(0, window.MediaPlayback.ProgressBarScale.ScaleX);
+        Assert.Equal("0:00", window.MediaPlayback.CurrentTimeText.Text);
         Field<ProgressEngine>(window, "_progressEngine").Reset();
         await (Task)Invoke(window, "SeekToPosition", TimeSpan.FromSeconds(10))!;
         Assert.Null(media.LastSeek);
         Assert.Equal(TimeSpan.Zero, Invoke(window, "GetPositionForRatio", .5));
         Invoke(window, "ResetProgressUI");
-        Assert.Equal(Visibility.Collapsed, window.IndeterminateProgress.Visibility);
+        Assert.Equal(Visibility.Collapsed, window.MediaPlayback.IndeterminateProgress.Visibility);
         await WpfFrameWaiter.NextAsync(ct);
     });
 
@@ -141,7 +141,7 @@ public sealed class MainWindowProgressPresentationTests
     [InlineData(true)]
     public void TimelineUpdatesRejectStalePositionsAndPreserveArtistOnlyCorrections(bool expanded) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        await using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;
         Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
             expanded ? NotchView.Media : NotchView.Compact,
@@ -160,7 +160,7 @@ public sealed class MainWindowProgressPresentationTests
             LastUpdated = DateTimeOffset.UtcNow
         };
         Invoke(window, "UpdateProgressTracking", info);
-        Assert.Equal("0:30", window.CurrentTimeText.Text);
+        Assert.Equal("0:30", window.MediaPlayback.CurrentTimeText.Text);
         long generation = Field<long>(window, "_trackChangeSequence");
         info.CurrentArtist = "Resolved artist";
         info.LastUpdated = DateTimeOffset.UtcNow;
@@ -183,8 +183,8 @@ public sealed class MainWindowProgressPresentationTests
         Invoke(window, "UpdateProgressTracking", info);
         Assert.Equal(generation + 1, Field<long>(window, "_trackChangeSequence"));
         await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isRewindAnimating"), "new track rewind", ct);
-        Assert.InRange(window.ProgressBarScale.ScaleX, 0, .1);
-        Assert.Equal("1:40", window.RemainingTimeText.Text);
+        Assert.InRange(window.MediaPlayback.ProgressBarScale.ScaleX, 0, .1);
+        Assert.Equal("1:40", window.MediaPlayback.RemainingTimeText.Text);
     });
 
     [Theory]
@@ -204,8 +204,8 @@ public sealed class MainWindowProgressPresentationTests
             SequenceNumber = 1
         });
         Invoke(window, "RenderProgressBar");
-        Assert.Equal(expected, window.RemainingTimeText.Text);
-        Assert.Equal(0, window.ProgressBarScale.ScaleX);
+        Assert.Equal(expected, window.MediaPlayback.RemainingTimeText.Text);
+        Assert.Equal(0, window.MediaPlayback.ProgressBarScale.ScaleX);
     });
 
     [Theory]
@@ -215,20 +215,20 @@ public sealed class MainWindowProgressPresentationTests
     [InlineData(70, 10, false)]
     public void PlaybackJumpsAnimateOnlyPlausibleExternalSeeks(double displayed, double reported, bool animate) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        await using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;
         Prepare(window, reported, true, false);
         Field<ProgressEngine>(window, "_progressEngine").GetUiFrame();
         Set(window, "_progressDisplayRatio", displayed / 100);
-        window.ProgressBarScale.ScaleX = displayed / 100;
+        window.MediaPlayback.ProgressBarScale.ScaleX = displayed / 100;
         Invoke(window, "RenderProgressBar");
         Assert.Equal(animate, Field<bool>(window, "_isRewindAnimating"));
         if (animate)
         {
             await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isRewindAnimating"), "external timeline seek", ct);
-            Assert.InRange(window.ProgressBarScale.ScaleX, reported / 100, reported / 100 + .02);
+            Assert.InRange(window.MediaPlayback.ProgressBarScale.ScaleX, reported / 100, reported / 100 + .02);
         }
-        else Assert.Equal(displayed / 100, window.ProgressBarScale.ScaleX);
+        else Assert.Equal(displayed / 100, window.MediaPlayback.ProgressBarScale.ScaleX);
     });
 
     private static void Prepare(MainWindow window, double seconds, bool playing, bool browser)
@@ -264,7 +264,20 @@ public sealed class MainWindowProgressPresentationTests
         configureSettings: settings => settings.EnableLocalOnlyMode = true,
         configureServices: services => services.AddSingleton<IMediaDetectionService>(media));
     private static MouseEventArgs MouseArgs(RoutedEvent routedEvent) => new(Mouse.PrimaryDevice, 0) { RoutedEvent = routedEvent };
-    private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
-    private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
-    private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
+    private static T Field<T>(MainWindow window, string name)
+    {
+        var field = typeof(Controls.MediaPlaybackView).GetField(name, Private);
+        return (T)(field != null ? field.GetValue(window.MediaPlayback)! : typeof(MainWindow).GetField(name, Private)!.GetValue(window)!);
+    }
+    private static void Set(MainWindow window, string name, object value)
+    {
+        var field = typeof(Controls.MediaPlaybackView).GetField(name, Private);
+        if (field != null) field.SetValue(window.MediaPlayback, value);
+        else typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
+    }
+    private static object? Invoke(MainWindow window, string name, params object?[] args)
+    {
+        var method = typeof(Controls.MediaPlaybackView).GetMethod(name, Private);
+        return method != null ? method.Invoke(window.MediaPlayback, args) : typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
+    }
 }

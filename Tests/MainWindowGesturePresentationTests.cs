@@ -18,7 +18,7 @@ public sealed class MainWindowGesturePresentationTests
     [InlineData(10, 3)]
     public void DragFeedbackMovesNotchAndShadowTogetherAndSnapsBack(double input, double expected) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        await using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;
         Invoke(window, "ApplyGestureDragFeedback", input);
         Assert.Equal(expected, window.NotchGestureTranslate.X);
@@ -37,7 +37,7 @@ public sealed class MainWindowGesturePresentationTests
     [InlineData("PlayGestureMiddleClickFeedback", null)]
     public void GestureFeedbackRestoresScaleAndKeepsShadowAligned(string method, bool? left) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        await using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;
         if (left.HasValue) Invoke(window, method, left.Value); else Invoke(window, method);
         await WpfFrameWaiter.NextAsync(ct);
@@ -52,7 +52,7 @@ public sealed class MainWindowGesturePresentationTests
     public void GestureCommandsReachTheMediaServiceAndSuppressImmediateDuplicates() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = CreateFixture(media);
+        await using var fixture = CreateFixture(media);
         var window = fixture.Window;
         foreach (var command in new[] { "OnGestureSwipeLeft", "OnGestureSwipeRight", "OnGestureDoubleTap" })
         {

@@ -30,7 +30,7 @@ public sealed class MainWindowLyricsPresentationTests
     [Fact]
     public void ReturningWidgetCancelsBackdropFadeAndLateRefreshCannotRestoreIt() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.ExpandedWidget = "clock";
@@ -73,7 +73,7 @@ public sealed class MainWindowLyricsPresentationTests
     [InlineData(true, "")]
     public void IntroLyricsSeekingAndClearingKeepOnlyTheCorrectContentVisible(bool reducedMotion, string artist) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         bool previous = AnimationConfig.ReduceMotion;
         try
@@ -130,7 +130,7 @@ public sealed class MainWindowLyricsPresentationTests
     [InlineData(true)]
     public void RepeatedSearchAndRapidLineTransitionsSettleOnTheLatestText(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         bool previous = AnimationConfig.ReduceMotion;
         try

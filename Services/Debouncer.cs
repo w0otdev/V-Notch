@@ -4,14 +4,14 @@ namespace VNotch.Services;
 
 public sealed class Debouncer : IDisposable
 {
-    private readonly DispatcherTimer _timer;
+    private readonly UiScheduledTimer _timer;
     private readonly Dispatcher _dispatcher;
     private Action? _pendingAction;
     private volatile bool _disposed;
     public Debouncer(TimeSpan delay, DispatcherPriority priority = DispatcherPriority.Normal)
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
-        _timer = new DispatcherTimer(priority, _dispatcher)
+        _timer = new UiScheduledTimer(priority, _dispatcher)
         {
             Interval = delay
         };
@@ -75,7 +75,7 @@ public sealed class Debouncer : IDisposable
 
 public sealed class Throttler : IDisposable
 {
-    private readonly DispatcherTimer _timer;
+    private readonly UiScheduledTimer _timer;
     private Action? _pendingAction;
     private DateTime _lastExecutionUtc = DateTime.MinValue;
     private readonly TimeSpan _interval;
@@ -83,7 +83,7 @@ public sealed class Throttler : IDisposable
     public Throttler(TimeSpan interval, DispatcherPriority priority = DispatcherPriority.Normal)
     {
         _interval = interval;
-        _timer = new DispatcherTimer(priority)
+        _timer = new UiScheduledTimer(priority)
         {
             Interval = interval
         };

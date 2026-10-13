@@ -113,7 +113,7 @@ public sealed class GreetingAcceptanceTests
         fixture.ShowGreeting();
         Assert.True(GetField<bool>(fixture.Window, "_isGreetingActive"));
         PumpUntil(() => !GetField<bool>(fixture.Window, "_isGreetingActive"), TimeSpan.FromSeconds(10));
-        Assert.Null(GetField<DispatcherTimer?>(fixture.Window, "_greetingDismissTimer"));
+        Assert.Null(GetField<UiScheduledTimer?>(fixture.Window, "_greetingDismissTimer"));
         Assert.Equal(Visibility.Visible, fixture.Window.NotchLiveContent.Visibility);
         Assert.Equal(Visibility.Visible, fixture.Window.CollapsedContent.Visibility);
         Assert.Equal(Visibility.Collapsed, fixture.Window.GreetingOverlay.Visibility);
@@ -131,15 +131,15 @@ public sealed class GreetingAcceptanceTests
         PumpUntil(() => language == "vi" ? window.ViPath10.HasAnimatedProperties : window.HelloPath2.HasAnimatedProperties,
             TimeSpan.FromSeconds(3));
         Invoke(window, "ScheduleGreetingDismiss", TimeSpan.FromMinutes(1));
-        var timer = GetField<DispatcherTimer>(window, "_greetingDismissTimer");
+        var timer = GetField<UiScheduledTimer>(window, "_greetingDismissTimer");
         Assert.True(timer.IsEnabled);
         window.Close();
         Assert.False(timer.IsEnabled);
-        Assert.Null(GetField<DispatcherTimer?>(window, "_greetingDismissTimer"));
+        Assert.Null(GetField<UiScheduledTimer?>(window, "_greetingDismissTimer"));
         Assert.False(GetField<bool>(window, "_isGreetingActive"));
         foreach (var path in Paths(window)) Assert.False(path.HasAnimatedProperties);
         PumpFor(TimeSpan.FromMilliseconds(750));
-        Assert.Null(GetField<DispatcherTimer?>(window, "_greetingDismissTimer"));
+        Assert.Null(GetField<UiScheduledTimer?>(window, "_greetingDismissTimer"));
     });
 
     [Fact]
@@ -152,7 +152,7 @@ public sealed class GreetingAcceptanceTests
         fixture.Window.Close();
         PumpFor(TimeSpan.FromMilliseconds(750));
         Assert.False(GetField<bool>(fixture.Window, "_isGreetingActive"));
-        Assert.Null(GetField<DispatcherTimer?>(fixture.Window, "_greetingDismissTimer"));
+        Assert.Null(GetField<UiScheduledTimer?>(fixture.Window, "_greetingDismissTimer"));
     });
 
     [Theory]
@@ -278,10 +278,11 @@ public sealed class GreetingAcceptanceTests
         Dispatcher.PushFrame(frame);
     }
 
-    internal sealed class MainWindowFixture : IDisposable
+    internal sealed class MainWindowFixture : IDisposable, IAsyncDisposable
     {
         private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-greeting-" + Guid.NewGuid().ToString("N"));
         private readonly ServiceProvider _provider;
+        private Task? _disposeTask;
         internal MainWindow Window { get; }
         internal MainWindowFixture(string language, bool greeting = true, Action<NotchSettings>? configureSettings = null,
             Action<IServiceCollection>? configureServices = null)
@@ -322,12 +323,27 @@ public sealed class GreetingAcceptanceTests
         }
         public void Dispose()
         {
-            Window.Close();
-            _provider.Dispose();
+            DisposeAsync().AsTask().SafeFireAndForget("TEST-FIXTURE-DISPOSE");
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (_disposeTask == null)
+            {
+                Window.Close();
+                Loc.SetLanguage("en");
+                _disposeTask = DisposeCoreAsync();
+            }
+            return new ValueTask(_disposeTask);
+        }
+
+        private async Task DisposeCoreAsync()
+        {
+            await Window.CleanupAsync();
+            await _provider.DisposeAsync();
             string expectedPrefix = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-greeting-");
             Assert.StartsWith(expectedPrefix, System.IO.Path.GetFullPath(_directory), StringComparison.OrdinalIgnoreCase);
             if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
-            Loc.SetLanguage("en");
         }
     }
 }

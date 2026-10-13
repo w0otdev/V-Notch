@@ -25,7 +25,7 @@ public partial class SettingsWindow
 {
     #region Search
 
-    private DispatcherTimer? _searchDebounce;
+    private UiScheduledTimer? _searchDebounce;
     private bool _isSearchMode;
     private readonly List<SearchRowEntry> _searchRows = new();
 
@@ -44,7 +44,7 @@ public partial class SettingsWindow
 
         if (_searchDebounce == null)
         {
-            _searchDebounce = new DispatcherTimer(DispatcherPriority.Background)
+            _searchDebounce = new UiScheduledTimer(DispatcherPriority.Background)
             {
                 Interval = TimeSpan.FromMilliseconds(150)
             };

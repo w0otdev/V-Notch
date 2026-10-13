@@ -22,6 +22,12 @@ public interface IMediaDetectionService : IDisposable
 
     void Stop();
 
+    Task StopAsync()
+    {
+        Stop();
+        return Task.CompletedTask;
+    }
+
     Task PlayPauseAsync();
 
     Task NextTrackAsync();

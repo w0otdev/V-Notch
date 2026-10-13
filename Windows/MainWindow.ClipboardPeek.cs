@@ -14,7 +14,7 @@ public partial class MainWindow
 
     private bool _isClipboardPeekActive = false;
     private int _clipboardPeekToken = 0;
-    private DispatcherTimer? _clipboardRevertTimer;
+    private UiScheduledTimer? _clipboardRevertTimer;
 
     private void PlayClipboardPeek()
     {
@@ -106,7 +106,7 @@ public partial class MainWindow
         StopClipboardRevertTimer();
 
         int revertToken = _clipboardPeekToken;
-        var revertTimer = new DispatcherTimer
+        var revertTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(1600)
         };

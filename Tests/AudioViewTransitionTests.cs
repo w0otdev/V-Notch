@@ -13,7 +13,7 @@ public class AudioViewTransitionTests
         bool isAudioView, bool isAnimating, bool hasBuiltUi, bool expected)
     {
         Assert.Equal(expected,
-            MainWindow.ShouldDeferAudioSnapshotDuringTransition(
+            Controls.AudioMixerView.ShouldDeferAudioSnapshotDuringTransition(
                 isAudioView, isAnimating, hasBuiltUi));
     }
 

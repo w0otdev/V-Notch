@@ -18,7 +18,7 @@ public sealed class CalendarInteractionSequenceTests
     [InlineData(-1200, 10)]
     public void ScrollMovesHighlightAndResetReturnsToToday(int delta, int expectedIndex) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
             s => { s.EnableLocalOnlyMode = true; s.ExpandedWidget = "calendar"; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         fixture.Window.InitializeCalendarPresenter();

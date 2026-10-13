@@ -932,7 +932,7 @@ public partial class SetupWindow : Window
         _hasForcedForeground = true;
         BringToFront();
 
-        var followUpTimer = new DispatcherTimer
+        var followUpTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(180)
         };

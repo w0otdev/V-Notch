@@ -39,8 +39,8 @@ public partial class ClipboardTray : UserControl, IDisposable
     private static readonly string[] Categories = CategoryKinds.Select(kind => kind.ToString()).ToArray();
     private readonly ClipboardCategoryViewModel[] _categoryItems = CategoryKinds.Select(kind => new ClipboardCategoryViewModel(kind)).ToArray();
     private readonly ClipboardCardCollection _cards = [];
-    private readonly DispatcherTimer _searchTimer;
-    private readonly DispatcherTimer _ageTimer;
+    private readonly UiScheduledTimer _searchTimer;
+    private readonly UiScheduledTimer _ageTimer;
     private readonly CancellationTokenSource _contentLifetime = new();
     private readonly Queue<(ClipboardCapture Capture, long Size)> _approvals = new();
     private ClipboardHistoryController? _controller;
@@ -90,7 +90,10 @@ public partial class ClipboardTray : UserControl, IDisposable
     public bool TryDismissOverlay()
     {
         if (_deleteConfirmationOpen || DeleteConfirmationPanel.Visibility == Visibility.Visible)
-        { ResolveDeleteConfirmation(false); return true; }
+        {
+            ResolveDeleteConfirmation(false);
+            return true;
+        }
         if (DetailPanel.Visibility == Visibility.Visible)
         {
             DismissDetails();
@@ -117,7 +120,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         _statusTimer.Tick += StatusTimer_Tick;
         Cards.ItemsSource = _cards;
         CategoryPanel.ItemsSource = _categoryItems;
-        _searchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _searchTimer = new UiScheduledTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _searchTimer.Tick += (_, _) =>
         {
             _searchTimer.Stop();
@@ -125,11 +128,18 @@ public partial class ClipboardTray : UserControl, IDisposable
             _ = SafeAsync(RefreshAsync);
         };
         Unloaded += Tray_Unloaded;
-        Loaded += (_, _) => { if (!_disposed && _queryDirty) QueueRefresh(); };
-        _ageTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(1) };
+        Loaded += (_, _) =>
+        {
+            if (!_disposed && _queryDirty) QueueRefresh();
+        };
+        _ageTimer = new UiScheduledTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMinutes(1) };
         _ageTimer.Tick += AgeTimer_Tick;
         Loaded += (_, _) => UpdateAgeTimer();
-        Unloaded += (_, _) => { _ageTimer.Stop(); EndSelection(); };
+        Unloaded += (_, _) =>
+        {
+            _ageTimer.Stop();
+            EndSelection();
+        };
         IsVisibleChanged += (_, _) =>
         {
             if (_disposed) return;
@@ -148,7 +158,8 @@ public partial class ClipboardTray : UserControl, IDisposable
             else
             {
                 StopEntranceWork();
-                StopCategoryScrolling(); CancelCardPositionAnimation();
+                StopCategoryScrolling();
+                CancelCardPositionAnimation();
                 CancelPendingPersonalDrop();
                 HidePrivateContent();
                 if (_controller?.Store.IsPersonalUnlocked == true) _ = SafeAsync(_controller.LockPersonalAsync);
@@ -229,14 +240,33 @@ public partial class ClipboardTray : UserControl, IDisposable
         UpdateSearchEdgeFade();
     }
     private bool _queryDirty = true;
-    private void QueueRefresh() { _queryDirty = true; _searchCancellation?.Cancel(); _searchTimer.Stop(); _searchTimer.Start(); }
+    private void QueueRefresh()
+    {
+        _queryDirty = true;
+        _searchCancellation?.Cancel();
+        _searchTimer.Stop();
+        _searchTimer.Start();
+    }
     private async Task RefreshAsync()
     {
         if (_controller == null || _disposed || !IsVisible) return;
-        if (IsEntranceWorkDeferred) { _queryDirty = true; return; }
-        if (_groupEntryId != null) { _queryDirty = true; return; }
-        if (_selectionStart != null) { QueueRefresh(); return; }
-        _searchCancellation?.Cancel(); _searchCancellation?.Dispose();
+        if (IsEntranceWorkDeferred)
+        {
+            _queryDirty = true;
+            return;
+        }
+        if (_groupEntryId != null)
+        {
+            _queryDirty = true;
+            return;
+        }
+        if (_selectionStart != null)
+        {
+            QueueRefresh();
+            return;
+        }
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
         _searchCancellation = new CancellationTokenSource();
         var cancellation = _searchCancellation.Token;
         int version = ++_refreshVersion;
@@ -355,7 +385,11 @@ public partial class ClipboardTray : UserControl, IDisposable
     private void SelectCategory(string category)
     {
         _pendingSelectAll = null;
-        if (category != "Personal") { CancelPendingPersonalDrop(); _moveToPersonal = null; }
+        if (category != "Personal")
+        {
+            CancelPendingPersonalDrop();
+            _moveToPersonal = null;
+        }
         if (_category != category) ResolveDeleteConfirmation(false);
         if (_category == category) return;
         bool leavingPersonal = _category == "Personal";
@@ -377,16 +411,20 @@ public partial class ClipboardTray : UserControl, IDisposable
             Cards.Visibility = Visibility.Hidden;
             EmptyText.Visibility = Visibility.Collapsed;
             EmptyDropSilhouette.Visibility = Visibility.Collapsed;
-            CancelThumbnailLoads(); ReleaseCardPreviews();
-            _cards.Clear(); _arrivingCards.Clear();
+            CancelThumbnailLoads();
+            ReleaseCardPreviews();
+            _cards.Clear();
+            _arrivingCards.Clear();
         }
         CloseDetails();
-        ClearPendingPin(); PasscodeBox.Clear();
+        ClearPendingPin();
+        PasscodeBox.Clear();
         // PersonalLocked fires synchronously. Set the destination category and
         // hide the old content before it runs so it cannot re-show the lock UI.
         if (leavingPersonal && _controller != null) _ = SafeAsync(_controller.LockPersonalAsync);
         UpdateCategoryLockState();
-        RebuildCategories(); QueueRefresh();
+        RebuildCategories();
+        QueueRefresh();
     }
 
     private bool UpdateCategoryLockState()
@@ -425,42 +463,81 @@ public partial class ClipboardTray : UserControl, IDisposable
         EndSelection();
         CancelPendingPersonalDrop();
         // Pending approvals can expose private file names and target a locked store.
-        _approvals.Clear(); ApprovalPanel.Visibility = Visibility.Collapsed;
-        ResolveDeleteConfirmation(false, immediately: true); ClearStatus(immediately: true);
+        _approvals.Clear();
+        ApprovalPanel.Visibility = Visibility.Collapsed;
+        ResolveDeleteConfirmation(false, immediately: true);
+        ClearStatus(immediately: true);
         _selectionAnchor = null;
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         foreach (var card in _cards) card.IsMenuOpen = false;
-        ++_refreshVersion; _searchCancellation?.Cancel();
-        ClearPendingPin(); _moveToPersonal = null; PasscodeBox.Clear(); ResetPinDots(immediately: true);
-        _pressedCard = null; _dragStart = null;
+        ++_refreshVersion;
+        _searchCancellation?.Cancel();
+        ClearPendingPin();
+        _moveToPersonal = null;
+        PasscodeBox.Clear();
+        ResetPinDots(immediately: true);
+        _pressedCard = null;
+        _dragStart = null;
         _copyOnRelease = false;
         _detailCard = null;
         _detailLocalizationKey = null;
         CopyDetailButton.Visibility = Visibility.Collapsed;
-        DetailImage.Source = null; DetailImage.Visibility = Visibility.Collapsed;
+        DetailImage.Source = null;
+        DetailImage.Visibility = Visibility.Collapsed;
         ResetPersonalButton.Visibility = Visibility.Collapsed;
         ResetConfirmationPanel.Visibility = Visibility.Collapsed;
         ResetConfirmationBox.Clear();
-        DetailText.Clear(); DetailPanel.Visibility = Visibility.Collapsed;
+        DetailText.Clear();
+        DetailPanel.Visibility = Visibility.Collapsed;
         foreach (var card in _cards.Where(card => card.Entry.IsPersonal)) card.Image = null;
-        if (_category == "Personal") { _queryDirty = true; _cards.Clear(); Cards.Visibility = Visibility.Collapsed; ShowTransientLayer(LockPanel); }
-        else foreach (var card in _cards.Where(card => card.Entry.IsPersonal).ToArray()) _cards.Remove(card);
+        if (_category == "Personal")
+        {
+            _queryDirty = true;
+            _cards.Clear();
+            Cards.Visibility = Visibility.Collapsed;
+            ShowTransientLayer(LockPanel);
+        }
+        else
+        {
+            foreach (var card in _cards.Where(card => card.Entry.IsPersonal).ToArray())
+                _cards.Remove(card);
+        }
     }
 
     private async void Unlock_Click(object sender, RoutedEventArgs e) => await SafeAsync(UnlockPersonalAsync);
 
-    private void ClearPendingPin() { _newPin?.Dispose(); _newPin = null; }
+    private void ClearPendingPin()
+    {
+        _newPin?.Dispose();
+        _newPin = null;
+    }
 
     private async Task UnlockPersonalAsync()
     {
         if (_controller == null || !UnlockButton.IsEnabled || _disposed) return;
         using var pin = PasscodeBox.SecurePassword;
         PasscodeBox.Clear();
-        if (!ClipboardPasscode.IsValid(pin)) { LockHint.Text = Loc.Get("clipboard.sixDigits"); return; }
+        if (!ClipboardPasscode.IsValid(pin))
+        {
+            LockHint.Text = Loc.Get("clipboard.sixDigits");
+            return;
+        }
         bool create = !_controller.Store.HasPersonalPasscode;
-        if (create && _newPin == null) { _newPin = pin.Copy(); _newPin.MakeReadOnly(); UpdatePinStep(); return; }
-        if (create && !ClipboardPasscode.Matches(_newPin!, pin)) { LockHint.Text = Loc.Get("clipboard.confirmRetry"); PasscodeBox.Focus(); return; }
-        ClearPendingPin(); UnlockButton.IsEnabled = false;
+        if (create && _newPin == null)
+        {
+            _newPin = pin.Copy();
+            _newPin.MakeReadOnly();
+            UpdatePinStep();
+            return;
+        }
+        if (create && !ClipboardPasscode.Matches(_newPin!, pin))
+        {
+            LockHint.Text = Loc.Get("clipboard.confirmRetry");
+            PasscodeBox.Focus();
+            return;
+        }
+        ClearPendingPin();
+        UnlockButton.IsEnabled = false;
         int version = _refreshVersion;
         try
         {
@@ -473,14 +550,27 @@ public partial class ClipboardTray : UserControl, IDisposable
                 return;
             }
             if (_disposed || !IsLoaded || !IsVisible || _category != "Personal" || version != _refreshVersion)
-            { await _controller.LockPersonalAsync(); return; }
-            if (_moveToPersonal is Guid id) { _moveToPersonal = null; await _controller.Store.MovePersonalAsync(id, true); }
+            {
+                await _controller.LockPersonalAsync();
+                return;
+            }
+            if (_moveToPersonal is Guid id)
+            {
+                _moveToPersonal = null;
+                await _controller.Store.MovePersonalAsync(id, true);
+            }
             await CompletePersonalDropAsync();
-            RebuildCategories(); await RefreshAsync();
+            RebuildCategories();
+            await RefreshAsync();
         }
         catch (Exception ex) when (IsContentError(ex))
-        { LockHint.Text = Loc.Get("clipboard.error"); }
-        finally { UnlockButton.IsEnabled = true; }
+        {
+            LockHint.Text = Loc.Get("clipboard.error");
+        }
+        finally
+        {
+            UnlockButton.IsEnabled = true;
+        }
     }
     private void UpdatePinStep()
     {
@@ -489,10 +579,19 @@ public partial class ClipboardTray : UserControl, IDisposable
         PinBackButton.Visibility = create && _newPin != null ? Visibility.Visible : Visibility.Collapsed;
     }
     private void PinBack_Click(object sender, RoutedEventArgs e)
-    { ClearPendingPin(); PasscodeBox.Clear(); UpdatePinStep(); PasscodeBox.Focus(); }
+    {
+        ClearPendingPin();
+        PasscodeBox.Clear();
+        UpdatePinStep();
+        PasscodeBox.Focus();
+    }
 
     private void Passcode_KeyDown(object sender, KeyEventArgs e)
-    { if (e.Key == Key.Enter) { e.Handled = true; _ = SafeAsync(UnlockPersonalAsync); } }
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        _ = SafeAsync(UnlockPersonalAsync);
+    }
 
     private Border[]? _pinDots;
     private int _previousPinLength;
@@ -638,14 +737,19 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (sender is not FrameworkElement { DataContext: ClipboardCardViewModel card }) return;
         AnimateCardPress((FrameworkElement)sender, true);
         _copyOnRelease = e.ClickCount == 1 && Keyboard.Modifiers == ModifierKeys.None && Cards.SelectedItems.Count <= 1;
-        _pressedCard = card; _dragStart = e.GetPosition(this); SelectCard(card); e.Handled = true;
+        _pressedCard = card;
+        _dragStart = e.GetPosition(this);
+        SelectCard(card);
+        e.Handled = true;
     }
     private async void Card_Up(object sender, MouseButtonEventArgs e)
     {
         if (IsCardAction(e.OriginalSource as DependencyObject)) return;
         if (sender is FrameworkElement element) AnimateCardPress(element, false);
         if (_dragStart == null || sender is not FrameworkElement { DataContext: ClipboardCardViewModel card } || card != _pressedCard) return;
-        _dragStart = null; _pressedCard = null; e.Handled = true;
+        _dragStart = null;
+        _pressedCard = null;
+        e.Handled = true;
         bool copy = _copyOnRelease;
         _copyOnRelease = false;
         if (copy && Keyboard.Modifiers == ModifierKeys.None && !_selectionModified) await SafeAsync(() => CopyAsync(card));
@@ -661,7 +765,9 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (e.LeftButton != MouseButtonState.Pressed || _dragStart is not Point start || _pressedCard == null || _controller == null || sender is not FrameworkElement element) return;
         var current = e.GetPosition(this);
         if (Math.Abs(current.X - start.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(current.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        var card = _pressedCard; _dragStart = null; _pressedCard = null;
+        var card = _pressedCard;
+        _dragStart = null;
+        _pressedCard = null;
         _copyOnRelease = false;
         AnimateCardPress(element, false);
         await SafeAsync(() => _controller.DragManyAsync(element, SelectedCards().Select(item => item.Entry).ToArray()));
@@ -673,7 +779,8 @@ public partial class ClipboardTray : UserControl, IDisposable
         {
             await _controller.CopyAsync(card.Entry);
             card.IsCopied = true;
-            await Task.Delay(1600); card.IsCopied = false;
+            await Task.Delay(1600);
+            card.IsCopied = false;
         }
         catch (Exception ex) when (IsContentError(ex) || ex is System.Runtime.InteropServices.ExternalException)
         { StatusChanged(Loc.Get("clipboard.error")); }
@@ -728,7 +835,8 @@ public partial class ClipboardTray : UserControl, IDisposable
     private void MoreActions_Click(object sender, RoutedEventArgs e)
     {
         if (e.RoutedEvent != null) e.Handled = true;
-        _dragStart = null; _pressedCard = null;
+        _dragStart = null;
+        _pressedCard = null;
         _copyOnRelease = false;
         if (_disposed || _trayLeaving || _controller?.IsDragging == true || _selectionStart != null) return;
         if (sender is not Button button) return;
@@ -802,14 +910,26 @@ public partial class ClipboardTray : UserControl, IDisposable
         menu.Opened += MenuOpened;
         menu.Closed += MenuClosed;
         menu.Items.Clear();
-        if (!Cards.SelectedItems.Contains(card)) { Cards.SelectedItems.Clear(); Cards.SelectedItems.Add(card); }
+        if (!Cards.SelectedItems.Contains(card))
+        {
+            Cards.SelectedItems.Clear();
+            Cards.SelectedItems.Add(card);
+        }
         var selection = SelectedCards();
         if (selection.Length > 1)
         {
             AddMenu(menu, "clipboard.copy", CopySelectionAsync);
-            AddMenu(menu, "clipboard.pin", async () => { foreach (var item in selection) await _controller.Store.UpdateAsync(item.Entry.Id, pinned: true); });
+            AddMenu(menu, "clipboard.pin", async () =>
+            {
+                foreach (var item in selection)
+                    await _controller.Store.UpdateAsync(item.Entry.Id, pinned: true);
+            });
             menu.Items.Add(new Separator());
-            AddMenu(menu, "clipboard.archive", async () => { foreach (var item in selection) await _controller.Store.UpdateAsync(item.Entry.Id, archived: true); });
+            AddMenu(menu, "clipboard.archive", async () =>
+            {
+                foreach (var item in selection)
+                    await _controller.Store.UpdateAsync(item.Entry.Id, archived: true);
+            });
             AddMenu(menu, "clipboard.delete", () => ConfirmDeleteAsync(selection));
             return;
         }
@@ -845,7 +965,12 @@ public partial class ClipboardTray : UserControl, IDisposable
         menu.Items.Add(groups);
         AddMenu(menu, card.Entry.IsPersonal ? "clipboard.moveOut" : "clipboard.movePersonal", async () =>
         {
-            if (!_controller.Store.IsPersonalUnlocked) { SelectCategory("Personal"); _moveToPersonal = card.Entry.Id; return; }
+            if (!_controller.Store.IsPersonalUnlocked)
+            {
+                SelectCategory("Personal");
+                _moveToPersonal = card.Entry.Id;
+                return;
+            }
             await _controller.Store.MovePersonalAsync(card.Entry.Id, !card.Entry.IsPersonal);
         });
         AddMenu(menu, card.Entry.IsArchived ? "clipboard.unarchive" : "clipboard.archive", () => _controller.Store.UpdateAsync(card.Entry.Id, archived: !card.Entry.IsArchived));
@@ -944,9 +1069,13 @@ public partial class ClipboardTray : UserControl, IDisposable
                 {
                     using var stream = new MemoryStream(bytes);
                     var bitmap = new BitmapImage();
-                    bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.DecodePixelWidth = 1200; bitmap.StreamSource = stream;
-                    bitmap.EndInit(); bitmap.Freeze(); return bitmap;
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.DecodePixelWidth = 1200;
+                    bitmap.StreamSource = stream;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    return bitmap;
                 });
                 if (_disposed || !IsVisible || version != _refreshVersion || detailVersion != _detailDismissVersion || card.Entry.IsPersonal && !_controller.Store.IsPersonalUnlocked) return;
                 DetailImage.Source = image;
@@ -989,7 +1118,11 @@ public partial class ClipboardTray : UserControl, IDisposable
         {
             item.Tag = "danger";
         }
-        item.Click += async (_, _) => { _menuInteractionUntil = Environment.TickCount64 + 350; await SafeAsync(action); };
+        item.Click += async (_, _) =>
+        {
+            _menuInteractionUntil = Environment.TickCount64 + 350;
+            await SafeAsync(action);
+        };
         menu.Items.Add(item);
     }
     private async Task SafeAsync(Func<Task> action)
@@ -1009,7 +1142,8 @@ public partial class ClipboardTray : UserControl, IDisposable
 
     private void RequestApproval(ClipboardCapture capture, long size)
     {
-        _approvals.Enqueue((capture, size)); ShowApproval();
+        _approvals.Enqueue((capture, size));
+        ShowApproval();
     }
     private void ShowApproval()
     {
@@ -1058,10 +1192,18 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (_controller == null || !_approvals.TryDequeue(out var pending)) return;
         ApproveButton.IsEnabled = false;
         try { await SafeAsync(() => _controller.ImportAsync(pending.Capture, true)); }
-        finally { ApproveButton.IsEnabled = true; ShowApproval(); }
+        finally
+        {
+            ApproveButton.IsEnabled = true;
+            ShowApproval();
+        }
     }
     private void Skip_Click(object sender, RoutedEventArgs e) => SkipApproval();
-    private void SkipApproval() { _approvals.TryDequeue(out _); ShowApproval(); }
+    private void SkipApproval()
+    {
+        _approvals.TryDequeue(out _);
+        ShowApproval();
+    }
     private void CloseDetail_Click(object sender, RoutedEventArgs e) => DismissDetails();
     private async void CopyDetail_Click(object sender, RoutedEventArgs e)
     {
@@ -1160,7 +1302,11 @@ public partial class ClipboardTray : UserControl, IDisposable
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        { var child = VisualTreeHelper.GetChild(parent, i); if (child is ScrollViewer scroll) return scroll; if (FindScrollViewer(child) is { } nested) return nested; }
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is ScrollViewer scroll) return scroll;
+            if (FindScrollViewer(child) is { } nested) return nested;
+        }
         return null;
     }
     private async void Cards_KeyDown(object sender, KeyEventArgs e)
@@ -1168,7 +1314,10 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (_controller == null) return;
         if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control) { e.Handled = SelectAllTrayItems(e.OriginalSource as DependencyObject); }
         else if (e.Key == Key.Enter || e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
-        { e.Handled = true; await SafeAsync(CopySelectionAsync); }
+        {
+            e.Handled = true;
+            await SafeAsync(CopySelectionAsync);
+        }
         else if (e.Key == Key.Delete)
         {
             e.Handled = true;
@@ -1178,17 +1327,22 @@ public partial class ClipboardTray : UserControl, IDisposable
     }
     public void Dispose()
     {
-        if (_disposed) return; _disposed = true;
+        if (_disposed) return;
+        _disposed = true;
         StopEntranceWork();
         _contentLifetime.Cancel();
-        _statusTimer.Stop(); _statusTimer.Tick -= StatusTimer_Tick;
+        _statusTimer.Stop();
+        _statusTimer.Tick -= StatusTimer_Tick;
         _ageTimer.Stop();
         _ageTimer.Tick -= AgeTimer_Tick;
         ClearSelectionContainers();
         StopCategoryScrolling();
-        CancelThumbnailLoads(); CancelCardPositionAnimation();
-        _realizedCardElements.Clear(); _arrivingCards.Clear();
-        _searchTimer.Stop(); _searchCancellation?.Cancel();
+        CancelThumbnailLoads();
+        CancelCardPositionAnimation();
+        _realizedCardElements.Clear();
+        _arrivingCards.Clear();
+        _searchTimer.Stop();
+        _searchCancellation?.Cancel();
         if (_controller != null)
         {
             _controller.Store.Changed -= StoreChanged;
@@ -1197,7 +1351,9 @@ public partial class ClipboardTray : UserControl, IDisposable
             _controller.PersonalLocked -= HidePrivateContent;
             _controller.ImportProgress -= OnImportProgress;
         }
-        HidePrivateContent(); _cards.Clear(); _approvals.Clear();
+        HidePrivateContent();
+        _cards.Clear();
+        _approvals.Clear();
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         _openMenus.Clear();
         TrayDropBorder?.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, null);
@@ -1213,9 +1369,13 @@ public partial class ClipboardTray : UserControl, IDisposable
         CancelPendingPersonalDrop();
         TrayDropBorder?.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, null);
         TrayDropBorder?.BeginAnimation(OpacityProperty, null);
-        StopCategoryScrolling(); CancelCardPositionAnimation(); CancelThumbnailLoads();
-        _realizedCardElements.Clear(); _arrivingCards.Clear();
-        _searchTimer.Stop(); _queryDirty = true;
+        StopCategoryScrolling();
+        CancelCardPositionAnimation();
+        CancelThumbnailLoads();
+        _realizedCardElements.Clear();
+        _arrivingCards.Clear();
+        _searchTimer.Stop();
+        _queryDirty = true;
         HidePrivateContent();
         if (_controller?.Store.IsPersonalUnlocked == true) _ = SafeAsync(_controller.LockPersonalAsync);
     }

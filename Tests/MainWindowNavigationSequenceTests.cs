@@ -22,7 +22,7 @@ public sealed class MainWindowNavigationSequenceTests
     public void RepeatedNavigationSettlesOnTheRequestedViewAndCollapses(bool island, bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
             s => { s.EnableLocalOnlyMode = true; s.DisableMouseLeaveAutoClose = true; s.EnableDynamicIslandMode = island; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         var window = fixture.Window;
@@ -55,7 +55,7 @@ public sealed class MainWindowNavigationSequenceTests
     [InlineData(true)]
     public void CollapsingExpandedMusicRestoresTheNormalPlayerAndBatteryPreference(bool battery) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
             s => { s.EnableLocalOnlyMode = true; s.DisableMouseLeaveAutoClose = true; s.ShowBatteryIndicator = battery; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         var window = fixture.Window;
@@ -67,7 +67,7 @@ public sealed class MainWindowNavigationSequenceTests
         Assert.True(coordinator.RequestView(NotchView.Media, "CollapseMusicWidget"));
         await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "music collapse", ct);
         Assert.Equal(NotchShapeState.Expanded, coordinator.ShapeState);
-        Assert.Equal(Visibility.Visible, window.MediaControls.Visibility);
+        Assert.Equal(Visibility.Visible, window.MediaPlayback.MediaControls.Visibility);
         Assert.Equal(Visibility.Collapsed, window.InlineControls.Visibility);
         Assert.Equal(battery ? Visibility.Visible : Visibility.Collapsed, window.BatterySection.Visibility);
         Assert.True(double.IsNaN(window.MediaWidgetContainer.Width));

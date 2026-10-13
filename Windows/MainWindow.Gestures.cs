@@ -312,7 +312,7 @@ public partial class MainWindow
             {
                 ExpandNotch();
 
-                var waitTimer = new System.Windows.Threading.DispatcherTimer
+                var waitTimer = new UiScheduledTimer
                 {
                     Interval = TimeSpan.FromMilliseconds(40)
                 };

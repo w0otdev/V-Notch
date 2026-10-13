@@ -20,7 +20,7 @@ public sealed class MainWindowThumbnailPresentationTests
     [InlineData(true)]
     public void ThumbnailMorphCoalescesLatestImageAndCancellationRestoresBothLayers(bool blurEnabled) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(blurEnabled);
+        await using var fixture = CreateFixture(blurEnabled);
         var window = fixture.Window;
         var first = Bitmap("white-mat-artwork.png");
         var next = Bitmap("dark-textured-artwork.png");
@@ -59,7 +59,7 @@ public sealed class MainWindowThumbnailPresentationTests
     [InlineData(true)]
     public void RemovingTrackArtworkShowsFallbackAndClearsPendingImages(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(true);
+        await using var fixture = CreateFixture(true);
         var window = fixture.Window;
         bool previous = AnimationConfig.ReduceMotion;
         try
@@ -89,7 +89,7 @@ public sealed class MainWindowThumbnailPresentationTests
     [Fact]
     public void CompactThumbnailRevealExitAndInterruptedExitKeepLatestState() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(true);
+        await using var fixture = CreateFixture(true);
         var window = fixture.Window;
         window.CompactThumbnail.Source = Bitmap("white-mat-artwork.png");
         window.CompactThumbnailBorder.Visibility = Visibility.Visible;

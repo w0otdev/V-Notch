@@ -16,12 +16,12 @@ public partial class MainWindow
     private bool _desktopPromotionPending;
     private bool _desktopDemotionPending;
     private int _desktopRevealAnimationVersion;
-    private DispatcherTimer? _desktopDemotionDelayTimer;
+    private UiScheduledTimer? _desktopDemotionDelayTimer;
     private EventHandler? _desktopTransparentFrameHandler;
     private int _desktopTransparentFramesObserved;
     private bool _desktopPointerInHoverZone;
     private DateTime _startupHoldUntilUtc = DateTime.MinValue;
-    private DispatcherTimer? _startupHoldTimer;
+    private UiScheduledTimer? _startupHoldTimer;
     private bool ShouldStayOnDesktopLayer =>
         _settings.StayBehindWindows && !_isDesktopEdgePromoted;
 
@@ -181,7 +181,7 @@ public partial class MainWindow
 
         _startupHoldUntilUtc = DateTime.UtcNow + duration;
         _startupHoldTimer?.Stop();
-        _startupHoldTimer = new DispatcherTimer(duration, DispatcherPriority.Background, (_, _) =>
+        _startupHoldTimer = new UiScheduledTimer(duration, DispatcherPriority.Background, (_, _) =>
         {
             _startupHoldTimer?.Stop();
             _startupHoldTimer = null;
@@ -197,7 +197,7 @@ public partial class MainWindow
     {
         if (_desktopDemotionPending) return;
 
-        _desktopDemotionDelayTimer ??= new DispatcherTimer(
+        _desktopDemotionDelayTimer ??= new UiScheduledTimer(
             DesktopDemotionDelay,
             DispatcherPriority.Background,
             (_, _) =>

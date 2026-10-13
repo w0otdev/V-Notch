@@ -22,7 +22,7 @@ public partial class SpotifyLoginWindow : Window
     private const double ShellMarginDip = 18;
     private const double ShellCornerRadiusDip = 24;
 
-    private readonly DispatcherTimer _cookieTimer;
+    private readonly UiScheduledTimer _cookieTimer;
     private bool _cookieCheckInProgress;
     private string? _userDataFolder;
     private IDisposable? _profileCleanupLease;
@@ -40,7 +40,7 @@ public partial class SpotifyLoginWindow : Window
         StatusText.Text = Loc.Get("spotifyLogin.opening");
         CancelButton.Content = Loc.Get("spotifyLogin.cancel");
 
-        _cookieTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _cookieTimer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(1)
         };

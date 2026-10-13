@@ -24,7 +24,7 @@ public sealed class SetupOperationsIntegrationTests
         var progress = new List<SetupProgressInfo>();
         string installedExe = Path.Combine(install, "V-Notch.exe");
         var callbacks = new SetupInstallCallbacks(
-            () => calls.Add("stop"),
+            () => { calls.Add("stop"); return Task.CompletedTask; },
             (exe, folder) => { Assert.Equal(installedExe, exe); Assert.Equal(install, folder); Assert.True(File.Exists(exe)); calls.Add("shortcuts"); },
             (exe, start) => { Assert.Equal(installedExe, exe); Assert.Equal(startup, start); calls.Add("startup"); },
             (exe, folder) => { Assert.Equal(installedExe, exe); Assert.Equal(install, folder); calls.Add("uninstall"); },
@@ -48,7 +48,7 @@ public sealed class SetupOperationsIntegrationTests
         string source = Path.Combine(fixture.Root, "source");
         if (sourceExists) Directory.CreateDirectory(source);
         int registrations = 0;
-        var callbacks = new SetupInstallCallbacks(() => registrations++, (_, _) => registrations++, (_, _) => registrations++, (_, _) => registrations++, _ => registrations++);
+        var callbacks = new SetupInstallCallbacks(() => { registrations++; return Task.CompletedTask; }, (_, _) => registrations++, (_, _) => registrations++, (_, _) => registrations++, _ => registrations++);
         Task operation = SetupOperations.InstallAsync(new(source, Path.Combine(fixture.Root, "installed"), false), _ => registrations++, callbacks);
         if (sourceExists) await Assert.ThrowsAsync<FileNotFoundException>(() => operation);
         else await Assert.ThrowsAsync<DirectoryNotFoundException>(() => operation);

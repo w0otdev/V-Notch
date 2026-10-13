@@ -21,13 +21,13 @@ public sealed class MainWindowUpdateNotificationTests
     public void NewReleaseShowsAnimatedNotificationTooltipAndPulseThenClearsThem() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var service = new PendingUpdateService();
-        using var fixture = CreateFixture(service);
+        await using var fixture = CreateFixture(service);
         var window = fixture.Window;
         Field<NotchSettings>(window, "_settings").AutoCheckUpdates = true;
         var check = (Task)Invoke(window, "CheckForUpdatesAsync")!;
         service.Requests[0].SetResult(NewRelease("9.5.1"));
         await check;
-        await WpfFrameWaiter.UntilAsync(() => Field<DispatcherTimer?>(window, "_updatePulseTimer")?.IsEnabled == true, "update notification appeared", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<UiScheduledTimer?>(window, "_updatePulseTimer")?.IsEnabled == true, "update notification appeared", ct);
         Assert.True(Field<bool>(window, "_isUpdateAvailable"));
         Assert.Equal(Visibility.Visible, window.UpdateNotificationButton.Visibility);
         Assert.Contains("9.5.1", window.UpdateNotificationButton.Tag.ToString());
@@ -48,7 +48,7 @@ public sealed class MainWindowUpdateNotificationTests
         await currentCheck;
         await WpfFrameWaiter.UntilAsync(() => window.UpdateNotificationButton.Visibility == Visibility.Collapsed, "current version clears notification", ct);
         Assert.Null(Field<UpdateInfo?>(window, "_availableUpdate"));
-        Assert.False(Field<DispatcherTimer>(window, "_updatePulseTimer").IsEnabled);
+        Assert.False(Field<UiScheduledTimer>(window, "_updatePulseTimer").IsEnabled);
         Assert.False(window.UpdateNotificationButton.IsHitTestVisible);
         Invoke(window, "ShowUpdateNotification");
         Invoke(window, "UpdatePulseTimer_Tick", null, EventArgs.Empty);
@@ -60,7 +60,7 @@ public sealed class MainWindowUpdateNotificationTests
     public void LatestCheckOwnsNotificationAndFailuresPreserveItsState() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var service = new PendingUpdateService();
-        using var fixture = CreateFixture(service);
+        await using var fixture = CreateFixture(service);
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.AutoCheckUpdates = true;
@@ -96,7 +96,7 @@ public sealed class MainWindowUpdateNotificationTests
     [Fact]
     public void RapidHideAndShowLeavesNewestReleaseVisible() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new PendingUpdateService());
+        await using var fixture = CreateFixture(new PendingUpdateService());
         var window = fixture.Window;
         Set(window, "_availableUpdate", NewRelease("9.5.4"));
         Set(window, "_isUpdateAvailable", true);
@@ -104,7 +104,7 @@ public sealed class MainWindowUpdateNotificationTests
         Invoke(window, "ShowUpdateInlineTooltip");
         Invoke(window, "HideUpdateNotification");
         Invoke(window, "ShowUpdateNotification");
-        await WpfFrameWaiter.UntilAsync(() => Field<DispatcherTimer?>(window, "_updatePulseTimer")?.IsEnabled == true, "latest update survives interrupted hide", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<UiScheduledTimer?>(window, "_updatePulseTimer")?.IsEnabled == true, "latest update survives interrupted hide", ct);
         Assert.Equal(Visibility.Visible, window.UpdateNotificationButton.Visibility);
         Assert.True(window.UpdateNotificationButton.IsHitTestVisible);
         Assert.Equal(1, window.UpdateNotificationButton.Opacity);
@@ -117,7 +117,7 @@ public sealed class MainWindowUpdateNotificationTests
     public void ManualUpdateCheckViaServiceOrSettingsRevealsUpdateNotificationEvenWhenAutoCheckDisabled() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var service = new PendingUpdateService();
-        using var fixture = CreateFixture(service);
+        await using var fixture = CreateFixture(service);
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.AutoCheckUpdates = false;
@@ -141,7 +141,7 @@ public sealed class MainWindowUpdateNotificationTests
     public void OptingOutIgnoresLateBetaEventsAndClearsBetaNotification() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var service = new PendingUpdateService();
-        using var fixture = CreateFixture(service);
+        await using var fixture = CreateFixture(service);
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.IncludePrereleaseUpdates = true;
@@ -168,7 +168,7 @@ public sealed class MainWindowUpdateNotificationTests
     [InlineData(true)]
     public void StablePromotionReplacesBetaNotificationRegardlessOfBetaPreference(bool includePrereleases) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new PendingUpdateService());
+        await using var fixture = CreateFixture(new PendingUpdateService());
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.IncludePrereleaseUpdates = true;
@@ -213,7 +213,7 @@ public sealed class MainWindowUpdateNotificationTests
     public void BackgroundCheckUsesBetaPreferenceAndDropsResultAfterOptOut() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var service = new PendingUpdateService();
-        using var fixture = CreateFixture(service);
+        await using var fixture = CreateFixture(service);
         var settings = Field<NotchSettings>(fixture.Window, "_settings");
         settings.AutoCheckUpdates = true;
         settings.IncludePrereleaseUpdates = true;

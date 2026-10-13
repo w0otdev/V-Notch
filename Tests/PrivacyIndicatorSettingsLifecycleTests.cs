@@ -23,7 +23,7 @@ public sealed class PrivacyIndicatorSettingsLifecycleTests
         using var privacy = new PrivacyIndicatorService(TimeSpan.FromMilliseconds(20),
             _ => Array.Empty<CapabilityUsage>(), () => false,
             new ScreenRecordingProbe(() => { Interlocked.Increment(ref scans); return Volatile.Read(ref recording); }));
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
             configureSettings: settings => { settings.EnablePrivacyIndicators = false; settings.EnableLocalOnlyMode = true; },
             configureServices: services =>
             {
@@ -80,7 +80,7 @@ public sealed class PrivacyIndicatorSettingsLifecycleTests
         using var privacy = new PrivacyIndicatorService(TimeSpan.FromMilliseconds(20),
             _ => Array.Empty<CapabilityUsage>(), () => false,
             new ScreenRecordingProbe(() => { scanEntered.Set(); scanRelease.Wait(ct); return false; }));
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
             configureSettings: settings => { settings.EnablePrivacyIndicators = false; settings.EnableLocalOnlyMode = true; },
             configureServices: services =>
             {

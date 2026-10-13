@@ -33,7 +33,7 @@ public sealed class MainWindowGlassPresentationTests
         Assert.True(Field<bool>(window, "_glassRegionPushActive"));
         Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("temporary device loss"));
         Assert.True(Field<bool>(window, "_gpuRefractionFailed"));
-        var timer = Field<System.Windows.Threading.DispatcherTimer?>(window, "_glassGpuRetryTimer");
+        var timer = Field<UiScheduledTimer?>(window, "_glassGpuRetryTimer");
         if (LiquidGlassRefractionEffect.IsAvailable)
         {
             Assert.NotNull(timer);
@@ -43,14 +43,14 @@ public sealed class MainWindowGlassPresentationTests
         Invoke(window, "PerformCleanup");
         Assert.False(controller.IsActive);
         Assert.False(Field<bool>(window, "_glassRegionPushActive"));
-        Assert.Null(Field<System.Windows.Threading.DispatcherTimer?>(window, "_glassGpuRetryTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_glassGpuRetryTimer"));
         Assert.Null(window.GlassBackdropImage.Effect);
         if (timer != null) Assert.False(timer.IsEnabled);
         // A queued failure or timer tick must not recreate GPU resources after closing.
         Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("late failure"));
         Invoke(window, "OnGlassGpuRetry", null, EventArgs.Empty);
         Assert.False(controller.IsActive);
-        Assert.Null(Field<System.Windows.Threading.DispatcherTimer?>(window, "_glassGpuRetryTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_glassGpuRetryTimer"));
     });
 
     [Fact]
@@ -76,8 +76,8 @@ public sealed class MainWindowGlassPresentationTests
     {
         using var fixture = CreateFixture();
         var window = fixture.Window;
-        var track = window.ProgressBarBg.Background;
-        var timer = window.TimerControlBar.Background;
+        var track = window.MediaPlayback.ProgressBarBg.Background;
+        var timer = window.CountdownWidget.TimerControlBar.Background;
         var countdown = window.CountdownCompleteSurface.Background;
         var countdownText = window.CountdownCompleteText.Foreground;
         var restart = window.CountdownRestartBtn.Background;
@@ -93,10 +93,10 @@ public sealed class MainWindowGlassPresentationTests
             Assert.Equal(new Thickness(1), window.CameraSection.BorderThickness);
             Assert.Equal(new Thickness(0.5), window.CompactThumbnailRim.BorderThickness);
             Assert.Equal(Brushes.Transparent, window.CameraOverlay.Background);
-            Assert.Equal(0, window.TimerControlBarShadow.Opacity);
+            Assert.Equal(0, window.CountdownWidget.TimerControlBarShadow.Opacity);
             Assert.Same(UiPalette.PrimaryBrush, window.CountdownCompleteText.Foreground);
             Assert.Equal(new Thickness(1), window.CountdownRestartBtn.BorderThickness);
-            Assert.NotSame(track, window.ProgressBarBg.Background);
+            Assert.NotSame(track, window.MediaPlayback.ProgressBarBg.Background);
             Invoke(window, "ApplyGlassContentShadow", false);
             Invoke(window, "ApplyGlassPanelMaterial", false);
             Invoke(window, "ApplyGlassToTimerBar", false);
@@ -105,13 +105,13 @@ public sealed class MainWindowGlassPresentationTests
             Assert.Null(window.AnimationThumbnailBorder.Effect);
             Assert.Equal(new Thickness(0), window.CameraSection.BorderThickness);
             Assert.Equal(new Thickness(0), window.CompactThumbnailRim.BorderThickness);
-            Assert.Same(track, window.ProgressBarBg.Background);
-            Assert.Same(timer, window.TimerControlBar.Background);
+            Assert.Same(track, window.MediaPlayback.ProgressBarBg.Background);
+            Assert.Same(timer, window.CountdownWidget.TimerControlBar.Background);
             Assert.Same(countdown, window.CountdownCompleteSurface.Background);
             Assert.Same(countdownText, window.CountdownCompleteText.Foreground);
             Assert.Same(restart, window.CountdownRestartBtn.Background);
             Assert.Same(dismiss, window.CountdownDismissBtn.Background);
-            Assert.Equal(0.45, window.TimerControlBarShadow.Opacity);
+            Assert.Equal(0.45, window.CountdownWidget.TimerControlBarShadow.Opacity);
         }
     });
 

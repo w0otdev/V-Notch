@@ -116,13 +116,14 @@ public sealed class WeatherService : IWeatherService, IDisposable
     internal static string? CleanCity(string? city)
     {
         if (string.IsNullOrWhiteSpace(city)) return null;
-        Span<char> buffer = stackalloc char[100];
+        Span<char> buffer = city.Length <= 256
+            ? stackalloc char[city.Length]
+            : new char[city.Length];
         int count = 0;
         foreach (char c in city)
         {
             if (char.IsControl(c)) continue;
             buffer[count++] = c;
-            if (count == buffer.Length) break;
         }
         return new string(buffer[..count].Trim());
     }

@@ -20,7 +20,7 @@ public sealed class MainWindowMediaControlTests
     public void MainAndInlineButtonsDispatchPlaybackCommandsExactlyOnce(bool inline) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = CreateFixture(media);
+        await using var fixture = CreateFixture(media);
         var window = fixture.Window;
         var prefix = inline ? "Inline" : "";
         Invoke(window, prefix + "PlayPauseButton_Click", window, ClickArgs());
@@ -42,7 +42,7 @@ public sealed class MainWindowMediaControlTests
     public void InstantPlayPauseSuppressesRepeatedClicksDuringItsDebounceWindow() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = CreateFixture(media);
+        await using var fixture = CreateFixture(media);
         var window = fixture.Window;
         await (Task)Invoke(window, "TogglePlayPauseInstantAsync")!;
         await (Task)Invoke(window, "TogglePlayPauseInstantAsync")!;
@@ -61,7 +61,7 @@ public sealed class MainWindowMediaControlTests
     [InlineData(0.02f, -120, 0f)]
     public void CompactVolumeChangesClampAndRestoreTheMediaPill(float initial, int delta, float expected) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(new FakeMediaDetectionService());
+        await using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;
         window.SetDebugViewState("CompactMusicPill");
         typeof(MainWindow).GetField("_currentVolume", Private)!.SetValue(window, initial);

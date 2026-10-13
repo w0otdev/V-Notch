@@ -20,66 +20,6 @@ public partial class MainWindow
 
     private double ExpandedContentRestY => _settings.EnableDynamicIslandMode ? 8.5 : 4;
 
-    private SizeChangedEventHandler? _mainViewHorizontalStabilizer;
-    private DispatcherOperation? _mainViewHorizontalStabilizerOperation;
-
-    private void StartMainViewHorizontalStabilizer(TranslateTransform contentTranslate)
-    {
-        StopMainViewHorizontalStabilizer();
-
-        void Stabilize()
-        {
-            if (_mainViewHorizontalStabilizer == null || !ExpandedContent.IsLoaded ||
-                !NotchContainer.IsAncestorOf(ExpandedContent))
-            {
-                return;
-            }
-
-            Point renderedOrigin = ExpandedContent
-                .TransformToAncestor(NotchContainer)
-                .Transform(new Point(0, 0));
-            double layoutOriginX = renderedOrigin.X - contentTranslate.X;
-            double targetOriginX = (NotchContainer.ActualWidth - ExpandedContent.ActualWidth) / 2.0;
-            DpiScale dpi = VisualTreeHelper.GetDpi(ExpandedContent);
-            double correction = targetOriginX - layoutOriginX;
-            correction = Math.Round(correction * dpi.DpiScaleX) / dpi.DpiScaleX;
-
-            if (Math.Abs(contentTranslate.X - correction) > 0.001)
-            {
-                contentTranslate.X = correction;
-            }
-        }
-
-        void ScheduleStabilize()
-        {
-            if (_mainViewHorizontalStabilizerOperation != null) return;
-            _mainViewHorizontalStabilizerOperation = Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
-            {
-                _mainViewHorizontalStabilizerOperation = null;
-                Stabilize();
-            }));
-        }
-
-        _mainViewHorizontalStabilizer = (_, args) =>
-        {
-            if (args.WidthChanged) ScheduleStabilize();
-        };
-        ExpandedContent.SizeChanged += _mainViewHorizontalStabilizer;
-        NotchContainer.SizeChanged += _mainViewHorizontalStabilizer;
-        NotchBorder.SizeChanged += _mainViewHorizontalStabilizer;
-        ScheduleStabilize();
-    }
-
-    private void StopMainViewHorizontalStabilizer()
-    {
-        _mainViewHorizontalStabilizerOperation?.Abort();
-        _mainViewHorizontalStabilizerOperation = null;
-        if (_mainViewHorizontalStabilizer == null) return;
-        ExpandedContent.SizeChanged -= _mainViewHorizontalStabilizer;
-        NotchContainer.SizeChanged -= _mainViewHorizontalStabilizer;
-        NotchBorder.SizeChanged -= _mainViewHorizontalStabilizer;
-        _mainViewHorizontalStabilizer = null;
-    }
 
     private void RestoreExpandedContentRestLayout()
     {
@@ -103,7 +43,7 @@ public partial class MainWindow
         if (ExpandedContent == null) return;
 
         UpdateProgressSectionLayout();
-        RefreshMediaMarquee();
+        MediaPlayback.RefreshMediaMarquee();
         ExpandedContent.UpdateLayout();
     }
 
@@ -263,7 +203,6 @@ public partial class MainWindow
 
     private void CancelMediaThumbnailTransition()
     {
-        StopMainViewHorizontalStabilizer();
 
 
         ResetAnimationThumbnailOverlay();
@@ -374,14 +313,7 @@ public partial class MainWindow
         _hoverCollapseTimer.Stop();
         _suppressHoverCollapseUntilUtc = DateTime.UtcNow.AddMilliseconds(800);
 
-        if (_isRewindAnimating)
-        {
-            _isRewindAnimating = false;
-            StopRewindTextAnimation();
-            ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            ProgressBarScale.ScaleX = 0;
-            _progressDisplayRatio = 0;
-        }
+        MediaPlayback.CancelRewindForNavigation();
 
         if (_isVolumeIndicatorActive)
         {
@@ -872,7 +804,6 @@ public partial class MainWindow
     private void OnExpandCompleted(int generation, bool suppressCompactThumbnailMotion, VNotch.Models.NotchView effectiveTarget = VNotch.Models.NotchView.Media)
     {
         if (generation != _viewTransitionGeneration || generation != _transitionCoordinator.ActiveTransitionId) return;
-        StopMainViewHorizontalStabilizer();
         _isAnimating = false;
         NotchBorder.IsHitTestVisible = true;
 
@@ -907,10 +838,10 @@ public partial class MainWindow
                 AudioScrollViewer.Visibility = Visibility.Visible;
                 AudioScrollViewer.Opacity = 1;
             }
-            if (!ApplyPendingAudioSnapshot())
+            if (!AudioContent.ApplyPendingSnapshot())
                 SettleAudioNotchToFit();
             StartAudioPoll();
-            RefreshAudioData(SettleAudioNotchToFit);
+            AudioContent.Refresh(SettleAudioNotchToFit);
             ResizeHostWindowHeight(_audioViewHeight > 0 ? _audioViewHeight : _audioViewMaxHeight);
         }
         else if (effectiveTarget == VNotch.Models.NotchView.Camera)
@@ -1133,17 +1064,7 @@ public partial class MainWindow
                 AudioScrollViewer.Visibility = Visibility.Visible;
                 AudioScrollViewer.Opacity = 1;
             }
-            bool hadSnapshot = _lastAudioSnapshot != null;
-            if (hadSnapshot)
-            {
-                SetAudioLoadingState(false);
-                EnsureAudioUIBuilt(_lastAudioSnapshot!);
-            }
-            else
-            {
-                SetAudioLoadingState(true);
-                _audioViewHeight = _audioViewMaxHeight;
-            }
+            AudioContent.PrepareForEntrance();
 
             targetWidth = _audioViewWidth;
             targetHeight = _audioViewHeight > 0 ? _audioViewHeight : _audioViewMaxHeight;
@@ -1277,7 +1198,6 @@ public partial class MainWindow
             ExpandedContent.RenderTransform = expandedGroup;
             ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
             var springSlide = MakeAnim(10, contentTargetY, _dur400, _easeExpOut6);
-            StartMainViewHorizontalStabilizer(expandedTranslate);
 
             ExpandedContentBlur.Radius = contentBlurRadius;
             expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
@@ -1632,7 +1552,6 @@ public partial class MainWindow
 
     private void PrepareStateBeforeCollapse()
     {
-        StopMainViewHorizontalStabilizer();
 
         System.Windows.Input.Keyboard.ClearFocus();
 
@@ -1651,14 +1570,7 @@ public partial class MainWindow
         }
         CancelThumbnailSwitchAnimations();
 
-        if (_isRewindAnimating)
-        {
-            _isRewindAnimating = false;
-            StopRewindTextAnimation();
-            ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            ProgressBarScale.ScaleX = 0;
-            _progressDisplayRatio = 0;
-        }
+        MediaPlayback.CancelRewindForNavigation();
 
         EnsureTopmost();
 
@@ -1738,7 +1650,7 @@ public partial class MainWindow
         if (wasAudio)
         {
             StopAudioPoll();
-            ReleaseAudioSessionCache();
+            AudioContent.ReleaseSessionCache();
         }
 
         _isSecondaryView = false;

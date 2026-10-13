@@ -105,15 +105,15 @@ public sealed class ServiceOptimizationTests
     [InlineData("\u2003Đà Nẵng\u2003")]
     public void CityCleaningMatchesOriginal(string? city)
     {
-        string? expected = string.IsNullOrWhiteSpace(city) ? null : new string(city.Where(c => !char.IsControl(c)).Take(100).ToArray()).Trim();
+        string? expected = string.IsNullOrWhiteSpace(city) ? null : new string(city.Where(c => !char.IsControl(c)).ToArray()).Trim();
         Assert.Equal(expected, WeatherService.CleanCity(city));
     }
 
     [Fact]
-    public void CityLimitCountsSurvivingCharactersBeforeTrimming()
+    public void CityCleaningDoesNotSilentlyTruncateLongNames()
     {
         string city = "  " + string.Concat(Enumerable.Repeat("a\t", 150));
-        Assert.Equal(new string('a', 98), WeatherService.CleanCity(city));
+        Assert.Equal(new string('a', 150), WeatherService.CleanCity(city));
     }
 
     [Theory]

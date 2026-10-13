@@ -13,7 +13,7 @@ internal sealed class TranslationSelectionService : IDisposable
     private Dispatcher? _dispatcher;
     private readonly TaskCompletionSource<Dispatcher> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _manualRequestVersion;
-    private DispatcherTimer? _debounce;
+    private UiScheduledTimer? _debounce;
     private readonly AutomationFocusChangedEventHandler _focusChanged;
     private readonly AutomationEventHandler _selectionChanged;
     private AutomationElement? _root, _element, _eventElement;
@@ -111,7 +111,7 @@ internal sealed class TranslationSelectionService : IDisposable
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
         if (_disposed) return;
-        _debounce = new DispatcherTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Background, (_, _) =>
+        _debounce = new UiScheduledTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Background, (_, _) =>
         {
             _debounce!.Stop();
             if (!_disposed) Capture();

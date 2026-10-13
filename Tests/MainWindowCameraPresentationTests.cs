@@ -31,7 +31,7 @@ public sealed class MainWindowCameraPresentationTests
     [InlineData(true)]
     public void SyntheticFramesReuseBitmapGrowOnResolutionChangesAndDiscardStaleTokens(bool blur) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(blur);
+        await using var fixture = CreateFixture(blur);
         var window = fixture.Window;
         Set(window, "_isCameraView", true);
         var camera = Field<WebcamCaptureController>(window, "_camera");
@@ -78,7 +78,7 @@ public sealed class MainWindowCameraPresentationTests
     [Fact]
     public void CameraPreviewExitTransitionDefersVisualTeardownAndRestoresCleanlyOnCompletion() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture(false);
+        await using var fixture = CreateFixture(false);
         var window = fixture.Window;
         Set(window, "_isCameraView", true);
         var camera = Field<WebcamCaptureController>(window, "_camera");

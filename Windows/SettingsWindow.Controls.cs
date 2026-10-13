@@ -457,8 +457,8 @@ public partial class SettingsWindow
         if (_isLoadingSettings) return;
         if (ProcessPriorityCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string tag)
         {
-            _settings.ProcessPriority = tag;
-            ApplyProcessPriority(tag);
+            _settings.ProcessPriority = ProcessPriorityPolicy.Normalize(tag);
+            ProcessPriorityPolicy.Apply(tag);
 
             if (!string.Equals(_settings.ProcessPriority, _originalSettings.ProcessPriority, StringComparison.OrdinalIgnoreCase))
             {
@@ -505,7 +505,7 @@ public partial class SettingsWindow
                     BackupStatusText.Foreground = BackupSuccessBrush;
                     BackupStatusText.Visibility = Visibility.Visible;
 
-                    var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                    var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(3) };
                     timer.Tick += (s, args) =>
                     {
                         timer.Stop();
@@ -555,7 +555,7 @@ public partial class SettingsWindow
                     BackupStatusText.Foreground = BackupSuccessBrush;
                     BackupStatusText.Visibility = Visibility.Visible;
 
-                    var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+                    var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(3) };
                     timer.Tick += (s, args) =>
                     {
                         timer.Stop();
@@ -647,24 +647,6 @@ public partial class SettingsWindow
     private void RestartLater_Click(object sender, RoutedEventArgs e)
     {
         HideRestartBanner();
-    }
-
-    private static void ApplyProcessPriority(string priority)
-    {
-        try
-        {
-            var p = System.Diagnostics.Process.GetCurrentProcess();
-            p.PriorityClass = priority switch
-            {
-                "High" => System.Diagnostics.ProcessPriorityClass.High,
-                "RealTime" => System.Diagnostics.ProcessPriorityClass.RealTime,
-                _ => System.Diagnostics.ProcessPriorityClass.Normal
-            };
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log(LogCategory, $"Failed to set process priority: {ex.Message}");
-        }
     }
 
     private static void ApplyGpuPreference(int preference)
@@ -951,11 +933,10 @@ public partial class SettingsWindow
             (GpuPreferenceRestartNote, () => GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restartNote")),
             (ProcessPriorityCombo, () =>
             {
-                if (ProcessPriorityCombo.Items.Count >= 3)
+                if (ProcessPriorityCombo.Items.Count >= 2)
                 {
                     ((ComboBoxItem)ProcessPriorityCombo.Items[0]).Content = Loc.Get("settings.processPriority.normal");
                     ((ComboBoxItem)ProcessPriorityCombo.Items[1]).Content = Loc.Get("settings.processPriority.high");
-                    ((ComboBoxItem)ProcessPriorityCombo.Items[2]).Content = Loc.Get("settings.processPriority.realtime");
                 }
             }),
             (GpuPreferenceCombo, () =>
@@ -1174,7 +1155,7 @@ public partial class SettingsWindow
 
         if (_livePreviewDebounce == null)
         {
-            _livePreviewDebounce = new DispatcherTimer(DispatcherPriority.Normal)
+            _livePreviewDebounce = new UiScheduledTimer(DispatcherPriority.Normal)
             {
                 Interval = TimeSpan.FromMilliseconds(32)
             };

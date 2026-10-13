@@ -18,7 +18,7 @@ public class CountdownProgressVisualTests
     [InlineData(1.0, 1.0)]
     public void ComputeCountdownEdgeOpacity_ReturnsExpectedOpacity(double progress, double expectedOpacity)
     {
-        double actual = MainWindow.ComputeCountdownEdgeOpacity(progress);
+        double actual = Controls.CountdownView.ComputeCountdownEdgeOpacity(progress);
         Assert.Equal(expectedOpacity, actual);
     }
 
@@ -30,15 +30,15 @@ public class CountdownProgressVisualTests
     public void ShouldUpdateCountdownVisual_RequiresBothTimerVisibleAndExpanded(
         bool isTimerContentVisible, bool isExpanded, bool expected)
     {
-        bool actual = MainWindow.ShouldUpdateCountdownVisual(isTimerContentVisible, isExpanded);
+        bool actual = Controls.CountdownView.ShouldUpdateCountdownVisual(isTimerContentVisible, isExpanded);
         Assert.Equal(expected, actual);
     }
 
     [Fact]
-    public void MainWindowXaml_CountdownProgressFill_UsesStretchScaleTransformAndLeftOrigin()
+    public void CountdownViewXaml_ProgressFill_UsesStretchScaleTransformAndLeftOrigin()
     {
         string repositoryRoot = FindRepositoryRoot();
-        string xamlPath = Path.Combine(repositoryRoot, "Windows", "MainWindow.xaml");
+        string xamlPath = Path.Combine(repositoryRoot, "Controls", "CountdownView.xaml");
         var doc = XDocument.Load(xamlPath);
 
         var elements = doc.Descendants().ToList();

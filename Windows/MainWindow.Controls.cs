@@ -44,9 +44,9 @@ public partial class MainWindow
                 PlayGestureMiddleClickFeedback();
             }
 
-            if (_isExpanded && PlayPauseButton != null && PlayPauseButton.Visibility == Visibility.Visible)
+            if (_isExpanded && MediaPlayback.PlayPauseButton != null && MediaPlayback.PlayPauseButton.Visibility == Visibility.Visible)
             {
-                PlayGentleButtonPressAnimation(PlayPauseButton);
+                PlayGentleButtonPressAnimation(MediaPlayback.PlayPauseButton);
             }
             else if (_isExpanded && InlinePlayPauseButton != null && InlinePlayPauseButton.Visibility == Visibility.Visible)
             {
@@ -62,71 +62,24 @@ public partial class MainWindow
         }
     }
 
-    private async void PlayPauseButton_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        try
-        {
-            _isPlaying = !_viewModel.IsPlaying;
-            UpdatePlayPauseIcon();
-            PlayButtonPressAnimation(PlayPauseButton);
+    private void PlayPauseButton_Click(object sender, MouseButtonEventArgs e) => MediaPlayback.PlayPauseButton_Click(sender, e);
 
-            _progressEngine.NotifyUserPlayPause(_isPlaying);
-            await _viewModel.PlayPauseCommand.ExecuteAsync(null);
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(MediaCtrlLogTag, ex, "PlayPause failed");
-        }
-    }
+    private void NextButton_Click(object sender, MouseButtonEventArgs e) => MediaPlayback.NextButton_Click(sender, e);
 
-    private async void NextButton_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        try
-        {
-            PlayButtonPressAnimation(NextButton);
-            PlayNextSkipAnimation();
-
-            OptimisticPrepareForNextTrack();
-            await _viewModel.NextTrackCommand.ExecuteAsync(null);
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(MediaCtrlLogTag, ex, "NextTrack failed");
-        }
-    }
-
-    private async void PrevButton_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        try
-        {
-            PlayButtonPressAnimation(PrevButton);
-            PlayPrevSkipAnimation();
-
-            PrepareForPreviousTrackRequest();
-            await _viewModel.PreviousTrackCommand.ExecuteAsync(null);
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(MediaCtrlLogTag, ex, "PrevTrack failed");
-        }
-    }
+    private void PrevButton_Click(object sender, MouseButtonEventArgs e) => MediaPlayback.PrevButton_Click(sender, e);
 
     private void UpdatePlayPauseIcon()
     {
         RefreshPlaybackAccessibleNames();
+        MediaPlayback.PresentPlayback(_isPlaying);
         var duration = TimeSpan.FromMilliseconds(180);
 
         if (_isPlaying)
         {
-            AnimateIconSwitch(PlayIcon, PauseIcon, duration, _easeQuadInOut);
             AnimateIconSwitch(InlinePlayIcon, InlinePauseIcon, duration, _easeQuadInOut);
         }
         else
         {
-            AnimateIconSwitch(PauseIcon, PlayIcon, duration, _easeQuadInOut);
             AnimateIconSwitch(InlinePauseIcon, InlinePlayIcon, duration, _easeQuadInOut);
         }
     }
@@ -184,62 +137,8 @@ public partial class MainWindow
         }
     }
 
-    private DateTime _lastPrevRewindClickTime = DateTime.MinValue;
-
-    private void PrepareForPreviousTrackRequest()
-    {
-        try
-        {
-            var frame = _progressEngine.GetUiFrame();
-            bool isConsecutive = (DateTime.UtcNow - _lastPrevRewindClickTime).TotalSeconds < 3.0;
-
-            if (!isConsecutive && frame.Duration.TotalSeconds > 0 && frame.Position.TotalSeconds > 3.0)
-            {
-                _lastPrevRewindClickTime = DateTime.UtcNow;
-                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(5);
-                _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(5);
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
-
-                _progressEngine.NotifyUserSeek(TimeSpan.Zero);
-                _progressEngine.NotifyPreviousTrackRequested();
-
-                AnimateSeekProgressTo(0);
-                CurrentTimeText.Text = FormatTime(TimeSpan.Zero);
-                _lastDisplayedSecond = 0;
-                UpdateProgressTimerState();
-
-                RuntimeLog.Log("PROGRESS-PREV-PREP", $"Rewound UI to 0 (was at {frame.Position.TotalSeconds:F1}s)");
-            }
-            else
-            {
-                _lastPrevRewindClickTime = DateTime.MinValue;
-                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(5);
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
-                _progressEngine.NotifyPreviousTrackRequested();
-
-                RuntimeLog.Log("PROGRESS-PREV-PREP", $"Skip to previous track (pos={frame.Position.TotalSeconds:F1}s, consecutive={isConsecutive})");
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("PROGRESS-PREV-PREP", ex.Message);
-        }
-    }
-
-    private void OptimisticPrepareForNextTrack()
-    {
-        try
-        {
-            _lastPrevRewindClickTime = DateTime.MinValue;
-            var frame = _progressEngine.GetUiFrame();
-            _progressEngine.NotifyUserSeek(frame.Position);
-            _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("PROGRESS-NEXT-PREP", ex.Message);
-        }
-    }
+    private void PrepareForPreviousTrackRequest() => MediaPlayback.PrepareForPreviousTrackRequest();
+    private void OptimisticPrepareForNextTrack() => MediaPlayback.OptimisticPrepareForNextTrack();
 
     private void ThumbnailBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -315,7 +214,7 @@ public partial class MainWindow
     private const double CompactVolumeSmoothActivationDelta = 240.0;
     private const double CompactVolumeWheelSessionResetMs = 450.0;
     private const double CompactVolumeClickSuppressMs = 600.0;
-    private DispatcherTimer? _volumeIndicatorHideTimer;
+    private UiScheduledTimer? _volumeIndicatorHideTimer;
     private bool _isVolumeIndicatorActive = false;
     private bool _volumeSynced = false;
     private int _volumeIndicatorToken = 0;
@@ -543,7 +442,7 @@ public partial class MainWindow
 
         if (_volumeIndicatorHideTimer == null)
         {
-            _volumeIndicatorHideTimer = new DispatcherTimer
+            _volumeIndicatorHideTimer = new UiScheduledTimer
             {
                 Interval = TimeSpan.FromMilliseconds(1200)
             };
@@ -728,7 +627,7 @@ public partial class MainWindow
         int request = ++_volumeInteractionVersion;
         // Every click is a toggle, so retain each one while serializing driver
         // calls. Concurrent read/modify/write operations can otherwise lose clicks.
-        _audioWrites.Post($"mute:{request}", () =>
+        _mediaVolumeWrites.Post($"mute:{request}", () =>
         {
             if (!_mediaService.TryToggleCurrentSessionMute()) return;
             Dispatcher.BeginInvoke(new Action(() =>

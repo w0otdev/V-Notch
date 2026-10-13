@@ -189,7 +189,11 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
     private void Save(NotchSettings settings, bool keepExistingBackup)
     {
-        SaveAsync(settings, keepExistingBackup).GetAwaiter().GetResult();
+        ArgumentNullException.ThrowIfNull(settings);
+        ThrowIfDisposed();
+        // Loading/migrating a file is a synchronous operation. Interactive callers
+        // use SaveAsync; the legacy API writes directly instead of blocking its worker.
+        ExecuteSave(settings.Clone(), keepExistingBackup);
     }
 
     public async ValueTask DisposeAsync()
@@ -216,7 +220,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     {
         if (disposing)
         {
-            DisposeAsync().AsTask().GetAwaiter().GetResult();
+            DisposeAsync().AsTask().SafeFireAndForget("SETTINGS-DISPOSE");
         }
     }
 
@@ -455,10 +459,10 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             changed = true;
         }
 
-        string[] validPriorities = ["Normal", "AboveNormal", "High", "BelowNormal", "Idle"];
-        if (!validPriorities.Any(p => string.Equals(p, settings.ProcessPriority, StringComparison.OrdinalIgnoreCase)))
+        string normalizedPriority = ProcessPriorityPolicy.Normalize(settings.ProcessPriority);
+        if (!string.Equals(settings.ProcessPriority, normalizedPriority, StringComparison.Ordinal))
         {
-            settings.ProcessPriority = "Normal";
+            settings.ProcessPriority = normalizedPriority;
             changed = true;
         }
 

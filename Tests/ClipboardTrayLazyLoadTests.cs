@@ -34,7 +34,7 @@ public sealed class ClipboardTrayLazyLoadTests
             await store.InitializeAsync();
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = [1, 2, 3, 4] })).Entry!;
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Invoke(tray, "ReconcileCards", (object)new[] { entry });
             window.Show();
@@ -77,24 +77,24 @@ public sealed class ClipboardTrayLazyLoadTests
             await store.InitializeAsync();
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = ImageBytes(255) })).Entry!;
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Invoke(tray, "ReconcileCards", (object)new[] { entry });
             tray.BeginEntrance();
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             var card = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Single();
-            Assert.True(Field<DispatcherTimer>(tray, "_entranceWorkTimer").IsEnabled);
+            Assert.True(Field<UiScheduledTimer>(tray, "_entranceWorkTimer").IsEnabled);
             Assert.Empty(Field<IDictionary>(tray, "_thumbnailLoads"));
             Assert.Null(card.Image);
             tray.BeginExit();
-            Assert.False(Field<DispatcherTimer>(tray, "_entranceWorkTimer").IsEnabled);
+            Assert.False(Field<UiScheduledTimer>(tray, "_entranceWorkTimer").IsEnabled);
             tray.BeginEntrance();
             await WpfFrameWaiter.UntilAsync(() => card.Image != null, "preview resumes after reopening");
-            Assert.False(Field<DispatcherTimer>(tray, "_entranceWorkTimer").IsEnabled);
+            Assert.False(Field<UiScheduledTimer>(tray, "_entranceWorkTimer").IsEnabled);
             tray.BeginEntrance();
             tray.Visibility = Visibility.Collapsed;
-            Assert.False(Field<DispatcherTimer>(tray, "_entranceWorkTimer").IsEnabled);
+            Assert.False(Field<UiScheduledTimer>(tray, "_entranceWorkTimer").IsEnabled);
             Assert.Null(card.Image);
         }
         finally
@@ -209,7 +209,7 @@ public sealed class ClipboardTrayLazyLoadTests
                 entries.Add((await store.ImportAsync(new ClipboardCapture { ImagePng = ImageBytes((byte)i) })).Entry!);
             entries.AddRange(Enumerable.Range(0, 976).Select(i => new ClipboardEntry { Kind = ClipboardKind.File, Title = $"File {i}" }));
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Invoke(tray, "ReconcileCards", entries);
             await slots.WaitAsync();
@@ -325,7 +325,7 @@ public sealed class ClipboardTrayLazyLoadTests
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = ImageBytes(255, 256, 4096) })).Entry!;
             var card = new ClipboardCardViewModel(entry);
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(card);
             window.Show();

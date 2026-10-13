@@ -14,7 +14,7 @@ internal sealed class LiveTranslationController : IDisposable
     private LocalTranslationService _service;
     private TranslationModelStore _store;
     private readonly bool _injected;
-    private readonly DispatcherTimer _idle;
+    private readonly UiScheduledTimer _idle;
     private TranslationSelectionService? _selectionService;
     private TranslationShiftShortcut? _shiftShortcut;
     private TranslationSelection? _selection;
@@ -40,7 +40,7 @@ internal sealed class LiveTranslationController : IDisposable
         _store = store ?? TranslationModelStore.Shared;
         _service = new(engine ?? new QwenTranslationEngine(_store));
         _store.Changed += ModelChanged;
-        _idle = new DispatcherTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => { if (_window?.IsPresentationAnimating != true) _service.ReleaseIdleResources(); }, dispatcher);
+        _idle = new UiScheduledTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => { if (_window?.IsPresentationAnimating != true) _service.ReleaseIdleResources(); }, dispatcher);
         _idle.Stop();
     }
 
@@ -276,7 +276,7 @@ internal sealed class LiveTranslationController : IDisposable
         bool convertingCurrency = false;
         window.SetStatus("translation.working");
         var elapsed = new System.Diagnostics.Stopwatch();
-        var activity = new DispatcherTimer(DispatcherPriority.Background, _dispatcher) { Interval = TimeSpan.FromSeconds(1) };
+        var activity = new UiScheduledTimer(DispatcherPriority.Background, _dispatcher) { Interval = TimeSpan.FromSeconds(1) };
         activity.Tick += (_, _) =>
         {
             if (_disposed || version != _requestVersion) { activity.Stop(); return; }

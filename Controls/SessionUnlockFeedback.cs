@@ -22,7 +22,7 @@ public sealed class SessionUnlockFeedback : Grid
     private const int OpenHoldMs = 1100;
     private const int FadeMs = 250;
     private readonly MorphingSettingsIcon _icon = new() { Width = 56, Height = 56 };
-    private readonly DispatcherTimer _timer;
+    private readonly UiScheduledTimer _timer;
     private int _stage;
     private int _generation;
 
@@ -40,7 +40,7 @@ public sealed class SessionUnlockFeedback : Grid
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         });
-        _timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher);
+        _timer = new UiScheduledTimer(DispatcherPriority.Background, Dispatcher);
         _timer.Tick += OnTick;
         Unloaded += (_, _) => Stop();
     }

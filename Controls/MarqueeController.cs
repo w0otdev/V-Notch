@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -15,8 +16,8 @@ internal sealed class MarqueeController
     private readonly MarqueeTargets _title;
     private readonly MarqueeTargets _artist;
     private readonly Func<double, double> _getVisibleMediaTextWidth;
-    private readonly DispatcherTimer _titleMorphTimer;
-    private readonly DispatcherTimer _artistMorphTimer;
+    private readonly UiScheduledTimer _titleMorphTimer;
+    private readonly UiScheduledTimer _artistMorphTimer;
 
     #endregion
 
@@ -52,14 +53,25 @@ internal sealed class MarqueeController
         _lastTitleText = titleA.Text ?? string.Empty;
         _lastArtistText = artistA.Text ?? string.Empty;
 
-        _titleMorphTimer = new DispatcherTimer(DispatcherPriority.Normal, titleA.Dispatcher);
+        _titleMorphTimer = new UiScheduledTimer(DispatcherPriority.Normal, titleA.Dispatcher);
         _titleMorphTimer.Tick += TitleMorphTimer_Tick;
-        _artistMorphTimer = new DispatcherTimer(DispatcherPriority.Normal, artistA.Dispatcher);
+        _artistMorphTimer = new UiScheduledTimer(DispatcherPriority.Normal, artistA.Dispatcher);
         _artistMorphTimer.Tick += ArtistMorphTimer_Tick;
     }
 #pragma warning restore S107
 
     #region Public API
+    public void Stop()
+    {
+        _titleMorphTimer.Stop();
+        _artistMorphTimer.Stop();
+        _pendingTitleText = null;
+        _pendingArtistText = null;
+        _title.MarqueeA.BeginAnimation(TranslateTransform.XProperty, null);
+        _title.MarqueeB.BeginAnimation(TranslateTransform.XProperty, null);
+        _artist.MarqueeA.BeginAnimation(TranslateTransform.XProperty, null);
+        _artist.MarqueeB.BeginAnimation(TranslateTransform.XProperty, null);
+    }
     public void RefreshMediaMarquee()
     {
         RestartMarqueeFor(_title, _isTitleActiveA, isTitle: true);
@@ -172,7 +184,7 @@ internal sealed class MarqueeController
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
     }
 
-    private static void RestartTimer(DispatcherTimer timer, TimeSpan interval)
+    private static void RestartTimer(UiScheduledTimer timer, TimeSpan interval)
     {
         timer.Stop();
         timer.Interval = interval > TimeSpan.Zero ? interval : TimeSpan.FromMilliseconds(1);

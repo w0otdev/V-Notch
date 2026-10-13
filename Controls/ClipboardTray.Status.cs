@@ -1,11 +1,12 @@
 using System.Windows;
+using VNotch.Services;
 using System.Windows.Threading;
 
 namespace VNotch.Controls;
 
 public partial class ClipboardTray
 {
-    private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly UiScheduledTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     private void StatusChanged(string message)
     {

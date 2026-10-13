@@ -1024,7 +1024,9 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         return hr is 32 or 33; // ERROR_SHARING_VIOLATION or ERROR_LOCK_VIOLATION
     }
 
-    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+    // UI owners use DisposeAsync to drain queued work. Synchronous disposal starts
+    // the same cleanup without preventing those owners' dispatcher from pumping.
+    public void Dispose() => DisposeAsync().AsTask().SafeFireAndForget("CLIPBOARD-STORE-DISPOSE");
 
     public ValueTask DisposeAsync()
     {
@@ -1034,7 +1036,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
             _disposed = true;
             _personalUnlocked = false;
             var pending = _pending;
-            return new ValueTask(_disposeTask = Task.Run(() => DisposeCoreAsync(pending)));
+            return new ValueTask(_disposeTask = DisposeCoreAsync(pending));
         }
     }
 

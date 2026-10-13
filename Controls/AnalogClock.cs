@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System;
 using System.Globalization;
 using System.Windows;
@@ -19,8 +20,8 @@ public class AnalogClock : FrameworkElement
         new FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display"),
         FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
-    private readonly DispatcherTimer _timer;
-    private DispatcherTimer? _sweepStartDelay;
+    private readonly UiScheduledTimer _timer;
+    private UiScheduledTimer? _sweepStartDelay;
     private bool _isRunning;
 
     private const int SweepStartDelayMs = 480;
@@ -72,7 +73,7 @@ public class AnalogClock : FrameworkElement
         TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
         TextOptions.SetTextHintingMode(this, TextHintingMode.Animated);
 
-        _timer = new DispatcherTimer(DispatcherPriority.Render)
+        _timer = new UiScheduledTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromMilliseconds(33)
         };
@@ -101,7 +102,7 @@ public class AnalogClock : FrameworkElement
 
         InvalidateVisual();
 
-        _sweepStartDelay ??= new DispatcherTimer(DispatcherPriority.Normal)
+        _sweepStartDelay ??= new UiScheduledTimer(DispatcherPriority.Normal)
         {
             Interval = TimeSpan.FromMilliseconds(SweepStartDelayMs)
         };

@@ -34,6 +34,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     private readonly object _lifecycleLock = new();
     private ServiceLifecycleState _state = ServiceLifecycleState.Stopped;
+    private Task _stopTask = Task.CompletedTask;
+    private bool _restartRequested;
     private int _lifecycleGeneration;
     private Task? _initTask;
     private Task? _processingTask;
@@ -260,6 +262,13 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         {
             if (_disposed || _state == ServiceLifecycleState.Disposed) return;
             if (_state == ServiceLifecycleState.Starting || _state == ServiceLifecycleState.Running) return;
+            if (_state == ServiceLifecycleState.Stopping)
+            {
+                if (_restartRequested) return;
+                _restartRequested = true;
+                RestartAfterStopAsync(_stopTask).SafeFireAndForget("MEDIA-RESTART");
+                return;
+            }
 
             _state = ServiceLifecycleState.Starting;
             int generation = unchecked(++_lifecycleGeneration);
@@ -356,10 +365,29 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
     public void Stop()
     {
-        StopCoreAsync(isDisposing: false).GetAwaiter().GetResult();
+        StopAsync().SafeFireAndForget("MEDIA-STOP");
     }
 
-    public Task StopAsync() => StopCoreAsync(isDisposing: false);
+    public Task StopAsync()
+    {
+        lock (_lifecycleLock)
+        {
+            _restartRequested = false;
+            if (_state == ServiceLifecycleState.Stopping) return _stopTask;
+            return _stopTask = StopCoreAsync(isDisposing: false);
+        }
+    }
+
+    private async Task RestartAfterStopAsync(Task stopping)
+    {
+        await stopping.ConfigureAwait(false);
+        lock (_lifecycleLock)
+        {
+            if (!_restartRequested || _disposed) return;
+            _restartRequested = false;
+            Start();
+        }
+    }
 
     private void SubscribeToCurrentSession()
     {

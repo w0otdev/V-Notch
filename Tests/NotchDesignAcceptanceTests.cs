@@ -37,7 +37,7 @@ public sealed class NotchDesignAcceptanceTests
         window.Show();
         PumpUntil(() => Field<bool>(window, "_isStartupLayoutReady"));
         Field<MediaDetectionService>(window, "_mediaService").Stop();
-        Field<DispatcherTimer>(window, "_updateTimer").Stop();
+        Field<UiScheduledTimer>(window, "_updateTimer").Stop();
         PumpUntil(() => !IsAnimating(window));
         PumpFor(TimeSpan.FromMilliseconds(150)); // Drain the service's final empty snapshot.
         var artwork = new BitmapImage();
@@ -67,9 +67,9 @@ public sealed class NotchDesignAcceptanceTests
         PumpUntil(() => !IsAnimating(window));
         PumpFor(TimeSpan.FromMilliseconds(650));
         Assert.Equal(Visibility.Visible, window.ExpandedContent.Visibility);
-        var title = window.TrackTitleLayer.Opacity > window.TrackTitleNextLayer.Opacity ? window.TrackTitle : window.TrackTitleNext;
+        var title = window.MediaPlayback.TrackTitleLayer.Opacity > window.MediaPlayback.TrackTitleNextLayer.Opacity ? window.MediaPlayback.TrackTitle : window.MediaPlayback.TrackTitleNext;
         Assert.Equal(info.CurrentTrack, title.Text);
-        Assert.True(Math.Max(window.TrackTitleLayer.Opacity, window.TrackTitleNextLayer.Opacity) > .99);
+        Assert.True(Math.Max(window.MediaPlayback.TrackTitleLayer.Opacity, window.MediaPlayback.TrackTitleNextLayer.Opacity) > .99);
         AssertMediaInk(window, hasArtwork: true);
         Assert.Equal(.45, window.ClipboardIconButton.Opacity, 3);
         Assert.Equal(1, window.HomeIconButton.Opacity, 3);
@@ -114,9 +114,9 @@ public sealed class NotchDesignAcceptanceTests
     private static void AssertMediaInk(MainWindow window, bool hasArtwork)
     {
         var title = ((LinearGradientBrush)window.Resources["TrackTitleGradient"]).GradientStops[0].Color;
-        var artist = Assert.IsType<SolidColorBrush>(window.TrackArtist.Foreground).Color;
-        var currentTime = Assert.IsType<SolidColorBrush>(window.CurrentTimeText.Foreground).Color;
-        var remainingTime = Assert.IsType<SolidColorBrush>(window.RemainingTimeText.Foreground).Color;
+        var artist = Assert.IsType<SolidColorBrush>(window.MediaPlayback.TrackArtist.Foreground).Color;
+        var currentTime = Assert.IsType<SolidColorBrush>(window.MediaPlayback.CurrentTimeText.Foreground).Color;
+        var remainingTime = Assert.IsType<SolidColorBrush>(window.MediaPlayback.RemainingTimeText.Foreground).Color;
         Assert.Equal(currentTime, remainingTime);
         if (hasArtwork)
         {
@@ -136,10 +136,10 @@ public sealed class NotchDesignAcceptanceTests
             Assert.Equal(UiPalette.SecondaryColor, artist);
             Assert.Equal(UiPalette.SecondaryColor, currentTime);
         }
-        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.PlayIconPath.Fill).Color);
-        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.PauseIconPath.Fill).Color);
-        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.PrevArrow2.Fill).Color);
-        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.NextArrow1.Fill).Color);
+        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.MediaPlayback.PlayIconPath.Fill).Color);
+        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.MediaPlayback.PauseIconPath.Fill).Color);
+        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.MediaPlayback.PrevArrow2.Fill).Color);
+        Assert.Equal(title, Assert.IsType<SolidColorBrush>(window.MediaPlayback.NextArrow1.Fill).Color);
         Assert.Equal(UiPalette.PrimaryColor, Assert.IsType<SolidColorBrush>(window.VolumeIcon.Foreground).Color);
         Assert.True(UiPalette.PrimaryBrush.IsFrozen && UiPalette.SecondaryBrush.IsFrozen && UiPalette.IconBrush.IsFrozen);
     }

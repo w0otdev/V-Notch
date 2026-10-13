@@ -37,7 +37,7 @@ public sealed class CountdownPresenter : IDisposable
     private readonly CountdownViewRefs _refs;
     private readonly Dispatcher _dispatcher;
 
-    private DispatcherTimer? _repeatTimer;
+    private UiScheduledTimer? _repeatTimer;
     private Action? _repeatAction;
     private int _repeatCount;
     private bool _disposed;
@@ -68,7 +68,7 @@ public sealed class CountdownPresenter : IDisposable
         _repeatCount = 0;
 
         _repeatTimer?.Stop();
-        _repeatTimer = new DispatcherTimer
+        _repeatTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(RepeatInitialDelayMs)
         };

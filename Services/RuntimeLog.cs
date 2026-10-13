@@ -22,6 +22,8 @@ public enum LogLevel
 public static class RuntimeLog
 {
     private static readonly object _lifecycleLock = new();
+    private static readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private static Task? _shutdownCompletion;
     private static readonly UTF8Encoding _utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
     private static string _logPath = Path.Combine(AppContext.BaseDirectory, "vnotch-debug.log");
     private static AsyncLogWriter? _writer;
@@ -49,11 +51,18 @@ public static class RuntimeLog
     public static bool IsEnabled(LogLevel level) =>
         _initialized && level >= (LogLevel)Volatile.Read(ref _minimumLevel);
 
-    public static void InitializeNewSession(string? fileName = null)
+    public static async Task InitializeNewSessionAsync(string? fileName = null)
+    {
+        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        try { await InitializeNewSessionCoreAsync(fileName).ConfigureAwait(false); }
+        finally { _lifecycleGate.Release(); }
+    }
+
+    private static async Task InitializeNewSessionCoreAsync(string? fileName)
     {
         // Initialization is normally called once. If a host reinitializes logging,
         // finish the previous writer before replacing its queue and destination.
-        Shutdown(DefaultShutdownTimeout);
+        if (!await ShutdownCoreAsync(DefaultShutdownTimeout).ConfigureAwait(false)) return;
 
         lock (_lifecycleLock)
         {
@@ -78,6 +87,7 @@ public static class RuntimeLog
                     _utf8WithoutBom);
 
                 _writer = new AsyncLogWriter(_logPath);
+                _shutdownCompletion = null;
                 _initialized = true;
             }
             catch (Exception)
@@ -194,9 +204,17 @@ public static class RuntimeLog
         }
     }
 
-    public static bool Shutdown(TimeSpan timeout)
+    public static async Task<bool> ShutdownAsync(TimeSpan timeout)
+    {
+        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        try { return await ShutdownCoreAsync(timeout).ConfigureAwait(false); }
+        finally { _lifecycleGate.Release(); }
+    }
+
+    private static async Task<bool> ShutdownCoreAsync(TimeSpan timeout)
     {
         AsyncLogWriter? writer;
+        Task? completion;
 
         lock (_lifecycleLock)
         {
@@ -204,16 +222,19 @@ public static class RuntimeLog
             writer = _writer;
             _writer = null;
             writer?.RequestStop();
+            if (writer != null) _shutdownCompletion = writer.Completion;
+            completion = _shutdownCompletion;
         }
 
-        if (writer == null)
+        if (completion == null)
         {
             return true;
         }
 
         try
         {
-            return writer.Completion.Wait(timeout);
+            await completion.WaitAsync(timeout).ConfigureAwait(false);
+            return true;
         }
         catch (Exception)
         {
@@ -222,9 +243,17 @@ public static class RuntimeLog
         }
     }
 
-    public static void ClearLog()
+    public static async Task ClearLogAsync()
     {
-        Shutdown(DefaultShutdownTimeout);
+        await _lifecycleGate.WaitAsync().ConfigureAwait(false);
+        try { await ClearLogCoreAsync().ConfigureAwait(false); }
+        finally { _lifecycleGate.Release(); }
+    }
+
+    private static async Task ClearLogCoreAsync()
+    {
+        bool restart = _initialized;
+        if (!await ShutdownCoreAsync(DefaultShutdownTimeout).ConfigureAwait(false)) return;
         lock (_lifecycleLock)
         {
             try
@@ -238,11 +267,8 @@ public static class RuntimeLog
                 // Ignore file deletion errors when clearing log (e.g. file is locked by another process)
             }
 
-            if (IsEnabled(LogLevel.Info))
-            {
-                InitializeNewSession();
-            }
         }
+        if (restart) await InitializeNewSessionCoreAsync(null).ConfigureAwait(false);
     }
 
     private static string LevelLabel(LogLevel level) => level switch

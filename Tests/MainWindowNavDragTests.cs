@@ -23,7 +23,7 @@ public sealed class MainWindowNavDragTests
     [InlineData(1, 2)]
     public void DroppingTabReordersVisibleSlotsAndPersistsTheResult(int from, int to) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var children = window.NavTabsStackPanel.Children.OfType<FrameworkElement>().ToList();
         var item = children[from];
@@ -96,7 +96,7 @@ public sealed class MainWindowNavDragTests
     [Fact]
     public void CancelledAndTransformlessDragsAlwaysReleaseTheirVisualState() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var item = window.TimerIconButton;
         string initial = Field<NotchSettings>(window, "_settings").NavTabOrder;
@@ -127,18 +127,18 @@ public sealed class MainWindowNavDragTests
         AnimationConfig.SetReduceMotion(false);
         try
         {
-            using var fixture = CreateFixture();
+            await using var fixture = CreateFixture();
             var window = fixture.Window;
             Invoke(window, "ExpandNotch", null, null, NotchView.Compact);
             Assert.True((bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!);
             Set(window, "_clipboardDragAutoExpanded", true);
             Invoke(window, "NotchWrapper_DragLeave", window, null);
             Assert.True(Field<bool>(window, "_clipboardDragAutoExpanded"));
-            Assert.NotNull(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+            Assert.NotNull(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
             await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MainWindow).GetProperty("_isExpanded", Private)!.GetValue(window)!
                 && !(bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!, "abandoned drag collapsed", ct);
             Assert.False(Field<bool>(window, "_clipboardDragAutoExpanded"));
-            Assert.Null(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+            Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
         }
         finally { AnimationConfig.SetReduceMotion(reduceMotion); }
     });

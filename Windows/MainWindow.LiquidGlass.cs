@@ -16,7 +16,7 @@ public partial class MainWindow
     private LiquidGlassInteractionController? _glassInteractionController;
     private bool _gpuRefractionConfigured;
     private bool _gpuRefractionFailed;
-    private System.Windows.Threading.DispatcherTimer? _glassGpuRetryTimer;
+    private UiScheduledTimer? _glassGpuRetryTimer;
     private int _glassGpuRetrySeconds = 5;
     private bool _glassRendererRebuildQueued;
     private bool _glassInitialFramePending;
@@ -293,7 +293,7 @@ public partial class MainWindow
             !(_settings.LiquidGlass?.UseGpuRefraction ?? true) || !LiquidGlassRefractionEffect.IsAvailable) return;
         if (_glassGpuRetryTimer == null)
         {
-            _glassGpuRetryTimer = new System.Windows.Threading.DispatcherTimer(
+            _glassGpuRetryTimer = new UiScheduledTimer(
                 System.Windows.Threading.DispatcherPriority.Background, Dispatcher);
             _glassGpuRetryTimer.Tick += OnGlassGpuRetry;
         }
@@ -812,15 +812,15 @@ public partial class MainWindow
 
     private void ApplyGlassToProgressBar(bool glass)
     {
-        if (ProgressBarBg == null) return;
+        if (MediaPlayback.ProgressBarBg == null) return;
 
         if (!_progressTrackDefaultCaptured)
         {
-            _progressTrackDefaultBg = ProgressBarBg.Background;
+            _progressTrackDefaultBg = MediaPlayback.ProgressBarBg.Background;
             _progressTrackDefaultCaptured = true;
         }
 
-        ProgressBarBg.Background = glass ? _glassProgressTrack : _progressTrackDefaultBg;
+        MediaPlayback.ProgressBarBg.Background = glass ? _glassProgressTrack : _progressTrackDefaultBg;
     }
 
     private bool _notchShadowDefaultsCaptured;
@@ -866,7 +866,7 @@ public partial class MainWindow
         TimeSpan motionDuration = completionAnim.Duration.HasTimeSpan
             ? completionAnim.Duration.TimeSpan
             : TimeSpan.FromMilliseconds(600);
-        var safetyTimer = new System.Windows.Threading.DispatcherTimer(
+        var safetyTimer = new UiScheduledTimer(
             System.Windows.Threading.DispatcherPriority.Background,
             Dispatcher)
         {
@@ -999,11 +999,11 @@ public partial class MainWindow
     private Brush? _glassPanelTint;
     private void ApplyGlassToTimerBar(bool glass)
     {
-        if (TimerControlBar == null) return;
+        if (CountdownWidget.TimerControlBar == null) return;
 
         if (!_timerBarDefaultsCaptured)
         {
-            _timerBarDefaultBg = TimerControlBar.Background;
+            _timerBarDefaultBg = CountdownWidget.TimerControlBar.Background;
             _timerBarDefaultsCaptured = true;
         }
 
@@ -1014,13 +1014,13 @@ public partial class MainWindow
                 _glassPanelTint = new SolidColorBrush(Color.FromArgb(0x40, 0, 0, 0));
                 _glassPanelTint.Freeze();
             }
-            TimerControlBar.Background = _glassPanelTint;
-            if (TimerControlBarShadow != null) TimerControlBarShadow.Opacity = 0;
+            CountdownWidget.TimerControlBar.Background = _glassPanelTint;
+            if (CountdownWidget.TimerControlBarShadow != null) CountdownWidget.TimerControlBarShadow.Opacity = 0;
         }
         else
         {
-            TimerControlBar.Background = _timerBarDefaultBg;
-            if (TimerControlBarShadow != null) TimerControlBarShadow.Opacity = 0.45;
+            CountdownWidget.TimerControlBar.Background = _timerBarDefaultBg;
+            if (CountdownWidget.TimerControlBarShadow != null) CountdownWidget.TimerControlBarShadow.Opacity = 0.45;
         }
     }
 

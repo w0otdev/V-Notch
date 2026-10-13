@@ -9,7 +9,7 @@ namespace VNotch.Controls;
 
 public partial class ClipboardTray
 {
-    private readonly System.Windows.Threading.DispatcherTimer _categoryDropTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
+    private readonly UiScheduledTimer _categoryDropTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     private double _categoryDropSpeed;
     private long _categoryDropLastSeen;
 

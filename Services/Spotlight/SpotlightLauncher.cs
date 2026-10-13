@@ -8,7 +8,7 @@ namespace VNotch.Services.Spotlight;
 
 internal sealed class SpotlightLauncher
 {
-    public bool TryLaunch(SpotlightSearchItem item, bool systemActionConfirmed = false)
+    public async Task<bool> TryLaunchAsync(SpotlightSearchItem item, bool systemActionConfirmed = false)
     {
         if (!IsValidTarget(item)) return false;
         if (SpotlightSystemCatalog.RequiresConfirmation(item) && !systemActionConfirmed) return false;
@@ -16,10 +16,10 @@ internal sealed class SpotlightLauncher
         try
         {
             if (item.Kind == SpotlightResultKind.Settings)
-                return global::Windows.System.Launcher.LaunchUriAsync(new Uri(item.Target))
-                    .AsTask().GetAwaiter().GetResult();
+                return await global::Windows.System.Launcher.LaunchUriAsync(new Uri(item.Target))
+                    .AsTask().ConfigureAwait(false);
             if (item.Kind == SpotlightResultKind.SystemAction)
-                return TryRunSystemAction(item.Target);
+                return await TryRunSystemActionAsync(item.Target).ConfigureAwait(false);
             return Process.Start(new ProcessStartInfo(item.Target) { UseShellExecute = true }) != null;
         }
         catch (Exception ex)
@@ -29,7 +29,7 @@ internal sealed class SpotlightLauncher
         }
     }
 
-    private static bool TryRunSystemAction(string target)
+    private static async Task<bool> TryRunSystemActionAsync(string target)
     {
         if (target == "vnotch-action:lock") return LockWorkStation();
         if (target == "shell:RecycleBinFolder")
@@ -64,7 +64,7 @@ internal sealed class SpotlightLauncher
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start);
         if (process == null) return false;
-        process.WaitForExit();
+        await process.WaitForExitAsync().ConfigureAwait(false);
         return process.ExitCode == 0;
     }
 
@@ -79,11 +79,12 @@ internal sealed class SpotlightLauncher
         try
         {
             string explorerPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-            string safeTarget = item.Target.Replace("\"", "");
-            return Process.Start(new ProcessStartInfo(explorerPath, $"/select,\"{safeTarget}\"")
+            var startInfo = new ProcessStartInfo(explorerPath)
             {
-                UseShellExecute = true
-            }) != null;
+                UseShellExecute = false
+            };
+            startInfo.ArgumentList.Add($"/select,{item.Target}");
+            return Process.Start(startInfo) != null;
         }
         catch (Exception ex)
         {

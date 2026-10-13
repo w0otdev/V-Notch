@@ -26,14 +26,14 @@ public class WordClock : TextBlock
 
     private const string OClockLocKey = "wordClock.oclock";
 
-    private readonly DispatcherTimer _timer;
+    private readonly UiScheduledTimer _timer;
     private bool _isRunning;
     private int _lastRenderedMinuteKey = -1;
     private string _lastRenderedLanguage = "";
 
     public WordClock()
     {
-        _timer = new DispatcherTimer(DispatcherPriority.Background)
+        _timer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(2)
         };

@@ -28,70 +28,9 @@ public partial class MainWindow
     private const double _countdownCompleteWidthInset = 28;
     private double CountdownCompleteViewWidth => Math.Max(_collapsedWidth, _expandedWidth - _countdownCompleteWidthInset);
 
-    // CountdownController owns timing and run completion; CountdownPresenter owns UI presentation
-    private CountdownController? _countdownController;
-    private CountdownController CountdownController
-    {
-        get
-        {
-            if (_countdownController == null)
-            {
-                _countdownController = new CountdownController(_viewModel.Timer, action =>
-                {
-                    if (Dispatcher.CheckAccess()) action();
-                    else Dispatcher.BeginInvoke(action);
-                });
-                _countdownController.Completed += (_, _) => OnCountdownCompleted();
-                _countdownController.Tick += (_, _) =>
-                {
-                    if (TimerContent != null && TimerContent.Visibility == Visibility.Visible && _isExpanded)
-                    {
-                        SetCountdownProgress(animate: false);
-                    }
-                };
-            }
-            return _countdownController;
-        }
-    }
-
-    private CountdownPresenter? _countdownPresenter;
-    private CountdownPresenter CountdownPresenter
-    {
-        get
-        {
-            if (_countdownPresenter == null)
-            {
-                var refs = new CountdownViewRefs
-                {
-                    StartIcon = CountdownStartIcon,
-                    StartButton = CountdownStartBtn,
-                    StepperCapsule = CountdownStepperCapsule,
-                    DisplayScale = CountdownDisplayScale,
-                    DigitsBrush = CountdownDigitsBrush,
-                    PanelBorderBrush = CountdownPanelBorderBrush,
-                    PlusButton = CountdownPlusBtn,
-                    MinusButton = CountdownMinusBtn,
-                    PlusHighlight = CountdownPlusHighlight,
-                    MinusHighlight = CountdownMinusHighlight,
-                    CompleteOverlay = CountdownCompleteOverlay
-                };
-                _countdownPresenter = new CountdownPresenter(refs, Dispatcher);
-            }
-            return _countdownPresenter;
-        }
-    }
-
+    private CountdownController CountdownController => CountdownWidget.Controller;
     private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
     private bool _isCountdownRunning => CountdownController.IsRunning;
-
-    private static readonly Color _countdownBorderIdleColor = Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF);
-    private static readonly Color _countdownBorderEditingColor = Color.FromArgb(0x8C, 0xFF, 0x8C, 0x00);
-    private static readonly Color _countdownBorderErrorColor = Color.FromArgb(0xB4, 0xFF, 0x45, 0x3A);
-
-    private void SetCountdownStartVisual(bool running)
-    {
-        CountdownPresenter.SetStartVisual(running);
-    }
 
     #region Timer View Navigation
 
@@ -207,7 +146,7 @@ public partial class MainWindow
 
         PlayTimerViewEntrance(durIn, inDelay, generation);
 
-        UpdateTimerDisplay();
+        CountdownWidget.RefreshProgress();
     }
 
     // control bar rises from below — three staggered layers.
@@ -293,9 +232,9 @@ public partial class MainWindow
 
         // Control bar rises to meet the header from below.
         var barTranslate = new TranslateTransform(0, 18);
-        TimerControlBar.RenderTransform = barTranslate;
-        TimerControlBar.BeginAnimation(OpacityProperty, null);
-        TimerControlBar.Opacity = 0;
+        CountdownWidget.TimerControlBar.RenderTransform = barTranslate;
+        CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, null);
+        CountdownWidget.TimerControlBar.Opacity = 0;
 
         var barDelay = baseDelay + TimeSpan.FromMilliseconds(140);
         var barFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(340)), _easeAppleOut, barDelay);
@@ -305,12 +244,12 @@ public partial class MainWindow
 
         barFade.Completed += (_, _) =>
         {
-            TimerControlBar.BeginAnimation(OpacityProperty, null);
-            TimerControlBar.Opacity = 1;
-            if (ReferenceEquals(TimerControlBar.RenderTransform, barTranslate))
-                TimerControlBar.RenderTransform = null;
+            CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.TimerControlBar.Opacity = 1;
+            if (ReferenceEquals(CountdownWidget.TimerControlBar.RenderTransform, barTranslate))
+                CountdownWidget.TimerControlBar.RenderTransform = null;
         };
-        TimerControlBar.BeginAnimation(OpacityProperty, barFade);
+        CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, barFade);
         barTranslate.BeginAnimation(TranslateTransform.YProperty, barRise);
     }
 
@@ -435,7 +374,7 @@ public partial class MainWindow
 
         PlayClockViewUnfoldIn(inDelay);
 
-        UpdateTimerDisplay();
+        CountdownWidget.RefreshProgress();
     }
 
     private void SwitchFromTimerToPrimaryView(long? transitionId = null)
@@ -448,7 +387,7 @@ public partial class MainWindow
 
         int generation = (int)transitionId;
         _viewTransitionGeneration = generation;
-        CancelTimerEditingInstant();
+        CountdownWidget.CancelEditing();
         _isTimerView = false;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -521,10 +460,10 @@ public partial class MainWindow
                 (byte)(vibrantColor.G * 0.65),
                 (byte)(vibrantColor.B * 0.65));
 
-            ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, null);
-            ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, null);
-            ProgressBarGradientStart.Color = vibrantColor;
-            ProgressBarGradientEnd.Color = darkColor;
+            MediaPlayback.ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, null);
+            MediaPlayback.ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, null);
+            MediaPlayback.ProgressBarGradientStart.Color = vibrantColor;
+            MediaPlayback.ProgressBarGradientEnd.Color = darkColor;
         }
 
         var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY - 16);
@@ -579,7 +518,7 @@ public partial class MainWindow
 
         int generation = (int)transitionId;
         _viewTransitionGeneration = generation;
-        CancelTimerEditingInstant();
+        CountdownWidget.CancelEditing();
         _isTimerView = false;
         _isSecondaryView = true;
         _isAnimating = true;
@@ -664,98 +603,21 @@ public partial class MainWindow
 
     #endregion
 
-    #region Timer View Microinteractions
+    #region Countdown Logic
 
     private void TimerControlButton_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (sender is Border button)
-        {
-            AnimateTimerButtonScale(button, 1.045);
-        }
+        if (sender is Border button) Controls.CountdownView.AnimateTimerButtonScale(button, 1.045);
     }
 
     private void TimerControlButton_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (sender is Border button)
-        {
-            AnimateTimerButtonScale(button, 1.0);
-        }
+        if (sender is Border button) Controls.CountdownView.AnimateTimerButtonScale(button, 1);
     }
-
-    private static void AnimateTimerButtonScale(Border button, double targetScale)
-    {
-        var scale = button.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
-        button.RenderTransform = scale;
-        button.RenderTransformOrigin = new Point(0.5, 0.5);
-
-        var animX = MakeAnim(scale.ScaleX, targetScale, _dur150, _easeQuadOut);
-        var animY = MakeAnim(scale.ScaleY, targetScale, _dur150, _easeQuadOut);
-        Timeline.SetDesiredFrameRate(animX, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(animY, VNotch.Services.AnimationConfig.TargetFps);
-
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, animX);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, animY);
-    }
-
-    private void PlayTimerButtonPress(Border button)
-    {
-        PlayButtonPressAnimation(button);
-    }
-
-    // Trigger digit scale bump on soft spring, glyph amber flash, and capsule
-    // border pulse on state changes.
-    private void AnimateCountdownDigitBump(double magnitude = 1.0)
-    {
-        CountdownPresenter.AnimateDigitBump(magnitude);
-    }
-
-    private void AnimateCountdownDigitFlash()
-    {
-        CountdownPresenter.AnimateDigitFlash();
-    }
-
-    private void AnimateCountdownPanelBorder(Color target, int durationMs)
-    {
-        CountdownPresenter.AnimatePanelBorder(target, durationMs);
-    }
-
-    private void AnimateCountdownPanelBorderFlash()
-    {
-        CountdownPresenter.AnimatePanelBorderFlash();
-    }
-
-    private Border? GetStepHighlight(object sender)
-    {
-        if (ReferenceEquals(sender, CountdownPlusBtn))
-            return CountdownPlusHighlight;
-        if (ReferenceEquals(sender, CountdownMinusBtn))
-            return CountdownMinusHighlight;
-        return null;
-    }
-
-    private void AnimateStepHighlightOpacity(Border highlight, double to, int durationMs)
-    {
-        CountdownPresenter.AnimateStepHighlightOpacity(highlight, to, durationMs);
-    }
-
-    private void FlashStepHighlight(Border highlight)
-    {
-        CountdownPresenter.FlashStepHighlight(highlight);
-    }
-
-    private void CountdownStepBtn_MouseEnter(object sender, MouseEventArgs e)
-    {
-        if (GetStepHighlight(sender) is { } highlight)
-            AnimateStepHighlightOpacity(highlight, 0.08, 120);
-    }
-
-    #endregion
-
-    #region Countdown Logic
 
     private void OnCountdownCompleted()
     {
-        SetCountdownStartVisual(false);
+        CountdownWidget.SetCountdownStartVisual(false);
 
         SystemSounds.Exclamation.Play();
 
@@ -839,7 +701,7 @@ public partial class MainWindow
         {
             _isAudioView = false;
             StopAudioPoll();
-            ReleaseAudioSessionCache();
+            AudioContent.ReleaseSessionCache();
         }
 
         if (_isSecondaryView)
@@ -1208,8 +1070,8 @@ public partial class MainWindow
         MusicCompactContent.Visibility = Visibility.Collapsed;
         MusicCompactContent.Opacity = 0;
 
-        UpdateTimerDisplay();
-        SetCountdownStartVisual(true);
+        CountdownWidget.RefreshProgress();
+        CountdownWidget.SetCountdownStartVisual(true);
         UpdateTimerNavIconsState();
 
         NavIconsPanel.BeginAnimation(OpacityProperty, null);
@@ -1281,7 +1143,7 @@ public partial class MainWindow
             NavIconsBackground.Opacity = 1;
 
             UpdateTimerNavIconsState();
-            UpdateTimerDisplay();
+            CountdownWidget.RefreshProgress();
 
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, () =>
             {
@@ -1322,7 +1184,7 @@ public partial class MainWindow
         AnimateCountdownCompleteOverlayOut();
         _viewModel.Timer.Remaining = _countdownDuration;
         _transitionCoordinator.RequestCollapse("CountdownDismiss");
-        SetCountdownStartVisual(false);
+        CountdownWidget.SetCountdownStartVisual(false);
     }
 
     private void AnimateCountdownDismissCollapse(long transitionId)
@@ -1381,7 +1243,7 @@ public partial class MainWindow
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
 
-        SetCountdownStartVisual(false);
+        CountdownWidget.SetCountdownStartVisual(false);
     }
 
     private void AnimateCountdownCompleteOverlayOut()
@@ -1594,388 +1456,6 @@ public partial class MainWindow
         CountdownCompleteOverlay.Visibility = Visibility.Collapsed;
         CountdownCompleteOverlay.Opacity = 0;
     }
-
-    private void CountdownMinus_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        if (_isCountdownRunning) return;
-        if (_isEditingTimer) CommitTimerEditing(allowRetry: false);
-
-        FlashStepHighlight(CountdownMinusHighlight);
-        ApplyCountdownStep(-1);
-        StartCountdownRepeat(-1);
-    }
-
-    private void CountdownPlus_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        if (_isCountdownRunning) return;
-        if (_isEditingTimer) CommitTimerEditing(allowRetry: false);
-
-        FlashStepHighlight(CountdownPlusHighlight);
-        ApplyCountdownStep(+1);
-        StartCountdownRepeat(+1);
-    }
-
-    private void ApplyCountdownStep(int direction)
-    {
-        if (CountdownController.AdjustDuration(direction))
-        {
-            SetCountdownProgress(animate: true);
-            AnimateCountdownDigitBump();
-        }
-    }
-
-    private void StartCountdownRepeat(int direction)
-    {
-        StopCountdownRepeat();
-        CountdownPresenter.StartRepeat(() =>
-        {
-            if (_isCountdownRunning)
-            {
-                StopCountdownRepeat();
-                return;
-            }
-            ApplyCountdownStep(direction);
-        });
-    }
-
-    private void StopCountdownRepeat()
-    {
-        CountdownPresenter.StopRepeat();
-    }
-
-    private void CountdownBtn_MouseLeaveOrUp(object sender, EventArgs e)
-    {
-        StopCountdownRepeat();
-        if (GetStepHighlight(sender) is { } highlight)
-        {
-            // A mouse-up keeps the hover glow; a leave clears it.
-            AnimateStepHighlightOpacity(highlight, e is MouseButtonEventArgs ? 0.08 : 0.0, 200);
-        }
-    }
-
-    private void CountdownBtn_MouseLeave(object sender, MouseEventArgs e) => CountdownBtn_MouseLeaveOrUp(sender, e);
-    private void CountdownBtn_MouseUp(object sender, MouseButtonEventArgs e) => CountdownBtn_MouseLeaveOrUp(sender, e);
-
-    private void CountdownStart_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        PlayTimerButtonPress(CountdownStartBtn);
-
-        if (_isEditingTimer)
-            CommitTimerEditing(allowRetry: false);
-
-        if (_isCountdownRunning)
-        {
-            CountdownController.Pause();
-            SetCountdownStartVisual(false);
-            UpdateTimerDisplay();
-        }
-        else
-        {
-            CountdownController.Start();
-            SetCountdownStartVisual(true);
-        }
-    }
-
-    private void CountdownReset_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        PlayTimerButtonPress(CountdownResetBtn);
-        if (_isEditingTimer) CancelTimerEditing();
-        CountdownController.Reset();
-        SetCountdownStartVisual(false);
-        SetCountdownProgress(animate: true);
-        AnimateCountdownDigitBump(1.2);
-    }
-
-    private void UpdateTimerDisplay()
-    {
-        UpdateCountdownProgressFill();
-    }
-
-    private void CountdownDisplayPanel_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateCountdownProgressFill();
-    }
-
-    private void UpdateCountdownProgressFill()
-    {
-        SetCountdownProgress(animate: false);
-    }
-
-    internal static double ComputeCountdownEdgeOpacity(double progress) => progress > 0.02 ? 1.0 : 0.0;
-
-    internal static bool ShouldUpdateCountdownVisual(bool isTimerContentVisible, bool isExpanded) =>
-        isTimerContentVisible && isExpanded;
-
-    private void SetCountdownProgress(bool animate)
-    {
-        if (!ShouldUpdateCountdownVisual(TimerContent != null && TimerContent.Visibility == Visibility.Visible, _isExpanded))
-            return;
-
-        if (CountdownProgressScale == null || CountdownProgressEdge == null)
-            return;
-
-        double progress = Math.Clamp(_viewModel.Timer.Progress, 0, 1);
-        double edgeOpacity = ComputeCountdownEdgeOpacity(progress);
-
-        if (animate)
-        {
-            var scaleAnim = MakeAnim(progress, new Duration(TimeSpan.FromMilliseconds(340)), _easeExpOut6);
-            CountdownProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
-
-            if (Math.Abs(CountdownProgressEdge.Opacity - edgeOpacity) > 0.001)
-            {
-                var edgeAnim = MakeAnim(edgeOpacity, _dur200, _easeQuadOut);
-                CountdownProgressEdge.BeginAnimation(OpacityProperty, edgeAnim);
-            }
-        }
-        else
-        {
-            CountdownProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            CountdownProgressScale.ScaleX = progress;
-
-            if (Math.Abs(CountdownProgressEdge.Opacity - edgeOpacity) > 0.001)
-            {
-                CountdownProgressEdge.BeginAnimation(OpacityProperty, null);
-                CountdownProgressEdge.Opacity = edgeOpacity;
-            }
-        }
-    }
-
-    #region Custom Time Input Editing
-
-    private bool _isEditingTimer;
-
-    private void CountdownDisplayPanel_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        if (_isEditingTimer) return;
-
-        if (_isCountdownRunning)
-        {
-            CountdownController.Pause();
-            SetCountdownStartVisual(false);
-            UpdateTimerDisplay();
-        }
-
-        StartTimerEditing();
-    }
-
-    // Swap digits with animated text field carousel in edit mode with orange
-    // border accent while typing.
-    private void StartTimerEditing()
-    {
-        if (_isEditingTimer) return;
-        _isEditingTimer = true;
-
-        // Temporarily lift WS_EX_NOACTIVATE style so window can receive keyboard
-        // focus and text input.
-        EnableKeyboardInput();
-
-        CountdownInput.Text = _viewModel.Timer.DisplayText;
-
-        var durOut = new Duration(TimeSpan.FromMilliseconds(110));
-        var durIn = new Duration(TimeSpan.FromMilliseconds(360));
-        var inDelay = TimeSpan.FromMilliseconds(50);
-
-        var digitsFade = MakeAnim(CountdownDisplay.Opacity > 0 ? CountdownDisplay.Opacity : 1.0, 0.0, durOut, _easeQuadIn, null);
-        digitsFade.Completed += (_, _) =>
-        {
-            if (_isEditingTimer) CountdownDisplay.Visibility = Visibility.Collapsed;
-        };
-        var digitsRise = MakeAnim(CountdownDisplayTranslate.Y, -11.0, durOut, _easeQuadIn, null);
-        var digitsShrinkX = MakeAnim(1.0, 0.94, durOut, _easeQuadIn, null);
-        var digitsShrinkY = MakeAnim(1.0, 0.94, durOut, _easeQuadIn, null);
-        CountdownDisplay.BeginAnimation(OpacityProperty, digitsFade);
-        CountdownDisplayTranslate.BeginAnimation(TranslateTransform.YProperty, digitsRise);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, digitsShrinkX);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, digitsShrinkY);
-
-        CountdownInput.BeginAnimation(OpacityProperty, null);
-        CountdownInputTranslate.BeginAnimation(TranslateTransform.XProperty, null);
-        CountdownInputTranslate.X = 0;
-        CountdownInput.Visibility = Visibility.Visible;
-        CountdownInput.Opacity = 0;
-
-        var inputFade = MakeAnim(0.0, 1.0, _dur200, _easeQuadOut, inDelay);
-        var inputRise = MakeAnim(12.0, 0.0, durIn, _easeExpOut6, inDelay);
-        var inputGrowX = MakeAnim(0.97, 1.0, durIn, _easeSoftSpring, inDelay);
-        var inputGrowY = MakeAnim(0.97, 1.0, durIn, _easeSoftSpring, inDelay);
-        CountdownInput.BeginAnimation(OpacityProperty, inputFade);
-        CountdownInputTranslate.BeginAnimation(TranslateTransform.YProperty, inputRise);
-        CountdownInputScale.BeginAnimation(ScaleTransform.ScaleXProperty, inputGrowX);
-        CountdownInputScale.BeginAnimation(ScaleTransform.ScaleYProperty, inputGrowY);
-
-        AnimateCountdownPanelBorder(_countdownBorderEditingColor, 240);
-        var trackDim = MakeAnim(0.3, _dur200, _easeQuadOut);
-        CountdownProgressTrack.BeginAnimation(OpacityProperty, trackDim);
-
-        CountdownInput.Focus();
-        Keyboard.Focus(CountdownInput);
-        CountdownInput.SelectAll();
-    }
-
-    private void ExitTimerEditing()
-    {
-        if (!_isEditingTimer) return;
-        _isEditingTimer = false;
-
-        DisableKeyboardInput();
-
-        var durOut = new Duration(TimeSpan.FromMilliseconds(110));
-        var durIn = new Duration(TimeSpan.FromMilliseconds(360));
-        var inDelay = TimeSpan.FromMilliseconds(50);
-
-        var inputFade = MakeAnim(CountdownInput.Opacity > 0 ? CountdownInput.Opacity : 1.0, 0.0, durOut, _easeQuadIn, null);
-        inputFade.Completed += (_, _) =>
-        {
-            if (!_isEditingTimer) CountdownInput.Visibility = Visibility.Collapsed;
-        };
-        var inputDrop = MakeAnim(0.0, 12.0, durOut, _easeQuadIn, null);
-        var inputShrinkX = MakeAnim(1.0, 0.97, durOut, _easeQuadIn, null);
-        var inputShrinkY = MakeAnim(1.0, 0.97, durOut, _easeQuadIn, null);
-        CountdownInput.BeginAnimation(OpacityProperty, inputFade);
-        CountdownInputTranslate.BeginAnimation(TranslateTransform.YProperty, inputDrop);
-        CountdownInputScale.BeginAnimation(ScaleTransform.ScaleXProperty, inputShrinkX);
-        CountdownInputScale.BeginAnimation(ScaleTransform.ScaleYProperty, inputShrinkY);
-
-        CountdownDisplay.BeginAnimation(OpacityProperty, null);
-        CountdownDisplay.Visibility = Visibility.Visible;
-        CountdownDisplay.Opacity = 0;
-
-        var digitsFade = MakeAnim(0.0, 1.0, _dur200, _easeQuadOut, inDelay);
-        var digitsDrop = MakeAnim(-11.0, 0.0, durIn, _easeExpOut6, inDelay);
-        var digitsGrowX = MakeAnim(0.94, 1.0, durIn, _easeSoftSpring, inDelay);
-        var digitsGrowY = MakeAnim(0.94, 1.0, durIn, _easeSoftSpring, inDelay);
-        CountdownDisplay.BeginAnimation(OpacityProperty, digitsFade);
-        CountdownDisplayTranslate.BeginAnimation(TranslateTransform.YProperty, digitsDrop);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, digitsGrowX);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, digitsGrowY);
-
-        AnimateCountdownPanelBorder(_countdownBorderIdleColor, 260);
-        var trackRestore = MakeAnim(1.0, _dur200, _easeQuadOut);
-        CountdownProgressTrack.BeginAnimation(OpacityProperty, trackRestore);
-
-        Keyboard.ClearFocus();
-    }
-
-    // Instant teardown for view switches: no animations, just a clean idle state.
-    private void CancelTimerEditingInstant()
-    {
-        if (!_isEditingTimer) return;
-        _isEditingTimer = false;
-
-        DisableKeyboardInput();
-
-        CountdownInput.BeginAnimation(OpacityProperty, null);
-        CountdownInputTranslate.BeginAnimation(TranslateTransform.XProperty, null);
-        CountdownInputTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        CountdownInputScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        CountdownInputScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        CountdownInput.Opacity = 0;
-        CountdownInput.Visibility = Visibility.Collapsed;
-
-        CountdownDisplay.BeginAnimation(OpacityProperty, null);
-        CountdownDisplayTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        CountdownDisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        CountdownDisplayTranslate.Y = 0;
-        CountdownDisplayScale.ScaleX = 1.0;
-        CountdownDisplayScale.ScaleY = 1.0;
-        CountdownDisplay.Opacity = 1;
-        CountdownDisplay.Visibility = Visibility.Visible;
-
-        CountdownPanelBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
-        CountdownPanelBorderBrush.Color = _countdownBorderIdleColor;
-        CountdownProgressTrack.BeginAnimation(OpacityProperty, null);
-        CountdownProgressTrack.Opacity = 1;
-
-        Keyboard.ClearFocus();
-    }
-
-    private void CommitTimerEditing(bool allowRetry)
-    {
-        if (!_isEditingTimer) return;
-        string input = CountdownInput.Text;
-
-        if (_viewModel.Timer.TryParseCustomTime(input, out TimeSpan customTime))
-        {
-            CountdownController.SetCustomDuration(customTime);
-            ExitTimerEditing();
-            SetCountdownProgress(animate: true);
-            AnimateCountdownDigitFlash();
-            AnimateCountdownPanelBorderFlash();
-            return;
-        }
-
-        if (allowRetry && !string.IsNullOrWhiteSpace(input))
-        {
-            // Unparsable entry on Enter: shake it off and let the user retype.
-            AnimateCountdownInputShake();
-            return;
-        }
-
-        ExitTimerEditing();
-    }
-
-    private void CancelTimerEditing()
-    {
-        if (!_isEditingTimer) return;
-        ExitTimerEditing();
-    }
-
-    private void AnimateCountdownInputShake()
-    {
-        var shake = new DoubleAnimationUsingKeyFrames
-        {
-            Duration = new Duration(TimeSpan.FromMilliseconds(380))
-        };
-        shake.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        shake.KeyFrames.Add(new EasingDoubleKeyFrame(-8, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60)), _easeQuadOut));
-        shake.KeyFrames.Add(new EasingDoubleKeyFrame(7, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140)), _easeQuadOut));
-        shake.KeyFrames.Add(new EasingDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220)), _easeQuadOut));
-        shake.KeyFrames.Add(new EasingDoubleKeyFrame(2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300)), _easeQuadOut));
-        shake.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)), _easeQuadOut));
-        Timeline.SetDesiredFrameRate(shake, VNotch.Services.AnimationConfig.TargetFps);
-        CountdownInputTranslate.BeginAnimation(TranslateTransform.XProperty, shake);
-
-        var error = new ColorAnimation(_countdownBorderErrorColor, new Duration(TimeSpan.FromMilliseconds(90)))
-        {
-            EasingFunction = _easeQuadOut
-        };
-        Timeline.SetDesiredFrameRate(error, VNotch.Services.AnimationConfig.TargetFps);
-        error.Completed += (_, _) =>
-        {
-            if (_isEditingTimer) AnimateCountdownPanelBorder(_countdownBorderEditingColor, 420);
-        };
-        CountdownPanelBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, error);
-
-        CountdownInput.SelectAll();
-    }
-
-    private void CountdownInput_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            e.Handled = true;
-            CommitTimerEditing(allowRetry: true);
-        }
-        else if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            CancelTimerEditing();
-        }
-    }
-
-    private void CountdownInput_LostFocus(object sender, RoutedEventArgs e)
-    {
-        CommitTimerEditing(allowRetry: false);
-    }
-
-    #endregion
 
     #endregion
 }

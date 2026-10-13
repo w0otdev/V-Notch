@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System.Windows;
 using System.Windows.Threading;
 using VNotch.Models;
@@ -7,7 +8,7 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    private DispatcherTimer? _clipboardDragTimer;
+    private UiScheduledTimer? _clipboardDragTimer;
     private bool _clipboardDragAutoExpanded;
     private bool _clipboardDragCanDrop;
     internal void CancelDragDropTimers()
@@ -58,7 +59,7 @@ public partial class MainWindow
         // OLE drag/drop does not reliably update WPF IsMouseOver. Moving between
         // child targets can also raise DragLeave without leaving the notch.
         // Defer until the next target can cancel this callback, then use screen geometry.
-        _clipboardDragTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _clipboardDragTimer = new UiScheduledTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _clipboardDragTimer.Tick += (_, _) =>
         {
             if (_isAnimating) return;

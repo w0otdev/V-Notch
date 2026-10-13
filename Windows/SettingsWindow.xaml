@@ -2453,7 +2453,6 @@
                                                 <ComboBox x:Name="ProcessPriorityCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ProcessPriorityCombo_SelectionChanged">
                                                     <ComboBoxItem Content="Normal (Default)" Tag="Normal"/>
                                                     <ComboBoxItem Content="High" Tag="High"/>
-                                                    <ComboBoxItem Content="Realtime" Tag="RealTime"/>
                                                 </ComboBox>
                                             </StackPanel>
                                         </Border>

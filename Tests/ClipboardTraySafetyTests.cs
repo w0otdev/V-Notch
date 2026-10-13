@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
@@ -80,7 +81,7 @@ public sealed class ClipboardTraySafetyTests
             Assert.Equal(originalHeight, viewport.ActualHeight);
             Assert.False(status.IsHitTestVisible);
             Assert.True(status.ActualWidth < viewport.ActualWidth);
-            Assert.Equal(TimeSpan.FromSeconds(2), Field<DispatcherTimer>(tray, "_statusTimer").Interval);
+            Assert.Equal(TimeSpan.FromSeconds(2), Field<UiScheduledTimer>(tray, "_statusTimer").Interval);
             Invoke(tray, "StatusTimer_Tick", null, EventArgs.Empty);
             await WpfFrameWaiter.UntilAsync(() => status.Visibility == Visibility.Collapsed, "status toast dismissed", CancellationToken.None);
             Assert.Equal(Visibility.Collapsed, status.Visibility);

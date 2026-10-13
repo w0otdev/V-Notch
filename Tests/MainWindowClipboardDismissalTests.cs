@@ -49,12 +49,12 @@ public sealed class MainWindowClipboardDismissalTests
         SetField(window, "_clipboardDragCanDrop", true);
         Invoke(window, "NotchWrapper_DragLeave", window, null);
         Assert.Equal(NotchView.Secondary, coordinator.TargetView);
-        Assert.NotNull(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+        Assert.NotNull(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
         Invoke(window, "CompleteClipboardDragLeave", true);
         await WpfFrameWaiter.NextAsync(ct);
         Assert.Equal(NotchView.Secondary, coordinator.TargetView);
         Assert.True(Field<bool>(window, "_clipboardDragCanDrop"));
-        Assert.Null(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
     });
 
     [Theory]
@@ -64,10 +64,10 @@ public sealed class MainWindowClipboardDismissalTests
     {
         SetField(window, "_clipboardDragAutoExpanded", true);
         Invoke(window, "NotchWrapper_DragLeave", window, null);
-        var timer = Field<DispatcherTimer>(window, "_clipboardDragTimer");
+        var timer = Field<UiScheduledTimer>(window, "_clipboardDragTimer");
         Invoke(window, handler, window, null);
         Assert.False(timer.IsEnabled);
-        Assert.Null(Field<DispatcherTimer?>(window, "_clipboardDragTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
         Assert.Equal(autoExpanded, Field<bool>(window, "_clipboardDragAutoExpanded"));
         await WpfFrameWaiter.NextAsync(ct);
         Assert.Equal(NotchView.Secondary, coordinator.TargetView);
@@ -121,7 +121,7 @@ public sealed class MainWindowClipboardDismissalTests
     {
         Keyboard.ClearFocus();
         SetField(window, "_suppressHoverCollapseUntilUtc", DateTime.MinValue);
-        var timer = Field<DispatcherTimer>(window, "_hoverCollapseTimer");
+        var timer = Field<UiScheduledTimer>(window, "_hoverCollapseTimer");
         timer.Interval = TimeSpan.FromMilliseconds(1);
         timer.Start();
         await WpfFrameWaiter.UntilAsync(() => !timer.IsEnabled, "pending hover timer", ct);
@@ -163,7 +163,7 @@ public sealed class MainWindowClipboardDismissalTests
     private static void WithOpenTray(Func<MainWindow, NotchTransitionCoordinator, CancellationToken, Task> test)
         => SharedStaTestRunner.RunAsync(async ct =>
         {
-            using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
                 settings =>
                 {
                     settings.EnableLocalOnlyMode = true;

@@ -245,7 +245,7 @@ public partial class SpotlightWindow
         _aiRequest = cts;
         RefreshAiPanel();
         var started = System.Diagnostics.Stopwatch.StartNew();
-        var progressTimer = new System.Windows.Threading.DispatcherTimer
+        var progressTimer = new UiScheduledTimer
         { Interval = TimeSpan.FromSeconds(1) };
         progressTimer.Tick += (_, _) =>
         {
@@ -259,7 +259,7 @@ public partial class SpotlightWindow
         int revealedLength = 0;
         bool revealCaughtUp = false;
         AiUsageSnapshot? receivedUsage = null;
-        var revealTimer = new System.Windows.Threading.DispatcherTimer
+        var revealTimer = new UiScheduledTimer
         { Interval = TimeSpan.FromMilliseconds(110) };
         void RevealText(bool finish = false)
         {

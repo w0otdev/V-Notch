@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -89,7 +90,7 @@ public partial class MainWindow
     {
         if (_scrollSessionResetTimer == null)
         {
-            _scrollSessionResetTimer = new System.Windows.Threading.DispatcherTimer
+            _scrollSessionResetTimer = new UiScheduledTimer
             {
                 Interval = TimeSpan.FromMilliseconds(400)
             };

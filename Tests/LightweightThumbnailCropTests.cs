@@ -13,18 +13,18 @@ public sealed class LightweightThumbnailCropTests
     [InlineData(40, true)]
     public void ThumbnailCroppingUsesSaliencyWithoutInitializingTheModel(int targetSize, bool requestObjectDetection)
     {
-        SharedStaTestRunner.Run(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             using var service = new SmartThumbnailCropService();
             var source = CreateWideArtwork();
-            var crop = service.GetSmartCropRect(source, targetSize, requestObjectDetection);
+            var crop = await service.GetSmartCropRectAsync(source, targetSize, requestObjectDetection, ct);
             Assert.True(crop.HasValue);
             Assert.Equal(targetSize, crop.Value.Width);
             Assert.Equal(targetSize, crop.Value.Height);
             Assert.InRange(crop.Value.X, 0, source.PixelWidth - targetSize);
             Assert.InRange(crop.Value.Y, 0, source.PixelHeight - targetSize);
             Assert.False(service.IsLoaded);
-            Assert.Equal(crop, service.GetSmartCropRect(source, targetSize, requestObjectDetection));
+            Assert.Equal(crop, await service.GetSmartCropRectAsync(source, targetSize, requestObjectDetection, ct));
         });
     }
 

@@ -151,9 +151,9 @@ public partial class MainWindow
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
         MediaBackground.BeginAnimation(OpacityProperty, opacityAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, opacityAnim);
-        EnsureUnfrozen(IndeterminateProgress.Background, c => IndeterminateProgress.Background = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
-        EnsureUnfrozen(CurrentTimeText.Foreground, c => CurrentTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
-        EnsureUnfrozen(RemainingTimeText.Foreground, c => RemainingTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
+        EnsureUnfrozen(MediaPlayback.IndeterminateProgress.Background, c => MediaPlayback.IndeterminateProgress.Background = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
+        EnsureUnfrozen(MediaPlayback.CurrentTimeText.Foreground, c => MediaPlayback.CurrentTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
+        EnsureUnfrozen(MediaPlayback.RemainingTimeText.Foreground, c => MediaPlayback.RemainingTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
         EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
 
         var progressDarkColor = Color.FromArgb(
@@ -175,18 +175,18 @@ public partial class MainWindow
             EasingFunction = _easeQuadOut
         };
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(progressStartAnim, VNotch.Services.AnimationConfig.TargetFps);
-        ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, progressStartAnim);
+        MediaPlayback.ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, progressStartAnim);
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(progressEndAnim, VNotch.Services.AnimationConfig.TargetFps);
-        ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, progressEndAnim);
+        MediaPlayback.ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, progressEndAnim);
 
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(uiColorAnim, VNotch.Services.AnimationConfig.TargetFps);
-        if (IndeterminateProgress.Background is SolidColorBrush ipb && !ipb.IsFrozen)
+        if (MediaPlayback.IndeterminateProgress.Background is SolidColorBrush ipb && !ipb.IsFrozen)
             ipb.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
 
-        if (CurrentTimeText.Foreground is SolidColorBrush ctf && !ctf.IsFrozen)
+        if (MediaPlayback.CurrentTimeText.Foreground is SolidColorBrush ctf && !ctf.IsFrozen)
             ctf.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
 
-        if (RemainingTimeText.Foreground is SolidColorBrush rtf && !rtf.IsFrozen)
+        if (MediaPlayback.RemainingTimeText.Foreground is SolidColorBrush rtf && !rtf.IsFrozen)
             rtf.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
 
         if (CompactTitleMarquee.Foreground is SolidColorBrush cmt && !cmt.IsFrozen)
@@ -350,18 +350,18 @@ public partial class MainWindow
         };
 
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultColorAnim, VNotch.Services.AnimationConfig.TargetFps);
-        ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, defaultColorAnim);
+        MediaPlayback.ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, defaultColorAnim);
         var defaultGradientEndAnim = new ColorAnimation
         {
             To = UiPalette.SecondaryColor,
             Duration = TimeSpan.FromMilliseconds(400)
         };
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultGradientEndAnim, VNotch.Services.AnimationConfig.TargetFps);
-        ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, defaultGradientEndAnim);
+        MediaPlayback.ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, defaultGradientEndAnim);
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultTextAnim, VNotch.Services.AnimationConfig.TargetFps);
-        if (IndeterminateProgress.Background is SolidColorBrush ipb && !ipb.IsFrozen) ipb.BeginAnimation(SolidColorBrush.ColorProperty, defaultColorAnim);
-        if (CurrentTimeText.Foreground is SolidColorBrush st && !st.IsFrozen) st.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
-        if (RemainingTimeText.Foreground is SolidColorBrush rt && !rt.IsFrozen) rt.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
+        if (MediaPlayback.IndeterminateProgress.Background is SolidColorBrush ipb && !ipb.IsFrozen) ipb.BeginAnimation(SolidColorBrush.ColorProperty, defaultColorAnim);
+        if (MediaPlayback.CurrentTimeText.Foreground is SolidColorBrush st && !st.IsFrozen) st.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
+        if (MediaPlayback.RemainingTimeText.Foreground is SolidColorBrush rt && !rt.IsFrozen) rt.BeginAnimation(SolidColorBrush.ColorProperty, defaultTextAnim);
         var defaultTitleAnim = defaultColorAnim.Clone();
         defaultTitleAnim.To = VNotch.Services.UiPalette.PrimaryColor;
         if (CompactTitleMarquee.Foreground is SolidColorBrush cmt && !cmt.IsFrozen) cmt.BeginAnimation(SolidColorBrush.ColorProperty, defaultTitleAnim);
@@ -468,7 +468,7 @@ public partial class MainWindow
             EnsureMediaBackgroundVisible(recoveryVersion);
         }));
 
-        var recoveryTimer = new DispatcherTimer
+        var recoveryTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(180)
         };
@@ -532,7 +532,7 @@ public partial class MainWindow
     private int _blurTaskVersion = 0;
     private BitmapSource? _lastBlurThumbnailRef;
     private bool _suppressNextBlurDissolve = false;
-    private DispatcherTimer? _blurDissolveDebounce;
+    private UiScheduledTimer? _blurDissolveDebounce;
     private BitmapSource? _pendingBlurResult;
 
     private sealed record BlurRequest(BitmapSource Thumbnail, bool AllowInterimThumbnail, int Version);
@@ -721,7 +721,7 @@ public partial class MainWindow
 
         if (_blurDissolveDebounce == null)
         {
-            _blurDissolveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+            _blurDissolveDebounce = new UiScheduledTimer { Interval = TimeSpan.FromMilliseconds(80) };
             _blurDissolveDebounce.Tick += (_, _) =>
             {
                 _blurDissolveDebounce.Stop();
@@ -840,20 +840,20 @@ public partial class MainWindow
                 stop.BeginAnimation(GradientStop.ColorProperty, colorAnim);
         }
 
-        AnimateForegroundColor(TrackArtist, artistColorAnim);
-        AnimateForegroundColor(TrackArtistNext, artistColorAnim);
+        AnimateForegroundColor(MediaPlayback.TrackArtist, artistColorAnim);
+        AnimateForegroundColor(MediaPlayback.TrackArtistNext, artistColorAnim);
 
         AnimateForegroundColor(LyricTextA, artistColorAnim);
         AnimateForegroundColor(LyricTextB, artistColorAnim);
 
-        AnimatePathFillAndStroke(PrevArrow0, iconAnim);
-        AnimatePathFillAndStroke(PrevArrow1, iconAnim);
-        AnimatePathFillAndStroke(PrevArrow2, iconAnim);
-        AnimatePathFillAndStroke(NextArrow0, iconAnim);
-        AnimatePathFillAndStroke(NextArrow1, iconAnim);
-        AnimatePathFillAndStroke(NextArrow2, iconAnim);
-        AnimatePathFill(PauseIconPath, iconAnim);
-        AnimatePathFill(PlayIconPath, iconAnim);
+        AnimatePathFillAndStroke(MediaPlayback.PrevArrow0, iconAnim);
+        AnimatePathFillAndStroke(MediaPlayback.PrevArrow1, iconAnim);
+        AnimatePathFillAndStroke(MediaPlayback.PrevArrow2, iconAnim);
+        AnimatePathFillAndStroke(MediaPlayback.NextArrow0, iconAnim);
+        AnimatePathFillAndStroke(MediaPlayback.NextArrow1, iconAnim);
+        AnimatePathFillAndStroke(MediaPlayback.NextArrow2, iconAnim);
+        AnimatePathFill(MediaPlayback.PauseIconPath, iconAnim);
+        AnimatePathFill(MediaPlayback.PlayIconPath, iconAnim);
     }
 
     private static void AnimateForegroundColor(System.Windows.Controls.TextBlock tb, ColorAnimation anim)
@@ -903,18 +903,18 @@ public partial class MainWindow
     {
         StopGradientAnimations("TrackTitleGradient");
         StopGradientAnimations("TrackTitleNextGradient");
-        StopForegroundAnimation(TrackArtist);
-        StopForegroundAnimation(TrackArtistNext);
+        StopForegroundAnimation(MediaPlayback.TrackArtist);
+        StopForegroundAnimation(MediaPlayback.TrackArtistNext);
         StopForegroundAnimation(LyricTextA);
         StopForegroundAnimation(LyricTextB);
-        StopPathAnimations(PrevArrow0);
-        StopPathAnimations(PrevArrow1);
-        StopPathAnimations(PrevArrow2);
-        StopPathAnimations(NextArrow0);
-        StopPathAnimations(NextArrow1);
-        StopPathAnimations(NextArrow2);
-        StopPathAnimations(PauseIconPath);
-        StopPathAnimations(PlayIconPath);
+        StopPathAnimations(MediaPlayback.PrevArrow0);
+        StopPathAnimations(MediaPlayback.PrevArrow1);
+        StopPathAnimations(MediaPlayback.PrevArrow2);
+        StopPathAnimations(MediaPlayback.NextArrow0);
+        StopPathAnimations(MediaPlayback.NextArrow1);
+        StopPathAnimations(MediaPlayback.NextArrow2);
+        StopPathAnimations(MediaPlayback.PauseIconPath);
+        StopPathAnimations(MediaPlayback.PlayIconPath);
     }
 
     private void StopGradientAnimations(string resourceKey)

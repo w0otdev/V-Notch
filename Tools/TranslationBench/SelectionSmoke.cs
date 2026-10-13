@@ -88,7 +88,12 @@ internal static class SelectionSmoke
         finally
         {
             host.CloseMainWindow();
-            if (!host.WaitForExit(3000)) host.Kill();
+            try { await host.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (TimeoutException)
+            {
+                host.Kill();
+                await host.WaitForExitAsync();
+            }
             if (priorWindow != IntPtr.Zero) SetForegroundWindow(priorWindow);
         }
     }

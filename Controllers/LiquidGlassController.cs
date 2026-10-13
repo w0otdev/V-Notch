@@ -877,7 +877,7 @@ public sealed class LiquidGlassController
         {
             _exactBitBltCapture = false;
             SetWindowDisplayAffinitySafe(WDA_NONE);
-            Thread.Sleep((int)Math.Max(15, frameIntervalMs));
+            WaitForIdleOrEvent((int)Math.Max(15, frameIntervalMs));
             return true;
         }
 

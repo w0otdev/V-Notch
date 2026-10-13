@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Windows.Threading;
 using VNotch.Services;
 using VNotch.ViewModels;
 
@@ -27,8 +26,8 @@ public sealed class CountdownController : IDisposable
 
     private readonly TimerViewModel _viewModel;
     private readonly CountdownTracker _tracker;
-    private readonly DispatcherTimer _timer;
     private readonly Action<Action> _runOnUi;
+    private CancellationTokenSource? _tickerCancellation;
 
     private long _activeRunId;
     private bool _hasFiredCompletedForRun;
@@ -53,11 +52,6 @@ public sealed class CountdownController : IDisposable
         _tracker = new CountdownTracker(_viewModel);
         _runOnUi = runOnUi ?? throw new ArgumentNullException(nameof(runOnUi));
 
-        _timer = new DispatcherTimer(DispatcherPriority.Normal)
-        {
-            Interval = TickInterval
-        };
-        _timer.Tick += OnTimerTick;
     }
 
     public void Start()
@@ -67,7 +61,7 @@ public sealed class CountdownController : IDisposable
         long runId = ++_activeRunId;
         _hasFiredCompletedForRun = false;
         _tracker.Start();
-        _timer.Start();
+        StartTicker();
 
         RuntimeLog.Log(LogTag, $"Countdown run #{runId} started ({_viewModel.Duration})");
         RunStarted?.Invoke(this, runId);
@@ -78,7 +72,7 @@ public sealed class CountdownController : IDisposable
         if (_disposed) return;
         if (!_viewModel.IsRunning) return;
 
-        _timer.Stop();
+        StopTicker();
         bool completed = _tracker.Pause();
 
         long runId = _activeRunId;
@@ -98,7 +92,7 @@ public sealed class CountdownController : IDisposable
         if (_viewModel.IsRunning || _viewModel.Remaining <= TimeSpan.Zero) return;
 
         _tracker.Start();
-        _timer.Start();
+        StartTicker();
 
         RuntimeLog.Log(LogTag, $"Countdown run #{_activeRunId} resumed");
         RunStarted?.Invoke(this, _activeRunId);
@@ -108,7 +102,7 @@ public sealed class CountdownController : IDisposable
     {
         if (_disposed) return;
 
-        _timer.Stop();
+        StopTicker();
         long runId = ++_activeRunId;
         _hasFiredCompletedForRun = false;
         _viewModel.Reset();
@@ -136,7 +130,7 @@ public sealed class CountdownController : IDisposable
 
         if (_viewModel.IsRunning)
         {
-            _timer.Stop();
+            StopTicker();
         }
 
         bool result = _viewModel.SetCustomDuration(duration);
@@ -156,7 +150,7 @@ public sealed class CountdownController : IDisposable
 
         if (completed)
         {
-            _timer.Stop();
+            StopTicker();
             long runId = _activeRunId;
 
             if (!_hasFiredCompletedForRun)
@@ -169,9 +163,47 @@ public sealed class CountdownController : IDisposable
         return completed;
     }
 
-    private void OnTimerTick(object? sender, EventArgs e)
+    private void StartTicker()
     {
-        Advance();
+        StopTicker();
+        var cancellation = new CancellationTokenSource();
+        _tickerCancellation = cancellation;
+        RunTickerAsync(cancellation.Token).SafeFireAndForget("COUNTDOWN-TICKER");
+    }
+
+    private void StopTicker()
+    {
+        var cancellation = Interlocked.Exchange(ref _tickerCancellation, null);
+        cancellation?.Cancel();
+        cancellation?.Dispose();
+    }
+
+    private async Task RunTickerAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TickInterval);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var dispatched = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _runOnUi(() =>
+                {
+                    try
+                    {
+                        if (!cancellationToken.IsCancellationRequested) Advance();
+                    }
+                    finally
+                    {
+                        dispatched.TrySetResult();
+                    }
+                });
+                await dispatched.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
     }
 
     private void TriggerCompleted(long runId)
@@ -188,7 +220,6 @@ public sealed class CountdownController : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        _timer.Stop();
-        _timer.Tick -= OnTimerTick;
+        StopTicker();
     }
 }

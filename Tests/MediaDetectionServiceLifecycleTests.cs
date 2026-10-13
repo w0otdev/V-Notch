@@ -227,7 +227,7 @@ public class MediaDetectionServiceLifecycleTests
         Assert.NotNull(service.ProcessingTask);
 
         // 2. Stop
-        service.Stop();
+        await service.StopAsync();
 
         Assert.True(service.IsStopped);
         Assert.Null(service.ProcessingTask);
@@ -260,6 +260,33 @@ public class MediaDetectionServiceLifecycleTests
         service.Stop();
         service.Stop(); // Should not throw
         Assert.True(service.IsStopped);
+    }
+
+    [Fact]
+    public async Task StartingWhileStopIsPendingDefersRestartUntilOldInitializationExits()
+    {
+        var firstInitialization = new TaskCompletionSource<GlobalSystemMediaTransportControlsSessionManager?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var restarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int factoryCalls = 0;
+        await using var service = CreateTestService(_ =>
+        {
+            if (Interlocked.Increment(ref factoryCalls) == 1) return firstInitialization.Task;
+            restarted.TrySetResult();
+            return Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(null);
+        });
+        service.Start();
+        var stopping = service.StopAsync();
+        Assert.False(stopping.IsCompleted);
+        service.Start();
+        service.Start();
+        Assert.Equal(1, factoryCalls);
+        firstInitialization.SetResult(null);
+        await stopping;
+        await restarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(service.InitTask);
+        await service.InitTask;
+        Assert.Equal(2, factoryCalls);
+        Assert.True(service.IsRunning);
     }
 
     [Fact]

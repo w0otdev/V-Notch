@@ -50,7 +50,7 @@ public sealed class MainWindowVolumeInteractionTests
     public void FirstWheelStepReadsTheSessionBaselineAndDismissalCancelsItsPresentation(bool available) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => (available, .7f, false) };
-        using var fixture = Create(media);
+        await using var fixture = Create(media);
         var window = fixture.Window;
         window.SetDebugViewState("CompactMusicPill");
         Set(window, "_currentVolume", .3f);
@@ -70,11 +70,11 @@ public sealed class MainWindowVolumeInteractionTests
     [Fact]
     public void VolumeIndicatorTimerReturnsTheCompactPillToMedia() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create(new FakeMediaDetectionService());
+        await using var fixture = Create(new FakeMediaDetectionService());
         var window = fixture.Window;
         window.SetDebugViewState("CompactMusicPill");
         Invoke(window, "ShowVolumeIndicator", .6f);
-        var timer = Get<System.Windows.Threading.DispatcherTimer>(window, "_volumeIndicatorHideTimer");
+        var timer = Get<UiScheduledTimer>(window, "_volumeIndicatorHideTimer");
         timer.Interval = TimeSpan.FromMilliseconds(1);
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isVolumeIndicatorActive"), "automatic volume indicator dismissal", ct);
         await WpfFrameWaiter.UntilAsync(() => window.VolumeIndicatorContainer.Visibility == Visibility.Collapsed, "volume fade completion", ct);
@@ -89,7 +89,7 @@ public sealed class MainWindowVolumeInteractionTests
     public void SessionVolumeRefreshUpdatesOnlyAnAvailableSession(bool available, bool muted) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => (available, .72f, muted) };
-        using var fixture = Create(media);
+        await using var fixture = Create(media);
         var window = fixture.Window;
         Set(window, "_currentVolume", .25f);
         Invoke(window, "SyncVolumeFromActiveSession");
@@ -106,7 +106,7 @@ public sealed class MainWindowVolumeInteractionTests
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => { started.TrySetResult(); if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException(); return (true, .9f, false); } };
-        using var fixture = Create(media);
+        await using var fixture = Create(media);
         var window = fixture.Window;
         try
         {
@@ -129,7 +129,7 @@ public sealed class MainWindowVolumeInteractionTests
     public void MuteClicksAreSerializedAndRefreshTheIconWhenTheDriverAcceptsTheToggle(bool accepted) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService { ReadSessionVolume = () => (true, .4f, true), SessionMuteToggleSucceeded = accepted };
-        using var fixture = Create(media);
+        await using var fixture = Create(media);
         var window = fixture.Window;
         int version = Get<int>(window, "_volumeInteractionVersion");
         for (int i = 0; i < 3; i++)
@@ -149,7 +149,7 @@ public sealed class MainWindowVolumeInteractionTests
     public void VolumeDragKeepsThePresentationConsistentAndReleasesItsDragState(bool compact) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var media = new FakeMediaDetectionService();
-        using var fixture = Create(media);
+        await using var fixture = Create(media);
         var window = fixture.Window;
         if (compact)
         {
@@ -176,7 +176,7 @@ public sealed class MainWindowVolumeInteractionTests
     [Fact]
     public void MediaButtonsAndVolumeIconCompleteTheirHoverAnimations() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create(new FakeMediaDetectionService());
+        await using var fixture = Create(new FakeMediaDetectionService());
         var window = fixture.Window;
         var button = new Border { RenderTransform = new ScaleTransform(1, 1) };
         var args = new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount);

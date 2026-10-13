@@ -23,7 +23,7 @@ public partial class SpotlightWindow
     private LiquidGlassController.GpuGeometry? _lastGpuGeometry;
     private LiquidGlassController.GpuGeometry? _lastAppliedGpuOptics;
     private double _lastAppliedTouchLight = -1;
-    private System.Windows.Threading.DispatcherTimer? _glassResourceExpiry;
+    private UiScheduledTimer? _glassResourceExpiry;
 
     internal void PrepareGlassForOpening()
     {
@@ -42,7 +42,7 @@ public partial class SpotlightWindow
     {
         if (_glassResourceExpiry == null)
         {
-            _glassResourceExpiry = new System.Windows.Threading.DispatcherTimer(
+            _glassResourceExpiry = new UiScheduledTimer(
                 System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
             {
                 Interval = TimeSpan.FromSeconds(30)

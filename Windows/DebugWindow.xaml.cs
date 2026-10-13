@@ -49,7 +49,7 @@ public partial class DebugWindow : Window
     private readonly double? _initialX;
     private readonly double? _initialY;
 
-    private readonly DispatcherTimer _updateTimer;
+    private readonly UiScheduledTimer _updateTimer;
     private int _logRefreshCounter = 0;
 
     // Observable collections for high-performance virtualized ListBoxes
@@ -120,7 +120,7 @@ public partial class DebugWindow : Window
             _serviceLogCapture = null;
         };
 
-        _updateTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _updateTimer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(200)
         };
@@ -732,7 +732,7 @@ public partial class DebugWindow : Window
             Clipboard.SetText(sb.ToString());
             CopyAllLogsBtn.Content = "Copied!";
 
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(1.5) };
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();
@@ -762,7 +762,7 @@ public partial class DebugWindow : Window
             Clipboard.SetText(sb.ToString());
             CopyServiceLogsBtn.Content = "Copied!";
 
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(1.5) };
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();

@@ -21,7 +21,7 @@ public sealed class MainWindowCountdownCompletionTests
     [InlineData(true)]
     public void RestartingACompletedCountdownRestoresTheClockAndStartsTheSameTimer(bool music) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create();
+        await using var fixture = Create();
         var window = fixture.Window;
         await ShowCompletion(window, music, ct);
         var timer = ((ShellViewModel)window.DataContext).Timer;
@@ -49,7 +49,7 @@ public sealed class MainWindowCountdownCompletionTests
     [InlineData(true)]
     public void DismissingACompletedCountdownRestoresTheAppropriateCompactContent(bool music) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create();
+        await using var fixture = Create();
         var window = fixture.Window;
         await ShowCompletion(window, music, ct);
         var mouse = new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount);

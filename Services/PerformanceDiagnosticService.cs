@@ -35,6 +35,7 @@ public sealed class PerformanceDiagnosticService
     private ulong _lastSysKernel;
     private ulong _lastSysUser;
     private double _smoothedGlobalCpu;
+    private bool _hasGlobalCpuMeasurement;
 
     // Memory Tracking
     private long _lastAllocatedBytes;
@@ -261,7 +262,10 @@ public sealed class PerformanceDiagnosticService
                 {
                     double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
                     double rawGlobalCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
-                    _smoothedGlobalCpu = _lastSysIdle == 0 ? rawGlobalCpu : (_smoothedGlobalCpu * 0.88 + rawGlobalCpu * 0.12);
+                    _smoothedGlobalCpu = _hasGlobalCpuMeasurement
+                        ? _smoothedGlobalCpu * 0.88 + rawGlobalCpu * 0.12
+                        : rawGlobalCpu;
+                    _hasGlobalCpuMeasurement = true;
                 }
             }
 

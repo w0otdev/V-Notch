@@ -1,0 +1,109 @@
+<UserControl x:Class="VNotch.Controls.WeatherWidget"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:svc="clr-namespace:VNotch.Services">
+    <UserControl.Resources>
+        <FontFamily x:Key="WeatherSystemFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+    </UserControl.Resources>
+    <Grid>
+    <!-- Weather Skeleton Loading View -->
+    <StackPanel x:Name="WeatherWidgetSkeleton"
+                Orientation="Vertical"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Visibility="Visible">
+        <!-- Location line skeleton -->
+        <Border Width="68" Height="12"
+                CornerRadius="6"
+                Background="#4DFFFFFF"
+                HorizontalAlignment="Left"
+                Margin="0,2,0,0"/>
+        <!-- Temperature skeleton -->
+        <Border Width="52" Height="28"
+                CornerRadius="7"
+                Background="#5EFFFFFF"
+                HorizontalAlignment="Left"
+                Margin="0,6,0,0"/>
+        <!-- Condition skeleton -->
+        <Border Width="80" Height="12"
+                CornerRadius="6"
+                Background="#46FFFFFF"
+                HorizontalAlignment="Left"
+                Margin="0,9,0,0"/>
+        <!-- Hi/Lo skeleton -->
+        <Border Width="62" Height="10"
+                CornerRadius="5"
+                Background="#38FFFFFF"
+                HorizontalAlignment="Left"
+                Margin="0,4,0,0"/>
+    </StackPanel>
+
+    <!-- Actual Weather Content View -->
+    <StackPanel x:Name="WeatherActualContent"
+                Orientation="Vertical"
+                HorizontalAlignment="Left"
+                Opacity="0"
+                Visibility="Collapsed">
+        <StackPanel.RenderTransform>
+            <TranslateTransform x:Name="WeatherWidgetTranslate" Y="8"/>
+        </StackPanel.RenderTransform>
+
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <TextBlock x:Name="WeatherLocationText"
+                       Text="—"
+                       FontFamily="{StaticResource WeatherSystemFont}"
+                       FontSize="11.5"
+                       FontWeight="Bold"
+                       Foreground="#F2FFFFFF"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       MaxWidth="118"
+                       TextOptions.TextRenderingMode="Grayscale"
+                       TextOptions.TextHintingMode="Animated"/>
+            <Viewbox Width="10" Height="10" Margin="5,1,0,0" VerticalAlignment="Center">
+                <Canvas Width="24" Height="24">
+                    <Path Fill="#F2FFFFFF"
+                          Data="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/>
+                </Canvas>
+            </Viewbox>
+        </StackPanel>
+
+        <TextBlock x:Name="WeatherTempText"
+                   Text=""
+                   FontFamily="{StaticResource WeatherSystemFont}"
+                   FontSize="31"
+                   FontWeight="Bold"
+                   Foreground="{x:Static svc:UiPalette.PrimaryBrush}"
+                   Margin="-1,-1,0,0"
+                   LineHeight="34"
+                   LineStackingStrategy="BlockLineHeight"
+                   VerticalAlignment="Center"
+                   TextOptions.TextRenderingMode="Grayscale"
+                   TextOptions.TextHintingMode="Animated"/>
+
+        <TextBlock x:Name="WeatherConditionText"
+                   Text=""
+                   FontFamily="{StaticResource WeatherSystemFont}"
+                   FontSize="11"
+                   FontWeight="Bold"
+                   Foreground="#E6FFFFFF"
+                   Margin="0,8,0,0"
+                   HorizontalAlignment="Left"
+                   TextTrimming="CharacterEllipsis"
+                   MaxWidth="130"
+                   TextOptions.TextRenderingMode="Grayscale"
+                   TextOptions.TextHintingMode="Animated"/>
+
+        <TextBlock x:Name="WeatherHiLoText"
+                   Text=""
+                   FontFamily="{StaticResource WeatherSystemFont}"
+                   FontSize="10.5"
+                   FontWeight="Bold"
+                   Foreground="#99FFFFFF"
+                   Margin="0,1,0,0"
+                   HorizontalAlignment="Left"
+                   TextOptions.TextRenderingMode="Grayscale"
+                   TextOptions.TextHintingMode="Animated"/>
+    </StackPanel>
+    </Grid>
+</UserControl>

@@ -22,7 +22,7 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData(false)]
     public void SkipArrowsReturnToTheirOriginalPositionAndVisibilityAfterEachAnimation(bool next) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var incoming = new Path { Opacity = 0 };
         var outgoing = new Path { Opacity = 1 };
         string method = next ? "PlayNextSkipAnimation" : "PlayPrevSkipAnimation";
@@ -39,7 +39,7 @@ public sealed class MainWindowAnimationHelperTests
         }
         Invoke(fixture.Window, method);
         await Task.Delay(600, ct);
-        Assert.Equal(1, next ? fixture.Window.NextArrow1.Opacity : fixture.Window.PrevArrow2.Opacity);
+        Assert.Equal(1, next ? fixture.Window.MediaPlayback.NextArrow1.Opacity : fixture.Window.MediaPlayback.PrevArrow2.Opacity);
     });
 
     [Theory]
@@ -47,7 +47,7 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData(false)]
     public void ModeTransitionInterpolatesGeometryAndCommitsCollapsedTarget(bool island) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.EnableDynamicIslandMode = island;
@@ -78,7 +78,7 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData(false)]
     public void CompactArtworkHoverExpandsAndRestoresGeometryAndTextMarquee(bool island) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         Field<NotchSettings>(window, "_settings").EnableDynamicIslandMode = island;
         Set(window, "_isMusicCompactMode", true);
@@ -107,7 +107,7 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData("PlayGentleButtonPressAnimation")]
     public void ButtonPressCreatesAReusableScaleAndReturnsToUnitSize(string method) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var button = new Border();
         Invoke(fixture.Window, method, button);
         var transform = Assert.IsType<ScaleTransform>(button.RenderTransform);
@@ -121,7 +121,7 @@ public sealed class MainWindowAnimationHelperTests
     [Fact]
     public void IconSwitchHidesThePreviousGlyphAndRestoresItsTransformForReuse() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var from = new Canvas();
         var to = new Canvas { Visibility = Visibility.Collapsed };
         Invoke(fixture.Window, "AnimateIconSwitch", from, to, TimeSpan.FromMilliseconds(100), new CubicEase());
@@ -139,25 +139,25 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData(false)]
     public void ProgressHoverEnlargesTheBarAndTimeLabelsThenRestoresControls(bool blur) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         Field<NotchSettings>(window, "_settings").EnableBlurEffects = blur;
         Invoke(window, "AnimateProgressBarHover", true);
-        await WpfFrameWaiter.UntilAsync(() => window.ProgressBarBg.Height == 10 && Math.Abs(window.ProgressBarMainScale.ScaleX - 1.04) < 0.000001 && Math.Abs(window.MediaControls.Opacity - 0.45) < 0.000001, "progress hover targets", ct);
-        Assert.Equal(5, window.ProgressBarClip.RadiusX);
-        var labels = Assert.IsType<TransformGroup>(window.CurrentTimeText.RenderTransform);
+        await WpfFrameWaiter.UntilAsync(() => window.MediaPlayback.ProgressBarBg.Height == 10 && Math.Abs(window.MediaPlayback.ProgressBarMainScale.ScaleX - 1.04) < 0.000001 && Math.Abs(window.MediaPlayback.MediaControls.Opacity - 0.45) < 0.000001, "progress hover targets", ct);
+        Assert.Equal(5, window.MediaPlayback.ProgressBarClip.RadiusX);
+        var labels = Assert.IsType<TransformGroup>(window.MediaPlayback.CurrentTimeText.RenderTransform);
         Assert.Equal(1.22, ((ScaleTransform)labels.Children[0]).ScaleX);
         Assert.Equal(3, ((TranslateTransform)labels.Children[1]).Y);
-        if (blur) Assert.Equal(4, Assert.IsType<System.Windows.Media.Effects.BlurEffect>(window.MediaControls.Effect).Radius);
-        else Assert.Null(window.MediaControls.Effect);
+        if (blur) Assert.Equal(4, Assert.IsType<System.Windows.Media.Effects.BlurEffect>(window.MediaPlayback.MediaControls.Effect).Radius);
+        else Assert.Null(window.MediaPlayback.MediaControls.Effect);
         Invoke(window, "AnimateProgressBarHover", false);
-        await WpfFrameWaiter.UntilAsync(() => window.ProgressBarBg.Height == 4 && window.ProgressBarMainScale.ScaleX == 1 && window.MediaControls.Opacity == 1, "progress hover restored", ct);
-        Assert.Equal(2, window.ProgressBarClip.RadiusY);
+        await WpfFrameWaiter.UntilAsync(() => window.MediaPlayback.ProgressBarBg.Height == 4 && window.MediaPlayback.ProgressBarMainScale.ScaleX == 1 && window.MediaPlayback.MediaControls.Opacity == 1, "progress hover restored", ct);
+        Assert.Equal(2, window.MediaPlayback.ProgressBarClip.RadiusY);
         Assert.Equal(1, ((ScaleTransform)labels.Children[0]).ScaleY);
         Assert.Equal(0, ((TranslateTransform)labels.Children[1]).Y);
         Field<NotchSettings>(window, "_settings").EnableBlurEffects = false;
         Invoke(window, "AnimateProgressBarHover", true);
-        Assert.Null(window.MediaControls.Effect);
+        Assert.Null(window.MediaPlayback.MediaControls.Effect);
     });
 
     [Theory]
@@ -167,7 +167,7 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData(false, false)]
     public void StatusRevealHonorsBatteryVisibilityAndAnimatesUpdateAndSettingsIcons(bool island, bool battery) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.EnableDynamicIslandMode = island;
@@ -192,7 +192,7 @@ public sealed class MainWindowAnimationHelperTests
     [InlineData(false)]
     public void SettingsEjectAndAbsorbFeedbackReturnsToCollapsedGeometry(bool eject) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         if (eject) window.PlaySettingsEjectAnimation(); else window.PlaySettingsAbsorbAnimation();
         await WpfFrameWaiter.UntilAsync(() => window.NotchBorder.Width > 302, "settings feedback opens pill", ct);
@@ -209,10 +209,19 @@ public sealed class MainWindowAnimationHelperTests
         fixture.Window.NotchBorder.Height = 40;
         return fixture;
     }
-    private static T Field<T>(MainWindow window, string name) => (T)(typeof(MainWindow).GetField(name, Private)?.GetValue(window) ?? typeof(MainWindow).GetProperty(name, Private)!.GetValue(window))!;
+    private static T Field<T>(MainWindow window, string name)
+    {
+        var mediaField = typeof(Controls.MediaPlaybackView).GetField(name, Private);
+        return mediaField != null ? (T)mediaField.GetValue(window.MediaPlayback)! : (T)(typeof(MainWindow).GetField(name, Private)?.GetValue(window) ?? typeof(MainWindow).GetProperty(name, Private)!.GetValue(window))!;
+    }
     private static void Set(MainWindow window, string name, object value)
     {
-        if (typeof(MainWindow).GetField(name, Private) is { } field) field.SetValue(window, value);
+        if (typeof(Controls.MediaPlaybackView).GetField(name, Private) is { } mediaField)
+        {
+            mediaField.SetValue(window.MediaPlayback, value);
+            typeof(MainWindow).GetField(name, Private)?.SetValue(window, value);
+        }
+        else if (typeof(MainWindow).GetField(name, Private) is { } field) field.SetValue(window, value);
         else typeof(MainWindow).GetProperty(name, Private)!.SetValue(window, value);
     }
     private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethods(Private).Single(method => method.Name == name && method.GetParameters().Length == args.Length).Invoke(window, args);

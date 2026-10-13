@@ -186,7 +186,7 @@ public sealed class ClipboardTrayPersonalTransitionTests
         }
     });
 
-    private static void StopRefresh(ClipboardTray tray) => Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+    private static void StopRefresh(ClipboardTray tray) => Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
     private static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
     private static object? Invoke(object target, string name, params object?[] args) => target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
 }

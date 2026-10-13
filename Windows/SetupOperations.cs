@@ -23,7 +23,7 @@ internal sealed record SetupProgressInfo(
     bool IsIndeterminate = false);
 
 internal sealed record SetupInstallCallbacks(
-    Action StopRunningInstances,
+    Func<Task> StopRunningInstances,
     Action<string, string> CreateShortcuts,
     Action<string, bool> ConfigureStartup,
     Action<string, string> RegisterUninstall,
@@ -126,12 +126,12 @@ internal static class SetupOperations
 
     public static async Task InstallAsync(SetupInstallOptions options, Action<SetupProgressInfo> reportProgress)
         => await InstallAsync(options, reportProgress, new SetupInstallCallbacks(
-            StopOtherRunningInstances, CreateShortcuts, ConfigureStartup, RegisterUninstall, SaveInitialSettings));
+            StopOtherRunningInstancesAsync, CreateShortcuts, ConfigureStartup, RegisterUninstall, SaveInitialSettings));
 
     internal static async Task InstallAsync(SetupInstallOptions options, Action<SetupProgressInfo> reportProgress,
         SetupInstallCallbacks callbacks)
     {
-        await Task.Run(() =>
+        await Task.Run(async () =>
         {
             var sourceDirectory = Path.GetFullPath(options.SourceDirectory);
             var installDirectory = Path.GetFullPath(options.InstallDirectory);
@@ -147,7 +147,7 @@ internal static class SetupOperations
             }
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.closingRunning"), IsIndeterminate: true));
-            callbacks.StopRunningInstances();
+            await callbacks.StopRunningInstances().ConfigureAwait(false);
 
             reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.preparingFolder"), IsIndeterminate: true));
             Directory.CreateDirectory(installDirectory);
@@ -257,13 +257,14 @@ internal static class SetupOperations
         Application.Current.Shutdown(0);
     }
 
-    private static void StopOtherRunningInstances()
+    private static async Task StopOtherRunningInstancesAsync()
     {
         var currentProcessId = Environment.ProcessId;
         bool killedAny = false;
 
-        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppExeName)))
+        foreach (var runningProcess in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppExeName)))
         {
+            using var process = runningProcess;
             try
             {
                 if (process.Id == currentProcessId)
@@ -272,7 +273,7 @@ internal static class SetupOperations
                 }
 
                 process.Kill(entireProcessTree: true);
-                process.WaitForExit(8000);
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
                 killedAny = true;
             }
             catch (Exception ex)
@@ -284,7 +285,7 @@ internal static class SetupOperations
 
         if (killedAny)
         {
-            System.Threading.Thread.Sleep(1500);
+            await Task.Delay(1500).ConfigureAwait(false);
         }
     }
 

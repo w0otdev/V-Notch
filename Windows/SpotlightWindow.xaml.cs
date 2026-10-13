@@ -45,10 +45,10 @@ public partial class SpotlightWindow : Window
     private string? _pendingLaunchQuery;
     private string? _lastDismissedQuery;
     private DateTime _lastDismissedAtUtc;
-    private DispatcherTimer? _searchingGraceTimer;
+    private UiScheduledTimer? _searchingGraceTimer;
     private int _searchingGraceGeneration;
     private bool _searchingPanelArmed;
-    private DispatcherTimer? _failureTimer;
+    private UiScheduledTimer? _failureTimer;
     private int _failureGeneration;
     private static readonly TimeSpan ShakeCooldown = TimeSpan.FromMilliseconds(350);
     private DateTime _lastShakeAtUtc = DateTime.MinValue;
@@ -941,7 +941,7 @@ public partial class SpotlightWindow : Window
             }
             // ShellExecute can block for hundreds of ms on cold starts; keep
             // the UI thread responsive so mouse exits or clicks can still abort.
-            bool launched = await Task.Run(() => _launcher.TryLaunch(selected, confirmed), CancellationToken.None);
+            bool launched = await Task.Run(() => _launcher.TryLaunchAsync(selected, confirmed), CancellationToken.None);
             // A successful launch can deactivate Spotlight before ShellExecute
             // returns. Record the captured query even if its UI session closed.
             if (launched) _viewModel.RecordLaunch(selected, launchQuery);
@@ -1079,7 +1079,7 @@ public partial class SpotlightWindow : Window
         FailureBar.Visibility = Visibility.Visible;
         PlayShake();
         int generation = ++_failureGeneration;
-        var timer = new DispatcherTimer { Interval = FailureDisplayTime };
+        var timer = new UiScheduledTimer { Interval = FailureDisplayTime };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
@@ -1685,7 +1685,7 @@ public partial class SpotlightWindow : Window
         int generation = ++_searchingGraceGeneration;
         int sessionGeneration = _animationGeneration;
         string query = SearchBox.Text;
-        var timer = new DispatcherTimer { Interval = SearchingPanelGrace };
+        var timer = new UiScheduledTimer { Interval = SearchingPanelGrace };
         timer.Tick += (_, _) =>
         {
             timer.Stop();

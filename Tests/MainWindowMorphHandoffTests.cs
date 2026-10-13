@@ -22,7 +22,7 @@ public sealed class MainWindowMorphHandoffTests
     [InlineData(false, 0)]
     public void SpotlightReturnsTheExactOpacityAndInputStateItBorrowed(bool reducedMotion, int milliseconds) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create();
+        await using var fixture = Create();
         var window = fixture.Window;
         bool previous = AnimationConfig.ReduceMotion;
         AnimationConfig.SetReduceMotion(reducedMotion);
@@ -62,7 +62,7 @@ public sealed class MainWindowMorphHandoffTests
     [Fact]
     public void ReopeningSpotlightDuringReturnClearsTheOldAnimationWithoutLosingRestoreValues() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create();
+        await using var fixture = Create();
         var window = fixture.Window;
         window.NotchWrapper.Opacity = .65;
         window.NotchShadowWrapper.Opacity = .3;
@@ -110,7 +110,7 @@ public sealed class MainWindowMorphHandoffTests
     [Fact]
     public void ReturnBounceAndSettingsAndBatteryHoverSettleAtTheirRestingValues() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = Create();
+        await using var fixture = Create();
         var window = fixture.Window;
         window.PlayNotchReturnBounce();
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.NotchScale.ScaleX - 1) < .00001 && window.NotchScale.HasAnimatedProperties, "notch return bounce", ct);

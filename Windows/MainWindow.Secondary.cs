@@ -18,7 +18,7 @@ public partial class MainWindow
     private DateTime _lastViewSwitchUtc = DateTime.MinValue;
     private static readonly TimeSpan ViewSwitchCooldown = TimeSpan.FromMilliseconds(600);
     private bool _isScrollSessionLocked;
-    private DispatcherTimer? _scrollSessionResetTimer;
+    private UiScheduledTimer? _scrollSessionResetTimer;
     private double ClipboardTrayWidth
     {
         get

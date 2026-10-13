@@ -16,7 +16,7 @@ public sealed class IdleAutoHideController : IDisposable
     private readonly Action _stopHoverTimers;
     private readonly Action _onRevealed;
 
-    private readonly DispatcherTimer _timer;
+    private readonly UiScheduledTimer _timer;
     private DateTime _idleSinceUtc = DateTime.MinValue;
     private bool _disposed;
 
@@ -35,14 +35,14 @@ public sealed class IdleAutoHideController : IDisposable
         _stopHoverTimers = stopHoverTimers ?? throw new ArgumentNullException(nameof(stopHoverTimers));
         _onRevealed = onRevealed ?? throw new ArgumentNullException(nameof(onRevealed));
 
-        _timer = new DispatcherTimer(DispatcherPriority.Background)
+        _timer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(IdleHidePollIntervalMs)
         };
         _timer.Tick += IdleHideTimer_Tick;
     }
 
-    public DispatcherTimer Timer => _timer;
+    public UiScheduledTimer Timer => _timer;
 
     private bool IsHiddenByIdle
     {

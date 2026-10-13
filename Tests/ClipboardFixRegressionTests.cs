@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
@@ -176,7 +177,7 @@ public sealed class ClipboardFixRegressionTests
             await store.InitializeAsync();
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = [137, 80, 78, 71, 0] })).Entry!;
             tray.Attach(controller);
-            ((DispatcherTimer)Field(tray, "_searchTimer")!).Stop();
+            ((UiScheduledTimer)Field(tray, "_searchTimer")!).Stop();
             typeof(ClipboardTray).GetField("_queryDirty", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(tray, false);
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);

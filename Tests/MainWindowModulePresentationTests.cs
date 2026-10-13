@@ -21,7 +21,7 @@ public sealed class MainWindowModulePresentationTests
     [InlineData(true)]
     public void PrivacyDotTracksActivitySuppressesDuringNotificationsAndRestoresItsPosition(bool island) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.EnablePrivacyIndicators = true;
@@ -82,7 +82,7 @@ public sealed class MainWindowModulePresentationTests
     [InlineData(false, BluetoothDeviceType.Unknown)]
     public void BluetoothEventsShowDeviceStatusAndDismissOrCancelWithoutLeavingAStalePill(bool connected, BluetoothDeviceType type) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var device = new BluetoothDeviceInfo { Id = "fixture-device", Name = "Fixture audio device", DeviceType = type };
         Invoke(window, connected ? "BluetoothModule_DeviceConnected" : "BluetoothModule_DeviceDisconnected", null, device);
@@ -113,28 +113,26 @@ public sealed class MainWindowModulePresentationTests
         AnimationConfig.SetReduceMotion(reducedMotion);
         try
         {
-            using var fixture = CreateFixture();
+            await using var fixture = CreateFixture();
             var window = fixture.Window;
-            var settings = Field<NotchSettings>(window, "_settings");
-            settings.EnableWeather = true;
-            settings.ManualCity = "Bangkok";
-            Invoke(window, "UpdateWeatherSkeletonState");
-            Assert.True(window.WeatherWidgetSkeleton.HasAnimatedProperties);
+            var widget = window.WeatherWidgetView;
+            widget.ApplySettings(true);
+            Assert.Equal(Visibility.Visible, widget.WeatherWidgetSkeleton.Visibility);
             var weather = new WeatherInfo { City = "Bangkok", Temperature = 31, High = 35, Low = 26, WeatherCode = 3, IsDay = true };
-            Invoke(window, "WeatherModule_WeatherUpdated", null, new WeatherUpdateEventArgs { Weather = weather });
-            await WpfFrameWaiter.UntilAsync(() => window.WeatherActualContent.Opacity == 1 && window.WeatherWidgetTranslate.Y == 0, "weather content revealed", ct);
-            Assert.Equal("Bangkok", window.WeatherLocationText.Text);
-            Assert.Equal("31°", window.WeatherTempText.Text);
-            Assert.Equal(WeatherConditionFormatter.Format(3), window.WeatherConditionText.Text);
-            Assert.Equal(Visibility.Collapsed, window.WeatherWidgetSkeleton.Visibility);
-            Assert.False(window.WeatherWidgetSkeleton.HasAnimatedProperties);
-            Invoke(window, "UpdateWeatherUI", new WeatherInfo { Temperature = 30, High = 35, Low = 25, WeatherCode = 0 });
-            Assert.Equal("—", window.WeatherLocationText.Text);
-            Invoke(window, "WeatherModule_WeatherUpdated", null, new WeatherUpdateEventArgs());
-            Assert.Equal(Loc.Get("weather.unavailable"), window.WeatherLocationText.Text);
-            settings.EnableWeather = false;
-            Invoke(window, "WeatherModule_WeatherUpdated", null, new WeatherUpdateEventArgs());
-            Assert.Equal(Loc.Get("weather.disabled"), window.WeatherLocationText.Text);
+            widget.Present(weather);
+            await WpfFrameWaiter.UntilAsync(() => widget.WeatherActualContent.Opacity == 1 && widget.WeatherWidgetTranslate.Y == 0, "weather content revealed", ct);
+            Assert.Equal("Bangkok", widget.WeatherLocationText.Text);
+            Assert.Equal("31°", widget.WeatherTempText.Text);
+            Assert.Equal(WeatherConditionFormatter.Format(3), widget.WeatherConditionText.Text);
+            Assert.Equal(Visibility.Collapsed, widget.WeatherWidgetSkeleton.Visibility);
+            Assert.False(widget.WeatherWidgetSkeleton.HasAnimatedProperties);
+            widget.Present(new WeatherInfo { Temperature = 30, High = 35, Low = 25, WeatherCode = 0 });
+            Assert.Equal("—", widget.WeatherLocationText.Text);
+            widget.Present(null);
+            Assert.Equal(Loc.Get("weather.unavailable"), widget.WeatherLocationText.Text);
+            widget.ApplySettings(false);
+            widget.Present(null);
+            Assert.Equal(Loc.Get("weather.disabled"), widget.WeatherLocationText.Text);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });

@@ -13,7 +13,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
     private readonly SpotifyCanvasViewRefs _refs;
     private readonly Dispatcher _dispatcher;
-    private readonly DispatcherTimer _loopTimer;
+    private readonly UiScheduledTimer _loopTimer;
 
     private MediaElement _activeVideo;
     private MediaElement? _standbyVideo;
@@ -51,7 +51,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         _activeVideo = _refs.Video;
         _standbyVideo = _refs.VideoAlt;
 
-        _loopTimer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher)
+        _loopTimer = new UiScheduledTimer(DispatcherPriority.Normal, _dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(30)
         };
@@ -603,7 +603,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
             // Stage 2: After 150ms of playback, incoming has decoded and buffered its first frames.
             // Now cross-fade incoming over outgoing.
-            var crossfadeTimer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher)
+            var crossfadeTimer = new UiScheduledTimer(DispatcherPriority.Render, _dispatcher)
             {
                 Interval = TimeSpan.FromMilliseconds(150)
             };

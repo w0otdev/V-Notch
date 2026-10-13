@@ -23,7 +23,7 @@ public sealed class MainWindowCompactFeedbackTests
     public void PowerConnectionGlanceShowsChargeAndWattsThenRestoresTheCollapsedView(
         bool pluggedIn, int percent, double watts, string statusKey, string formattedWatts) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         var battery = new BatteryInfo { Percentage = percent, IsCharging = pluggedIn, IsPluggedIn = pluggedIn, PowerWatts = watts, HasPowerRate = watts != 0 };
         object kind = Enum.Parse(typeof(MainWindow).GetNestedType("ChargingGlanceKind", BindingFlags.NonPublic)!, pluggedIn ? "PluggedIn" : "Unplugged");
@@ -37,11 +37,11 @@ public sealed class MainWindowCompactFeedbackTests
         Assert.Equal(Visibility.Collapsed, window.CollapsedContent.Visibility);
         Assert.Equal(pluggedIn ? Color.FromRgb(0x30, 0xD1, 0x58) : Color.FromRgb(0xFF, 0x95, 0), ((SolidColorBrush)window.ChargingPercentText.Foreground).Color);
         await WpfFrameWaiter.UntilAsync(() => window.ChargingNotification.Opacity == 1 && window.ChargingIconScale.ScaleX == 1, "charging glance entrance", ct);
-        var timer = Field<DispatcherTimer>(window, "_chargingNotificationDismissTimer");
+        var timer = Field<UiScheduledTimer>(window, "_chargingNotificationDismissTimer");
         timer.Interval = TimeSpan.FromMilliseconds(1);
         await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isChargingNotificationVisible"), "charging glance automatic dismissal", ct);
         Assert.False(timer.IsEnabled);
-        Assert.Null(Field<DispatcherTimer?>(window, "_chargingNotificationDismissTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_chargingNotificationDismissTimer"));
         Assert.Equal(Visibility.Collapsed, window.ChargingNotification.Visibility);
         Assert.Equal(Visibility.Visible, window.CollapsedContent.Visibility);
         Invoke(window, "DismissChargingNotification");
@@ -54,7 +54,7 @@ public sealed class MainWindowCompactFeedbackTests
         try
         {
             AnimationConfig.SetReduceMotion(false);
-            using var fixture = CreateFixture();
+            await using var fixture = CreateFixture();
             var window = fixture.Window;
             Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 60, IsPluggedIn = false });
             Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 60, IsCharging = true, IsPluggedIn = true });
@@ -69,7 +69,7 @@ public sealed class MainWindowCompactFeedbackTests
             Assert.Equal(0.1, window.BatteryFillScale.ScaleX, 5);
             Invoke(window, "CancelChargingGlanceImmediate");
             Assert.False(Field<bool>(window, "_isChargingNotificationVisible"));
-            Assert.Null(Field<DispatcherTimer?>(window, "_chargingNotificationDismissTimer"));
+            Assert.Null(Field<UiScheduledTimer?>(window, "_chargingNotificationDismissTimer"));
             Invoke(window, "CancelChargingGlanceImmediate");
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
@@ -81,7 +81,7 @@ public sealed class MainWindowCompactFeedbackTests
     [InlineData(10)]
     public void PluggedInBatteryKeepsItsBoltWhenActiveChargingStops(int percentage) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = percentage, IsPluggedIn = true });
         await WpfFrameWaiter.UntilAsync(() => window.ChargingBolt.Opacity == 1, "plugged-in battery bolt", ct);
@@ -108,7 +108,7 @@ public sealed class MainWindowCompactFeedbackTests
     [InlineData(false)]
     public void CopyFeedbackRestoresArtworkAfterTimerOrImmediateCancellation(bool cancel) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         Set(window, "_isMusicCompactMode", true);
         Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = "Fixture song", MediaSource = "Spotify", IsPlaying = true });
@@ -117,13 +117,13 @@ public sealed class MainWindowCompactFeedbackTests
         Assert.Equal(Loc.Get("clipboard.copied"), window.ClipboardCopiedText.Text);
         Assert.Equal(Visibility.Visible, window.MusicViz.Visibility);
         await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailBorder.Visibility == Visibility.Collapsed && window.ClipboardCopiedText.Opacity == 1, "copy feedback entrance", ct);
-        var timer = Field<DispatcherTimer>(window, "_clipboardRevertTimer");
+        var timer = Field<UiScheduledTimer>(window, "_clipboardRevertTimer");
         if (cancel)
         {
             Invoke(window, "CancelClipboardPeekImmediate");
             Assert.False(timer.IsEnabled);
             Assert.Equal(Visibility.Collapsed, window.ClipboardCopiedText.Visibility);
-            Assert.Null(Field<DispatcherTimer?>(window, "_clipboardRevertTimer"));
+            Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardRevertTimer"));
         }
         else
         {
@@ -131,7 +131,7 @@ public sealed class MainWindowCompactFeedbackTests
             await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isClipboardPeekActive") && window.ClipboardCopiedText.Visibility == Visibility.Collapsed && window.CompactThumbnailBorder.Opacity == 1, "copy feedback automatic revert", ct);
             Assert.Equal(Visibility.Visible, window.CompactThumbnailBorder.Visibility);
             Assert.Equal(1, window.CompactThumbnailScale.ScaleX);
-            Assert.Null(Field<DispatcherTimer?>(window, "_clipboardRevertTimer"));
+            Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardRevertTimer"));
         }
         Invoke(window, "CancelClipboardPeekImmediate");
     });
@@ -139,7 +139,7 @@ public sealed class MainWindowCompactFeedbackTests
     [Fact]
     public void CopyFeedbackOutsideMusicModeOnlyBouncesTheCollapsedNotch() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         Invoke(fixture.Window, "PlayClipboardPeek");
         Assert.False(Field<bool>(fixture.Window, "_isClipboardPeekActive"));
         await WpfFrameWaiter.UntilAsync(() => fixture.Window.NotchScale.ScaleX > 1, "copy bounce peak", ct);

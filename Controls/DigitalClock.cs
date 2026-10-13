@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -7,7 +8,7 @@ namespace VNotch.Controls;
 
 public class DigitalClock : TextBlock
 {
-    private readonly DispatcherTimer _timer;
+    private readonly UiScheduledTimer _timer;
     private bool _isRunning;
     private int _lastRenderedMinute = -1;
 
@@ -36,7 +37,7 @@ public class DigitalClock : TextBlock
     public DigitalClock()
     {
         TextAlignment = TextAlignment.Center;
-        _timer = new DispatcherTimer(DispatcherPriority.Background)
+        _timer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(1)
         };

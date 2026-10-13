@@ -34,12 +34,12 @@ public partial class MainWindow : Window
     private readonly IMediaDetectionService _mediaService;
     private readonly IUpdateService? _updateService;
     private readonly ShellViewModel _viewModel;
-    private readonly DispatcherTimer _updateTimer;
-    private readonly DispatcherTimer _updateCheckTimer;
+    private readonly UiScheduledTimer _updateTimer;
+    private readonly UiScheduledTimer _updateCheckTimer;
     private readonly ZOrderManager _zOrderManager;
-    private readonly DispatcherTimer _hoverCollapseTimer;
-    private readonly DispatcherTimer _hoverThumbnailDelayTimer;
-    private readonly DispatcherTimer _compactThumbnailHoverLeaveTimer;
+    private readonly UiScheduledTimer _hoverCollapseTimer;
+    private readonly UiScheduledTimer _hoverThumbnailDelayTimer;
+    private readonly UiScheduledTimer _compactThumbnailHoverLeaveTimer;
 
     private bool _isDraggingVolume = false;
     private NotchSettings _settings;
@@ -71,7 +71,7 @@ public partial class MainWindow : Window
     private double _spotlightRestoreNotchOpacity = 1;
     private double _spotlightRestoreShadowOpacity = 1;
     private bool _spotlightRestoreNotchHitTesting = true;
-    private DispatcherTimer? _fullscreenRecheckTimer;
+    private UiScheduledTimer? _fullscreenRecheckTimer;
     private bool _isTrayMenuOpen
     {
         get => _shellState.IsTrayMenuOpen;
@@ -89,7 +89,6 @@ public partial class MainWindow : Window
     private readonly MediaDisplayController _mediaDisplayController;
     private readonly FullscreenAutoHideController _fullscreenController;
     private readonly BluetoothNotificationController _bluetoothController;
-    private readonly TimerManager _timerManager;
 
     // Greeting, hover and in-view effects also animate without navigation.
     private bool _isVisualAnimationActive;
@@ -187,8 +186,8 @@ public partial class MainWindow : Window
     private static readonly TimeSpan LyricsUpdateInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan VolumeSyncInterval = TimeSpan.FromMilliseconds(500);
 
-    private readonly DispatcherTimer _lyricsTimer;
-    private readonly DispatcherTimer _volumeSyncTimer;
+    private readonly UiScheduledTimer _lyricsTimer;
+    private readonly UiScheduledTimer _volumeSyncTimer;
 
     private static readonly SolidColorBrush _brushCharging = CreateFrozenBrush(48, 209, 88);
     private static readonly SolidColorBrush _brushLowBattery = CreateFrozenBrush(255, 59, 48);
@@ -208,7 +207,7 @@ public partial class MainWindow : Window
     private bool _isUpdateInstalling = false;
     private int _updateCheckGeneration;
     private int _updateVisibilityGeneration;
-    private DispatcherTimer? _updatePulseTimer;
+    private UiScheduledTimer? _updatePulseTimer;
     private DateTime _updatePulseStartedAtUtc = DateTime.MinValue;
     private bool _isUpdateTooltipOpen = false;
     private DateTime _suspendTopmostUntilUtc
@@ -281,6 +280,25 @@ public partial class MainWindow : Window
         });
         _viewModel = viewModel;
         DataContext = _viewModel;
+        MediaPlayback.Attach(_viewModel.Media, mediaService);
+        MediaPlayback.BufferingChanged += value => MusicViz.IsBuffering = value;
+        CountdownWidget.Attach(_viewModel.Timer);
+        CountdownWidget.Completed += (_, _) => OnCountdownCompleted();
+        CountdownWidget.KeyboardInputRequested += enabled =>
+        {
+            if (enabled) EnableKeyboardInput();
+            else DisableKeyboardInput();
+        };
+        AudioContent.Attach(_viewModel.AudioMixer,
+            () => (AudioMixerService)App.Services.GetService(typeof(AudioMixerService))!,
+            () => (IVolumeService)App.Services.GetService(typeof(IVolumeService))!,
+            () => _isAnimating, () => IsLiquidGlassEnabled);
+        AudioContent.FitHeightRequested += AnimateAudioNotchHeight;
+        AudioContent.OutputDeviceChanged += () =>
+        {
+            mediaService.InvalidateVolumeSessionCache();
+            _volumeSynced = false;
+        };
         _isExpandedCheck = () => _isExpanded || _isMusicExpanded;
         _viewModel.IsExpandedCheck = _isExpandedCheck;
         _viewModel.MediaInfoUpdated += ViewModel_MediaInfoUpdated;
@@ -316,7 +334,6 @@ public partial class MainWindow : Window
             isAutoHideSuppressed: () => _isSecondaryView || _transitionCoordinator.TargetView == VNotch.Models.NotchView.Secondary);
         _fullscreenController.HideStateChanged += FullscreenController_HideStateChanged;
         _fullscreenController.RecheckNeeded += ScheduleFullscreenRecheck;
-        _timerManager = new TimerManager(Dispatcher);
         _moduleHost = moduleHost;
         _batteryModule = batteryModule;
         _batteryModule.BatteryUpdated += BatteryModule_BatteryUpdated;
@@ -332,8 +349,8 @@ public partial class MainWindow : Window
         _privacyModule.StateChanged += PrivacyModule_StateChanged;
 
         _weatherModule = weatherModule;
-        _weatherModule.WeatherUpdated += WeatherModule_WeatherUpdated;
-        InitializeWeatherWidget();
+        WeatherWidgetView.Attach(_weatherModule,
+            _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
 
         _systemMonitorModule = systemMonitorModule;
         InitializeSystemMonitorPresenter();
@@ -343,13 +360,13 @@ public partial class MainWindow : Window
         _expandedHeight = _settings.EnableDynamicIslandMode ? 154 : 147;
         _cornerRadiusCollapsed = GetCollapsedCornerRadius();
 
-        _updateTimer = new DispatcherTimer
+        _updateTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromSeconds(30)
         };
         _updateTimer.Tick += UpdateTimer_Tick;
 
-        _updateCheckTimer = new DispatcherTimer
+        _updateCheckTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromSeconds(90)
         };
@@ -387,20 +404,20 @@ public partial class MainWindow : Window
         _overlayWindow.IsZOrderSuspended = isTopmostSuspended;
         _overlayWindow.IsPointInteractive = IsPointInteractive;
 
-        _lyricsTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _lyricsTimer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = LyricsUpdateInterval
         };
         _lyricsTimer.Tick += LyricsTimer_Tick;
 
-        _volumeSyncTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _volumeSyncTimer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = VolumeSyncInterval
         };
         _volumeSyncTimer.Tick += VolumeSyncTimer_Tick;
         InputMonitorService.MouseActionTriggered += GlobalMouseHook_MouseLeftButtonDown;
 
-        _hoverCollapseTimer = new DispatcherTimer
+        _hoverCollapseTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay)
         };
@@ -435,7 +452,7 @@ public partial class MainWindow : Window
             }
         };
 
-        _hoverThumbnailDelayTimer = new DispatcherTimer
+        _hoverThumbnailDelayTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(_settings.HoverExpandDelay)
         };
@@ -453,7 +470,7 @@ public partial class MainWindow : Window
             }
         };
 
-        _compactThumbnailHoverLeaveTimer = new DispatcherTimer
+        _compactThumbnailHoverLeaveTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(140)
         };
@@ -657,8 +674,7 @@ public partial class MainWindow : Window
         AnimationConfig.ReduceMotionChanged -= OnReduceMotionChanged;
         DisposeCalendarPresenter();
         _privacyModule.StateChanged -= PrivacyModule_StateChanged;
-        StopMainViewHorizontalStabilizer();
-        _weatherModule.WeatherUpdated -= WeatherModule_WeatherUpdated;
+        WeatherWidgetView.Dispose();
         DisposeSystemMonitorPresenter();
 
         InputMonitorService.MouseActionTriggered -= GlobalMouseHook_MouseLeftButtonDown;
@@ -675,7 +691,7 @@ public partial class MainWindow : Window
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
         StopTitleGradientShift();
-        SetProgressRenderingEnabled(false);
+        MediaPlayback.Dispose();
         _lyricsTimer?.Stop();
         _volumeSyncTimer?.Stop();
         _lyricsService?.Dispose();
@@ -701,11 +717,10 @@ public partial class MainWindow : Window
         DisposeIdleAutoHide();
         _fullscreenController?.Dispose();
         _camera?.Dispose();
-        _timerManager?.Dispose();
         DisposeGestureController();
         CancelDragDropTimers();
-        _countdownController?.Dispose();
-        _countdownPresenter?.Dispose();
+        CountdownWidget.Dispose();
+        AudioContent.Dispose();
         _transitionCoordinator.StateChanged -= OnCoordinatorStateChanged;
         _transitionCoordinator.TransitionRequested -= OnTransitionRequested;
         _transitionCoordinator.CountdownCompletionDisplayRequested -= OnCountdownCompletionDisplayRequested;
@@ -793,7 +808,6 @@ public partial class MainWindow : Window
         _notchShellPresenter?.CancelCurrentAnimation();
         _notchContentPresenter?.CancelActiveTransition();
         CancelMediaThumbnailTransition();
-        StopMainViewHorizontalStabilizer();
         // An interrupted shell animation must resume from its rendered geometry,
         // even when the requested view matches the last completed view.
         bool requiresExpansion = args.FromView == VNotch.Models.NotchView.Compact ||
@@ -1080,7 +1094,7 @@ public partial class MainWindow : Window
     {
         if (_fullscreenRecheckTimer == null)
         {
-            _fullscreenRecheckTimer = new DispatcherTimer(DispatcherPriority.Normal)
+            _fullscreenRecheckTimer = new UiScheduledTimer(DispatcherPriority.Normal)
             {
                 Interval = TimeSpan.FromMilliseconds(400)
             };
@@ -1503,6 +1517,8 @@ public partial class MainWindow : Window
                 || oldSettings.EnableLocalOnlyMode != newSettings.EnableLocalOnlyMode
                 || !string.Equals(oldSettings.ManualCity, newSettings.ManualCity, StringComparison.Ordinal))
             {
+                WeatherWidgetView.ApplySettings(
+                    _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
                 _weatherModule.OnSettingsChanged(_settings);
             }
 
@@ -1962,9 +1978,9 @@ public partial class MainWindow : Window
         ResetBlur(ThumbnailNextBlur);
         ResetBlur(CalendarGreetingContextBlur);
         ResetBlur(CameraPreviewBlur);
-        ResetBlur(_mediaControlsHoverBlur);
+        MediaPlayback.ResetHoverBlur();
 
-        MediaControls.Effect = null;
+        MediaPlayback.MediaControls.Effect = null;
         TimerContent.Effect = null;
         ExpandedContent.Effect = null;
         SecondaryContent.Effect = null;
@@ -2020,7 +2036,7 @@ public partial class MainWindow : Window
         ClipboardCopiedText.Text = Loc.Get("clipboard.copied");
         CameraErrorText.Text = Loc.Get("notch.camera.error");
         CameraRetryText.Text = Loc.Get("notch.camera.retry");
-        AudioLoadingText.Text = Loc.Get("audio.loading");
+        AudioContent.AudioLoadingText.Text = Loc.Get("audio.loading");
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
         MenuResetText.Text = Loc.Get("tray.reset");
         MenuSettingsText.Text = Loc.Get("tray.settings");
@@ -2029,7 +2045,7 @@ public partial class MainWindow : Window
         MenuOpenText.Text = Loc.Get("tooltip.expand");
         _calendarPresenter?.RefreshLocale();
         _weatherModule.RefreshLocalization();
-        RefreshAudioLocalization();
+        AudioContent.RefreshLocalization();
         RefreshClockViewLocale();
         WordClockWidget.RefreshLocalization();
         _spotlightController?.ApplySettings(_settings);
@@ -2708,7 +2724,7 @@ public partial class MainWindow : Window
         {
             if (ReferenceEquals(current, NotchWrapper) ||
                 ReferenceEquals(current, NavIconsPanel) ||
-                ReferenceEquals(current, AudioOverlay) ||
+                ReferenceEquals(current, AudioContent.AudioOverlay) ||
                 ReferenceEquals(current, CompactHoverInfo) ||
                 (ChargingNotification != null && ReferenceEquals(current, ChargingNotification)) ||
                 (BluetoothNotification != null && ReferenceEquals(current, BluetoothNotification)) ||

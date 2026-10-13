@@ -35,11 +35,11 @@ public partial class MainWindow
             (HomeIconButton, "nav.media"), (ClipboardIconButton, "nav.clipboard"), (CameraIconButton, "nav.camera"),
             (TimerIconButton, "nav.timer"), (AudioIconButton, "nav.audio"),
             (CameraSection, "settings.camera"), (UpdateNotificationButton, "tooltip.downloadUpdate"),
-            (PrevButton, "media.previous"), (InlinePrevButton, "media.previous"),
-            (NextButton, "media.next"), (InlineNextButton, "media.next"),
+            (MediaPlayback.PrevButton, "media.previous"), (InlinePrevButton, "media.previous"),
+            (MediaPlayback.NextButton, "media.next"), (InlineNextButton, "media.next"),
             (VolumeBarContainer, "media.volume"), (VolumeMuteButton, "media.mute"),
-            (CountdownResetBtn, "timer.reset"), (CountdownStartBtn, "timer.start"),
-            (CountdownPlusBtn, "timer.increase"), (CountdownMinusBtn, "timer.decrease"),
+            (CountdownWidget.CountdownResetBtn, "timer.reset"), (CountdownWidget.CountdownStartBtn, "timer.start"),
+            (CountdownWidget.CountdownPlusBtn, "timer.increase"), (CountdownWidget.CountdownMinusBtn, "timer.decrease"),
             (CountdownRestartBtn, "timer.restart"), (CountdownDismissBtn, "timer.dismiss")
         }) AutomationProperties.SetName(element, Loc.Get(key));
         RefreshPlaybackAccessibleNames();
@@ -48,7 +48,7 @@ public partial class MainWindow
     private void RefreshPlaybackAccessibleNames()
     {
         string name = Loc.Get(_isPlaying ? "media.pause" : "media.play");
-        AutomationProperties.SetName(PlayPauseButton, name);
+        AutomationProperties.SetName(MediaPlayback.PlayPauseButton, name);
         AutomationProperties.SetName(InlinePlayPauseButton, name);
     }
 
@@ -59,6 +59,6 @@ public partial class MainWindow
         SetVolumeFill(VolumeBarScale, _currentVolume);
         UpdateVolumeIcon(_currentVolume, false);
         float volume = _currentVolume;
-        _audioWrites.Post("accessible-volume", () => _mediaService.TrySetCurrentSessionVolume(volume));
+        _mediaVolumeWrites.Post("accessible-volume", () => _mediaService.TrySetCurrentSessionVolume(volume));
     }
 }

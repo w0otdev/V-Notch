@@ -107,7 +107,7 @@ internal sealed class StressApp(string style, string output) : Application
     private Action<MediaInfo> _media = null!;
     private Action _cleanup = null!;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         Directory.CreateDirectory(output);
         File.WriteAllText(Path.Combine(output, "pid.txt"), Environment.ProcessId.ToString());
@@ -121,7 +121,7 @@ internal sealed class StressApp(string style, string output) : Application
         AppDomain.CurrentDomain.UnhandledException += (_, error) => RecordError("UnhandledException", error.ExceptionObject as Exception ?? new Exception(error.ExceptionObject.ToString()));
         try
         {
-            RuntimeLog.InitializeNewSession(Path.Combine(output, "runtime.log"));
+            await RuntimeLog.InitializeNewSessionAsync(Path.Combine(output, "runtime.log"));
             RuntimeLog.MinimumLevel = LogLevel.Info;
             var config = new NotchSettings
             {
@@ -134,7 +134,7 @@ internal sealed class StressApp(string style, string output) : Application
             };
             _settings = (SettingsService)Activator.CreateInstance(typeof(SettingsService), PrivateInstance, null,
                 new object?[] { Path.Combine(output, "settings.json"), null }, null)!;
-            _settings.SaveAsync(config).GetAwaiter().GetResult();
+            await _settings.SaveAsync(config);
             var services = new ServiceCollection();
             typeof(App).GetMethod("ConfigureServices", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, new object[] { services });
             services.RemoveAll<ISettingsService>();
@@ -168,7 +168,7 @@ internal sealed class StressApp(string style, string output) : Application
         try
         {
             await Task.Delay(8000);
-            App.Services.GetRequiredService<IMediaDetectionService>().Stop();
+            await App.Services.GetRequiredService<IMediaDetectionService>().StopAsync();
             ApplyMedia(0);
             _view("MediaExpanded");
             await Task.Delay(2000);

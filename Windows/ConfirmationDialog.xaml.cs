@@ -259,7 +259,7 @@ public partial class ConfirmationDialog : Window
         opacity.Completed += (s, e) => SafeClose();
 
         // Safety fallback in case WPF animation clock doesn't tick (e.g. headless CI)
-        var fallbackTimer = new System.Windows.Threading.DispatcherTimer
+        var fallbackTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(250)
         };

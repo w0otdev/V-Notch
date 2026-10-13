@@ -117,11 +117,11 @@ public partial class MainWindow
             UpdateProgressTimerState();
         });
 
-        MediaControls.BeginAnimation(OpacityProperty, null);
-        MediaControls.Opacity = 0;
-        MediaControls.Visibility = Visibility.Visible;
+        MediaPlayback.MediaControls.BeginAnimation(OpacityProperty, null);
+        MediaPlayback.MediaControls.Opacity = 0;
+        MediaPlayback.MediaControls.Visibility = Visibility.Visible;
         var fadeInControls = MakeAnim(0d, 1d, new Duration(TimeSpan.FromMilliseconds(300)), _easePowerOut3, contentDelay);
-        MediaControls.BeginAnimation(OpacityProperty, fadeInControls);
+        MediaPlayback.MediaControls.BeginAnimation(OpacityProperty, fadeInControls);
 
         if (_isLyricsActive)
         {
@@ -209,109 +209,14 @@ public partial class MainWindow
 
     private void UpdateProgressSectionLayout()
     {
-        if (ProgressSection == null || ProgressBarContainer == null || MediaInfoSection == null)
-            return;
-
-        bool useCompactLayout = !_isMusicExpanded;
-        double fallbackWidth = useCompactLayout ? 208 : 340;
-
-        double containerHeight = useCompactLayout ? 10 : 14;
-        double barHeight = 4;
-        double barRadius = 2.0;
-        double timeTopMargin = useCompactLayout ? 4 : 2;
-        double timeSideMargin = useCompactLayout ? 4 : 6;
-        double progressRightInset = 0;
-        double targetWidth = Math.Max(0, fallbackWidth - 29);
-
-        Grid.SetColumnSpan(MediaInfoSection, useCompactLayout ? 2 : 1);
-
-        ProgressSection.HorizontalAlignment = HorizontalAlignment.Left;
-        ProgressSection.Width = targetWidth;
-        ProgressSection.Margin = new Thickness(0, useCompactLayout ? 8 : 10, progressRightInset, 0);
-        ProgressBarContainer.Margin = new Thickness(0);
-
-        ProgressBarContainer.Height = containerHeight;
-        ProgressBarBg.Height = barHeight;
-        ProgressBar.Height = barHeight;
-        IndeterminateProgress.Height = barHeight;
-
-        var cornerRadius = new CornerRadius(barRadius);
-        ProgressBarBg.CornerRadius = cornerRadius;
-        ProgressBar.CornerRadius = new CornerRadius(0);
-        IndeterminateProgress.CornerRadius = cornerRadius;
-
-        if (ProgressBarClip != null)
-        {
-            ProgressBarClip.RadiusX = barRadius;
-            ProgressBarClip.RadiusY = barRadius;
-        }
-
-        CurrentTimeText.Margin = new Thickness(0, timeTopMargin, timeSideMargin, 0);
-        RemainingTimeText.Margin = new Thickness(timeSideMargin, timeTopMargin, 0, 0);
+        MediaPlayback.IsMusicExpanded = _isMusicExpanded;
+        MediaPlayback.EnableBlurEffects = _settings.EnableBlurEffects;
+        MediaPlayback.UpdateProgressSectionLayout();
     }
 
-    private void MediaInfoSection_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateProgressSectionLayout();
-    }
+    private void MediaWidgetContainer_SizeChanged(object sender, SizeChangedEventArgs e) => MediaPlayback.RefreshMediaMarquee();
 
-    private void ProgressBarBg_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        if (ProgressBarClip != null)
-        {
-            ProgressBarClip.Rect = new Rect(0, 0, e.NewSize.Width, e.NewSize.Height);
-        }
-        double radius = e.NewSize.Height / 2.0;
-        ProgressBarBg.CornerRadius = new CornerRadius(radius);
-    }
-
-    private void MediaWidgetContainer_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        double fadeEndX = GetVisibleMediaTextWidth(340);
-
-        if (TitleScrollContainer != null)
-        {
-            TitleScrollContainer.Width = fadeEndX;
-        }
-
-        if (ArtistScrollContainer != null)
-        {
-            ArtistScrollContainer.Width = fadeEndX;
-        }
-
-        RefreshMediaMarquee();
-
-        if (TextFadeBrush != null)
-        {
-            TextFadeBrush.EndPoint = new Point(fadeEndX, 0);
-            TextFadeBrush.GradientStops[0].Offset = 0;
-            double fadeStartX = Math.Max(0, fadeEndX - 20);
-            TextFadeBrush.GradientStops[1].Offset = fadeEndX > 0 ? fadeStartX / fadeEndX : 0.8;
-            TextFadeBrush.GradientStops[2].Offset = 1;
-        }
-
-        UpdateProgressSectionLayout();
-    }
-
-    private double GetVisibleMediaTextWidth(double fallbackWidth)
-    {
-        double widgetWidth = MediaWidgetContainer?.ActualWidth > 0 ? MediaWidgetContainer.ActualWidth : 0;
-        if (widgetWidth > 0)
-        {
-            double thumbnailWidth = ThumbnailBorder?.ActualWidth > 0 ? ThumbnailBorder.ActualWidth : 102;
-            double thumbnailGap = ThumbnailBorder?.Margin.Right ?? 8;
-            double availableWidth = widgetWidth - thumbnailWidth - thumbnailGap - 4;
-            return Math.Max(0, Math.Min(340, availableWidth));
-        }
-
-        double infoWidth = MediaInfoSection?.ActualWidth > 0 ? MediaInfoSection.ActualWidth : 0;
-        if (infoWidth > 0)
-        {
-            return Math.Max(0, Math.Min(340, infoWidth));
-        }
-
-        return fallbackWidth;
-    }
+    private double GetVisibleMediaTextWidth(double fallbackWidth) => MediaPlayback.GetVisibleMediaTextWidth(fallbackWidth);
 
     #endregion
 }

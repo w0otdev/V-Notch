@@ -93,7 +93,7 @@ public partial class SettingsWindow : Window
     private readonly ISettingsApplicationService _settingsAppService;
     private readonly SettingsUpdatePresenter _updatePresenter;
     private bool _isLoadingSettings = true;
-    private DispatcherTimer? _livePreviewDebounce;
+    private UiScheduledTimer? _livePreviewDebounce;
     private bool _isSpotlightHotkeyRegistered;
     private int _lastAppliedFps;
 
@@ -326,6 +326,7 @@ public partial class SettingsWindow : Window
         ManualCityTextBox.Text = _settings.ManualCity;
         UpdateWeatherDependentControls(_settings.EnableWeather);
 
+        _settings.ProcessPriority = ProcessPriorityPolicy.Normalize(_settings.ProcessPriority);
         ProcessPriorityCombo.SelectedItem = ProcessPriorityCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.ProcessPriority) ?? ProcessPriorityCombo.Items[0];
         GpuPreferenceCombo.SelectedItem = GpuPreferenceCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.GpuPreference.ToString()) ?? GpuPreferenceCombo.Items[0];
 
@@ -1016,11 +1017,11 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void ClearLog_Click(object sender, RoutedEventArgs e)
+    private async void ClearLog_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            RuntimeLog.ClearLog();
+            await RuntimeLog.ClearLogAsync();
             AnimateButtonSuccessFeedback(ClearLogButton, Loc.Get("settings.privacy.cleared"), "settings.privacy.clearLog");
         }
         catch (Exception ex)
@@ -1031,7 +1032,7 @@ public partial class SettingsWindow : Window
 
     private void AnimateButtonSuccessFeedback(Button button, string successText, string defaultTextKey)
     {
-        if (button.Tag is DispatcherTimer existingTimer)
+        if (button.Tag is UiScheduledTimer existingTimer)
         {
             existingTimer.Stop();
             button.Tag = null;
@@ -1049,7 +1050,7 @@ public partial class SettingsWindow : Window
 
             fadeIn.Completed += (_, _) =>
             {
-                var timer = new DispatcherTimer
+                var timer = new UiScheduledTimer
                 {
                     Interval = TimeSpan.FromMilliseconds(1300)
                 };
@@ -1125,11 +1126,10 @@ public partial class SettingsWindow : Window
         if (ProcessPriorityLabel != null) ProcessPriorityLabel.Text = Loc.Get("settings.processPriority");
         if (ProcessPriorityHint != null) ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint");
 
-        if (ProcessPriorityCombo != null && ProcessPriorityCombo.Items.Count >= 3)
+        if (ProcessPriorityCombo != null && ProcessPriorityCombo.Items.Count >= 2)
         {
             ((ComboBoxItem)ProcessPriorityCombo.Items[0]).Content = Loc.Get("settings.processPriority.normal");
             ((ComboBoxItem)ProcessPriorityCombo.Items[1]).Content = Loc.Get("settings.processPriority.high");
-            ((ComboBoxItem)ProcessPriorityCombo.Items[2]).Content = Loc.Get("settings.processPriority.realtime");
         }
 
         if (GpuPreferenceCombo != null && GpuPreferenceCombo.Items.Count >= 3)

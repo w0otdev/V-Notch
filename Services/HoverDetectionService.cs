@@ -12,7 +12,7 @@ public class HoverDetectionService : IDisposable
     private const int ProximityMargin = 120;
     private const int TopEdgeRevealThickness = 3;
 
-    private readonly DispatcherTimer _pollTimer;
+    private readonly UiScheduledTimer _pollTimer;
     private readonly int _hoverZoneMargin;
     private Rect _notchBounds;
     private Rect _hoverZone;
@@ -46,7 +46,7 @@ public class HoverDetectionService : IDisposable
     public HoverDetectionService(int hoverZoneMargin = 50)
     {
         _hoverZoneMargin = hoverZoneMargin;
-        _pollTimer = new DispatcherTimer
+        _pollTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(SlowIntervalMs)
         };

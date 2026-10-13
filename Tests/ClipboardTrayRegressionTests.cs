@@ -136,7 +136,7 @@ public sealed class ClipboardTrayRegressionTests
             await store.InitializeAsync();
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = TestImage() })).Entry!;
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(new ClipboardCardViewModel(entry));
             window.Show();
@@ -195,7 +195,7 @@ public sealed class ClipboardTrayRegressionTests
             blocker = store.ImportAsync(new ClipboardCapture { Text = "block image read" });
             Assert.True(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(5))));
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop(); SetField(tray, "_queryDirty", false);
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop(); SetField(tray, "_queryDirty", false);
             Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(new ClipboardCardViewModel(entry));
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);

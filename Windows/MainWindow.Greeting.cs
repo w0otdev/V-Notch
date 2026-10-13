@@ -24,7 +24,7 @@ public partial class MainWindow
             System.Windows.Input.StylusEventArgs)
             e.Cancel();
     }
-    private DispatcherTimer? _greetingDismissTimer;
+    private UiScheduledTimer? _greetingDismissTimer;
     private bool _isVietnameseGreeting = false;
     private int _greetingGeneration;
 
@@ -335,7 +335,7 @@ public partial class MainWindow
     {
         _greetingDismissTimer?.Stop();
         int generation = _greetingGeneration;
-        var timer = new DispatcherTimer { Interval = delay };
+        var timer = new UiScheduledTimer { Interval = delay };
         timer.Tick += (_, _) =>
         {
             timer.Stop();

@@ -14,18 +14,18 @@ public sealed class SmartCropInferenceAndFramingTests
     private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
 
     [Fact]
-    public void BundledModelRunsOfflineAndReusesInferenceUntilItsIdleSessionIsReleased() => SharedStaTestRunner.Run(() =>
+    public void BundledModelRunsOfflineAndReusesInferenceUntilItsIdleSessionIsReleased() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var service = new SmartThumbnailCropService();
         Assert.True(service.TryInitialize());
         var image = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Fixtures", "white-mat-artwork.png")));
         image.Freeze();
-        var first = service.GetSmartCropRect(image, 256, useObjectDetection: true);
+        var first = await service.GetSmartCropRectAsync(image, 256, useObjectDetection: true, ct);
         Assert.True(first.HasValue);
         AssertCrop(first.Value, image.PixelWidth, image.PixelHeight);
         object session = Get<object>(service, "_cachedSession");
         Assert.NotNull(session);
-        Assert.Equal(first, service.GetSmartCropRect(image, 256, useObjectDetection: true));
+        Assert.Equal(first, await service.GetSmartCropRectAsync(image, 256, useObjectDetection: true, ct));
         Assert.Same(session, Get<object>(service, "_cachedSession"));
         _ = service.GetDominantSubjectBounds(image);
         Assert.Same(session, Get<object>(service, "_cachedSession"));
@@ -37,7 +37,7 @@ public sealed class SmartCropInferenceAndFramingTests
         service.Dispose();
         Assert.False(service.TryInitialize());
         Assert.Null(service.GetDominantSubjectBounds(image));
-        Assert.Null(service.GetSmartCropRect(image, 256, true));
+        Assert.Null(await service.GetSmartCropRectAsync(image, 256, true, ct));
     });
 
     [Theory]

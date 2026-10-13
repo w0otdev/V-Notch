@@ -21,15 +21,15 @@ public partial class App : Application
     private bool _servicesDisposed;
     internal bool IsShutdownRequested => _shutdownTask != null;
 
-    internal static Task RequestShutdownAsync()
+    internal static Task RequestShutdownAsync(int exitCode = 0)
     {
         if (Current is not App app) return Task.CompletedTask;
         if (!app.Dispatcher.CheckAccess())
-            return app.Dispatcher.InvokeAsync(RequestShutdownAsync).Task.Unwrap();
-        return app._shutdownTask ??= app.ShutdownCoreAsync();
+            return app.Dispatcher.InvokeAsync(() => RequestShutdownAsync(exitCode)).Task.Unwrap();
+        return app._shutdownTask ??= app.ShutdownCoreAsync(exitCode);
     }
 
-    private async Task ShutdownCoreAsync()
+    private async Task ShutdownCoreAsync(int exitCode)
     {
         // Keep the dispatcher pumping until queued disk writes and media shutdown finish.
         await Task.Yield();
@@ -46,7 +46,12 @@ public partial class App : Application
             await GpuMonitorService.DisposeSharedAsync();
         }
         catch (Exception ex) { RuntimeLog.Error("APP-SHUTDOWN", ex, "Cleanup failed"); }
-        finally { Shutdown(); }
+        finally
+        {
+            RuntimeLog.Log("SYSTEM", "Application exit");
+            await RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(2));
+            Shutdown(exitCode);
+        }
     }
 
     private const int LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000;
@@ -82,7 +87,7 @@ public partial class App : Application
         Services = services;
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         try
         {
@@ -114,7 +119,7 @@ public partial class App : Application
                 {
                     AppIntegrityService.ShowIntegrityAlert(
                         Loc.Get(IntegrityWarningTitleKey),
-                        Loc.Get("integrity.untrustedSource", "https://trang-web-la-chua-virus.com/V-Notch.exe"));
+                        Loc.Get("integrity.untrustedSource", "https://untrusted.example.invalid/V-Notch.exe"));
                 }
                 Shutdown(0);
                 return;
@@ -134,7 +139,7 @@ public partial class App : Application
                 return;
             }
 
-            RuntimeLog.InitializeNewSession("vnotch-debug.log");
+            await RuntimeLog.InitializeNewSessionAsync("vnotch-debug.log");
             RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
             Services.GetRequiredService<AppFileCleanupService>().Start();
 
@@ -291,7 +296,7 @@ public partial class App : Application
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
     }
 
-    private void OnDispatcherUnhandledException(object? sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
+    private async void OnDispatcherUnhandledException(object? sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
     {
         // MessageBox.Show runs a nested dispatcher loop; guard against recursive
         // error dialogs from queued UI callbacks while a fatal dialog is open.
@@ -324,7 +329,7 @@ public partial class App : Application
             "Unexpected UI dispatcher exception; shutting down to avoid continuing in an unknown state");
         try
         {
-            RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1));
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(1));
         }
         catch (Exception)
         {
@@ -343,7 +348,7 @@ public partial class App : Application
         }
         finally
         {
-            Shutdown(1);
+            await RequestShutdownAsync(1);
         }
     }
 
@@ -361,13 +366,13 @@ public partial class App : Application
             RuntimeLog.Error("UNHANDLED-BG", $"Background thread crash with non-CLS object: {args.ExceptionObject}");
         }
 
-        // The process may terminate immediately after this callback, so
-        // synchronously preserve only this exceptional final batch.
+        // CrashReporter above synchronously persists the fatal report. This
+        // callback cannot delay CLR termination by awaiting the regular log queue.
         if (args.IsTerminating)
         {
             try
             {
-                RuntimeLog.FlushAsync().Wait(TimeSpan.FromSeconds(1));
+                RuntimeLog.FlushAsync().SafeFireAndForget("CRASH-LOG-FLUSH");
             }
             catch (Exception)
             {
@@ -403,12 +408,12 @@ public partial class App : Application
 
             _guard?.Dispose();
             VNotch.Controllers.MagnifierCaptureSource.ShutdownShared();
-            RuntimeLog.Log("SYSTEM", "Application exit");
+            if (!_servicesDisposed) RuntimeLog.Log("SYSTEM", "Application exit");
             base.OnExit(e);
         }
         finally
         {
-            RuntimeLog.Shutdown(TimeSpan.FromSeconds(2));
+            RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(2)).SafeFireAndForget("EXIT-LOG-DRAIN");
         }
     }
 
@@ -499,19 +504,6 @@ public partial class App : Application
 
     internal static void ApplyProcessPriority(string priority)
     {
-        try
-        {
-            var p = System.Diagnostics.Process.GetCurrentProcess();
-            p.PriorityClass = priority switch
-            {
-                "High" => System.Diagnostics.ProcessPriorityClass.High,
-                "RealTime" => System.Diagnostics.ProcessPriorityClass.RealTime,
-                _ => System.Diagnostics.ProcessPriorityClass.Normal
-            };
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("SYSTEM", $"Failed to set process priority to {priority}: {ex.Message}");
-        }
+        ProcessPriorityPolicy.Apply(priority);
     }
 }

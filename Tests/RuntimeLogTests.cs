@@ -17,7 +17,7 @@ public sealed class RuntimeLogTests
         try
         {
             RuntimeLog.MinimumLevel = LogLevel.Info;
-            RuntimeLog.InitializeNewSession(path);
+            await RuntimeLog.InitializeNewSessionAsync(path);
             File.WriteAllText(path, new string('x', limit - 100));
             RuntimeLog.Info("SIZE-TEST", new string('y', 200));
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -44,7 +44,7 @@ public sealed class RuntimeLogTests
         }
         finally
         {
-            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            await RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(5));
             RuntimeLog.MinimumLevel = previous;
             File.Delete(path); File.Delete(path + ".old");
         }
@@ -59,7 +59,7 @@ public sealed class RuntimeLogTests
         try
         {
             RuntimeLog.MinimumLevel = LogLevel.Trace;
-            RuntimeLog.InitializeNewSession(logPath);
+            await RuntimeLog.InitializeNewSessionAsync(logPath);
 
             for (int i = 0; i < 300; i++)
             {
@@ -84,7 +84,7 @@ public sealed class RuntimeLogTests
         }
         finally
         {
-            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            await RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(5));
             RuntimeLog.MinimumLevel = previousMinimumLevel;
 
             try
@@ -100,7 +100,7 @@ public sealed class RuntimeLogTests
     }
 
     [Fact]
-    public void ClearLog_PurgesLogFilesAndExecutesWithoutException()
+    public async Task ClearLog_PurgesLogFilesAndExecutesWithoutException()
     {
         string logPath = Path.Combine(Path.GetTempPath(), $"vnotch-clearlog-{Guid.NewGuid():N}.log");
         LogLevel previousMinimumLevel = RuntimeLog.MinimumLevel;
@@ -108,16 +108,16 @@ public sealed class RuntimeLogTests
         try
         {
             RuntimeLog.MinimumLevel = LogLevel.Debug;
-            RuntimeLog.InitializeNewSession(logPath);
+            await RuntimeLog.InitializeNewSessionAsync(logPath);
             RuntimeLog.Log("TEST", "Sample test log entry");
 
-            RuntimeLog.ClearLog();
+            await RuntimeLog.ClearLogAsync();
 
             Assert.NotNull(RuntimeLog.LogPath);
         }
         finally
         {
-            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            await RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(5));
             RuntimeLog.MinimumLevel = previousMinimumLevel;
             try
             {
@@ -141,7 +141,7 @@ public sealed class RuntimeLogTests
         try
         {
             RuntimeLog.MinimumLevel = LogLevel.Info;
-            RuntimeLog.InitializeNewSession(logPath);
+            await RuntimeLog.InitializeNewSessionAsync(logPath);
             RuntimeLog.Info("SESSION-1", "This is session 1 data");
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -150,7 +150,7 @@ public sealed class RuntimeLogTests
             Assert.Contains("SESSION-1", session1Content);
 
             // Start session 2
-            RuntimeLog.InitializeNewSession(logPath);
+            await RuntimeLog.InitializeNewSessionAsync(logPath);
             RuntimeLog.Info("SESSION-2", "This is session 2 data");
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -164,7 +164,7 @@ public sealed class RuntimeLogTests
         }
         finally
         {
-            RuntimeLog.Shutdown(TimeSpan.FromSeconds(5));
+            await RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(5));
             RuntimeLog.MinimumLevel = previousMinimumLevel;
             try
             {

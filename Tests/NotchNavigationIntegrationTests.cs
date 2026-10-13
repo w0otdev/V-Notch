@@ -22,7 +22,7 @@ public sealed class NotchNavigationIntegrationTests
     [InlineData(true)]
     public void EveryExpandedViewCanNavigateToEveryOtherViewAndCollapse(bool blurEnabled) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
             settings =>
             {
                 settings.EnableLocalOnlyMode = true;
@@ -32,8 +32,8 @@ public sealed class NotchNavigationIntegrationTests
             services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         var window = fixture.Window;
         using var mixer = new AudioMixerService();
-        typeof(MainWindow).GetField("_audioMixerServiceCached", Private)!.SetValue(window, mixer);
-        typeof(MainWindow).GetField("_masterVolumeCached", Private)!.SetValue(window, new Fakes.FakeVolumeService());
+        typeof(Controls.AudioMixerView).GetField("_audioMixerServiceCached", Private)!.SetValue(window.AudioContent, mixer);
+        typeof(Controls.AudioMixerView).GetField("_masterVolumeCached", Private)!.SetValue(window.AudioContent, new Fakes.FakeVolumeService());
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
         var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera };
@@ -58,7 +58,7 @@ public sealed class NotchNavigationIntegrationTests
             {
                 await Navigate(from);
                 await Navigate(to);
-                var content = to switch
+                FrameworkElement content = to switch
                 {
                     NotchView.Media => window.ExpandedContent,
                     NotchView.Secondary => window.SecondaryContent,
@@ -76,7 +76,7 @@ public sealed class NotchNavigationIntegrationTests
     [Fact]
     public void InterruptedAnimationsSettleInTheLatestViewAcrossAllConsumers() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
@@ -110,7 +110,7 @@ public sealed class NotchNavigationIntegrationTests
     [Fact]
     public void ReopeningMediaDuringCollapseRestoresTheExpandedShell() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         await StartAsync(window, ct);
         window.SetDebugViewState("MediaExpanded");
@@ -130,7 +130,7 @@ public sealed class NotchNavigationIntegrationTests
     [Fact]
     public void CountdownDismissCompletesTheCoordinatorAndAllowsReopening() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
@@ -156,9 +156,9 @@ public sealed class NotchNavigationIntegrationTests
     });
 
     [Fact]
-    public void ExpansionKeepsContentCenteredAndDetachesSizeHandlersOnCompletion() => SharedStaTestRunner.RunAsync(async ct =>
+    public void ExpansionKeepsContentCenteredThroughLayout() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         await StartAsync(window, ct);
         window.SetDebugViewState("MediaExpanded");
@@ -166,7 +166,7 @@ public sealed class NotchNavigationIntegrationTests
         double maxError = 0;
         void Sample(object? _, EventArgs args)
         {
-            if (Field<SizeChangedEventHandler?>(window, "_mainViewHorizontalStabilizer") == null) return;
+            if (!IsAnimating(window) || !window.ExpandedContent.IsVisible) return;
             var origin = window.ExpandedContent.TransformToAncestor(window.NotchContainer).Transform(new Point());
             double expected = (window.NotchContainer.ActualWidth - window.ExpandedContent.ActualWidth) / 2;
             maxError = Math.Max(maxError, Math.Abs(origin.X - expected));
@@ -177,8 +177,7 @@ public sealed class NotchNavigationIntegrationTests
         finally { CompositionTarget.Rendering -= Sample; }
         Assert.True(samples > 0);
         Assert.InRange(maxError, 0, 1.5);
-        Assert.Null(Field<SizeChangedEventHandler?>(window, "_mainViewHorizontalStabilizer"));
-        Assert.Null(Field<System.Windows.Threading.DispatcherOperation?>(window, "_mainViewHorizontalStabilizerOperation"));
+        Assert.Equal(HorizontalAlignment.Center, window.ExpandedContent.HorizontalAlignment);
     });
 
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture() => new("en", greeting: false,

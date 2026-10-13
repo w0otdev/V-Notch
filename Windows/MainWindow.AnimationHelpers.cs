@@ -281,93 +281,9 @@ public partial class MainWindow
         scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, animY);
     }
 
-    private void AnimateIconSwitch(Canvas fromIcon, Canvas toIcon, TimeSpan duration, EasingFunctionBase easing)
-    {
+    private void AnimateIconSwitch(Canvas fromIcon, Canvas toIcon, TimeSpan duration, EasingFunctionBase easing) => Controls.ButtonFeedback.AnimateIconSwitch(fromIcon, toIcon, duration, easing);
 
-        var fromTransform = fromIcon.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
-        fromIcon.RenderTransform = fromTransform;
-        fromTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        fromTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        fromIcon.BeginAnimation(OpacityProperty, null);
-
-        var toTransform = toIcon.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
-        toIcon.RenderTransform = toTransform;
-        toTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        toTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        toIcon.BeginAnimation(OpacityProperty, null);
-
-        fromIcon.Visibility = Visibility.Visible;
-        fromTransform.ScaleX = 1;
-        fromTransform.ScaleY = 1;
-        fromIcon.Opacity = 1;
-
-        toIcon.Visibility = Visibility.Visible;
-        toTransform.ScaleX = 0.3;
-        toTransform.ScaleY = 0.3;
-        toIcon.Opacity = 0;
-
-        var dur = new Duration(duration);
-        var scaleDown = new DoubleAnimation(1, 0.3, dur) { EasingFunction = easing };
-        var fadeOut = new DoubleAnimation(1, 0, dur) { EasingFunction = easing };
-        var scaleUp = new DoubleAnimation(0.3, 1, dur) { EasingFunction = easing };
-        var fadeIn = new DoubleAnimation(0, 1, dur) { EasingFunction = easing };
-
-        var capturedFromIcon = fromIcon;
-        var capturedFromTransform = fromTransform;
-
-        fadeOut.Completed += (s, e) =>
-        {
-
-            capturedFromTransform.ScaleX = 1;
-            capturedFromTransform.ScaleY = 1;
-            capturedFromIcon.Opacity = 1;
-
-            capturedFromIcon.Visibility = Visibility.Collapsed;
-            capturedFromTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            capturedFromTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            capturedFromIcon.BeginAnimation(OpacityProperty, null);
-        };
-
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleDown, VNotch.Services.AnimationConfig.TargetFps);
-        fromTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDown);
-        fromTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDown);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOut, VNotch.Services.AnimationConfig.TargetFps);
-        fromIcon.BeginAnimation(OpacityProperty, fadeOut);
-
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleUp, VNotch.Services.AnimationConfig.TargetFps);
-        toTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleUp);
-        toTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleUp);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
-        toIcon.BeginAnimation(OpacityProperty, fadeIn);
-    }
-
-    private void PlayButtonPressAnimation(Border button)
-    {
-        var transform = button.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
-        button.RenderTransform = transform;
-        button.RenderTransformOrigin = new Point(0.5, 0.5);
-
-        transform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        transform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-
-        var squish = MakeAnim(1d, 0.82d, _dur80, _easeQuadIn, null);
-
-        var bounce = new DoubleAnimation(0.82, 1.0, _dur250)
-        {
-            EasingFunction = _easeHapticBounce,
-            BeginTime = TimeSpan.Zero
-        };
-        Timeline.SetDesiredFrameRate(bounce, VNotch.Services.AnimationConfig.TargetFps);
-
-        squish.Completed += (s, e) =>
-        {
-            transform.BeginAnimation(ScaleTransform.ScaleXProperty, bounce);
-            transform.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
-        };
-
-        transform.BeginAnimation(ScaleTransform.ScaleXProperty, squish);
-        transform.BeginAnimation(ScaleTransform.ScaleYProperty, squish);
-    }
+    private void PlayButtonPressAnimation(Border button) => Controls.ButtonFeedback.PlayButtonPressAnimation(button);
 
     private void PlayGentleButtonPressAnimation(Border button)
     {
@@ -398,91 +314,17 @@ public partial class MainWindow
 
     private void PlayNextSkipAnimation()
     {
-        PlayNextSkipAnimation(NextArrow0, NextArrow1);
+        PlayNextSkipAnimation(MediaPlayback.NextArrow0, MediaPlayback.NextArrow1);
     }
 
-    private void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1)
-    {
-        const double slideDistance = 220;
-
-        var arrow1Transform = arrow1.RenderTransform as TranslateTransform ?? new TranslateTransform();
-        arrow1.RenderTransform = arrow1Transform;
-
-        var slideOut1 = new DoubleAnimation(0, slideDistance, _dur250) { EasingFunction = _easeQuadOut };
-        var fadeOut1 = new DoubleAnimation(1, 0, _dur250) { EasingFunction = _easeQuadOut };
-
-        var arrow0Transform = arrow0.RenderTransform as TranslateTransform ?? new TranslateTransform();
-        arrow0.RenderTransform = arrow0Transform;
-
-        var slideIn0 = new DoubleAnimation(-slideDistance, 0, _dur250) { EasingFunction = _easeQuadOut };
-        var fadeIn0 = new DoubleAnimation(0, 1, _dur250) { EasingFunction = _easeQuadOut };
-
-        fadeOut1.Completed += (s, e) =>
-        {
-            arrow1Transform.X = 0;
-            arrow1.Opacity = 1;
-            arrow0Transform.X = 0;
-            arrow0.Opacity = 0;
-
-            arrow1Transform.BeginAnimation(TranslateTransform.XProperty, null);
-            arrow1.BeginAnimation(OpacityProperty, null);
-            arrow0Transform.BeginAnimation(TranslateTransform.XProperty, null);
-            arrow0.BeginAnimation(OpacityProperty, null);
-        };
-
-        Timeline.SetDesiredFrameRate(slideOut1, VNotch.Services.AnimationConfig.TargetFps);
-        arrow1Transform.BeginAnimation(TranslateTransform.XProperty, slideOut1);
-        Timeline.SetDesiredFrameRate(fadeOut1, VNotch.Services.AnimationConfig.TargetFps);
-        arrow1.BeginAnimation(OpacityProperty, fadeOut1);
-        Timeline.SetDesiredFrameRate(slideIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0Transform.BeginAnimation(TranslateTransform.XProperty, slideIn0);
-        Timeline.SetDesiredFrameRate(fadeIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0.BeginAnimation(OpacityProperty, fadeIn0);
-    }
+    private void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1) => Controls.ButtonFeedback.PlayNextSkipAnimation(arrow0, arrow1);
 
     private void PlayPrevSkipAnimation()
     {
-        PlayPrevSkipAnimation(PrevArrow0, PrevArrow2);
+        PlayPrevSkipAnimation(MediaPlayback.PrevArrow0, MediaPlayback.PrevArrow2);
     }
 
-    private void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow2)
-    {
-        const double slideDistance = 220;
-
-        var arrow2Transform = arrow2.RenderTransform as TranslateTransform ?? new TranslateTransform();
-        arrow2.RenderTransform = arrow2Transform;
-
-        var slideOut2 = new DoubleAnimation(0, -slideDistance, _dur250) { EasingFunction = _easeQuadOut };
-        var fadeOut2 = new DoubleAnimation(1, 0, _dur250) { EasingFunction = _easeQuadOut };
-
-        var arrow0Transform = arrow0.RenderTransform as TranslateTransform ?? new TranslateTransform();
-        arrow0.RenderTransform = arrow0Transform;
-
-        var slideIn0 = new DoubleAnimation(slideDistance, 0, _dur250) { EasingFunction = _easeQuadOut };
-        var fadeIn0 = new DoubleAnimation(0, 1, _dur250) { EasingFunction = _easeQuadOut };
-
-        fadeOut2.Completed += (s, e) =>
-        {
-            arrow2Transform.X = 0;
-            arrow2.Opacity = 1;
-            arrow0Transform.X = 0;
-            arrow0.Opacity = 0;
-
-            arrow2Transform.BeginAnimation(TranslateTransform.XProperty, null);
-            arrow2.BeginAnimation(OpacityProperty, null);
-            arrow0Transform.BeginAnimation(TranslateTransform.XProperty, null);
-            arrow0.BeginAnimation(OpacityProperty, null);
-        };
-
-        Timeline.SetDesiredFrameRate(slideOut2, VNotch.Services.AnimationConfig.TargetFps);
-        arrow2Transform.BeginAnimation(TranslateTransform.XProperty, slideOut2);
-        Timeline.SetDesiredFrameRate(fadeOut2, VNotch.Services.AnimationConfig.TargetFps);
-        arrow2.BeginAnimation(OpacityProperty, fadeOut2);
-        Timeline.SetDesiredFrameRate(slideIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0Transform.BeginAnimation(TranslateTransform.XProperty, slideIn0);
-        Timeline.SetDesiredFrameRate(fadeIn0, VNotch.Services.AnimationConfig.TargetFps);
-        arrow0.BeginAnimation(OpacityProperty, fadeIn0);
-    }
+    private void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow2) => Controls.ButtonFeedback.PlayPrevSkipAnimation(arrow0, arrow2);
 
     private void PlayAppearAnimation()
     {
@@ -836,94 +678,10 @@ public partial class MainWindow
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounceY);
     }
 
-    private BlurEffect? _mediaControlsHoverBlur;
-    private TransformGroup? _currentTimeHoverTransform;
-    private TransformGroup? _remainingTimeHoverTransform;
-    private ScaleTransform? _currentTimeHoverScale;
-    private ScaleTransform? _remainingTimeHoverScale;
-    private TranslateTransform? _currentTimeHoverTranslate;
-    private TranslateTransform? _remainingTimeHoverTranslate;
-
     private void AnimateProgressBarHover(bool isHovered)
     {
-        double scaleX = isHovered ? 1.04 : 1.0;
-        double blurRadius = _settings.EnableBlurEffects && isHovered ? 4.0 : 0.0;
-        double surroundOpacity = isHovered ? 0.45 : 1.0;
-        double timeScale = isHovered ? 1.22 : 1.0;
-        double timeTranslateY = isHovered ? 3.0 : 0.0;
-
-        var duration = TimeSpan.FromMilliseconds(isHovered ? 350 : 250);
-        var easing = (IEasingFunction)(isHovered
-            ? new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut }
-            : new CubicEase { EasingMode = EasingMode.EaseOut });
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-
-        ProgressBarContainer.BeginAnimation(MarginProperty, null);
-        double barHeight = isHovered ? 10 : 4;
-        var heightAnim = new DoubleAnimation { To = barHeight, Duration = duration, EasingFunction = easing };
-        var scaleXAnim = new DoubleAnimation { To = scaleX, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(heightAnim, fps);
-        Timeline.SetDesiredFrameRate(scaleXAnim, fps);
-        ProgressBarBg.BeginAnimation(HeightProperty, heightAnim);
-        ProgressBar.BeginAnimation(HeightProperty, heightAnim);
-        ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
-
-        double barRadius = barHeight / 2.0;
-        var clipRadiusAnim = new DoubleAnimation { To = barRadius, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(clipRadiusAnim, fps);
-        ProgressBarClip.BeginAnimation(RectangleGeometry.RadiusXProperty, clipRadiusAnim);
-        ProgressBarClip.BeginAnimation(RectangleGeometry.RadiusYProperty, clipRadiusAnim);
-
-        if (_currentTimeHoverTransform == null)
-        {
-            _currentTimeHoverScale = new ScaleTransform(1, 1);
-            _currentTimeHoverTranslate = new TranslateTransform(0, 0);
-            _currentTimeHoverTransform = new TransformGroup();
-            _currentTimeHoverTransform.Children.Add(_currentTimeHoverScale);
-            _currentTimeHoverTransform.Children.Add(_currentTimeHoverTranslate);
-            CurrentTimeText.RenderTransformOrigin = new Point(0, 0.5);
-            CurrentTimeText.RenderTransform = _currentTimeHoverTransform;
-        }
-        if (_remainingTimeHoverTransform == null)
-        {
-            _remainingTimeHoverScale = new ScaleTransform(1, 1);
-            _remainingTimeHoverTranslate = new TranslateTransform(0, 0);
-            _remainingTimeHoverTransform = new TransformGroup();
-            _remainingTimeHoverTransform.Children.Add(_remainingTimeHoverScale);
-            _remainingTimeHoverTransform.Children.Add(_remainingTimeHoverTranslate);
-            RemainingTimeText.RenderTransformOrigin = new Point(1, 0.5);
-            RemainingTimeText.RenderTransform = _remainingTimeHoverTransform;
-        }
-
-        var timeScaleAnim = new DoubleAnimation { To = timeScale, Duration = duration, EasingFunction = easing };
-        var timeTranslateAnim = new DoubleAnimation { To = timeTranslateY, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(timeScaleAnim, fps);
-        Timeline.SetDesiredFrameRate(timeTranslateAnim, fps);
-
-        _currentTimeHoverScale!.BeginAnimation(ScaleTransform.ScaleXProperty, timeScaleAnim);
-        _currentTimeHoverScale.BeginAnimation(ScaleTransform.ScaleYProperty, timeScaleAnim);
-        _currentTimeHoverTranslate!.BeginAnimation(TranslateTransform.YProperty, timeTranslateAnim);
-        _remainingTimeHoverScale!.BeginAnimation(ScaleTransform.ScaleXProperty, timeScaleAnim);
-        _remainingTimeHoverScale.BeginAnimation(ScaleTransform.ScaleYProperty, timeScaleAnim);
-        _remainingTimeHoverTranslate!.BeginAnimation(TranslateTransform.YProperty, timeTranslateAnim);
-
-        var blurAnim = new DoubleAnimation { To = blurRadius, Duration = duration, EasingFunction = easing };
-        var dimAnim = new DoubleAnimation { To = surroundOpacity, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(blurAnim, fps);
-        Timeline.SetDesiredFrameRate(dimAnim, fps);
-
-        if (_settings.EnableBlurEffects)
-        {
-            _mediaControlsHoverBlur ??= new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-            MediaControls.Effect = _mediaControlsHoverBlur;
-            _mediaControlsHoverBlur.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
-        }
-        else
-        {
-            _mediaControlsHoverBlur?.BeginAnimation(BlurEffect.RadiusProperty, null);
-            MediaControls.Effect = null;
-        }
-        MediaControls.BeginAnimation(OpacityProperty, dimAnim);
+        MediaPlayback.EnableBlurEffects = _settings.EnableBlurEffects;
+        MediaPlayback.AnimateProgressBarHover(isHovered);
     }
 
     #endregion
@@ -1247,65 +1005,65 @@ public partial class MainWindow
 
         var wave1Delay = TimeSpan.Zero;
 
-        if (PlayPauseButton != null && PlayPauseButton.Visibility == Visibility.Visible)
+        if (MediaPlayback.PlayPauseButton != null && MediaPlayback.PlayPauseButton.Visibility == Visibility.Visible)
         {
-            double currentOpacity = PlayPauseButton.Opacity;
+            double currentOpacity = MediaPlayback.PlayPauseButton.Opacity;
             if (currentOpacity > 0.01)
             {
-                PlayPauseButton.BeginAnimation(OpacityProperty, null);
+                MediaPlayback.PlayPauseButton.BeginAnimation(OpacityProperty, null);
                 var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave1Delay);
                 Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                PlayPauseButton.BeginAnimation(OpacityProperty, fadeAnim);
+                MediaPlayback.PlayPauseButton.BeginAnimation(OpacityProperty, fadeAnim);
             }
         }
 
-        if (PrevButton != null && PrevButton.Visibility == Visibility.Visible)
+        if (MediaPlayback.PrevButton != null && MediaPlayback.PrevButton.Visibility == Visibility.Visible)
         {
-            double currentOpacity = PrevButton.Opacity;
+            double currentOpacity = MediaPlayback.PrevButton.Opacity;
             if (currentOpacity > 0.01)
             {
-                PrevButton.BeginAnimation(OpacityProperty, null);
+                MediaPlayback.PrevButton.BeginAnimation(OpacityProperty, null);
                 var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave1Delay);
                 Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                PrevButton.BeginAnimation(OpacityProperty, fadeAnim);
+                MediaPlayback.PrevButton.BeginAnimation(OpacityProperty, fadeAnim);
             }
         }
 
-        if (NextButton != null && NextButton.Visibility == Visibility.Visible)
+        if (MediaPlayback.NextButton != null && MediaPlayback.NextButton.Visibility == Visibility.Visible)
         {
-            double currentOpacity = NextButton.Opacity;
+            double currentOpacity = MediaPlayback.NextButton.Opacity;
             if (currentOpacity > 0.01)
             {
-                NextButton.BeginAnimation(OpacityProperty, null);
+                MediaPlayback.NextButton.BeginAnimation(OpacityProperty, null);
                 var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave1Delay);
                 Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                NextButton.BeginAnimation(OpacityProperty, fadeAnim);
+                MediaPlayback.NextButton.BeginAnimation(OpacityProperty, fadeAnim);
             }
         }
 
         var wave2Delay = TimeSpan.FromMilliseconds(20);
 
-        if (ProgressBarContainer != null && ProgressBarContainer.Visibility == Visibility.Visible)
+        if (MediaPlayback.ProgressBarContainer != null && MediaPlayback.ProgressBarContainer.Visibility == Visibility.Visible)
         {
-            double currentOpacity = ProgressBarContainer.Opacity;
+            double currentOpacity = MediaPlayback.ProgressBarContainer.Opacity;
             if (currentOpacity > 0.01)
             {
-                ProgressBarContainer.BeginAnimation(OpacityProperty, null);
+                MediaPlayback.ProgressBarContainer.BeginAnimation(OpacityProperty, null);
                 var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave2Delay);
                 Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                ProgressBarContainer.BeginAnimation(OpacityProperty, fadeAnim);
+                MediaPlayback.ProgressBarContainer.BeginAnimation(OpacityProperty, fadeAnim);
             }
         }
 
-        if (RemainingTimeText != null && RemainingTimeText.Visibility == Visibility.Visible)
+        if (MediaPlayback.RemainingTimeText != null && MediaPlayback.RemainingTimeText.Visibility == Visibility.Visible)
         {
-            double currentOpacity = RemainingTimeText.Opacity;
+            double currentOpacity = MediaPlayback.RemainingTimeText.Opacity;
             if (currentOpacity > 0.01)
             {
-                RemainingTimeText.BeginAnimation(OpacityProperty, null);
+                MediaPlayback.RemainingTimeText.BeginAnimation(OpacityProperty, null);
                 var fadeAnim = MakeAnim(currentOpacity, 0, baseDuration, easing, wave2Delay);
                 Timeline.SetDesiredFrameRate(fadeAnim, fps);
-                RemainingTimeText.BeginAnimation(OpacityProperty, fadeAnim);
+                MediaPlayback.RemainingTimeText.BeginAnimation(OpacityProperty, fadeAnim);
             }
         }
 
@@ -1351,39 +1109,39 @@ public partial class MainWindow
 
     private void RestoreExpandedContentOpacity()
     {
-        if (PlayPauseButton != null)
+        if (MediaPlayback.PlayPauseButton != null)
         {
-            PlayPauseButton.BeginAnimation(OpacityProperty, null);
-            if (PlayPauseButton.Visibility == Visibility.Visible)
-                PlayPauseButton.Opacity = 1.0;
+            MediaPlayback.PlayPauseButton.BeginAnimation(OpacityProperty, null);
+            if (MediaPlayback.PlayPauseButton.Visibility == Visibility.Visible)
+                MediaPlayback.PlayPauseButton.Opacity = 1.0;
         }
 
-        if (PrevButton != null)
+        if (MediaPlayback.PrevButton != null)
         {
-            PrevButton.BeginAnimation(OpacityProperty, null);
-            if (PrevButton.Visibility == Visibility.Visible)
-                PrevButton.Opacity = 1.0;
+            MediaPlayback.PrevButton.BeginAnimation(OpacityProperty, null);
+            if (MediaPlayback.PrevButton.Visibility == Visibility.Visible)
+                MediaPlayback.PrevButton.Opacity = 1.0;
         }
 
-        if (NextButton != null)
+        if (MediaPlayback.NextButton != null)
         {
-            NextButton.BeginAnimation(OpacityProperty, null);
-            if (NextButton.Visibility == Visibility.Visible)
-                NextButton.Opacity = 1.0;
+            MediaPlayback.NextButton.BeginAnimation(OpacityProperty, null);
+            if (MediaPlayback.NextButton.Visibility == Visibility.Visible)
+                MediaPlayback.NextButton.Opacity = 1.0;
         }
 
-        if (ProgressBarContainer != null)
+        if (MediaPlayback.ProgressBarContainer != null)
         {
-            ProgressBarContainer.BeginAnimation(OpacityProperty, null);
-            if (ProgressBarContainer.Visibility == Visibility.Visible)
-                ProgressBarContainer.Opacity = 1.0;
+            MediaPlayback.ProgressBarContainer.BeginAnimation(OpacityProperty, null);
+            if (MediaPlayback.ProgressBarContainer.Visibility == Visibility.Visible)
+                MediaPlayback.ProgressBarContainer.Opacity = 1.0;
         }
 
-        if (RemainingTimeText != null)
+        if (MediaPlayback.RemainingTimeText != null)
         {
-            RemainingTimeText.BeginAnimation(OpacityProperty, null);
-            if (RemainingTimeText.Visibility == Visibility.Visible)
-                RemainingTimeText.Opacity = 1.0;
+            MediaPlayback.RemainingTimeText.BeginAnimation(OpacityProperty, null);
+            if (MediaPlayback.RemainingTimeText.Visibility == Visibility.Visible)
+                MediaPlayback.RemainingTimeText.Opacity = 1.0;
         }
 
         if (CalendarWidget != null)
@@ -1445,41 +1203,41 @@ public partial class MainWindow
 
     private void RestoreTimerContentOpacity()
     {
-        if (CountdownDisplay != null)
+        if (CountdownWidget.CountdownDisplay != null)
         {
-            CountdownDisplay.BeginAnimation(OpacityProperty, null);
-            CountdownDisplay.Opacity = 1.0;
+            CountdownWidget.CountdownDisplay.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.CountdownDisplay.Opacity = 1.0;
         }
 
-        if (CountdownProgressFill != null)
+        if (CountdownWidget.CountdownProgressFill != null)
         {
-            CountdownProgressFill.BeginAnimation(OpacityProperty, null);
-            CountdownProgressFill.Opacity = 1.0;
+            CountdownWidget.CountdownProgressFill.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.CountdownProgressFill.Opacity = 1.0;
         }
 
-        if (CountdownDisplayPanel != null)
+        if (CountdownWidget.CountdownDisplayPanel != null)
         {
-            CountdownDisplayPanel.BeginAnimation(OpacityProperty, null);
-            CountdownDisplayPanel.Opacity = 1.0;
+            CountdownWidget.CountdownDisplayPanel.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.CountdownDisplayPanel.Opacity = 1.0;
         }
 
-        if (CountdownStartBtn != null)
+        if (CountdownWidget.CountdownStartBtn != null)
         {
-            CountdownStartBtn.BeginAnimation(OpacityProperty, null);
-            CountdownStartBtn.Opacity = 1.0;
+            CountdownWidget.CountdownStartBtn.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.CountdownStartBtn.Opacity = 1.0;
         }
 
-        if (CountdownResetBtn != null)
+        if (CountdownWidget.CountdownResetBtn != null)
         {
-            CountdownResetBtn.BeginAnimation(OpacityProperty, null);
-            CountdownResetBtn.Opacity = 1.0;
+            CountdownWidget.CountdownResetBtn.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.CountdownResetBtn.Opacity = 1.0;
         }
 
-        if (CountdownStepperCapsule != null)
+        if (CountdownWidget.CountdownStepperCapsule != null)
         {
-            CountdownStepperCapsule.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.CountdownStepperCapsule.BeginAnimation(OpacityProperty, null);
             // The stepper stays dimmed while a countdown is running.
-            CountdownStepperCapsule.Opacity = _isCountdownRunning ? 0.4 : 1.0;
+            CountdownWidget.CountdownStepperCapsule.Opacity = _isCountdownRunning ? 0.4 : 1.0;
         }
     }
 

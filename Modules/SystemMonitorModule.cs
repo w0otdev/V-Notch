@@ -18,6 +18,7 @@ public sealed class SystemMonitorModule : NotchModuleBase
     private ulong _lastSysKernel = 0;
     private ulong _lastSysUser = 0;
     private double _smoothedCpu = 0;
+    private bool _hasCpuMeasurement;
 
     // Network Tracking via NetworkInterface IPStatistics
     private long _lastNetRecvBytes = 0;
@@ -141,7 +142,10 @@ public sealed class SystemMonitorModule : NotchModuleBase
                     {
                         double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
                         double rawCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
-                        _smoothedCpu = _lastSysIdle == 0 ? rawCpu : (_smoothedCpu * 0.85 + rawCpu * 0.15);
+                        _smoothedCpu = _hasCpuMeasurement
+                            ? _smoothedCpu * 0.85 + rawCpu * 0.15
+                            : rawCpu;
+                        _hasCpuMeasurement = true;
                     }
                 }
 

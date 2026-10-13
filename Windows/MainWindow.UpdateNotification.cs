@@ -229,7 +229,7 @@ public partial class MainWindow
 
         if (_updatePulseTimer == null)
         {
-            _updatePulseTimer = new DispatcherTimer(DispatcherPriority.Render)
+            _updatePulseTimer = new UiScheduledTimer(DispatcherPriority.Render)
             {
                 Interval = TimeSpan.FromMilliseconds(33)
             };

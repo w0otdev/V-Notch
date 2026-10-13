@@ -30,7 +30,7 @@ public partial class MainWindow : IClockWidgetHost
             ClockWidget = ClockWidget,
             WordClockWidget = WordClockWidget,
             DigitalClockWidget = DigitalClockWidget,
-            WeatherWidgetContent = WeatherWidgetContent,
+            WeatherWidgetContent = WeatherWidgetView,
             SystemMonitorWidgetContent = SystemMonitorWidgetContent,
             CalendarStripContainer = CalendarStripContainer,
             MonthText = MonthText,

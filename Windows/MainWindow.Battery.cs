@@ -17,7 +17,7 @@ public partial class MainWindow
     private bool? _wasPluggedIn = null;
     private bool _isChargingNotificationVisible = false;
     private int _chargingGlanceToken = 0;
-    private DispatcherTimer? _chargingNotificationDismissTimer;
+    private UiScheduledTimer? _chargingNotificationDismissTimer;
 
     private bool AmbientAnimationsAllowed =>
         !AnimationConfig.ReduceMotion && _isNotchVisible && !_isHiddenByFullscreen;
@@ -197,7 +197,7 @@ public partial class MainWindow
         StopChargingNotificationDismissTimer();
 
         int dismissToken = _chargingGlanceToken;
-        var dismissTimer = new DispatcherTimer
+        var dismissTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(3000)
         };

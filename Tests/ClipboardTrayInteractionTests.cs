@@ -349,7 +349,7 @@ public sealed class ClipboardTrayInteractionTests
         {
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            var timer = Field<DispatcherTimer>(tray, "_ageTimer");
+            var timer = Field<UiScheduledTimer>(tray, "_ageTimer");
             Assert.True(timer.IsEnabled);
             Invoke(tray, "ClearSelectionContainers");
             Assert.Empty(Field<HashSet<ListBoxItem>>(tray, "_selectionContainers"));
@@ -437,7 +437,7 @@ public sealed class ClipboardTrayInteractionTests
             await slots.WaitAsync();
             held = true;
             tray.Attach(controller);
-            Field<DispatcherTimer>(tray, "_searchTimer").Stop();
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(first);
             window.Show();

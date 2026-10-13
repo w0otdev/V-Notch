@@ -25,71 +25,14 @@ public partial class MainWindow
     private const double _audioViewMaxHeight = 378;
     private const double _audioViewMinHeight = 150;
     private const double _audioViewChrome = 66;
-    private double _audioViewHeight = _audioViewMaxHeight;
+    private double _audioViewHeight => AudioContent.PreferredShellHeight;
     private int _audioNotchHeightGeneration;
 
-    private AudioMixerService? _audioMixerServiceCached;
-    private AudioMixerService AudioMixer =>
-        _audioMixerServiceCached ??= (AudioMixerService)App.Services.GetService(typeof(AudioMixerService))!;
+    internal ScrollViewer AudioScrollViewer => AudioContent.ScrollViewer;
+    private readonly CoalescingActionQueue _mediaVolumeWrites = new();
 
-    private System.Windows.Threading.DispatcherTimer? _audioPollTimer;
-
-    private void StartAudioPoll()
-    {
-        if (_audioPollTimer == null)
-        {
-            _audioPollTimer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background)
-            {
-                Interval = TimeSpan.FromMilliseconds(600)
-            };
-            _audioPollTimer.Tick += (_, _) => PollAudioVolumes();
-        }
-        _audioPollTimer.Start();
-    }
-
-    private void StopAudioPoll() => _audioPollTimer?.Stop();
-
-    private bool _audioTopFadeShown;
-    private bool _audioBottomFadeShown;
-
-    private void AudioScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
-        => UpdateAudioScrollFades();
-
-    private void UpdateAudioScrollFades()
-    {
-        if (AudioScrollViewer == null || AudioFadeTopStop == null || AudioFadeBottomStop == null) return;
-
-        double offset = AudioScrollViewer.VerticalOffset;
-        double scrollable = AudioScrollViewer.ScrollableHeight;
-
-        bool showTop = offset > 1.0;
-        bool showBottom = scrollable > 1.0 && offset < scrollable - 1.0;
-
-        if (showTop != _audioTopFadeShown)
-        {
-            _audioTopFadeShown = showTop;
-            AnimateAudioFadeStop(AudioFadeTopStop, showTop);
-        }
-        if (showBottom != _audioBottomFadeShown)
-        {
-            _audioBottomFadeShown = showBottom;
-            AnimateAudioFadeStop(AudioFadeBottomStop, showBottom);
-        }
-    }
-
-    private void AnimateAudioFadeStop(GradientStop stop, bool fade)
-    {
-        var to = fade ? Colors.Transparent : Colors.Black;
-        var anim = new ColorAnimation(to, new Duration(TimeSpan.FromMilliseconds(180)))
-        {
-            EasingFunction = new System.Windows.Media.Animation.QuadraticEase
-            {
-                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
-            }
-        };
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
-        stop.BeginAnimation(GradientStop.ColorProperty, anim);
-    }
+    private void StartAudioPoll() => AudioContent.StartPolling();
+    private void StopAudioPoll() => AudioContent.StopPolling();
 
     private void AudioIconButton_Click(object sender, MouseButtonEventArgs e)
     {
@@ -146,7 +89,7 @@ public partial class MainWindow
     {
         int generation = (int)transitionId;
         _viewTransitionGeneration = generation;
-        CancelTimerEditingInstant();
+        CountdownWidget.CancelEditing();
 
         FrameworkElement outgoing;
         bool fromPrimary = !fromSecondary && !fromTimer;
@@ -214,20 +157,7 @@ public partial class MainWindow
             NavIconsBackground.Visibility = Visibility.Visible;
         }
 
-        bool hadSnapshot = _lastAudioSnapshot != null;
-        // A cold CoreAudio enumeration can block for hundreds of milliseconds.
-        // Let RefreshAudioData populate the loading view on its worker instead.
-
-        if (hadSnapshot)
-        {
-            SetAudioLoadingState(false);
-            EnsureAudioUIBuilt(_lastAudioSnapshot!);
-        }
-        else
-        {
-            SetAudioLoadingState(true);
-            _audioViewHeight = _audioViewMaxHeight;
-        }
+        AudioContent.PrepareForEntrance();
 
         double fromW;
         double fromH;
@@ -266,13 +196,13 @@ public partial class MainWindow
             {
                 if (openWindowHeight > _audioViewHeight)
                     ResizeHostWindowHeight(_audioViewHeight);
-                if (!ApplyPendingAudioSnapshot())
+                if (!AudioContent.ApplyPendingSnapshot())
                     SettleAudioNotchToFit();
                 StartAudioPoll();
             },
             generation: generation);
 
-        RefreshAudioData(SettleAudioNotchToFit);
+        AudioContent.Refresh(SettleAudioNotchToFit);
     }
 
     private void SwitchFromAudioToPrimaryView(long? transitionId = null)
@@ -287,7 +217,7 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
-        ReleaseAudioSessionCache();
+        AudioContent.ReleaseSessionCache();
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
         _isScrollSessionLocked = true;
@@ -322,7 +252,7 @@ public partial class MainWindow
                 ResumeSpotifyCanvasLifecycle();
                 ShowMediaBackground();
                 UpdateProgressSectionLayout();
-                RefreshMediaMarquee();
+                MediaPlayback.RefreshMediaMarquee();
                 FadeInLyricsBlurBackgroundIfActive();
             },
             generation: generation);
@@ -340,7 +270,7 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
-        ReleaseAudioSessionCache();
+        AudioContent.ReleaseSessionCache();
         _isSecondaryView = true;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -387,7 +317,7 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
-        ReleaseAudioSessionCache();
+        AudioContent.ReleaseSessionCache();
         _isTimerView = true;
         _isAnimating = true;
         _lastViewSwitchUtc = DateTime.UtcNow;
@@ -408,7 +338,7 @@ public partial class MainWindow
                 RefreshClockView();
                 RestoreTimerContentOpacity();
             },
-            onComplete: () => UpdateTimerDisplay(),
+            onComplete: () => CountdownWidget.RefreshProgress(),
             generation: generation);
     }
 
@@ -460,7 +390,7 @@ public partial class MainWindow
                 if (outBlur != null) outBlur.Radius = 0;
                 outgoing.BeginAnimation(OpacityProperty, null);
                 outgoing.Opacity = 1;
-                RestoreAudioRootChildrenVisualState();
+                AudioContent.ResetRowAnimations();
             };
             outgoing.BeginAnimation(OpacityProperty, aFade);
             closeTranslate.BeginAnimation(TranslateTransform.YProperty, aSlide);
@@ -572,7 +502,7 @@ public partial class MainWindow
             if (inBlur != null && blurInAnim != null)
                 inBlur.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
 
-            StaggerAudioMixerReveal(inDelay + TimeSpan.FromMilliseconds(20));
+            AudioContent.RevealRows(inDelay + TimeSpan.FromMilliseconds(20));
         }
         else
         {
@@ -672,25 +602,5 @@ public partial class MainWindow
         AudioScrollViewer.BeginAnimation(HeightProperty, scrollAnim, HandoffBehavior.SnapshotAndReplace);
     }
 
-    private void PrewarmAudioSnapshot()
-    {
-        System.Threading.Tasks.Task.Run(() =>
-        {
-            try
-            {
-                var quick = ReadAudioSnapshot(includeIcons: false);
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (_lastAudioSnapshot == null)
-                    {
-                        _lastAudioSnapshot = quick;
-                    }
-                }), System.Windows.Threading.DispatcherPriority.Background);
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log("AUDIOMIXER-PREWARM", ex.Message);
-            }
-        });
-    }
+    private void PrewarmAudioSnapshot() => AudioContent.Prewarm();
 }

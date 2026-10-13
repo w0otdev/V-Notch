@@ -7,7 +7,7 @@ namespace VNotch.Modules;
 
 public abstract class NotchModuleBase : INotchModule
 {
-    private DispatcherTimer? _timer;
+    private UiScheduledTimer? _timer;
     private bool _initialized;
     private bool _disposed;
 
@@ -27,7 +27,7 @@ public abstract class NotchModuleBase : INotchModule
 
             if (TickInterval is TimeSpan interval)
             {
-                _timer = new DispatcherTimer
+                _timer = new UiScheduledTimer
                 {
                     Interval = interval
                 };

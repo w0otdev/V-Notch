@@ -37,7 +37,6 @@ public sealed class SmartThumbnailCropService : IDisposable
     private bool _modelExists;
     private bool _modelExistsChecked;
     private InferenceSession? _cachedSession;
-    private global::Windows.Media.FaceAnalysis.FaceDetector? _faceDetector;
 
     private const int MaxInferenceCacheEntries = 64;
     private readonly Dictionary<ArtworkFingerprint, InferenceCacheEntry> _inferenceCache = new();
@@ -192,7 +191,10 @@ public sealed class SmartThumbnailCropService : IDisposable
         return new SubjectBounds(cx, cy, w, h, b.Confidence, b.ClassId);
     }
 
-    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection = false)
+    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize) =>
+        GetCpuCropRect(source, targetSquareSize, useObjectDetection: false);
+
+    private Int32Rect? GetCpuCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection)
     {
         if (source == null || targetSquareSize <= 0) return null;
         int width = source.PixelWidth;
@@ -221,6 +223,44 @@ public sealed class SmartThumbnailCropService : IDisposable
             return rect;
         }
     }
+    /// <summary>Runs CPU inference off the caller's dispatcher and awaits optional WinRT face framing.</summary>
+    public async Task<Int32Rect?> GetSmartCropRectAsync(BitmapSource source, int targetSquareSize,
+        bool useObjectDetection = false, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (source == null || targetSquareSize <= 0) return null;
+        BitmapSource bitmap = source;
+        if (!bitmap.IsFrozen)
+        {
+            bitmap = source.CloneCurrentValue();
+            bitmap.Freeze();
+        }
+        return await Task.Run(async () =>
+        {
+            var fallback = GetCpuCropRect(bitmap, targetSquareSize, useObjectDetection);
+            cancellationToken.ThrowIfCancellationRequested();
+            int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
+            if (!fallback.HasValue || !useObjectDetection || targetSquareSize <= 96 ||
+                (width < 400 && height < 400)) return fallback;
+            Detection[] persons;
+            lock (_lock)
+            {
+                if (_disposed) return null;
+                var fingerprint = _fingerprintCache.GetValue(bitmap,
+                    static value => new FingerprintHolder(ArtworkFingerprint.Create(value))).Value;
+                if (!_inferenceCache.TryGetValue(fingerprint, out var cached)) return fallback;
+                persons = cached.Detections.Where(d => _personClasses.Contains(d.ClassId)).ToArray();
+            }
+            if (persons.Length == 0) return fallback;
+            float bestConfidence = persons.Max(p => p.Confidence);
+            persons = persons.Where(p => p.Confidence >= bestConfidence * 0.5f).ToArray();
+            if (persons.Length != 1) return fallback;
+            return await TryGetPortraitCropAsync(bitmap, persons[0], width, height, cancellationToken)
+                .ConfigureAwait(false) ?? fallback;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+
     private Int32Rect? ComputeSmartCropRectCore(BitmapSource source, int targetSquareSize)
     {
         if (_disposed) return null;
@@ -700,9 +740,6 @@ public sealed class SmartThumbnailCropService : IDisposable
             // Weak background detections must not widen a confident portrait.
             float bestConfidence = persons.Max(p => p.Confidence);
             persons.RemoveAll(p => p.Confidence < bestConfidence * 0.5f);
-            if (persons.Count == 1 && TryGetPortraitCrop(source, persons[0], imgWidth, imgHeight) is Int32Rect portrait)
-                return portrait;
-
             VNotch.Services.RuntimeLog.Log(LogCategory,
                 $"person path: {persons.Count} person(s) → centered crop");
             return GetPersonCropRect(persons, imgWidth, imgHeight, targetSize);
@@ -762,7 +799,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             : GetGroupPersonCropRect(persons, imgWidth, imgHeight, targetSize);
     }
 
-    private Int32Rect? TryGetPortraitCrop(BitmapSource source, Detection person, int width, int height)
+    private async Task<Int32Rect?> TryGetPortraitCropAsync(BitmapSource source, Detection person, int width, int height, CancellationToken cancellationToken)
     {
         if (!global::Windows.Media.FaceAnalysis.FaceDetector.IsSupported) return null;
         try
@@ -778,8 +815,8 @@ public sealed class SmartThumbnailCropService : IDisposable
                 using var bitmap = new global::Windows.Graphics.Imaging.SoftwareBitmap(
                     global::Windows.Graphics.Imaging.BitmapPixelFormat.Gray8, gray.PixelWidth, gray.PixelHeight);
                 bitmap.CopyFromBuffer(pixels.AsBuffer(0, length));
-                _faceDetector ??= global::Windows.Media.FaceAnalysis.FaceDetector.CreateAsync().AsTask().GetAwaiter().GetResult();
-                var faces = _faceDetector.DetectFacesAsync(bitmap).AsTask().GetAwaiter().GetResult();
+                var detector = await global::Windows.Media.FaceAnalysis.FaceDetector.CreateAsync().AsTask(cancellationToken).ConfigureAwait(false);
+                var faces = await detector.DetectFacesAsync(bitmap).AsTask(cancellationToken).ConfigureAwait(false);
                 Detection? best = null;
                 float bestArea = 0;
                 foreach (var face in faces)
@@ -812,6 +849,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             return null;
         }
     }
+
 
     internal static Int32Rect GetPortraitCropRect(Detection face, int width, int height)
     {

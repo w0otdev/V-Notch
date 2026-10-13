@@ -20,8 +20,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private readonly Channel<Task<ClipboardCapture>> _captures = Channel.CreateUnbounded<Task<ClipboardCapture>>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly Task _consumer;
-    private readonly DispatcherTimer _retentionTimer;
-    private readonly DispatcherTimer _debounceTimer;
+    private readonly UiScheduledTimer _retentionTimer;
+    private readonly UiScheduledTimer _debounceTimer;
     private uint _lastSequence;
     private uint _ownSequence;
     private uint _pendingSequence;
@@ -61,10 +61,10 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         _dispatcher = dispatcher;
         Store = store ?? new ClipboardHistoryStore();
         _consumer = ConsumeAsync();
-        _retentionTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromHours(1) };
+        _retentionTimer = new UiScheduledTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromHours(1) };
         _retentionTimer.Tick += RetentionTick;
         _retentionTimer.Start();
-        _debounceTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher) { Interval = ClipboardSettleDelay };
+        _debounceTimer = new UiScheduledTimer(DispatcherPriority.Normal, dispatcher) { Interval = ClipboardSettleDelay };
         _debounceTimer.Tick += DebounceTick;
         SystemEvents.SessionSwitch += SessionSwitch;
         SystemEvents.PowerModeChanged += PowerModeChanged;
@@ -515,7 +515,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         ReleaseClipboardExports();
     }
     private void Dispatch(Action action) { if (!_disposed) _dispatcher.BeginInvoke(DispatcherPriority.Background, action); }
-    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public void Dispose() => DisposeAsync().AsTask().SafeFireAndForget("CLIPBOARD-DISPOSE");
 
     public ValueTask DisposeAsync()
     {

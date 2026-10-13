@@ -138,12 +138,12 @@ public partial class MainWindow
 
         if (result.IsNewTrack)
         {
-            TransitionTrackText(result.DisplayText.Title, result.DisplayText.Artist);
+            MediaPlayback.TransitionTrackText(result.DisplayText.Title, result.DisplayText.Artist);
         }
         else
         {
-            UpdateTitleText(result.DisplayText.Title);
-            UpdateArtistText(result.DisplayText.Artist);
+            MediaPlayback.UpdateTitleText(result.DisplayText.Title);
+            MediaPlayback.UpdateArtistText(result.DisplayText.Artist);
         }
         CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, result.DisplayText.Title);
         UpdatePictureInPictureBadge(info.IsPictureInPicture && (result.HasRealTrack || info.IsAnyMediaPlaying));
@@ -687,7 +687,7 @@ public partial class MainWindow
         MusicViz.BeginAnimation(OpacityProperty, vizFadeIn);
     }
 
-    private DispatcherTimer? _musicCompactExitDebounceTimer;
+    private UiScheduledTimer? _musicCompactExitDebounceTimer;
     private static readonly TimeSpan MusicCompactExitDebounceDelay = TimeSpan.FromMilliseconds(1500);
 
     private void UpdateMusicCompactMode(MediaInfo info)
@@ -730,7 +730,7 @@ public partial class MainWindow
     {
         if (_musicCompactExitDebounceTimer == null)
         {
-            _musicCompactExitDebounceTimer = new DispatcherTimer { Interval = MusicCompactExitDebounceDelay };
+            _musicCompactExitDebounceTimer = new UiScheduledTimer { Interval = MusicCompactExitDebounceDelay };
             _musicCompactExitDebounceTimer.Tick += (_, _) =>
             {
                 _musicCompactExitDebounceTimer.Stop();
@@ -1052,7 +1052,7 @@ public partial class MainWindow
         shimmerBrush.GradientStops.Add(stop1);
         shimmerBrush.GradientStops.Add(stop2);
 
-        TrackTitle.Foreground = shimmerBrush;
+        MediaPlayback.TrackTitle.Foreground = shimmerBrush;
 
         var duration = TimeSpan.FromMilliseconds(2500);
         var storyboard = new Storyboard
@@ -1067,7 +1067,7 @@ public partial class MainWindow
             To = 1.1,
             Duration = duration
         };
-        Storyboard.SetTarget(anim0, TrackTitle);
+        Storyboard.SetTarget(anim0, MediaPlayback.TrackTitle);
         Storyboard.SetTargetProperty(anim0,
             new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[0].(GradientStop.Offset)", Array.Empty<object>()));
 
@@ -1077,7 +1077,7 @@ public partial class MainWindow
             To = 1.3,
             Duration = duration
         };
-        Storyboard.SetTarget(anim1, TrackTitle);
+        Storyboard.SetTarget(anim1, MediaPlayback.TrackTitle);
         Storyboard.SetTargetProperty(anim1,
             new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[1].(GradientStop.Offset)", Array.Empty<object>()));
 
@@ -1087,7 +1087,7 @@ public partial class MainWindow
             To = 1.5,
             Duration = duration
         };
-        Storyboard.SetTarget(anim2, TrackTitle);
+        Storyboard.SetTarget(anim2, MediaPlayback.TrackTitle);
         Storyboard.SetTargetProperty(anim2,
             new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[2].(GradientStop.Offset)", Array.Empty<object>()));
 
@@ -1118,11 +1118,11 @@ public partial class MainWindow
 
         if (TryFindResource("TrackTitleGradient") is Brush normalBrush)
         {
-            TrackTitle.Foreground = normalBrush;
+            MediaPlayback.TrackTitle.Foreground = normalBrush;
         }
         else
         {
-            TrackTitle.Foreground = VNotch.Services.UiPalette.PrimaryBrush;
+            MediaPlayback.TrackTitle.Foreground = VNotch.Services.UiPalette.PrimaryBrush;
         }
     }
 

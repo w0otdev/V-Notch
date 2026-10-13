@@ -17,5 +17,4 @@ public sealed class CountdownViewRefs
     public required UIElement MinusButton { get; init; }
     public required UIElement PlusHighlight { get; init; }
     public required UIElement MinusHighlight { get; init; }
-    public required UIElement CompleteOverlay { get; init; }
 }

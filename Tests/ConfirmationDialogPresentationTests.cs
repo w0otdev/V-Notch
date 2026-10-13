@@ -20,7 +20,7 @@ public sealed class ConfirmationDialogPresentationTests
     [InlineData(ConfirmationDialog.DialogIcon.Info, false, "file:///C:/fixture")]
     public void DialogOptionsChooseTheirIconTextBadgeAndActionStyle(ConfirmationDialog.DialogIcon icon, bool danger, string? detail) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateResources();
+        await using var fixture = CreateResources();
         var options = new ConfirmationDialog.DialogOptions("Fixture title", "Continue fixture", "Cancel fixture", icon,
             danger ? ConfirmationDialog.DialogStyle.Danger : ConfirmationDialog.DialogStyle.Normal, detail, danger ? "Fixture badge" : null);
         var dialog = CreateDialog(null, "Fixture message", options);
@@ -65,7 +65,7 @@ public sealed class ConfirmationDialogPresentationTests
     [InlineData("close", false)]
     public void ConfirmationAndKeyboardDismissalAnimateOnceAndKeepTheFirstResult(string action, bool expected) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateResources();
+        await using var fixture = CreateResources();
         var owner = new BackgroundWindow { Width = 100, Height = 60 };
         owner.Show();
         var dialog = CreateDialog(owner, "Fixture message", new());

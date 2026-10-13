@@ -11,18 +11,180 @@ using System.Windows.Shapes;
 using VNotch.Services;
 using VNotch.ViewModels;
 
-namespace VNotch;
+namespace VNotch.Controls;
 
-public partial class MainWindow
+public partial class AudioMixerView : UserControl, IDisposable
 {
+    private AudioMixerViewModel _viewModel = null!;
+    private Func<AudioMixerService>? _getMixer;
+    private Func<IVolumeService>? _getVolume;
+    private Func<bool> _isTransitioning = () => false;
+    private Func<bool> _usesGlass = () => false;
+    private bool IsLiquidGlassEnabled => _usesGlass();
+    private AudioMixerService? _audioMixerServiceCached;
+    private AudioMixerService AudioMixer => _audioMixerServiceCached ??= _getMixer!();
+    private bool _active;
+    private bool _disposed;
+    private bool _isAudioView => _active;
+    private bool _isAnimating => _isTransitioning();
+    private readonly UiScheduledTimer _pollTimer;
+    private const double _audioViewWidth = 720;
+    internal const double MinimumShellHeight = 150;
+    internal const double MaximumShellHeight = 378;
+    internal const double ShellChromeHeight = 66;
+    private const double _audioViewMinHeight = MinimumShellHeight;
+    private const double _audioViewMaxHeight = MaximumShellHeight;
+    private const double _audioViewChrome = ShellChromeHeight;
+    private double _audioViewHeight = MaximumShellHeight;
+
+    public double PreferredShellHeight => _audioViewHeight;
+    public AudioMixerSnapshot? Snapshot => _lastAudioSnapshot;
+    public ScrollViewer ScrollViewer => AudioScrollViewer;
+    public event Action<double, Duration, IEasingFunction>? FitHeightRequested;
+    public event Action? OutputDeviceChanged;
+
+    public AudioMixerView()
+    {
+        InitializeComponent();
+        _pollTimer = new UiScheduledTimer(System.Windows.Threading.DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _pollTimer.Tick += (_, _) => PollAudioVolumes();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible) StopPolling();
+        };
+    }
+
+    public void Attach(AudioMixerViewModel viewModel, Func<AudioMixerService> mixer,
+        Func<IVolumeService> volume, Func<bool> isTransitioning, Func<bool> usesGlass)
+    {
+        _viewModel = viewModel;
+        _getMixer = mixer;
+        _getVolume = volume;
+        _isTransitioning = isTransitioning;
+        _usesGlass = usesGlass;
+    }
+
+    public void StartPolling()
+    {
+        if (_disposed) return;
+        _active = true;
+        _pollTimer.Start();
+    }
+
+    public void StopPolling()
+    {
+        _active = false;
+        _pollTimer.Stop();
+    }
+
+    public void PrepareForEntrance()
+    {
+        _active = true;
+        if (Snapshot != null)
+        {
+            ShowLoading(false);
+            EnsureSnapshotBuilt(Snapshot);
+        }
+        else
+        {
+            ShowLoading(true);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        StopPolling();
+        _pollTimer.Dispose();
+        ++_audioPopulateToken;
+        ++_audioLoadingTransitionVersion;
+        ++_audioStaggerGeneration;
+        _pendingAudioSnapshot = null;
+        _pendingAudioAfterBuild = null;
+        CloseDeviceMenu();
+        ResetRowAnimations();
+        _audioSectionAnimationGenerations.Clear();
+        ReleaseSessionCache();
+        FitHeightRequested = null;
+        OutputDeviceChanged = null;
+    }
+
+    private bool _audioTopFadeShown;
+    private bool _audioBottomFadeShown;
+
+    private void AudioScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        => UpdateAudioScrollFades();
+
+    private void UpdateAudioScrollFades()
+    {
+        if (AudioScrollViewer == null || AudioFadeTopStop == null || AudioFadeBottomStop == null) return;
+
+        double offset = AudioScrollViewer.VerticalOffset;
+        double scrollable = AudioScrollViewer.ScrollableHeight;
+
+        bool showTop = offset > 1.0;
+        bool showBottom = scrollable > 1.0 && offset < scrollable - 1.0;
+
+        if (showTop != _audioTopFadeShown)
+        {
+            _audioTopFadeShown = showTop;
+            AnimateAudioFadeStop(AudioFadeTopStop, showTop);
+        }
+        if (showBottom != _audioBottomFadeShown)
+        {
+            _audioBottomFadeShown = showBottom;
+            AnimateAudioFadeStop(AudioFadeBottomStop, showBottom);
+        }
+    }
+
+    private void AnimateAudioFadeStop(GradientStop stop, bool fade)
+    {
+        var to = fade ? Colors.Transparent : Colors.Black;
+        var anim = new ColorAnimation(to, new Duration(TimeSpan.FromMilliseconds(180)))
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+            }
+        };
+        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
+        stop.BeginAnimation(GradientStop.ColorProperty, anim);
+    }
+
+
+    public void Prewarm()
+    {
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var quick = ReadAudioSnapshot(includeIcons: false);
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (!_disposed && _lastAudioSnapshot == null)
+                    {
+                        _lastAudioSnapshot = quick;
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Log("AUDIOMIXER-PREWARM", ex.Message);
+            }
+        });
+    }
     private readonly Dictionary<StackPanel, int> _audioSectionAnimationGenerations = new();
 
     private IVolumeService? _masterVolumeCached;
     private IVolumeService MasterVolume =>
-        _masterVolumeCached ??= (IVolumeService)App.Services.GetService(typeof(IVolumeService))!;
+        _masterVolumeCached ??= _getVolume!();
 
     private FontFamily? _audioFontCached;
-    private FontFamily AudioFont => _audioFontCached ??= (FontFamily)FindResource("MainSystemFont");
+    private FontFamily AudioFont => _audioFontCached ??= (FontFamily)FindResource("AudioSystemFont");
 
     private static readonly FontFamily SegoeSymbolFont = new FontFamily("pack://application:,,,/Fonts/#Segoe MDL2 Assets, Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol, Segoe UI");
 
@@ -51,8 +213,8 @@ public partial class MainWindow
     private static readonly Geometry InputIconGeometry = MakeFrozenGeometry(
         "M11.665 7.915v1.31a5.257 5.257 0 0 1-1.514 3.694 5.174 5.174 0 0 1-1.641 1.126 5.04 5.04 0 0 1-1.456.384v1.899h2.312a.554.554 0 0 1 0 1.108H3.634a.554.554 0 0 1 0-1.108h2.312v-1.899a5.045 5.045 0 0 1-1.456-.384 5.174 5.174 0 0 1-1.641-1.126 5.257 5.257 0 0 1-1.514-3.695v-1.31a.554.554 0 1 1 1.109 0v1.31a4.131 4.131 0 0 0 1.195 2.917 3.989 3.989 0 0 0 5.722 0 4.133 4.133 0 0 0 1.195-2.917v-1.31a.554.554 0 1 1 1.109 0zM3.77 10.37a2.875 2.875 0 0 1-.233-1.146V4.738A2.905 2.905 0 0 1 3.77 3.58a3 3 0 0 1 1.59-1.59 2.902 2.902 0 0 1 1.158-.233 2.865 2.865 0 0 1 1.152.233 2.977 2.977 0 0 1 1.793 2.748l-.012 4.487a2.958 2.958 0 0 1-.856 2.09 3.025 3.025 0 0 1-.937.634 2.865 2.865 0 0 1-1.152.233 2.905 2.905 0 0 1-1.158-.233A2.957 2.957 0 0 1 3.77 10.37z");
 
-    private bool _audioSystemExpanded { get => _viewModel.AudioMixer.IsSystemExpanded; set => _viewModel.AudioMixer.IsSystemExpanded = value; }
-    private bool _audioAppsExpanded { get => _viewModel.AudioMixer.IsApplicationsExpanded; set => _viewModel.AudioMixer.IsApplicationsExpanded = value; }
+    private bool _audioSystemExpanded { get => _viewModel.IsSystemExpanded; set => _viewModel.IsSystemExpanded = value; }
+    private bool _audioAppsExpanded { get => _viewModel.IsApplicationsExpanded; set => _viewModel.IsApplicationsExpanded = value; }
     private int _audioPopulateToken;
     private int _audioPollInFlight;
 
@@ -63,7 +225,7 @@ public partial class MainWindow
     private readonly Dictionary<uint, (Action<double> SetVol, Border IconHost, TextBlock NameLabel)> _appRows = new();
     private string _audioStructureKey = "";
 
-    private AudioMixerSnapshot? _lastAudioSnapshot { get => _viewModel.AudioMixer.Snapshot; set => _viewModel.AudioMixer.Snapshot = value; }
+    private AudioMixerSnapshot? _lastAudioSnapshot { get => _viewModel.Snapshot; set => _viewModel.Snapshot = value; }
     private AudioMixerSnapshot? _pendingAudioSnapshot;
     private readonly CoalescingActionQueue _audioWrites = new();
     private Action? _pendingAudioAfterBuild;
@@ -74,12 +236,13 @@ public partial class MainWindow
         bool isAudioView, bool isAnimating, bool hasBuiltUi)
         => isAudioView && isAnimating;
 
-    private void SetAudioLoadingState(bool isLoading)
+    public void ShowLoading(bool isLoading)
     {
         if (AudioLoadingPanel == null) return;
 
         if (isLoading)
         {
+            _audioViewHeight = MaximumShellHeight;
             _isAudioLoading = true;
             _audioLoadingTransitionVersion++;
 
@@ -182,12 +345,12 @@ public partial class MainWindow
         AudioRoot.BeginAnimation(OpacityProperty, contentFade);
         AudioRootTranslate.BeginAnimation(TranslateTransform.YProperty, contentSlide);
 
-        StaggerAudioMixerReveal(contentDelay);
+        RevealRows(contentDelay);
     }
 
     private int _audioStaggerGeneration;
 
-    private void RestoreAudioRootChildrenVisualState()
+    public void ResetRowAnimations()
     {
         _audioStaggerGeneration++;
         if (AudioRoot == null) return;
@@ -214,7 +377,7 @@ public partial class MainWindow
         }
     }
 
-    private void StaggerAudioMixerReveal(TimeSpan baseDelay)
+    public void RevealRows(TimeSpan baseDelay)
     {
         if (AudioRoot == null) return;
         int activeGen = ++_audioStaggerGeneration;
@@ -237,7 +400,7 @@ public partial class MainWindow
 
         if (AnimationConfig.ReduceMotion)
         {
-            RestoreAudioRootChildrenVisualState();
+            ResetRowAnimations();
             return;
         }
 
@@ -301,7 +464,7 @@ public partial class MainWindow
         };
     }
 
-    private void RefreshAudioData(Action? afterBuild = null)
+    public void Refresh(Action? afterBuild = null)
     {
         int token = ++_audioPopulateToken;
         _pendingAudioSnapshot = null;
@@ -336,7 +499,7 @@ public partial class MainWindow
     {
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (token != _audioPopulateToken) return;
+            if (_disposed || token != _audioPopulateToken) return;
             _lastAudioSnapshot = snap;
             if (!_isAudioView) return;
 
@@ -362,11 +525,11 @@ public partial class MainWindow
             BuildAudioUI(snap);
 
         _lastAudioSnapshot = snap;
-        SetAudioLoadingState(false);
+        ShowLoading(false);
         afterBuild?.Invoke();
     }
 
-    private void RefreshAudioLocalization()
+    public void RefreshLocalization()
     {
         AudioLoadingText.Text = Loc.Get("audio.loading");
         if (_lastAudioSnapshot != null && AudioRoot?.Children.Count > 0)
@@ -375,7 +538,7 @@ public partial class MainWindow
         }
     }
 
-    private bool ApplyPendingAudioSnapshot()
+    public bool ApplyPendingSnapshot()
     {
         var snap = _pendingAudioSnapshot;
         var afterBuild = _pendingAudioAfterBuild;
@@ -387,11 +550,11 @@ public partial class MainWindow
     }
 
     private void CacheSessionVolume(uint pid, float v)
-        => _viewModel.AudioMixer.CacheSessionVolume(pid, v);
+        => _viewModel.CacheSessionVolume(pid, v);
 
     private void PollAudioVolumes()
     {
-        if (!_isAudioView || _isAnimating) return;
+        if (_disposed || !_isAudioView || _isAnimating) return;
         if (AudioLoadingPanel?.Visibility == Visibility.Visible) return;
         if (System.Threading.Interlocked.CompareExchange(ref _audioPollInFlight, 1, 0) != 0) return;
 
@@ -407,7 +570,7 @@ public partial class MainWindow
                 {
                     try
                     {
-                        if (!_isAudioView || _isAnimating) return;
+                        if (_disposed || !_isAudioView || _isAnimating) return;
 
                         var pids = new HashSet<uint>(sessions.Where(x => !x.IsSystemSounds).Select(x => x.ProcessId));
                         bool sameSet = _appRows.Count == pids.Count && pids.All(_appRows.ContainsKey);
@@ -437,7 +600,7 @@ public partial class MainWindow
                         }
                         else
                         {
-                            RefreshAudioData();
+                            Refresh();
                         }
                     }
                     finally
@@ -493,7 +656,7 @@ public partial class MainWindow
         }
     }
 
-    private void EnsureAudioUIBuilt(AudioMixerSnapshot snap)
+    public void EnsureSnapshotBuilt(AudioMixerSnapshot snap)
     {
         if (_appRows.Count > 0 && snap.StructureKey == _audioStructureKey)
         {
@@ -548,7 +711,7 @@ public partial class MainWindow
                 onDevice: id => _audioWrites.Post("input-device", () =>
                 {
                     if (AudioMixer.SetDefaultInputDevice(id))
-                        Dispatcher.BeginInvoke(new Action(() => RefreshAudioData()));
+                        Dispatcher.BeginInvoke(new Action(() => Refresh()));
                 }),
                 out _inputSetVol, out _inputDeviceLabel));
 
@@ -593,16 +756,16 @@ public partial class MainWindow
         {
             if (!AudioMixer.SetDefaultOutputDevice(deviceId)) return;
             MasterVolume.RefreshDefaultDevice();
-            _mediaService.InvalidateVolumeSessionCache();
+
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                _volumeSynced = false;
-                RefreshAudioData();
+                OutputDeviceChanged?.Invoke();
+                Refresh();
             }));
         });
     }
 
-    private void ReleaseAudioSessionCache()
+    public void ReleaseSessionCache()
     {
         var mixer = _audioMixerServiceCached;
         if (mixer != null) _audioWrites.Post("release-cache", mixer.ReleaseSessionCache);
@@ -755,7 +918,7 @@ public partial class MainWindow
         }
 
         _audioViewHeight = newFit;
-        AnimateAudioNotchHeight(newFit, dur, ease);
+        FitHeightRequested?.Invoke(newFit, dur, ease);
     }
 
     private static T? SafeCall<T>(Func<T> fn)
@@ -1348,7 +1511,7 @@ public partial class MainWindow
 
         try
         {
-            var pos = anchor.TransformToVisual(AudioContent).Transform(new Point(0, 0));
+            var pos = anchor.TransformToVisual(this).Transform(new Point(0, 0));
             container.Margin = new Thickness(pos.X, pos.Y + anchor.ActualHeight + 4, 0, 0);
         }
         catch

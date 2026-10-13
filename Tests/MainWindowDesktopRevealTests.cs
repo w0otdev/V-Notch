@@ -1,3 +1,4 @@
+using VNotch.Services;
 using System.Reflection;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -19,7 +20,7 @@ public sealed class MainWindowDesktopRevealTests
     [InlineData(1.0)]
     public void OpacityTransitionCommitsItsTargetAndOnlyLatestCompletionRuns(double target) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         window.Opacity = target == 1 ? 0 : 1;
         int completed = 0;
@@ -61,19 +62,19 @@ public sealed class MainWindowDesktopRevealTests
     [Fact]
     public void StartupHoldPreventsScheduledDemotionAndDisablingDesktopModeClearsPendingWork() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = CreateFixture();
+        await using var fixture = CreateFixture();
         var window = fixture.Window;
         Field<NotchSettings>(window, "_settings").StayBehindWindows = true;
         window.StartStartupHold(TimeSpan.Zero);
-        Assert.Null(Field<DispatcherTimer?>(window, "_startupHoldTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_startupHoldTimer"));
         window.StartStartupHold(TimeSpan.FromSeconds(1));
-        var first = Field<DispatcherTimer>(window, "_startupHoldTimer");
+        var first = Field<UiScheduledTimer>(window, "_startupHoldTimer");
         window.StartStartupHold(TimeSpan.FromSeconds(2));
         Assert.False(first.IsEnabled);
         Invoke(window, "ScheduleDesktopLayerDemotion");
-        var demotion = Field<DispatcherTimer>(window, "_desktopDemotionDelayTimer");
+        var demotion = Field<UiScheduledTimer>(window, "_desktopDemotionDelayTimer");
         Invoke(window, "ScheduleDesktopLayerDemotion");
-        Assert.Same(demotion, Field<DispatcherTimer>(window, "_desktopDemotionDelayTimer"));
+        Assert.Same(demotion, Field<UiScheduledTimer>(window, "_desktopDemotionDelayTimer"));
         await WpfFrameWaiter.UntilAsync(() => !demotion.IsEnabled, "desktop demotion checks active hold", ct);
         Assert.True(Field<bool>(window, "_isDesktopEdgePromoted"));
         Set(window, "_desktopPromotionPending", true);
@@ -84,7 +85,7 @@ public sealed class MainWindowDesktopRevealTests
         Assert.False(Field<bool>(window, "_desktopPromotionPending"));
         Assert.False(Field<bool>(window, "_desktopDemotionPending"));
         Assert.False(Field<bool>(window, "_desktopPointerInHoverZone"));
-        Assert.Null(Field<DispatcherTimer?>(window, "_startupHoldTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_startupHoldTimer"));
         Assert.Equal(1d, window.ReadLocalValue(System.Windows.Window.OpacityProperty));
     });
 

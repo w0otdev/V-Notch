@@ -175,16 +175,16 @@ public sealed class SpotlightSearchPresentationTests
         Assert.Same(vm.Results[0], vm.SelectedResult);
         Assert.Equal(Visibility.Visible, window.FailureBar.Visibility);
         Assert.Contains(stale.DisplayTitle, window.FailureText.Text);
-        var timer = Field<DispatcherTimer>(window, "_failureTimer");
+        var timer = Field<UiScheduledTimer>(window, "_failureTimer");
         Invoke(window, "ShowSpotlightMessage", "replacement failure");
         Assert.False(timer.IsEnabled);
         Assert.Equal("replacement failure", window.FailureText.Text);
         await WpfFrameWaiter.UntilAsync(() => window.FailureBar.Visibility == Visibility.Collapsed, "failure message expired", ct);
-        Assert.Null(Field<DispatcherTimer?>(window, "_failureTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_failureTimer"));
         Invoke(window, "ShowSpotlightMessage", "cancelled failure");
         Invoke(window, "ClearLaunchFailure");
         Assert.Equal(Visibility.Collapsed, window.FailureBar.Visibility);
-        Assert.Null(Field<DispatcherTimer?>(window, "_failureTimer"));
+        Assert.Null(Field<UiScheduledTimer?>(window, "_failureTimer"));
     });
 
     private static NotchSettings Settings() => new() { EnableLocalOnlyMode = true, NotchStyle = "default" };

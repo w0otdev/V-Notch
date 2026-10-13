@@ -15,7 +15,7 @@ public sealed class FullscreenAutoHideController : IDisposable
     private readonly Func<IntPtr> _getNotchHwnd;
     private readonly Func<bool>? _isAutoHideSuppressed;
     private NotchSettings _settings;
-    private readonly DispatcherTimer _pollTimer;
+    private readonly UiScheduledTimer _pollTimer;
 
     private DateTime _lastCheckUtc = DateTime.MinValue;
     private DateTime _lastStateChangeUtc = DateTime.MinValue;
@@ -35,7 +35,7 @@ public sealed class FullscreenAutoHideController : IDisposable
         _isAutoHideSuppressed = isAutoHideSuppressed;
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-        _pollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        _pollTimer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(PollIntervalMs)
         };

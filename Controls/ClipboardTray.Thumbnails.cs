@@ -21,7 +21,7 @@ public partial class ClipboardTray
     // enqueue disk/decode work on every pixel of scrolling.
     private readonly Dictionary<FrameworkElement, ClipboardCardViewModel> _completedContentLoads = [];
     private DispatcherOperation? _cardContentRefresh;
-    private DispatcherTimer? _entranceWorkTimer;
+    private UiScheduledTimer? _entranceWorkTimer;
 
     private bool IsEntranceWorkDeferred => _entranceWorkTimer?.IsEnabled == true;
 
@@ -40,9 +40,9 @@ public partial class ClipboardTray
         _entranceWorkTimer.Start();
     }
 
-    private DispatcherTimer CreateEntranceWorkTimer()
+    private UiScheduledTimer CreateEntranceWorkTimer()
     {
-        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        var timer = new UiScheduledTimer(DispatcherPriority.Background)
         {
             // Last stagger: 60ms + 7 * 35ms + 360ms.
             Interval = TimeSpan.FromMilliseconds(665)
