@@ -1,10 +1,10 @@
-using VNotch.Services;
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using VNotch.Services;
 using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch.Controls;
@@ -37,28 +37,22 @@ internal sealed class MarqueeController
 
     #endregion
 
-#pragma warning disable S107 // WPF visual tree target elements for multi-layer text morphing and marquee
     public MarqueeController(
-        UIElement titleLayerA, TextBlock titleA, TranslateTransform titleMarqueeA, TranslateTransform titleMorphA,
-        UIElement titleLayerB, TextBlock titleB, TranslateTransform titleMarqueeB, TranslateTransform titleMorphB,
-        UIElement artistLayerA, TextBlock artistA, TranslateTransform artistMarqueeA, TranslateTransform artistMorphA,
-        UIElement artistLayerB, TextBlock artistB, TranslateTransform artistMarqueeB, TranslateTransform artistMorphB,
+        MarqueeTargets title,
+        MarqueeTargets artist,
         Func<double, double> getVisibleMediaTextWidth)
     {
-        _title = new MarqueeTargets(titleLayerA, titleA, titleMarqueeA, titleMorphA,
-            titleLayerB, titleB, titleMarqueeB, titleMorphB);
-        _artist = new MarqueeTargets(artistLayerA, artistA, artistMarqueeA, artistMorphA,
-            artistLayerB, artistB, artistMarqueeB, artistMorphB);
+        _title = title;
+        _artist = artist;
         _getVisibleMediaTextWidth = getVisibleMediaTextWidth;
-        _lastTitleText = titleA.Text ?? string.Empty;
-        _lastArtistText = artistA.Text ?? string.Empty;
+        _lastTitleText = title.A.Text.Text ?? string.Empty;
+        _lastArtistText = artist.A.Text.Text ?? string.Empty;
 
-        _titleMorphTimer = new UiScheduledTimer(DispatcherPriority.Normal, titleA.Dispatcher);
+        _titleMorphTimer = new UiScheduledTimer(DispatcherPriority.Normal, title.A.Text.Dispatcher);
         _titleMorphTimer.Tick += TitleMorphTimer_Tick;
-        _artistMorphTimer = new UiScheduledTimer(DispatcherPriority.Normal, artistA.Dispatcher);
+        _artistMorphTimer = new UiScheduledTimer(DispatcherPriority.Normal, artist.A.Text.Dispatcher);
         _artistMorphTimer.Tick += ArtistMorphTimer_Tick;
     }
-#pragma warning restore S107
 
     #region Public API
     public void Stop()
@@ -67,10 +61,10 @@ internal sealed class MarqueeController
         _artistMorphTimer.Stop();
         _pendingTitleText = null;
         _pendingArtistText = null;
-        _title.MarqueeA.BeginAnimation(TranslateTransform.XProperty, null);
-        _title.MarqueeB.BeginAnimation(TranslateTransform.XProperty, null);
-        _artist.MarqueeA.BeginAnimation(TranslateTransform.XProperty, null);
-        _artist.MarqueeB.BeginAnimation(TranslateTransform.XProperty, null);
+        _title.A.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
+        _title.B.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
+        _artist.A.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
+        _artist.B.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
     }
     public void RefreshMediaMarquee()
     {
@@ -239,8 +233,8 @@ internal sealed class MarqueeController
 
     private void RestartMarqueeFor(MarqueeTargets t, bool activeA, bool isTitle)
     {
-        var activeText = activeA ? t.TextA : t.TextB;
-        var activeTranslate = activeA ? t.MarqueeA : t.MarqueeB;
+        var activeText = activeA ? t.A.Text : t.B.Text;
+        var activeTranslate = activeA ? t.A.Marquee : t.B.Marquee;
 
         activeText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double textWidth = activeText.DesiredSize.Width;
@@ -266,20 +260,20 @@ internal sealed class MarqueeController
     {
         if (activeA)
         {
-            AnimateTextMorph(t.LayerA, t.LayerB, t.TextB, t.MorphA, t.MorphB, newText);
+            AnimateTextMorph(t.A.Layer, t.B.Layer, t.B.Text, t.A.Morph, t.B.Morph, newText);
             activeA = false;
         }
         else
         {
-            AnimateTextMorph(t.LayerB, t.LayerA, t.TextA, t.MorphB, t.MorphA, newText);
+            AnimateTextMorph(t.B.Layer, t.A.Layer, t.A.Text, t.B.Morph, t.A.Morph, newText);
             activeA = true;
         }
 
-        t.MarqueeA.X = 0;
-        t.MarqueeB.X = 0;
+        t.A.Marquee.X = 0;
+        t.B.Marquee.X = 0;
 
-        var newActiveText = activeA ? t.TextA : t.TextB;
-        var newActiveTranslate = activeA ? t.MarqueeA : t.MarqueeB;
+        var newActiveText = activeA ? t.A.Text : t.B.Text;
+        var newActiveTranslate = activeA ? t.A.Marquee : t.B.Marquee;
 
         newActiveText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         double textWidth = newActiveText.DesiredSize.Width;
@@ -341,7 +335,9 @@ internal sealed class MarqueeController
     }
 
     #endregion
-    private sealed record MarqueeTargets(
-            UIElement LayerA, TextBlock TextA, TranslateTransform MarqueeA, TranslateTransform MorphA,
-            UIElement LayerB, TextBlock TextB, TranslateTransform MarqueeB, TranslateTransform MorphB);
 }
+
+internal sealed record MarqueeLayer(
+    UIElement Layer, TextBlock Text, TranslateTransform Marquee, TranslateTransform Morph);
+
+internal sealed record MarqueeTargets(MarqueeLayer A, MarqueeLayer B);

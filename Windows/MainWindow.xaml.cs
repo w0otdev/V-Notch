@@ -545,6 +545,8 @@ public partial class MainWindow : Window
         }
         CheckForUpdatesAsync().SafeFireAndForget("UPDATE-CHECK");
 
+        PrepareFirstOpenUi();
+
         if (IsEffectivelyNotchVisible)
         {
             PlayAppearAnimation();
@@ -657,6 +659,7 @@ public partial class MainWindow : Window
     {
         if (_cleanedUp) return;
         _cleanedUp = true;
+        DiscardPreparedSettingsWindow();
         StopLiquidGlass();
         _moduleHost.StopAll();
         DisposeGreetingLifecycle();
@@ -1433,15 +1436,7 @@ public partial class MainWindow : Window
     private void OpenAppSettings(bool showTranslation = false)
     {
         if (IsGreetingInteractionBlocked) return;
-        var settingsWindow = new SettingsWindow(
-            _settings,
-            _settingsService,
-            _bluetoothModule,
-            _spotlightController.IsHotkeyRegistered,
-            _updateService)
-        {
-            Owner = this
-        };
+        var settingsWindow = TakeSettingsWindow();
 
         settingsWindow.UpdateDetected += (s, updateInfo) =>
         {
@@ -1581,7 +1576,7 @@ public partial class MainWindow : Window
             }
         };
 
-        settingsWindow.ShowDialog();
+        settingsWindow.Show();
     }
 #pragma warning restore S3776
 

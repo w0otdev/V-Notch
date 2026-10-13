@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using VNotch.Services;
 
 namespace VNotch.Controls;
@@ -55,6 +56,12 @@ public static class TrayMotion
         "BlurRadius", typeof(double), typeof(TrayMotion), new PropertyMetadata(0d, BlurRadiusChanged));
     public static readonly DependencyProperty AngleProperty = DependencyProperty.RegisterAttached(
         "Angle", typeof(double), typeof(TrayMotion), new PropertyMetadata(0d, AngleChanged));
+    public static readonly DependencyProperty ScaleProperty = DependencyProperty.RegisterAttached(
+        "Scale", typeof(double), typeof(TrayMotion), new PropertyMetadata(1d, ScaleChanged));
+    private static readonly DependencyProperty OpacityPendingProperty = DependencyProperty.RegisterAttached(
+        "OpacityPending", typeof(bool), typeof(TrayMotion), new PropertyMetadata(false));
+    private static readonly DependencyProperty ScalePendingProperty = DependencyProperty.RegisterAttached(
+        "ScalePending", typeof(bool), typeof(TrayMotion), new PropertyMetadata(false));
 
     public static Brush GetBackground(DependencyObject element) => (Brush)element.GetValue(BackgroundProperty);
     public static void SetBackground(DependencyObject element, Brush value) => element.SetValue(BackgroundProperty, value);
@@ -66,6 +73,36 @@ public static class TrayMotion
     public static void SetBlurRadius(DependencyObject element, double value) => element.SetValue(BlurRadiusProperty, value);
     public static double GetAngle(DependencyObject element) => (double)element.GetValue(AngleProperty);
     public static void SetAngle(DependencyObject element, double value) => element.SetValue(AngleProperty, value);
+    public static double GetScale(DependencyObject element) => (double)element.GetValue(ScaleProperty);
+    public static void SetScale(DependencyObject element, double value) => element.SetValue(ScaleProperty, value);
+
+    private static void ScaleChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
+    {
+        if (sender is not FrameworkElement element) return;
+        QueuePresentationChange(element, ScalePendingProperty, () =>
+        {
+            if (element.RenderTransform is not TransformGroup transforms ||
+                transforms.Children.OfType<ScaleTransform>().FirstOrDefault() is not { } scale) return;
+            double target = AnimationConfig.ReduceMotion ? 1 : GetScale(element);
+            double x = scale.ScaleX, y = scale.ScaleY;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = scale.ScaleY = target;
+            if (!element.IsLoaded || AnimationConfig.ReduceMotion) return;
+            int duration = target < 1 ? 80 : 180;
+            AnimateScale(ScaleTransform.ScaleXProperty, x);
+            AnimateScale(ScaleTransform.ScaleYProperty, y);
+
+            void AnimateScale(DependencyProperty property, double current)
+            {
+                if (Math.Abs(current - target) < 0.001) return;
+                var animation = new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(duration))
+                { EasingFunction = EaseOut, FillBehavior = FillBehavior.Stop };
+                Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
+                scale.BeginAnimation(property, animation);
+            }
+        });
+    }
 
     private static void AngleChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
@@ -99,14 +136,33 @@ public static class TrayMotion
     private static void OpacityChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
         if (sender is not FrameworkElement element) return;
-        double current = element.Opacity;
-        element.BeginAnimation(UIElement.OpacityProperty, null);
-        element.Opacity = (double)args.NewValue;
-        if (!element.IsLoaded) return;
-        var animation = new DoubleAnimation(current, element.Opacity, TimeSpan.FromMilliseconds(AnimationConfig.ReduceMotion ? 80 : 140))
-        { FillBehavior = FillBehavior.Stop, EasingFunction = EaseOut };
-        Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
-        element.BeginAnimation(UIElement.OpacityProperty, animation);
+        QueuePresentationChange(element, OpacityPendingProperty, () =>
+        {
+            double current = element.Opacity;
+            double target = GetOpacity(element);
+            element.BeginAnimation(UIElement.OpacityProperty, null);
+            element.Opacity = target;
+            if (!element.IsLoaded || Math.Abs(current - target) < 0.001) return;
+            var animation = new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(AnimationConfig.ReduceMotion ? 80 : 140))
+            { FillBehavior = FillBehavior.Stop, EasingFunction = EaseOut };
+            Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
+            element.BeginAnimation(UIElement.OpacityProperty, animation);
+        });
+    }
+
+    private static void QueuePresentationChange(FrameworkElement element, DependencyProperty pendingProperty, Action apply)
+    {
+        if (!element.IsLoaded) { apply(); return; }
+        if ((bool)element.GetValue(pendingProperty)) return;
+        element.SetValue(pendingProperty, true);
+        // Hover, focus, pin and popup triggers can hand off in one input turn.
+        // Animate the final state once; intermediate clocks have not ticked yet
+        // and would expose their base opacity/scale as a visible flash.
+        element.Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)(() =>
+        {
+            element.SetValue(pendingProperty, false);
+            apply();
+        }));
     }
 
     private static void BlurRadiusChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)

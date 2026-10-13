@@ -1040,6 +1040,10 @@ public partial class MainWindow
             targetWidth = ClipboardTrayWidth;
             targetHeight = ClipboardTrayHeight;
             SecondaryContent.Width = targetWidth - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
+            // Lay out the tray at its destination size. The shell's rounded clip
+            // reveals it while expanding, without remeasuring every card each frame.
+            SecondaryContent.Height = targetHeight - SecondaryContent.Margin.Top - SecondaryContent.Margin.Bottom;
+            SecondaryContent.VerticalAlignment = VerticalAlignment.Top;
             if (targetHeight > currentHeight)
                 ResizeHostWindowHeight(targetHeight);
             UpdateNavIconsActiveState();

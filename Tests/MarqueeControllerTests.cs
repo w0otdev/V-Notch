@@ -154,10 +154,12 @@ public class MarqueeControllerTests
 
         public MarqueeController CreateController() =>
             new(
-                TitleLayerA, TitleA, _titleMarqueeA, _titleMorphA,
-                TitleLayerB, TitleB, _titleMarqueeB, _titleMorphB,
-                ArtistLayerA, ArtistA, _artistMarqueeA, _artistMorphA,
-                ArtistLayerB, ArtistB, _artistMarqueeB, _artistMorphB,
+                title: new MarqueeTargets(
+                    A: new MarqueeLayer(TitleLayerA, TitleA, _titleMarqueeA, _titleMorphA),
+                    B: new MarqueeLayer(TitleLayerB, TitleB, _titleMarqueeB, _titleMorphB)),
+                artist: new MarqueeTargets(
+                    A: new MarqueeLayer(ArtistLayerA, ArtistA, _artistMarqueeA, _artistMorphA),
+                    B: new MarqueeLayer(ArtistLayerB, ArtistB, _artistMarqueeB, _artistMorphB)),
                 width => width);
     }
 }

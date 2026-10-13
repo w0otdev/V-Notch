@@ -1,8 +1,8 @@
-using VNotch.Services;
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using VNotch.Services;
 
 namespace VNotch.Controls;
 

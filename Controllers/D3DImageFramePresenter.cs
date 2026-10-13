@@ -82,12 +82,15 @@ internal sealed class D3DImageFramePresenter : IDisposable
         _surfaceWidth = surfaceWidth;
         _surfaceHeight = surfaceHeight;
         _presentAction = PresentPendingFrame;
-        _retryTimer = new DispatcherTimer(DispatcherPriority.Render, _dispatcher)
+        // CompositionTarget.Rendering already retries at the display cadence.
+        // This fallback yields to input and allows one frame interval between attempts.
+        _retryTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(4)
+            Interval = TimeSpan.FromSeconds(1.0 / 60)
         };
         _retryTimer.Tick += OnRetryTick;
 
+        // WPF D3DImage accepts IDirect3DSurface9 back buffers, even on current Windows.
         _direct3D = D3D9.Direct3DCreate9Ex();
         var present = new PresentParameters
         {

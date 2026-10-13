@@ -18,6 +18,8 @@ public class BatteryInfo
 
     public bool IsPowerConnected => HasBattery && (IsPluggedIn || IsCharging);
 
+    public double FillRatio => HasBattery ? Math.Clamp(Percentage / 100.0, 0, 1) : 0;
+
     public string GetBatteryIcon()
     {
         if (IsPowerConnected) return "⚡";

@@ -75,26 +75,27 @@ public partial class DebugWindow : Window
     private static readonly SolidColorBrush TagMemoryBg = new(Color.FromArgb(0x44, 0x8E, 0x24, 0xAA));
     private static readonly SolidColorBrush TagMemoryFg = new(Color.FromArgb(0xFF, 0xCE, 0x93, 0xD8));
 
-    // Cache previous strings
-    private string _prevFps = "";
-    private string _prevHz = "";
-    private string _prevFrameTime = "";
-    private string _prevVNotchCpu = "";
-    private string _prevVNotchCpuThreads = "";
-    private string _prevGlobalCpu = "";
-    private string _prevVNotchRam = "";
-    private string _prevVNotchPrivateRam = "";
-    private string _prevGcHeap = "";
-    private string _prevAllocRate = "";
-    private string _prevGcGen = "";
-    private string _prevGlobalRam = "";
-    private string _prevGlobalRamAvail = "";
-    private string _prevVNotchGpu = "";
-    private string _prevRenderLatency = "";
-    private string _prevGlobalGpu = "";
-    private string _prevGpuName = "";
-    private string _prevNetDown = "";
-    private string _prevNetUp = "";
+    // Compare metric values before allocating their display strings.
+    // Nullable caches force the first sample to populate every field, including zero.
+    private double? _prevFps;
+    private int? _prevHz;
+    private double? _prevFrameTime;
+    private double? _prevVNotchCpu;
+    private (int Threads, int Handles)? _prevVNotchCpuThreads;
+    private double? _prevGlobalCpu;
+    private ulong? _prevVNotchRam;
+    private ulong? _prevVNotchPrivateRam;
+    private long? _prevGcHeap;
+    private double? _prevAllocRate;
+    private (int Gen0, int Gen1, int Gen2)? _prevGcGen;
+    private (bool Available, ulong Used, double Percent)? _prevGlobalRam;
+    private ulong? _prevGlobalRamAvail;
+    private double? _prevVNotchGpu;
+    private (double FrameTime, double DispatcherLatency)? _prevRenderLatency;
+    private double? _prevGlobalGpu;
+    private (string Name, ulong Vram)? _prevGpuName;
+    private double? _prevNetDown;
+    private double? _prevNetUp;
     private string _prevHealthSummary = "";
     private IDisposable? _serviceLogCapture;
     private PerformanceHealthLevel _prevHealthLevel = PerformanceHealthLevel.Nominal;
@@ -241,21 +242,18 @@ public partial class DebugWindow : Window
 
     public void UpdateFps(double fps)
     {
-        string text = $"{Math.Round(fps)} FPS";
-        if (FpsSummaryText != null && _prevFps != text)
+        double rounded = Math.Round(fps);
+        if (FpsSummaryText != null && HasChanged(ref _prevFps, rounded))
         {
-            _prevFps = text;
-            FpsSummaryText.Text = text;
+            FpsSummaryText.Text = $"{rounded} FPS";
         }
     }
 
     public void UpdateRefreshRate(int hz)
     {
-        string text = hz > 0 ? $"({hz} Hz)" : "(-- Hz)";
-        if (HzSummaryText != null && _prevHz != text)
+        if (HzSummaryText != null && HasChanged(ref _prevHz, Math.Max(0, hz)))
         {
-            _prevHz = text;
-            HzSummaryText.Text = text;
+            HzSummaryText.Text = hz > 0 ? $"({hz} Hz)" : "(-- Hz)";
         }
     }
 
@@ -307,142 +305,116 @@ public partial class DebugWindow : Window
 
     private void UpdateVNotchCpuSection(PerformanceDebugSnapshot snapshot)
     {
-        string vCpuStr = $"{snapshot.ProcessCpuPercent:0.0}%";
-        if (VNotchCpuText != null && _prevVNotchCpu != vCpuStr)
+        if (VNotchCpuText != null && HasChanged(ref _prevVNotchCpu, snapshot.ProcessCpuPercent))
         {
-            _prevVNotchCpu = vCpuStr;
-            VNotchCpuText.Text = vCpuStr;
+            VNotchCpuText.Text = $"{snapshot.ProcessCpuPercent:0.0}%";
         }
         SetBarPercent(VNotchCpuScale, snapshot.ProcessCpuPercent);
 
-        string vCpuThStr = $"CPU ({snapshot.ProcessThreadCount} th / {snapshot.ProcessHandleCount} hd)";
-        if (VNotchCpuThreadsText != null && _prevVNotchCpuThreads != vCpuThStr)
+        if (VNotchCpuThreadsText != null && HasChanged(ref _prevVNotchCpuThreads,
+            (snapshot.ProcessThreadCount, snapshot.ProcessHandleCount)))
         {
-            _prevVNotchCpuThreads = vCpuThStr;
-            VNotchCpuThreadsText.Text = vCpuThStr;
+            VNotchCpuThreadsText.Text = $"CPU ({snapshot.ProcessThreadCount} th / {snapshot.ProcessHandleCount} hd)";
         }
     }
 
     private void UpdateVNotchRamSection(PerformanceDebugSnapshot snapshot)
     {
-        string vRamStr = $"{FormatMb(snapshot.ProcessWorkingSetBytes)} MB";
-        if (VNotchRamText != null && _prevVNotchRam != vRamStr)
+        if (VNotchRamText != null && HasChanged(ref _prevVNotchRam, snapshot.ProcessWorkingSetBytes))
         {
-            _prevVNotchRam = vRamStr;
-            VNotchRamText.Text = vRamStr;
+            VNotchRamText.Text = $"{FormatMb(snapshot.ProcessWorkingSetBytes)} MB";
         }
         double vRamPercent = Math.Clamp((snapshot.ProcessWorkingSetBytes / 1024.0 / 1024.0) / 10.0 * 100.0, 0, 100);
         SetBarPercent(VNotchRamScale, vRamPercent);
 
-        string vPrivStr = $"RAM ({FormatMb(snapshot.ProcessPrivateBytes)} MB Priv)";
-        if (VNotchPrivateRamText != null && _prevVNotchPrivateRam != vPrivStr)
+        if (VNotchPrivateRamText != null && HasChanged(ref _prevVNotchPrivateRam, snapshot.ProcessPrivateBytes))
         {
-            _prevVNotchPrivateRam = vPrivStr;
-            VNotchPrivateRamText.Text = vPrivStr;
+            VNotchPrivateRamText.Text = $"RAM ({FormatMb(snapshot.ProcessPrivateBytes)} MB Priv)";
         }
     }
 
     private void UpdateManagedGcSection(PerformanceDebugSnapshot snapshot)
     {
-        string heapStr = $"Heap {FormatMb((ulong)snapshot.ManagedHeapBytes)} MB";
-        if (GcHeapText != null && _prevGcHeap != heapStr)
+        if (GcHeapText != null && HasChanged(ref _prevGcHeap, snapshot.ManagedHeapBytes))
         {
-            _prevGcHeap = heapStr;
-            GcHeapText.Text = heapStr;
+            GcHeapText.Text = $"Heap {FormatMb((ulong)snapshot.ManagedHeapBytes)} MB";
         }
 
-        string allocStr = $"({FormatRate(snapshot.AllocBytesPerSec)})";
-        if (AllocRateText != null && _prevAllocRate != allocStr)
+        if (AllocRateText != null && HasChanged(ref _prevAllocRate, Math.Max(0, snapshot.AllocBytesPerSec)))
         {
-            _prevAllocRate = allocStr;
-            AllocRateText.Text = allocStr;
+            AllocRateText.Text = $"({FormatRate(snapshot.AllocBytesPerSec)})";
         }
 
-        string gcGenStr = $"GC ({snapshot.GcGen0Count}/{snapshot.GcGen1Count}/{snapshot.GcGen2Count})";
-        if (GcGenText != null && _prevGcGen != gcGenStr)
+        if (GcGenText != null && HasChanged(ref _prevGcGen,
+            (snapshot.GcGen0Count, snapshot.GcGen1Count, snapshot.GcGen2Count)))
         {
-            _prevGcGen = gcGenStr;
-            GcGenText.Text = gcGenStr;
+            GcGenText.Text = $"GC ({snapshot.GcGen0Count}/{snapshot.GcGen1Count}/{snapshot.GcGen2Count})";
         }
     }
 
     private void UpdateVNotchGpuSection(PerformanceDebugSnapshot snapshot)
     {
-        string vGpuStr = $"{snapshot.ProcessGpuPercent:0.0}%";
-        if (VNotchGpuText != null && _prevVNotchGpu != vGpuStr)
+        if (VNotchGpuText != null && HasChanged(ref _prevVNotchGpu, snapshot.ProcessGpuPercent))
         {
-            _prevVNotchGpu = vGpuStr;
-            VNotchGpuText.Text = vGpuStr;
+            VNotchGpuText.Text = $"{snapshot.ProcessGpuPercent:0.0}%";
         }
         SetBarPercent(VNotchGpuScale, snapshot.ProcessGpuPercent);
 
-        string renderLatStr = $"GPU ({snapshot.FrameTimeMs:0.0}ms / {snapshot.DispatcherLatencyMs:0.0}ms UI)";
-        if (RenderLatencyText != null && _prevRenderLatency != renderLatStr)
+        if (RenderLatencyText != null && HasChanged(ref _prevRenderLatency,
+            (snapshot.FrameTimeMs, snapshot.DispatcherLatencyMs)))
         {
-            _prevRenderLatency = renderLatStr;
-            RenderLatencyText.Text = renderLatStr;
+            RenderLatencyText.Text = $"GPU ({snapshot.FrameTimeMs:0.0}ms / {snapshot.DispatcherLatencyMs:0.0}ms UI)";
         }
     }
 
     private void UpdateGlobalUsageSection(PerformanceDebugSnapshot snapshot)
     {
-        string gCpuStr = $"{Math.Round(snapshot.GlobalCpuPercent)}%";
-        if (GlobalCpuText != null && _prevGlobalCpu != gCpuStr)
+        if (GlobalCpuText != null && HasChanged(ref _prevGlobalCpu, Math.Round(snapshot.GlobalCpuPercent)))
         {
-            _prevGlobalCpu = gCpuStr;
-            GlobalCpuText.Text = gCpuStr;
+            GlobalCpuText.Text = $"{Math.Round(snapshot.GlobalCpuPercent)}%";
         }
         SetBarPercent(GlobalCpuScale, snapshot.GlobalCpuPercent);
 
-        string gRamStr = snapshot.GlobalRamTotalBytes > 0
-            ? $"{FormatGb(snapshot.GlobalRamUsedBytes)} GB ({Math.Round(snapshot.GlobalRamPercent)}%)"
-            : "—";
-        if (GlobalRamText != null && _prevGlobalRam != gRamStr)
+        var ram = snapshot.GlobalRamTotalBytes > 0
+            ? (true, snapshot.GlobalRamUsedBytes, Math.Round(snapshot.GlobalRamPercent))
+            : (false, 0UL, 0.0);
+        if (GlobalRamText != null && HasChanged(ref _prevGlobalRam, ram))
         {
-            _prevGlobalRam = gRamStr;
-            GlobalRamText.Text = gRamStr;
+            GlobalRamText.Text = snapshot.GlobalRamTotalBytes > 0
+                ? $"{FormatGb(snapshot.GlobalRamUsedBytes)} GB ({Math.Round(snapshot.GlobalRamPercent)}%)"
+                : "—";
         }
         SetBarPercent(GlobalRamScale, snapshot.GlobalRamPercent);
 
-        string gAvailStr = $"RAM ({FormatGb(snapshot.GlobalRamAvailBytes)} GB free)";
-        if (GlobalRamAvailText != null && _prevGlobalRamAvail != gAvailStr)
+        if (GlobalRamAvailText != null && HasChanged(ref _prevGlobalRamAvail, snapshot.GlobalRamAvailBytes))
         {
-            _prevGlobalRamAvail = gAvailStr;
-            GlobalRamAvailText.Text = gAvailStr;
+            GlobalRamAvailText.Text = $"RAM ({FormatGb(snapshot.GlobalRamAvailBytes)} GB free)";
         }
 
-        string gGpuStr = $"{Math.Round(snapshot.GlobalGpuPercent)}%";
-        if (GlobalGpuText != null && _prevGlobalGpu != gGpuStr)
+        if (GlobalGpuText != null && HasChanged(ref _prevGlobalGpu, Math.Round(snapshot.GlobalGpuPercent)))
         {
-            _prevGlobalGpu = gGpuStr;
-            GlobalGpuText.Text = gGpuStr;
+            GlobalGpuText.Text = $"{Math.Round(snapshot.GlobalGpuPercent)}%";
         }
         SetBarPercent(GlobalGpuScale, snapshot.GlobalGpuPercent);
 
-        string gpuNameVram = snapshot.DedicatedVramBytes > 0
-            ? $"{snapshot.GpuName} ({FormatGb(snapshot.DedicatedVramBytes)} GB)"
-            : snapshot.GpuName;
-        if (GpuNameText != null && _prevGpuName != gpuNameVram)
+        if (GpuNameText != null && HasChanged(ref _prevGpuName, (snapshot.GpuName, snapshot.DedicatedVramBytes)))
         {
-            _prevGpuName = gpuNameVram;
-            GpuNameText.Text = gpuNameVram;
+            GpuNameText.Text = snapshot.DedicatedVramBytes > 0
+                ? $"{snapshot.GpuName} ({FormatGb(snapshot.DedicatedVramBytes)} GB)"
+                : snapshot.GpuName;
         }
     }
 
     private void UpdateNetworkSection(PerformanceDebugSnapshot snapshot)
     {
-        string downStr = FormatRate(snapshot.NetDownBytesPerSec);
-        if (NetDownText != null && _prevNetDown != downStr)
+        if (NetDownText != null && HasChanged(ref _prevNetDown, Math.Max(0, snapshot.NetDownBytesPerSec)))
         {
-            _prevNetDown = downStr;
-            NetDownText.Text = downStr;
+            NetDownText.Text = FormatRate(snapshot.NetDownBytesPerSec);
         }
 
-        string upStr = FormatRate(snapshot.NetUpBytesPerSec);
-        if (NetUpText != null && _prevNetUp != upStr)
+        if (NetUpText != null && HasChanged(ref _prevNetUp, Math.Max(0, snapshot.NetUpBytesPerSec)))
         {
-            _prevNetUp = upStr;
-            NetUpText.Text = upStr;
+            NetUpText.Text = FormatRate(snapshot.NetUpBytesPerSec);
         }
     }
 
@@ -450,30 +422,27 @@ public partial class DebugWindow : Window
     {
         if (snapshot.Fps > 0)
         {
-            string fpsStr = $"{Math.Round(snapshot.Fps)} FPS";
-            if (FpsSummaryText != null && _prevFps != fpsStr)
-            {
-                _prevFps = fpsStr;
-                FpsSummaryText.Text = fpsStr;
-            }
+            UpdateFps(snapshot.Fps);
         }
 
         if (snapshot.RefreshRateHz > 0)
         {
-            string hzStr = $"({snapshot.RefreshRateHz} Hz)";
-            if (HzSummaryText != null && _prevHz != hzStr)
-            {
-                _prevHz = hzStr;
-                HzSummaryText.Text = hzStr;
-            }
+            UpdateRefreshRate(snapshot.RefreshRateHz);
         }
 
-        string ftStr = $" • {snapshot.FrameTimeMs:0.0}ms";
-        if (FrameTimeSummaryText != null && _prevFrameTime != ftStr)
+        if (FrameTimeSummaryText != null && HasChanged(ref _prevFrameTime, snapshot.FrameTimeMs))
         {
-            _prevFrameTime = ftStr;
-            FrameTimeSummaryText.Text = ftStr;
+            FrameTimeSummaryText.Text = $" • {snapshot.FrameTimeMs:0.0}ms";
         }
+    }
+
+    private static bool HasChanged<T>(ref T? previous, T value) where T : struct
+    {
+        if (previous.HasValue && EqualityComparer<T>.Default.Equals(previous.Value, value))
+            return false;
+
+        previous = value;
+        return true;
     }
 
     #region Collapsible Section Handlers

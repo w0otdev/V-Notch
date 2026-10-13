@@ -8,6 +8,8 @@ public static class AppVersion
         typeof(AppVersion).Assembly.GetName().Version,
         typeof(AppVersion).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
 
+    public static string UserAgent { get; } = $"V-Notch/{Current} (https://github.com/rainaku/V-Notch)";
+
     internal static string Resolve(Version? assemblyVersion, string? informationalVersion)
     {
         if (informationalVersion != null && UpdateService.TryParseReleaseVersion(informationalVersion, out _, out _))

@@ -1,7 +1,7 @@
-using VNotch.Services;
 using System.Windows;
 using System.Windows.Threading;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Clipboard;
 
 namespace VNotch;

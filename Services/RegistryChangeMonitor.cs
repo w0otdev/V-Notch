@@ -5,11 +5,12 @@ using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
-// Owned by one background worker. A failed/missing subscription always requests a rescan.
-internal sealed class RegistryChangeMonitor(RegistryKey hive, string path) : IDisposable
+// Owned by one background worker. Failed subscriptions request a rescan, then back off.
+internal sealed class RegistryChangeMonitor(RegistryKey hive, string path, Func<long>? tickCount = null) : IDisposable
 {
     private readonly AutoResetEvent _changed = new(false);
     private RegistryKey? _key;
+    private long _nextRetry;
 
     [DllImport("advapi32.dll")]
     private static extern int RegNotifyChangeKeyValue(SafeRegistryHandle key,
@@ -18,6 +19,8 @@ internal sealed class RegistryChangeMonitor(RegistryKey hive, string path) : IDi
 
     internal bool ConsumeChange()
     {
+        long now = tickCount?.Invoke() ?? Environment.TickCount64;
+        if (_key == null && now < _nextRetry) return false;
         try
         {
             if (_key != null && !_changed.WaitOne(0)) return false;
@@ -34,6 +37,9 @@ internal sealed class RegistryChangeMonitor(RegistryKey hive, string path) : IDi
         }
         _key?.Dispose();
         _key = null;
+        // The usage cache also reconciles missed changes every 30 seconds.
+        // An inaccessible or absent hive must not force full scans every 1–2 seconds.
+        _nextRetry = now + 30_000;
         return true;
     }
 

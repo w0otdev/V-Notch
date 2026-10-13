@@ -23,7 +23,6 @@ internal sealed class TranslationSelectionService : IDisposable
     private IntPtr _watchedWindow;
     private volatile bool _disposed;
     private int _queued;
-    private bool _manualCopyAllowed = true;
     private readonly WinEventCallback _foregroundChanged;
     private IntPtr _foregroundHook, _lastExternalWindow;
     private readonly Func<IntPtr, bool>? _isBlocked;
@@ -58,12 +57,12 @@ internal sealed class TranslationSelectionService : IDisposable
                     return _snapshot?.Window == foreground ? _snapshot : null;
                 },
                 selection => ManualTranslationRequested?.Invoke(selection),
-                unavailable: () => { if (_manualCopyAllowed) ManualSelectionUnavailable?.Invoke(foreground, version); else ManualTranslationRequested?.Invoke(null); })).Task.Unwrap().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                unavailable: () => ManualSelectionUnavailable?.Invoke(foreground, version))).Task.Unwrap().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
             // A hung accessibility provider must not disable the explicit shortcut.
-            // Retire its queued result before starting clipboard capture.
+            // Retire its queued result before offering manual text input.
             if (!_disposed && foreground == Win32Interop.GetForegroundWindow() && _isBlocked?.Invoke(foreground) != true &&
                 Interlocked.CompareExchange(ref _manualRequestVersion, version + 1, version) == version)
                 ManualSelectionUnavailable?.Invoke(foreground, version + 1);
@@ -158,7 +157,6 @@ internal sealed class TranslationSelectionService : IDisposable
             if (window == IntPtr.Zero || IsOwnWindow(window)) return;
             if (_isBlocked?.Invoke(window) == true)
             {
-                _manualCopyAllowed = false;
                 DetachSelection(); Publish(null, !manual); return;
             }
             _lastExternalWindow = window;
@@ -175,7 +173,6 @@ internal sealed class TranslationSelectionService : IDisposable
             var eventElement = _eventElement;
             _eventElement = null;
             var result = SelectionTextReader.Read(window, eventElement, manual, out bool protectedInput);
-            if (manual) _manualCopyAllowed = !protectedInput;
             if (Win32Interop.GetForegroundWindow() != window) return;
             if (result == null)
             {

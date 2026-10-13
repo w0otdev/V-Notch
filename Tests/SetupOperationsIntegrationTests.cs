@@ -69,14 +69,39 @@ public sealed class SetupOperationsIntegrationTests
         Assert.Equal(new[] { 800 }, delays);
         Assert.Equal("fixture payload", File.ReadAllText(destination));
         delays.Clear();
+        using (var persistentLock = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Throws<IOException>(() => SetupOperations.CopyFileWithRetry(source, destination, 2, delays.Add));
+            Assert.Equal(new[] { 800, 1600 }, delays);
+        }
+        delays.Clear();
         Assert.Throws<FileNotFoundException>(() => SetupOperations.CopyFileWithRetry(Path.Combine(fixture.Root, "absent"), destination, 2, delays.Add));
-        Assert.Equal(new[] { 800, 1600 }, delays);
+        Assert.Empty(delays);
         delays.Clear();
         // File.Copy reports a directory destination as an IO or access error,
-        // depending on the Windows/.NET version. Both must exhaust retries.
+        // depending on the Windows/.NET version. Neither is a transient lock.
         var failure = Record.Exception(() => SetupOperations.CopyFileWithRetry(source, fixture.Root, 1, delays.Add));
         Assert.True(failure is IOException or UnauthorizedAccessException, $"Unexpected copy failure: {failure}");
-        Assert.Equal(new[] { 800 }, delays);
+        Assert.Empty(delays);
+    }
+
+    [Fact]
+    public void AccessDeniedDoesNotRetryOrOverwriteTheDestination()
+    {
+        using var fixture = new Fixture();
+        string source = Path.Combine(fixture.Root, "source.txt");
+        string destination = Path.Combine(fixture.Root, "destination.txt");
+        File.WriteAllText(source, "new payload");
+        File.WriteAllText(destination, "keep existing payload");
+        File.SetAttributes(destination, FileAttributes.ReadOnly);
+        var delays = new List<int>();
+        try
+        {
+            Assert.Throws<UnauthorizedAccessException>(() => SetupOperations.CopyFileWithRetry(source, destination, delay: delays.Add));
+            Assert.Empty(delays);
+            Assert.Equal("keep existing payload", File.ReadAllText(destination));
+        }
+        finally { File.SetAttributes(destination, FileAttributes.Normal); }
     }
 
     [Theory]

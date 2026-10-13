@@ -1,9 +1,9 @@
-using VNotch.Services;
 using System.Reflection;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Tests.Fakes;
 using Xunit;
 

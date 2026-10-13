@@ -290,7 +290,7 @@
     <Setter.Value>
      <ControlTemplate TargetType="Button">
       <Grid Background="Transparent" ClipToBounds="True">
-      <Grid x:Name="RootGrid" IsHitTestVisible="False" SnapsToDevicePixels="False" UseLayoutRounding="False" RenderTransformOrigin="0.5,0.5" local:TrayMotion.Angle="0">
+      <Grid x:Name="RootGrid" IsHitTestVisible="False" SnapsToDevicePixels="False" UseLayoutRounding="False" RenderTransformOrigin="0.5,0.5" local:TrayMotion.Angle="0" local:TrayMotion.Scale="1">
        <Grid.Effect>
         <DropShadowEffect Color="Black" BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.8" RenderingBias="Performance"/>
        </Grid.Effect>
@@ -315,49 +315,10 @@
        </MultiDataTrigger>
        <Trigger Property="IsMouseOver" Value="True">
         <Setter Property="Foreground" Value="White"/>
-        <Trigger.EnterActions>
-         <BeginStoryboard>
-          <Storyboard>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleX" To="1.15" Duration="0:0:0.18">
-            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.45"/></DoubleAnimation.EasingFunction>
-           </DoubleAnimation>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleY" To="1.15" Duration="0:0:0.18">
-            <DoubleAnimation.EasingFunction><BackEase EasingMode="EaseOut" Amplitude="0.45"/></DoubleAnimation.EasingFunction>
-           </DoubleAnimation>
-          </Storyboard>
-         </BeginStoryboard>
-        </Trigger.EnterActions>
-        <Trigger.ExitActions>
-         <BeginStoryboard>
-          <Storyboard>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.20">
-            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
-           </DoubleAnimation>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.20">
-            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
-           </DoubleAnimation>
-          </Storyboard>
-         </BeginStoryboard>
-        </Trigger.ExitActions>
+        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="1.15"/>
        </Trigger>
        <Trigger Property="IsPressed" Value="True">
-        <Setter TargetName="Surface" Property="Opacity" Value="0.7"/>
-        <Trigger.EnterActions>
-         <BeginStoryboard>
-          <Storyboard>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleX" To="0.88" Duration="0:0:0.08"/>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleY" To="0.88" Duration="0:0:0.08"/>
-          </Storyboard>
-         </BeginStoryboard>
-        </Trigger.EnterActions>
-        <Trigger.ExitActions>
-         <BeginStoryboard>
-          <Storyboard>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.12"/>
-           <DoubleAnimation Storyboard.TargetName="HoverScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.12"/>
-          </Storyboard>
-         </BeginStoryboard>
-        </Trigger.ExitActions>
+        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="0.88"/>
        </Trigger>
       </ControlTemplate.Triggers>
      </ControlTemplate>

@@ -145,7 +145,7 @@ internal static class MediaWindowActivator
 
     internal static bool TryGoBackInMediaTab(MediaInfo info)
     {
-        string track = NormalizeTitle(info.CurrentTrack);
+        string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
         if (track.Length < 3) return false;
 
         // Restrict navigation to the browser owning the media session, and require
@@ -423,12 +423,12 @@ internal static class MediaWindowActivator
             return 0;
 
         int score = 0;
-        string titleLower = tabTitle.ToLowerInvariant();
+        string titleLower = NormalizeTitle(tabTitle);
         string helpLower = tabHelp.ToLowerInvariant();
 
-        string track = NormalizeTitle(info.CurrentTrack);
+        string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
         string artist = NormalizeTitle(info.CurrentArtist);
-        string youtubeTitle = NormalizeTitle(info.YouTubeTitle);
+        string youtubeTitle = NormalizeMediaTitle(info.YouTubeTitle, info.MediaSource);
         string videoId = info.YouTubeVideoId?.Trim().ToLowerInvariant() ?? string.Empty;
 
         if (!string.IsNullOrEmpty(videoId) && (helpLower.Contains(videoId) || titleLower.Contains(videoId)))
@@ -475,7 +475,8 @@ internal static class MediaWindowActivator
             MediaPlatform.Bilibili when titleLower.Contains("bilibili") || titleLower.Contains("哔哩哔哩") => 50,
             MediaPlatform.Vimeo when Match("vimeo") => 50,
             MediaPlatform.Instagram when Match("instagram") => 50,
-            MediaPlatform.Twitter when titleLower.Contains("twitter") || titleLower.Contains("x.com") || titleLower.Contains(" / x") => 50,
+            MediaPlatform.Twitter when titleLower.Contains("twitter") || titleLower.Contains("x.com") ||
+                titleLower.Contains(" / x") || titleLower.StartsWith("/ x", StringComparison.Ordinal) => 50,
             _ => 0
         };
     }
@@ -607,7 +608,7 @@ internal static class MediaWindowActivator
     {
         int score = 0;
         string source = info.MediaSource ?? string.Empty;
-        string track = NormalizeTitle(info.CurrentTrack);
+        string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
         string artist = NormalizeTitle(info.CurrentArtist);
         string window = NormalizeTitle(title);
 
@@ -649,8 +650,18 @@ internal static class MediaWindowActivator
     private static string NormalizeTitle(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-        string normalized = Regex.Replace(value, @"\s+", " ").Trim().ToLowerInvariant();
-        normalized = Regex.Replace(normalized, @"\s+-\s+(youtube|twitch|discord|google chrome|microsoft edge|mozilla firefox|brave|opera|vivaldi|zen|arc|cốc cốc|thorium|waterfox|floorp).*$", "", RegexOptions.IgnoreCase);
-        return normalized;
+        return Regex.Replace(value, @"\s+", " ").Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeMediaTitle(string? value, string? source)
+    {
+        string title = NormalizeTitle(value);
+        string platform = NormalizeTitle(source);
+        // Strip only the session's exact platform suffix from metadata. Window
+        // titles keep their content; substring matching tolerates any browser suffix.
+        string suffix = " - " + platform;
+        return platform.Length > 0 && title.EndsWith(suffix, StringComparison.Ordinal)
+            ? title[..^suffix.Length]
+            : title;
     }
 }

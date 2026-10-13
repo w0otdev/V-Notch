@@ -17,6 +17,8 @@ internal static class DynamicIslandColorExtractor
     private const string LogTag = "COLOR-PICK";
     private static readonly Palette DefaultPalette = new(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
 
+    // Palette remains an immutable value result. Weak-table entries require a reference
+    // type; allocating that entry on a cache miss avoids allocating on every palette read.
     private sealed class BoxedPalette
     {
         public readonly Palette Palette;
@@ -324,6 +326,8 @@ internal static class DynamicIslandColorExtractor
         {
             var formattedBitmap = ArtworkAnalysisSource.GetBgra32(bitmap);
 
+            // Analyze a thumbnail, independent of the original artwork size. Hue buckets
+            // keep saturated colors from averaging into gray; center weighting favors the subject.
             double scaleX = (double)analysisSize / formattedBitmap.PixelWidth;
             double scaleY = (double)analysisSize / formattedBitmap.PixelHeight;
             var small = new TransformedBitmap(formattedBitmap, new ScaleTransform(scaleX, scaleY));

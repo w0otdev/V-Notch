@@ -316,7 +316,7 @@ public sealed class WeatherService : IWeatherService, IDisposable
     private static HttpClient CreateHttpClient()
     {
         var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Weather)) { Timeout = TimeSpan.FromSeconds(8) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("V-Notch/1.7.0 (https://github.com/rainaku/V-Notch)");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(AppVersion.UserAgent);
         return client;
     }
 }

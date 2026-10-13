@@ -154,14 +154,15 @@ internal sealed class LiveTranslationController : IDisposable
     private void ManualSelectionUnavailable(IntPtr foreground, long captureVersion)
     {
         if (_disposed || _dispatcher.HasShutdownStarted) return;
-        _dispatcher.BeginInvoke(async () =>
+        _dispatcher.BeginInvoke(() =>
         {
             if (_disposed || !_settings.EnableLiveTranslation || _selectionService?.IsManualRequestCurrent(captureVersion) != true || _getForegroundWindow() != foreground || _appPolicy.IsBlocked(foreground)) return;
             CancelRequest();
             long version = _requestVersion;
             bool Current() => !_disposed && version == _requestVersion && _selectionService?.IsManualRequestCurrent(captureVersion) == true && _getForegroundWindow() == foreground && !_appPolicy.IsBlocked(foreground);
-            var selection = await SelectionClipboardCapture.CaptureAsync(foreground, Current);
-            if (Current()) PresentSelection(selection, true, Current);
+            // Unsupported selection providers leave input to the user. Never send
+            // Copy shortcuts to another application or borrow its clipboard.
+            if (Current()) PresentSelection(null, true, Current);
         });
     }
 

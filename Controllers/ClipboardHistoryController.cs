@@ -95,7 +95,6 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     {
         if (_disposed || _isWritingClipboard) return;
         uint sequence = GetClipboardSequenceNumber();
-        if (VNotch.Services.Translation.SelectionClipboardCapture.IgnoreClipboardCapture(sequence)) return;
         if (sequence != 0 && sequence != _ownSequence)
         {
             _personalClipboardSequence = 0;
@@ -113,7 +112,6 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         _debounceTimer.Stop();
         if (_disposed || IsPaused || _isWritingClipboard) return;
         uint sequence = _pendingSequence;
-        if (VNotch.Services.Translation.SelectionClipboardCapture.IgnoreClipboardCapture(sequence)) return;
         if (sequence == 0 || sequence == _lastSequence || sequence == _ownSequence) return;
         _lastSequence = sequence;
         CaptureAsync(sequence).SafeFireAndForget("CLIPBOARD-CAPTURE");

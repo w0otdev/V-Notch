@@ -208,6 +208,29 @@ public class MediaDetectionServiceLifecycleTests
     }
 
     [Fact]
+    public async Task StopCancelsPinReconnectDeadlineAndRestartCanArmANewOne()
+    {
+        await using var service = CreateTestService(_ => Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(null));
+        service.Start();
+        await service.InitTask!;
+        var reconnect = (MediaPinReconnectWindow)typeof(MediaDetectionService)
+            .GetField("_pinReconnect", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(service)!;
+        reconnect.Start();
+        Assert.True(reconnect.IsWaiting);
+        await service.StopAsync();
+        Assert.False(reconnect.IsWaiting);
+        service.Start();
+        await service.InitTask!;
+        reconnect.Start();
+        Assert.True(reconnect.IsWaiting);
+        await service.DisposeAsync();
+        Assert.False(reconnect.IsWaiting);
+        reconnect.Start();
+        Assert.False(reconnect.IsWaiting);
+    }
+
+    [Fact]
     public async Task Stop_ThenRestart_RestartsSuccessfully()
     {
         int factoryCallCount = 0;
@@ -283,8 +306,10 @@ public class MediaDetectionServiceLifecycleTests
         firstInitialization.SetResult(null);
         await stopping;
         await restarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.NotNull(service.InitTask);
-        await service.InitTask;
+        // The factory signal can precede Start's assignment of InitTask.
+        // Wait for publication, rather than racing that assignment.
+        Assert.True(SpinWait.SpinUntil(() => service.InitTask != null, TimeSpan.FromSeconds(5)));
+        await service.InitTask!;
         Assert.Equal(2, factoryCalls);
         Assert.True(service.IsRunning);
     }

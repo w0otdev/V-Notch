@@ -292,6 +292,8 @@ internal static class SetupOperations
     internal static void CopyFileWithRetry(string sourceFile, string destinationFile, int maxRetries = 5,
         Action<int>? delay = null)
     {
+        const int ErrorSharingViolation = 32;
+        const int ErrorLockViolation = 33;
         for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
             try
@@ -299,11 +301,9 @@ internal static class SetupOperations
                 File.Copy(sourceFile, destinationFile, overwrite: true);
                 return;
             }
-            catch (IOException) when (attempt < maxRetries)
-            {
-                (delay ?? System.Threading.Thread.Sleep)(800 * (attempt + 1));
-            }
-            catch (UnauthorizedAccessException) when (attempt < maxRetries)
+            // Only sharing/lock violations can clear without changing the
+            // installation request. Missing paths and access denial fail now.
+            catch (IOException ex) when (attempt < maxRetries && (ex.HResult & 0xFFFF) is ErrorSharingViolation or ErrorLockViolation)
             {
                 (delay ?? System.Threading.Thread.Sleep)(800 * (attempt + 1));
             }

@@ -1,6 +1,6 @@
 using System.Windows;
-using VNotch.Services;
 using System.Windows.Threading;
+using VNotch.Services;
 
 namespace VNotch.Controls;
 

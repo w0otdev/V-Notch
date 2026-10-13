@@ -1,22 +1,23 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 
 namespace VNotch.Services;
 
 public class HoverDetectionService : IDisposable
 {
-    private const int FastIntervalMs = 33;
-    private const int SlowIntervalMs = 125;
-    private const int ProximityMargin = 120;
+    private const int OutsideWindowIntervalMs = 125;
     private const int TopEdgeRevealThickness = 3;
 
     private readonly UiScheduledTimer _pollTimer;
+    private readonly UiScheduledTimer _hoverDelayTimer;
+    private readonly Window? _inputWindow;
+    private readonly MouseEventHandler _mousePositionHandler;
     private readonly int _hoverZoneMargin;
     private Rect _notchBounds;
     private Rect _hoverZone;
-    private Rect _proximityZone;
     private bool _isHovering;
     private bool _disposed;
 
@@ -43,14 +44,27 @@ public class HoverDetectionService : IDisposable
 
     public bool IsHovering => _isHovering;
 
-    public HoverDetectionService(int hoverZoneMargin = 50)
+    public HoverDetectionService(int hoverZoneMargin = 50, Window? inputWindow = null)
     {
         _hoverZoneMargin = hoverZoneMargin;
-        _pollTimer = new UiScheduledTimer
+        _inputWindow = inputWindow;
+        _mousePositionHandler = InputWindow_MousePositionChanged;
+        var dispatcher = inputWindow?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+        // WPF cannot receive mouse events outside its HWND, including the reveal
+        // strip when the notch is behind other windows. Sample that area slowly.
+        _pollTimer = new UiScheduledTimer(DispatcherPriority.Background, dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(SlowIntervalMs)
+            Interval = TimeSpan.FromMilliseconds(OutsideWindowIntervalMs)
         };
         _pollTimer.Tick += PollTimer_Tick;
+        _hoverDelayTimer = new UiScheduledTimer(DispatcherPriority.Background, dispatcher);
+        _hoverDelayTimer.Tick += HoverDelayTimer_Tick;
+        if (_inputWindow != null)
+        {
+            _inputWindow.AddHandler(Mouse.MouseMoveEvent, _mousePositionHandler, handledEventsToo: true);
+            _inputWindow.AddHandler(Mouse.MouseEnterEvent, _mousePositionHandler, handledEventsToo: true);
+            _inputWindow.AddHandler(Mouse.MouseLeaveEvent, _mousePositionHandler, handledEventsToo: true);
+        }
     }
 
     public void UpdateNotchBounds(double left, double top, double width, double height)
@@ -63,38 +77,53 @@ public class HoverDetectionService : IDisposable
             width + _hoverZoneMargin * 2,
             height + _hoverZoneMargin
         );
-
-        _proximityZone = new Rect(
-            _hoverZone.Left - ProximityMargin,
-            _hoverZone.Top - ProximityMargin,
-            _hoverZone.Width + ProximityMargin * 2,
-            _hoverZone.Height + ProximityMargin * 2
-        );
     }
 
     public void Start()
     {
-        if (!_disposed)
+        if (!_disposed && !_pollTimer.IsEnabled)
         {
-            ApplyInterval(FastIntervalMs);
             _pollTimer.Start();
+            PollTimer_Tick(this, EventArgs.Empty);
         }
     }
 
     public void Stop()
     {
         _pollTimer.Stop();
+        _hoverDelayTimer.Stop();
+        _pendingEnter = false;
+        _pendingLeave = false;
     }
 
     private void PollTimer_Tick(object? sender, EventArgs e)
     {
         if (!GetCursorPos(out POINT point)) return;
 
-        var mousePoint = new Point(point.X, point.Y);
+        ProcessMousePosition(new Point(point.X, point.Y), Stopwatch.GetTimestamp());
+    }
+
+    private void InputWindow_MousePositionChanged(object sender, MouseEventArgs e)
+    {
+        if (_inputWindow == null || !_inputWindow.IsLoaded || !_pollTimer.IsEnabled) return;
+
+        ProcessMousePosition(_inputWindow.PointToScreen(e.GetPosition(_inputWindow)), Stopwatch.GetTimestamp());
+    }
+
+    private void HoverDelayTimer_Tick(object? sender, EventArgs e)
+    {
+        _hoverDelayTimer.Stop();
+        // Recheck at the deadline even if the cursor stopped moving.
+        PollTimer_Tick(sender, e);
+    }
+
+    internal void ProcessMousePosition(Point mousePoint, long now)
+    {
+        if (_disposed || !_pollTimer.IsEnabled) return;
         MousePositionChanged?.Invoke(this, mousePoint);
+        if (_disposed || !_pollTimer.IsEnabled) return;
 
         bool isInZone = _hoverZone.Contains(mousePoint);
-        long now = Stopwatch.GetTimestamp();
 
         if (isInZone)
         {
@@ -108,6 +137,8 @@ public class HoverDetectionService : IDisposable
 
                     _pendingEnter = true;
                     _hoverEnterTime = now;
+                    _hoverDelayTimer.Interval = _enterDelay;
+                    _hoverDelayTimer.Start();
                 }
                 else if (Stopwatch.GetElapsedTime(_hoverEnterTime, now) >= _enterDelay)
                 {
@@ -130,6 +161,8 @@ public class HoverDetectionService : IDisposable
 
                     _pendingLeave = true;
                     _hoverLeaveTime = now;
+                    _hoverDelayTimer.Interval = _leaveDelay;
+                    _hoverDelayTimer.Start();
                 }
                 else if (Stopwatch.GetElapsedTime(_hoverLeaveTime, now) >= _leaveDelay)
                 {
@@ -141,15 +174,7 @@ public class HoverDetectionService : IDisposable
             }
         }
 
-        bool needFast = _proximityZone.Contains(mousePoint)
-                        || _isHovering || _pendingEnter || _pendingLeave;
-        ApplyInterval(needFast ? FastIntervalMs : SlowIntervalMs);
-    }
-
-    private void ApplyInterval(int intervalMs)
-    {
-        if ((int)_pollTimer.Interval.TotalMilliseconds == intervalMs) return;
-        _pollTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+        if (!_pendingEnter && !_pendingLeave) _hoverDelayTimer.Stop();
     }
 
     public bool IsPointOverNotch(Point point)
@@ -191,13 +216,22 @@ public class HoverDetectionService : IDisposable
         _isHovering = false;
         _pendingEnter = false;
         _pendingLeave = false;
+        _hoverDelayTimer.Stop();
     }
 
     public void Dispose()
     {
         if (!_disposed)
         {
-            _pollTimer.Stop();
+            Stop();
+            if (_inputWindow != null)
+            {
+                _inputWindow.RemoveHandler(Mouse.MouseMoveEvent, _mousePositionHandler);
+                _inputWindow.RemoveHandler(Mouse.MouseEnterEvent, _mousePositionHandler);
+                _inputWindow.RemoveHandler(Mouse.MouseLeaveEvent, _mousePositionHandler);
+            }
+            _pollTimer.Dispose();
+            _hoverDelayTimer.Dispose();
             _disposed = true;
         }
     }

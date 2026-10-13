@@ -1,4 +1,3 @@
-using VNotch.Services;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
@@ -11,6 +10,7 @@ using System.Windows.Threading;
 using VNotch.Controllers;
 using VNotch.Controls;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Clipboard;
 using VNotch.ViewModels;
 using Xunit;

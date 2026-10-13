@@ -24,10 +24,9 @@ public sealed class NotchManager : INotchManager
 
     public NotchManager(Window window, NotchSettings settings, NotchTransitionCoordinator transitionCoordinator)
     {
-        _ = window;
         _settings = settings;
         TransitionCoordinator = transitionCoordinator;
-        _hoverService = new HoverDetectionService(settings.HoverZoneMargin);
+        _hoverService = new HoverDetectionService(settings.HoverZoneMargin, window);
 
         _hoverService.Start();
     }

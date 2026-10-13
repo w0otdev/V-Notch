@@ -1,5 +1,5 @@
-using System.Windows.Automation;
 using System.Windows;
+using System.Windows.Automation;
 using VNotch.Controls;
 using VNotch.Services;
 using VNotch.Tests.Fakes;

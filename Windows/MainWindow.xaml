@@ -26,6 +26,25 @@
 
     <Window.Resources>
 
+        <ExponentialEase x:Key="CameraExitEase" EasingMode="EaseOut" Exponent="6" po:Freeze="True"/>
+        <Storyboard x:Key="CameraPreviewExit" Duration="0:0:0.42">
+            <DoubleAnimation Storyboard.TargetName="CameraPreviewImage" Storyboard.TargetProperty="Opacity"
+                             BeginTime="0:0:0.3024" Duration="0:0:0.1176" To="0"
+                             EasingFunction="{StaticResource CameraExitEase}"/>
+            <DoubleAnimation Storyboard.TargetName="CameraOverlay" Storyboard.TargetProperty="Opacity"
+                             BeginTime="0:0:0.2772" Duration="0:0:0.1428" To="1"
+                             EasingFunction="{StaticResource CameraExitEase}"/>
+            <DoubleAnimation Storyboard.TargetName="CameraPreviewScale" Storyboard.TargetProperty="ScaleX"
+                             BeginTime="0:0:0.3024" Duration="0:0:0.1176" To="1.04"
+                             EasingFunction="{StaticResource CameraExitEase}"/>
+            <DoubleAnimation Storyboard.TargetName="CameraPreviewScale" Storyboard.TargetProperty="ScaleY"
+                             BeginTime="0:0:0.3024" Duration="0:0:0.1176" To="1.04"
+                             EasingFunction="{StaticResource CameraExitEase}"/>
+            <DoubleAnimation Storyboard.TargetName="CameraPreviewBlur" Storyboard.TargetProperty="Radius"
+                             BeginTime="0:0:0.294" Duration="0:0:0.126" To="16"
+                             EasingFunction="{StaticResource CameraExitEase}"/>
+        </Storyboard>
+
         <SolidColorBrush x:Key="NotchGradient" Color="#000000"/>
 
         <SolidColorBrush x:Key="CardGradient" Color="Transparent"/>
@@ -1057,19 +1076,20 @@
 
                                     <Border BorderBrush="#60FFFFFF" BorderThickness="1" CornerRadius="2.5"
                                             HorizontalAlignment="Left" Width="20" Height="10"
-                                            VerticalAlignment="Center"/>
+                                            VerticalAlignment="Center">
+                                        <Border x:Name="ChargingBatteryFill"
+                                                Background="#30D158"
+                                                CornerRadius="1.5"
+                                                Margin="0.5">
+                                            <Border.RenderTransform>
+                                                <ScaleTransform x:Name="ChargingBatteryFillScale" ScaleX="1" ScaleY="1"/>
+                                            </Border.RenderTransform>
+                                        </Border>
+                                    </Border>
 
                                     <Border Background="#60FFFFFF" Width="1.5" Height="5" CornerRadius="0,1,1,0"
                                             HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Margin="0,0,-1,0"/>
-
-                                    <Border x:Name="ChargingBatteryFill"
-                                            Background="#30D158"
-                                            CornerRadius="1.5"
-                                            HorizontalAlignment="Left"
-                                            VerticalAlignment="Center"
-                                            Height="7" Width="17"
-                                            Margin="1.5,0,0,0"/>
                                 </Grid>
                             </StackPanel>
                         </Grid>
@@ -1336,9 +1356,7 @@
                                                 <Border x:Name="BatteryFill"
                                                         Background="White"
                                                         CornerRadius="2.71"
-                                                        HorizontalAlignment="Left"
-                                                        Margin="0.78,1.08,0.78,1.08"
-                                                        Width="22.8">
+                                                        Margin="0.78,1.08,0.78,1.08">
                                                     <Border.RenderTransform>
                                                         <ScaleTransform x:Name="BatteryFillScale" ScaleX="1" ScaleY="1"/>
                                                     </Border.RenderTransform>

@@ -53,12 +53,4 @@ public sealed class SelectionTextReaderTests
     public void NativeRangesMustStillMatchTheReturnedText(int start, int end)
         => Assert.Null(NativeSelectionReader.Slice("short", start, end));
 
-    [Theory]
-    [InlineData("WindowsTerminal", true)]
-    [InlineData("pwsh", true)]
-    [InlineData("cmd", true)]
-    [InlineData("Telegram", false)]
-    [InlineData("chrome", false)]
-    public void TerminalCopyDoesNotUseTheInterruptShortcut(string process, bool expected)
-        => Assert.Equal(expected, SelectionClipboardCapture.UsesTerminalCopy(process));
 }

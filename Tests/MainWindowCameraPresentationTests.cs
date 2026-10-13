@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Controllers;
@@ -103,6 +104,86 @@ public sealed class MainWindowCameraPresentationTests
         Assert.False(Field<bool>(window, "_pendingCameraPreviewVisualTeardown"));
         Assert.Null(window.CameraPreviewImage.Source);
         Assert.Equal(Visibility.Visible, window.CameraOverlay.Visibility);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CameraExitHoldsTheCurrentFrameThenFinishesAllVisuals(bool blur) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(blur);
+        var window = fixture.Window;
+        var camera = Field<WebcamCaptureController>(window, "_camera");
+        typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
+        var frame = new WriteableBitmap(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+        window.CameraPreviewImage.Source = frame;
+        window.CameraPreviewImage.Opacity = 0.73;
+        window.CameraOverlay.Opacity = 0.2;
+        window.CameraPreviewScale.ScaleX = 1.02;
+        window.CameraPreviewScale.ScaleY = 1.03;
+        window.CameraPreviewBlur.Radius = blur ? 4 : 0;
+
+        await (Task)Invoke(window, "StopCameraPreview")!;
+        var storyboard = Field<Storyboard>(window, "_cameraPreviewExitStoryboard");
+        Assert.NotNull(storyboard);
+        Assert.Equal(AnimationConfig.TargetFps, Timeline.GetDesiredFrameRate(storyboard));
+        storyboard.SeekAlignedToLastTick(window, TimeSpan.FromMilliseconds(200), TimeSeekOrigin.BeginTime);
+        Assert.Same(frame, window.CameraPreviewImage.Source);
+        Assert.Equal(0.73, window.CameraPreviewImage.Opacity, 5);
+        Assert.Equal(0.2, window.CameraOverlay.Opacity, 5);
+        Assert.Equal(1.02, window.CameraPreviewScale.ScaleX, 5);
+        Assert.Equal(1.03, window.CameraPreviewScale.ScaleY, 5);
+
+        storyboard.SeekAlignedToLastTick(window, TimeSpan.FromMilliseconds(350), TimeSeekOrigin.BeginTime);
+        Assert.InRange(window.CameraPreviewImage.Opacity, 0.01, 0.72);
+        Assert.InRange(window.CameraOverlay.Opacity, 0.21, 1);
+        if (!blur) Assert.Equal(0, window.CameraPreviewBlur.Radius);
+        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Source == null, "camera exit completed", ct);
+        Assert.Equal(0, window.CameraPreviewImage.Opacity);
+        Assert.Equal(1, window.CameraOverlay.Opacity);
+        Assert.Equal(1.06, window.CameraPreviewScale.ScaleX);
+        Assert.Equal(1.06, window.CameraPreviewScale.ScaleY);
+        Assert.Equal(blur ? 16 : 0, window.CameraPreviewBlur.Radius);
+    });
+
+    [Fact]
+    public void RestartingPreviewCancelsTheOldExitStoryboard() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(false);
+        var window = fixture.Window;
+        var camera = Field<WebcamCaptureController>(window, "_camera");
+        typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
+        window.CameraPreviewImage.Source = new WriteableBitmap(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+        await (Task)Invoke(window, "StopCameraPreview")!;
+        Assert.NotNull(Field<Storyboard?>(window, "_cameraPreviewExitStoryboard"));
+
+        typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
+        Invoke(window, "PrimeCameraPreviewMorphIn");
+        Assert.Null(Field<Storyboard?>(window, "_cameraPreviewExitStoryboard"));
+        Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 42), 4, 3, camera.FadeToken);
+        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 0.8, "restarted preview appeared", ct);
+        await Task.Delay(100, ct);
+        Assert.NotNull(window.CameraPreviewImage.Source);
+        Assert.Equal(0.8, window.CameraPreviewImage.Opacity);
+        Assert.Equal(1, window.CameraPreviewScale.ScaleX);
+    });
+
+    [Fact]
+    public void ReducedMotionStopsPreviewImmediately() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        try
+        {
+            AnimationConfig.SetReduceMotion(true);
+            await using var fixture = CreateFixture(false);
+            var window = fixture.Window;
+            window.CameraPreviewImage.Source = new WriteableBitmap(2, 2, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            await (Task)Invoke(window, "StopCameraPreview")!;
+            Assert.Null(window.CameraPreviewImage.Source);
+            Assert.Null(Field<Storyboard?>(window, "_cameraPreviewExitStoryboard"));
+            Assert.Equal(1, window.CameraOverlay.Opacity);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
     });
 
     private static byte[] Pixels(int width, int height, byte value) => Enumerable.Repeat(value, width * height * 4).ToArray();

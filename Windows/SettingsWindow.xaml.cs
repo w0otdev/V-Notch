@@ -93,6 +93,7 @@ public partial class SettingsWindow : Window
     private readonly ISettingsApplicationService _settingsAppService;
     private readonly SettingsUpdatePresenter _updatePresenter;
     private bool _isLoadingSettings = true;
+    private bool _deferBackgroundInitialization;
     private UiScheduledTimer? _livePreviewDebounce;
     private bool _isSpotlightHotkeyRegistered;
     private int _lastAppliedFps;
@@ -104,16 +105,33 @@ public partial class SettingsWindow : Window
     public event EventHandler<NotchSettings>? SettingsChanged;
     public event EventHandler? AnimatedClosing;
     public event EventHandler<UpdateInfo?>? UpdateDetected;
+    internal static event Action<string>? FirstOpenProbe;
 
     public SettingsWindow(
         NotchSettings settings,
         ISettingsApplicationService settingsAppService,
         BluetoothModule? bluetoothModule = null,
         bool isSpotlightHotkeyRegistered = true,
-        IUpdateService? updateService = null)
+        IUpdateService? updateService = null,
+        bool prepareForFirstShow = false)
     {
+        _deferBackgroundInitialization = prepareForFirstShow;
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible && !_preparingFirstShow && !_firstRealShowStarted)
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+                {
+                    if (IsVisible && !_preparingFirstShow && !_firstRealShowStarted)
+                        Window_Loaded(this, new RoutedEventArgs());
+                });
+        };
+        var firstOpenProbe = System.Diagnostics.Stopwatch.StartNew();
         InitializeComponent();
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings XAML {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
         AnimationPrimitives.ApplyFpsToTree(this);
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings FPS tree {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
 
         _ = bluetoothModule;
         _settings = settings.Clone();
@@ -128,12 +146,31 @@ public partial class SettingsWindow : Window
         _updatePresenter.UpdateDetected += (s, update) => UpdateDetected?.Invoke(this, update);
 
         InitializeNavigation();
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings navigation {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
         LoadSettings();
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings load {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
         InitializeTrayBadges();
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings badges {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnMonitorConfigurationChanged;
         _appliedSettings = ReadSettingsFromUi();
         _settings = _appliedSettings.Clone();
-        if (_settings.AutoCheckUpdates)
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings snapshot {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
+        SourceInitialized += (_, _) =>
+        {
+            FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings source initialized {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+            firstOpenProbe.Restart();
+        };
+        Loaded += (_, _) =>
+        {
+            FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings source-to-loaded {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+            firstOpenProbe.Restart();
+        };
+        ContentRendered += (_, _) => FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings loaded-to-rendered {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        if (!_deferBackgroundInitialization && _settings.AutoCheckUpdates)
             _updatePresenter.CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
     }
 
@@ -142,15 +179,23 @@ public partial class SettingsWindow : Window
         ISettingsService settingsService,
         BluetoothModule? bluetoothModule = null,
         bool isSpotlightHotkeyRegistered = true,
-        IUpdateService? updateService = null)
-        : this(settings, new SettingsApplicationService(settingsService), bluetoothModule, isSpotlightHotkeyRegistered, updateService)
+        IUpdateService? updateService = null,
+        bool prepareForFirstShow = false)
+        : this(settings, new SettingsApplicationService(settingsService), bluetoothModule, isSpotlightHotkeyRegistered, updateService, prepareForFirstShow)
     {
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_preparingFirstShow || _firstRealShowStarted) return;
+        _firstRealShowStarted = true;
+        StartDeferredBackgroundInitialization();
+        var firstOpenProbe = System.Diagnostics.Stopwatch.StartNew();
         PlayEntranceAnimation();
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings entrance {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        firstOpenProbe.Restart();
         LoadVisualizerAudioDevices().SafeFireAndForget("SETTINGS-VIS-AUDIO");
+        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings audio load dispatch {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -270,7 +315,8 @@ public partial class SettingsWindow : Window
 
         RefreshMonitorChoices(preserveSelection: false);
 
-        LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
+        if (!_deferBackgroundInitialization)
+            LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
         SetVisualizerAudioDevicePlaceholder();
 
         AutoStartCheck.IsChecked = _settingsAppService.IsAutoStartEnabled();

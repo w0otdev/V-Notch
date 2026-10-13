@@ -427,10 +427,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     private MarqueeController? _marqueeController;
 
     private MarqueeController Marquee => _marqueeController ??= new MarqueeController(
-        TrackTitleLayer, TrackTitle, TitleMarqueeTranslate, TitleMorphTranslate,
-        TrackTitleNextLayer, TrackTitleNext, TitleMarqueeTranslateNext, TitleMorphTranslateNext,
-        TrackArtistLayer, TrackArtist, ArtistMarqueeTranslate, ArtistMorphTranslate,
-        TrackArtistNextLayer, TrackArtistNext, ArtistMarqueeTranslateNext, ArtistMorphTranslateNext,
+        title: new MarqueeTargets(
+            A: new MarqueeLayer(TrackTitleLayer, TrackTitle, TitleMarqueeTranslate, TitleMorphTranslate),
+            B: new MarqueeLayer(TrackTitleNextLayer, TrackTitleNext, TitleMarqueeTranslateNext, TitleMorphTranslateNext)),
+        artist: new MarqueeTargets(
+            A: new MarqueeLayer(TrackArtistLayer, TrackArtist, ArtistMarqueeTranslate, ArtistMorphTranslate),
+            B: new MarqueeLayer(TrackArtistNextLayer, TrackArtistNext, ArtistMarqueeTranslateNext, ArtistMorphTranslateNext)),
         GetVisibleMediaTextWidth);
 
     internal void RefreshMediaMarquee() => Marquee.RefreshMediaMarquee();

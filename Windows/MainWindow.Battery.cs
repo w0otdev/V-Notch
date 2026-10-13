@@ -51,12 +51,9 @@ public partial class MainWindow
     {
         AnimationConfig.SetReduceMotion(battery.IsBatterySaver);
 
-        const double batteryFillWidth = 22.8;
-        double targetWidth = Math.Clamp(battery.Percentage / 100.0 * batteryFillWidth, 1.08, batteryFillWidth);
-        double targetScale = targetWidth / batteryFillWidth;
         var scaleAnimation = new DoubleAnimation
         {
-            To = targetScale,
+            To = battery.FillRatio,
             Duration = TimeSpan.FromMilliseconds(300),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
@@ -168,8 +165,7 @@ public partial class MainWindow
             ChargingWattText.Text = string.Empty;
         }
 
-        double fillWidth = Math.Max(2, battery.Percentage / 100.0 * 17.0);
-        ChargingBatteryFill.Width = fillWidth;
+        ChargingBatteryFillScale.ScaleX = battery.FillRatio;
 
         CollapsedContent.BeginAnimation(OpacityProperty, null);
         CollapsedContent.Opacity = 0;

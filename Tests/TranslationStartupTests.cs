@@ -134,6 +134,36 @@ public sealed class TranslationStartupTests
         Assert.False(engine.Preparing.Task.IsCompleted);
     });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingSelectionOffersEmptyManualInputOnlyWhileRequestIsCurrent(bool focusChanged) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine();
+        var foreground = new IntPtr(42);
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, () => foreground);
+        controller.ApplySettings(new NotchSettings());
+        typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(controller, new TranslationSelectionService());
+        ((NotchSettings)typeof(LiveTranslationController).GetField("_settings", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(controller)!).EnableLiveTranslation = true;
+        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(controller, null)!;
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        window.ShowActivated = false;
+        typeof(LiveTranslationController).GetMethod("ManualSelectionUnavailable", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(controller, [foreground, 0L]);
+        if (focusChanged) foreground = new IntPtr(43);
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
+        Assert.Equal(!focusChanged, window.IsVisible);
+        Assert.Empty(window.OriginalText.Text);
+        Assert.Empty(window.ResultText.Text);
+        Assert.Equal(0, engine.Calls);
+        if (!focusChanged) Assert.Equal(VNotch.Services.Loc.Get("translation.noSelection"), window.StatusText.Text);
+    });
+
     [Fact]
     public void RepeatedManualRequestsAndEmptyKeyUpSnapshotsKeepTheExistingPopupAndResult() => SharedStaTestRunner.RunAsync(async ct =>
     {

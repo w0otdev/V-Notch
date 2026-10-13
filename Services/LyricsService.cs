@@ -43,9 +43,8 @@ internal sealed partial class LyricsService : IDisposable
 
     static LyricsService()
     {
-        const string userAgent = "V-Notch/1.8.0 (https://github.com/rainaku/V-Notch)";
-        _lrclibHttp.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
-        _lrcMuxHttp.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+        _lrclibHttp.DefaultRequestHeaders.UserAgent.ParseAdd(AppVersion.UserAgent);
+        _lrcMuxHttp.DefaultRequestHeaders.UserAgent.ParseAdd(AppVersion.UserAgent);
     }
 
     private readonly HttpClient _lrclibClient;

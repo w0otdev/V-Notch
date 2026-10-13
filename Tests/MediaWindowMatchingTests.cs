@@ -123,12 +123,33 @@ public sealed class MediaWindowMatchingTests
         var info = new MediaInfo { MediaSource = "YouTube", CurrentTrack = "Fixture  Song - YouTube", CurrentArtist = "Fixture Artist" };
         Assert.Equal(405, Invoke<int>("ScoreWindow", "Fixture Song Fixture Artist - YouTube - Google Chrome", "chrome", info));
         Assert.Equal(380, Invoke<int>("ScoreWindow", "Fixture Song Fixture Artist - YouTube - Google Chrome", "native", info));
-        Assert.Equal("song title", Invoke<string>("NormalizeTitle", "  SONG\t TITLE  - Microsoft Edge"));
+        Assert.Equal("song title - microsoft edge", Invoke<string>("NormalizeTitle", "  SONG\t TITLE  - Microsoft Edge"));
         Assert.Equal("", Invoke<string>("NormalizeTitle", (object?)null));
         Assert.Equal("", Invoke<string>("NormalizeTitle", " \t "));
         Assert.Equal(0, Invoke<int>("ScoreWindow", "unrelated", "native", new MediaInfo()));
         Assert.False(MediaWindowActivator.TryActivateWindow(IntPtr.Zero));
         Assert.False(MediaWindowActivator.TryGoBackInMediaTab(new MediaInfo { CurrentTrack = "ab" }));
+    }
+
+    [Theory]
+    [InlineData("Arc of Fire", "Arc of Ice")]
+    [InlineData("Zen Garden", "Zen Mountain")]
+    [InlineData("YouTube Remix", "YouTube Cover")]
+    public void ApplicationWordsInSongTitlesCannotCollapseToTheSamePrefix(string track, string other)
+    {
+        var info = new MediaInfo { CurrentTrack = "Theme - " + track };
+        Assert.Equal(0, Invoke<int>("ScoreWindow", "Theme - " + other, "native", info));
+        Assert.Equal(140, Invoke<int>("ScoreWindow", "Theme - " + track + " - Unknown Browser Nightly", "custom", info));
+    }
+
+    [Theory]
+    [InlineData("Naver Whale")]
+    [InlineData("Brave Nightly")]
+    [InlineData("Navigateur personnalisé")]
+    public void WindowMatchingDoesNotRequireKnowingTheBrowserTitle(string browser)
+    {
+        var info = new MediaInfo { MediaSource = "YouTube", CurrentTrack = "Fixture Song - YouTube" };
+        Assert.Equal(310, Invoke<int>("ScoreWindow", "Fixture Song - YouTube - " + browser, "custom", info));
     }
 
     private static T Invoke<T>(string method, params object?[] arguments) =>

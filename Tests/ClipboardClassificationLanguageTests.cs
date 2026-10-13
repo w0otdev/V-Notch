@@ -27,6 +27,10 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("x => { return x }")]
     [InlineData("intro\n    public static class Example")]
     [InlineData("SELECT id, name FROM accounts WHERE active = 1")]
+    [InlineData("Console.WriteLine(\"hello\");")]
+    [InlineData("print(\"hello\");")]
+    [InlineData("int answer = 42;")]
+    [InlineData("string message = \"hello\";")]
     public void CommonLanguageSnippetsAreRecognizedAsCode(string text) =>
         Assert.Equal(ClipboardKind.Code, ClipboardClassifier.Detect(new ClipboardCapture { Text = text }));
 
@@ -46,6 +50,13 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("<division>")]
     [InlineData("<scripture>")]
     [InlineData("line one\n  ordinary prose")]
+    [InlineData("The first clause stands; the second explains it;")]
+    [InlineData("Dòng đầu;\nDòng tiếp theo;")]
+    [InlineData("Use the placeholder {name}")]
+    [InlineData("{")]
+    [InlineData("}")]
+    [InlineData(";")]
+    [InlineData("public classroom discussion")]
     public void SimilarWordsInProseDoNotBecomeCode(string text) =>
         Assert.Equal(ClipboardKind.Text, ClipboardClassifier.Detect(new ClipboardCapture { Text = text }));
 

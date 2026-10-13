@@ -283,6 +283,8 @@ public sealed class ClipboardTrayMenuRegressionTests
             Assert.InRange(idleOpacity, 0.6, 0.85);
             var highlighted = typeof(MenuItem).GetProperty(nameof(MenuItem.IsHighlighted))!;
             highlighted.SetValue(item, true);
+            // State changes in one input turn are coalesced before rendering.
+            await Dispatcher.Yield(DispatcherPriority.Render);
             Assert.True(content.HasAnimatedProperties);
             Assert.True(((SolidColorBrush)row.Background).HasAnimatedProperties);
             await Task.Delay(50);

@@ -212,7 +212,7 @@ public sealed class SpotifyCanvasService : IDisposable
         };
         var privacyHandler = NetworkPrivacy.Handler(NetworkFeature.Canvas, handler);
         var client = new HttpClient(privacyHandler) { Timeout = RequestTimeout };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("V-Notch/1.8 SpotifyCanvas");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(AppVersion.UserAgent);
         return client;
     }
 

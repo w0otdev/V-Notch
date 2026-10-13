@@ -10,9 +10,9 @@ public enum TrayAppIconKind { Notes, Finder, Safari, Chrome, Photos, Colors, Fig
 /// <summary>Official app artwork and shared macOS-style vectors for tray file previews.</summary>
 public static class TrayAppIcons
 {
-    private static readonly IReadOnlyDictionary<TrayAppIconKind, ImageSource> Icons = CreateIcons();
+    private static readonly IReadOnlyDictionary<TrayAppIconKind, Lazy<ImageSource>> Icons = CreateIcons();
 
-    public static ImageSource Get(TrayAppIconKind kind) => Icons[kind];
+    public static ImageSource Get(TrayAppIconKind kind) => Icons[kind].Value;
 
     internal static ImageSource? FindSource(string app, string executable)
         => MatchSource(app.Trim().ToLowerInvariant()) ?? MatchSource(ExecutableName(executable));
@@ -58,14 +58,16 @@ public static class TrayAppIcons
         _ => null
     };
 
-    private static IReadOnlyDictionary<TrayAppIconKind, ImageSource> CreateIcons() => new Dictionary<TrayAppIconKind, ImageSource>
+    // First card realization needs only its source/file icons. Decode each shared
+    // asset on demand instead of loading the whole pack on that first UI frame.
+    private static IReadOnlyDictionary<TrayAppIconKind, Lazy<ImageSource>> CreateIcons() => new Dictionary<TrayAppIconKind, Lazy<ImageSource>>
     {
-        [TrayAppIconKind.Notes] = Load("notes.png"),
-        [TrayAppIconKind.Finder] = Load("finder.png"),
-        [TrayAppIconKind.Safari] = Load("safari.png"),
-        [TrayAppIconKind.Chrome] = Load("chrome.png"),
-        [TrayAppIconKind.Photos] = Load("photos.png"),
-        [TrayAppIconKind.Colors] = Draw(dc =>
+        [TrayAppIconKind.Notes] = new(() => Load("notes.png")),
+        [TrayAppIconKind.Finder] = new(() => Load("finder.png")),
+        [TrayAppIconKind.Safari] = new(() => Load("safari.png")),
+        [TrayAppIconKind.Chrome] = new(() => Load("chrome.png")),
+        [TrayAppIconKind.Photos] = new(() => Load("photos.png")),
+        [TrayAppIconKind.Colors] = new(() => Draw(dc =>
         {
             string[] colors = ["#FF4C5B", "#FF9C35", "#FFE44A", "#75D354", "#48D5C4", "#3FA8FF", "#7764E8", "#DF58B4"];
             for (int i = 0; i < colors.Length; i++)
@@ -82,8 +84,8 @@ public static class TrayAppIcons
                 dc.DrawGeometry(Brush(colors[i]), null, sector);
             }
             dc.DrawEllipse(Gradient("#FFFFFF", "#DDE2EA"), new Pen(Brush("#44FFFFFF"), 1), new Point(32, 32), 11, 11);
-        }),
-        [TrayAppIconKind.Figma] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Figma] = new(() => Draw(dc =>
         {
             // Verbatim geometry and colors from Assets/TrayIcons/figma.svg.
             Fill(dc, "#24CB71", "M11.9999 52.0001C11.9999 46.4772 16.477 42.0001 21.9999 42.0001H31.9999V52.0001C31.9999 57.5229 27.5227 62.0001 21.9999 62.0001V62.0001C16.477 62.0001 11.9999 57.5229 11.9999 52.0001V52.0001Z");
@@ -91,42 +93,42 @@ public static class TrayAppIcons
             dc.DrawEllipse(Brush("#00B6FF"), null, new Point(41.9166, 31.9999), 10, 10);
             Fill(dc, "#FF3737", "M11.9999 11.9999C11.9999 17.5228 16.477 21.9999 21.9999 21.9999L31.9999 21.9999L31.9999 1.99994L21.9999 1.99994C16.477 1.99994 11.9999 6.47709 11.9999 11.9999V11.9999Z");
             Fill(dc, "#874FFF", "M11.9999 32.0001C11.9999 37.5229 16.477 42.0001 21.9999 42.0001H31.9999L31.9999 22.0001L21.9999 22.0001C16.477 22.0001 11.9999 26.4772 11.9999 32.0001V32.0001Z");
-        }),
-        [TrayAppIconKind.Terminal] = Load("terminal.png"),
-        [TrayAppIconKind.Document] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Terminal] = new(() => Load("terminal.png")),
+        [TrayAppIconKind.Document] = new(() => Draw(dc =>
         {
             Paper(dc);
             for (int y = 27; y <= 45; y += 6) Line(dc, "#A3ADB9", 2, $"M17,{y} L47,{y}");
             Line(dc, "#A3ADB9", 2, "M17,51 L36,51");
-        }),
-        [TrayAppIconKind.Pdf] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Pdf] = new(() => Draw(dc =>
         {
             Paper(dc);
             Line(dc, "#E34A42", 2.5, "M20,46 C36,16 36,21 31,35 C28,46 17,45 23,39 C30,32 48,34 45,40 C43,44 28,33 30,22");
-        }),
-        [TrayAppIconKind.Archive] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Archive] = new(() => Draw(dc =>
         {
             Paper(dc);
             dc.DrawRectangle(Brush("#9C8770"), null, new Rect(27, 5, 8, 40));
             for (int y = 6; y < 40; y += 6) dc.DrawRectangle(Brush("#EEE7D9"), null, new Rect(y % 12 == 6 ? 27 : 31, y, 4, 3));
             dc.DrawRoundedRectangle(Brush("#C5B69A"), new Pen(Brush("#807361"), 1.5), new Rect(26, 40, 10, 11), 3, 3);
-        }),
-        [TrayAppIconKind.Audio] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Audio] = new(() => Draw(dc =>
         {
             Tile(dc, "#FF7687", "#E12E57");
             Fill(dc, "#FFFFFF", "M29,17 L48,13 L48,41 C48,48 36,51 36,44 C36,40 42,38 45,39 L45,23 L32,26 L32,46 C32,53 20,56 20,49 C20,45 26,43 29,44 Z");
-        }),
-        [TrayAppIconKind.Video] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Video] = new(() => Draw(dc =>
         {
             Tile(dc, "#BB86F7", "#6851BD");
             dc.DrawRoundedRectangle(Brushes.White, null, new Rect(12, 19, 28, 26), 5, 5);
             Fill(dc, "#FFFFFF", "M42,26 L52,20 L52,44 L42,38 Z");
-        }),
-        [TrayAppIconKind.Folder] = Draw(dc =>
+        })),
+        [TrayAppIconKind.Folder] = new(() => Draw(dc =>
         {
             Fill(dc, "#5AB7EE", "M5,16 Q5,12 9,12 L26,12 L32,18 L55,18 Q59,18 59,22 L59,51 Q59,55 55,55 L9,55 Q5,55 5,51 Z");
             dc.DrawRoundedRectangle(Gradient("#92DBFF", "#3A9EDD"), new Pen(Brush("#2C90C9"), 1), new Rect(5, 22, 54, 33), 4, 4);
-        })
+        }))
     };
 
     private static BitmapImage Load(string name)

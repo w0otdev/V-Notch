@@ -238,7 +238,7 @@ public sealed class MediaMetadataLookupServiceTests
     [Theory]
     [InlineData("direct")]
     [InlineData("search")]
-    public async Task SoundCloudUsesOEmbedArtworkAndNormalizesItsResolution(string mode)
+    public async Task SoundCloudUsesTheArtworkUrlReturnedByOEmbed(string mode)
     {
         using var handler = new Handler(request => request.RequestUri!.AbsolutePath == "/oembed"
             ? Json(new { title = "Test song", author_name = "Artist", thumbnail_url = "https://i1.sndcdn.com/artworks-test-large.jpg" })
@@ -248,7 +248,7 @@ public sealed class MediaMetadataLookupServiceTests
         string? result = mode == "direct"
             ? await service.TryGetSoundCloudArtworkFromUrlAsync("https://soundcloud.com/artist/test-song")
             : await service.TryGetSoundCloudArtworkUrlAsync("Test song", "Artist", requireStrongMatch: true);
-        Assert.Equal("https://i1.sndcdn.com/artworks-test-t500x500.jpg", result);
+        Assert.Equal("https://i1.sndcdn.com/artworks-test-large.jpg", result);
         Assert.Equal(mode == "direct" ? 1 : 3, handler.Requests.Count);
     }
 

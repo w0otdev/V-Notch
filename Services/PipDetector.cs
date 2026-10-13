@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
@@ -43,24 +42,31 @@ public static class PipDetector
         "chromium", "whale", "yandex", "wavebox", "helium", "supermium", "browser"
     };
 
-#pragma warning disable S3267 // Keyword lookup does not iterate loops
     public static bool IsPipTitle(string? title)
     {
         if (string.IsNullOrWhiteSpace(title))
             return false;
 
-        string normalized = title.Trim().ToLowerInvariant();
+        string normalized = title.Trim();
 
         if (MultilingualPipKeywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
             return true;
 
-        // Check for isolated "pip" token (e.g., "(PiP)", "[PiP]", "Video - PiP")
-        if (Regex.IsMatch(normalized, @"(^|[\s\(\[\-_])pip([\s\)\]\-_]|$)", RegexOptions.IgnoreCase))
-            return true;
-
-        return false;
+        // Accept explicit window labels, not a word inside a video/page title
+        // such as "How to install packages with pip on Windows".
+        return normalized.Equals("PiP", StringComparison.OrdinalIgnoreCase)
+            || HasEdgeLabel(normalized, "(PiP)")
+            || HasEdgeLabel(normalized, "[PiP]")
+            || normalized.EndsWith(" - PiP", StringComparison.OrdinalIgnoreCase);
     }
-#pragma warning restore S3267
+
+    private static bool HasEdgeLabel(string title, string label)
+    {
+        if (title.Equals(label, StringComparison.OrdinalIgnoreCase)) return true;
+
+        return (title.StartsWith(label, StringComparison.OrdinalIgnoreCase) && char.IsWhiteSpace(title[label.Length]))
+            || (title.EndsWith(label, StringComparison.OrdinalIgnoreCase) && char.IsWhiteSpace(title[title.Length - label.Length - 1]));
+    }
 
     public static bool IsKnownBrowserProcess(string? processName)
     {

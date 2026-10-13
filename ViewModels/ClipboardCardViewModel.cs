@@ -10,13 +10,26 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     private static readonly FontFamily SharedContentFont = new("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI");
     private static readonly Brush SharedCardBrush = CreateSurfaceBrush();
     private Brush? _cardBrush;
+    private bool? _isMasked;
     private string _age = "";
     public ClipboardEntry Entry { get; private set; }
 
     public void UpdateEntry(ClipboardEntry entry)
+        => UpdatePreparedEntry(entry, null);
+
+    internal bool? GetCachedMasking(ClipboardEntry entry) =>
+        entry.IsSensitive == Entry.IsSensitive && entry.Preview == Entry.Preview &&
+        entry.SourceApp == Entry.SourceApp && entry.SourceExecutable == Entry.SourceExecutable ? _isMasked : null;
+
+    internal void UpdatePreparedEntry(ClipboardEntry entry, bool? isMasked)
     {
         if (entry.Id != Entry.Id) throw new ArgumentException("Cannot change a card's identity.", nameof(entry));
-        if (Entry == entry) return;
+        if (Entry == entry)
+        {
+            if (isMasked.HasValue) _isMasked = isMasked;
+            return;
+        }
+        _isMasked = isMasked ?? GetCachedMasking(entry);
         Entry = entry;
         _cardBrush = null;
         RefreshAge(DateTime.UtcNow);
@@ -43,7 +56,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
 
     public double BlurRadius => IsMasked && !IsRevealed ? 12.0 : 0.0;
 
-    public bool IsMasked => Entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(Entry.Preview, Entry.SourceApp, Entry.SourceExecutable);
+    public bool IsMasked => _isMasked ??= Entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(Entry.Preview, Entry.SourceApp, Entry.SourceExecutable);
 
     public string Preview => IsMasked && !IsRevealed
         ? Services.Clipboard.ClipboardSensitiveData.Mask
@@ -207,7 +220,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
             OnPropertyChanged(property);
     }
     public FontFamily ContentFont => SharedContentFont;
-    public Brush CardBrush => _cardBrush ??= CreateCardBrush(Entry);
+    public Brush CardBrush => _cardBrush ??= CreateCardBrush(Entry, IsMasked);
     [ObservableProperty] private ImageSource? _image;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplaySourceIcon))]
@@ -219,14 +232,20 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     [ObservableProperty] private bool _isCopied;
     [ObservableProperty] private bool _isMenuOpen;
     public ClipboardCardViewModel(ClipboardEntry entry)
+        : this(entry, null)
+    {
+    }
+
+    internal ClipboardCardViewModel(ClipboardEntry entry, bool? isMasked)
     {
         Entry = entry;
+        _isMasked = isMasked;
         RefreshAge(DateTime.UtcNow);
     }
 
-    private static Brush CreateCardBrush(ClipboardEntry entry)
+    private static Brush CreateCardBrush(ClipboardEntry entry, bool isMasked)
     {
-        if (entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(entry.Preview, entry.SourceApp, entry.SourceExecutable) || entry.Kind != ClipboardKind.Color || !Services.Clipboard.ClipboardClassifier.TryParseColor(entry.Preview, out uint argb))
+        if (isMasked || entry.Kind != ClipboardKind.Color || !Services.Clipboard.ClipboardClassifier.TryParseColor(entry.Preview, out uint argb))
             return SharedCardBrush;
         var color = Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
         var brush = new SolidColorBrush(color); brush.Freeze(); return brush;

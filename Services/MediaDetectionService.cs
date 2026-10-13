@@ -145,6 +145,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         _metadataLookup = metadataLookup;
         _artworkService = artworkService;
         _windowTitleScanner = windowTitleScanner;
+        _pinReconnect = new MediaPinReconnectWindow(() => _changes.Enqueue(ChangeTypes.ForceRefresh));
         _spotifyWindowTitle = spotifyWindowTitle ?? GetSpotifyWindowTitle;
         _sessionManagerFactory = sessionManagerFactory;
         _volumeService = new MediaSessionVolumeService();
@@ -165,7 +166,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         set => _keepPinnedOnTrackChange = value;
     }
     private PinnedSession? _pinnedSession;
-    private long _pinMissingSince;
+    private readonly MediaPinReconnectWindow _pinReconnect;
     private MediaInfo? _lastPublishedInfo;
     private bool _pinClosedThisUpdate;
 
@@ -207,7 +208,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 return false;
             }
         }
-        Interlocked.Exchange(ref _pinMissingSince, 0);
+        _pinReconnect.Reset();
         _changes.Enqueue(ChangeTypes.ForceRefresh);
         return true;
     }
@@ -644,7 +645,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             }
 
             var waitingPin = Volatile.Read(ref _pinnedSession);
-            if (waitingPin != null && Interlocked.Read(ref _pinMissingSince) != 0)
+            if (waitingPin != null && _pinReconnect.IsWaiting)
             {
                 // Stop UI extrapolation immediately while allowing a short
                 // reconnection window for players that rebuild sessions per song.
@@ -2872,19 +2873,6 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     }
 
 #pragma warning disable S3776
-    private async Task RefreshAfterPinGapAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(4100), cancellationToken).ConfigureAwait(false);
-            if (!_disposed) _changes.Enqueue(ChangeTypes.ForceRefresh);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when cancellation token is triggered.
-        }
-    }
-
     private async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth)> ResolveActiveSessionAsync(bool forceRefresh)
     {
         // Stop clears the shared reference while this scan can be awaiting
@@ -2908,7 +2896,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                 }
                 if (others.Count != pinned.OtherSessionKeys.Count)
                     Interlocked.CompareExchange(ref _pinnedSession, pinned with { OtherSessionKeys = others }, pinned);
-                Interlocked.Exchange(ref _pinMissingSince, 0);
+                _pinReconnect.Reset();
                 return (match, null);
             }
             if (_keepPinnedOnTrackChange)
@@ -2930,7 +2918,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
                     };
                     if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, rebound, pinned), pinned))
                     {
-                        Interlocked.Exchange(ref _pinMissingSince, 0);
+                        _pinReconnect.Reset();
                         RuntimeLog.Info("MEDIA-PIN", "Reconnected pinned source after its media session was replaced.");
                         return (replacement, null);
                     }
@@ -2938,17 +2926,16 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             }
             // Session lists can briefly be empty during track changes. Keep the
             // pinned snapshot until absence is confirmed, never select a rival.
-            long now = Environment.TickCount64;
-            long missingSince = Interlocked.CompareExchange(ref _pinMissingSince, now, 0);
-            if (missingSince == 0)
+            lock (_lifecycleLock)
             {
-                _ = RefreshAfterPinGapAsync(_bgCts?.Token ?? CancellationToken.None);
-                return (null, null);
+                if (_bgCts?.IsCancellationRequested != false || _disposed ||
+                    !ReferenceEquals(Volatile.Read(ref _pinnedSession), pinned)) return (null, null);
+                _pinReconnect.Start();
             }
-            if (now - missingSince < 4000) return (null, null);
+            if (!_pinReconnect.HasExpired) return (null, null);
             if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, null, pinned), pinned))
             {
-                Interlocked.Exchange(ref _pinMissingSince, 0);
+                _pinReconnect.Reset();
                 UnsubscribeFromSession();
                 _pinClosedThisUpdate = true;
                 RuntimeLog.Info("MEDIA-PIN", "Pinned session closed; restored automatic selection.");
@@ -3677,6 +3664,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
             ctsToCancel = _bgCts;
             _bgCts = null;
+            if (isDisposing) _pinReconnect.Dispose();
+            else _pinReconnect.Reset();
 
             var tasksToWait = new List<Task>();
             if (!_workerDrainTask.IsCompleted) tasksToWait.Add(_workerDrainTask);
@@ -3729,7 +3718,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
 
         // 3. Unsubscribe from session & session manager
         Interlocked.Exchange(ref _pinnedSession, null);
-        Interlocked.Exchange(ref _pinMissingSince, 0);
+        _pinReconnect.Reset();
         UnsubscribeFromSession();
         if (sessionManagerToUnsub != null)
         {

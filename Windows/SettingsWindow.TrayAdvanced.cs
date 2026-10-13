@@ -30,9 +30,9 @@ public partial class SettingsWindow
         TrayAdvancedHint.Text = Loc.Get("settings.trayAdvanced.hint");
         TraySensitiveCheck.Content = Loc.Get("settings.trayDeleteSensitive");
         TraySensitiveCheck.ToolTip = Loc.Get("settings.trayDeleteSensitive.hint");
-        TrayTextCheck.Content = Loc.Get("settings.trayCaptureText");
-        TrayImagesCheck.Content = Loc.Get("settings.trayCaptureImages");
-        TrayFilesCheck.Content = Loc.Get("settings.trayCaptureFiles");
+        TrayTextLabel.Text = Loc.Get("settings.trayCaptureText");
+        TrayImagesLabel.Text = Loc.Get("settings.trayCaptureImages");
+        TrayFilesLabel.Text = Loc.Get("settings.trayCaptureFiles");
         TrayDelaySlider.Label = Loc.Get("settings.trayCaptureDelay");
         TrayDelaySlider.Description = Loc.Get("settings.trayCaptureDelay.hint");
     }
@@ -48,9 +48,9 @@ public partial class SettingsWindow
                 _seenTraySettings.UnionWith(File.ReadAllLines(SeenTraySettingsPath));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        AddTrayBadge(TrayTextRow, "capture-text-v1");
-        AddTrayBadge(TrayImagesRow, "capture-images-v1");
-        AddTrayBadge(TrayFilesRow, "capture-files-v1");
+        AddTrayBadge(TrayTextBadgeHost, "capture-text-v1", TrayTextRow);
+        AddTrayBadge(TrayImagesBadgeHost, "capture-images-v1", TrayImagesRow);
+        AddTrayBadge(TrayFilesBadgeHost, "capture-files-v1", TrayFilesRow);
         AddTrayBadge(TrayDelayRow, "capture-delay-v1");
         if (NavFileTray.Child is StackPanel nav)
             AddTrayBadge(nav, "file-tray-v1", NavFileTray);
@@ -67,7 +67,7 @@ public partial class SettingsWindow
             Padding = new Thickness(5, 2, 5, 2),
             Margin = new Thickness(8, 0, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = panel is WrapPanel ? VerticalAlignment.Center : VerticalAlignment.Top,
             IsHitTestVisible = false,
             RenderTransformOrigin = new Point(0.5, 0.5),
             RenderTransform = scale,

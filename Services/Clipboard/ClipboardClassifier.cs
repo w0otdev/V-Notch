@@ -4,7 +4,7 @@ using VNotch.Models;
 
 namespace VNotch.Services.Clipboard;
 
-/// <summary>Deterministic offline classification. Rules can be added without changing capture or storage.</summary>
+/// <summary>Offline keyword and syntax heuristics; no model or semantic inference is used.</summary>
 public static partial class ClipboardClassifier
 {
     public static readonly string[] GroupNames = ["Work", "Ideas", "Email", "Shopping", "Receipts", "Important"];
@@ -37,7 +37,7 @@ public static partial class ClipboardClassifier
 
     public static string[] Classify(string text, ClipboardKind kind)
     {
-        // A strong signal, or two independent context signals, reaches the confidence threshold.
+        // A strong keyword, or two different context keywords, assigns a suggested group.
         var groups = Rules.Where(rule => rule.Strong.Count(word => ContainsPhrase(text, word)) * 2 +
                                         rule.Context.Count(word => ContainsPhrase(text, word)) >= 2)
             .Select(rule => rule.Group).ToList();
@@ -96,7 +96,24 @@ public static partial class ClipboardClassifier
 
     [GeneratedRegex(@"^(#[0-9a-fA-F]{3,4}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*[\d.]+)?\s*\))$", RegexOptions.CultureInvariant)]
     private static partial Regex ColorPattern();
-    [GeneratedRegex(@"(?m)(^\s*(using\s+[\w.]+;|import\s|from\s+\w+\s+import|(?:public|private|internal)\s+(?:static\s+)?(?:class|void|Task)|(?:const|let|var)\s+\w+\s*=|def\s+\w+\(|function\s+\w+\(|SELECT\s+.+\s+FROM|<\/?(?:div|html|script|style|body)\b)|=>\s*\{|[{};]\s*$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    // Punctuation alone is common in prose. Require a declaration, a call or another syntax signal.
+    [GeneratedRegex("""
+        (?m)(
+            ^[ \t]*(
+                using\s+[\w.]+;
+                | import\s
+                | from\s+\w+\s+import
+                | (?:public|private|internal)\s+(?:static\s+)?(?:class|void|Task)\b
+                | (?:const|let|var|int|long|float|double|decimal|bool|string|char|byte)\s+\w+\s*=
+                | def\s+\w+\(
+                | function\s+\w+\(
+                | SELECT\s+.+\s+FROM\b
+                | <\/?(?:div|html|script|style|body)\b
+                | (?:\w+\.)*\w+\([^\r\n]*\);[ \t]*$
+            )
+            | =>\s*\{
+        )
+        """, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.IgnorePatternWhitespace)]
     private static partial Regex CodePattern();
     [GeneratedRegex(@"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", RegexOptions.CultureInvariant)]
     private static partial Regex EmailPattern();

@@ -18,6 +18,7 @@ public sealed class CountdownCompletedEventArgs : EventArgs
 /// <summary>
 /// Quản lý vòng đời chạy, tạm dừng, đo thời gian thực tế và thông báo hoàn tất của countdown.
 /// Độc lập hoàn toàn với trạng thái hiển thị của WPF view (Workstream C - implement.md).
+/// Commands and Advance run on the UI thread; only the ticker dispatches to it.
 /// </summary>
 public sealed class CountdownController : IDisposable
 {
@@ -146,7 +147,7 @@ public sealed class CountdownController : IDisposable
             ? _tracker.AdvanceCountdown(nowTimestamp.Value)
             : _tracker.AdvanceCountdown();
 
-        _runOnUi(() => Tick?.Invoke(this, EventArgs.Empty));
+        Tick?.Invoke(this, EventArgs.Empty);
 
         if (completed)
         {
@@ -180,25 +181,28 @@ public sealed class CountdownController : IDisposable
 
     private async Task RunTickerAsync(CancellationToken cancellationToken)
     {
+        // Reuse one callback for this run, and coalesce ticks while the UI is busy.
+        // The token belongs to this run so queued work cannot advance a restarted countdown.
+        int tickPending = 0;
+        Action advance = () =>
+        {
+            try
+            {
+                if (!cancellationToken.IsCancellationRequested) Advance();
+            }
+            finally
+            {
+                Volatile.Write(ref tickPending, 0);
+            }
+        };
+
         try
         {
             using var timer = new PeriodicTimer(TickInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                var dispatched = new TaskCompletionSource(
-                    TaskCreationOptions.RunContinuationsAsynchronously);
-                _runOnUi(() =>
-                {
-                    try
-                    {
-                        if (!cancellationToken.IsCancellationRequested) Advance();
-                    }
-                    finally
-                    {
-                        dispatched.TrySetResult();
-                    }
-                });
-                await dispatched.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                if (Interlocked.CompareExchange(ref tickPending, 1, 0) == 0)
+                    _runOnUi(advance);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -209,10 +213,7 @@ public sealed class CountdownController : IDisposable
     private void TriggerCompleted(long runId)
     {
         RuntimeLog.Log(LogTag, $"Countdown run #{runId} completed!");
-        _runOnUi(() =>
-        {
-            Completed?.Invoke(this, new CountdownCompletedEventArgs(runId));
-        });
+        Completed?.Invoke(this, new CountdownCompletedEventArgs(runId));
     }
 
     public void Dispose()

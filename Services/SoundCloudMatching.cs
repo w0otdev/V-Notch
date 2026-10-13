@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
+using AngleSharp.Html.Parser;
 
 namespace VNotch.Services;
 
@@ -64,31 +64,20 @@ internal static class SoundCloudMatching
         string normalizedArtist = PlatformDetector.NormalizeForLooseMatch((artist ?? "").ToLowerInvariant());
         var scoreMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        var pathMatches = Regex.Matches(html, @"href=""/(?<path>[^""?#]+)", RegexOptions.IgnoreCase);
-        foreach (Match match in pathMatches)
+        using var document = new HtmlParser().ParseDocument(html);
+        var origin = new Uri("https://soundcloud.com/");
+        foreach (var link in document.QuerySelectorAll("a[href]"))
         {
-            string path = match.Groups["path"].Value.Replace("\\/", "/").Trim('/');
-            if (string.IsNullOrWhiteSpace(path))
-            {
+            string? href = link.GetAttribute("href");
+            if (string.IsNullOrWhiteSpace(href) || !Uri.TryCreate(origin, href, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) ||
+                (uri.Host != "soundcloud.com" && uri.Host != "www.soundcloud.com" && uri.Host != "m.soundcloud.com"))
                 continue;
-            }
 
-            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length != 2)
-            {
-                continue;
-            }
+            var segments = uri.AbsolutePath.Trim('/').Split('/');
+            if (segments.Length != 2) continue;
 
             AddCandidate(scoreMap, segments[0], segments[1], normalizedTitle, normalizedArtist);
-        }
-
-        var absoluteMatches = Regex.Matches(
-            html,
-            @"https?://(?:www\.)?soundcloud\.com/(?<user>[^/\s""'?#]+)/(?<slug>[^/\s""'?#]+)",
-            RegexOptions.IgnoreCase);
-        foreach (var groups in absoluteMatches.Select(match => match.Groups))
-        {
-            AddCandidate(scoreMap, groups["user"].Value, groups["slug"].Value, normalizedTitle, normalizedArtist);
         }
 
         var sorted = new List<KeyValuePair<string, int>>(scoreMap);
@@ -265,12 +254,7 @@ internal static class SoundCloudMatching
 
     public static string NormalizeArtworkUrl(string url)
     {
-        string normalized = url.Replace("\\u0026", "&").Replace("\\/", "/");
-        if (MediaHeuristics.IsLikelySoundCloudPlaceholderArtworkUrl(normalized))
-        {
-            return normalized;
-        }
-
-        return Regex.Replace(normalized, @"-(?:large|t\d+x\d+)\.", "-t500x500.", RegexOptions.IgnoreCase);
+        // Preserve the URL supplied by oEmbed, including its size and any signature.
+        return url.Replace("\\u0026", "&").Replace("\\/", "/");
     }
 }

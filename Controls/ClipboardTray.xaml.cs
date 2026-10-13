@@ -275,6 +275,9 @@ public partial class ClipboardTray : UserControl, IDisposable
         {
             var entries = await _controller.Store.SearchAsync(SearchBox.Text, _category, cancellation);
             var counts = await Task.Run(_controller.Store.GetCategoryCounts, cancellation);
+            // Regex construction and matching belong to the query worker, not
+            // the first WPF binding/layout pass during the tray reveal.
+            var masking = await PrepareCardMaskingAsync(entries, cancellation);
             if (version != _refreshVersion || cancellation.IsCancellationRequested || _disposed) return;
             await PrepareResultsAsync(cancellation);
             await AnimateCollectionChangesAsync(entries, cancellation);
@@ -284,7 +287,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             if (!entries.SequenceEqual(_cards.Select(card => card.Entry)))
             {
                 var positions = CaptureCardPositions();
-                ReconcileCards(entries);
+                ReconcilePreparedCards(entries, masking);
                 AnimateCardPositions(positions);
             }
             // Publish the new collection before revealing it. A private/public
@@ -309,7 +312,37 @@ public partial class ClipboardTray : UserControl, IDisposable
     }
 
     private void ReconcileCards(IReadOnlyList<ClipboardEntry> entries)
+        => ReconcilePreparedCards(entries, null);
+
+    private Task<Dictionary<Guid, bool>> PrepareCardMaskingAsync(IReadOnlyList<ClipboardEntry> entries, CancellationToken cancellation)
     {
+        // Reuse results for unchanged text/source metadata. Copy only values to
+        // the worker; view models and WPF bindings remain on the dispatcher.
+        var existing = _cards.ToDictionary(card => card.Entry.Id);
+        var masking = new Dictionary<Guid, bool>(entries.Count);
+        var pending = new List<ClipboardEntry>();
+        foreach (var entry in entries)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (existing.TryGetValue(entry.Id, out var card) && card.GetCachedMasking(entry) is bool masked)
+                masking[entry.Id] = masked;
+            else pending.Add(entry);
+        }
+        if (pending.Count == 0) return Task.FromResult(masking);
+        return Task.Run(() =>
+        {
+            foreach (var entry in pending)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                masking[entry.Id] = entry.IsSensitive || ClipboardSensitiveData.IsSensitive(entry.Preview, entry.SourceApp, entry.SourceExecutable);
+            }
+            return masking;
+        }, cancellation);
+    }
+
+    private void ReconcilePreparedCards(IReadOnlyList<ClipboardEntry> entries, IReadOnlyDictionary<Guid, bool>? masking)
+    {
+        bool? MaskFor(ClipboardEntry entry) => masking != null && masking.TryGetValue(entry.Id, out bool masked) ? masked : null;
         var desired = entries.Select(entry => entry.Id).ToHashSet();
         _arrivingCards.RemoveWhere(id => !desired.Contains(id));
         var existing = _cards.ToDictionary(card => card.Entry.Id);
@@ -332,8 +365,8 @@ public partial class ClipboardTray : UserControl, IDisposable
             for (int i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
-                if (!existing.TryGetValue(entry.Id, out var card)) card = new ClipboardCardViewModel(entry);
-                else card.UpdateEntry(entry);
+                if (!existing.TryGetValue(entry.Id, out var card)) card = new ClipboardCardViewModel(entry, MaskFor(entry));
+                else card.UpdatePreparedEntry(entry, MaskFor(entry));
                 replacement[i] = card;
             }
             _cards.ReplaceAll(replacement);
@@ -348,13 +381,12 @@ public partial class ClipboardTray : UserControl, IDisposable
             var entry = entries[index];
             if (!existing.TryGetValue(entry.Id, out var card))
             {
-                _cards.Insert(index, new ClipboardCardViewModel(entry));
+                _cards.Insert(index, new ClipboardCardViewModel(entry, MaskFor(entry)));
                 continue;
             }
             int oldIndex = index < _cards.Count && ReferenceEquals(_cards[index], card) ? index : _cards.IndexOf(card);
             if (oldIndex != index) _cards.Move(oldIndex, index);
-            if (card.Entry != entry)
-                card.UpdateEntry(entry);
+            card.UpdatePreparedEntry(entry, MaskFor(entry));
         }
     }
 
@@ -819,9 +851,10 @@ public partial class ClipboardTray : UserControl, IDisposable
         foreach (var other in _openMenus.ToArray())
             if (!ReferenceEquals(other, menu)) other.IsOpen = false;
         _menuAnimationTargets[menu] = trigger;
+        // Hold the actions before the popup transfers focus/mouse capture.
+        if (card.DataContext is ClipboardCardViewModel cardVm) cardVm.IsMenuOpen = true;
         PopulateCardMenu(card);
         menu.IsOpen = true;
-        AnimateTriggerHaptic(trigger);
     }
 
     private void MoreActions_PointerDown(object sender, MouseButtonEventArgs e)

@@ -36,6 +36,9 @@ public class PipDetectorTests
     [InlineData("[PiP] Stream")]
     [InlineData("PiP")]
     [InlineData("pip")]
+    [InlineData("Video - PiP")]
+    [InlineData("(PiP)")]
+    [InlineData("[PiP]")]
     public void IsPipTitle_ValidPipTitles_ReturnsTrue(string title)
     {
         Assert.True(PipDetector.IsPipTitle(title));
@@ -54,6 +57,13 @@ public class PipDetectorTests
     [InlineData("Piper at the Gates of Dawn")]
     [InlineData("Pipe Dream")]
     [InlineData("Epiphanic Moments")]
+    [InlineData("How to install packages with pip on Windows")]
+    [InlineData("Python - pip tutorial")]
+    [InlineData("pip install requests - Google Chrome")]
+    [InlineData("Fix pip on Windows - YouTube")]
+    [InlineData("Python_pip_tutorial")]
+    [InlineData("Python (pip) tutorial - YouTube")]
+    [InlineData("How to use [pip] on Windows")]
     public void IsPipTitle_NonPipTitles_ReturnsFalse(string? title)
     {
         Assert.False(PipDetector.IsPipTitle(title));

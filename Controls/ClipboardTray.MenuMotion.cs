@@ -130,20 +130,6 @@ public partial class ClipboardTray
         return animation;
     }
 
-    internal static void AnimateTriggerHaptic(Button? trigger)
-    {
-        if (trigger == null || AnimationConfig.ReduceMotion) return;
-        if (trigger.Template?.FindName("HoverScale", trigger) is ScaleTransform st)
-        {
-            var keyframes = new DoubleAnimationUsingKeyFrames();
-            keyframes.KeyFrames.Add(new SplineDoubleKeyFrame(0.86, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60)), new KeySpline(0.1, 0.9, 0.2, 1.0)));
-            keyframes.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240)), new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.45 }));
-            Timeline.SetDesiredFrameRate(keyframes, AnimationConfig.TargetFps);
-            st.BeginAnimation(ScaleTransform.ScaleXProperty, keyframes);
-            st.BeginAnimation(ScaleTransform.ScaleYProperty, keyframes);
-        }
-    }
-
     private static void ResetMenuSurface(FrameworkElement surface)
     {
         surface.BeginAnimation(OpacityProperty, null);

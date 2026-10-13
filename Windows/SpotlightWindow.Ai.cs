@@ -33,7 +33,7 @@ public partial class SpotlightWindow
         // Keep all search launch/navigation shortcuts out of the AI surface.
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
         {
-            if (!e.IsRepeat) _ = SendAiAsync();
+            if (!e.IsRepeat) SendAiAsync().SafeFireAndForget("SPOTLIGHT-AI");
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
