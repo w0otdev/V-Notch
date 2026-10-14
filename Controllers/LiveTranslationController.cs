@@ -10,6 +10,7 @@ internal sealed class LiveTranslationController : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _manageModel;
+    private readonly Action<string, string>? _saveLanguages;
     private readonly Func<IntPtr> _getForegroundWindow;
     private LocalTranslationService _service;
     private TranslationModelStore _store;
@@ -31,9 +32,9 @@ internal sealed class LiveTranslationController : IDisposable
     private string? _sourceCurrencyOverride, _targetCurrencyOverride;
     private bool _inputWasTruncated;
 
-    internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null, CurrencyRateService? currencyRates = null)
+    internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null, CurrencyRateService? currencyRates = null, Action<string, string>? saveLanguages = null)
     {
-        _dispatcher = dispatcher; _manageModel = manageModel;
+        _dispatcher = dispatcher; _manageModel = manageModel; _saveLanguages = saveLanguages;
         _currencyRates = currencyRates ?? CurrencyRateService.Shared;
         _getForegroundWindow = getForegroundWindow ?? Win32Interop.GetForegroundWindow;
         _injected = store != null || engine != null;
@@ -241,6 +242,7 @@ internal sealed class LiveTranslationController : IDisposable
         {
             CancelRequest();
             _settings.TranslationSourceLanguage = source; _settings.TranslationTargetLanguage = target;
+            _saveLanguages?.Invoke(source, target);
             if (_text.Length > 0 && window.IsVisible) _ = TranslateAsync();
         };
         _window = window;
@@ -337,7 +339,7 @@ internal sealed class LiveTranslationController : IDisposable
             await window.WaitForEntranceAsync(token);
             if (!_disposed && version == _requestVersion && window.IsVisible) window.ShowResult(result);
         }
-        catch (OperationCanceledException) { if (!_disposed && version == _requestVersion) window.SetStatus("translation.timedOut"); }
+        catch (OperationCanceledException) { if (!_disposed && version == _requestVersion && request.IsCancellationRequested) window.SetStatus("translation.timedOut"); }
         catch (TranslationException ex) { if (!_disposed && version == _requestVersion) window.SetStatus(ex.MessageKey); }
         catch (Exception ex)
         {

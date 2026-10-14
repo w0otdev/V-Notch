@@ -39,7 +39,7 @@ public sealed class DustParticleOverlay : FrameworkElement
         remove => RemoveHandler(DissolveRequestedEvent, value);
     }
 
-    private const int MinParticles = 96;
+    private const int MinParticles = 24;
     private const int MaxParticles = 180;
     private const int AlphaLevels = 20;
     private const int TintVariants = 3;
@@ -119,15 +119,13 @@ public sealed class DustParticleOverlay : FrameworkElement
         Loaded += OnLifecycleStateChanged;
         Unloaded += OnUnloaded;
         IsVisibleChanged += OnIsVisibleChanged;
+        DataContextChanged += OnDataContextChanged;
     }
 
-    protected override Size MeasureOverride(Size availableSize)
-    {
-        if (!IsActive) return default;
-        double minW = double.IsInfinity(availableSize.Width) ? 0.0 : Math.Min(availableSize.Width, 64.0);
-        double minH = double.IsInfinity(availableSize.Height) ? 20.0 : Math.Min(availableSize.Height, 20.0);
-        return new Size(minW, minH);
-    }
+    // Return zero desired size so the sibling TextBlock strictly dictates the container's
+    // width and height when HorizontalAlignment="Left", preventing the dust cloud from
+    // exceeding the exact rendered length of the secret.
+    protected override Size MeasureOverride(Size availableSize) => default;
 
     protected override void OnVisualParentChanged(DependencyObject oldParent)
     {
@@ -136,6 +134,30 @@ public sealed class DustParticleOverlay : FrameworkElement
         {
             ResetSiblingBlur(IsDissolved ? 0.0 : MaskedBlurRadius);
         }
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        _isDissolving = false;
+        _isReforming = false;
+        _dissolveProgress = 0.0;
+        _reformProgress = 1.0;
+        _particlesInitialized = false;
+        if (IsActive)
+        {
+            if (ActualWidth > 4 && ActualHeight > 4)
+            {
+                InitParticles(ActualWidth, ActualHeight);
+            }
+            ResetSiblingBlur(IsDissolved ? 0.0 : MaskedBlurRadius);
+        }
+        else
+        {
+            ResetSiblingBlur(0.0);
+        }
+        IsHitTestVisible = IsActive && !IsDissolved;
+        UpdateRenderingState();
+        InvalidateVisual();
     }
 
     private void OnLifecycleStateChanged(object sender, RoutedEventArgs e)
@@ -195,10 +217,7 @@ public sealed class DustParticleOverlay : FrameworkElement
 
         if (dissolved && !overlay._isDissolving)
         {
-            overlay._isReforming = false;
-            overlay.StopRendering();
-            overlay.ResetSiblingBlur(0.0);
-            overlay.InvalidateVisual();
+            overlay.Dissolve();
         }
         else if (!dissolved)
         {
@@ -209,7 +228,7 @@ public sealed class DustParticleOverlay : FrameworkElement
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
-        if (sizeInfo.NewSize.Width > 4 && sizeInfo.NewSize.Height > 4)
+        if (!_isDissolving && sizeInfo.NewSize.Width > 4 && sizeInfo.NewSize.Height > 4)
         {
             InitParticles(sizeInfo.NewSize.Width, sizeInfo.NewSize.Height);
         }
@@ -229,11 +248,12 @@ public sealed class DustParticleOverlay : FrameworkElement
 
     private void InitParticles(double width, double height)
     {
-        double w = Math.Max(24.0, width);
-        double h = Math.Max(16.0, height);
+        double w = Math.Max(12.0, width);
+        double h = Math.Max(14.0, height);
 
-        // Scale particle count with area to maintain Telegram's dense micro-grain texture
-        int targetCount = (int)Math.Round((w * h) / 23.0);
+        // Scale particle count with area (~1 particle per 22 sq px) to maintain uniform
+        // Telegram micro-grain density across both short PINs and long multi-line secrets
+        int targetCount = (int)Math.Round((w * h) / 22.0);
         _activeCount = Math.Clamp(targetCount, MinParticles, MaxParticles);
 
         Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
@@ -364,8 +384,8 @@ public sealed class DustParticleOverlay : FrameworkElement
         float dt = (float)Math.Clamp(elapsedMs * 0.001, 0.001, 0.050);
         _lastStepMs = nowMs;
 
-        double w = Math.Max(24.0, ActualWidth);
-        double h = Math.Max(16.0, ActualHeight);
+        double w = Math.Max(12.0, ActualWidth);
+        double h = Math.Max(14.0, ActualHeight);
         if (!_particlesInitialized)
         {
             InitParticles(w, h);
@@ -400,7 +420,7 @@ public sealed class DustParticleOverlay : FrameworkElement
             if (progress >= 1.0)
             {
                 _isDissolving = false;
-                IsDissolved = true;
+                SetCurrentValue(IsDissolvedProperty, true);
                 IsHitTestVisible = false;
                 StopRendering();
                 InvalidateVisual();
@@ -457,14 +477,23 @@ public sealed class DustParticleOverlay : FrameworkElement
 
     public void Dissolve(Point? clickPoint = null)
     {
-        if (_isDissolving || IsDissolved) return;
+        if (_isDissolving) return;
+        if (!IsLoaded || AnimationConfig.ReduceMotion)
+        {
+            _isDissolving = false;
+            _isReforming = false;
+            StopRendering();
+            ResetSiblingBlur(0.0);
+            InvalidateVisual();
+            return;
+        }
         _isDissolving = true;
         _isReforming = false;
         _transitionStartMs = Environment.TickCount64;
         _lastStepMs = _transitionStartMs;
 
-        double w = Math.Max(24.0, ActualWidth);
-        double h = Math.Max(16.0, ActualHeight);
+        double w = Math.Max(12.0, ActualWidth);
+        double h = Math.Max(14.0, ActualHeight);
         if (!_particlesInitialized)
         {
             InitParticles(w, h);
@@ -609,8 +638,6 @@ public sealed class DustParticleOverlay : FrameworkElement
         if (IsActive && !IsDissolved)
         {
             e.Handled = true;
-            Point clickPoint = e.GetPosition(this);
-            Dissolve(clickPoint);
             RaiseEvent(new RoutedEventArgs(DissolveRequestedEvent, this));
         }
         base.OnPreviewMouseLeftButtonDown(e);

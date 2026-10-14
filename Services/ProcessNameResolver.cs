@@ -11,22 +11,31 @@ internal static class ProcessNameResolver
 
     internal static string? TryGetName(uint processId)
     {
-        if (processId == 0) return null;
+        var (name, _) = TryGetNameAndExecutable(processId);
+        return name.Length == 0 ? null : name;
+    }
+
+    internal static (string Name, string Executable) TryGetNameAndExecutable(uint processId)
+    {
+        if (processId == 0) return ("", "");
         IntPtr process = OpenProcess(QueryLimitedInformation, false, processId);
-        if (process == IntPtr.Zero) return null;
+        if (process == IntPtr.Zero) return ("", "");
 
         char[]? rented = null;
         try
         {
             Span<char> path = stackalloc char[1024];
             if (TryReadPath(process, path, out int length))
-                return Path.GetFileNameWithoutExtension(path[..length]).ToString();
-            if (Marshal.GetLastPInvokeError() != InsufficientBuffer) return null;
+            {
+                ReadOnlySpan<char> slice = path[..length];
+                return (Path.GetFileNameWithoutExtension(slice).ToString(), slice.ToString());
+            }
+            if (Marshal.GetLastPInvokeError() != InsufficientBuffer) return ("", "");
 
             rented = ArrayPool<char>.Shared.Rent(32768);
-            return TryReadPath(process, rented.AsSpan(0, 32768), out length)
-                ? Path.GetFileNameWithoutExtension(rented.AsSpan(0, length)).ToString()
-                : null;
+            if (!TryReadPath(process, rented.AsSpan(0, 32768), out length)) return ("", "");
+            ReadOnlySpan<char> rentedSlice = rented.AsSpan(0, length);
+            return (Path.GetFileNameWithoutExtension(rentedSlice).ToString(), rentedSlice.ToString());
         }
         finally
         {

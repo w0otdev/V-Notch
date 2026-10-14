@@ -64,8 +64,19 @@ internal sealed class SpotlightLauncher
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start);
         if (process == null) return false;
-        await process.WaitForExitAsync().ConfigureAwait(false);
-        return process.ExitCode == 0;
+        int waitMs = target == "vnotch-action:hibernate" ? 250 : 3000;
+        using var cts = new CancellationTokenSource(waitMs);
+        try
+        {
+            await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            return process.ExitCode == 0;
+        }
+        catch (OperationCanceledException)
+        {
+            // shutdown.exe /h blocks until the machine wakes from hibernation;
+            // if it has not exited with an error within 250ms, hibernation is proceeding.
+            return !process.HasExited || process.ExitCode == 0;
+        }
     }
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -93,8 +104,12 @@ internal sealed class SpotlightLauncher
         }
     }
 
-    public bool TryLaunchElevated(SpotlightSearchItem item)
+    public bool TryLaunchElevated(SpotlightSearchItem item) =>
+        TryLaunchElevated(item, out _);
+
+    public bool TryLaunchElevated(SpotlightSearchItem item, out bool cancelled)
     {
+        cancelled = false;
         if (!CanLaunchElevated(item)) return false;
 
         try
@@ -107,8 +122,9 @@ internal sealed class SpotlightLauncher
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
-            // The user declined the UAC prompt; that is a choice, not a failure.
-            return true;
+            // The user declined the UAC prompt; keep Spotlight open without recording usage or showing an error.
+            cancelled = true;
+            return false;
         }
         catch (Exception ex)
         {

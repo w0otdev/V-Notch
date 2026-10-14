@@ -281,12 +281,37 @@ public partial class SpotlightWindow : Window
 
     private bool _sfxMciOpened;
     private string? _sfxMciPath;
+    private MediaPlayer? _sfxFallbackPlayer;
+    private Uri? _sfxFallbackLoadedUri;
+    private bool _sfxCleanupHooked;
+
+    private void EnsureSfxCleanupHooked()
+    {
+        if (_sfxCleanupHooked) return;
+        _sfxCleanupHooked = true;
+        Closed += (_, _) =>
+        {
+            try
+            {
+                if (_sfxMciOpened)
+                {
+                    mciSendString("close sfx_click", null, 0, IntPtr.Zero);
+                    _sfxMciOpened = false;
+                }
+                _sfxFallbackPlayer?.Close();
+                _sfxFallbackPlayer = null;
+                _sfxFallbackLoadedUri = null;
+            }
+            catch { }
+        };
+    }
 
     private void PlaySpotlightClickSfx()
     {
         if (SuppressForegroundActivationForTests) return;
         try
         {
+            EnsureSfxCleanupHooked();
             if (_spotlightClickUri == null)
             {
                 string findSfx(string folder)
@@ -330,9 +355,17 @@ public partial class SpotlightWindow : Window
                 }
                 else
                 {
-                    var player = new MediaPlayer();
-                    player.Open(_spotlightClickUri);
-                    player.Play();
+                    _sfxFallbackPlayer ??= new MediaPlayer();
+                    if (_sfxFallbackLoadedUri != _spotlightClickUri)
+                    {
+                        _sfxFallbackPlayer.Open(_spotlightClickUri);
+                        _sfxFallbackLoadedUri = _spotlightClickUri;
+                    }
+                    else
+                    {
+                        _sfxFallbackPlayer.Position = TimeSpan.Zero;
+                    }
+                    _sfxFallbackPlayer.Play();
                 }
             }
         }
@@ -983,7 +1016,8 @@ public partial class SpotlightWindow : Window
         _launchInFlight = true;
         try
         {
-            bool launched = await Task.Run(() => _launcher.TryLaunchElevated(selected), CancellationToken.None);
+            bool cancelled = false;
+            bool launched = await Task.Run(() => _launcher.TryLaunchElevated(selected, out cancelled), CancellationToken.None);
             // A successful launch can deactivate Spotlight before ShellExecute
             // returns. Record the captured query even if its UI session closed.
             if (launched) _viewModel.RecordLaunch(selected, launchQuery);
@@ -992,7 +1026,7 @@ public partial class SpotlightWindow : Window
             {
                 HideSpotlight();
             }
-            else
+            else if (!cancelled)
             {
                 ShowLaunchFailure(selected);
             }

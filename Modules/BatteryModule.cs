@@ -22,12 +22,19 @@ public class BatteryModule : NotchModuleBase
 
     protected override void OnStart()
     {
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 
     protected override void OnStop()
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+    }
+
+    protected override void OnDispose()
+    {
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        base.OnDispose();
     }
 
     protected override void OnTick() => EmitUpdate();

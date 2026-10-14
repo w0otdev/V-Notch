@@ -4,6 +4,7 @@ using System.Windows.Data;
 using System.Windows.Media.Effects;
 using VNotch.Controls;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.ViewModels;
 using Xunit;
 
@@ -245,5 +246,78 @@ public sealed class SettingsDiffingTests
             Assert.True(centerLit > 20, $"Expected center third to contain dense dust pixels, got {centerLit}");
             Assert.True(rightLit > 20, $"Expected right third to contain dense dust pixels, got {rightLit}");
         });
+    }
+
+    [Fact]
+    public void ProcessNameResolver_TryGetNameAndExecutable_ResolvesCurrentProcessAndHandlesZeroPid()
+    {
+        var (zeroName, zeroExe) = Services.ProcessNameResolver.TryGetNameAndExecutable(0);
+        Assert.Equal("", zeroName);
+        Assert.Equal("", zeroExe);
+
+        uint currentPid = (uint)Environment.ProcessId;
+        var (name, executable) = Services.ProcessNameResolver.TryGetNameAndExecutable(currentPid);
+        Assert.False(string.IsNullOrWhiteSpace(name));
+        Assert.False(string.IsNullOrWhiteSpace(executable));
+        Assert.True(System.IO.File.Exists(executable));
+    }
+
+    [Fact]
+    public void MediaPinBadge_OnRender_DrawsPinAtBottomRightCorner()
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            var badge = new MediaPinBadge
+            {
+                Width = 48,
+                Height = 48
+            };
+            badge.SetPinned(true, animate: false);
+            badge.Measure(new System.Windows.Size(48, 48));
+            badge.Arrange(new System.Windows.Rect(0, 0, 48, 48));
+
+            var visual = new System.Windows.Media.DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                typeof(MediaPinBadge)
+                    .GetMethod("OnRender", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(badge, [dc]);
+            }
+
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                48, 48, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+
+            byte[] pixels = new byte[48 * 48 * 4];
+            bitmap.CopyPixels(pixels, 48 * 4, 0);
+
+            int bottomRightLit = 0;
+            for (int y = 32; y < 48; y++)
+            {
+                for (int x = 32; x < 48; x++)
+                {
+                    if (pixels[(y * 48 + x) * 4 + 3] > 20)
+                        bottomRightLit++;
+                }
+            }
+
+            Assert.True(bottomRightLit > 10, $"Expected pinned badge pixels in bottom-right corner, got {bottomRightLit}");
+        });
+    }
+
+    [Fact]
+    public void ClipboardClassifier_Classify_FastPathReturnsEmptyAndPreservesRuleMatching()
+    {
+        Assert.Same(Array.Empty<string>(), Services.Clipboard.ClipboardClassifier.Classify("", ClipboardKind.Text));
+        Assert.Same(Array.Empty<string>(), Services.Clipboard.ClipboardClassifier.Classify("just a normal sentence", ClipboardKind.Text));
+
+        var workAndEmail = Services.Clipboard.ClipboardClassifier.Classify(
+            "Project deadline tomorrow, contact dev@example.com", ClipboardKind.Text);
+        Assert.Contains("Work", workAndEmail);
+        Assert.Contains("Email", workAndEmail);
+
+        var contextPair = Services.Clipboard.ClipboardClassifier.Classify(
+            "Review the agenda and task list", ClipboardKind.Text);
+        Assert.Contains("Work", contextPair);
     }
 }

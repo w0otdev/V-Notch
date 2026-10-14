@@ -29,6 +29,8 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
             if (isMasked.HasValue) _isMasked = isMasked;
             return;
         }
+        Hide();
+        ReleaseMaskedPreviewSize();
         _isMasked = isMasked ?? GetCachedMasking(entry);
         Entry = entry;
         _cardBrush = null;
@@ -37,6 +39,11 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     }
     private bool _isRevealed;
     private string? _revealedText;
+    private int _revealVersion;
+    private int _copyVersion;
+
+    internal int NextCopyVersion() => ++_copyVersion;
+    internal bool IsCopyVersionCurrent(int version) => version == _copyVersion;
 
     public bool IsRevealed
     {
@@ -45,7 +52,10 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         {
             if (SetProperty(ref _isRevealed, value))
             {
+                OnPropertyChanged(nameof(MaskedPreviewWidth));
+                OnPropertyChanged(nameof(MaskedPreviewHeight));
                 OnPropertyChanged(nameof(Preview));
+                OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(DisplayPreview));
                 OnPropertyChanged(nameof(BlurRadius));
                 OnPropertyChanged(nameof(RevealIconKind));
@@ -64,7 +74,44 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
             ? _revealedText
             : Entry.Kind == ClipboardKind.Image ? "" : Entry.Preview;
 
-    public string DisplayPreview => !string.IsNullOrEmpty(_revealedText) ? _revealedText : Preview;
+    public string DisplayPreview => Preview;
+
+    private System.Windows.Size? _maskedPreviewSize;
+    internal bool NeedsMaskedPreviewSize => IsMasked && _maskedPreviewSize == null && Entry.Kind is not (ClipboardKind.File or ClipboardKind.Image);
+    public double MaskedPreviewWidth => IsMasked && !IsRevealed ? _maskedPreviewSize?.Width ?? double.NaN : double.NaN;
+    public double MaskedPreviewHeight => IsMasked && !IsRevealed ? _maskedPreviewSize?.Height ?? double.NaN : double.NaN;
+
+    internal async Task PrepareMaskedPreviewAsync(Services.Clipboard.ClipboardHistoryStore store, CancellationToken cancellation)
+    {
+        if (!NeedsMaskedPreviewSize) return;
+        int version = _revealVersion;
+        var content = await store.GetContentAsync(Entry.Id);
+        if (cancellation.IsCancellationRequested || version != _revealVersion || Entry.IsPersonal && !store.IsPersonalUnlocked) return;
+        // Measure off-tree; only dimensions survive, never secret characters or a layout mask.
+        var text = new System.Windows.Controls.TextBlock
+        {
+            Text = content.Text,
+            FontFamily = SharedContentFont,
+            FontSize = 14,
+            FontWeight = System.Windows.FontWeights.SemiBold,
+            LineHeight = 19,
+            TextWrapping = System.Windows.TextWrapping.Wrap,
+            TextTrimming = System.Windows.TextTrimming.CharacterEllipsis,
+            MaxHeight = 96
+        };
+        text.Measure(new System.Windows.Size(182, 96));
+        _maskedPreviewSize = text.DesiredSize;
+        text.Text = "";
+        OnPropertyChanged(nameof(MaskedPreviewWidth));
+        OnPropertyChanged(nameof(MaskedPreviewHeight));
+    }
+
+    internal void ReleaseMaskedPreviewSize()
+    {
+        _maskedPreviewSize = null;
+        OnPropertyChanged(nameof(MaskedPreviewWidth));
+        OnPropertyChanged(nameof(MaskedPreviewHeight));
+    }
 
     public System.Windows.Visibility MaskActionVisibility => IsMasked ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
@@ -75,20 +122,23 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     public async Task RevealAsync(Services.Clipboard.ClipboardHistoryStore store)
     {
         if (!IsMasked) return;
-        if (_revealedText == null)
+        int version = ++_revealVersion;
+        if (string.IsNullOrEmpty(_revealedText))
         {
-            try
-            {
-                var content = await store.GetContentAsync(Entry.Id);
-                _revealedText = content?.Text ?? "";
-            }
-            catch { _revealedText = ""; }
+            var content = await store.GetContentAsync(Entry.Id);
+            if (version != _revealVersion || Entry.IsPersonal && !store.IsPersonalUnlocked) return;
+            string resolved = Entry.Kind == ClipboardKind.File || content.Text.Length == 0
+                ? string.Join(Environment.NewLine, content.Files.Select(file => file.Name)) : content.Text;
+            if (!string.IsNullOrEmpty(resolved))
+                _revealedText = resolved;
         }
         IsRevealed = true;
     }
 
     public void Hide()
     {
+        ++_revealVersion;
+        _revealedText = null;
         IsRevealed = false;
     }
 

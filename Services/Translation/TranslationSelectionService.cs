@@ -108,21 +108,29 @@ internal sealed class TranslationSelectionService : IDisposable
 
     private void Watch()
     {
-        _dispatcher = Dispatcher.CurrentDispatcher;
-        if (_disposed) return;
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        Volatile.Write(ref _dispatcher, dispatcher);
+        if (_disposed) { _ready.TrySetCanceled(); return; }
         _debounce = new UiScheduledTimer(TimeSpan.FromMilliseconds(300), DispatcherPriority.Background, (_, _) =>
         {
             _debounce!.Stop();
             if (!_disposed) Capture();
-        }, _dispatcher);
+        }, dispatcher);
         _debounce.Stop();
         try
         {
+            if (_disposed) return;
             try { Automation.AddAutomationFocusChangedEventHandler(_focusChanged); }
             catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { }
             _foregroundHook = SetWinEventHook(3, 3, IntPtr.Zero, _foregroundChanged, 0, 0, 2);
-            _ready.TrySetResult(_dispatcher);
+            if (_disposed) return;
+            _ready.TrySetResult(dispatcher);
             QueueCapture();
+            dispatcher.BeginInvoke(() =>
+            {
+                if (_disposed && !dispatcher.HasShutdownStarted)
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            }, DispatcherPriority.Send);
             Dispatcher.Run();
         }
         catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { }
@@ -139,7 +147,7 @@ internal sealed class TranslationSelectionService : IDisposable
 
     private void QueueCapture()
     {
-        var dispatcher = _dispatcher;
+        var dispatcher = Volatile.Read(ref _dispatcher);
         if (_disposed || dispatcher == null || dispatcher.HasShutdownStarted || Interlocked.Exchange(ref _queued, 1) != 0) return;
         dispatcher.BeginInvoke(() =>
         {
@@ -299,7 +307,7 @@ internal sealed class TranslationSelectionService : IDisposable
         _disposed = true;
         Interlocked.Increment(ref _manualRequestVersion);
         _ready.TrySetCanceled();
-        var dispatcher = _dispatcher;
+        var dispatcher = Volatile.Read(ref _dispatcher);
         if (dispatcher != null && !dispatcher.HasShutdownStarted) dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
     }
 

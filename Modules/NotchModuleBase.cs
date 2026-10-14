@@ -48,17 +48,21 @@ public abstract class NotchModuleBase : INotchModule
         if (!_initialized) Initialize();
         if (IsRunning) return;
 
+        IsRunning = true;
         try
         {
             OnStart();
 
-            TickSafe();
+            if (IsRunning)
+                TickSafe();
 
-            _timer?.Start();
-            IsRunning = true;
+            if (IsRunning)
+                _timer?.Start();
         }
         catch (Exception ex)
         {
+            IsRunning = false;
+            try { OnStop(); } catch { }
             RuntimeLog.Log($"MODULE-{ModuleName}", $"Start failed: {ex}");
         }
     }

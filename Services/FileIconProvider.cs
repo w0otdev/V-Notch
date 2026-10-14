@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
@@ -26,7 +27,13 @@ internal static class FileIconProvider
     private static long _accessCounter;
     private static readonly object _evictLock = new();
 
-    public static void Invalidate(string filePath) => _iconCache.TryRemove(filePath, out _);
+    public static void Invalidate(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return;
+        _iconCache.TryRemove(filePath, out _);
+        _iconCache.TryRemove($"app:s:{filePath}", out _);
+        _iconCache.TryRemove($"app:l:{filePath}", out _);
+    }
 
     public static void ClearCache() => _iconCache.Clear();
 
@@ -73,6 +80,8 @@ internal static class FileIconProvider
         public string szTypeName;
     }
 
+    private static readonly uint ShFileInfoSize = (uint)Marshal.SizeOf<ShFileInfo>();
+
     private const uint SHGFI_ICON = 0x000000100;
     private const uint SHGFI_LARGEICON = 0x000000000;
     private const uint SHGFI_SMALLICON = 0x000000001;
@@ -114,15 +123,23 @@ internal static class FileIconProvider
             using (var reader = new StreamReader(mscPath))
             {
                 // The Icon element sits near the top; avoid reading large embedded binaries.
-                var buffer = new char[64 * 1024];
-                int read = reader.ReadBlock(buffer, 0, buffer.Length);
-                var match = MscIconPattern.Match(new string(buffer, 0, read));
-                if (match.Success)
+                const int maxChars = 64 * 1024;
+                char[] buffer = ArrayPool<char>.Shared.Rent(maxChars);
+                try
                 {
-                    index = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                    file = Environment.ExpandEnvironmentVariables(match.Groups[2].Value);
-                    // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
-                    if (!File.Exists(file)) file = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
+                    int read = reader.ReadBlock(buffer, 0, maxChars);
+                    var match = MscIconPattern.Match(new string(buffer, 0, read));
+                    if (match.Success)
+                    {
+                        index = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                        file = Environment.ExpandEnvironmentVariables(match.Groups[2].Value);
+                        // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
+                        if (!File.Exists(file)) file = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
+                    }
+                }
+                finally
+                {
+                    ArrayPool<char>.Shared.Return(buffer);
                 }
             }
             if (file == null || !File.Exists(file))
@@ -152,7 +169,7 @@ internal static class FileIconProvider
     {
         if (string.IsNullOrEmpty(exePath)) return null;
         string key = $"app:{(small ? "s" : "l")}:{exePath}";
-        if (_iconCache.TryGetValue(key, out var cached))
+        if (_iconCache.TryGetValue(key, out var cached) && cached.Icon != null)
         {
             cached.LastAccess = Interlocked.Increment(ref _accessCounter);
             return cached.Icon;
@@ -161,14 +178,17 @@ internal static class FileIconProvider
         try
         {
             if (!File.Exists(exePath)) return null;
-            if (_iconCache.Count >= MaxCacheSize) EvictOldest();
 
             var icon = TryGetMscIcon(exePath, small) ?? TryGetShellFileIcon(exePath, small) ?? TryGetAssociatedIcon(exePath);
-            _iconCache[key] = new CacheEntry
+            if (icon != null)
             {
-                Icon = icon,
-                LastAccess = Interlocked.Increment(ref _accessCounter)
-            };
+                if (_iconCache.Count >= MaxCacheSize) EvictOldest();
+                _iconCache[key] = new CacheEntry
+                {
+                    Icon = icon,
+                    LastAccess = Interlocked.Increment(ref _accessCounter)
+                };
+            }
             return icon;
         }
         catch (Exception)
@@ -182,7 +202,7 @@ internal static class FileIconProvider
         if (string.IsNullOrWhiteSpace(extension)) return null;
         if (!extension.StartsWith('.')) extension = "." + extension;
         string key = $"ext:{(small ? "s" : "l")}:{extension}";
-        if (_iconCache.TryGetValue(key, out var cached))
+        if (_iconCache.TryGetValue(key, out var cached) && cached.Icon != null)
         {
             cached.LastAccess = Interlocked.Increment(ref _accessCounter);
             return cached.Icon;
@@ -190,13 +210,16 @@ internal static class FileIconProvider
 
         try
         {
-            if (_iconCache.Count >= MaxCacheSize) EvictOldest();
             var icon = TryGetShellFileIcon(extension, small);
-            _iconCache[key] = new CacheEntry
+            if (icon != null)
             {
-                Icon = icon,
-                LastAccess = Interlocked.Increment(ref _accessCounter)
-            };
+                if (_iconCache.Count >= MaxCacheSize) EvictOldest();
+                _iconCache[key] = new CacheEntry
+                {
+                    Icon = icon,
+                    LastAccess = Interlocked.Increment(ref _accessCounter)
+                };
+            }
             return icon;
         }
         catch (Exception)
@@ -207,7 +230,7 @@ internal static class FileIconProvider
 
     public static ImageSource? GetFileIcon(string filePath)
     {
-        if (_iconCache.TryGetValue(filePath, out var cached))
+        if (_iconCache.TryGetValue(filePath, out var cached) && cached.Icon != null)
         {
             cached.LastAccess = Interlocked.Increment(ref _accessCounter);
             return cached.Icon;
@@ -216,9 +239,6 @@ internal static class FileIconProvider
         try
         {
             if (!File.Exists(filePath) && !Directory.Exists(filePath)) return null;
-
-            if (_iconCache.Count >= MaxCacheSize)
-                EvictOldest();
 
             string ext = Path.GetExtension(filePath).ToLowerInvariant();
             bool isImage = ext is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".svg" or ".webp" or ".ico";
@@ -245,11 +265,17 @@ internal static class FileIconProvider
             result ??= TryGetAssociatedIcon(filePath);
             result ??= TryGetShellFileIcon(filePath, small: false);
 
-            _iconCache[filePath] = new CacheEntry
+            if (result != null)
             {
-                Icon = result,
-                LastAccess = Interlocked.Increment(ref _accessCounter)
-            };
+                if (_iconCache.Count >= MaxCacheSize)
+                    EvictOldest();
+
+                _iconCache[filePath] = new CacheEntry
+                {
+                    Icon = result,
+                    LastAccess = Interlocked.Increment(ref _accessCounter)
+                };
+            }
             return result;
         }
         catch (Exception)
@@ -278,9 +304,10 @@ internal static class FileIconProvider
 
     private static ImageSource? TryGetShellThumbnail(string filePath, int size)
     {
+        IShellItemImageFactory? factory = null;
         try
         {
-            SHCreateItemFromParsingName(filePath, IntPtr.Zero, _shellItemImageFactoryIid, out var factory);
+            SHCreateItemFromParsingName(filePath, IntPtr.Zero, _shellItemImageFactoryIid, out factory);
             int hr = factory.GetImage(new NativeSize { cx = size, cy = size }, 0x01, out IntPtr hBitmap);
             if (hr != 0 || hBitmap == IntPtr.Zero) return null;
 
@@ -299,6 +326,13 @@ internal static class FileIconProvider
         catch (Exception)
         {
             return null;
+        }
+        finally
+        {
+            if (factory != null && Marshal.IsComObject(factory))
+            {
+                try { Marshal.ReleaseComObject(factory); } catch { }
+            }
         }
     }
 
@@ -329,19 +363,10 @@ internal static class FileIconProvider
             using var icon = System.Drawing.Icon.ExtractAssociatedIcon(filePath);
             if (icon == null) return null;
 
-            using var bmp = icon.ToBitmap();
-            var hBitmap = bmp.GetHbitmap();
-            try
-            {
-                var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                    hBitmap, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                source.Freeze();
-                return source;
-            }
-            finally
-            {
-                DeleteObject(hBitmap);
-            }
+            var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                icon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            source.Freeze();
+            return source;
         }
         catch (Exception)
         {
@@ -360,7 +385,7 @@ internal static class FileIconProvider
             if (Path.GetExtension(filePath).Equals(".lnk", StringComparison.OrdinalIgnoreCase))
             {
                 IntPtr imageList = SHGetFileInfo(filePath, 0, ref shinfo,
-                    (uint)Marshal.SizeOf(shinfo), SHGFI_SYSICONINDEX | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON));
+                    ShFileInfoSize, SHGFI_SYSICONINDEX | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON));
                 IntPtr baseIcon = imageList == IntPtr.Zero ? IntPtr.Zero : ImageList_GetIcon(imageList, shinfo.iIcon, 1);
                 if (baseIcon != IntPtr.Zero)
                 {
@@ -378,7 +403,7 @@ internal static class FileIconProvider
                 filePath,
                 0,
                 ref shinfo,
-                (uint)Marshal.SizeOf(shinfo),
+                ShFileInfoSize,
                 flags);
 
             if (res == IntPtr.Zero || shinfo.hIcon == IntPtr.Zero)
@@ -390,7 +415,7 @@ internal static class FileIconProvider
                     ext,
                     FILE_ATTRIBUTE_NORMAL,
                     ref shinfo,
-                    (uint)Marshal.SizeOf(shinfo),
+                    ShFileInfoSize,
                     flags | SHGFI_USEFILEATTRIBUTES);
             }
 

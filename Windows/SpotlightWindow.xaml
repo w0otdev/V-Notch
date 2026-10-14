@@ -680,7 +680,7 @@
                 <controls:MorphingSettingsIcon x:Name="SearchIcon"
                                                Grid.Column="2"
                                                Width="19" Height="19"
-                                               Brush="#C0C0C8"
+                                               Brush="#FFFFFF"
                                                VerticalAlignment="Center"
                                                Cursor="Hand"
                                                MouseLeftButtonDown="AiToggle_Click"

@@ -754,21 +754,6 @@
          </Rectangle.Stroke>
         </Rectangle>
 
-        <!-- Layer 5: Card Actions (Pin & More) in Top Right -->
-        <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#E618181E" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
-        <StackPanel Orientation="Horizontal">
-         <Button Tag="toggleReveal" Style="{StaticResource MoreActionButton}" ToolTip="{Binding RevealTooltip}" Click="CardAction_Click" Visibility="{Binding MaskActionVisibility}">
-          <local:TrayIcon Kind="{Binding RevealIconKind}" Width="13" Height="13" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-         </Button>
-         <Button Tag="pin" Style="{StaticResource PinActionButton}" ToolTip="{Binding PinLabel}" Click="CardAction_Click">
-          <local:TrayIcon Kind="Pin" Width="14.5" Height="14.5" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-         </Button>
-         <Button Tag="more" Style="{StaticResource MoreActionButton}" ToolTip="{Binding MoreLabel}" PreviewMouseDown="MoreActions_PointerDown" Click="MoreActions_Click">
-          <local:TrayIcon Kind="More" Width="13" Height="13" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-         </Button>
-        </StackPanel>
-        </Border>
-
         <!-- Layer 5b: File Card Hero Presentation (Kind == File) -->
         <Border x:Name="FileBadgePanel" Margin="14,30,14,40" Padding="6,0" IsHitTestVisible="False">
          <Border.Style>
@@ -799,7 +784,7 @@
         </Border>
 
         <!-- Layer 6: Text Preview Container with Dust Particle Overlay for Passwords -->
-        <Grid Margin="14,13,14,42" VerticalAlignment="Top" MaxHeight="96">
+        <Grid Margin="14,13,14,42" HorizontalAlignment="Left" VerticalAlignment="Top" MaxHeight="96" Width="{Binding MaskedPreviewWidth}" Height="{Binding MaskedPreviewHeight}">
          <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="#F5F5FA">
           <TextBlock.Effect>
            <BlurEffect Radius="{Binding BlurRadius}" RenderingBias="Performance"/>
@@ -837,6 +822,27 @@
          </Grid>
         </Border>
        </Grid>
+
+        <!-- Layer 5: Card Actions (Pin & More) in Top Right -->
+        <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#FF18181E" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
+        <Grid>
+         <Border CornerRadius="5" ClipToBounds="True" SizeChanged="CardActionGlass_SizeChanged" IsHitTestVisible="False">
+          <local:CardActionBackdrop Source="{Binding ElementName=CardContentGrid}">
+           <local:CardActionBackdrop.Effect><BlurEffect Radius="10" RenderingBias="Performance"/></local:CardActionBackdrop.Effect>
+          </local:CardActionBackdrop>
+         </Border>
+         <Border Background="#A618181E" CornerRadius="5" IsHitTestVisible="False"/>
+        <StackPanel Orientation="Horizontal">
+         <Button Tag="pin" Style="{StaticResource PinActionButton}" ToolTip="{Binding PinLabel}" Click="CardAction_Click">
+          <local:TrayIcon Kind="Pin" Width="14.5" Height="14.5" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+         </Button>
+         <Button Tag="more" Style="{StaticResource MoreActionButton}" ToolTip="{Binding MoreLabel}" PreviewMouseDown="MoreActions_PointerDown" Click="MoreActions_Click">
+          <local:TrayIcon Kind="More" Width="13" Height="13" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+         </Button>
+        </StackPanel>
+        </Grid>
+        </Border>
+
 
        <!-- Subtle dark backdrop scrim (makes centered notification pop) -->
        <Border x:Name="CopiedScrim" Background="#35000000" CornerRadius="{StaticResource TrayRadiusLarge}"
@@ -1176,6 +1182,7 @@
         <ColumnDefinition Width="Auto"/>
        </Grid.ColumnDefinitions>
        <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <Button x:Name="RevealDetailButton" Visibility="Collapsed" Style="{StaticResource TrayButton}" Margin="0,0,8,0" Click="RevealDetail_Click"/>
         <Button x:Name="CopyDetailButton" Visibility="Collapsed" Style="{StaticResource TrayButton}" Margin="0,0,8,0" Click="CopyDetail_Click"/>
         <Button x:Name="CloseDetailButton" Style="{StaticResource TrayButton}" Click="CloseDetail_Click"/>
        </StackPanel>

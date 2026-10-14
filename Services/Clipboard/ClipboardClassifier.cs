@@ -32,17 +32,57 @@ public static partial class ClipboardClassifier
         return ClipboardKind.Text;
     }
 
-    private static bool IsImagePath(string path) => System.IO.Path.GetExtension(path).ToLowerInvariant() is
-        ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".tif" or ".tiff" or ".webp" or ".ico";
+    private static bool IsImagePath(string path)
+    {
+        ReadOnlySpan<char> ext = System.IO.Path.GetExtension(path.AsSpan());
+        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".ico", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static string[] Classify(string text, ClipboardKind kind)
     {
+        if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
+
         // A strong keyword, or two different context keywords, assigns a suggested group.
-        var groups = Rules.Where(rule => rule.Strong.Count(word => ContainsPhrase(text, word)) * 2 +
-                                        rule.Context.Count(word => ContainsPhrase(text, word)) >= 2)
-            .Select(rule => rule.Group).ToList();
-        if (EmailPattern().IsMatch(text) && !groups.Contains("Email")) groups.Add("Email");
-        return groups.ToArray();
+        List<string>? groups = null;
+        foreach (var (group, strong, context) in Rules)
+        {
+            if (MatchesRule(text, strong, context))
+            {
+                groups ??= new List<string>(2);
+                groups.Add(group);
+            }
+        }
+
+        if (text.Contains('@') && EmailPattern().IsMatch(text))
+        {
+            if (groups == null) return ["Email"];
+            if (!groups.Contains("Email")) groups.Add("Email");
+        }
+
+        return groups?.ToArray() ?? Array.Empty<string>();
+    }
+
+    private static bool MatchesRule(string text, string[] strong, string[] context)
+    {
+        for (int i = 0; i < strong.Length; i++)
+        {
+            if (ContainsPhrase(text, strong[i])) return true;
+        }
+        int contextCount = 0;
+        for (int i = 0; i < context.Length; i++)
+        {
+            if (ContainsPhrase(text, context[i]) && ++contextCount >= 2)
+                return true;
+        }
+        return false;
     }
 
     private static bool ContainsPhrase(string text, string phrase)

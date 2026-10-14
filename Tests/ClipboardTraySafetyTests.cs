@@ -58,6 +58,26 @@ public sealed class ClipboardTraySafetyTests
         }
     });
 
+    [Fact]
+    public void LockMasksPublicCardsWhileTrayIsVisible() => SharedStaTestRunner.Run(() =>
+    {
+        using var tray = new ClipboardTray();
+        var cards = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards");
+        var card = new ClipboardCardViewModel(new ClipboardEntry { IsSensitive = true });
+        cards.Add(card);
+        var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            Assert.True(tray.IsLoaded && tray.IsVisible);
+            card.IsRevealed = true;
+            Invoke(tray, "HidePrivateContent");
+            Assert.False(card.IsRevealed);
+        }
+        finally { window.Close(); }
+    });
+
     private static Task InvokeTask(object target, string name) => (Task)Invoke(target, name)!;
 
     [Fact]

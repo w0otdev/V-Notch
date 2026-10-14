@@ -116,14 +116,32 @@ internal static class SpotlightRanker
         if (title.StartsWith(normalizedQuery, StringComparison.Ordinal))
             return 900 - Math.Min(100, title.Length - normalizedQuery.Length);
 
-        string[] words = title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Any(word => word == normalizedQuery)) return 850;
-        if (words.Any(word => word.StartsWith(normalizedQuery, StringComparison.Ordinal))) return 800;
+        double wordScore = MatchWordBoundaries(title.AsSpan(), normalizedQuery.AsSpan());
+        if (wordScore > 0) return wordScore;
         if (title.Contains(normalizedQuery, StringComparison.Ordinal)) return 700;
         if (SettingsSearchMatcher.IsNormalizedMatch(title, normalizedQuery)) return 500;
         if (subtitle.Contains(normalizedQuery, StringComparison.Ordinal)) return 350;
         if (SettingsSearchMatcher.IsNormalizedMatch(subtitle, normalizedQuery)) return 250;
         return 0;
+    }
+
+    private static double MatchWordBoundaries(ReadOnlySpan<char> title, ReadOnlySpan<char> query)
+    {
+        bool prefixMatch = false;
+        int i = 0;
+        while (i < title.Length)
+        {
+            while (i < title.Length && title[i] == ' ') i++;
+            if (i >= title.Length) break;
+
+            int start = i;
+            while (i < title.Length && title[i] != ' ') i++;
+            ReadOnlySpan<char> word = title[start..i];
+            if (word.SequenceEqual(query)) return 850;
+            if (!prefixMatch && word.StartsWith(query, StringComparison.Ordinal))
+                prefixMatch = true;
+        }
+        return prefixMatch ? 800 : 0;
     }
 
     private static string GetTitleWithoutAnyExtension(string title)

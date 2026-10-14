@@ -10,7 +10,7 @@ public sealed class ClipboardSensitiveDataTests
 {
     [Theory]
     [MemberData(nameof(SyntheticProviderTokens))]
-    [InlineData("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature")]
+    [InlineData("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c3ludGhldGlj")]
     [InlineData("-----BEGIN RSA PRIVATE KEY-----\nexample")]
     [InlineData("4111 1111 1111 1111")]
     [InlineData("password: correct-horse")]
@@ -43,7 +43,6 @@ public sealed class ClipboardSensitiveDataTests
     [InlineData("kP9#vL2!xQ@1")]
     [InlineData("vX9$mL#2pQ!")]
     [InlineData("admin#123456")]
-    [InlineData("correct-horse-battery-staple")]
     [InlineData("8xK9mP2aQ0zL")]
     public void RecognizesSecrets(string text) => Assert.True(ClipboardSensitiveData.IsSensitive(text));
 
@@ -60,6 +59,7 @@ public sealed class ClipboardSensitiveDataTests
 
     [Theory]
     [InlineData("ordinary notes for tomorrow")]
+    [InlineData("correct-horse-battery-staple")]
     [InlineData("4111 1111 1111 1112")]
     [InlineData("0000000000000000")]
     [InlineData("https://example.com")]
@@ -89,6 +89,195 @@ public sealed class ClipboardSensitiveDataTests
         Assert.Equal(ClipboardSensitiveData.Mask, card.Title);
         Assert.Equal(ClipboardSensitiveData.Mask, card.Preview);
     });
+
+    [Fact]
+    public void DustOverlayUsesFixedMaskWithoutLockIcon() => SharedStaTestRunner.Run(() =>
+    {
+        using var tray = new VNotch.Controls.ClipboardTray();
+        var list = (System.Windows.Controls.ListBox)tray.FindName("Cards");
+        var visual = (System.Windows.FrameworkElement)list.ItemTemplate.LoadContent();
+
+        var shortSecret = new ClipboardCardViewModel(new ClipboardEntry
+        {
+            Kind = ClipboardKind.Text,
+            IsSensitive = true,
+            Title = ClipboardSensitiveData.Mask,
+            Preview = ClipboardSensitiveData.Mask,
+            MaskedPreview = ClipboardSensitiveData.CreateLayoutMask("123456")
+        }, isMasked: true);
+
+        visual.DataContext = shortSecret;
+        visual.Measure(new System.Windows.Size(210, 138));
+        visual.Arrange(new System.Windows.Rect(0, 0, 210, 138));
+        visual.UpdateLayout();
+
+        var buttons = Descendants(visual).OfType<System.Windows.Controls.Button>().ToArray();
+        Assert.DoesNotContain(buttons, b => Equals(b.Tag, "toggleReveal"));
+
+        var previewText = Descendants(visual).OfType<System.Windows.Controls.TextBlock>().First(tb => tb.Name == "CardPreviewText");
+        var dustOverlay = Descendants(visual).OfType<VNotch.Controls.DustParticleOverlay>().Single();
+
+        double shortWidth = dustOverlay.ActualWidth;
+        Assert.Equal(previewText.ActualWidth, shortWidth, 1);
+        Assert.InRange(shortWidth, 25, 70);
+
+        var mediumSecret = new ClipboardCardViewModel(new ClipboardEntry
+        {
+            Kind = ClipboardKind.Text,
+            IsSensitive = true,
+            Title = ClipboardSensitiveData.Mask,
+            Preview = ClipboardSensitiveData.Mask,
+            MaskedPreview = ClipboardSensitiveData.CreateLayoutMask("password: SuperSecretKey")
+        }, isMasked: true);
+
+        visual.DataContext = mediumSecret;
+        visual.Measure(new System.Windows.Size(210, 138));
+        visual.Arrange(new System.Windows.Rect(0, 0, 210, 138));
+        visual.UpdateLayout();
+
+        double mediumWidth = dustOverlay.ActualWidth;
+        Assert.Equal(previewText.ActualWidth, mediumWidth, 1);
+        Assert.Equal(shortWidth, mediumWidth, 1);
+    });
+
+    [Fact]
+    public async Task SensitiveSearchDoesNotMatchSecretAndMigrationPersistsFixedMask()
+    {
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            Guid id;
+            await using (var store = new ClipboardHistoryStore(root))
+            {
+                await store.InitializeAsync();
+                var entry = (await store.ImportAsync(new ClipboardCapture { Text = "password: hidden-needle", SourceApp = "Test Editor" })).Entry!;
+                id = entry.Id;
+                Assert.Empty(await store.SearchAsync("hidden-needle", "All"));
+                Assert.Single(await store.SearchAsync("Test Editor", "All"));
+            }
+            string metadata = Path.Combine(root, "items", id.ToString("N"), "entry.json");
+            var old = System.Text.Json.JsonSerializer.Deserialize<ClipboardEntry>(await File.ReadAllTextAsync(metadata))!;
+            await File.WriteAllTextAsync(metadata, System.Text.Json.JsonSerializer.Serialize(old with { MaskedPreview = "A00i-M00" }));
+            await using (var reopened = new ClipboardHistoryStore(root))
+            {
+                await reopened.InitializeAsync();
+                Assert.Empty(await reopened.SearchAsync("hidden-needle", "All"));
+                Assert.Equal(ClipboardSensitiveData.Mask, reopened.GetEntry(id)!.MaskedPreview);
+            }
+            Assert.DoesNotContain("A00i-M00", await File.ReadAllTextAsync(metadata));
+            // Current metadata allows startup without reopening content for classification.
+            File.Delete(Path.Combine(root, "items", id.ToString("N"), "content.json"));
+            await using var final = new ClipboardHistoryStore(root);
+            await final.InitializeAsync();
+            Assert.NotNull(final.GetEntry(id));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void FailedRevealCanRetryAndHideCancelsPendingReveal() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using var store = new ClipboardHistoryStore(root);
+            await store.InitializeAsync();
+            var entry = (await store.ImportAsync(new ClipboardCapture { Text = "password: hidden-needle" })).Entry!;
+            var card = new ClipboardCardViewModel(entry);
+            string path = Path.Combine(root, "items", entry.Id.ToString("N"), "content.json");
+            string content = await File.ReadAllTextAsync(path);
+            File.Delete(path);
+            await Assert.ThrowsAsync<FileNotFoundException>(() => card.RevealAsync(store));
+            Assert.False(card.IsRevealed);
+            await File.WriteAllTextAsync(path, content);
+            await card.RevealAsync(store);
+            Assert.True(card.IsRevealed);
+            Assert.Equal("password: hidden-needle", card.Title);
+            card.Hide();
+            Task pending = card.RevealAsync(store);
+            card.Hide();
+            await pending;
+            Assert.False(card.IsRevealed);
+            await card.RevealAsync(store);
+            card.UpdateEntry(entry with { Fingerprint = "changed" });
+            Assert.False(card.IsRevealed);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    });
+
+    [Fact]
+    public void SensitiveFileCanRevealItsName() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            string file = Path.Combine(root, "document.txt");
+            await File.WriteAllTextAsync(file, "example");
+            await using var store = new ClipboardHistoryStore(Path.Combine(root, "history"));
+            await store.InitializeAsync();
+            var entry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [file], Text = "password: hidden" })).Entry!;
+            var card = new ClipboardCardViewModel(entry);
+            Assert.True(card.IsMasked);
+            Assert.Equal(System.Windows.Visibility.Visible, card.MaskActionVisibility);
+            await card.RevealAsync(store);
+            Assert.Equal("document.txt", card.Title);
+            card.Hide();
+            Assert.Equal(ClipboardSensitiveData.Mask, card.Title);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    });
+
+    [Fact]
+    public void DustBoundsMatchRenderedSecretWithoutPersistingLayout() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using var store = new ClipboardHistoryStore(root);
+            await store.InitializeAsync();
+            var entry = (await store.ImportAsync(new ClipboardCapture { Text = "Example2005@", SourceApp = "Bitwarden" })).Entry!;
+            var card = new ClipboardCardViewModel(entry);
+            await card.PrepareMaskedPreviewAsync(store, CancellationToken.None);
+            Assert.False(card.IsRevealed);
+            Assert.Equal(ClipboardSensitiveData.Mask, card.DisplayPreview);
+            Assert.Equal(ClipboardSensitiveData.Mask, store.GetEntry(entry.Id)!.MaskedPreview);
+            using var tray = new VNotch.Controls.ClipboardTray();
+            var list = (System.Windows.Controls.ListBox)tray.FindName("Cards");
+            var visual = (System.Windows.FrameworkElement)list.ItemTemplate.LoadContent();
+            visual.DataContext = card;
+            void Layout()
+            {
+                visual.Measure(new System.Windows.Size(210, 138));
+                visual.Arrange(new System.Windows.Rect(0, 0, 210, 138));
+                visual.UpdateLayout();
+            }
+            Layout();
+            var overlay = Descendants(visual).OfType<VNotch.Controls.DustParticleOverlay>().Single();
+            double maskedWidth = overlay.ActualWidth;
+            await card.RevealAsync(store);
+            Layout();
+            var text = Descendants(visual).OfType<System.Windows.Controls.TextBlock>().Single(t => t.Name == "CardPreviewText");
+            Assert.Equal(text.ActualWidth, maskedWidth, 1);
+            Assert.Contains(Descendants(visual), child => child is VNotch.Controls.CardActionBackdrop);
+            card.Hide();
+            Layout();
+            Assert.Equal(maskedWidth, overlay.ActualWidth, 1);
+            card.ReleaseMaskedPreviewSize();
+            Assert.True(double.IsNaN(card.MaskedPreviewWidth));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    });
+
+    private static IEnumerable<System.Windows.DependencyObject> Descendants(System.Windows.DependencyObject root)
+    {
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var d in Descendants(child)) yield return d;
+        }
+    }
 
     [Fact]
     public async Task ExpiryRespectsOptionBoundaryAndRecopyAndRemovesDiskContent()
@@ -166,7 +355,7 @@ public sealed class ClipboardSensitiveDataTests
             }
             string metadata = Path.Combine(root, "items", id.ToString("N"), "entry.json");
             var old = System.Text.Json.JsonSerializer.Deserialize<ClipboardEntry>(await File.ReadAllTextAsync(metadata))!;
-            await File.WriteAllTextAsync(metadata, System.Text.Json.JsonSerializer.Serialize(old with { IsSensitive = false, Title = "old title", Preview = "old preview" }));
+            await File.WriteAllTextAsync(metadata, System.Text.Json.JsonSerializer.Serialize(old with { SensitivityVersion = 0, IsSensitive = false, Title = "old title", Preview = "old preview" }));
             await using var reopened = new ClipboardHistoryStore(root);
             await reopened.InitializeAsync();
             Assert.True(reopened.GetEntry(id)!.IsSensitive);

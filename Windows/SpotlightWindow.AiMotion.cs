@@ -518,9 +518,7 @@ public partial class SpotlightWindow
     {
         if (SearchIcon == null) return;
         var geom = _aiMode ? GetChatIconGeometry() : GetLookupIconGeometry();
-        SearchIcon.Brush = _aiMode
-            ? UiPalette.PrimaryBrush
-            : UiPalette.IconBrush;
+        SearchIcon.Brush = UiPalette.PrimaryBrush;
         SearchIcon.MorphTo(geom, animate: animate);
     }
 
@@ -529,11 +527,7 @@ public partial class SpotlightWindow
         if (SearchIcon == null) return;
 
         var targetGeom = toAi ? GetChatIconGeometry() : GetLookupIconGeometry();
-        var targetBrush = toAi
-            ? UiPalette.PrimaryBrush
-            : UiPalette.IconBrush;
-
-        SearchIcon.Brush = targetBrush;
+        SearchIcon.Brush = UiPalette.PrimaryBrush;
 
         if (AnimationConfig.ReduceMotion)
         {

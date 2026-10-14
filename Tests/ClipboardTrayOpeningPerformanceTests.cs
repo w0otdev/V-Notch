@@ -42,7 +42,8 @@ public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper outpu
         Assert.Equal(false, ordinaryCard.GetCachedMasking(ordinary));
         Assert.Equal(true, secretCard.GetCachedMasking(secret));
         Assert.Equal(ordinary.Preview, ordinaryCard.DisplayPreview);
-        Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.Mask, secretCard.DisplayPreview);
+        Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.Mask, secretCard.Preview);
+        Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.CreateLayoutMask(secret.Preview), secretCard.DisplayPreview);
         Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.Mask, secretCard.Title);
         // Pinning has no effect on classification and needs no new worker scan.
         var pinned = ordinary with { IsPinned = true };
@@ -53,7 +54,8 @@ public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper outpu
         Assert.Same(ordinaryCard, cards[0]);
         Assert.Same(secretCard, cards[1]);
         Assert.True(ordinaryCard.IsMasked);
-        Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.Mask, ordinaryCard.DisplayPreview);
+        Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.Mask, ordinaryCard.Preview);
+        Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.CreateLayoutMask(ordinary.Preview), ordinaryCard.DisplayPreview);
         Assert.False(secretCard.IsMasked);
         Assert.Equal(ordinary.Preview, secretCard.DisplayPreview);
         // Non-query callers also invalidate the cached flag when content changes.

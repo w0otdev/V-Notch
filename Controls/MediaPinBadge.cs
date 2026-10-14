@@ -26,6 +26,7 @@ public sealed class MediaPinBadge : FrameworkElement
         new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
     private static readonly Geometry Pin = CreatePin();
     private static readonly DropShadowEffect PinShadow = CreateShadow();
+    private static readonly CubicEase RevealEase = CreateRevealEase();
     private bool _pinned;
 
     private double Reveal
@@ -55,7 +56,7 @@ public sealed class MediaPinBadge : FrameworkElement
         BeginAnimation(RevealProperty, new DoubleAnimation(from, pinned ? 1 : 0,
             TimeSpan.FromMilliseconds(pinned ? 240 : 160))
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            EasingFunction = RevealEase,
             FillBehavior = FillBehavior.Stop
         });
     }
@@ -81,21 +82,28 @@ public sealed class MediaPinBadge : FrameworkElement
         double diameter = 12 + 6 * t;
         double cornerOffset = 2 + t;
         var center = new Point(ActualWidth - cornerOffset, ActualHeight - cornerOffset);
-        double scale = 0.8 + 0.2 * reveal;
+        double combinedScale = (0.8 + 0.2 * reveal) * (diameter / 24.0);
+
+        var matrix = Matrix.Identity;
+        matrix.Translate(-10, -10);
+        matrix.Scale(combinedScale, combinedScale);
+        matrix.Rotate(35 - 12 * (1 - reveal));
+        matrix.Translate(center.X, center.Y);
+        var transform = new MatrixTransform(matrix);
+        transform.Freeze();
 
         dc.PushOpacity(reveal);
-        dc.PushTransform(new ScaleTransform(scale, scale, center.X, center.Y));
-        dc.PushTransform(new TranslateTransform(center.X, center.Y));
-        dc.PushTransform(new RotateTransform(35 - 12 * (1 - reveal)));
-        dc.PushTransform(new ScaleTransform(diameter / 24, diameter / 24));
-        dc.PushTransform(new TranslateTransform(-10, -10));
+        dc.PushTransform(transform);
         dc.DrawGeometry(Brushes.White, null, Pin);
         dc.Pop();
         dc.Pop();
-        dc.Pop();
-        dc.Pop();
-        dc.Pop();
-        dc.Pop();
+    }
+
+    private static CubicEase CreateRevealEase()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        return ease;
     }
 
     private static DropShadowEffect CreateShadow()

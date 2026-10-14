@@ -489,7 +489,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         _pendingMenuEntrances.Clear();
         _menuAnimationTargets.Clear();
         CancelThumbnailLoads(personalOnly: IsLoaded && IsVisible);
-        ReleaseCardPreviews(personalOnly: IsLoaded && IsVisible);
+        ReleaseCardPreviews();
         ClearGroupChoices();
         GroupChoices.Visibility = Visibility.Collapsed;
         EndSelection();
@@ -514,6 +514,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         _detailCard = null;
         _detailLocalizationKey = null;
         CopyDetailButton.Visibility = Visibility.Collapsed;
+        RevealDetailButton.Visibility = Visibility.Collapsed;
         DetailImage.Source = null;
         DetailImage.Visibility = Visibility.Collapsed;
         ResetPersonalButton.Visibility = Visibility.Collapsed;
@@ -810,9 +811,11 @@ public partial class ClipboardTray : UserControl, IDisposable
         try
         {
             await _controller.CopyAsync(card.Entry);
+            int copyVersion = card.NextCopyVersion();
             card.IsCopied = true;
             await Task.Delay(1600);
-            card.IsCopied = false;
+            if (card.IsCopyVersionCurrent(copyVersion))
+                card.IsCopied = false;
         }
         catch (Exception ex) when (IsContentError(ex) || ex is System.Runtime.InteropServices.ExternalException)
         { StatusChanged(Loc.Get("clipboard.error")); }
@@ -971,6 +974,13 @@ public partial class ClipboardTray : UserControl, IDisposable
         AddMenu(menu, "clipboard.copy", () => CopyAsync(card));
         AddMenu(menu, card.Entry.IsPinned ? "clipboard.unpin" : "clipboard.pin", () => _controller.Store.UpdateAsync(card.Entry.Id, pinned: !card.Entry.IsPinned));
         AddMenu(menu, "clipboard.details", () => ShowDetailsAsync(card));
+        if (card.IsMasked)
+            AddMenu(menu, card.IsRevealed ? "clipboard.hidePassword" : "clipboard.revealPassword", async () =>
+            {
+                if (card.IsRevealed) card.Hide();
+                else await card.RevealAsync(_controller.Store);
+                if (ReferenceEquals(_detailCard, card)) await ShowDetailsAsync(card);
+            });
 
         menu.Items.Add(new Separator());
 
@@ -1089,6 +1099,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         detailVersion = _detailDismissVersion;
         DetailTextScroll.Visibility = Visibility.Visible;
         bool isSensitive = card.Entry.IsSensitive || (content != null && (ClipboardSensitiveData.IsSensitive(content.Text, card.Entry.SourceApp, card.Entry.SourceExecutable) || ClipboardSensitiveData.IsSensitive(content.Html, card.Entry.SourceApp, card.Entry.SourceExecutable) || ClipboardSensitiveData.IsSensitive(content.Rtf, card.Entry.SourceApp, card.Entry.SourceExecutable)));
+        if (isSensitive && !card.IsMasked) card.UpdatePreparedEntry(card.Entry, true);
         string text = isSensitive && !card.IsRevealed ? ClipboardSensitiveData.Mask : content == null ? "" : content.Text.Length != 0 ? content.Text : string.Join(Environment.NewLine, content.Files.Select(file => file.Name));
         const int detailPreviewLimit = 16_000;
         DetailText.Text = text.Length > detailPreviewLimit ? text[..detailPreviewLimit] + "\n…" : text;
@@ -1126,6 +1137,8 @@ public partial class ClipboardTray : UserControl, IDisposable
             finally { if (bytes != null && card.Entry.IsPersonal) System.Security.Cryptography.CryptographicOperations.ZeroMemory(bytes); }
         }
         _detailCard = card;
+        RevealDetailButton.Visibility = isSensitive ? Visibility.Visible : Visibility.Collapsed;
+        RevealDetailButton.Content = card.RevealTooltip;
         CopyDetailButton.Visibility = Visibility.Visible;
         DetailPanel.Visibility = Visibility.Visible;
     }
@@ -1238,6 +1251,25 @@ public partial class ClipboardTray : UserControl, IDisposable
         ShowApproval();
     }
     private void CloseDetail_Click(object sender, RoutedEventArgs e) => DismissDetails();
+    private async void RevealDetail_Click(object sender, RoutedEventArgs e)
+    {
+        if (_detailCard is not { } card || _controller == null) return;
+        int version = _detailDismissVersion;
+        await SafeAsync(async () =>
+        {
+            if (card.IsRevealed)
+            {
+                card.Hide();
+                DetailText.Text = ClipboardSensitiveData.Mask;
+                RevealDetailButton.Content = card.RevealTooltip;
+                return;
+            }
+            await card.RevealAsync(_controller.Store);
+            if (version == _detailDismissVersion && ReferenceEquals(_detailCard, card) && card.IsRevealed)
+                await ShowDetailsAsync(card);
+        });
+    }
+
     private async void CopyDetail_Click(object sender, RoutedEventArgs e)
     {
         if (_detailCard is not { } card) return;
@@ -1261,6 +1293,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         _detailCard = null;
         _detailLocalizationKey = null;
         CopyDetailButton.Visibility = Visibility.Collapsed;
+        RevealDetailButton.Visibility = Visibility.Collapsed;
         bool refreshGroups = _groupEntryId != null;
         GroupChoices.Visibility = Visibility.Collapsed;
         ClearGroupChoices();

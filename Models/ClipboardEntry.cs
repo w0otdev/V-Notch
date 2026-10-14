@@ -8,6 +8,7 @@ public sealed record ClipboardEntry
     public ClipboardKind Kind { get; init; }
     public string Title { get; init; } = "";
     public string Preview { get; init; } = "";
+    public string MaskedPreview { get; init; } = "";
     public int FileCount { get; init; }
     public string PrimaryExtension { get; init; } = "";
     public string Fingerprint { get; init; } = "";
@@ -17,6 +18,7 @@ public sealed record ClipboardEntry
     public DateTime CopiedUtc { get; init; } = DateTime.UtcNow;
     public long ByteSize { get; init; }
     public bool IsSensitive { get; init; }
+    public int SensitivityVersion { get; init; }
     public bool IsPinned { get; init; }
     public bool IsPersonal { get; init; }
     public bool IsArchived { get; init; }

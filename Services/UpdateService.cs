@@ -22,11 +22,14 @@ public class UpdateService : IUpdateService, IDisposable
     private readonly UpdateSecurityPolicy _securityPolicy;
     private readonly Func<string, (bool IsValid, string Reason)> _signatureValidator;
     private readonly string _manifestPublicKey;
+    private const int MaxReleaseResponseBytes = 2 * 1024 * 1024;
+    private const int MaxReleasePages = 5;
     private readonly SemaphoreSlim _checkLock = new(1, 1);
     private string? _latestReleaseEtag;
     private UpdateInfo? _cachedLatestRelease;
     private DateTime _lastCheckUtc = DateTime.MinValue;
     private bool _cachedIncludesPrereleases;
+    private volatile bool _disposed;
 
     private readonly bool _ownsHttpClient;
 
@@ -34,6 +37,8 @@ public class UpdateService : IUpdateService, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         if (_ownsHttpClient) _httpClient.Dispose();
     }
 
@@ -55,12 +60,13 @@ public class UpdateService : IUpdateService, IDisposable
 
     public string CurrentVersion => GetAppVersion();
     public event EventHandler<UpdateInfo?>? UpdateCheckCompleted;
-    public UpdateInfo? LatestUpdateInfo => _cachedLatestRelease != null ? Clone(_cachedLatestRelease) : null;
+    public UpdateInfo? LatestUpdateInfo => Volatile.Read(ref _cachedLatestRelease) is { } cached ? Clone(cached) : null;
 
     private static string GetAppVersion() => AppVersion.Current;
 
     public async Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
     {
+        if (_disposed) return null;
         UpdateInfo? result = null;
         await _checkLock.WaitAsync();
         try
@@ -68,14 +74,15 @@ public class UpdateService : IUpdateService, IDisposable
             if (_cachedIncludesPrereleases != includePrereleases)
             {
                 _cachedIncludesPrereleases = includePrereleases;
-                _cachedLatestRelease = null;
+                Volatile.Write(ref _cachedLatestRelease, null);
                 _latestReleaseEtag = null;
                 _lastCheckUtc = DateTime.MinValue;
             }
             var now = DateTime.UtcNow;
-            if (_cachedLatestRelease != null && now - _lastCheckUtc < MinRefreshInterval)
+            var currentCached = Volatile.Read(ref _cachedLatestRelease);
+            if (currentCached != null && now - _lastCheckUtc < MinRefreshInterval)
             {
-                result = Clone(_cachedLatestRelease);
+                result = Clone(currentCached);
                 return result;
             }
             using var request = new HttpRequestMessage(HttpMethod.Get, includePrereleases
@@ -83,28 +90,28 @@ public class UpdateService : IUpdateService, IDisposable
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
             if (!includePrereleases && !string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
             using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotModified && _cachedLatestRelease != null)
+            if (response.StatusCode == HttpStatusCode.NotModified && currentCached != null)
             {
                 _lastCheckUtc = now;
-                result = Clone(_cachedLatestRelease);
+                result = Clone(currentCached);
                 return result;
             }
             response.EnsureSuccessStatusCode();
-            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            using var jsonDoc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+            using var jsonDoc = await WeatherService.ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false)
+                ?? throw new InvalidDataException("Release metadata response was empty or exceeded size limit.");
             UpdateInfo? info;
             if (includePrereleases)
             {
                 info = SelectLatestRelease(jsonDoc.RootElement, null);
                 int count = jsonDoc.RootElement.GetArrayLength();
-                for (int page = 2; count == 100; page++)
+                for (int page = 2; count == 100 && page <= MaxReleasePages; page++)
                 {
                     using var pageRequest = new HttpRequestMessage(HttpMethod.Get, new Uri(GithubAllReleasesUri + $"?per_page=100&page={page}"));
                     pageRequest.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
                     using var pageResponse = await SendHttpsAsync(pageRequest, CancellationToken.None).ConfigureAwait(false);
                     pageResponse.EnsureSuccessStatusCode();
-                    await using var pageStream = await pageResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                    using var pageJson = await JsonDocument.ParseAsync(pageStream).ConfigureAwait(false);
+                    using var pageJson = await WeatherService.ReadLimitedJsonAsync(pageResponse, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
+                    if (pageJson == null) break;
                     info = SelectLatestRelease(pageJson.RootElement, info);
                     count = pageJson.RootElement.GetArrayLength();
                 }
@@ -118,14 +125,15 @@ public class UpdateService : IUpdateService, IDisposable
             if (info != null && !IsApprovedUpdate(info)) RuntimeLog.Warn(LogCategory, "Latest release is missing signed update assets; update is unavailable.");
             _lastCheckUtc = now;
             _latestReleaseEtag = info != null && !includePrereleases ? response.Headers.ETag?.ToString() : null;
-            _cachedLatestRelease = info;
+            Volatile.Write(ref _cachedLatestRelease, info);
             result = info != null ? Clone(info) : null;
             return result;
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategory, ex, "Update check failed");
-            result = _cachedLatestRelease != null ? Clone(_cachedLatestRelease) : null;
+            var fallback = Volatile.Read(ref _cachedLatestRelease);
+            result = fallback != null ? Clone(fallback) : null;
             return result;
         }
         finally
@@ -179,8 +187,8 @@ public class UpdateService : IUpdateService, IDisposable
             using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            using var jsonDoc = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+            using var jsonDoc = await WeatherService.ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
+            if (jsonDoc == null) return Array.Empty<UpdateInfo>();
             var releases = new List<UpdateInfo>();
 
             foreach (var release in jsonDoc.RootElement.EnumerateArray())

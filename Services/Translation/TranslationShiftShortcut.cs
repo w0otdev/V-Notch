@@ -45,7 +45,13 @@ internal sealed class TranslationShiftShortcut : IDisposable
             if (_disposed) return;
             _hook = Win32Interop.SetWindowsHookEx(13, _callback, Win32Interop.GetModuleHandle(null), 0);
             if (_hook == IntPtr.Zero) { RuntimeLog.Warn("TRANSLATION", "Could not register double-Shift shortcut."); return; }
-            if (!_disposed) Dispatcher.Run();
+            if (_disposed) return;
+            dispatcher.BeginInvoke(() =>
+            {
+                if (_disposed && !dispatcher.HasShutdownStarted)
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            }, DispatcherPriority.Send);
+            Dispatcher.Run();
         }
         finally
         {

@@ -64,7 +64,7 @@ public partial class MainWindow
 
         SuppressPrivacyDot();
 
-        ClipboardCopiedText.Text = Loc.Get("clipboard.copied");
+        ClipboardCopiedText.Text = Loc.Get("clipboard.copied").TrimStart('✓', ' ');
 
         CancelThumbnailSwitchAnimations();
 

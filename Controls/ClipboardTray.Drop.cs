@@ -124,20 +124,27 @@ public partial class ClipboardTray
         var (entries, files) = DropPayload(e.Data);
         if (entries.Length == 0 && files.Length == 0 && !e.Data.GetDataPresent(DataFormats.FileDrop))
         {
+            ClipboardDropReader.Payload? payload = null;
+            await SafeAsync(() =>
+            {
+                payload = ClipboardDropReader.Read(e.Data);
+                return Task.CompletedTask;
+            });
+            if (payload == null || !CanDropCategory(category, [new ClipboardEntry { Kind = payload.Kind }], [])) return;
+            e.Effects = DragDropEffects.Copy;
+            if (category == "Personal" && !_controller.Store.IsPersonalUnlocked)
+            {
+                SelectCategory(category);
+                _pendingBrowserDrops.Add(payload);
+                return;
+            }
+            bool imported = false;
             await SafeAsync(async () =>
             {
-                var payload = ClipboardDropReader.Read(e.Data);
-                if (payload == null || !CanDropCategory(category, [new ClipboardEntry { Kind = payload.Kind }], [])) return;
-                e.Effects = DragDropEffects.Copy;
-                if (category == "Personal" && !_controller.Store.IsPersonalUnlocked)
-                {
-                    SelectCategory(category);
-                    _pendingBrowserDrops.Add(payload);
-                    return;
-                }
                 await _controller.ImportDropPayloadAsync(payload, category);
-                if (!_disposed) SelectCategory(category);
+                imported = true;
             });
+            if (imported && !_disposed) SelectCategory(category);
             return;
         }
         if (!CanDropCategory(category, entries, files))
@@ -159,12 +166,14 @@ public partial class ClipboardTray
             _pendingPersonalFiles = _pendingPersonalFiles.Union(files, StringComparer.OrdinalIgnoreCase).ToArray();
             return;
         }
+        bool completed = false;
         await SafeAsync(async () =>
         {
             foreach (var entry in entries) await _controller.AssignCategoryAsync(entry, category);
             if (files.Length > 0) await _controller.ImportAsync(new ClipboardCapture { FilePaths = files, TargetCategory = category }, notifyDrop: true);
+            completed = true;
         });
-        SelectCategory(category);
+        if (completed && !_disposed) SelectCategory(category);
     }
 
     internal async Task ImportCurrentCategoryDropAsync(IDataObject data)

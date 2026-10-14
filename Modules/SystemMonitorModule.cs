@@ -116,8 +116,8 @@ public sealed class SystemMonitorModule : NotchModuleBase
             RamUsedBytes = used,
             RamTotalBytes = _installedPhysicalBytes > 0 ? _installedPhysicalBytes : _usablePhysicalBytes,
             RamPercent = ramPercent,
-            NetDownBytesPerSec = _latestDownBytesPerSec,
-            NetUpBytesPerSec = _latestUpBytesPerSec
+            NetDownBytesPerSec = Volatile.Read(ref _latestDownBytesPerSec),
+            NetUpBytesPerSec = Volatile.Read(ref _latestUpBytesPerSec)
         });
     }
 
@@ -165,8 +165,15 @@ public sealed class SystemMonitorModule : NotchModuleBase
         try
         {
             long nowTicks = Stopwatch.GetTimestamp();
+            if (_lastNetTicks > 0)
+            {
+                double checkElapsed = (double)(nowTicks - _lastNetTicks) / Stopwatch.Frequency;
+                if (checkElapsed <= 0.1) return;
+            }
+
             long totalRecv = 0;
             long totalSent = 0;
+            bool anyUp = false;
 
             var interfaces = GetOrRefreshNetworkInterfaces();
             foreach (var nic in interfaces)
@@ -178,6 +185,7 @@ public sealed class SystemMonitorModule : NotchModuleBase
                         nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
                         continue;
 
+                    anyUp = true;
                     var stats = nic.GetIPStatistics();
                     totalRecv += stats.BytesReceived;
                     totalSent += stats.BytesSent;
@@ -188,15 +196,25 @@ public sealed class SystemMonitorModule : NotchModuleBase
                 }
             }
 
-            if (_lastNetTicks > 0)
+            if (!anyUp)
+            {
+                Volatile.Write(ref _latestDownBytesPerSec, 0);
+                Volatile.Write(ref _latestUpBytesPerSec, 0);
+                _lastNetRecvBytes = 0;
+                _lastNetSentBytes = 0;
+                _lastNetTicks = nowTicks;
+                return;
+            }
+
+            if (_lastNetTicks > 0 && _lastNetRecvBytes > 0)
             {
                 double elapsedSec = (double)(nowTicks - _lastNetTicks) / Stopwatch.Frequency;
-                if (elapsedSec > 0.1 && _lastNetRecvBytes > 0)
+                if (elapsedSec > 0.1)
                 {
                     long deltaRecv = totalRecv > _lastNetRecvBytes ? totalRecv - _lastNetRecvBytes : 0;
                     long deltaSent = totalSent > _lastNetSentBytes ? totalSent - _lastNetSentBytes : 0;
-                    _latestDownBytesPerSec = deltaRecv / elapsedSec;
-                    _latestUpBytesPerSec = deltaSent / elapsedSec;
+                    Volatile.Write(ref _latestDownBytesPerSec, deltaRecv / elapsedSec);
+                    Volatile.Write(ref _latestUpBytesPerSec, deltaSent / elapsedSec);
                 }
             }
 
@@ -206,6 +224,8 @@ public sealed class SystemMonitorModule : NotchModuleBase
         }
         catch (Exception ex)
         {
+            Volatile.Write(ref _latestDownBytesPerSec, 0);
+            Volatile.Write(ref _latestUpBytesPerSec, 0);
             RuntimeLog.Log("SYSTEM-MONITOR-NET", ex.Message);
         }
         finally

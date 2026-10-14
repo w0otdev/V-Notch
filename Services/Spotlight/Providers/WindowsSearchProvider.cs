@@ -15,16 +15,17 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         "Provider=Search.CollatorDSO;Extended Properties='Application=Windows'";
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(30);
 
-    private bool _isAvailable = true;
-    private DateTime _lastFailureTime = DateTime.MinValue;
-    private bool _loggedUnavailable;
+    private volatile bool _isAvailable = true;
+    private long _lastFailureTicks = DateTime.MinValue.Ticks;
+    private int _loggedUnavailable;
 
     public bool IsAvailable
     {
         get
         {
             if (_isAvailable) return true;
-            if (DateTime.UtcNow - _lastFailureTime > RetryCooldown)
+            long lastFailureTicks = Interlocked.Read(ref _lastFailureTicks);
+            if (DateTime.UtcNow.Ticks - lastFailureTicks > RetryCooldown.Ticks)
             {
                 return true;
             }
@@ -51,7 +52,7 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
                 () => ExecuteQuery(sanitizedQuery, query, limit, timeoutCts.Token), timeoutCts.Token)
                 .ConfigureAwait(false);
             _isAvailable = true;
-            _loggedUnavailable = false;
+            Interlocked.Exchange(ref _loggedUnavailable, 0);
 
             return items
                 .Where(item => IsExcluded?.Invoke(item.Target) != true)
@@ -73,11 +74,10 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         }
         catch (OleDbException ex)
         {
+            Interlocked.Exchange(ref _lastFailureTicks, DateTime.UtcNow.Ticks);
             _isAvailable = false;
-            _lastFailureTime = DateTime.UtcNow;
-            if (!_loggedUnavailable)
+            if (Interlocked.Exchange(ref _loggedUnavailable, 1) == 0)
             {
-                _loggedUnavailable = true;
                 bool isStopped = (uint)ex.ErrorCode == 0x80041820 || (uint)ex.HResult == 0x80041820;
                 string detail = isStopped
                     ? "Windows Search service (WSearch) is stopped or not running (0x80041820)."
@@ -88,11 +88,10 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         }
         catch (Exception ex)
         {
+            Interlocked.Exchange(ref _lastFailureTicks, DateTime.UtcNow.Ticks);
             _isAvailable = false;
-            _lastFailureTime = DateTime.UtcNow;
-            if (!_loggedUnavailable)
+            if (Interlocked.Exchange(ref _loggedUnavailable, 1) == 0)
             {
-                _loggedUnavailable = true;
                 RuntimeLog.Log("SPOTLIGHT-SEARCH", $"WindowsSearchProvider error: {ex.Message}");
             }
             return Array.Empty<SpotlightSearchItem>();

@@ -41,13 +41,17 @@ public sealed class SystemFileSearchProviderTests : IDisposable
             ignoreCase: true);
     }
 
-    [Fact]
-    public async Task SearchAsync_DoesNotExposeNonLaunchableSystemFiles()
+    [Theory]
+    [InlineData("not-launchable")]
+    [InlineData("not-launchable.dll")]
+    [InlineData("\" n \"")]
+    [InlineData("\"n\"")]
+    public async Task SearchAsync_DoesNotExposeNonLaunchableSystemFiles(string query)
     {
         var provider = new SystemFileSearchProvider([_directory]);
 
         IReadOnlyList<SpotlightSearchItem> results =
-            await provider.SearchAsync("not-launchable", 10, CancellationToken.None);
+            await provider.SearchAsync(query, 10, CancellationToken.None);
 
         Assert.Empty(results);
     }

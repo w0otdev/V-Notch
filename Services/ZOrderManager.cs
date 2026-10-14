@@ -18,10 +18,10 @@ public sealed class ZOrderManager : IDisposable
     private IntPtr _pendingForegroundWindow;
     private int _foregroundDispatchQueued;
 
-    private DateTime _lastTopmostAssertUtc = DateTime.MinValue;
+    private long _lastTopmostAssertTick = long.MinValue;
     private CancellationTokenSource? _burstCancellation;
 
-    private static readonly TimeSpan TopmostThrottle = TimeSpan.FromMilliseconds(80);
+    private const long TopmostThrottleMs = 80;
     public ZOrderManager(
         Func<IntPtr> getHwnd,
         Func<bool> isEffectivelyVisible,
@@ -69,13 +69,14 @@ public sealed class ZOrderManager : IDisposable
 
         if (_isSuspended()) return;
 
-        var now = DateTime.UtcNow;
-        if (!force && (now - _lastTopmostAssertUtc) < TopmostThrottle)
+        long nowTick = Environment.TickCount64;
+        long lastTick = Interlocked.Read(ref _lastTopmostAssertTick);
+        if (!force && lastTick != long.MinValue && (nowTick - lastTick) < TopmostThrottleMs)
             return;
 
         if (force || Win32Interop.GetWindow(hwnd, GW_HWNDPREV) != IntPtr.Zero)
         {
-            _lastTopmostAssertUtc = now;
+            Interlocked.Exchange(ref _lastTopmostAssertTick, nowTick);
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
@@ -100,7 +101,8 @@ public sealed class ZOrderManager : IDisposable
         dispatcher.BeginInvoke(new Action(() =>
         {
             System.Threading.Interlocked.Exchange(ref _foregroundDispatchQueued, 0);
-            if (!_disposed) _onForegroundChanged(_pendingForegroundWindow);
+            IntPtr pending = System.Threading.Interlocked.Exchange(ref _pendingForegroundWindow, IntPtr.Zero);
+            if (!_disposed && pending != IntPtr.Zero) _onForegroundChanged(pending);
         }), DispatcherPriority.Background);
     }
 
@@ -140,7 +142,7 @@ public sealed class ZOrderManager : IDisposable
             cancellationToken).Task;
     }
 
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public void Dispose()
     {

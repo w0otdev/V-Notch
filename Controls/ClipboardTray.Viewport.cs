@@ -87,6 +87,8 @@ public partial class ClipboardTray
         card.Image = null;
         card.SourceIcon = null;
         card.FileIcon = null;
+        card.Hide();
+        card.ReleaseMaskedPreviewSize();
     }
 
     private void ReleaseCardPreviews(bool personalOnly = false)
@@ -95,6 +97,12 @@ public partial class ClipboardTray
             if (!personalOnly || pair.Value.Card.Entry.IsPersonal) ForgetCardViewport(pair.Key);
         foreach (var card in _cards)
             if (!personalOnly || card.Entry.IsPersonal) ReleaseCardPreview(card);
+    }
+
+    private void CardActionGlass_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+            element.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
     }
 
     private void CardPreview_TargetUpdated(object sender, DataTransferEventArgs e)

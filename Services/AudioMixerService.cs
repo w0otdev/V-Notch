@@ -126,6 +126,7 @@ public sealed class AudioMixerService : IDisposable
     {
         long now = Environment.TickCount64;
         if (now - cached.LastValidatedTicks < 3000) return true;
+
         try
         {
             using var proc = Process.GetProcessById((int)pid);
@@ -157,7 +158,16 @@ public sealed class AudioMixerService : IDisposable
         }
         catch
         {
-            return false;
+            var resolved = ProcessNameResolver.TryGetNameAndExecutable(pid);
+            if (string.IsNullOrEmpty(resolved.Name) && string.IsNullOrEmpty(resolved.Executable))
+                return false;
+            if (!string.IsNullOrWhiteSpace(cached.ProcessName) &&
+                !string.Equals(resolved.Name, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+            cached.LastValidatedTicks = now;
+            return true;
         }
     }
 
@@ -303,38 +313,44 @@ public sealed class AudioMixerService : IDisposable
         startTimeUtc = null;
         resolvedExePath = null;
 
-        string? exePath = null;
+        var fastResolved = ProcessNameResolver.TryGetNameAndExecutable(pid);
+        processName = fastResolved.Name;
+        string? exePath = fastResolved.Executable;
+
         try
         {
             using var process = Process.GetProcessById((int)pid);
-            processName = process.ProcessName;
+            if (string.IsNullOrEmpty(processName))
+                processName = process.ProcessName;
             try { startTimeUtc = process.StartTime.ToUniversalTime(); } catch { /* Inaccessible for some system processes */ }
-            try { exePath = process.MainModule?.FileName; }
-            catch (Exception) { /* System/protected process main module inaccessible */ }
-
-            resolvedExePath = exePath;
-
-            if (!string.IsNullOrEmpty(exePath))
+            if (string.IsNullOrEmpty(exePath))
             {
-                try
-                {
-                    var info = FileVersionInfo.GetVersionInfo(exePath);
-                    if (!string.IsNullOrWhiteSpace(info.FileDescription))
-                        name = info.FileDescription.Trim();
-                }
-                catch (Exception)
-                {
-                    // Executable file info could not be read
-                }
+                try { exePath = process.MainModule?.FileName; }
+                catch (Exception) { /* System/protected process main module inaccessible */ }
             }
-
-            if (string.IsNullOrWhiteSpace(name))
-                name = process.ProcessName;
         }
         catch (Exception)
         {
-            // Process may have exited or access denied
+            // Limited-information lookup already captured available metadata.
         }
+        resolvedExePath = exePath;
+
+        if (!string.IsNullOrEmpty(exePath))
+        {
+            try
+            {
+                var info = FileVersionInfo.GetVersionInfo(exePath);
+                if (!string.IsNullOrWhiteSpace(info.FileDescription))
+                    name = info.FileDescription.Trim();
+            }
+            catch (Exception)
+            {
+                // Executable file info could not be read
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(processName))
+            name = processName;
 
         if (string.IsNullOrWhiteSpace(name))
         {

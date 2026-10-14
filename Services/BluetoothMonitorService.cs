@@ -40,10 +40,14 @@ public sealed class BluetoothMonitorService : IDisposable
 
             string[] requestedProperties = new[]
             {
+                "System.ItemNameDisplay",
                 "System.Devices.Aep.DeviceAddress",
                 "System.Devices.Aep.IsConnected",
                 "System.Devices.Aep.Category"
             };
+
+            _isInitialEnumerationComplete = false;
+            _knownDevices.Clear();
 
             _watcher = DeviceInformation.CreateWatcher(
                 aqsFilter,
@@ -67,19 +71,32 @@ public sealed class BluetoothMonitorService : IDisposable
 
     public void Stop()
     {
-        if (_watcher == null) return;
+        var watcher = _watcher;
+        if (watcher == null) return;
+        _watcher = null;
+        _isInitialEnumerationComplete = false;
 
         try
         {
-            if (_watcher.Status == DeviceWatcherStatus.Started ||
-                _watcher.Status == DeviceWatcherStatus.EnumerationCompleted)
+            watcher.Added -= Watcher_Added;
+            watcher.Updated -= Watcher_Updated;
+            watcher.Removed -= Watcher_Removed;
+            watcher.EnumerationCompleted -= Watcher_EnumerationCompleted;
+            watcher.Stopped -= Watcher_Stopped;
+
+            if (watcher.Status == DeviceWatcherStatus.Started ||
+                watcher.Status == DeviceWatcherStatus.EnumerationCompleted)
             {
-                _watcher.Stop();
+                watcher.Stop();
             }
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogTag, ex, "Failed to stop DeviceWatcher");
+        }
+        finally
+        {
+            _knownDevices.Clear();
         }
     }
 
@@ -115,11 +132,15 @@ public sealed class BluetoothMonitorService : IDisposable
             }
             else if (!_knownDevices.ContainsKey(update.Id))
             {
+                string deviceName = update.Properties.TryGetValue("System.ItemNameDisplay", out var nameObj)
+                    && nameObj is string displayName && !string.IsNullOrWhiteSpace(displayName)
+                    ? displayName
+                    : ExtractNameFromId(update.Id);
                 var info = new BluetoothDeviceInfo
                 {
                     Id = update.Id,
-                    Name = ExtractNameFromId(update.Id),
-                    DeviceType = BluetoothDeviceType.Unknown
+                    Name = deviceName,
+                    DeviceType = DetectDeviceType(deviceName)
                 };
                 AddDevice(info);
             }

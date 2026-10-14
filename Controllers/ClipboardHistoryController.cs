@@ -156,10 +156,16 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             {
                 var data = System.Windows.Clipboard.GetDataObject();
                 if (data == null || ShouldIgnoreClipboardData(data)) return;
-                string text = data.GetData(DataFormats.UnicodeText) as string ?? data.GetData(DataFormats.Text) as string ?? "";
-                string[] paths = data.GetData(DataFormats.FileDrop) as string[] ?? [];
+                string text = (data.GetDataPresent(DataFormats.UnicodeText) ? data.GetData(DataFormats.UnicodeText) as string : null)
+                    ?? (data.GetDataPresent(DataFormats.Text) ? data.GetData(DataFormats.Text) as string : null)
+                    ?? "";
+                string[] paths = data.GetDataPresent(DataFormats.FileDrop)
+                    ? data.GetData(DataFormats.FileDrop) as string[] ?? []
+                    : [];
                 bool isScreenshotTempFile = paths.Length == 1 && IsTemporaryScreenshotPath(paths[0]);
-                BitmapSource? image = (paths.Length == 0 || isScreenshotTempFile) ? data.GetData(DataFormats.Bitmap) as BitmapSource : null;
+                BitmapSource? image = (paths.Length == 0 || isScreenshotTempFile) && data.GetDataPresent(DataFormats.Bitmap)
+                    ? data.GetData(DataFormats.Bitmap) as BitmapSource
+                    : null;
                 if (isScreenshotTempFile && image != null)
                 {
                     paths = [];
@@ -177,8 +183,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 var capture = new ClipboardCapture
                 {
                     Text = text,
-                    Html = _captureText ? data.GetData(DataFormats.Html) as string ?? "" : "",
-                    Rtf = _captureText ? data.GetData(DataFormats.Rtf) as string ?? "" : "",
+                    Html = _captureText && data.GetDataPresent(DataFormats.Html) ? data.GetData(DataFormats.Html) as string ?? "" : "",
+                    Rtf = _captureText && data.GetDataPresent(DataFormats.Rtf) ? data.GetData(DataFormats.Rtf) as string ?? "" : "",
                     FilePaths = paths,
                     SourceApp = source.Name,
                     SourceExecutable = source.Executable
@@ -436,7 +442,10 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private async void SessionSwitch(object sender, SessionSwitchEventArgs e)
     {
         if (!_disposed && e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionLogoff)
-            await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap();
+        {
+            try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
+            catch (OperationCanceledException) { }
+        }
     }
     /// <summary>
     /// Locks the Personal Vault when the system suspends (lid close / Modern Standby / hibernate).
@@ -445,7 +454,10 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private async void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
         if (!_disposed && e.Mode == PowerModes.Suspend)
-            await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap();
+        {
+            try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
+            catch (OperationCanceledException) { }
+        }
     }
     private DateTime _nextHistoryPruneUtc = DateTime.UtcNow.AddHours(1);
     private bool _pruning;
@@ -482,11 +494,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         {
             IntPtr owner = GetClipboardOwner();
             Win32Interop.GetWindowThreadProcessId(owner != IntPtr.Zero ? owner : Win32Interop.GetForegroundWindow(), out uint processId);
-            using var process = Process.GetProcessById((int)processId);
-            string executable = "";
-            try { executable = process.MainModule?.FileName ?? ""; }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException) { }
-            return (process.ProcessName, executable);
+            return ProcessNameResolver.TryGetNameAndExecutable(processId);
         }
         catch { return ("", ""); }
     }

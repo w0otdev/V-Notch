@@ -1,20 +1,41 @@
 using System.IO;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace VNotch.Services.Clipboard;
 
-/// <summary>Local heuristics to identify passwords, secrets, tokens, and credentials for safe masking in File Tray.</summary>
+internal enum ClipboardSensitivityReason
+{
+    None, PasswordManager, CredentialFormat, CredentialLabel, VerificationCode,
+    PaymentCard, StandalonePassword, Ambiguous, InspectionLimit
+}
+
+internal enum ClipboardSensitivityConfidence { None, Possible, Likely, High }
+
+// Contains no source text, matched values, or offsets that could leak credentials into logs.
+internal readonly record struct ClipboardSensitivityResult(
+    ClipboardSensitivityReason Reason, ClipboardSensitivityConfidence Confidence)
+{
+    internal bool ShouldMask => Confidence is ClipboardSensitivityConfidence.Likely or ClipboardSensitivityConfidence.High;
+}
+
+/// <summary>Evidence-based clipboard classification, not a password-strength estimator.</summary>
 internal static class ClipboardSensitiveData
 {
+    internal const int DetectorVersion = 2;
     internal const string Mask = "••••••••";
+    private const int MaxInspectionCharacters = 1_000_000;
+    internal static string CreateLayoutMask(string text) => Mask;
 
-    private static readonly Regex[] Secrets = new[]
+    private static Regex Pattern(string pattern) => new(pattern,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex[] CredentialFormats = new[]
     {
         // 1. Private Keys
         @"-----BEGIN (?:[A-Z0-9_-]+ )*PRIVATE KEY(?: BLOCK)?-----",
-
-        // 2. JSON Web Tokens (JWT)
-        @"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
 
         // 3. Known Cloud & API Tokens (split to maintain small automata graphs)
         @"\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,})\b",
@@ -28,239 +49,191 @@ internal static class ClipboardSensitiveData
         // 5. Bearer tokens
         @"\bBearer\s+[A-Za-z0-9._~+/-]{20,}\b",
 
-        // 6. English password / credential labels
-        """\b(?:password|passwd|pwd|passphrase|passcode|pass|pin|secret|api[_ -]?key|auth[_ -]?token|access[_ -]?token|token|wifi[_ -]?(?:password|pass|key)|db[_ -]?(?:password|pass)|mysql[_ -]?pwd|postgres[_ -]?password|otp|totp|2fa|verification[_ -]?code)["']?\s*(?:[:=]|->|=>|–|-|\bis\b)\s*["']?[^\s"']{3,}""",
-
-        // 7. Vietnamese password / credential labels
-        """\b(?:mật[_ ]?khẩu|mat[_ ]?khau|mật[_ ]?mã|mat[_ ]?ma|mã[_ ]?pin|ma[_ ]?pin|mã[_ ]?xác[_ ]?(?:nhận|thực)|ma[_ ]?xac[_ ]?(?:nhan|thuc)|mã[_ ]?otp|ma[_ ]?otp|mã[_ ]?bảo[_ ]?mật|ma[_ ]?bao[_ ]?mat|mk)["']?\s*(?:[:=]|->|=>|–|-|\blà\b|\bla\b)\s*["']?[^\s"']{3,}""",
-
-        // 8. Credentials inside URLs (e.g. postgres://user:pass@host, mysql://..., redis://:pass@host)
         @"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]*:[^/\s:@]+@[^/\s:@]+",
+        @"WIFI:(?:[^;]*;)*P:[^;]+;",
+        @"^[\w.+-]+@[\w-]+\.[\w.-]+:\S+$"
+    }.Select(Pattern).ToArray();
 
-        // 9. Connection strings (e.g. Server=...;Pwd=...; or Password=...)
-        @"\b(?:Password|Pwd)\s*=\s*[^;\r\n\s]{3,}",
-
-        // 10. Wi-Fi QR code strings with password
-        @"WIFI:(?:[^;]*;)*P:[^;]{3,};",
-
-        // 11. Standalone OTP / 2FA digits & codes
-        @"^\s*[0-9]{4,8}\s*$",
-        @"^\s*[0-9]{3}[ -][0-9]{3}\s*$",
-        @"^\s*[Gg]-[0-9]{6}\s*$",
-
-        // 12. Verification code in notification or SMS sentences
-        @"\b(?:otp|mã otp|ma otp|mã xác nhận|ma xac nhan|mã xác thực|ma xac thuc|verification code|security code)\b[^\r\n]{0,35}?\b[0-9]{4,8}\b",
-
-        // 13. Passphrase / Diceware (3 to 6 words joined by hyphens/underscores)
-        @"^\s*[a-zA-Z]{3,12}(?:[-_][a-zA-Z0-9]{3,12}){3,6}\s*$",
-
-        // 14. Email:password format
-        @"^[\w.+-]+@[\w-]+\.[\w.-]+:\S{6,}$"
-    }.Select(pattern => new Regex(pattern,
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
-        TimeSpan.FromMilliseconds(100))).ToArray();
-
-    private static readonly Regex Cards = new(@"\b[0-9](?:[ -]?[0-9]){12,18}\b",
-        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(100));
-
-    private static readonly string[] PasswordManagerProcesses =
-    [
-        "1password", "bitwarden", "keepass", "keepassxc", "lastpass",
-        "enpass", "dashlane", "nordpass", "protonpass", "proton pass",
-        "roboform", "authpass", "keeper", "safeincloud"
-    ];
-
-    internal static bool IsSensitive(string text) => IsSensitive(text, string.Empty, string.Empty);
-
-    internal static bool IsSensitive(string text, string sourceApp, string sourceExecutable)
+    // Require a complete label and a value. Hyphens in documentation/slugs are not assignment operators.
+    private const string LabelValue = """["']?\s*(?:=>|->|[:=]|\bis\b|\blà\b|\bla\b)\s*(?:"(?<value>[^"\r\n]+)"|'(?<value>[^'\r\n]+)'|(?<value>[^\s"';,}<>]+))""";
+    private static readonly Regex[] Labels = new[]
     {
-        if (string.IsNullOrEmpty(text)) return false;
+        @"\b(?:(?:client|db|mysql|postgres|wifi)[_ -]?)?(?:password|passwd|pwd|passphrase|passcode|pass|pin|secret)",
+        @"\b(?:api[_ -]?key|auth[_ -]?token|access[_ -]?token|refresh[_ -]?token|token|otp|totp|2fa|verification[_ -]?code)",
+        @"\b(?:mật[_ ]?khẩu|mat[_ ]?khau|mật[_ ]?mã|mat[_ ]?ma|mã[_ ]?pin|ma[_ ]?pin|mk)",
+        @"\b(?:mã[_ ]?xác[_ ]?(?:nhận|thực)|ma[_ ]?xac[_ ]?(?:nhan|thuc)|mã[_ ]?otp|ma[_ ]?otp|mã[_ ]?bảo[_ ]?mật|ma[_ ]?bao[_ ]?mat)"
+    }.Select(label => Pattern(label + LabelValue)).ToArray();
+    private static readonly Regex Jwt = Pattern(@"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b");
+    private static readonly Regex ContextualCode = Pattern(
+        @"\b(?:otp|mã otp|ma otp|mã xác nhận|ma xac nhan|mã xác thực|ma xac thuc|verification code|security code)\b[^\r\n]{0,35}?\b[0-9]{4,8}\b");
+    private static readonly Regex StandaloneCode = Pattern(@"^(?:[0-9]{6,8}|[0-9]{3}[ -][0-9]{3}|G-[0-9]{6})$");
+    private static readonly Regex Cards = Pattern(@"\b[0-9](?:[ -]?[0-9]){12,18}\b");
+    private static readonly Regex Email = Pattern(@"^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$");
+    private static readonly Regex Version = Pattern(@"^v?\d+(?:\.\d+){1,3}(?:[-+][\w.-]+)?$");
+    private static readonly Regex Identifier = Pattern(@"^[\p{L}_][\p{L}\p{N}_]*$");
+    private static readonly HashSet<string> NonValues = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "null", "undefined", "true", "false", "none", "required", "optional", "missing", "invalid",
+        "incorrect", "expired", "string", "redacted",
+        "your_password", "your_api_key"
+    };
+    private static readonly HashSet<string> PasswordManagers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "1password", "bitwarden", "keepass", "keepassxc", "lastpass", "enpass", "dashlane",
+        "nordpass", "protonpass", "proton pass", "roboform", "authpass", "keeper", "safeincloud"
+    };
+    private static readonly HashSet<string> FileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".cs", ".xaml", ".json", ".png", ".jpg", ".jpeg", ".exe", ".dll", ".md", ".html", ".txt",
+        ".ts", ".tsx", ".js", ".jsx", ".py", ".zip", ".pdf", ".docx", ".xlsx", ".csv", ".xml",
+        ".yaml", ".yml", ".log", ".sql", ".css", ".svg", ".mp4", ".mp3"
+    };
 
-        // 1. If text was copied directly from a password manager, it is sensitive.
-        if (IsFromPasswordManager(sourceApp, sourceExecutable) && !string.IsNullOrWhiteSpace(text) && text.Trim().Length <= 2048)
-            return true;
+    internal static bool IsSensitive(string text) => Analyze(text).ShouldMask;
+    internal static bool IsSensitive(string text, string sourceApp, string sourceExecutable) =>
+        Analyze(text, sourceApp, sourceExecutable).ShouldMask;
 
+    internal static ClipboardSensitivityResult Analyze(string text, string sourceApp = "", string sourceExecutable = "")
+    {
+        if (string.IsNullOrWhiteSpace(text)) return default;
+        if (IsFromPasswordManager(sourceApp, sourceExecutable))
+            return High(ClipboardSensitivityReason.PasswordManager);
+        // Never sample/truncate and silently miss a secret beyond the inspected prefix.
+        if (text.Length > MaxInspectionCharacters) return High(ClipboardSensitivityReason.InspectionLimit);
         try
         {
-            // 2. Match known secret patterns (tokens, keys, labels, connection strings, OTPs).
-            if (Secrets.Any(pattern => pattern.IsMatch(text))) return true;
-
-            // 3. Standalone / unlabelled password heuristics.
-            if (IsStandalonePassword(text)) return true;
-
-            // 4. Credit card Luhn validation.
-            foreach (Match match in Cards.Matches(text))
-            {
-                var digits = match.Value.Where(char.IsAsciiDigit).Select(c => c - '0').ToArray();
-                if (digits.All(d => d == digits[0])) continue;
-                int sum = 0;
-                for (int i = digits.Length - 1, position = 0; i >= 0; i--, position++)
-                {
-                    int n = digits[i];
-                    if (position % 2 == 1) { n *= 2; if (n > 9) n -= 9; }
-                    sum += n;
-                }
-                if (sum % 10 == 0) return true;
-            }
-
-            return false;
+            string normalized = text.IsNormalized(NormalizationForm.FormC) ? text : text.Normalize(NormalizationForm.FormC);
+            if (ContainsJwt(normalized)) return High(ClipboardSensitivityReason.CredentialFormat);
+            foreach (var format in CredentialFormats)
+                if (format.IsMatch(normalized)) return High(ClipboardSensitivityReason.CredentialFormat);
+            foreach (var label in Labels)
+                foreach (Match match in label.Matches(normalized))
+                    if (IsCredentialValue(match.Groups["value"].Value)) return High(ClipboardSensitivityReason.CredentialLabel);
+            if (ContextualCode.IsMatch(normalized)) return High(ClipboardSensitivityReason.VerificationCode);
+            if (IsPaymentCard(normalized)) return High(ClipboardSensitivityReason.PaymentCard);
+            string candidate = normalized.Trim();
+            if (StandaloneCode.IsMatch(candidate))
+                return new(ClipboardSensitivityReason.VerificationCode, ClipboardSensitivityConfidence.Likely);
+            return AnalyzeStandalone(candidate);
         }
-        catch (RegexMatchTimeoutException) { return true; } // Never expose text we could not inspect.
+        catch (RegexMatchTimeoutException) { return High(ClipboardSensitivityReason.InspectionLimit); }
+        catch (ArgumentException) { return High(ClipboardSensitivityReason.InspectionLimit); } // Invalid Unicode must not bypass inspection.
     }
 
-    private static bool IsFromPasswordManager(string sourceApp, string sourceExecutable)
+    private static ClipboardSensitivityResult High(ClipboardSensitivityReason reason) => new(reason, ClipboardSensitivityConfidence.High);
+
+    private static bool IsCredentialValue(string value)
     {
-        if (!string.IsNullOrEmpty(sourceApp))
+        value = value.Trim();
+        if (value.Length == 0 || NonValues.Contains(value)) return false;
+        if (value.All(c => c is '*' or '•' or '●')) return false;
+        if (value.StartsWith("${", StringComparison.Ordinal) || value.StartsWith("{{", StringComparison.Ordinal)
+            || value.StartsWith("process.env.", StringComparison.Ordinal) || value.StartsWith("os.environ", StringComparison.Ordinal)
+            || value.StartsWith("Environment.", StringComparison.Ordinal)) return false;
+        return true;
+    }
+
+    private static bool IsFromPasswordManager(string app, string executable)
+    {
+        // An executable is stronger identity evidence than a friendly window/application label.
+        if (!string.IsNullOrWhiteSpace(executable))
+            return PasswordManagers.Contains(Path.GetFileNameWithoutExtension(executable));
+        return PasswordManagers.Contains(app.Trim());
+    }
+
+    private static bool ContainsJwt(string text)
+    {
+        foreach (Match match in Jwt.Matches(text))
         {
-            foreach (var pm in PasswordManagerProcesses)
+            // Bound decoding allocations independently of the complete clipboard payload.
+            if (match.Length > 16_384) continue;
+            string[] parts = match.Value.Split('.');
+            try
             {
-                if (sourceApp.Contains(pm, StringComparison.OrdinalIgnoreCase)) return true;
+                static byte[] Decode(string part) => Convert.FromBase64String(
+                    part.Replace('-', '+').Replace('_', '/').PadRight((part.Length + 3) / 4 * 4, '='));
+                using var header = JsonDocument.Parse(Decode(parts[0]), new JsonDocumentOptions { MaxDepth = 16 });
+                using var payload = JsonDocument.Parse(Decode(parts[1]), new JsonDocumentOptions { MaxDepth = 16 });
+                if (header.RootElement.ValueKind == JsonValueKind.Object && payload.RootElement.ValueKind == JsonValueKind.Object
+                    && header.RootElement.TryGetProperty("alg", out var algorithm) && algorithm.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrEmpty(algorithm.GetString()) && Decode(parts[2]).Length > 0) return true;
             }
-        }
-        if (!string.IsNullOrEmpty(sourceExecutable))
-        {
-            string fileName = Path.GetFileNameWithoutExtension(sourceExecutable);
-            foreach (var pm in PasswordManagerProcesses)
-            {
-                if (fileName.Contains(pm, StringComparison.OrdinalIgnoreCase)) return true;
-            }
+            catch (Exception ex) when (ex is FormatException or JsonException) { }
         }
         return false;
     }
 
-    private static bool IsStandalonePassword(string text)
+    private static bool IsPaymentCard(string text)
     {
-        var trimmed = text.Trim();
-        if (trimmed.Length < 8 || trimmed.Length > 128) return false;
-        if (trimmed.Contains('\r') || trimmed.Contains('\n') || trimmed.Contains('\t') || trimmed.Contains(' ')) return false;
-
-        // Reject common non-password patterns:
-        // URLs
-        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("file://", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("://", StringComparison.Ordinal))
-            return false;
-
-        // Paths and files
-        if (trimmed.StartsWith("C:\\", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("D:\\", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.StartsWith("\\\\", StringComparison.Ordinal) ||
-            trimmed.StartsWith('/') ||
-            trimmed.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        // GUID / UUID
-        if (Guid.TryParse(trimmed, out _)) return false;
-
-        // Color hex codes (#FFFFFF, #101014)
-        if (trimmed.StartsWith('#') && (trimmed.Length == 4 || trimmed.Length == 7 || trimmed.Length == 9))
+        Span<int> digits = stackalloc int[19];
+        foreach (Match match in Cards.Matches(text))
         {
-            bool allHex = true;
-            for (int i = 1; i < trimmed.Length; i++)
+            int count = 0;
+            foreach (char c in match.ValueSpan) if (char.IsAsciiDigit(c)) digits[count++] = c - '0';
+            bool repeated = true;
+            int sum = 0;
+            for (int i = count - 1, position = 0; i >= 0; i--, position++)
             {
-                if (!char.IsAsciiHexDigit(trimmed[i])) { allHex = false; break; }
+                repeated &= digits[i] == digits[0];
+                int n = digits[i];
+                if (position % 2 == 1) { n *= 2; if (n > 9) n -= 9; }
+                sum += n;
             }
-            if (allHex) return false;
+            if (!repeated && sum % 10 == 0) return true;
         }
-
-        bool hasLower = false;
-        bool hasUpper = false;
-        bool hasDigit = false;
-        bool hasSpecial = false;
-        int nonAsciiCount = 0;
-
-        foreach (char c in trimmed)
-        {
-            if (char.IsAsciiLetterLower(c)) hasLower = true;
-            else if (char.IsAsciiLetterUpper(c)) hasUpper = true;
-            else if (char.IsAsciiDigit(c)) hasDigit = true;
-            else if (IsPasswordSpecialChar(c)) hasSpecial = true;
-            else if (!char.IsAscii(c)) nonAsciiCount++;
-        }
-
-        if (nonAsciiCount > 0) return false;
-
-        int classCount = (hasLower ? 1 : 0) + (hasUpper ? 1 : 0) + (hasDigit ? 1 : 0) + (hasSpecial ? 1 : 0);
-
-        // Rule 1: All 4 character classes present (Lowercase + Uppercase + Digit + Special Symbol).
-        // e.g. "P@ssw0rd123!", "Admin@2024", "kP9#vL2!xQ@1"
-        if (classCount == 4) return true;
-
-        // Rule 2: 3 character classes present, including strong special symbols (@, #, $, %, !, ^, &, *, ?, ~, +, =)
-        // e.g. "admin#123456", "secret@pass", "MY_PASS!123"
-        if (hasSpecial && classCount >= 3)
-        {
-            foreach (char c in trimmed)
-            {
-                if (c is '@' or '#' or '$' or '%' or '^' or '&' or '*' or '!' or '?' or '~' or '+' or '=')
-                    return true;
-            }
-        }
-
-        // Rule 3: High-entropy alphanumeric string (e.g. generated passwords without symbols like "8xK9mP2aQ0zL")
-        if (hasLower && hasUpper && hasDigit && !hasSpecial && trimmed.Length >= 10)
-        {
-            bool isHex = true;
-            foreach (char c in trimmed)
-            {
-                if (!char.IsAsciiHexDigit(c)) { isHex = false; break; }
-            }
-            if (isHex && (trimmed.Length == 32 || trimmed.Length == 40 || trimmed.Length == 64)) return false;
-
-            int transitions = 0;
-            int prevCategory = -1;
-            for (int i = 0; i < trimmed.Length; i++)
-            {
-                char c = trimmed[i];
-                int cat = char.IsAsciiLetterLower(c) ? 0 : char.IsAsciiLetterUpper(c) ? 1 : 2;
-                if (prevCategory != -1 && prevCategory != cat) transitions++;
-                prevCategory = cat;
-            }
-
-            if (transitions >= 4 && CalculateShannonEntropy(trimmed) >= 2.9)
-                return true;
-        }
-
         return false;
     }
 
-    private static bool IsPasswordSpecialChar(char c) =>
-        c is '!' or '@' or '#' or '$' or '%' or '^' or '&' or '*' or '(' or ')'
-          or '_' or '+' or '-' or '=' or '[' or ']' or '{' or '}' or '|' or '\\'
-          or ';' or ':' or '\'' or '"' or ',' or '<' or '.' or '>' or '/' or '?'
-          or '~' or '`';
-
-    private static double CalculateShannonEntropy(string s)
+    private static ClipboardSensitivityResult AnalyzeStandalone(string text)
     {
-        Span<int> freq = stackalloc int[128];
-        foreach (char c in s)
+        if (text.Length < 8 || text.Length > 256 || text.Any(char.IsWhiteSpace)) return default;
+        // Exclusions apply only to weak standalone evidence, never to labelled/structured credentials.
+        if (Guid.TryParse(text, out _) || Email.IsMatch(text) || Version.IsMatch(text)) return default;
+        if (text.Contains("://", StringComparison.Ordinal) || text.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith('/') || text.StartsWith("\\", StringComparison.Ordinal)
+            || text.StartsWith("~/", StringComparison.Ordinal) || text.StartsWith("./", StringComparison.Ordinal)
+            || text.StartsWith("../", StringComparison.Ordinal)
+            || (text.Length > 2 && char.IsAsciiLetter(text[0]) && text[1] == ':' && text[2] is '\\' or '/')) return default;
+        if (FileExtensions.Contains(Path.GetExtension(text))) return default;
+        if ((text.StartsWith('#') && text.Length is 4 or 7 or 9 && text.AsSpan(1).ContainsAnyExcept("0123456789abcdefABCDEF") == false)
+            || (text.Length is 32 or 40 or 64 && text.All(char.IsAsciiHexDigit))) return default;
+        // Common code expressions are not passwords merely because they mix case, numbers and punctuation.
+        if (text.Contains("=>", StringComparison.Ordinal) || text.Contains("==", StringComparison.Ordinal)
+            || text.Contains("!=", StringComparison.Ordinal) || text.Contains("::", StringComparison.Ordinal)
+            || (text.IndexOf('=') is int assignment && assignment >= 0 && assignment < text.Length - 2)
+            || text.Contains('(') || text.Contains(')') || text.Contains('{') || text.Contains('}') || text.Contains(';'))
+            return new(ClipboardSensitivityReason.Ambiguous, ClipboardSensitivityConfidence.Possible);
+
+        int lower = 0, upper = 0, digits = 0, symbols = 0, transitions = 0, previous = -1;
+        bool strongSymbol = false;
+        var frequencies = new Dictionary<char, int>();
+        foreach (char c in text)
         {
-            if (c < 128) freq[c]++;
+            int category;
+            if (char.IsLower(c)) { lower++; category = 0; }
+            else if (char.IsUpper(c)) { upper++; category = 1; }
+            else if (char.IsDigit(c)) { digits++; category = 2; }
+            else if (char.IsLetter(c)) { lower++; category = 0; }
+            else { symbols++; category = 3; strongSymbol |= "@#$%!^&*?~+=".Contains(c); }
+            if (previous >= 0 && previous != category) transitions++;
+            previous = category;
+            frequencies[c] = frequencies.GetValueOrDefault(c) + 1;
         }
         double entropy = 0;
-        double len = s.Length;
-        for (int i = 0; i < 128; i++)
+        foreach (int count in frequencies.Values)
         {
-            if (freq[i] > 0)
-            {
-                double p = freq[i] / len;
-                entropy -= p * Math.Log2(p);
-            }
+            double probability = (double)count / text.Length;
+            entropy -= probability * Math.Log2(probability);
         }
-        return entropy;
+        // Mixed symbols plus letters/numbers are useful evidence even for weak human passwords.
+        bool decorated = strongSymbol && lower + upper > 0 && (digits > 0 || lower > 0 && upper > 0);
+        // Entropy alone also scores identifiers highly: require frequent class changes and multiple digits/cases.
+        bool generated = symbols == 0 && lower >= 2 && upper >= 2 && digits >= 2 && text.Length >= 10
+            && transitions >= 5 && (double)transitions / (text.Length - 1) >= 0.45 && entropy >= 3.0;
+        if (decorated || generated)
+            return new(ClipboardSensitivityReason.StandalonePassword, ClipboardSensitivityConfidence.Likely);
+        if (symbols > 0 || digits > 0 || Identifier.IsMatch(text))
+            return new(ClipboardSensitivityReason.Ambiguous, ClipboardSensitivityConfidence.Possible);
+        return default;
     }
 }

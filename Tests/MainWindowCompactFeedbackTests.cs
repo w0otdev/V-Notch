@@ -114,7 +114,7 @@ public sealed class MainWindowCompactFeedbackTests
         Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = "Fixture song", MediaSource = "Spotify", IsPlaying = true });
         Invoke(window, "PlayClipboardPeek");
         Assert.True(Field<bool>(window, "_isClipboardPeekActive"));
-        Assert.Equal(Loc.Get("clipboard.copied"), window.ClipboardCopiedText.Text);
+        Assert.Equal(Loc.Get("clipboard.copied").TrimStart('✓', ' '), window.ClipboardCopiedText.Text);
         Assert.Equal(Visibility.Visible, window.MusicViz.Visibility);
         await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailBorder.Visibility == Visibility.Collapsed && window.ClipboardCopiedText.Opacity == 1, "copy feedback entrance", ct);
         var timer = Field<UiScheduledTimer>(window, "_clipboardRevertTimer");

@@ -26,13 +26,19 @@ internal sealed class AppSearchProvider : ISpotlightProvider
         cancellationToken.ThrowIfCancellationRequested();
         var apps = await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        return apps
-            .Select(app => app with
+        string subtitle = Loc.Get("spotlight.kind.application");
+        var matches = new List<SpotlightSearchItem>();
+        for (int i = 0; i < apps.Count; i++)
+        {
+            var app = apps[i];
+            double score = SpotlightRanker.Score(app, query);
+            if (score > 0)
             {
-                Subtitle = Loc.Get("spotlight.kind.application"),
-                Score = SpotlightRanker.Score(app, query)
-            })
-            .Where(app => app.Score > 0)
+                matches.Add(app with { Subtitle = subtitle, Score = score });
+            }
+        }
+        if (matches.Count == 0) return Array.Empty<SpotlightSearchItem>();
+        return matches
             .OrderByDescending(app => app.Score)
             .ThenBy(app => app.Title, StringComparer.CurrentCultureIgnoreCase)
             .Take(limit)

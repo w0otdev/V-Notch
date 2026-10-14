@@ -31,16 +31,38 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
         int limit,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2 || limit <= 0)
+        query = query.Trim().Trim('"').Trim();
+        if (query.Length < 2 || limit <= 0)
             return Array.Empty<SpotlightSearchItem>();
 
         IReadOnlyList<SpotlightSearchItem> files =
             await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return files
-            .Select(file => file with { Score = ScoreSystemFile(file, query) })
-            .Where(file => file.Score > 0)
+        return FilterAndRank(files, query, limit);
+    }
+
+    private static IReadOnlyList<SpotlightSearchItem> FilterAndRank(
+        IReadOnlyList<SpotlightSearchItem> files,
+        string query,
+        int limit)
+    {
+        ReadOnlySpan<char> requested = query.AsSpan();
+        if (requested.IsEmpty) return Array.Empty<SpotlightSearchItem>();
+
+        var matches = new List<SpotlightSearchItem>();
+        for (int i = 0; i < files.Count; i++)
+        {
+            var file = files[i];
+            double score = ScoreSystemFile(file, requested);
+            if (score > 0)
+            {
+                matches.Add(file with { Score = score });
+            }
+        }
+        if (matches.Count == 0) return Array.Empty<SpotlightSearchItem>();
+
+        return matches
             .OrderByDescending(file => file.Score)
             .ThenBy(file => file.Title, StringComparer.CurrentCultureIgnoreCase)
             .Take(limit)
@@ -49,16 +71,17 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
 
     internal Task WarmupAsync() => _index.Value;
 
-    private static double ScoreSystemFile(SpotlightSearchItem file, string query)
+    private static double ScoreSystemFile(SpotlightSearchItem file, ReadOnlySpan<char> requested)
     {
-        string name = Path.GetFileName(file.Target);
-        string stem = Path.GetFileNameWithoutExtension(name);
-        string requested = query.Trim().Trim('"');
+        if (file.Kind != SpotlightResultKind.Application) return 0;
+        ReadOnlySpan<char> target = file.Target.AsSpan();
+        ReadOnlySpan<char> name = Path.GetFileName(target);
+        ReadOnlySpan<char> stem = Path.GetFileNameWithoutExtension(name);
         // Exact command names remain discoverable without Everything or WSearch.
         // Generic partial matches stay below ordinary apps and documents.
         if (name.Equals(requested, StringComparison.OrdinalIgnoreCase)
             || (file.Kind == SpotlightResultKind.Application && stem.Equals(requested, StringComparison.OrdinalIgnoreCase))
-            || file.Target.Equals(requested, StringComparison.OrdinalIgnoreCase)) return 1200;
+            || target.Equals(requested, StringComparison.OrdinalIgnoreCase)) return 1200;
         if (file.Kind != SpotlightResultKind.Application) return 0;
         if (stem.StartsWith(requested, StringComparison.OrdinalIgnoreCase)) return 140;
         return requested.Length >= 3 && stem.Contains(requested, StringComparison.OrdinalIgnoreCase) ? 80 : 0;
@@ -102,14 +125,14 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
             }))
             {
                 string extension = Path.GetExtension(path);
-                bool launchable = LaunchableExtensions.Contains(extension);
+                if (!LaunchableExtensions.Contains(extension)) continue;
 
                 string title = Path.GetFileName(path);
                 if (title.Length == 0 || files.ContainsKey(title)) continue;
 
                 files[title] = new SpotlightSearchItem(
                     $"system:{path}",
-                    launchable ? SpotlightResultKind.Application : SpotlightResultKind.File,
+                    SpotlightResultKind.Application,
                     title,
                     root,
                     path,

@@ -104,3 +104,6 @@ __pycache__/
 /.artifacts
 awesome-codex-skills/
 
+
+# WPF temporary projects left behind by interrupted builds
+/*_wpftmp.csproj

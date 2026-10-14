@@ -89,6 +89,7 @@ public partial class ClipboardTray
     }
 
     private static bool NeedsCardContent(ClipboardCardViewModel card) =>
+        card.NeedsMaskedPreviewSize ||
         (card.Entry.Kind == ClipboardKind.Image && card.Image == null) ||
         (card.Entry.Kind == ClipboardKind.File && card.PreferredFileIcon == null && card.FileIcon == null) ||
         (card.PreferredSourceIcon == null && card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0);
@@ -124,6 +125,8 @@ public partial class ClipboardTray
         {
             await _thumbnailSlots.WaitAsync(cancellation);
             acquired = true;
+            if (!IsCurrent()) return;
+            await card.PrepareMaskedPreviewAsync(controller.Store, cancellation);
             if (!IsCurrent()) return;
             if (card.PreferredSourceIcon == null && card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0)
             {

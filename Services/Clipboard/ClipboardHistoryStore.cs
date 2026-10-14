@@ -255,15 +255,18 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
             if (duplicate != null)
             {
                 if (duplicate.IsPersonal && !IsPersonalUnlocked) return new ClipboardImportResult(null);
+                bool duplicateSensitive = sensitive || duplicate.IsSensitive;
                 var updated = duplicate with
                 {
-                    IsSensitive = sensitive || duplicate.IsSensitive,
-                    Title = sensitive || duplicate.IsSensitive ? ClipboardSensitiveData.Mask : duplicate.Title,
+                    IsSensitive = duplicateSensitive,
+                    Title = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicate.Title,
                     FileCount = files.Count,
                     PrimaryExtension = files.Count == 1 && !files[0].IsDirectory ? Path.GetExtension(files[0].Name).ToLowerInvariant() : "",
                     CopiedUtc = capture.CopiedUtc,
                     Kind = kind == ClipboardKind.Color ? kind : duplicate.Kind,
-                    Preview = sensitive || duplicate.IsSensitive ? ClipboardSensitiveData.Mask : kind == ClipboardKind.Color ? preview : duplicate.Preview,
+                    Preview = duplicateSensitive ? ClipboardSensitiveData.Mask : kind == ClipboardKind.Color ? preview : duplicate.Preview,
+                    MaskedPreview = duplicateSensitive ? ClipboardSensitiveData.Mask : "",
+                    SensitivityVersion = ClipboardSensitiveData.DetectorVersion,
                     SourceApp = capture.SourceApp.Length == 0 ? duplicate.SourceApp : capture.SourceApp,
                     SourceExecutable = capture.SourceExecutable.Length == 0 ? duplicate.SourceExecutable : capture.SourceExecutable
                 };
@@ -275,10 +278,12 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
             var entry = new ClipboardEntry
             {
                 IsSensitive = sensitive,
+                SensitivityVersion = ClipboardSensitiveData.DetectorVersion,
                 Id = id,
                 Kind = kind,
                 Title = sensitive ? ClipboardSensitiveData.Mask : title.Length > 120 ? title[..120] : title,
                 Preview = sensitive ? ClipboardSensitiveData.Mask : preview,
+                MaskedPreview = sensitive ? ClipboardSensitiveData.CreateLayoutMask(preview) : "",
                 FileCount = files.Count,
                 PrimaryExtension = files.Count == 1 && !files[0].IsDirectory ? Path.GetExtension(files[0].Name).ToLowerInvariant() : "",
                 Fingerprint = fingerprint,
@@ -298,7 +303,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
             WriteDocument(Path.Combine(staging, "entry.json"), entry, personal);
             Directory.Move(staging, EntryDirectory(entry));
             PutEntry(entry);
-            _searchText.Set(entry.Id, content.Text);
+            if (!entry.IsSensitive) _searchText.Set(entry.Id, content.Text);
             PruneCore(DateTime.UtcNow);
             Changed?.Invoke();
             return new ClipboardImportResult(entry, ImportedCount: files.Count, FailedCount: failedCount);
@@ -316,12 +321,13 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
             cancellation.ThrowIfCancellationRequested();
             if (entry.IsPersonal != personal || personal && !IsPersonalUnlocked || !MatchesCategory(entry, category)) continue;
             if (tokens.Length == 0) { result.Add(entry); continue; }
-            string searchable = entry.Title + " " + entry.Preview + " " + entry.SourceApp + " " + string.Join(' ', entry.Groups);
+            string searchable = (entry.IsSensitive ? "" : entry.Title + " " + entry.Preview + " ") + entry.SourceApp + " " + string.Join(' ', entry.Groups);
             string? fullText = null;
             bool matches = tokens.All(token =>
             {
                 if (token.StartsWith('@')) return MatchesCategory(entry, token[1..], includeArchived: true);
                 if (searchable.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
+                if (entry.IsSensitive) return false;
                 if (fullText == null)
                 {
                     cancellation.ThrowIfCancellationRequested();
@@ -706,9 +712,11 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 
     private ClipboardEntry RestoreFileMetadata(ClipboardEntry entry)
     {
-        if (!entry.IsSensitive && entry.Kind is ClipboardKind.Text or ClipboardKind.Code or ClipboardKind.Link or ClipboardKind.Color)
+        var original = entry;
+        ClipboardContent? content = null;
+        if (!entry.IsSensitive && entry.SensitivityVersion < ClipboardSensitiveData.DetectorVersion)
         {
-            var content = ReadContent(entry);
+            content = ReadContent(entry);
             entry = entry with
             {
                 IsSensitive = ClipboardSensitiveData.IsSensitive(content.Text, entry.SourceApp, entry.SourceExecutable)
@@ -716,17 +724,24 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
                 || ClipboardSensitiveData.IsSensitive(content.Rtf, entry.SourceApp, entry.SourceExecutable)
             };
         }
-        if (entry.IsSensitive) entry = entry with { Title = ClipboardSensitiveData.Mask, Preview = ClipboardSensitiveData.Mask };
+        if (entry.IsSensitive)
+        {
+            entry = entry with { Title = ClipboardSensitiveData.Mask, Preview = ClipboardSensitiveData.Mask, MaskedPreview = ClipboardSensitiveData.Mask };
+        }
+        entry = entry with { SensitivityVersion = ClipboardSensitiveData.DetectorVersion };
+        if (entry != original) WriteEntry(entry);
         if (entry.FileCount != 0 || entry.Kind != ClipboardKind.File) return entry;
         try
         {
             var files = ReadContent(entry).Files;
-            return entry with
+            entry = entry with
             {
                 FileCount = files.Length,
                 PrimaryExtension = files.Length == 1 && !files[0].IsDirectory
                     ? Path.GetExtension(files[0].Name).ToLowerInvariant() : ""
             };
+            WriteEntry(entry);
+            return entry;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -742,6 +757,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         // Metadata only: enables expiry while Personal is locked, including after restart.
         if (entry.IsSensitive)
         {
+            _searchText.Remove(entry.Id);
             string expiryRoot = Path.Combine(_root, "sensitive-expiry");
             Directory.CreateDirectory(expiryRoot);
             ClipboardVault.AtomicWrite(Path.Combine(expiryRoot, entry.Id.ToString("N")),

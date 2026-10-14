@@ -2071,7 +2071,7 @@ public partial class MainWindow : Window
         RefreshAccessibleNames();
         EventText.Text = Loc.Get("greeting.enjoyDay");
         ChargingStatusText.Text = Loc.Get("battery.charging");
-        ClipboardCopiedText.Text = Loc.Get("clipboard.copied");
+        ClipboardCopiedText.Text = Loc.Get("clipboard.copied").TrimStart('✓', ' ');
         CameraErrorText.Text = Loc.Get("notch.camera.error");
         CameraRetryText.Text = Loc.Get("notch.camera.retry");
         AudioContent.AudioLoadingText.Text = Loc.Get("audio.loading");

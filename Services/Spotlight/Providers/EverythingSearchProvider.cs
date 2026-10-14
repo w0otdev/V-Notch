@@ -32,13 +32,18 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private TaskCompletionSource<IReadOnlyList<(string Name, string Parent, bool IsFolder)>>? _pendingReply;
     private uint _pendingReplyId;
     private volatile bool _disposed;
+    private volatile bool _ipcFailed;
     private readonly Func<IntPtr> _findWindow;
 
     public EverythingSearchProvider() : this(() => FindWindowW(EverythingIpcWindowClass, null)) { }
 
     internal EverythingSearchProvider(Func<IntPtr> findWindow) => _findWindow = findWindow;
 
-    public bool IsAvailable { get; private set; }
+    public bool IsAvailable
+    {
+        get => !_disposed && !_ipcFailed && _findWindow() != IntPtr.Zero;
+        private set => _ipcFailed = !value;
+    }
 
     public bool IsInstant => true;
 
