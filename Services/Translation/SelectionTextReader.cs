@@ -25,13 +25,14 @@ internal static class SelectionTextReader
         var clock = Stopwatch.StartNew();
         foreach (var seed in seeds)
         {
+            if (clock.ElapsedMilliseconds >= 600) break;
             // A stale selection event must not prevent trying the current focus.
-            if (seed == null || !Safely(() => WithinWindow(seed, window))) continue;
+            if (seed == null || !Safely(() => WithinWindow(seed, window, clock))) continue;
             AutomationElement? element = seed;
             for (int depth = 0; element != null && depth < 16 && clock.ElapsedMilliseconds < 600; depth++)
             {
                 var current = element;
-                if (Safely(() => current.Current.IsPassword)) { protectedInput = true; return null; }
+                if (!ReferenceEquals(current, focused) && Safely(() => current.Current.IsPassword)) { protectedInput = true; return null; }
                 if (visited.Any(x => Safely(() => Automation.Compare(x, current)))) break;
                 visited.Add(current);
                 var result = Safely(() => ReadElement(current, manual, new Rect(point.X, point.Y, 1, 1)));
@@ -45,7 +46,7 @@ internal static class SelectionTextReader
 
     private static Result? ReadElement(AutomationElement element, bool manual, Rect cursor)
     {
-        if (!element.Current.IsEnabled || element.Current.IsPassword || !element.TryGetCurrentPattern(TextPattern.Pattern, out var found) || found is not TextPattern pattern) return null;
+        if (!element.Current.IsEnabled || !element.TryGetCurrentPattern(TextPattern.Pattern, out var found) || found is not TextPattern pattern) return null;
         var ranges = pattern.GetSelection();
         if (ranges == null || ranges.Length == 0 || ranges.Length > 16) return null;
         var parts = ranges.Select(r => r.GetText(2001)).ToArray();
@@ -79,9 +80,9 @@ internal static class SelectionTextReader
     internal static bool ValidBounds(Rect r) => !r.IsEmpty && double.IsFinite(r.X) && double.IsFinite(r.Y) &&
         double.IsFinite(r.Width) && double.IsFinite(r.Height) && r.Width > 0 && r.Height > 0;
 
-    private static bool WithinWindow(AutomationElement element, IntPtr window)
+    private static bool WithinWindow(AutomationElement element, IntPtr window, Stopwatch clock)
     {
-        for (int depth = 0; element != null && depth < 64; depth++)
+        for (int depth = 0; element != null && depth < 64 && clock.ElapsedMilliseconds < 600; depth++)
         {
             if (new IntPtr(element.Current.NativeWindowHandle) == window) return true;
             element = TreeWalker.RawViewWalker.GetParent(element);

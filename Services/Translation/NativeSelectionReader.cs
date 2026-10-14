@@ -19,7 +19,8 @@ internal static class NativeSelectionReader
         GetClassName(handle, name, name.Capacity);
         return name.ToString();
     }
-    internal static bool IsPassword(IntPtr handle) => IsEdit(ClassName(handle)) && (GetWindowLong(handle, -16) & 0x20) != 0;
+    internal static bool IsPassword(IntPtr handle) => IsPassword(handle, ClassName(handle));
+    internal static bool IsPassword(IntPtr handle, string className) => IsEdit(className) && (GetWindowLong(handle, -16) & 0x20) != 0;
     private static bool IsEdit(string name) => name.Equals("Edit", StringComparison.OrdinalIgnoreCase) || name.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("WindowsForms10.EDIT.", StringComparison.OrdinalIgnoreCase) || name.StartsWith("WindowsForms10.RichEdit", StringComparison.OrdinalIgnoreCase);
 
@@ -36,14 +37,15 @@ internal static class NativeSelectionReader
 
     internal static string? ReadControl(IntPtr control)
     {
-        if (!IsEdit(ClassName(control)) || IsPassword(control)) return null;
+        string className = ClassName(control);
+        if (!IsEdit(className) || IsPassword(control, className)) return null;
         // EM_GETSEL and WM_GETTEXT are system messages marshalled by Windows.
         // No remote pointers or unbounded SendMessage calls are used.
         if (SendMessageTimeout(control, 0xB0, IntPtr.Zero, IntPtr.Zero, 2, 100, out var selection) == IntPtr.Zero) return null;
         uint packed = unchecked((uint)selection.ToInt64());
         if (packed == uint.MaxValue) return null;
         int start = (int)(packed & 0xffff), end = (int)(packed >> 16);
-        if (end <= start) return null;
+        if (end <= start || end >= 0xffff) return null;
         int capturedEnd = Math.Min(end, start + TranslationInput.MaxCharacters + 1);
         var buffer = new StringBuilder(capturedEnd + 1);
         if (GetTextTimeout(control, 0xD, new IntPtr(buffer.Capacity), buffer, 2, 100, out _) == IntPtr.Zero) return null;
@@ -51,11 +53,16 @@ internal static class NativeSelectionReader
         string text = buffer.ToString();
         // RichEdit versions disagree about CR vs CRLF offsets in WM_GETTEXT.
         // Let the selection-aware UIA/Copy paths handle those instead of slicing the wrong text.
-        if (ClassName(control).Contains("RichEdit", StringComparison.OrdinalIgnoreCase) && text.Contains('\r')) return null;
+        if (className.Contains("RichEdit", StringComparison.OrdinalIgnoreCase) && text.Contains('\r')) return null;
         return Slice(text, start, capturedEnd);
     }
-    internal static string? Slice(string text, int start, int end) => start >= 0 && end > start && end <= text.Length &&
-        !string.IsNullOrWhiteSpace(text[start..end]) ? text[start..Math.Min(end, start + TranslationInput.MaxCharacters + 1)] : null;
+    internal static string? Slice(string text, int start, int end)
+    {
+        if (start < 0 || end <= start || end > text.Length) return null;
+        int cappedEnd = Math.Min(end, start + TranslationInput.MaxCharacters + 1);
+        ReadOnlySpan<char> span = text.AsSpan(start, cappedEnd - start);
+        return span.IsWhiteSpace() ? null : span.ToString();
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GuiThreadInfo

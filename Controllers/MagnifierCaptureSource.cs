@@ -8,9 +8,6 @@ namespace VNotch.Controllers;
 
 public sealed class MagnifierCaptureSource : IDisposable
 {
-    // Set true if colours come out with red/blue swapped on a given machine.
-    private static readonly bool SwapRedBlue = false;
-
     private const string LogTag = "LIQUIDGLASS";
     private const string MagDll = "Magnification.dll";
     private const string WC_MAGNIFIER = "Magnifier";
@@ -570,7 +567,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
                 fixed (byte* dstBase = _completedBuffer)
                 {
-                    if (!SwapRedBlue && srcStride == dstStride)
+                    if (srcStride == dstStride)
                     {
                         Buffer.MemoryCopy(src, dstBase, _completedBuffer.Length, (long)needed);
                     }
@@ -580,21 +577,7 @@ public sealed class MagnifierCaptureSource : IDisposable
                         {
                             byte* s = src + row * srcStride;
                             byte* d = dstBase + row * dstStride;
-                            if (!SwapRedBlue)
-                            {
-                                Buffer.MemoryCopy(s, d, dstStride, dstStride);
-                            }
-                            else
-                            {
-                                for (int p = 0; p < w; p++)
-                                {
-                                    int o = p << 2;
-                                    d[o + 0] = s[o + 2];
-                                    d[o + 1] = s[o + 1];
-                                    d[o + 2] = s[o + 0];
-                                    d[o + 3] = s[o + 3];
-                                }
-                            }
+                            Buffer.MemoryCopy(s, d, dstStride, dstStride);
                         }
                     }
                 }

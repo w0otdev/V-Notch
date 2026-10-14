@@ -40,7 +40,20 @@ public sealed class FullscreenAutoHideController : IDisposable
             Interval = TimeSpan.FromMilliseconds(PollIntervalMs)
         };
         _pollTimer.Tick += PollTimer_Tick;
-        _pollTimer.Start();
+        SyncTimerState();
+    }
+
+    private void SyncTimerState()
+    {
+        if (_disposed) return;
+        if (_settings.HideOnExclusiveFullscreen || _settings.HideOnWindowedFullscreen)
+        {
+            _pollTimer.Start();
+        }
+        else
+        {
+            _pollTimer.Stop();
+        }
     }
 
     private void PollTimer_Tick(object? sender, EventArgs e)
@@ -52,6 +65,7 @@ public sealed class FullscreenAutoHideController : IDisposable
     public void UpdateSettings(NotchSettings settings)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        SyncTimerState();
         Evaluate(default, force: true);
     }
 
@@ -168,5 +182,6 @@ public sealed class FullscreenAutoHideController : IDisposable
 
         _pollTimer.Stop();
         _pollTimer.Tick -= PollTimer_Tick;
+        _pollTimer.Dispose();
     }
 }

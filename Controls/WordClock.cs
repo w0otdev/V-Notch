@@ -167,55 +167,95 @@ public class WordClock : TextBlock
         return unit == 0 ? tens : tens + " " + Ones[unit];
     }
 
+    private static readonly string[] VietnameseUnits =
+    {
+        "không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"
+    };
+
+    private static readonly string[] SpanishSmall =
+    {
+        "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
+        "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve",
+        "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"
+    };
+
+    private static readonly string[] SpanishTens =
+    {
+        "", "", "veinte", "treinta", "cuarenta", "cincuenta"
+    };
+
+    private static readonly string[] FrenchSmall =
+    {
+        "zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
+        "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"
+    };
+
+    private static readonly string[] FrenchTens =
+    {
+        "", "", "vingt", "trente", "quarante", "cinquante"
+    };
+
+    private static readonly string[] GermanSmall =
+    {
+        "null", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun",
+        "zehn", "elf", "zwölf", "dreizehn", "vierzehn", "fünfzehn", "sechzehn", "siebzehn", "achtzehn", "neunzehn"
+    };
+
+    private static readonly string[] GermanTens =
+    {
+        "", "", "zwanzig", "dreißig", "vierzig", "fünfzig"
+    };
+
+    private static readonly string[] JapaneseDigits =
+    {
+        "零", "一", "二", "三", "四", "五", "六", "七", "八", "九"
+    };
+
+    private static readonly string[] HindiNumbers =
+    {
+        "शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ",
+        "दस", "ग्यारह", "बारह", "तेरह", "चौदह", "पंद्रह", "सोलह", "सत्रह", "अठारह", "उन्नीस",
+        "बीस", "इक्कीस", "बाईस", "तेईस", "चौबीस", "पच्चीस", "छब्बीस", "सत्ताईस", "अट्ठाईस", "उनतीस",
+        "तीस", "इकतीस", "बत्तीस", "तैंतीस", "चौंतीस", "पैंतीस", "छत्तीस", "सैंतीस", "अड़तीस", "उनतालीस",
+        "चालीस", "इकतालीस", "बयालीस", "तैंतालीस", "चवालीस", "पैंतालीस", "छियालीस", "सैंतालीस", "अड़तालीस", "उनचास",
+        "पचास", "इक्यावन", "बावन", "तिरपन", "चौवन", "पचपन", "छप्पन", "सत्तावन", "अट्ठावन", "उनसठ"
+    };
+
     private static string SpellVietnamese(int value)
     {
-        string[] units = { "không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín" };
-        if (value < 10) return units[value];
+        if (value < 10) return VietnameseUnits[value];
         if (value < 20)
         {
             if (value == 10) return "mười";
-            string unitSuffix = value == 15 ? "lăm" : units[value - 10];
+            string unitSuffix = value == 15 ? "lăm" : VietnameseUnits[value - 10];
             return "mười " + unitSuffix;
         }
 
         int tens = value / 10;
         int unit = value % 10;
-        if (unit == 0) return units[tens] + " mươi";
+        if (unit == 0) return VietnameseUnits[tens] + " mươi";
         string unitText = unit switch
         {
             1 => "mốt",
             5 => "lăm",
-            _ => units[unit]
+            _ => VietnameseUnits[unit]
         };
-        return units[tens] + " mươi " + unitText;
+        return VietnameseUnits[tens] + " mươi " + unitText;
     }
 
     private static string SpellSpanish(int value)
     {
-        string[] small =
-        {
-            "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
-            "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve",
-            "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"
-        };
-        if (value < small.Length) return small[value];
-        string[] tens = { "", "", "veinte", "treinta", "cuarenta", "cincuenta" };
+        if (value < SpanishSmall.Length) return SpanishSmall[value];
         int unit = value % 10;
-        return unit == 0 ? tens[value / 10] : $"{tens[value / 10]} y {small[unit]}";
+        return unit == 0 ? SpanishTens[value / 10] : $"{SpanishTens[value / 10]} y {SpanishSmall[unit]}";
     }
 
     private static string SpellFrench(int value)
     {
-        string[] small =
-        {
-            "zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
-            "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf"
-        };
-        if (value < small.Length) return small[value];
-        string[] tens = { "", "", "vingt", "trente", "quarante", "cinquante" };
+        if (value < FrenchSmall.Length) return FrenchSmall[value];
         int unit = value % 10;
-        if (unit == 0) return tens[value / 10];
-        return unit == 1 ? $"{tens[value / 10]}-et-un" : $"{tens[value / 10]}-{small[unit]}";
+        if (unit == 0) return FrenchTens[value / 10];
+        return unit == 1 ? $"{FrenchTens[value / 10]}-et-un" : $"{FrenchTens[value / 10]}-{FrenchSmall[unit]}";
     }
 
     private static string SpellFrenchMinute(int value)
@@ -229,40 +269,24 @@ public class WordClock : TextBlock
 
     private static string SpellGerman(int value)
     {
-        string[] small =
-        {
-            "null", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun",
-            "zehn", "elf", "zwölf", "dreizehn", "vierzehn", "fünfzehn", "sechzehn", "siebzehn", "achtzehn", "neunzehn"
-        };
-        if (value < small.Length) return small[value];
-        string[] tens = { "", "", "zwanzig", "dreißig", "vierzig", "fünfzig" };
+        if (value < GermanSmall.Length) return GermanSmall[value];
         int unit = value % 10;
-        if (unit == 0) return tens[value / 10];
-        string unitText = unit == 1 ? "ein" : small[unit];
-        return unitText + "und" + tens[value / 10];
+        if (unit == 0) return GermanTens[value / 10];
+        string unitText = unit == 1 ? "ein" : GermanSmall[unit];
+        return unitText + "und" + GermanTens[value / 10];
     }
 
     private static string SpellJapanese(int value)
     {
-        string[] digits = { "零", "一", "二", "三", "四", "五", "六", "七", "八", "九" };
-        if (value < 10) return digits[value];
+        if (value < 10) return JapaneseDigits[value];
         int tens = value / 10;
         int unit = value % 10;
-        string result = tens == 1 ? "十" : digits[tens] + "十";
-        return unit == 0 ? result : result + digits[unit];
+        string result = tens == 1 ? "十" : JapaneseDigits[tens] + "十";
+        return unit == 0 ? result : result + JapaneseDigits[unit];
     }
 
     private static string SpellHindi(int value)
     {
-        string[] numbers =
-        {
-            "शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ",
-            "दस", "ग्यारह", "बारह", "तेरह", "चौदह", "पंद्रह", "सोलह", "सत्रह", "अठारह", "उन्नीस",
-            "बीस", "इक्कीस", "बाईस", "तेईस", "चौबीस", "पच्चीस", "छब्बीस", "सत्ताईस", "अट्ठाईस", "उनतीस",
-            "तीस", "इकतीस", "बत्तीस", "तैंतीस", "चौंतीस", "पैंतीस", "छत्तीस", "सैंतीस", "अड़तीस", "उनतालीस",
-            "चालीस", "इकतालीस", "बयालीस", "तैंतालीस", "चवालीस", "पैंतालीस", "छियालीस", "सैंतालीस", "अड़तालीस", "उनचास",
-            "पचास", "इक्यावन", "बावन", "तिरपन", "चौवन", "पचपन", "छप्पन", "सत्तावन", "अट्ठावन", "उनसठ"
-        };
-        return numbers[Math.Clamp(value, 0, numbers.Length - 1)];
+        return HindiNumbers[Math.Clamp(value, 0, HindiNumbers.Length - 1)];
     }
 }

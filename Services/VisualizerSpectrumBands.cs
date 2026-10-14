@@ -14,7 +14,7 @@ internal sealed class VisualizerSpectrumBands
     ];
 
     private readonly int _fftLength;
-    private readonly double _normalizationScale;
+    private readonly double _powerScale;
     private readonly double[] _powers;
     private readonly double[] _energies = new double[Bands.Length];
     private readonly int[] _starts = new int[Bands.Length];
@@ -27,7 +27,8 @@ internal sealed class VisualizerSpectrumBands
         if (fftLength < 4 || !System.Numerics.BitOperations.IsPow2((uint)fftLength))
             throw new ArgumentOutOfRangeException(nameof(fftLength));
         _fftLength = fftLength;
-        _normalizationScale = 2.0 / fftLength;
+        double normalizationScale = 2.0 / fftLength;
+        _powerScale = normalizationScale * normalizationScale;
         _powers = new double[fftLength / 2];
     }
 
@@ -43,13 +44,7 @@ internal sealed class VisualizerSpectrumBands
 
         for (int i = 1; i <= _lastBin; i++)
         {
-            // Keep sqrt, normalization and squaring in their original order;
-            // algebraic cancellation would change floating-point rounding.
-            double mag = Math.Sqrt((fft[i].X * fft[i].X) + (fft[i].Y * fft[i].Y));
-            // FFT length is a power of two: reciprocal multiplication is the
-            // same exact binary scaling as the original constant division.
-            double normalized = mag * _normalizationScale;
-            _powers[i] = normalized * normalized;
+            _powers[i] = ((fft[i].X * fft[i].X) + (fft[i].Y * fft[i].Y)) * _powerScale;
         }
         for (int band = 0; band < Bands.Length; band++)
         {

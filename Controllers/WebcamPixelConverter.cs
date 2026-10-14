@@ -49,12 +49,16 @@ internal static class WebcamPixelConverter
         {
             for (int y = 0; y < height; y++)
             {
+                int yRow = y * width;
                 int uvRow = pixels + y / 2 * width;
-                for (int x = 0; x < width; x++)
+                for (int x = 0; x < width; x += 2)
                 {
-                    int index = y * width + x;
-                    int uv = uvRow + (x & ~1);
-                    WriteYuv(output, index * 4, scratch[index], scratch[uv], scratch[uv + 1]);
+                    int index = yRow + x;
+                    int uv = uvRow + x;
+                    int u = scratch[uv];
+                    int v = scratch[uv + 1];
+                    WriteYuv(output, index * 4, scratch[index], u, v);
+                    WriteYuv(output, (index + 1) * 4, scratch[index + 1], u, v);
                 }
             }
         }

@@ -36,7 +36,7 @@ internal sealed class InvisibleHotkeyController : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == Win32Interop.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
+        if (message == Win32Interop.WM_HOTKEY && wParam.ToInt64() == HotkeyId)
         {
             handled = true;
             _host.Dispatcher.BeginInvoke(new Action(() => { if (_source != null) _toggle(); }));

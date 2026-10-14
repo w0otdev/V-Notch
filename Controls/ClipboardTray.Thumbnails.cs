@@ -34,7 +34,7 @@ public partial class ClipboardTray
         _cardContentRefresh?.Abort();
         _cardContentRefresh = null;
         CancelThumbnailLoads();
-        _searchCancellation?.Cancel();
+        CancelSearch();
         _searchTimer.Stop();
         _entranceWorkTimer ??= CreateEntranceWorkTimer();
         _entranceWorkTimer.Start();
@@ -96,7 +96,7 @@ public partial class ClipboardTray
 
     private Task LoadCardContentAsync(FrameworkElement element)
     {
-        if (IsEntranceWorkDeferred) return Task.CompletedTask;
+        if (_disposed || _trayLeaving || IsEntranceWorkDeferred) return Task.CompletedTask;
         if (element.DataContext is not ClipboardCardViewModel card || !_realizedCardElements.Contains(element) ||
             !IsCardInViewport(element)) return Task.CompletedTask;
         var controller = _controller;
@@ -106,7 +106,10 @@ public partial class ClipboardTray
             return Task.CompletedTask;
         if (_thumbnailLoads.TryGetValue(element, out var existing) && ReferenceEquals(existing.Card, card)) return existing.Completion;
         CancelThumbnailLoad(element);
-        var load = new ThumbnailLoad(card, CancellationTokenSource.CreateLinkedTokenSource(_contentLifetime.Token));
+        CancellationTokenSource linkedCts;
+        try { linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_contentLifetime.Token); }
+        catch (ObjectDisposedException) { return Task.CompletedTask; }
+        var load = new ThumbnailLoad(card, linkedCts);
         _thumbnailLoads.Add(element, load);
         load.Completion = LoadThumbnailAsync(element, load, controller);
         return load.Completion;
@@ -118,7 +121,7 @@ public partial class ClipboardTray
         var cancellation = load.Cancellation.Token;
         byte[]? bytes = null;
         bool acquired = false;
-        bool IsCurrent() => !cancellation.IsCancellationRequested && IsCardInViewport(element)
+        bool IsCurrent() => !_disposed && !cancellation.IsCancellationRequested && IsCardInViewport(element)
             && _realizedCardElements.Contains(element) && ReferenceEquals(element.DataContext, card)
             && (!card.Entry.IsPersonal || controller.Store.IsPersonalUnlocked);
         try
@@ -177,7 +180,7 @@ public partial class ClipboardTray
             }, cancellation);
             if (IsCurrent()) card.Image = image;
         }
-        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
         catch (Exception ex) when (IsContentError(ex)) { }
         finally
         {
@@ -185,7 +188,11 @@ public partial class ClipboardTray
             if (_thumbnailLoads.TryGetValue(element, out var current) && ReferenceEquals(current, load))
                 _thumbnailLoads.Remove(element);
             if (bytes != null && card.Entry.IsPersonal) CryptographicOperations.ZeroMemory(bytes);
-            if (acquired) _thumbnailSlots.Release();
+            if (acquired)
+            {
+                try { _thumbnailSlots.Release(); }
+                catch (ObjectDisposedException) { }
+            }
             load.Cancellation.Dispose();
         }
     }
@@ -193,7 +200,11 @@ public partial class ClipboardTray
     private void CancelThumbnailLoad(FrameworkElement element)
     {
         _completedContentLoads.Remove(element);
-        if (_thumbnailLoads.Remove(element, out var load)) load.Cancellation.Cancel();
+        if (_thumbnailLoads.Remove(element, out var load))
+        {
+            try { load.Cancellation.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
         // The task owns disposal until its worker has released the slot and wiped private bytes.
     }
 

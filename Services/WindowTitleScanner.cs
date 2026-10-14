@@ -922,13 +922,21 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private static bool FirefoxAddressBarHasSpotify(AutomationElement element)
     {
-        var urlBar = element.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "urlbar-input"));
-        if (urlBar != null &&
-            urlBar.TryGetCurrentPattern(ValuePattern.Pattern, out object? fp))
+        foreach (var edit in FindBrowserChromeElements(element, ControlType.Edit))
         {
-            string val = ((ValuePattern)fp).Current.Value ?? "";
-            return val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase);
+            try
+            {
+                if (edit.Current.AutomationId == "urlbar-input" &&
+                    edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? fp))
+                {
+                    string val = ((ValuePattern)fp).Current.Value ?? "";
+                    return val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch (Exception)
+            {
+                // UI automation read failure on individual element
+            }
         }
         return false;
     }

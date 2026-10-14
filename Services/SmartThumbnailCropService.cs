@@ -48,23 +48,14 @@ public sealed class SmartThumbnailCropService : IDisposable
     private System.Threading.Timer? _idleTimer;
 
     private static readonly HashSet<int> _personClasses = new() { 0 };
-    private static readonly HashSet<int> _animalClasses = new()
-    {
-        14, 15, 16, 17, 18, 19, 20, 21, 22, 23
-    };
-    private static readonly HashSet<int> _productClasses = new()
-    {
-        39, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
-        60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79
-    };
 
-    private static float GetClassPriority(int classId)
+    private static float GetClassPriority(int classId) => classId switch
     {
-        if (_personClasses.Contains(classId)) return 5.0f;
-        if (_animalClasses.Contains(classId)) return 2.5f;
-        if (_productClasses.Contains(classId)) return 2.0f;
-        return 1.0f;
-    }
+        0 => 5.0f,
+        >= 14 and <= 23 => 2.5f,
+        39 or (>= 41 and <= 79) => 2.0f,
+        _ => 1.0f
+    };
 
     public bool TryInitialize()
     {

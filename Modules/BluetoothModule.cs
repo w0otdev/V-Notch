@@ -19,6 +19,8 @@ public class BluetoothModule : NotchModuleBase
 
     protected override void OnStart()
     {
+        _bluetoothService.DeviceConnected -= OnDeviceConnected;
+        _bluetoothService.DeviceDisconnected -= OnDeviceDisconnected;
         _bluetoothService.DeviceConnected += OnDeviceConnected;
         _bluetoothService.DeviceDisconnected += OnDeviceDisconnected;
         _bluetoothService.Start();
@@ -29,6 +31,11 @@ public class BluetoothModule : NotchModuleBase
         _bluetoothService.DeviceConnected -= OnDeviceConnected;
         _bluetoothService.DeviceDisconnected -= OnDeviceDisconnected;
         _bluetoothService.Stop();
+    }
+
+    protected override void OnDispose()
+    {
+        _bluetoothService.Dispose();
     }
 
     protected override void OnTick()

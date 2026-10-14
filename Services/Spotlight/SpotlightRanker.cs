@@ -79,16 +79,13 @@ internal static class SpotlightRanker
         }
         if (titleWithoutExt.Length > 0 && titleWithoutExt != title)
         {
-            double extScore = CalculateLexicalScore(titleWithoutExt, subtitle, normalizedQuery);
+            double extScore = CalculateLexicalScore(titleWithoutExt, string.Empty, normalizedQuery);
             baseScore = Math.Max(baseScore, extScore);
         }
 
         if (baseScore <= 0) return 0;
 
-        bool isExecutableOrApp = IsExecutableOrApp(item);
-        bool isAssetJunk = IsAssetJunk(item);
-
-        if (isExecutableOrApp)
+        if (IsExecutableOrApp(item))
         {
             baseScore += 300;
             if (IsPopularExecutable(item))
@@ -100,7 +97,7 @@ internal static class SpotlightRanker
         {
             baseScore += 50;
         }
-        else if (isAssetJunk)
+        else if (IsAssetJunk(item))
         {
             baseScore = Math.Max(10, baseScore - 300);
         }

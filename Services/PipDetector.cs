@@ -80,8 +80,12 @@ public static class PipDetector
         return KnownBrowserProcesses.Contains(cleaned);
     }
 
-    public static bool IsPipWindow(IntPtr hWnd, string? targetProcessName = null, string? currentTrack = null)
+    public static bool IsPipWindow(IntPtr hWnd, string? targetProcessName = null, string? currentTrack = null) =>
+        IsPipWindow(hWnd, out _, targetProcessName, currentTrack);
+
+    private static bool IsPipWindow(IntPtr hWnd, out string windowTitle, string? targetProcessName = null, string? currentTrack = null)
     {
+        windowTitle = string.Empty;
         if (hWnd == IntPtr.Zero || !IsWindowVisible(hWnd) || IsIconic(hWnd))
             return false;
 
@@ -106,13 +110,17 @@ public static class PipDetector
 
         string title = GetWindowTitle(hWnd);
         if (IsPipTitle(title))
+        {
+            windowTitle = title;
             return true;
+        }
 
         // If current track is provided and title contains track title in a topmost browser window
         if (!string.IsNullOrWhiteSpace(currentTrack) &&
             !string.IsNullOrWhiteSpace(title) &&
             title.Contains(currentTrack.Trim(), StringComparison.OrdinalIgnoreCase))
         {
+            windowTitle = title;
             return true;
         }
 
@@ -134,10 +142,10 @@ public static class PipDetector
         {
             EnumWindows((hWnd, _) =>
             {
-                if (IsPipWindow(hWnd, targetProcessName, currentTrack))
+                if (IsPipWindow(hWnd, out string title, targetProcessName, currentTrack))
                 {
                     foundHwnd = hWnd;
-                    foundTitle = GetWindowTitle(hWnd);
+                    foundTitle = title;
                     return false; // Stop enumeration
                 }
                 return true;
@@ -165,13 +173,5 @@ public static class PipDetector
         var sb = new StringBuilder(length + 1);
         GetWindowText(hwnd, sb, sb.Capacity);
         return sb.ToString();
-    }
-
-    private static string GetWindowClassName(IntPtr hwnd)
-    {
-        var sb = new StringBuilder(256);
-        if (GetClassName(hwnd, sb, sb.Capacity) > 0)
-            return sb.ToString();
-        return string.Empty;
     }
 }

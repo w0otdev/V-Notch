@@ -19,8 +19,17 @@ internal static partial class AiMarkdown
     private static readonly SolidColorBrush CodeForegroundBrush = CreateFrozenBrush(Color.FromRgb(226, 232, 240));
     private static readonly SolidColorBrush CodeBackgroundBrush = CreateFrozenBrush(Color.FromArgb(200, 20, 20, 26));
     private static readonly SolidColorBrush CodeBorderBrush = CreateFrozenBrush(Color.FromArgb(40, 255, 255, 255));
+    private static readonly SolidColorBrush TableCellBorderBrush = CreateFrozenBrush(Color.FromArgb(50, 255, 255, 255));
+    private static readonly SolidColorBrush InlineCodeForegroundBrush = CreateFrozenBrush(Color.FromRgb(225, 225, 225));
+    private static readonly SolidColorBrush InlineCodeBackgroundBrush = CreateFrozenBrush(Color.FromArgb(36, 255, 255, 255));
     private static readonly SolidColorBrush QuoteBorderBrush = CreateFrozenBrush(Color.FromRgb(85, 85, 85));
     private static readonly SolidColorBrush QuoteForegroundBrush = CreateFrozenBrush(Color.FromArgb(215, 255, 255, 255));
+
+    [ThreadStatic]
+    private static string? _cachedMarkdownText;
+
+    [ThreadStatic]
+    private static MarkdownDocument? _cachedMarkdownDoc;
 
     [System.Text.RegularExpressions.GeneratedRegex(@"(?m)^\s*```")]
     private static partial System.Text.RegularExpressions.Regex FenceRegex();
@@ -41,6 +50,17 @@ internal static partial class AiMarkdown
         return brush;
     }
 
+    private static MarkdownDocument GetOrParseDocument(string markdown)
+    {
+        if (string.Equals(_cachedMarkdownText, markdown, StringComparison.Ordinal) && _cachedMarkdownDoc != null)
+            return _cachedMarkdownDoc;
+
+        var parsed = Markdown.Parse(markdown, Pipeline);
+        _cachedMarkdownText = markdown;
+        _cachedMarkdownDoc = parsed;
+        return parsed;
+    }
+
     internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false)
     {
         var font = fontFamily
@@ -57,7 +77,7 @@ internal static partial class AiMarkdown
             Foreground = BodyForegroundBrush,
             Background = Brushes.Transparent
         };
-        foreach (var block in Markdown.Parse(markdown, Pipeline)) doc.Blocks.Add(RenderBlock(block, font, normalBody));
+        foreach (var block in GetOrParseDocument(markdown)) doc.Blocks.Add(RenderBlock(block, font, normalBody));
         return doc;
     }
 
@@ -109,7 +129,7 @@ internal static partial class AiMarkdown
                     {
                         FontFamily = font,
                         Padding = new Thickness(6),
-                        BorderBrush = new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)),
+                        BorderBrush = TableCellBorderBrush,
                         BorderThickness = new Thickness(0.5),
                         FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold
                     };
@@ -123,7 +143,7 @@ internal static partial class AiMarkdown
         if (block is ThematicBreakBlock)
             return new Paragraph
             {
-                BorderBrush = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
+                BorderBrush = CodeBorderBrush,
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Margin = new Thickness(0, 8, 0, 8)
             };
@@ -150,7 +170,7 @@ internal static partial class AiMarkdown
         {
             p.FontSize = Math.Max(14, 20 - (heading.Level - 1) * 2);
             p.FontWeight = FontWeights.Bold;
-            p.Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200));
+            p.Foreground = BodyForegroundBrush;
             p.Margin = new Thickness(0, 10, 0, 4);
         }
         if (block is LeafBlock leaf && leaf.Inline != null) AddInlines(p.Inlines, leaf.Inline);
@@ -237,10 +257,10 @@ internal static partial class AiMarkdown
                 case CodeInline code:
                     target.Add(new Run(code.Content)
                     {
-                        FontFamily = new FontFamily("Consolas, SF Mono, Menlo, monospace"),
+                        FontFamily = CodeBlockFont,
                         FontSize = 12,
-                        Foreground = new SolidColorBrush(Color.FromRgb(225, 225, 225)),
-                        Background = new SolidColorBrush(Color.FromArgb(36, 255, 255, 255))
+                        Foreground = InlineCodeForegroundBrush,
+                        Background = InlineCodeBackgroundBrush
                     });
                     break;
                 case LineBreakInline: target.Add(new LineBreak()); break;
@@ -252,7 +272,7 @@ internal static partial class AiMarkdown
                     AddInlines(span.Inlines, emphasis); target.Add(span); break;
                 case LinkInline link:
                     // Render labels without fetching remote images or executing generated links.
-                    var label = new Span { Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)) };
+                    var label = new Span { Foreground = BodyForegroundBrush };
                     AddInlines(label.Inlines, link);
                     if (!string.IsNullOrEmpty(link.Url) && !VNotch.Services.Translation.TranslationStructuredText.IsSocialIcon(link)) label.Inlines.Add(new Run(" (" + link.Url + ")"));
                     target.Add(label); break;

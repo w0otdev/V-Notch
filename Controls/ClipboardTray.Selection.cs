@@ -46,7 +46,6 @@ public partial class ClipboardTray
     private bool _selectionModified;
     private ClipboardCardViewModel? _selectionAnchor;
     private readonly HashSet<ListBoxItem> _selectionContainers = [];
-    private readonly Dictionary<ClipboardCardViewModel, Rect> _selectionBounds = [];
     private readonly HashSet<ClipboardCardViewModel> _selectionTargets = [];
     private Point _selectionPointer;
     private bool _selectionBoundsDirty;
@@ -207,7 +206,7 @@ public partial class ClipboardTray
     private void ApplyPendingSelection()
     {
         if (_selectionStart is not Point start || (!_selectionUpdatePending && !_selectionBoundsDirty)) return;
-        if (_selectionBoundsDirty) CacheSelectionBounds();
+        _selectionBoundsDirty = false;
         _selectionUpdatePending = false;
         double offset = FindScrollViewer(Cards)?.HorizontalOffset ?? 0;
         var rectangle = new Rect(new Point(start.X + _selectionStartOffset, start.Y),
@@ -253,22 +252,6 @@ public partial class ClipboardTray
             Cards.ApplySelection(_selectionTargets);
     }
 
-    private void CacheSelectionBounds()
-    {
-        _selectionBounds.Clear();
-        Rect viewport = Cards.TransformToAncestor(SelectionSurface).TransformBounds(new Rect(Cards.RenderSize));
-        viewport.Intersect(new Rect(SelectionSurface.RenderSize));
-        foreach (var container in _selectionContainers)
-        {
-            if (!container.IsVisible || container.DataContext is not ClipboardCardViewModel card ||
-                !SelectionSurface.IsAncestorOf(container)) continue;
-            Rect bounds = container.TransformToAncestor(SelectionSurface).TransformBounds(new Rect(container.RenderSize));
-            bounds.Intersect(viewport);
-            if (!bounds.IsEmpty) _selectionBounds[card] = bounds;
-        }
-        _selectionBoundsDirty = false;
-    }
-
     private void RegisterSelectionContainer(ListBoxItem container)
     {
         if (!_selectionContainers.Add(container)) return;
@@ -306,7 +289,6 @@ public partial class ClipboardTray
         CompositionTarget.Rendering -= Selection_Rendering;
         _selectionUpdatePending = false;
         _selectionHasMoved = false;
-        _selectionBounds.Clear();
         _selectionTargets.Clear();
         _selectionSeed.Clear();
         SelectionRectangle.Visibility = Visibility.Collapsed;

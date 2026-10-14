@@ -107,6 +107,8 @@ internal sealed class ProgressSpringRenderer
 
         if (!_shouldRender())
         {
+            DisplayRatio = TargetRatio;
+            Stop();
             return;
         }
 
@@ -141,9 +143,10 @@ internal sealed class ProgressSpringRenderer
         DisplayRatio += Velocity * scaledDt;
 
         double step = DisplayRatio - prevDisplay;
-        if (Math.Abs(step) > SpringMaxStepPerFrame)
+        double maxStep = SpringMaxStepPerFrame * (scaledDt / 0.0166667);
+        if (Math.Abs(step) > maxStep)
         {
-            DisplayRatio = prevDisplay + Math.Sign(step) * SpringMaxStepPerFrame;
+            DisplayRatio = prevDisplay + Math.Sign(step) * maxStep;
         }
 
         if ((prevDisplay - SpringTargetRatio) * (DisplayRatio - SpringTargetRatio) < 0)

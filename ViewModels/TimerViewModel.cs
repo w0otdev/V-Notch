@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VNotch.ViewModels;
@@ -7,22 +8,39 @@ public partial class TimerViewModel : ObservableObject
     private static readonly TimeSpan Minimum = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan Maximum = TimeSpan.FromDays(7);
 
+    [GeneratedRegex(@"(\d+(?:\.\d+)?)\s*([hmsd])", RegexOptions.IgnoreCase)]
+    private static partial Regex UnitTimeRegex();
+
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DisplayText))]
     [NotifyPropertyChangedFor(nameof(Progress))]
     private TimeSpan _duration = TimeSpan.FromMinutes(25);
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DisplayText))]
     [NotifyPropertyChangedFor(nameof(Progress))]
     private TimeSpan _remaining = TimeSpan.FromMinutes(25);
 
     [ObservableProperty]
     private bool _isRunning;
 
-    public string DisplayText => Format(Remaining);
+    private string _displayText = Format(TimeSpan.FromMinutes(25));
+    public string DisplayText => _displayText;
+
     public double Progress => Duration <= TimeSpan.Zero ? 0 :
         1 - Math.Clamp(Remaining.TotalMilliseconds / Duration.TotalMilliseconds, 0, 1);
+
+    partial void OnDurationChanged(TimeSpan value) => UpdateDisplayText();
+
+    partial void OnRemainingChanged(TimeSpan value) => UpdateDisplayText();
+
+    private void UpdateDisplayText()
+    {
+        string formatted = Format(Remaining);
+        if (_displayText != formatted)
+        {
+            _displayText = formatted;
+            OnPropertyChanged(nameof(DisplayText));
+        }
+    }
 
     public void Start()
     {
@@ -76,28 +94,31 @@ public partial class TimerViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(input)) return false;
         string s = input.Trim();
 
-        string[] parts = s.Split(':');
-        if (parts.Length == 2 && int.TryParse(parts[0], out int mins) && int.TryParse(parts[1], out int secs))
+        if (s.Contains(':'))
         {
-            if (mins >= 0 && secs >= 0 && secs < 60)
+            string[] parts = s.Split(':');
+            if (parts.Length == 2 && int.TryParse(parts[0], out int mins) && int.TryParse(parts[1], out int secs))
             {
-                result = new TimeSpan(0, mins, secs);
-                return result > TimeSpan.Zero;
+                if (mins >= 0 && secs >= 0 && secs < 60)
+                {
+                    result = new TimeSpan(0, mins, secs);
+                    return result > TimeSpan.Zero;
+                }
             }
-        }
-        else if (parts.Length == 3 && int.TryParse(parts[0], out int hrs) && int.TryParse(parts[1], out int m) && int.TryParse(parts[2], out int sec))
-        {
-            if (hrs >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60)
+            else if (parts.Length == 3 && int.TryParse(parts[0], out int hrs) && int.TryParse(parts[1], out int m) && int.TryParse(parts[2], out int sec))
             {
-                result = new TimeSpan(hrs, m, sec);
-                return result > TimeSpan.Zero;
+                if (hrs >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60)
+                {
+                    result = new TimeSpan(hrs, m, sec);
+                    return result > TimeSpan.Zero;
+                }
             }
-        }
 
-        if (TimeSpan.TryParse(s, out TimeSpan ts) && ts > TimeSpan.Zero)
-        {
-            result = ts;
-            return true;
+            if (TimeSpan.TryParse(s, out TimeSpan ts) && ts > TimeSpan.Zero)
+            {
+                result = ts;
+                return true;
+            }
         }
 
         if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double num))
@@ -113,19 +134,19 @@ public partial class TimerViewModel : ObservableObject
         try
         {
             double totalSeconds = 0;
-            var matches = System.Text.RegularExpressions.Regex.Matches(s.ToLowerInvariant(), @"(\d+(?:\.\d+)?)\s*([hmsd])");
+            var matches = UnitTimeRegex().Matches(s);
             if (matches.Count > 0)
             {
-                foreach (System.Text.RegularExpressions.Match match in matches)
+                foreach (Match match in matches)
                 {
                     double val = double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                    string unit = match.Groups[2].Value;
+                    char unit = char.ToLowerInvariant(match.Groups[2].Value[0]);
                     switch (unit)
                     {
-                        case "s": totalSeconds += val; break;
-                        case "m": totalSeconds += val * 60; break;
-                        case "h": totalSeconds += val * 3600; break;
-                        case "d": totalSeconds += val * 86400; break;
+                        case 's': totalSeconds += val; break;
+                        case 'm': totalSeconds += val * 60; break;
+                        case 'h': totalSeconds += val * 3600; break;
+                        case 'd': totalSeconds += val * 86400; break;
                     }
                 }
                 if (totalSeconds > 0)

@@ -525,7 +525,23 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
-        _dispatcher.VerifyAccess();
+        if (!_dispatcher.CheckAccess())
+        {
+            if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
+            {
+                if (_disposeTask != null) return new ValueTask(_disposeTask);
+                _disposed = true;
+                SystemEvents.SessionSwitch -= SessionSwitch;
+                SystemEvents.PowerModeChanged -= PowerModeChanged;
+                _retentionTimer.Stop();
+                _retentionTimer.Tick -= RetentionTick;
+                _debounceTimer.Stop();
+                _debounceTimer.Tick -= DebounceTick;
+                _captures.Writer.TryComplete();
+                return new ValueTask(_disposeTask = DrainAsync());
+            }
+            return new ValueTask(_dispatcher.InvokeAsync(() => DisposeAsync().AsTask()).Task.Unwrap());
+        }
         if (_disposeTask != null) return new ValueTask(_disposeTask);
         ClearPersonalClipboard();
         _disposed = true;
@@ -542,6 +558,10 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private async Task DrainAsync()
     {
         try { await _consumer.ConfigureAwait(false); }
-        finally { await Store.DisposeAsync().ConfigureAwait(false); }
+        finally
+        {
+            _clipboardWriteGate.Dispose();
+            await Store.DisposeAsync().ConfigureAwait(false);
+        }
     }
 }

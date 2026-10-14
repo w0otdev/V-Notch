@@ -21,7 +21,7 @@ public class AnalogClock : FrameworkElement
         FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     private readonly UiScheduledTimer _timer;
-    private UiScheduledTimer? _sweepStartDelay;
+    private readonly UiScheduledTimer _sweepStartDelay;
     private bool _isRunning;
 
     private const int SweepStartDelayMs = 480;
@@ -82,6 +82,12 @@ public class AnalogClock : FrameworkElement
             if (UpdateFrame(DateTime.Now)) InvalidateVisual();
         };
 
+        _sweepStartDelay = new UiScheduledTimer(DispatcherPriority.Normal)
+        {
+            Interval = TimeSpan.FromMilliseconds(SweepStartDelayMs)
+        };
+        _sweepStartDelay.Tick += OnSweepStartDelayElapsed;
+
         Loaded += (_, _) => UpdateRunningState();
         Unloaded += (_, _) => StopTimer();
         IsVisibleChanged += (_, _) => UpdateRunningState();
@@ -101,19 +107,12 @@ public class AnalogClock : FrameworkElement
         _isRunning = true;
 
         InvalidateVisual();
-
-        _sweepStartDelay ??= new UiScheduledTimer(DispatcherPriority.Normal)
-        {
-            Interval = TimeSpan.FromMilliseconds(SweepStartDelayMs)
-        };
-        _sweepStartDelay.Tick -= OnSweepStartDelayElapsed;
-        _sweepStartDelay.Tick += OnSweepStartDelayElapsed;
         _sweepStartDelay.Start();
     }
 
     private void OnSweepStartDelayElapsed(object? sender, EventArgs e)
     {
-        _sweepStartDelay?.Stop();
+        _sweepStartDelay.Stop();
         if (!_isRunning) return;
         _timer.Start();
         InvalidateVisual();
@@ -123,7 +122,7 @@ public class AnalogClock : FrameworkElement
     {
         if (!_isRunning) return;
         _isRunning = false;
-        _sweepStartDelay?.Stop();
+        _sweepStartDelay.Stop();
         _timer.Stop();
     }
 

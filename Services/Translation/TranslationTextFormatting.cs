@@ -7,48 +7,110 @@ internal static class TranslationTextFormatting
     internal static string Format(string text)
     {
         var paragraphs = new List<string>();
-        var currentCodeBlock = new List<string>();
-        bool inCodeFence = false;
+        var currentBlock = new List<string>();
+        char fenceChar = '\0';
+        int fenceLength = 0;
+        int lastKind = 0; // 1 = table, 2 = list, 3 = blockquote
+
+        void FlushGroup()
+        {
+            if (currentBlock.Count > 0)
+            {
+                paragraphs.Add(string.Join("\n", currentBlock));
+                currentBlock.Clear();
+            }
+            lastKind = 0;
+        }
 
         foreach (ReadOnlySpan<char> rawLine in text.AsSpan().EnumerateLines())
         {
             ReadOnlySpan<char> trimmed = rawLine.Trim();
-            bool isFence = trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal);
 
-            if (isFence)
+            if (fenceLength > 0)
             {
                 string line = rawLine.ToString();
-                if (inCodeFence)
+                currentBlock.Add(line);
+                if (IsClosingFence(trimmed, fenceChar, fenceLength))
                 {
-                    currentCodeBlock.Add(line);
-                    paragraphs.Add(string.Join("\n", currentCodeBlock));
-                    currentCodeBlock.Clear();
-                    inCodeFence = false;
-                }
-                else
-                {
-                    inCodeFence = true;
-                    currentCodeBlock.Clear();
-                    currentCodeBlock.Add(line);
+                    paragraphs.Add(string.Join("\n", currentBlock));
+                    currentBlock.Clear();
+                    fenceChar = '\0';
+                    fenceLength = 0;
                 }
                 continue;
             }
 
-            if (inCodeFence)
+            if (TryGetOpeningFence(trimmed, out char openChar, out int openLen))
             {
-                currentCodeBlock.Add(rawLine.ToString());
+                FlushGroup();
+                fenceChar = openChar;
+                fenceLength = openLen;
+                currentBlock.Add(rawLine.ToString());
+                continue;
             }
-            else if (!trimmed.IsEmpty)
+
+            if (trimmed.IsEmpty)
             {
+                FlushGroup();
+                continue;
+            }
+
+            int kind = ClassifyBlockLine(trimmed);
+            if (kind != 0)
+            {
+                if (lastKind != 0 && lastKind != kind) FlushGroup();
+                lastKind = kind;
+                currentBlock.Add(rawLine.ToString());
+            }
+            else
+            {
+                FlushGroup();
                 paragraphs.Add(rawLine.ToString());
             }
         }
 
-        if (currentCodeBlock.Count > 0)
-        {
-            paragraphs.Add(string.Join("\n", currentCodeBlock));
-        }
-
+        FlushGroup();
         return string.Join("\n\n", paragraphs);
+    }
+
+    private static bool TryGetOpeningFence(ReadOnlySpan<char> trimmed, out char fenceChar, out int fenceLength)
+    {
+        fenceChar = '\0';
+        fenceLength = 0;
+        if (trimmed.Length < 3) return false;
+        char first = trimmed[0];
+        if (first is not ('`' or '~')) return false;
+        int len = 0;
+        while (len < trimmed.Length && trimmed[len] == first) len++;
+        if (len < 3) return false;
+        if (first == '`' && trimmed[len..].Contains('`')) return false;
+        fenceChar = first;
+        fenceLength = len;
+        return true;
+    }
+
+    private static bool IsClosingFence(ReadOnlySpan<char> trimmed, char fenceChar, int minLength)
+    {
+        if (trimmed.Length < minLength) return false;
+        int len = 0;
+        while (len < trimmed.Length && trimmed[len] == fenceChar) len++;
+        return len >= minLength && trimmed[len..].IsWhiteSpace();
+    }
+
+    private static int ClassifyBlockLine(ReadOnlySpan<char> trimmed)
+    {
+        if (trimmed.Length > 0 && trimmed[0] == '|') return 1;
+        if (trimmed.Length > 0 && trimmed[0] == '>') return 3;
+        if (IsListItem(trimmed)) return 2;
+        return 0;
+    }
+
+    private static bool IsListItem(ReadOnlySpan<char> trimmed)
+    {
+        if (trimmed.Length >= 2 && trimmed[0] is '-' or '*' or '+' && trimmed[1] is ' ' or '\t')
+            return true;
+        int digits = 0;
+        while (digits < trimmed.Length && char.IsAsciiDigit(trimmed[digits])) digits++;
+        return digits > 0 && digits + 1 < trimmed.Length && trimmed[digits] is '.' or ')' && trimmed[digits + 1] is ' ' or '\t';
     }
 }

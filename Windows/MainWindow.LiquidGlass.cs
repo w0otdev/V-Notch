@@ -321,10 +321,15 @@ public partial class MainWindow
         SetGlassRegionPush(false);
         _liquidGlass?.Stop();
         DetachGpuRefraction();
-        if (_cleanedUp && _glassGpuRetryTimer != null)
+        if (_cleanedUp)
         {
-            _glassGpuRetryTimer.Tick -= OnGlassGpuRetry;
-            _glassGpuRetryTimer = null;
+            if (_glassGpuRetryTimer != null)
+            {
+                _glassGpuRetryTimer.Tick -= OnGlassGpuRetry;
+                _glassGpuRetryTimer = null;
+            }
+            _liquidGlass?.Dispose();
+            _liquidGlass = null;
         }
     }
 
@@ -1162,8 +1167,12 @@ public partial class MainWindow
             _glassRendererRebuildQueued = false;
             if (_cleanedUp || !IsLiquidGlassEnabled) return;
             StopLiquidGlass();
+            _liquidGlass?.Dispose();
+            int targetFps = _settings.LiquidGlass?.TargetFps ?? 0;
+            if (targetFps <= 0) targetFps = VNotch.Services.AnimationConfig.TargetFps;
+            int activeFps = Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps);
             _liquidGlass = new LiquidGlassController(GlassBackdropImage, () => _hwnd, GetGlassCaptureRegion,
-                logTag: "ISLAND", maxRegionWidth: requiredW, maxRegionHeight: requiredH);
+                activeFps: activeFps, logTag: "ISLAND", maxRegionWidth: requiredW, maxRegionHeight: requiredH);
             _lastAppliedDpiScale = -1;
             ApplyLiquidGlassSkin();
         }));

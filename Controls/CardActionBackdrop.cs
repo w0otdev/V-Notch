@@ -21,14 +21,30 @@ public sealed class CardActionBackdrop : FrameworkElement
     public CardActionBackdrop()
     {
         IsHitTestVisible = false;
-        LayoutUpdated += (_, _) =>
-        {
-            if (Source == null || !IsVisible || !Source.IsVisible) return;
-            var sample = new Rect(TranslatePoint(default, Source), RenderSize);
-            if (sample == _sample) return;
-            _sample = sample;
-            InvalidateVisual();
-        };
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        LayoutUpdated -= OnLayoutUpdated;
+        LayoutUpdated += OnLayoutUpdated;
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        LayoutUpdated -= OnLayoutUpdated;
+    }
+
+    private void OnLayoutUpdated(object? sender, System.EventArgs e)
+    {
+        if (Source == null || !IsVisible || !Source.IsVisible) return;
+        var thisSource = PresentationSource.FromVisual(this);
+        if (thisSource == null || thisSource != PresentationSource.FromVisual(Source)) return;
+        var sample = new Rect(TranslatePoint(default, Source), RenderSize);
+        if (sample == _sample) return;
+        _sample = sample;
+        InvalidateVisual();
     }
 
     protected override void OnRender(DrawingContext dc)

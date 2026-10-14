@@ -308,7 +308,6 @@ public partial class MainWindow
             if (!IsGreetingCurrent(generation)) return;
             _isAnimating = false;
             _isGreetingActive = false;
-            StartStartupHold(TimeSpan.FromMilliseconds(3300));
             RestorePrivacyDotVisibility();
             NotchLiveContent.Visibility = Visibility.Visible;
 

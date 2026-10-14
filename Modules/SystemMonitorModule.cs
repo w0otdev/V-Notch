@@ -17,6 +17,7 @@ public sealed class SystemMonitorModule : NotchModuleBase
     private ulong _lastSysIdle = 0;
     private ulong _lastSysKernel = 0;
     private ulong _lastSysUser = 0;
+    private long _lastCpuTicks = 0;
     private double _smoothedCpu = 0;
     private bool _hasCpuMeasurement;
 
@@ -30,6 +31,7 @@ public sealed class SystemMonitorModule : NotchModuleBase
     private double _latestUpBytesPerSec = 0;
     private NetworkInterface[]? _cachedInterfaces;
     private readonly object _interfaceLock = new();
+    private readonly object _netStatsLock = new();
 
     private ulong _usablePhysicalBytes;
     private ulong _installedPhysicalBytes;
@@ -38,13 +40,6 @@ public sealed class SystemMonitorModule : NotchModuleBase
 
     protected override void OnInitialize()
     {
-        try
-        {
-            NetworkChange.NetworkAddressChanged += OnNetworkTopologyChanged;
-            NetworkChange.NetworkAvailabilityChanged += OnNetworkTopologyChanged;
-        }
-        catch { }
-
         _usablePhysicalBytes = ReadUsablePhysicalMemory();
         _installedPhysicalBytes = ReadInstalledPhysicalMemory();
         if (_installedPhysicalBytes == 0) _installedPhysicalBytes = _usablePhysicalBytes;
@@ -55,6 +50,28 @@ public sealed class SystemMonitorModule : NotchModuleBase
         {
             Task.Run(SampleNetworkUsageBackground);
         }
+    }
+
+    protected override void OnStart()
+    {
+        try
+        {
+            NetworkChange.NetworkAddressChanged -= OnNetworkTopologyChanged;
+            NetworkChange.NetworkAvailabilityChanged -= OnNetworkTopologyChanged;
+            NetworkChange.NetworkAddressChanged += OnNetworkTopologyChanged;
+            NetworkChange.NetworkAvailabilityChanged += OnNetworkTopologyChanged;
+        }
+        catch { }
+    }
+
+    protected override void OnStop()
+    {
+        try
+        {
+            NetworkChange.NetworkAddressChanged -= OnNetworkTopologyChanged;
+            NetworkChange.NetworkAvailabilityChanged -= OnNetworkTopologyChanged;
+        }
+        catch { }
     }
 
     private void OnNetworkTopologyChanged(object? sender, EventArgs e)
@@ -110,14 +127,21 @@ public sealed class SystemMonitorModule : NotchModuleBase
             Task.Run(SampleNetworkUsageBackground);
         }
 
+        double netDown, netUp;
+        lock (_netStatsLock)
+        {
+            netDown = _latestDownBytesPerSec;
+            netUp = _latestUpBytesPerSec;
+        }
+
         StatsUpdated?.Invoke(this, new SystemMonitorInfo
         {
             CpuPercent = cpu,
             RamUsedBytes = used,
             RamTotalBytes = _installedPhysicalBytes > 0 ? _installedPhysicalBytes : _usablePhysicalBytes,
             RamPercent = ramPercent,
-            NetDownBytesPerSec = Volatile.Read(ref _latestDownBytesPerSec),
-            NetUpBytesPerSec = Volatile.Read(ref _latestUpBytesPerSec)
+            NetDownBytesPerSec = netDown,
+            NetUpBytesPerSec = netUp
         });
     }
 
@@ -125,6 +149,16 @@ public sealed class SystemMonitorModule : NotchModuleBase
     {
         try
         {
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (_lastCpuTicks > 0)
+            {
+                double elapsedMs = (double)(nowTicks - _lastCpuTicks) * 1000.0 / Stopwatch.Frequency;
+                if (elapsedMs < 50.0)
+                {
+                    return Math.Clamp(_smoothedCpu, 0, 100);
+                }
+            }
+
             if (Win32Interop.GetSystemTimes(out var sysIdle, out var sysKernel, out var sysUser))
             {
                 ulong idle = sysIdle.ToUInt64();
@@ -152,6 +186,7 @@ public sealed class SystemMonitorModule : NotchModuleBase
                 _lastSysIdle = idle;
                 _lastSysKernel = kernel;
                 _lastSysUser = user;
+                _lastCpuTicks = nowTicks;
                 return Math.Clamp(_smoothedCpu, 0, 100);
             }
         }
@@ -165,9 +200,10 @@ public sealed class SystemMonitorModule : NotchModuleBase
         try
         {
             long nowTicks = Stopwatch.GetTimestamp();
-            if (_lastNetTicks > 0)
+            long lastNetTicks = Interlocked.Read(ref _lastNetTicks);
+            if (lastNetTicks > 0)
             {
-                double checkElapsed = (double)(nowTicks - _lastNetTicks) / Stopwatch.Frequency;
+                double checkElapsed = (double)(nowTicks - lastNetTicks) / Stopwatch.Frequency;
                 if (checkElapsed <= 0.1) return;
             }
 
@@ -198,34 +234,45 @@ public sealed class SystemMonitorModule : NotchModuleBase
 
             if (!anyUp)
             {
-                Volatile.Write(ref _latestDownBytesPerSec, 0);
-                Volatile.Write(ref _latestUpBytesPerSec, 0);
-                _lastNetRecvBytes = 0;
-                _lastNetSentBytes = 0;
-                _lastNetTicks = nowTicks;
+                lock (_netStatsLock)
+                {
+                    _latestDownBytesPerSec = 0;
+                    _latestUpBytesPerSec = 0;
+                }
+                Interlocked.Exchange(ref _lastNetRecvBytes, 0);
+                Interlocked.Exchange(ref _lastNetSentBytes, 0);
+                Interlocked.Exchange(ref _lastNetTicks, nowTicks);
                 return;
             }
 
-            if (_lastNetTicks > 0 && _lastNetRecvBytes > 0)
+            long prevRecv = Interlocked.Read(ref _lastNetRecvBytes);
+            long prevSent = Interlocked.Read(ref _lastNetSentBytes);
+            if (lastNetTicks > 0)
             {
-                double elapsedSec = (double)(nowTicks - _lastNetTicks) / Stopwatch.Frequency;
+                double elapsedSec = (double)(nowTicks - lastNetTicks) / Stopwatch.Frequency;
                 if (elapsedSec > 0.1)
                 {
-                    long deltaRecv = totalRecv > _lastNetRecvBytes ? totalRecv - _lastNetRecvBytes : 0;
-                    long deltaSent = totalSent > _lastNetSentBytes ? totalSent - _lastNetSentBytes : 0;
-                    Volatile.Write(ref _latestDownBytesPerSec, deltaRecv / elapsedSec);
-                    Volatile.Write(ref _latestUpBytesPerSec, deltaSent / elapsedSec);
+                    long deltaRecv = totalRecv > prevRecv ? totalRecv - prevRecv : 0;
+                    long deltaSent = totalSent > prevSent ? totalSent - prevSent : 0;
+                    lock (_netStatsLock)
+                    {
+                        _latestDownBytesPerSec = deltaRecv / elapsedSec;
+                        _latestUpBytesPerSec = deltaSent / elapsedSec;
+                    }
                 }
             }
 
-            _lastNetRecvBytes = totalRecv;
-            _lastNetSentBytes = totalSent;
-            _lastNetTicks = nowTicks;
+            Interlocked.Exchange(ref _lastNetRecvBytes, totalRecv);
+            Interlocked.Exchange(ref _lastNetSentBytes, totalSent);
+            Interlocked.Exchange(ref _lastNetTicks, nowTicks);
         }
         catch (Exception ex)
         {
-            Volatile.Write(ref _latestDownBytesPerSec, 0);
-            Volatile.Write(ref _latestUpBytesPerSec, 0);
+            lock (_netStatsLock)
+            {
+                _latestDownBytesPerSec = 0;
+                _latestUpBytesPerSec = 0;
+            }
             RuntimeLog.Log("SYSTEM-MONITOR-NET", ex.Message);
         }
         finally
@@ -236,12 +283,7 @@ public sealed class SystemMonitorModule : NotchModuleBase
 
     protected override void OnDispose()
     {
-        try
-        {
-            NetworkChange.NetworkAddressChanged -= OnNetworkTopologyChanged;
-            NetworkChange.NetworkAvailabilityChanged -= OnNetworkTopologyChanged;
-        }
-        catch { }
+        OnStop();
         InvalidateNetworkInterfaces();
     }
 

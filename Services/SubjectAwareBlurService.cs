@@ -53,8 +53,10 @@ public static class SubjectAwareBlurService
             var small = new TransformedBitmap(formatted,
                 new ScaleTransform((double)width / formatted.PixelWidth, (double)height / formatted.PixelHeight));
 
-            int stride = width * 4;
-            int bufLen = height * stride;
+            int actualW = small.PixelWidth;
+            int actualH = small.PixelHeight;
+            int stride = actualW * 4;
+            int bufLen = actualH * stride;
 
             byte[] background = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
             byte[] subjectLayer = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
@@ -65,12 +67,12 @@ public static class SubjectAwareBlurService
                 small.CopyPixels(background, stride, 0);
                 Buffer.BlockCopy(background, 0, subjectLayer, 0, bufLen);
 
-                RenderBackgroundLayer(background, tmp, width, height, bufLen, backgroundBlurRadius);
-                RenderSubjectLayer(subjectLayer, tmp, width, height, bufLen, subjectBlurRadius);
-                CompositeLayers(background, subjectLayer, s, width, height, stride);
+                RenderBackgroundLayer(background, tmp, actualW, actualH, backgroundBlurRadius);
+                RenderSubjectLayer(subjectLayer, tmp, actualW, actualH, bufLen, subjectBlurRadius);
+                CompositeLayers(background, subjectLayer, s, actualW, actualH, stride);
 
-                var wb = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-                wb.WritePixels(new Int32Rect(0, 0, width, height), background, stride, 0);
+                var wb = new WriteableBitmap(actualW, actualH, 96, 96, PixelFormats.Bgra32, null);
+                wb.WritePixels(new Int32Rect(0, 0, actualW, actualH), background, stride, 0);
                 wb.Freeze();
                 return wb;
             }
@@ -93,7 +95,6 @@ public static class SubjectAwareBlurService
         byte[] tmp,
         int width,
         int height,
-        int bufLen,
         int backgroundBlurRadius)
     {
         for (int i = 0; i < 2; i++)
@@ -101,7 +102,7 @@ public static class SubjectAwareBlurService
             FastBlurService.BoxBlurHorizontal(background, tmp, width, height, backgroundBlurRadius);
             FastBlurService.BoxBlurVertical(tmp, background, width, height, backgroundBlurRadius);
         }
-        Darken(background, bufLen, 0.78f);
+        FastBlurService.DarkenPixels(background, width, height, 0.78f);
     }
 
     private static void RenderSubjectLayer(
@@ -170,17 +171,6 @@ public static class SubjectAwareBlurService
         float dist = MathF.Sqrt(distanceSquared);
         float u = (dist - 1f) / feather;
         return 1f - u * u * (3f - 2f * u);
-    }
-
-    private static void Darken(byte[] pixels, int bufLen, float factor)
-    {
-        int limit = Math.Min(pixels.Length, bufLen);
-        for (int i = 0; i < limit; i += 4)
-        {
-            pixels[i] = (byte)(pixels[i] * factor);
-            pixels[i + 1] = (byte)(pixels[i + 1] * factor);
-            pixels[i + 2] = (byte)(pixels[i + 2] * factor);
-        }
     }
 
     private static void Brighten(byte[] pixels, int bufLen, float factor)

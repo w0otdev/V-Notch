@@ -82,6 +82,7 @@ public partial class MainWindow
 
         if (targetIndex != currentIndex)
         {
+            _isScrollSessionLocked = true;
             NavigateToNotchView(activeTabs[targetIndex]);
         }
     }
@@ -136,15 +137,7 @@ public partial class MainWindow
     private void ClipboardIconButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        if (_isAudioView && !_isAnimating)
-        {
-            SwitchFromAudioToSecondaryView();
-        }
-        else if (_isTimerView && !_isAnimating)
-        {
-            SwitchFromTimerToSecondaryView();
-        }
-        else if (!_isSecondaryView && !_isAnimating)
+        if (!_isSecondaryView && !_isAnimating)
         {
             SwitchToSecondaryView();
         }

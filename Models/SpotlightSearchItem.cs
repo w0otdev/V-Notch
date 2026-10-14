@@ -36,7 +36,7 @@ public sealed record SpotlightSearchItem(
         get
         {
             var entry = Services.Spotlight.SpotlightSystemCatalog.Find(Target);
-            if (entry?.Kind == Kind) return entry.CreateItem().Title;
+            if (entry?.Kind == Kind) return ResolveSystemLabel($"spotlight.system.{entry.Key}", entry.Keywords);
             if (Kind is not (SpotlightResultKind.Application or SpotlightResultKind.File)) return Title;
             string extension = Path.GetExtension(Target);
             return extension.Length > 0 && Title.Length > extension.Length
@@ -50,11 +50,27 @@ public sealed record SpotlightSearchItem(
         get
         {
             var entry = Services.Spotlight.SpotlightSystemCatalog.Find(Target);
-            if (entry?.Kind == Kind) return entry.CreateItem().Subtitle;
+            if (entry?.Kind == Kind)
+            {
+                return entry.Kind switch
+                {
+                    SpotlightResultKind.Settings => ResolveSystemLabel("spotlight.system.settings", "Windows Settings"),
+                    SpotlightResultKind.SystemAction => ResolveSystemLabel("spotlight.system.actions", "System actions"),
+                    _ => ResolveSystemLabel("spotlight.system.tools", "Windows tools")
+                };
+            }
             if (!Path.IsPathFullyQualified(Subtitle)) return Subtitle;
             return Kind == SpotlightResultKind.Application ? Loc.Get("spotlight.kind.application")
                 : Path.GetDirectoryName(Target) ?? Subtitle;
         }
+    }
+
+    private static string ResolveSystemLabel(string key, string fallbackKeywords)
+    {
+        string text = Loc.Get(key);
+        if (!string.IsNullOrWhiteSpace(text) && text != key) return text;
+        int sep = fallbackKeywords.IndexOf(';');
+        return sep >= 0 ? fallbackKeywords[..sep] : fallbackKeywords;
     }
 
     private ImageSource? _icon;

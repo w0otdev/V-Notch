@@ -234,14 +234,13 @@ public partial class MainWindow
         var pos = e.GetPosition(NotchBorder);
         bool wasTap = _gestureController.EndTracking(pos);
 
-        if (!_gestureController.GestureTriggered && !wasTap)
+        if (!_gestureController.GestureTriggered)
         {
             AnimateGestureSnapBack();
-            ToggleNotchFromClick(e.ClickCount);
-        }
-        else if (!_gestureController.GestureTriggered && wasTap)
-        {
-            AnimateGestureSnapBack();
+            if (!wasTap)
+            {
+                ToggleNotchFromClick(e.ClickCount);
+            }
         }
         else
         {
@@ -310,24 +309,11 @@ public partial class MainWindow
 
             if (!_isExpanded && !_isAnimating)
             {
-                ExpandNotch();
-
-                var waitTimer = new UiScheduledTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(40)
-                };
-                waitTimer.Tick += (s, args) =>
-                {
-                    if (!_isAnimating)
-                    {
-                        waitTimer.Stop();
-                        if (!_isSecondaryView)
-                        {
-                            SwitchToSecondaryView();
-                        }
-                    }
-                };
-                waitTimer.Start();
+                _transitionCoordinator.RequestView(VNotch.Models.NotchView.Secondary, "GestureSwipeDown");
+            }
+            else if (_isExpanded && !_isSecondaryView && !_isAnimating)
+            {
+                SwitchToSecondaryView();
             }
         });
     }

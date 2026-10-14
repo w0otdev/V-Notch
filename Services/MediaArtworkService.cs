@@ -56,8 +56,12 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
 
     public SubjectBounds? GetDominantSubjectBounds(BitmapSource source)
     {
-        if (!_smartCropAvailable && !_smartCrop.TryInitialize())
-            return null;
+        if (!_smartCropAvailable)
+        {
+            _smartCropAvailable = _smartCrop.TryInitialize();
+            if (!_smartCropAvailable)
+                return null;
+        }
         return _smartCrop.GetDominantSubjectBounds(source);
     }
 
@@ -250,6 +254,10 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     {
         if (smartCropEnabled && aspect > 1.4 && !forceCenterCrop)
         {
+            if (!_smartCropAvailable)
+            {
+                _smartCropAvailable = _smartCrop.TryInitialize();
+            }
             var smartRect = _smartCrop.GetSmartCropRect(workingSource, squareSize);
             if (smartRect.HasValue)
             {

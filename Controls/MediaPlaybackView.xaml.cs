@@ -30,6 +30,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     public MediaPlaybackView()
     {
         InitializeComponent();
+        ProgressBarContainer.LostMouseCapture += ProgressBar_LostMouseCapture;
         IsVisibleChanged += (_, _) =>
         {
             UpdateProgressTimerState();
@@ -503,6 +504,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         Spring.Velocity = _progressVelocity;
         Spring.SettleFrames = _springSettleFrames;
         Spring.Start();
+        UpdateProgressTimerState();
     }
 
     internal void StopSpringRenderLoop()
@@ -513,6 +515,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         _progressVelocity = Spring.Velocity;
         _springSettleFrames = Spring.SettleFrames;
         _isSeekSpringActive = Spring.IsActive;
+        UpdateProgressTimerState();
     }
 
     private bool _progressRenderingActive;
@@ -550,17 +553,16 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     internal void UpdateProgressTracking(MediaInfo info)
     {
-        _currentMediaInfo = info;
-        if (!info.IsThumbnailOnlyUpdate)
-            _currentMediaInfo = info;
-        NormalizeStartupSnapshotTimestamp(info);
-
         if (info.IsThumbnailOnlyUpdate)
         {
-            UpdateProgressTimerState();
-            if (IsVisible) RenderProgressBar();
+            if (_currentMediaInfo != null)
+                _currentMediaInfo.Thumbnail = info.Thumbnail;
+            else
+                _currentMediaInfo = info;
             return;
         }
+        _currentMediaInfo = info;
+        NormalizeStartupSnapshotTimestamp(info);
 
         ProgressSection.Visibility = Visibility.Visible;
         ProgressSection.Opacity = 1;
@@ -981,6 +983,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _progressDisplayRatio = Spring.DisplayRatio;
                 _progressVelocity = 0;
                 _springSettleFrames = 0;
+                UpdateProgressTimerState();
                 RuntimeLog.Debug("PROGRESS-SPRING", () => $"settled at ratio={_progressDisplayRatio:F4} engineRatio={engineRatio:F4}");
 
                 if (_isClickSeekPending)
@@ -1324,28 +1327,22 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         if (wasDragging || wasClickSeek)
         {
-            if (wasClickSeek && !wasDragging)
-            {
-                var duration2 = _progressEngine.GetUiFrame().Duration;
-                _dragSeekPosition = ClampSeekTarget(_dragSeekPosition, duration2);
-
-                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
-                _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(3.5);
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
-                _protectSpringTargetUntil = DateTime.UtcNow.AddSeconds(1.5);
-                _progressEngine.NotifyUserSeek(_dragSeekPosition, isPlaying: _currentMediaInfo?.IsPlaying);
-
-                _lastDisplayedSecond = (int)_dragSeekPosition.TotalSeconds;
-                CurrentTimeText.Text = FormatTime(_dragSeekPosition);
-                UpdateProgressTimerState();
-
-                await _mediaService.SeekAsync(_dragSeekPosition);
-            }
-            else
-            {
-                await SeekToPosition(_dragSeekPosition);
-            }
+            await SeekToPosition(_dragSeekPosition);
         }
+    }
+
+    private void ProgressBar_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (!_isDraggingProgress && !_isClickSeekPending) return;
+        _isDraggingProgress = false;
+        _isClickSeekPending = false;
+        BufferingChanged?.Invoke(false);
+        if (_isProgressBarExpanded && !ProgressBarContainer.IsMouseOver)
+        {
+            _isProgressBarExpanded = false;
+            AnimateProgressBarHover(false);
+        }
+        UpdateProgressTimerState();
     }
 
     private void UpdateProgressFromMouse(MouseEventArgs e)
@@ -1394,6 +1391,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         if (_rewindTextTimer != null)
         {
             _rewindTextTimer.Stop();
+            _rewindTextTimer.Dispose();
             _rewindTextTimer = null;
         }
     }
@@ -1456,10 +1454,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     internal void UpdateProgressTimerState()
     {
-        bool hasTimeline = _currentMediaInfo != null &&
-            (_currentMediaInfo.HasTimeline || _currentMediaInfo.IsIndeterminate ||
-             _currentMediaInfo.Duration > TimeSpan.Zero || _currentMediaInfo.IsAnyMediaPlaying);
-        SetProgressRenderingEnabled(!_disposed && IsVisible && hasTimeline);
+        bool springActive = _isSeekSpringActive || (_springRenderer != null && Spring.IsActive);
+        bool isIndeterminate = _currentMediaInfo?.IsIndeterminate == true || IndeterminateProgress.Visibility == Visibility.Visible;
+        bool isBuffering = _progressEngine.GetUiFrame().State == ProgressState.Seeking;
+        bool shouldRender = !_disposed && IsVisible && _currentMediaInfo != null &&
+            (_currentMediaInfo.IsPlaying || springActive || _isRewindAnimating || _isCatchUpAnimating || isIndeterminate || isBuffering);
+        SetProgressRenderingEnabled(shouldRender);
     }
 
     #endregion
@@ -1467,7 +1467,6 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     #region Progress Catch-Up Animation
 
     private bool _isCatchUpAnimating = false;
-    private UiScheduledTimer? _catchUpTimer;
 
     internal void StartProgressCatchUpAnimation()
     {
@@ -1495,6 +1494,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         if (Math.Abs(fromRatio - targetRatio) < 0.005)
         {
+            _isCatchUpAnimating = false;
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = targetRatio;
             _progressDisplayRatio = targetRatio;
@@ -1504,9 +1504,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _progressVelocity = 0;
             CurrentTimeText.Text = FormatTime(frame.Position);
             RemainingTimeText.Text = FormatDuration(frame.Duration);
+            UpdateProgressTimerState();
             return;
         }
 
+        _isCatchUpAnimating = true;
+        UpdateProgressTimerState();
         _progressTargetRatio = targetRatio;
         _progressSpringTargetRatio = targetRatio;
         _progressVelocity = 0;
@@ -1528,10 +1531,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         {
             if (_trackChangeSequence != seqAtStart) return;
 
+            _isCatchUpAnimating = false;
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = targetRatio;
             _progressDisplayRatio = targetRatio;
             _lastRenderedRatio = targetRatio;
+            UpdateProgressTimerState();
         };
 
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, catchUpAnim);
@@ -1541,12 +1546,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     internal void StopCatchUpAnimation()
     {
+        if (!_isCatchUpAnimating) return;
         _isCatchUpAnimating = false;
-        if (_catchUpTimer != null)
-        {
-            _catchUpTimer.Stop();
-            _catchUpTimer = null;
-        }
+        UpdateProgressTimerState();
     }
 
     internal void AnimateTrackChangeRewindToZero(double fromRatio, TimeSpan newDuration)
@@ -1559,6 +1561,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         _progressVelocity = 0;
         StopSpringRenderLoop();
         _isRewindAnimating = true;
+        UpdateProgressTimerState();
 
         long seqAtStart = _trackChangeSequence;
         var duration = TimeSpan.FromMilliseconds(Math.Clamp(280 + fromRatio * 180, 300, 450));
@@ -1604,6 +1607,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             StopRewindTextAnimation();
             _isRewindAnimating = false;
             _lastRenderTime = DateTime.Now;
+            UpdateProgressTimerState();
         };
 
         _progressTargetRatio = 0;
@@ -1643,7 +1647,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     StopRewindTextAnimation();
                     return;
                 }
-                double eased = 1 - Math.Pow(2, -6 * 10 * t);
+                double eased = 1.0 - Math.Pow(2.0, -6.0 * t);
                 double currentSec = Math.Max(0, startSeconds * (1.0 - eased));
                 CurrentTimeText.Text = FormatTime(TimeSpan.FromSeconds(currentSec));
             };
@@ -1676,6 +1680,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _isSeekSpringActive = false;
             CurrentTimeText.Text = FormatTime(GetPositionForRatio(targetRatio));
             _lastRenderedRatio = targetRatio;
+            UpdateProgressTimerState();
             return;
         }
 
@@ -1684,6 +1689,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         _progressVelocity = 0;
         StopSpringRenderLoop();
         _isRewindAnimating = true;
+        UpdateProgressTimerState();
 
         var duration = TimeSpan.FromMilliseconds(Math.Clamp(220 + delta * 320, 240, 420));
 
@@ -1716,6 +1722,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _isRewindAnimating = false;
             _lastRenderTime = DateTime.Now;
             _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(3.5);
+            UpdateProgressTimerState();
         };
 
         _progressTargetRatio = targetRatio;
@@ -1733,6 +1740,11 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         };
         _rewindTextTimer.Tick += (s, e) =>
         {
+            if (_trackChangeSequence != seqAtStart)
+            {
+                StopRewindTextAnimation();
+                return;
+            }
             double t = (DateTime.UtcNow - startTime).TotalMilliseconds / totalMs;
             if (t >= 1.0)
             {
@@ -1740,7 +1752,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 StopRewindTextAnimation();
                 return;
             }
-            double eased = 1 - Math.Pow(2, -6 * 10 * t);
+            double eased = 1.0 - Math.Pow(2.0, -6.0 * t);
             double current = fromRatio + (targetRatio - fromRatio) * eased;
             CurrentTimeText.Text = FormatTime(GetPositionForRatio(current));
         };

@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.IO;
 using VNotch.Controllers;
 using VNotch.Models;
@@ -19,18 +20,26 @@ internal static class SpotlightFileVisibility
     }.Where(path => !string.IsNullOrWhiteSpace(path))
         .Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
 
-    internal static IReadOnlyList<string> HiddenDirectories { get; } = Array.AsReadOnly(new[]
+    internal static FrozenSet<string> HiddenDirectories { get; } = new[]
     {
         "AppData", "$Recycle.Bin", "System Volume Information", ".git", ".svn", ".hg",
         ".vs", ".vscode", ".idea", ".cache", ".nuget", "node_modules", "__pycache__", "obj",
         "Cache", "Caches", "Temp"
-    });
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    internal static IReadOnlyList<string> HiddenExtensions { get; } = Array.AsReadOnly(new[]
+    internal static FrozenSet<string> HiddenExtensions { get; } = new[]
     {
         ".dll", ".sys", ".drv", ".ocx", ".pdb", ".obj", ".mui", ".cat",
         ".tmp", ".temp", ".cache", ".etl", ".manifest"
-    });
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string EverythingExclusionSuffix = " "
+        + string.Join(" ", HiddenRoots.Select(root => "!\"" + root + "\\\"")) + " "
+        + string.Join(" ", HiddenDirectories.Select(folder => "!\"\\" + folder + "\\\"")) + " "
+        + string.Join(" ", HiddenExtensions.Select(extension => "!*" + extension));
+
+    private static readonly string WindowsExclusionScope = string.Concat(HiddenRoots.Select(root =>
+        " AND NOT SCOPE='file:" + root.Replace('\\', '/').Replace("'", "''") + "/'"));
 
     internal static bool IsExplicitPath(string query) =>
         Path.IsPathFullyQualified(query.Trim().Trim('"'));
@@ -59,9 +68,9 @@ internal static class SpotlightFileVisibility
         if (HiddenRoots.Any(root => path.Equals(root, StringComparison.OrdinalIgnoreCase)
             || path.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase))) return false;
         string[] segments = path.Split('\\', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Any(segment => HiddenDirectories.Contains(segment, StringComparer.OrdinalIgnoreCase))) return false;
+        if (segments.Any(HiddenDirectories.Contains)) return false;
         return item.Kind == SpotlightResultKind.Folder
-            || !HiddenExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+            || !HiddenExtensions.Contains(Path.GetExtension(path));
     }
 
     internal static string BuildEverythingQuery(string query)
@@ -69,16 +78,12 @@ internal static class SpotlightFileVisibility
         if (IsExplicitPath(query) || IsFileNameQuery(query)) return query;
         // Apply the scope before Everything's result cap, so system files
         // cannot crowd personal documents out of the returned page.
-        return "<" + query + "> "
-            + string.Join(" ", HiddenRoots.Select(root => "!\"" + root + "\\\"")) + " "
-            + string.Join(" ", HiddenDirectories.Select(folder => "!\"\\" + folder + "\\\"")) + " "
-            + string.Join(" ", HiddenExtensions.Select(extension => "!*" + extension));
+        return "<" + query + ">" + EverythingExclusionSuffix;
     }
 
     internal static string BuildWindowsScope(string query)
     {
         if (IsExplicitPath(query) || IsFileNameQuery(query)) return string.Empty;
-        return string.Concat(HiddenRoots.Select(root =>
-            " AND NOT SCOPE='file:" + root.Replace('\\', '/').Replace("'", "''") + "/'"));
+        return WindowsExclusionScope;
     }
 }

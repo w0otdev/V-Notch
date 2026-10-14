@@ -36,13 +36,13 @@ internal sealed class BaselineSpectrumBands
         start = Math.Clamp(start, 1, maxBin);
         end = Math.Clamp(end, start, maxBin);
 
+        double scale = 1.0 / (FftLength * 0.5);
+        double powerScale = scale * scale;
         double sumSquares = 0;
         int count = 0;
         for (int i = start; i <= end; i++)
         {
-            double mag = Math.Sqrt((_fftData[i].X * _fftData[i].X) + (_fftData[i].Y * _fftData[i].Y));
-            double normalizedMag = mag / (FftLength * 0.5);
-            sumSquares += normalizedMag * normalizedMag;
+            sumSquares += ((_fftData[i].X * _fftData[i].X) + (_fftData[i].Y * _fftData[i].Y)) * powerScale;
             count++;
         }
 

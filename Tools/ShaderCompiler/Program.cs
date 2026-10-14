@@ -53,21 +53,30 @@ public static class Program
 
         byte[] src = File.ReadAllBytes(hlslPath);
         int hr = D3DCompile(src, (IntPtr)src.Length, Path.GetFileName(hlslPath), IntPtr.Zero, IntPtr.Zero, "main", "ps_3_0", 0, 0, out IntPtr codePtr, out IntPtr errPtr);
-        if (hr != 0)
+        byte[] bytes;
+        try
         {
-            if (errPtr != IntPtr.Zero)
+            if (hr != 0)
             {
-                var blob = (ID3DBlob)Marshal.GetObjectForIUnknown(errPtr);
-                byte[] err = new byte[blob.GetBufferSize().ToInt32()];
-                Marshal.Copy(blob.GetBufferPointer(), err, 0, err.Length);
-                Console.Error.WriteLine(Encoding.ASCII.GetString(err));
+                if (errPtr != IntPtr.Zero)
+                {
+                    var blob = (ID3DBlob)Marshal.GetObjectForIUnknown(errPtr);
+                    byte[] err = new byte[blob.GetBufferSize().ToInt32()];
+                    Marshal.Copy(blob.GetBufferPointer(), err, 0, err.Length);
+                    Console.Error.WriteLine(Encoding.ASCII.GetString(err));
+                }
+                return hr;
             }
-            return hr;
-        }
 
-        var codeBlob = (ID3DBlob)Marshal.GetObjectForIUnknown(codePtr);
-        byte[] bytes = new byte[codeBlob.GetBufferSize().ToInt32()];
-        Marshal.Copy(codeBlob.GetBufferPointer(), bytes, 0, bytes.Length);
+            var codeBlob = (ID3DBlob)Marshal.GetObjectForIUnknown(codePtr);
+            bytes = new byte[codeBlob.GetBufferSize().ToInt32()];
+            Marshal.Copy(codeBlob.GetBufferPointer(), bytes, 0, bytes.Length);
+        }
+        finally
+        {
+            if (codePtr != IntPtr.Zero) Marshal.Release(codePtr);
+            if (errPtr != IntPtr.Zero) Marshal.Release(errPtr);
+        }
 
         string? outDir = Path.GetDirectoryName(psPath);
         if (!string.IsNullOrEmpty(outDir) && !Directory.Exists(outDir))

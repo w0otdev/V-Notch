@@ -244,8 +244,10 @@ internal static class DynamicIslandColorExtractor
             var scaled = new TransformedBitmap(formatted,
                 new ScaleTransform((double)sampleSize / formatted.PixelWidth, (double)sampleSize / formatted.PixelHeight));
 
-            int stride = sampleSize * 4;
-            int bufLen = sampleSize * sampleSize * 4;
+            int actualW = scaled.PixelWidth;
+            int actualH = scaled.PixelHeight;
+            int stride = actualW * 4;
+            int bufLen = actualH * stride;
             byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(bufLen);
 
             try
@@ -254,7 +256,7 @@ internal static class DynamicIslandColorExtractor
 
                 double totalLuminance = 0;
                 int brightPixelCount = 0;
-                int pixelCount = sampleSize * sampleSize;
+                int pixelCount = actualW * actualH;
 
                 for (int i = 0; i < bufLen; i += 4)
                 {
@@ -271,26 +273,18 @@ internal static class DynamicIslandColorExtractor
                 double avgLuminance = totalLuminance / pixelCount;
                 double brightRatio = (double)brightPixelCount / pixelCount;
 
-                double overlayOpacity = 0;
+                double lumContrib = avgLuminance > 0.55
+                    ? Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0) * 0.45
+                    : 0;
 
-                if (avgLuminance > 0.55)
-                {
-                    double t = Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0);
-                    overlayOpacity = t * 0.45;
-                }
+                double ratioContrib = brightRatio > 0.40
+                    ? Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0) * 0.40
+                    : 0;
 
-                if (brightRatio > 0.40)
-                {
-                    double t = Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0);
-                    overlayOpacity = Math.Max(overlayOpacity, t * 0.40);
-                }
-
-                double combined = overlayOpacity;
+                double combined = Math.Max(lumContrib, ratioContrib);
                 if (avgLuminance > 0.55 && brightRatio > 0.40)
                 {
-                    double lumContrib = Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0) * 0.45;
-                    double ratioContrib = Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0) * 0.40;
-                    combined = Math.Max(lumContrib, ratioContrib) + Math.Min(lumContrib, ratioContrib) * 0.3;
+                    combined += Math.Min(lumContrib, ratioContrib) * 0.3;
                 }
 
                 double result = Math.Clamp(combined, 0.0, 0.65);

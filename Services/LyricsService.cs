@@ -18,7 +18,7 @@ internal sealed partial class LyricsService : IDisposable
     private const string LogTag = "LYRICS";
     private static readonly string[] GenericPlatformNames = { "YouTube", "Browser", "Google Chrome", "Microsoft Edge" };
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
-    private static readonly string[] ArtistSeparators = { " feat.", " ft.", " featuring", " & ", ", ", " x " };
+    private static readonly string[] ArtistSeparators = { " feat.", " ft.", " featuring", " & ", "; ", " / ", " with " };
 
     [GeneratedRegex(@"[\(\[][^\)\]]*[\)\]]")]
     private static partial Regex BracketedExtrasRegex();
@@ -325,7 +325,7 @@ internal sealed partial class LyricsService : IDisposable
             int dur = item.TryGetProperty("duration", out var dp) && dp.ValueKind == JsonValueKind.Number
                 ? (int)Math.Round(dp.GetDouble())
                 : 0;
-            int delta = dur > 0 ? Math.Abs(dur - durationSeconds) : 0;
+            int delta = (dur > 0 && durationSeconds > 0) ? Math.Abs(dur - durationSeconds) : int.MaxValue / 2;
 
             if (!found || delta < bestDelta)
             {

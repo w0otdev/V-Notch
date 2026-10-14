@@ -168,8 +168,16 @@ public partial class ProgressViewModel : ObservableObject
     {
         if (_lastKnownDuration <= TimeSpan.Zero) return;
         var nowUtc = DateTime.UtcNow;
-        var elapsed = nowUtc - _lastMediaUpdate;
-        var current = _lastKnownPosition + (IsPlaying ? elapsed : TimeSpan.Zero);
+        var current = _lastKnownPosition;
+        if (IsPlaying && CurrentMediaInfo != null)
+        {
+            var elapsed = nowUtc - _lastMediaUpdate;
+            double cap = CurrentMediaInfo.IsThrottled ? 3600 :
+                CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? 600 : 30;
+            var maxElapsed = TimeSpan.FromSeconds(cap);
+            if (elapsed > maxElapsed) elapsed = maxElapsed;
+            current += TimeSpan.FromTicks((long)(elapsed.Ticks * CurrentMediaInfo.PlaybackRate));
+        }
         var target = TimeSpan.FromTicks(Math.Clamp((current + TimeSpan.FromSeconds(seconds)).Ticks, 0, _lastKnownDuration.Ticks));
         _lastKnownPosition = target;
         _lastMediaUpdate = nowUtc;

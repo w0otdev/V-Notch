@@ -123,7 +123,7 @@ internal sealed class SpotlightController : ISpotlightController
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_HOTKEY && wParam.ToInt32() == HotkeyId)
+        if (msg == WM_HOTKEY && wParam.ToInt64() == HotkeyId)
         {
             handled = true;
             // Leave the native message callback before activation/layout work.

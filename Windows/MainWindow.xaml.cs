@@ -207,8 +207,6 @@ public partial class MainWindow : Window
     private bool _isUpdateInstalling = false;
     private int _updateCheckGeneration;
     private int _updateVisibilityGeneration;
-    private UiScheduledTimer? _updatePulseTimer;
-    private DateTime _updatePulseStartedAtUtc = DateTime.MinValue;
     private bool _isUpdateTooltipOpen = false;
     private DateTime _suspendTopmostUntilUtc
     {
@@ -866,10 +864,6 @@ public partial class MainWindow : Window
                 {
                     SwitchFromTimerToPrimaryView(args.TransitionId);
                 }
-                else if (_isSecondaryView)
-                {
-                    SwitchToPrimaryView(args.TransitionId);
-                }
                 else
                 {
                     _transitionCoordinator.CompleteTransition(args.TransitionId);
@@ -889,10 +883,6 @@ public partial class MainWindow : Window
                 {
                     SwitchFromAudioToTimerView(args.TransitionId);
                 }
-                else if (_isSecondaryView)
-                {
-                    SwitchFromSecondaryToTimerView(args.TransitionId);
-                }
                 else
                 {
                     SwitchToTimerView(args.TransitionId);
@@ -908,10 +898,6 @@ public partial class MainWindow : Window
                 {
                     SwitchFromTimerToAudioView(args.TransitionId);
                 }
-                else if (_isSecondaryView)
-                {
-                    SwitchFromSecondaryToAudioView(args.TransitionId);
-                }
                 else
                 {
                     SwitchToAudioView(args.TransitionId);
@@ -922,14 +908,6 @@ public partial class MainWindow : Window
                 if (requiresExpansion)
                 {
                     ExpandNotch(args.TransitionId, targetView: VNotch.Models.NotchView.Secondary);
-                }
-                else if (_isTimerView)
-                {
-                    SwitchFromTimerToSecondaryView(args.TransitionId);
-                }
-                else if (_isAudioView)
-                {
-                    SwitchFromAudioToSecondaryView(args.TransitionId);
                 }
                 else
                 {

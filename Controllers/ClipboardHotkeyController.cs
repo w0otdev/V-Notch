@@ -72,17 +72,14 @@ internal sealed class ClipboardHotkeyController : IDisposable
             if (flag == 0 || (modifiers & flag) != 0) return false;
             modifiers |= flag;
         }
-        try
-        {
-            var parsed = (Key)new KeyConverter().ConvertFromString(parts[^1])!;
-            key = (uint)KeyInterop.VirtualKeyFromKey(parsed);
-            return key != 0 && (modifiers & (1 | 2 | 8)) != 0;
-        }
-        catch (Exception ex) when (ex is NotSupportedException or FormatException or ArgumentException) { return false; }
+        if (!Enum.TryParse<Key>(parts[^1], true, out var parsed) || parsed == Key.None)
+            return false;
+        key = (uint)KeyInterop.VirtualKeyFromKey(parsed);
+        return key != 0 && (modifiers & (1 | 2 | 8)) != 0;
     }
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == Win32Interop.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
+        if (message == Win32Interop.WM_HOTKEY && wParam.ToInt64() == HotkeyId)
         { handled = true; _host.Dispatcher.BeginInvoke(_toggle); }
         return IntPtr.Zero;
     }

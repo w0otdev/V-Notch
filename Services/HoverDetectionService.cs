@@ -140,12 +140,20 @@ public class HoverDetectionService : IDisposable
                     _hoverDelayTimer.Interval = _enterDelay;
                     _hoverDelayTimer.Start();
                 }
-                else if (Stopwatch.GetElapsedTime(_hoverEnterTime, now) >= _enterDelay)
+                else
                 {
-
-                    _isHovering = true;
-                    _pendingEnter = false;
-                    HoverEnter?.Invoke(this, EventArgs.Empty);
+                    TimeSpan elapsed = Stopwatch.GetElapsedTime(_hoverEnterTime, now);
+                    if (elapsed >= _enterDelay)
+                    {
+                        _isHovering = true;
+                        _pendingEnter = false;
+                        HoverEnter?.Invoke(this, EventArgs.Empty);
+                    }
+                    else if (!_hoverDelayTimer.IsEnabled)
+                    {
+                        _hoverDelayTimer.Interval = _enterDelay - elapsed;
+                        _hoverDelayTimer.Start();
+                    }
                 }
             }
         }
@@ -164,17 +172,25 @@ public class HoverDetectionService : IDisposable
                     _hoverDelayTimer.Interval = _leaveDelay;
                     _hoverDelayTimer.Start();
                 }
-                else if (Stopwatch.GetElapsedTime(_hoverLeaveTime, now) >= _leaveDelay)
+                else
                 {
-
-                    _isHovering = false;
-                    _pendingLeave = false;
-                    HoverLeave?.Invoke(this, EventArgs.Empty);
+                    TimeSpan elapsed = Stopwatch.GetElapsedTime(_hoverLeaveTime, now);
+                    if (elapsed >= _leaveDelay)
+                    {
+                        _isHovering = false;
+                        _pendingLeave = false;
+                        HoverLeave?.Invoke(this, EventArgs.Empty);
+                    }
+                    else if (!_hoverDelayTimer.IsEnabled)
+                    {
+                        _hoverDelayTimer.Interval = _leaveDelay - elapsed;
+                        _hoverDelayTimer.Start();
+                    }
                 }
             }
         }
 
-        if (!_pendingEnter && !_pendingLeave) _hoverDelayTimer.Stop();
+        if (!_pendingEnter && !_pendingLeave && _hoverDelayTimer.IsEnabled) _hoverDelayTimer.Stop();
     }
 
     public bool IsPointOverNotch(Point point)

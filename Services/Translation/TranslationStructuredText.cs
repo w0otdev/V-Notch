@@ -41,6 +41,7 @@ internal static class TranslationStructuredText
     // image asset. The asset URL is presentation, not a destination in the post.
     internal static string NormalizeSocialIcons(string text)
     {
+        if (!text.Contains("fbcdn.net", StringComparison.OrdinalIgnoreCase)) return text;
         var edits = Markdown.Parse(text, Pipeline).Descendants<LinkInline>()
             .Where(link => link.Span.Start >= 0 && IsSocialIcon(link))
             .OrderByDescending(link => link.Span.Start);
@@ -111,7 +112,10 @@ internal static class TranslationStructuredText
         }
         var elements = StringInfo.GetTextElementEnumerator(System.Net.WebUtility.HtmlDecode(text));
         while (elements.MoveNext())
-            if (IsEmoji(elements.GetTextElement())) parts.Add("emoji:" + elements.GetTextElement());
+        {
+            string element = elements.GetTextElement();
+            if (IsEmoji(element)) parts.Add("emoji:" + element);
+        }
         foreach (Match match in Regex.Matches(text, @":[A-Za-z_][A-Za-z0-9_+-]*:"))
             parts.Add("shortcode:" + match.Value);
         return parts.OrderBy(x => x, StringComparer.Ordinal).ToArray();

@@ -66,6 +66,7 @@ public partial class SettingsWindow
         if (CameraCombo.SelectedItem is CameraDeviceItem item)
         {
             _settings.CameraDeviceId = item.Id;
+            if (!_isLoadingSettings) PushLivePreview();
         }
     }
 

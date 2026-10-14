@@ -114,6 +114,7 @@ public partial class SettingsWindow
 
     private void SmoothScroll_Tick(object? sender, EventArgs e)
     {
+        _scrollTarget = Math.Clamp(_scrollTarget, 0, SettingsScrollViewer.ScrollableHeight);
         double current = SettingsScrollViewer.VerticalOffset;
         double diff = _scrollTarget - current;
 

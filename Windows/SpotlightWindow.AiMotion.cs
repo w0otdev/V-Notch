@@ -483,37 +483,6 @@ public partial class SpotlightWindow
 
     private Geometry GetChatIconGeometry() => AiChatGeometry;
 
-    private Geometry CreateIconGeometry(string glyph, string fallbackPath)
-    {
-        try
-        {
-            var fontFamily = (FontFamily?)TryFindResource("IconFont")
-                ?? (FontFamily?)Application.Current?.TryFindResource("IconFont")
-                ?? new FontFamily("Segoe MDL2 Assets");
-            var text = new FormattedText(glyph, System.Globalization.CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, new Typeface(fontFamily, FontStyles.Normal,
-                    FontWeights.Bold, FontStretches.Normal), 48, Brushes.White, 1.0);
-            var built = text.BuildGeometry(new Point());
-            if (built != null && !built.Bounds.IsEmpty && built.Bounds.Width > 0 && built.Bounds.Height > 0)
-            {
-                var group = new GeometryGroup { FillRule = FillRule.Nonzero };
-                group.Children.Add(built);
-                group.Freeze();
-                return group;
-            }
-        }
-        catch
-        {
-            // Fallback to vector path below
-        }
-
-        var fallback = Geometry.Parse(fallbackPath);
-        var fallbackGroup = new GeometryGroup { FillRule = FillRule.Nonzero };
-        fallbackGroup.Children.Add(fallback);
-        fallbackGroup.Freeze();
-        return fallbackGroup;
-    }
-
     private void SyncSearchIconState(bool animate = false)
     {
         if (SearchIcon == null) return;

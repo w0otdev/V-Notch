@@ -102,9 +102,10 @@ public class ProgressEngine
                 return;
             }
 
+            TimeSpan previousDuration = _duration;
             UpdateSnapshotMetadata(snapshot, snapshotTsUtc);
 
-            if (HandleDurationChange(snapshot, effectiveSnapshotPosition, nowUtc))
+            if (HandleDurationChange(snapshot, previousDuration, effectiveSnapshotPosition, nowUtc))
             {
                 return;
             }
@@ -275,10 +276,10 @@ public class ProgressEngine
         }
     }
 
-    private bool HandleDurationChange(ProgressSnapshot snapshot, TimeSpan effectiveSnapshotPosition, DateTime nowUtc)
+    private bool HandleDurationChange(ProgressSnapshot snapshot, TimeSpan previousDuration, TimeSpan effectiveSnapshotPosition, DateTime nowUtc)
     {
-        bool durationChanged = DidDurationChange(_duration, snapshot.Duration);
-        _durationJustChanged = durationChanged;
+        bool durationChanged = DidDurationChange(previousDuration, snapshot.Duration);
+        _durationJustChanged |= durationChanged;
 
         if (durationChanged && snapshot.IsPlaying)
         {

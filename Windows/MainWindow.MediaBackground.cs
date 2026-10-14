@@ -271,15 +271,9 @@ public partial class MainWindow
         double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
         double v = Math.Max(r, Math.Max(g, b));
 
-        if (v >= 0.55) return c;
+        if (v >= 0.50) return c;
 
-        double targetV;
-        if (v < 0.20) targetV = 0.55;
-        else if (v < 0.35) targetV = 0.55;
-        else if (v < 0.50) targetV = 0.55;
-        else targetV = v;
-
-        if (targetV <= v) return c;
+        const double targetV = 0.55;
 
         double scale = targetV / Math.Max(v, 0.01);
         byte newR = (byte)Math.Clamp(c.R * scale, 0, 255);
@@ -291,7 +285,6 @@ public partial class MainWindow
 
     private void FadeToBlackThenUpdate(MediaInfo info)
     {
-        _isFadingTrack = false;
         _suppressNextBlurDissolve = false;
 
         int version = ++_blurCrossfadeVersion;
@@ -315,6 +308,7 @@ public partial class MainWindow
 
         fadeOut.Completed += (_, _) =>
         {
+            _isFadingTrack = false;
             if (version != _blurCrossfadeVersion) return;
             activeImg.BeginAnimation(OpacityProperty, null);
             activeImg2.BeginAnimation(OpacityProperty, null);
@@ -322,13 +316,12 @@ public partial class MainWindow
             activeImg2.Opacity = 0.0;
             activeImg.Source = null;
             activeImg2.Source = null;
+            _lastBlurThumbnailRef = null;
+            UpdateMediaBackground(info, forceRefresh: true);
         };
 
         activeImg.BeginAnimation(OpacityProperty, fadeOut);
         activeImg2.BeginAnimation(OpacityProperty, fadeOut);
-
-        _lastBlurThumbnailRef = null;
-        UpdateMediaBackground(info, forceRefresh: true);
     }
 
     private void HideMediaBackground()

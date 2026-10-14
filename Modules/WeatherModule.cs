@@ -91,6 +91,16 @@ public class WeatherModule : NotchModuleBase
         catch (ObjectDisposedException)
         {
         }
+        finally
+        {
+            try { cts?.Dispose(); } catch (ObjectDisposedException) { }
+        }
+    }
+
+    protected override void OnStop()
+    {
+        CancelPendingRequest();
+        base.OnStop();
     }
 
     private void ClearWeatherData()
@@ -119,7 +129,7 @@ public class WeatherModule : NotchModuleBase
 
         _isFetching = true;
         int requestVersion = ++_requestVersion;
-        using var requestCts = new CancellationTokenSource();
+        var requestCts = new CancellationTokenSource();
         _cts = requestCts;
 
         try
@@ -149,11 +159,15 @@ public class WeatherModule : NotchModuleBase
         }
         finally
         {
-            if (requestVersion == _requestVersion)
+            if (ReferenceEquals(_cts, requestCts))
             {
                 _cts = null;
+            }
+            if (requestVersion == _requestVersion)
+            {
                 _isFetching = false;
             }
+            try { requestCts.Dispose(); } catch (ObjectDisposedException) { }
         }
     }
 

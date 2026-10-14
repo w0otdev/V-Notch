@@ -19,7 +19,7 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
 
-public sealed class LiquidGlassController
+public sealed class LiquidGlassController : IDisposable
 {
     public const int MaxTargetFps = 1000;
 
@@ -121,7 +121,6 @@ public sealed class LiquidGlassController
     private TranslateTransform? _hostTransform;
     private double _presentSubX, _presentSubY;
     private byte[] _outBuffer = Array.Empty<byte>();
-    private byte[] _blurTmp = Array.Empty<byte>();
     private byte[] _sourceBlurBuffer = Array.Empty<byte>();
     private byte[] _sourceBlurTmp = Array.Empty<byte>();
 
@@ -143,8 +142,6 @@ public sealed class LiquidGlassController
     private int[] _auxG = Array.Empty<int>();
     private int[] _idxB = Array.Empty<int>();
     private int[] _auxB = Array.Empty<int>();
-
-    private byte[] _edgeMask = Array.Empty<byte>();
 
     private int _outW, _outH;
     private int _srcW, _srcH;
@@ -639,6 +636,8 @@ public sealed class LiquidGlassController
         catch (Exception ex) { OnD3DPresenterFailed(ex); }
     }
 
+    public void Dispose() => Stop(retainGpuResources: false);
+
     public void Stop() => Stop(retainGpuResources: false);
 
     public void Stop(bool retainGpuResources)
@@ -841,9 +840,8 @@ public sealed class LiquidGlassController
         _frameWorkMs = 0;
         _frameHistory.Clear();
         ReleaseGdiResources();
-        _outBuffer = _blurTmp = Array.Empty<byte>();
+        _outBuffer = Array.Empty<byte>();
         _idxR = _auxR = _idxG = _auxG = _idxB = _auxB = Array.Empty<int>();
-        _edgeMask = Array.Empty<byte>();
         _outW = _outH = _srcW = _srcH = _margin = 0;
         _presentInFlight = false;
         ReleaseRenderTimerPeriod();
@@ -1389,7 +1387,15 @@ public sealed class LiquidGlassController
         }
 
         if (_pidNameCache.Count > 256)
-            _pidNameCache.Clear();
+        {
+            foreach (var kv in _pidNameCache)
+            {
+                if (now >= kv.Value.ExpireTicks)
+                    _pidNameCache.TryRemove(kv.Key, out _);
+            }
+            if (_pidNameCache.Count > 256)
+                _pidNameCache.Clear();
+        }
 
         _pidNameCache[pid] = (name, now + 15000);
         return name;
@@ -2484,7 +2490,6 @@ public sealed class LiquidGlassController
         if (_outBuffer.Length < needed)
         {
             _outBuffer = new byte[needed];
-            _blurTmp = new byte[needed];
         }
         if (_idxR.Length < n)
         {
@@ -2492,8 +2497,6 @@ public sealed class LiquidGlassController
             _idxG = new int[n]; _auxG = new int[n];
             _idxB = new int[n]; _auxB = new int[n];
         }
-        if (_edgeMask.Length < n)
-            _edgeMask = new byte[n];
     }
 
     private MapGeometry CreateMapGeometry(GlassParams p, MapDimensions d)
@@ -2527,7 +2530,6 @@ public sealed class LiquidGlassController
         double inside = -RoundedRectSdf(lx, ly, geom.HalfX, geom.HalfY, geom.TopR, geom.BottomR);
         if (inside <= 0.0)
         {
-            _edgeMask[idx] = 0;
             SetSample(baseX, baseY, bounds, _idxG, _auxG, idx);
             SetSample(baseX, baseY, bounds, _idxR, _auxR, idx);
             SetSample(baseX, baseY, bounds, _idxB, _auxB, idx);
@@ -2554,7 +2556,6 @@ public sealed class LiquidGlassController
             dispY += noiseY * geom.VerticalBalance * geom.Distort * 2.25 * (1.0 - distNorm);
         }
 
-        _edgeMask[idx] = 0;
         double caS = Math.Min(geom.UChroma * (1.0 - distNorm) * 3.0, 8.0);
         double dispLen = Math.Sqrt(dispX * dispX + dispY * dispY);
         double caDirX = dispLen > 1e-6 ? dispX / dispLen : 0.0;
