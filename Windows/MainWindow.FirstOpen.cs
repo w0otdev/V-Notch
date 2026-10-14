@@ -1,3 +1,4 @@
+using System.Windows;
 using VNotch.Models;
 using VNotch.Services;
 
@@ -6,11 +7,12 @@ namespace VNotch;
 public partial class MainWindow
 {
     private SettingsWindow? _preparedSettingsWindow;
+    private SettingsWindow? _activeSettingsWindow;
     private NotchSettings? _preparedSettingsSnapshot;
     private bool _firstOpenUiPrepared;
 
     private SettingsWindow CreateSettingsWindow(bool prepareForFirstShow = false) => new(
-        _settings, _settingsService, _bluetoothModule, _spotlightController.IsHotkeyRegistered,
+        _settings, _settingsService, _spotlightController.IsHotkeyRegistered,
         _updateService, prepareForFirstShow)
     { Owner = this };
 
@@ -18,6 +20,7 @@ public partial class MainWindow
     {
         if (_firstOpenUiPrepared || _cleanedUp) return;
         _firstOpenUiPrepared = true;
+        PrepareExpandedContentForFirstOpen();
         // Pay the one-time XAML/template/native-window cost before the startup
         // entrance begins, while the notch is still waiting for its first layout.
         try
@@ -33,6 +36,26 @@ public partial class MainWindow
         }
     }
 
+    private void PrepareExpandedContentForFirstOpen()
+    {
+        var visibility = ExpandedContent.Visibility;
+        double targetWidth = Math.Max(0, _expandedWidth - ExpandedContentHorizontalInset);
+        double targetHeight = Math.Max(0, _expandedHeight - ExpandedContentVerticalInset);
+        try
+        {
+            ExpandedContent.Visibility = Visibility.Hidden;
+            ExpandedContent.Width = targetWidth;
+            ExpandedContent.Height = targetHeight;
+            ExpandedContent.Measure(new Size(targetWidth, targetHeight));
+            ExpandedContent.Arrange(new Rect(0, 0, targetWidth, targetHeight));
+            PrepareExpandedContentLayoutForReveal();
+        }
+        finally
+        {
+            ExpandedContent.Visibility = visibility;
+        }
+    }
+
     private SettingsWindow TakeSettingsWindow()
     {
         var prepared = _preparedSettingsWindow;
@@ -40,15 +63,20 @@ public partial class MainWindow
         var snapshot = _preparedSettingsSnapshot;
         _preparedSettingsSnapshot = null;
         if (prepared == null) return CreateSettingsWindow();
-        if (snapshot?.ValueEquals(_settings) != true)
-            prepared.RefreshPreparedSettings(_settings, _spotlightController.IsHotkeyRegistered);
-        else
-            prepared.SetSpotlightHotkeyStatus(_spotlightController.IsHotkeyRegistered);
+
+        prepared.ActivatePreparedWindow(
+            _settings,
+            snapshotMatches: snapshot?.ValueEquals(_settings) == true,
+            _spotlightController.IsHotkeyRegistered);
         return prepared;
     }
 
     private void DiscardPreparedSettingsWindow()
     {
+        var active = _activeSettingsWindow;
+        _activeSettingsWindow = null;
+        active?.Close();
+
         var prepared = _preparedSettingsWindow;
         _preparedSettingsWindow = null;
         _preparedSettingsSnapshot = null;

@@ -21,7 +21,7 @@ public partial class SettingsWindow
         PopulateTranslationModelChoices(selected);
         SelectTranslationStore(selected);
         RefreshTranslationModelDetails();
-        if (!_translationHardwareStarted && !_deferBackgroundInitialization)
+        if (!_translationHardwareStarted && !IsDeferringBackgroundInitialization)
         {
             _translationHardwareStarted = true;
             _ = DetectTranslationHardwareAsync();

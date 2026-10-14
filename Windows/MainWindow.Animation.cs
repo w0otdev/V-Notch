@@ -18,6 +18,9 @@ public partial class MainWindow
     private enum LastExpandedView { Primary, Secondary, Timer, Audio, Camera }
     private LastExpandedView _lastExpandedViewBeforeCollapse = LastExpandedView.Primary;
 
+    private const double ExpandedContentHorizontalInset = 16;
+    private const double ExpandedContentVerticalInset = 10;
+
     private double ExpandedContentRestY => _settings.EnableDynamicIslandMode ? 8.5 : 4;
 
 
@@ -30,8 +33,8 @@ public partial class MainWindow
         ExpandedContent.HorizontalAlignment = HorizontalAlignment.Center;
         ExpandedContent.VerticalAlignment = VerticalAlignment.Top;
         ExpandedContent.UseLayoutRounding = false;
-        ExpandedContent.Width = _expandedWidth - 16;
-        ExpandedContent.Height = _expandedHeight - 10;
+        ExpandedContent.Width = _expandedWidth - ExpandedContentHorizontalInset;
+        ExpandedContent.Height = _expandedHeight - ExpandedContentVerticalInset;
 
         double restY = ExpandedContentRestY;
         ExpandedContent.RenderTransform = restY != 0 ? new TranslateTransform(0, restY) : null;
@@ -438,8 +441,8 @@ public partial class MainWindow
             LyricsCanvasBackground.BeginAnimation(OpacityProperty, null);
             LyricsCanvasBackground.Opacity = 0;
         }
-        ExpandedContent.Width = _expandedWidth - 16;
-        ExpandedContent.Height = _expandedHeight - 10;
+        ExpandedContent.Width = _expandedWidth - ExpandedContentHorizontalInset;
+        ExpandedContent.Height = _expandedHeight - ExpandedContentVerticalInset;
         PrepareExpandedContentLayoutForReveal();
 
         AnimateStatusBarReveal(true);
@@ -463,8 +466,8 @@ public partial class MainWindow
 
         NotchBorder.Width = _expandedWidth;
         NotchBorder.Height = _expandedHeight;
-        ExpandedContent.Width = _expandedWidth - 16;
-        ExpandedContent.Height = _expandedHeight - 10;
+        ExpandedContent.Width = _expandedWidth - ExpandedContentHorizontalInset;
+        ExpandedContent.Height = _expandedHeight - ExpandedContentVerticalInset;
 
         // Coalesce mutations before a single measurement layout pass
         PrepareExpandedContentLayoutForReveal();

@@ -175,6 +175,21 @@ public partial class SettingsWindow
     }
 
     private bool _monitorChoicesClosed;
+    private bool _displaySettingsSubscribed;
+
+    private void SubscribeDisplaySettingsChanged()
+    {
+        if (_displaySettingsSubscribed || _monitorChoicesClosed) return;
+        _displaySettingsSubscribed = true;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnMonitorConfigurationChanged;
+    }
+
+    private void UnsubscribeDisplaySettingsChanged()
+    {
+        if (!_displaySettingsSubscribed) return;
+        _displaySettingsSubscribed = false;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnMonitorConfigurationChanged;
+    }
 
     private void OnMonitorConfigurationChanged(object? sender, EventArgs e)
     {
@@ -214,7 +229,7 @@ public partial class SettingsWindow
     {
         _updatePresenter.Dispose();
         _monitorChoicesClosed = true;
-        Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnMonitorConfigurationChanged;
+        UnsubscribeDisplaySettingsChanged();
         base.OnClosed(e);
         CompositionTarget.Rendering -= OnGlassRegionRendering;
         _liquidGlass?.Stop();

@@ -1432,13 +1432,22 @@ public partial class MainWindow : Window
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
     }
 
-#pragma warning disable S3776 // Complex modal settings configuration and reactive subsystem update dispatch
     private void OpenAppSettings(bool showTranslation = false)
     {
         if (IsGreetingInteractionBlocked) return;
-        var settingsWindow = TakeSettingsWindow();
+        if (_activeSettingsWindow is { IsVisible: true } activeSettings)
+        {
+            if (showTranslation) activeSettings.NavigateToTranslation();
+            if (activeSettings.WindowState == WindowState.Minimized)
+                activeSettings.WindowState = WindowState.Normal;
+            activeSettings.Activate();
+            return;
+        }
 
-        settingsWindow.UpdateDetected += (s, updateInfo) =>
+        var settingsWindow = TakeSettingsWindow();
+        _activeSettingsWindow = settingsWindow;
+
+        settingsWindow.UpdateDetected += (_, updateInfo) =>
         {
             Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
             {
@@ -1449,126 +1458,15 @@ public partial class MainWindow : Window
         settingsWindow.TranslationPreviewRequested += () => _liveTranslation?.OpenFromClipboard();
         if (showTranslation) settingsWindow.NavigateToTranslation();
 
-        settingsWindow.SettingsChanged += (s, newSettings) =>
+        settingsWindow.SettingsChanged += (_, newSettings) =>
+            OnSettingsWindowSettingsChanged(settingsWindow, newSettings);
+
+        settingsWindow.Closed += (_, _) =>
         {
-            var oldSettings = _settings;
-            bool sizeChanged = newSettings.Width != oldSettings.Width
-                            || newSettings.DynamicIslandWidth != oldSettings.DynamicIslandWidth
-                            || newSettings.DynamicIslandHeight != oldSettings.DynamicIslandHeight
-                            || newSettings.Height != oldSettings.Height
-                            || newSettings.CornerRadius != oldSettings.CornerRadius;
-            bool languageChanged = !string.Equals(newSettings.Language, oldSettings.Language, StringComparison.Ordinal);
-            bool spotifyCanvasSettingsChanged =
-                newSettings.EnableSpotifyCanvas != oldSettings.EnableSpotifyCanvas ||
-                newSettings.AllowOnlineCanvas != oldSettings.AllowOnlineCanvas ||
-                newSettings.SpotifyCanvasConsentVersion != oldSettings.SpotifyCanvasConsentVersion ||
-                newSettings.EnableLocalOnlyMode != oldSettings.EnableLocalOnlyMode ||
-                !string.Equals(newSettings.SpotifySpDc, oldSettings.SpotifySpDc, StringComparison.Ordinal);
-            _modeTransitionPending = newSettings.EnableDynamicIslandMode != oldSettings.EnableDynamicIslandMode;
-            bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
-            string oldSubtitlePriority = oldSettings.SubtitlePriority ?? "";
-            _settings = newSettings.Clone();
-            _clipboardHotkey?.Apply(_settings.ClipboardHotkey);
-            _clipboardHistory?.ApplySettings(_settings);
-            if (_settings.HideCamera && IsCameraPreviewLifecycleActive) StopCameraPreviewForViewExit();
-            NetworkPrivacy.Current.Apply(_settings);
-            ApplyInvisibleMode();
-            _liveTranslation?.ApplySettings(_settings);
-
-
-
-            if (oldSettings.HideOnExclusiveFullscreen != newSettings.HideOnExclusiveFullscreen
-                || oldSettings.HideOnWindowedFullscreen != newSettings.HideOnWindowedFullscreen)
+            if (ReferenceEquals(_activeSettingsWindow, settingsWindow))
             {
-                _fullscreenController.UpdateSettings(_settings);
+                _activeSettingsWindow = null;
             }
-
-            if (oldSettings.EnableHoverExpand != newSettings.EnableHoverExpand
-                || oldSettings.MonitorIndex != newSettings.MonitorIndex
-                || oldSettings.MonitorDeviceId != newSettings.MonitorDeviceId
-                || oldSettings.Height != newSettings.Height
-                || oldSettings.AnimationFps != newSettings.AnimationFps)
-            {
-                _notchManager.UpdateSettings(_settings);
-            }
-
-            if (oldSettings.MonitorIndex != newSettings.MonitorIndex
-                || oldSettings.MonitorDeviceId != newSettings.MonitorDeviceId)
-                PositionAtTop();
-
-            bool spotlightChanged = oldSettings.EnableSpotlight != newSettings.EnableSpotlight;
-            // Forward every settings snapshot. SpotlightController owns change detection,
-            // including provider, model and credentials; filtering here leaves it stale.
-            _spotlightController.ApplySettings(_settings);
-            if (spotlightChanged)
-            {
-                settingsWindow.SetSpotlightHotkeyStatus(_spotlightController.IsHotkeyRegistered);
-            }
-
-            ApplySettings(oldSettings, sizeChanged);
-
-            if (oldSettings.EnableWeather != newSettings.EnableWeather
-                || oldSettings.AllowOnlineWeather != newSettings.AllowOnlineWeather
-                || oldSettings.EnableLocalOnlyMode != newSettings.EnableLocalOnlyMode
-                || !string.Equals(oldSettings.ManualCity, newSettings.ManualCity, StringComparison.Ordinal))
-            {
-                WeatherWidgetView.ApplySettings(
-                    _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
-                _weatherModule.OnSettingsChanged(_settings);
-            }
-
-            if (spotifyCanvasSettingsChanged)
-            {
-                _spotifyCanvasController?.ClearCache();
-                _spotifyCanvasController?.UpdateSettings(_settings);
-            }
-
-            bool priorityChanged = !string.Equals(oldSubtitlePriority, _settings.SubtitlePriority, StringComparison.Ordinal);
-            bool ignoreAutoChanged = oldIgnoreAuto != _settings.IgnoreYouTubeAutoSubtitles;
-            if (priorityChanged || ignoreAutoChanged)
-            {
-                VNotch.Services.RuntimeLog.Log("SUBTITLE-PRIORITY",
-                    $"Settings changed: priority='{oldSubtitlePriority}' -> '{_settings.SubtitlePriority}', ignoreAuto={_settings.IgnoreYouTubeAutoSubtitles} " +
-                    $"hasMedia={_currentMediaInfo != null} videoId='{_lastKnownYouTubeVideoId}'");
-
-                if (!string.IsNullOrEmpty(_lastKnownYouTubeVideoId))
-                {
-                    _youtubeSubtitleService.Reset();
-                    _lyricsTrackKey = "";
-                    _syncedTextSource = SyncedTextSource.None;
-                    var refetchInfo = _currentMediaInfo ?? new VNotch.Models.MediaInfo();
-                    if (string.IsNullOrEmpty(refetchInfo.YouTubeVideoId))
-                        refetchInfo.YouTubeVideoId = _lastKnownYouTubeVideoId;
-                    FetchSubtitlesForTrack(refetchInfo, force: true).SafeFireAndForget("SUBTITLES");
-                }
-            }
-
-            if (languageChanged)
-            {
-                Loc.SetLanguage(_settings.Language);
-                RefreshNotchLocalization();
-            }
-
-            bool autoCheckUpdatesChanged = oldSettings.AutoCheckUpdates != newSettings.AutoCheckUpdates;
-            bool updateChannelChanged = oldSettings.IncludePrereleaseUpdates != newSettings.IncludePrereleaseUpdates;
-            if (updateChannelChanged)
-            {
-                System.Threading.Interlocked.Increment(ref _updateCheckGeneration);
-                if (!_isUpdateInstalling)
-                {
-                    _isUpdateAvailable = false;
-                    _availableUpdate = null;
-                    HideUpdateNotification();
-                }
-            }
-            if ((autoCheckUpdatesChanged || updateChannelChanged) && newSettings.AutoCheckUpdates)
-            {
-                CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-AUTOCHECK-ENABLED");
-            }
-        };
-
-        settingsWindow.Closed += (s, e) =>
-        {
             PlayNotchReturnBounce();
             if (_updateService?.LatestUpdateInfo is { IsNewerVersion: true } update)
             {
@@ -1578,7 +1476,152 @@ public partial class MainWindow : Window
 
         settingsWindow.Show();
     }
-#pragma warning restore S3776
+
+    private void OnSettingsWindowSettingsChanged(SettingsWindow settingsWindow, NotchSettings newSettings)
+    {
+        var oldSettings = _settings;
+        bool sizeChanged = HasNotchGeometryChanged(oldSettings, newSettings);
+        bool languageChanged = !string.Equals(newSettings.Language, oldSettings.Language, StringComparison.Ordinal);
+        bool spotifyCanvasChanged = HasSpotifyCanvasConfigChanged(oldSettings, newSettings);
+        _modeTransitionPending = newSettings.EnableDynamicIslandMode != oldSettings.EnableDynamicIslandMode;
+        bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
+        string oldSubtitlePriority = oldSettings.SubtitlePriority ?? "";
+
+        _settings = newSettings.Clone();
+        _clipboardHotkey?.Apply(_settings.ClipboardHotkey);
+        _clipboardHistory?.ApplySettings(_settings);
+        if (_settings.HideCamera && IsCameraPreviewLifecycleActive) StopCameraPreviewForViewExit();
+        NetworkPrivacy.Current.Apply(_settings);
+        ApplyInvisibleMode();
+        _liveTranslation?.ApplySettings(_settings);
+
+        UpdateWindowAndNotchPlacementSettings(oldSettings, newSettings, settingsWindow);
+        ApplySettings(oldSettings, sizeChanged);
+        UpdateWeatherAndCanvasSettings(oldSettings, newSettings, spotifyCanvasChanged);
+        RefetchSubtitlesIfPriorityChanged(oldSubtitlePriority, oldIgnoreAuto);
+
+        if (languageChanged)
+        {
+            Loc.SetLanguage(_settings.Language);
+            RefreshNotchLocalization();
+        }
+
+        RefreshUpdateCheckIfSettingsChanged(oldSettings, newSettings);
+    }
+
+    private static bool HasNotchGeometryChanged(NotchSettings oldSettings, NotchSettings newSettings) =>
+        newSettings.Width != oldSettings.Width ||
+        newSettings.DynamicIslandWidth != oldSettings.DynamicIslandWidth ||
+        newSettings.DynamicIslandHeight != oldSettings.DynamicIslandHeight ||
+        newSettings.Height != oldSettings.Height ||
+        newSettings.CornerRadius != oldSettings.CornerRadius;
+
+    private static bool HasSpotifyCanvasConfigChanged(NotchSettings oldSettings, NotchSettings newSettings) =>
+        newSettings.EnableSpotifyCanvas != oldSettings.EnableSpotifyCanvas ||
+        newSettings.AllowOnlineCanvas != oldSettings.AllowOnlineCanvas ||
+        newSettings.SpotifyCanvasConsentVersion != oldSettings.SpotifyCanvasConsentVersion ||
+        newSettings.EnableLocalOnlyMode != oldSettings.EnableLocalOnlyMode ||
+        !string.Equals(newSettings.SpotifySpDc, oldSettings.SpotifySpDc, StringComparison.Ordinal);
+
+    private void UpdateWindowAndNotchPlacementSettings(
+        NotchSettings oldSettings,
+        NotchSettings newSettings,
+        SettingsWindow settingsWindow)
+    {
+        if (oldSettings.HideOnExclusiveFullscreen != newSettings.HideOnExclusiveFullscreen ||
+            oldSettings.HideOnWindowedFullscreen != newSettings.HideOnWindowedFullscreen)
+        {
+            _fullscreenController.UpdateSettings(_settings);
+        }
+
+        bool monitorChanged = oldSettings.MonitorIndex != newSettings.MonitorIndex ||
+                              oldSettings.MonitorDeviceId != newSettings.MonitorDeviceId;
+        if (monitorChanged ||
+            oldSettings.EnableHoverExpand != newSettings.EnableHoverExpand ||
+            oldSettings.Height != newSettings.Height ||
+            oldSettings.AnimationFps != newSettings.AnimationFps)
+        {
+            _notchManager.UpdateSettings(_settings);
+        }
+
+        if (monitorChanged)
+        {
+            PositionAtTop();
+        }
+
+        // Forward every settings snapshot. SpotlightController owns change detection,
+        // including provider, model and credentials; filtering here leaves it stale.
+        _spotlightController.ApplySettings(_settings);
+        if (oldSettings.EnableSpotlight != newSettings.EnableSpotlight)
+        {
+            settingsWindow.SetSpotlightHotkeyStatus(_spotlightController.IsHotkeyRegistered);
+        }
+    }
+
+    private void UpdateWeatherAndCanvasSettings(
+        NotchSettings oldSettings,
+        NotchSettings newSettings,
+        bool spotifyCanvasChanged)
+    {
+        if (oldSettings.EnableWeather != newSettings.EnableWeather ||
+            oldSettings.AllowOnlineWeather != newSettings.AllowOnlineWeather ||
+            oldSettings.EnableLocalOnlyMode != newSettings.EnableLocalOnlyMode ||
+            !string.Equals(oldSettings.ManualCity, newSettings.ManualCity, StringComparison.Ordinal))
+        {
+            WeatherWidgetView.ApplySettings(
+                _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
+            _weatherModule.OnSettingsChanged(_settings);
+        }
+
+        if (spotifyCanvasChanged)
+        {
+            _spotifyCanvasController?.ClearCache();
+            _spotifyCanvasController?.UpdateSettings(_settings);
+        }
+    }
+
+    private void RefetchSubtitlesIfPriorityChanged(string oldSubtitlePriority, bool oldIgnoreAuto)
+    {
+        bool priorityChanged = !string.Equals(oldSubtitlePriority, _settings.SubtitlePriority, StringComparison.Ordinal);
+        bool ignoreAutoChanged = oldIgnoreAuto != _settings.IgnoreYouTubeAutoSubtitles;
+        if (!priorityChanged && !ignoreAutoChanged) return;
+
+        VNotch.Services.RuntimeLog.Log("SUBTITLE-PRIORITY",
+            $"Settings changed: priority='{oldSubtitlePriority}' -> '{_settings.SubtitlePriority}', ignoreAuto={_settings.IgnoreYouTubeAutoSubtitles} " +
+            $"hasMedia={_currentMediaInfo != null} videoId='{_lastKnownYouTubeVideoId}'");
+
+        if (string.IsNullOrEmpty(_lastKnownYouTubeVideoId)) return;
+
+        _youtubeSubtitleService.Reset();
+        _lyricsTrackKey = "";
+        _syncedTextSource = SyncedTextSource.None;
+        var refetchInfo = _currentMediaInfo ?? new VNotch.Models.MediaInfo();
+        if (string.IsNullOrEmpty(refetchInfo.YouTubeVideoId))
+        {
+            refetchInfo.YouTubeVideoId = _lastKnownYouTubeVideoId;
+        }
+        FetchSubtitlesForTrack(refetchInfo, force: true).SafeFireAndForget("SUBTITLES");
+    }
+
+    private void RefreshUpdateCheckIfSettingsChanged(NotchSettings oldSettings, NotchSettings newSettings)
+    {
+        bool autoCheckUpdatesChanged = oldSettings.AutoCheckUpdates != newSettings.AutoCheckUpdates;
+        bool updateChannelChanged = oldSettings.IncludePrereleaseUpdates != newSettings.IncludePrereleaseUpdates;
+        if (updateChannelChanged)
+        {
+            System.Threading.Interlocked.Increment(ref _updateCheckGeneration);
+            if (!_isUpdateInstalling)
+            {
+                _isUpdateAvailable = false;
+                _availableUpdate = null;
+                HideUpdateNotification();
+            }
+        }
+        if ((autoCheckUpdatesChanged || updateChannelChanged) && newSettings.AutoCheckUpdates)
+        {
+            CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-AUTOCHECK-ENABLED");
+        }
+    }
 
     private static bool IsLiquidGlassConfigChanged(NotchSettings? oldSettings, NotchSettings? newSettings)
     {
@@ -2473,8 +2516,8 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, MouseButtonEventArgs e)
     {
-        OpenAppSettings();
         e.Handled = true;
+        OpenAppSettings();
     }
 
     private void SettingsButton_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e) =>

@@ -148,6 +148,7 @@ public partial class SettingsWindow
                     EasingFunction = easeOut
                 };
                 Timeline.SetDesiredFrameRate(shadowFade, fps);
+
                 shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, shadowFade);
             }));
         };

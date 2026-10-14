@@ -33,7 +33,7 @@ public sealed class MainWindowCompactFeedbackTests
         Assert.Equal(Loc.Get(statusKey), window.ChargingStatusText.Text);
         Assert.Equal(formattedWatts, window.ChargingWattText.Text);
         Assert.Equal(watts == 0 ? Visibility.Collapsed : Visibility.Visible, window.ChargingWattText.Visibility);
-        Assert.Equal(Math.Max(2, percent / 100d * 17), window.ChargingBatteryFill.Width);
+        Assert.Equal(percent / 100d, window.ChargingBatteryFillScale.ScaleX);
         Assert.Equal(Visibility.Collapsed, window.CollapsedContent.Visibility);
         Assert.Equal(pluggedIn ? Color.FromRgb(0x30, 0xD1, 0x58) : Color.FromRgb(0xFF, 0x95, 0), ((SolidColorBrush)window.ChargingPercentText.Foreground).Color);
         await WpfFrameWaiter.UntilAsync(() => window.ChargingNotification.Opacity == 1 && window.ChargingIconScale.ScaleX == 1, "charging glance entrance", ct);

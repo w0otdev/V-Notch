@@ -26,10 +26,11 @@ public sealed class MainWindowSettingsIntegrationTests
         var field = typeof(MainWindow).GetField("_settings", flags)!;
         var original = ((NotchSettings)field.GetValue(window)!).Clone();
         Exception? failure = null;
+        var frame = new DispatcherFrame();
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
         timer.Tick += (_, _) =>
         {
-            var settings = Application.Current.Windows.OfType<SettingsWindow>().LastOrDefault();
+            var settings = Application.Current.Windows.OfType<SettingsWindow>().LastOrDefault(w => w.IsVisible);
             if (settings == null) return;
             timer.Stop();
             BackgroundTestWindows.ProtectInput(settings);
@@ -66,10 +67,21 @@ public sealed class MainWindowSettingsIntegrationTests
                 Assert.True(original.ValueEquals((NotchSettings)field.GetValue(window)!));
             }
             catch (Exception ex) { failure = ex; }
-            finally { settings.Close(); }
+            finally
+            {
+                settings.Close();
+                frame.Continue = false;
+            }
         };
         timer.Start();
-        try { typeof(MainWindow).GetMethod("OpenAppSettings", flags)!.Invoke(window, [false]); }
+        try
+        {
+            typeof(MainWindow).GetMethod("OpenAppSettings", flags)!.Invoke(window, [false]);
+            if (timer.IsEnabled)
+            {
+                Dispatcher.PushFrame(frame);
+            }
+        }
         finally { timer.Stop(); }
         if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     });
