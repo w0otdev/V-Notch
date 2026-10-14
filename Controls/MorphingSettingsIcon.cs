@@ -183,10 +183,32 @@ public class MorphingSettingsIcon : FrameworkElement
             contours.Add(points);
         }
         if (IsTextGeometry)
-            return contours.OrderBy(points => points.Min(p => p.X)).ToArray();
-        return contours.OrderByDescending(points =>
-            (points.Max(p => p.X) - points.Min(p => p.X)) *
-            (points.Max(p => p.Y) - points.Min(p => p.Y))).ToArray();
+        {
+            return contours.OrderBy(static points =>
+            {
+                double minX = double.PositiveInfinity;
+                for (int i = 0; i < points.Length; i++)
+                {
+                    if (points[i].X < minX) minX = points[i].X;
+                }
+                return minX;
+            }).ToArray();
+        }
+        return contours.OrderByDescending(static points =>
+        {
+            double minX = double.PositiveInfinity, maxX = double.NegativeInfinity;
+            double minY = double.PositiveInfinity, maxY = double.NegativeInfinity;
+            for (int i = 0; i < points.Length; i++)
+            {
+                double x = points[i].X;
+                double y = points[i].Y;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            return (maxX - minX) * (maxY - minY);
+        }).ToArray();
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
@@ -215,29 +237,31 @@ public class MorphingSettingsIcon : FrameworkElement
         }
         else
         {
-            var shape = _morphGeometry;
-            for (int i = 0; i < shape.Figures.Count; i++)
+            var stream = new StreamGeometry { FillRule = FillRule.Nonzero };
+            using (var ctx = stream.Open())
             {
-                var source = i < _from.Length ? _from[i] : null;
-                var destination = i < _to.Length ? _to[i] : null;
-                var center = _collapseCenters[i];
-                var figure = shape.Figures[i];
-                var points = _framePoints[i];
-                for (int j = 0; j < Samples; j++)
+                int count = _morphGeometry.Figures.Count;
+                for (int i = 0; i < count; i++)
                 {
-                    var a = source?[j] ?? center;
-                    var b = destination?[j] ?? center;
-                    Point point = a + (b - a) * progress;
-                    if (j == 0) figure.StartPoint = point;
-                    else points[j - 1] = point;
+                    var source = i < _from.Length ? _from[i] : null;
+                    var destination = i < _to.Length ? _to[i] : null;
+                    var center = _collapseCenters[i];
+                    var points = _framePoints[i];
+                    Point startPoint = default;
+                    for (int j = 0; j < Samples; j++)
+                    {
+                        var a = source?[j] ?? center;
+                        var b = destination?[j] ?? center;
+                        Point point = a + (b - a) * progress;
+                        if (j == 0) startPoint = point;
+                        else points[j - 1] = point;
+                    }
+                    ctx.BeginFigure(startPoint, isFilled: true, isClosed: true);
+                    ctx.PolyLineTo(points, isStroked: false, isSmoothJoin: false);
                 }
-                // Publish all points together. Mutating a live PointCollection
-                // individually propagates 95 Freezable notifications per contour.
-                var collection = new PointCollection(points);
-                collection.Freeze();
-                ((PolyLineSegment)figure.Segments[0]).Points = collection;
             }
-            _display = shape;
+            stream.Freeze();
+            _display = stream;
         }
         // RenderSize is authoritative even before the deferred SizeChanged callback.
         // Keep the normalized 56-unit geometry inside the current layout slot.

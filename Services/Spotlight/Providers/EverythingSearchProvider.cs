@@ -31,8 +31,10 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private uint _queryId;
     private TaskCompletionSource<IReadOnlyList<(string Name, string Parent, bool IsFolder)>>? _pendingReply;
     private uint _pendingReplyId;
+    private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(15);
     private volatile bool _disposed;
     private volatile bool _ipcFailed;
+    private long _lastFailureTicks = DateTime.MinValue.Ticks;
     private readonly Func<IntPtr> _findWindow;
 
     public EverythingSearchProvider() : this(() => FindWindowW(EverythingIpcWindowClass, null)) { }
@@ -41,8 +43,17 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 
     public bool IsAvailable
     {
-        get => !_disposed && !_ipcFailed && _findWindow() != IntPtr.Zero;
-        private set => _ipcFailed = !value;
+        get
+        {
+            if (_disposed || _findWindow() == IntPtr.Zero) return false;
+            if (!_ipcFailed) return true;
+            return DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastFailureTicks) > RetryCooldown.Ticks;
+        }
+        private set
+        {
+            if (!value) Interlocked.Exchange(ref _lastFailureTicks, DateTime.UtcNow.Ticks);
+            _ipcFailed = !value;
+        }
     }
 
     public bool IsInstant => true;
@@ -312,20 +323,16 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         return rows;
     }
 
-    private static string ReadBoundedUniString(IntPtr basePtr, int offset, int totalBytes)
+    private static unsafe string ReadBoundedUniString(IntPtr basePtr, int offset, int totalBytes)
     {
         if (offset < 0 || offset >= totalBytes) return string.Empty;
-        int remainingBytes = totalBytes - offset;
-        int maxChars = remainingBytes / sizeof(char);
+        int maxChars = (totalBytes - offset) / sizeof(char);
         if (maxChars <= 0) return string.Empty;
 
-        int len = 0;
-        while (len < maxChars && Marshal.ReadInt16(basePtr, offset + len * sizeof(char)) != 0)
-        {
-            len++;
-        }
-
-        return Marshal.PtrToStringUni(basePtr + offset, len) ?? string.Empty;
+        ReadOnlySpan<char> span = new((char*)(basePtr + offset), maxChars);
+        int nullIndex = span.IndexOf('\0');
+        if (nullIndex >= 0) span = span[..nullIndex];
+        return span.IsEmpty ? string.Empty : new string(span);
     }
 
     private static bool SendQuery(
@@ -402,11 +409,13 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
             try
             {
                 if (window.Dispatcher.HasShutdownStarted) return;
-                window.Dispatcher.Invoke(() =>
+                void Cleanup()
                 {
                     window.RemoveHook(ReplyWndProc);
                     window.Dispose();
-                });
+                }
+                if (window.Dispatcher.CheckAccess()) Cleanup();
+                else _ = window.Dispatcher.BeginInvoke(Cleanup);
             }
             catch
             {

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -95,18 +96,22 @@ internal sealed class CustomTranslationModels
             string hash;
             using (var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
-                byte[] buffer = new byte[131072];
-                int count;
-                long read = 0;
-                var clock = System.Diagnostics.Stopwatch.StartNew();
-                while ((count = await input.ReadAsync(buffer, ct).ConfigureAwait(false)) != 0)
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(131072);
+                try
                 {
-                    hasher.AppendData(buffer, 0, count);
-                    read += count;
-                    if (clock.ElapsedMilliseconds >= 100 || read == input.Length)
-                    { progress?.Report(read * 100d / input.Length); clock.Restart(); }
+                    int count;
+                    long read = 0;
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    while ((count = await input.ReadAsync(buffer.AsMemory(0, 131072), ct).ConfigureAwait(false)) != 0)
+                    {
+                        hasher.AppendData(buffer, 0, count);
+                        read += count;
+                        if (clock.ElapsedMilliseconds >= 100 || read == input.Length)
+                        { progress?.Report(read * 100d / input.Length); clock.Restart(); }
+                    }
+                    hash = Convert.ToHexString(hasher.GetHashAndReset());
                 }
-                hash = Convert.ToHexString(hasher.GetHashAndReset());
+                finally { ArrayPool<byte>.Shared.Return(buffer); }
             }
             string name = Path.GetFileNameWithoutExtension(source);
             // A hardlink owns no additional file data. If the volumes differ (or the

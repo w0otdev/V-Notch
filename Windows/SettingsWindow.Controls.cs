@@ -744,408 +744,49 @@ public partial class SettingsWindow
 
     private void AnimateLocalizationChange()
     {
-        Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
-        Title = Loc.Get("settings.windowTitle");
-        ApplyTooltips();
+        var (activeCard, activeTranslate) = GetSectionCardParts(_activeNav);
+        if (activeCard == null || activeTranslate == null || VNotch.Services.AnimationConfig.ReduceMotion)
+        {
+            ApplyLocalization();
+            if (IsVisible) LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
+            return;
+        }
+
         var easeOut = new QuadraticEase { EasingMode = EasingMode.EaseOut };
         int fps = VNotch.Services.AnimationConfig.TargetFps;
-        const double slideDist = 3.0;
-        int staggerMs = 0;
-        const int staggerStep = 12;
+        const double slideDist = 6.0;
 
-        var textUpdates = new (FrameworkElement element, Action update)[]
-        {
-            (SidebarBuildVersionText, () => { if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {GetAppVersion()}"; }),
-            (SearchPlaceholder, () => SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder")),
+        activeCard.BeginAnimation(OpacityProperty, null);
+        activeTranslate.BeginAnimation(TranslateTransform.YProperty, null);
 
-            (AppearanceHeader, () => AppearanceHeader.Text = Loc.Get("settings.appearance")),
-            (BehaviorHeader, () => BehaviorHeader.Text = Loc.Get("settings.behavior")),
-            (UpdatesHeader, () => UpdatesHeader.Text = Loc.Get("settings.updates")),
-            (DonatingHeader, () => DonatingHeader.Text = Loc.Get("settings.donating")),
-            (PerformanceHeader, () => PerformanceHeader.Text = Loc.Get("settings.performance")),
-            (DisplayHeader, () => DisplayHeader.Text = Loc.Get("settings.display")),
-            (SystemHeader, () => SystemHeader.Text = Loc.Get("settings.system")),
-            (SpotlightHeader, () => SpotlightHeader.Text = Loc.Get("settings.spotlight")),
-            (SearchingHeader, () => SearchingHeader.Text = Loc.Get("settings.searching")),
-            (SearchingEmptyText, () => SearchingEmptyText.Text = Loc.Get("settings.search.noResults")),
-            (SearchingEmptyHint, () => SearchingEmptyHint.Text = Loc.Get("settings.search.emptyHint")),
-            (SearchingClearButton, () => SearchingClearButton.Content = Loc.Get("settings.search.clear")),
-
-            (NavSearchingText, () => NavSearchingText.Text = Loc.Get("settings.searching")),
-            (NavAppearanceText, () => NavAppearanceText.Text = Loc.Get("settings.nav.appearance")),
-            (NavSkinsText, () => NavSkinsText.Text = Loc.Get("settings.nav.skins")),
-            (NavBehaviorText, () => NavBehaviorText.Text = Loc.Get("settings.nav.behavior")),
-            (NavDevicesText, () => NavDevicesText.Text = Loc.Get("settings.nav.devices")),
-            (NavSystemText, () => NavSystemText.Text = Loc.Get("settings.nav.system")),
-            (NavPrivacyText, () => NavPrivacyText.Text = Loc.Get("settings.nav.privacy")),
-            (NavSpotlightText, () => NavSpotlightText.Text = Loc.Get("settings.nav.spotlight")),
-            (NavAdvancedText, () => NavAdvancedText.Text = Loc.Get("settings.nav.advanced")),
-            (NavPerformanceText, () => NavPerformanceText.Text = Loc.Get("settings.nav.performance")),
-            (NavDonatingText, () => NavDonatingText.Text = Loc.Get("settings.nav.donating")),
-            (NavUpdatesText, () => NavUpdatesText.Text = Loc.Get("settings.nav.updates")),
-
-            (PrivacyHeader, () => PrivacyHeader.Text = Loc.Get("settings.header.privacy")),
-            (LocalOnlyModeCheck, () => LocalOnlyModeCheck.Content = Loc.Get("settings.privacy.localOnly")),
-            (LocalOnlyBadgeText, () => LocalOnlyBadgeText.Text = Loc.Get("settings.privacy.localOnly.badge")),
-            (LocalOnlyModeHint, () => LocalOnlyModeHint.Text = Loc.Get("settings.privacy.localOnly.hint")),
-            (PrivacyNetworkHeader, () => PrivacyNetworkHeader.Text = Loc.Get("settings.privacy.section.network")),
-            (AutoCheckUpdatesCheck, () => AutoCheckUpdatesCheck.Content = Loc.Get("settings.privacy.autoUpdates")),
-            (AutoCheckUpdatesHint, () => AutoCheckUpdatesHint.Text = Loc.Get("settings.privacy.autoUpdates.hint")),
-            (EnableOnlineArtworkCheck, () => EnableOnlineArtworkCheck.Content = Loc.Get("settings.privacy.onlineArtwork")),
-            (EnableOnlineArtworkHint, () => EnableOnlineArtworkHint.Text = Loc.Get("settings.privacy.onlineArtwork.hint")),
-            (EnableOnlineLyricsCheck, () => EnableOnlineLyricsCheck.Content = Loc.Get("settings.privacy.onlineLyrics")),
-            (EnableOnlineLyricsHint, () => EnableOnlineLyricsHint.Text = Loc.Get("settings.privacy.onlineLyrics.hint")),
-            (PrivacySensorsHeader, () => PrivacySensorsHeader.Text = Loc.Get("settings.privacy.section.sensors")),
-            (EnablePrivacyIndicatorsCheck, () => EnablePrivacyIndicatorsCheck.Content = Loc.Get("settings.privacy.indicators")),
-            (EnablePrivacyIndicatorsHint, () => EnablePrivacyIndicatorsHint.Text = Loc.Get("settings.privacy.indicators.hint")),
-            (EnableBrowserUrlInspectionCheck, () => EnableBrowserUrlInspectionCheck.Content = Loc.Get("settings.privacy.browserUrl")),
-            (EnableBrowserUrlInspectionHint, () => EnableBrowserUrlInspectionHint.Text = Loc.Get("settings.privacy.browserUrl.hint")),
-            (PrivacyStorageHeader, () => PrivacyStorageHeader.Text = Loc.Get("settings.privacy.section.storage")),
-            (EnableDiagnosticLoggingCheck, () => EnableDiagnosticLoggingCheck.Content = Loc.Get("settings.privacy.logging")),
-            (EnableDiagnosticLoggingHint, () => EnableDiagnosticLoggingHint.Text = Loc.Get("settings.privacy.logging.hint")),
-            (EnableSpotlightHistoryCheck, () => EnableSpotlightHistoryCheck.Content = Loc.Get("settings.privacy.spotlightHistory")),
-            (EnableSpotlightHistoryHint, () => EnableSpotlightHistoryHint.Text = Loc.Get("settings.privacy.spotlightHistory.hint")),
-            (ClearSpotlightHistoryButton, () => ClearSpotlightHistoryButton.Content = Loc.Get("settings.privacy.clearSpotlight")),
-            (ClearLogButton, () => ClearLogButton.Content = Loc.Get("settings.privacy.clearLog")),
-
-            (NavTabsLabel, () => { NavTabsLabel.Text = Loc.Get("settings.navTabs"); NavTabsHint.Text = Loc.Get("settings.navTabs.hint"); ResetTabOrderButton.Content = Loc.Get("settings.tab.reset"); PopulateNavTabsSettings(); }),
-            (ExpandedWidgetLabel, () => { ExpandedWidgetLabel.Text = Loc.Get("settings.expandedWidget"); ExpandedWidgetHint.Text = Loc.Get("settings.expandedWidget.hint"); RepopulateWidgetComboPreservingSelection(); }),
-            (ClockPageStyleLabel, () => { ClockPageStyleLabel.Text = Loc.Get("settings.clockPageStyle"); ClockPageStyleHint.Text = Loc.Get("settings.clockPageStyle.hint"); RepopulateClockPageStyleComboPreservingSelection(); }),
-            (WidthLabel, () => { WidthLabel.Text = Loc.Get("settings.width"); WidthSlider.Label = Loc.Get("settings.width"); WidthSlider.Description = Loc.Get("settings.width.hint"); }),
-            (DynamicIslandWidthLabel, () => { DynamicIslandWidthLabel.Text = Loc.Get("settings.dynamicIslandWidth"); DynamicIslandWidthSlider.Label = Loc.Get("settings.dynamicIslandWidth"); DynamicIslandWidthSlider.Description = Loc.Get("settings.dynamicIslandWidth.hint"); }),
-            (DynamicIslandHeightLabel, () => { DynamicIslandHeightLabel.Text = Loc.Get("settings.dynamicIslandHeight"); DynamicIslandHeightSlider.Label = Loc.Get("settings.dynamicIslandHeight"); DynamicIslandHeightSlider.Description = Loc.Get("settings.dynamicIslandHeight.hint"); }),
-            (HeightLabel, () => { HeightLabel.Text = Loc.Get("settings.height"); HeightSlider.Label = Loc.Get("settings.height"); HeightSlider.Description = Loc.Get("settings.height.hint"); }),
-            (RadiusLabel, () => { RadiusLabel.Text = Loc.Get("settings.cornerRadius"); RadiusSlider.Label = Loc.Get("settings.cornerRadius"); RadiusSlider.Description = Loc.Get("settings.cornerRadius.hint"); }),
-            (OpacityLabel, () => { OpacityLabel.Text = Loc.Get("settings.opacity"); OpacitySlider.Label = Loc.Get("settings.opacity"); OpacitySlider.Description = Loc.Get("settings.opacity.hint"); }),
-            (BlurLabel, () => { BlurLabel.Text = Loc.Get("settings.blurBrightness"); BlurBrightnessSlider.Label = Loc.Get("settings.blurBrightness"); BlurBrightnessSlider.Description = Loc.Get("settings.blurBrightness.hint"); }),
-            (DarkOverlayLabel, () => { DarkOverlayLabel.Text = Loc.Get("settings.lyricsDarkOverlay"); BlurDarkOverlaySlider.Label = Loc.Get("settings.lyricsDarkOverlay"); BlurDarkOverlaySlider.Description = Loc.Get("settings.lyricsDarkOverlay.hint"); }),
-            (SpotifyCanvasBrightnessSlider, () => { SpotifyCanvasBrightnessSlider.Label = Loc.Get("settings.spotifyCanvasBrightness"); SpotifyCanvasBrightnessSlider.Description = Loc.Get("settings.spotifyCanvasBrightness.hint"); }),
-            (EnableSpotifyLyricsHint, () => EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint")),
-            (EnableSpotifyCanvasHint, () => EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint")),
-            (EnableYouTubeSubtitlesHint, () => EnableYouTubeSubtitlesHint.Text = Loc.Get("settings.enableYouTubeSubtitles.hint")),
-            (IgnoreYouTubeAutoSubtitlesHint, () => IgnoreYouTubeAutoSubtitlesHint.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles.hint")),
-            (YouTubeSubtitlesExperimentalBadge, () => YouTubeSubtitlesExperimentalBadge.Text = Loc.Get("settings.badge.experimental")),
-            (SubtitlePriorityLabel, () => SubtitlePriorityLabel.Text = Loc.Get("settings.subtitlePriority")),
-            (SubtitlePriorityHint, () =>
-            {
-                SubtitlePriorityHint.Text = Loc.Get("settings.subtitlePriority.hint");
-                LoadSubtitlePriority();
-            }),
-            (SpotifyCanvasAccountLabel, () => SpotifyCanvasAccountLabel.Text = Loc.Get("settings.spotifyCanvasAccount")),
-            (SpotifyCanvasAccountHint, () => SpotifyCanvasAccountHint.Text = Loc.Get("settings.spotifyCanvasAccount.hint")),
-            (SpotifyCanvasAccountStatus, UpdateSpotifyCanvasConnectionStatus),
-            (DynamicIslandModeCheck, () => DynamicIslandModeCheck.Content = Loc.Get("settings.dynamicIslandMode")),
-            (DynamicIslandModeHint, () => DynamicIslandModeHint.Text = Loc.Get("settings.dynamicIslandMode.hint")),
-
-            (HoverExpandHint, () => HoverExpandHint.Text = Loc.Get("settings.hoverExpand.hint")),
-            (ExpandDelayLabel, () => { ExpandDelayLabel.Text = Loc.Get("settings.expandDelay"); HoverDelaySlider.Label = Loc.Get("settings.expandDelay"); HoverDelaySlider.Description = Loc.Get("settings.expandDelay.hint"); }),
-            (DisableMouseLeaveAutoCloseHint, () => DisableMouseLeaveAutoCloseHint.Text = Loc.Get("settings.disableAutoClose.hint")),
-            (KeepMediaPinnedHint, () => KeepMediaPinnedHint.Text = Loc.Get("settings.keepMediaPinned.hint")),
-            (ReopenLastViewHint, () => ReopenLastViewHint.Text = Loc.Get("settings.reopenLastView.hint")),
-            (IdleAutoHideHint, () => IdleAutoHideHint.Text = Loc.Get("settings.idleAutoHide.hint")),
-            (IdleAutoHideDelaySlider, () => { IdleAutoHideDelaySlider.Label = Loc.Get("settings.idleAutoHideDelay"); IdleAutoHideDelaySlider.Description = Loc.Get("settings.idleAutoHideDelay.hint"); }),
-
-            (UpdateStatusText, () => UpdateStatusText.Text = Loc.Get("settings.upToDate")),
-            (CurrentVersionText, () => { CurrentVersionText.Text = Loc.Get("settings.currentVersion", GetAppVersion()); ViewChangelogButton.Content = Loc.Get("settings.btn.changelog"); }),
-            (ReportBugLabel, () => ReportBugLabel.Text = Loc.Get("settings.reportBug")),
-            (ReportBugHint, () => ReportBugHint.Text = Loc.Get("settings.reportBug.hint")),
-            (RequestFeatureLabel, () => RequestFeatureLabel.Text = Loc.Get("settings.requestFeature")),
-            (RequestFeatureHint, () => RequestFeatureHint.Text = Loc.Get("settings.requestFeature.hint")),
-            (ClearCacheLabel, () => ClearCacheLabel.Text = Loc.Get("settings.clearCache")),
-            (ClearCacheHint, () => ClearCacheHint.Text = Loc.Get("settings.clearCache.hint")),
-
-            (MonitorLabel, () => MonitorLabel.Text = Loc.Get("settings.activeMonitor")),
-            (MonitorHint, () =>
-            {
-                MonitorHint.Text = Loc.Get("settings.activeMonitor.hint");
-                RefreshMonitorChoices();
-            }),
-            (CameraLabel, () => CameraLabel.Text = Loc.Get("settings.camera")),
-            (CameraHint, () =>
-            {
-                CameraHint.Text = Loc.Get("settings.camera.hint");
-                LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
-            }),
-            (VisualizerAudioLabel, () => VisualizerAudioLabel.Text = Loc.Get("settings.visualizerAudio")),
-            (VisualizerAudioHint, () =>
-            {
-                VisualizerAudioHint.Text = Loc.Get("settings.visualizerAudio.hint");
-                LoadVisualizerAudioDevices().SafeFireAndForget("SETTINGS-VIS-AUDIO");
-            }),
-
-            (AutoStartHint, () => AutoStartHint.Text = Loc.Get("settings.autoStart.hint")),
-            (StayBehindWindowsHint, () => StayBehindWindowsHint.Text = Loc.Get("settings.stayBehindWindows.hint")),
-            (HelloGreetingHint, () => HelloGreetingHint.Text = Loc.Get("settings.helloGreeting.hint")),
-            (HideOnExclusiveFullscreenHint, () => HideOnExclusiveFullscreenHint.Text = Loc.Get("settings.hideExclusiveFs.hint")),
-            (HideOnWindowedFullscreenHint, () => HideOnWindowedFullscreenHint.Text = Loc.Get("settings.hideWindowedFs.hint")),
-            (MusicNotifyHint, () => MusicNotifyHint.Text = Loc.Get("settings.musicNotify.hint")),
-            (SystemNotifyHint, () => SystemNotifyHint.Text = Loc.Get("settings.systemNotify.hint")),
-            (ShowBatteryHint, () => ShowBatteryHint.Text = Loc.Get("settings.showBattery.hint")),
-            (EnableSpotlightHint, () => EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint")),
-            (SpotlightAiHint, LocalizeSpotlightAiSettings),
-            (SpotlightHotkeyWarning, () => SpotlightHotkeyWarning.Text = Loc.Get("settings.enableSpotlight.conflict")),
-            (LanguageLabel, () => LanguageLabel.Text = Loc.Get("settings.language")),
-            (LanguageHint, () => LanguageHint.Text = Loc.Get("settings.language.hint")),
-
-            (EnableWeatherHint, () => EnableWeatherHint.Text = Loc.Get("settings.enableWeather.hint")),
-            (ManualCityLabel, () => ManualCityLabel.Text = Loc.Get("settings.manualCity")),
-            (ManualCityHint, () => ManualCityHint.Text = Loc.Get("settings.manualCity.hint")),
-
-            (AdvancedHeader, () => AdvancedHeader.Text = Loc.Get("settings.advanced")),
-            (YouTubeApiHint, () => YouTubeApiHint.Text = Loc.Get("settings.youtubeApi.hint")),
-            (YouTubeApiKeyLabel, () => YouTubeApiKeyLabel.Text = Loc.Get("settings.youtubeApiKey")),
-            (YouTubeApiKeyHint, () => YouTubeApiKeyHint.Text = Loc.Get("settings.youtubeApiKey.hint")),
-            (YouTubeApiKeyStatus, UpdateYouTubeApiKeyStatus),
-            (EnableDebugModeHint, () => EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint")),
-            (GlassFpsSlider, () => GlassFpsSlider.Label = Loc.Get("settings.glass.targetFps")),
-
-            (AnimationFpsLabel, () => { AnimationFpsLabel.Text = Loc.Get("settings.animationFps"); AutoAnimationFpsCheck.Content = Loc.Get("settings.animationFps.auto"); AnimationFpsSlider.Label = Loc.Get("settings.animationFps"); AnimationFpsSlider.Description = Loc.Get("settings.animationFps.hint"); }),
-            (EnableBlurEffectsHint, () => EnableBlurEffectsHint.Text = Loc.Get("settings.enableBlurEffects.hint")),
-            (EnableSubjectBlurHint, () => EnableSubjectBlurHint.Text = Loc.Get("settings.enableSubjectBlur.hint")),
-            (EnableSmartCropHint, () => EnableSmartCropHint.Text = Loc.Get("settings.enableSmartCrop.hint")),
-            (MediaArtBackgroundHint, () => { MediaArtBackgroundCheck.Content = Loc.Get("settings.mediaArtBackground"); MediaArtBackgroundHint.Text = Loc.Get("settings.mediaArtBackground.hint"); }),
-
-            (DonatingTitle, () => DonatingTitle.Text = Loc.Get("settings.donating.title")),
-            (DonatingDescription, () => DonatingDescription.Text = Loc.Get("settings.donating.description")),
-            (DonatingBankTitle, () => DonatingBankTitle.Text = Loc.Get("settings.donating.bank")),
-            (DonatingBankHint, () => DonatingBankHint.Text = Loc.Get("settings.donating.bank.hint")),
-            (StarRepoTitle, () => StarRepoTitle.Text = Loc.Get("settings.donating.star.title")),
-            (StarRepoDescription, () => StarRepoDescription.Text = Loc.Get("settings.donating.star.description")),
-            (StarRepoButtonText, () => StarRepoButtonText.Text = Loc.Get("settings.donating.star.button")),
-            (OtherProjectsHeader, () => OtherProjectsHeader.Text = Loc.Get("settings.donating.otherProjects.title")),
-            (OtherProjectsSubtext, () => OtherProjectsSubtext.Text = Loc.Get("settings.donating.otherProjects.subtitle")),
-            (ProjectVertexDesc, () => ProjectVertexDesc.Text = Loc.Get("settings.donating.otherProjects.vertex.desc")),
-            (ProjectScrollVDesc, () => ProjectScrollVDesc.Text = Loc.Get("settings.donating.otherProjects.scrollv.desc")),
-
-            (BackupHeader, () => BackupHeader.Text = Loc.Get("settings.section.backup")),
-            (ExportSettingsLabel, () => ExportSettingsLabel.Text = Loc.Get("settings.exportSettings")),
-            (ExportSettingsHint, () => ExportSettingsHint.Text = Loc.Get("settings.exportSettings.hint")),
-            (ImportSettingsLabel, () => ImportSettingsLabel.Text = Loc.Get("settings.importSettings")),
-            (ImportSettingsHint, () => ImportSettingsHint.Text = Loc.Get("settings.importSettings.hint")),
-            (RestartPromptTitle, () => RestartPromptTitle.Text = Loc.Get("settings.restartBanner.title")),
-            (RestartPromptMessage, () => RestartPromptMessage.Text = Loc.Get("settings.restartBanner.message")),
-
-            (ProcessPriorityLabel, () => ProcessPriorityLabel.Text = Loc.Get("settings.processPriority")),
-            (ProcessPriorityHint, () => ProcessPriorityHint.Text = Loc.Get("settings.processPriority.hint")),
-            (GpuPreferenceLabel, () => GpuPreferenceLabel.Text = Loc.Get("settings.gpuPreference")),
-            (GpuPreferenceHint, () => GpuPreferenceHint.Text = Loc.Get("settings.gpuPreference.hint")),
-            (GpuPreferenceRestartBadge, () => GpuPreferenceRestartBadge.Text = Loc.Get("settings.badge.restartRequired")),
-            (GpuPreferenceRestartNote, () => GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restartNote")),
-            (ProcessPriorityCombo, () =>
-            {
-                if (ProcessPriorityCombo.Items.Count >= 2)
-                {
-                    ((ComboBoxItem)ProcessPriorityCombo.Items[0]).Content = Loc.Get("settings.processPriority.normal");
-                    ((ComboBoxItem)ProcessPriorityCombo.Items[1]).Content = Loc.Get("settings.processPriority.high");
-                }
-            }),
-            (GpuPreferenceCombo, () =>
-            {
-                if (GpuPreferenceCombo.Items.Count >= 3)
-                {
-                    ((ComboBoxItem)GpuPreferenceCombo.Items[0]).Content = Loc.Get("settings.gpuPreference.auto");
-                    ((ComboBoxItem)GpuPreferenceCombo.Items[1]).Content = Loc.Get("settings.gpuPreference.igpu");
-                    ((ComboBoxItem)GpuPreferenceCombo.Items[2]).Content = Loc.Get("settings.gpuPreference.dgpu");
-                }
-            }),
-
-            (SkinCard, () =>
-            {
-                ApplyLiquidGlassLocalization();
-                GpuRefractionCheck.Content = Loc.Get("settings.gpuRefraction");
-                GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
-            }),
-        };
-
-        AnimateContentChange(ExportSettingsButton, () => ExportSettingsButton.Content = Loc.Get("settings.exportSettings.btn"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(ImportSettingsButton, () => ImportSettingsButton.Content = Loc.Get("settings.importSettings.btn"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(RestartNowButton, () => RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(RestartLaterButton, () => RestartLaterButton.Content = Loc.Get("settings.restartBanner.later"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        TooltipHelper.SetLocalizedTooltip(ExportSettingsButton, "tooltip.exportSettings");
-        TooltipHelper.SetLocalizedTooltip(ImportSettingsButton, "tooltip.importSettings");
-
-        AnimateContentChange(CheckUpdateButton, () => CheckUpdateButton.Content = Loc.Get("settings.checkUpdate"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(DownloadUpdateButton, () => DownloadUpdateButton.Content = Loc.Get("settings.downloadInstall"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(DonatePaypalButton, () => DonatePaypalButton.Content = Loc.Get("settings.donating.paypal"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(ResetButton, () => ResetButton.Content = Loc.Get("settings.btn.reset"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(ApplyButton, () => ApplyButton.Content = Loc.Get("settings.btn.apply"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(SaveButton, () => SaveButton.Content = Loc.Get("settings.btn.save"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-
-        AnimateContentChange(AutoStartCheck, () => AutoStartCheck.Content = Loc.Get("settings.autoStart"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(StayBehindWindowsCheck, () => StayBehindWindowsCheck.Content = Loc.Get("settings.stayBehindWindows"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(HelloGreetingCheck, () => HelloGreetingCheck.Content = Loc.Get("settings.helloGreeting"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(HideOnExclusiveFullscreenCheck, () => HideOnExclusiveFullscreenCheck.Content = Loc.Get("settings.hideExclusiveFs"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(HideOnWindowedFullscreenCheck, () => HideOnWindowedFullscreenCheck.Content = Loc.Get("settings.hideWindowedFs"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(MusicNotifyCheck, () => MusicNotifyCheck.Content = Loc.Get("settings.musicNotify"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(SystemNotifyCheck, () => SystemNotifyCheck.Content = Loc.Get("settings.systemNotify"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        staggerMs += staggerStep;
-        staggerMs += staggerStep;
-        AnimateContentChange(ShowBatteryCheck, () => ShowBatteryCheck.Content = Loc.Get("settings.showBattery"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableSpotlightCheck, () => EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(YouTubeApiCheck, () => YouTubeApiCheck.Content = Loc.Get("settings.youtubeApi"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(HoverExpandCheck, () => HoverExpandCheck.Content = Loc.Get("settings.hoverExpand"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(DisableMouseLeaveAutoCloseCheck, () => DisableMouseLeaveAutoCloseCheck.Content = Loc.Get("settings.disableAutoClose"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(KeepMediaPinnedCheck, () => KeepMediaPinnedCheck.Content = Loc.Get("settings.keepMediaPinned"), staggerMs, easeOut, fps);
-        AnimateContentChange(ReopenLastViewCheck, () => ReopenLastViewCheck.Content = Loc.Get("settings.reopenLastView"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(IdleAutoHideCheck, () => IdleAutoHideCheck.Content = Loc.Get("settings.idleAutoHide"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableDebugModeCheck, () => EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableSpotifyLyricsCheck, () => EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics"), staggerMs, easeOut, fps);
-        AnimateContentChange(BrightenDarkLyricsBackgroundCheck, () => BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground"), staggerMs, easeOut, fps);
-        AnimateContentChange(EnableSpotifyCanvasCheck, () =>
-        {
-            if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
-            if (SpotifyCanvasExperimentalBadge != null) SpotifyCanvasExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
-        }, staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(SpotifyConnectButton, () => SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(SpotifyDisconnectButton, () => SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableYouTubeSubtitlesCheck, () => EnableYouTubeSubtitlesLabel.Text = Loc.Get("settings.enableYouTubeSubtitles"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(IgnoreYouTubeAutoSubtitlesCheck, () => IgnoreYouTubeAutoSubtitlesLabel.Text = Loc.Get("settings.ignoreYouTubeAutoSubtitles"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableBlurEffectsCheck, () => EnableBlurEffectsCheck.Content = Loc.Get("settings.enableBlurEffects"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableSubjectBlurCheck, () => EnableSubjectBlurCheck.Content = Loc.Get("settings.enableSubjectBlur"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableSmartCropCheck, () => EnableSmartCropCheck.Content = Loc.Get("settings.enableSmartCrop"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-        AnimateContentChange(EnableWeatherCheck, () => EnableWeatherCheck.Content = Loc.Get("settings.enableWeather"), staggerMs, easeOut, fps);
-        staggerMs += staggerStep;
-
-        foreach (var (element, update) in textUpdates)
-        {
-            if (element == null) continue;
-            AnimateTextSwap(element, update, staggerMs, easeOut, fps, slideDist);
-            staggerMs += staggerStep;
-        }
-
-    }
-
-    private static void AnimateTextSwap(FrameworkElement element, Action updateText, int delayMs, IEasingFunction easing, int fps, double slideDist)
-    {
-        var translate = element.RenderTransform as TranslateTransform;
-        if (translate == null)
-        {
-            translate = new TranslateTransform(0, 0);
-            element.RenderTransform = translate;
-        }
-
-        element.BeginAnimation(OpacityProperty, null);
-        translate.BeginAnimation(TranslateTransform.XProperty, null);
-
-        var fadeOut = new DoubleAnimation
-        {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(100),
-            EasingFunction = easing,
-            BeginTime = TimeSpan.FromMilliseconds(delayMs)
-        };
+        var fadeOut = new DoubleAnimation(activeCard.Opacity, 0.0, TimeSpan.FromMilliseconds(100)) { EasingFunction = easeOut };
+        var slideOut = new DoubleAnimation(activeTranslate.Y, -slideDist, TimeSpan.FromMilliseconds(100)) { EasingFunction = easeOut };
         Timeline.SetDesiredFrameRate(fadeOut, fps);
-
-        var slideOut = new DoubleAnimation
-        {
-            To = -slideDist,
-            Duration = TimeSpan.FromMilliseconds(100),
-            EasingFunction = easing,
-            BeginTime = TimeSpan.FromMilliseconds(delayMs)
-        };
         Timeline.SetDesiredFrameRate(slideOut, fps);
 
-        fadeOut.Completed += (s, e) =>
+        fadeOut.Completed += (_, _) =>
         {
-            updateText();
+            ApplyLocalization();
+            if (IsVisible) LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
 
-            translate.X = slideDist;
-
-            var fadeIn = new DoubleAnimation
-            {
-                From = 0,
-                To = 1,
-                Duration = TimeSpan.FromMilliseconds(220),
-                EasingFunction = easing
-            };
+            activeTranslate.Y = slideDist;
+            var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(220)) { EasingFunction = easeOut };
+            var slideIn = new DoubleAnimation(slideDist, 0.0, TimeSpan.FromMilliseconds(260)) { EasingFunction = easeOut };
             Timeline.SetDesiredFrameRate(fadeIn, fps);
-
-            var slideIn = new DoubleAnimation
-            {
-                From = slideDist,
-                To = 0,
-                Duration = TimeSpan.FromMilliseconds(300),
-                EasingFunction = easing
-            };
             Timeline.SetDesiredFrameRate(slideIn, fps);
 
-            slideIn.Completed += (s2, e2) =>
+            slideIn.Completed += (_, _) =>
             {
-                translate.BeginAnimation(TranslateTransform.XProperty, null);
-                translate.X = 0;
+                activeTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                activeTranslate.Y = 0;
             };
 
-            element.BeginAnimation(OpacityProperty, fadeIn);
-            translate.BeginAnimation(TranslateTransform.XProperty, slideIn);
+            activeCard.BeginAnimation(OpacityProperty, fadeIn);
+            activeTranslate.BeginAnimation(TranslateTransform.YProperty, slideIn);
         };
 
-        element.BeginAnimation(OpacityProperty, fadeOut);
-        translate.BeginAnimation(TranslateTransform.XProperty, slideOut);
-    }
-
-    private static void AnimateContentChange(FrameworkElement element, Action updateContent, int delayMs, IEasingFunction easing, int fps)
-    {
-        element.BeginAnimation(OpacityProperty, null);
-
-        var fadeOut = new DoubleAnimation
-        {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(120),
-            EasingFunction = easing,
-            BeginTime = TimeSpan.FromMilliseconds(delayMs)
-        };
-        Timeline.SetDesiredFrameRate(fadeOut, fps);
-
-        fadeOut.Completed += (s, e) =>
-        {
-            updateContent();
-
-            var fadeIn = new DoubleAnimation
-            {
-                From = 0,
-                To = 1,
-                Duration = TimeSpan.FromMilliseconds(280),
-                EasingFunction = easing
-            };
-            Timeline.SetDesiredFrameRate(fadeIn, fps);
-
-            element.BeginAnimation(OpacityProperty, fadeIn);
-        };
-
-        element.BeginAnimation(OpacityProperty, fadeOut);
+        activeCard.BeginAnimation(OpacityProperty, fadeOut);
+        activeTranslate.BeginAnimation(TranslateTransform.YProperty, slideOut);
     }
 
     private void PushLivePreview()

@@ -548,6 +548,8 @@ public partial class SpotlightWindow : Window
         CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
         _liquidGlass?.Stop();
         DetachGpuRefraction();
+        _liquidGlass?.Dispose();
+        _liquidGlass = null;
         _viewModel.Dispose();
         Close();
     }
@@ -582,6 +584,8 @@ public partial class SpotlightWindow : Window
         CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
         _liquidGlass?.Stop();
         DetachGpuRefraction();
+        _liquidGlass?.Dispose();
+        _liquidGlass = null;
         _hwndSource?.RemoveHook(WindowProc);
         _hwndSource = null;
         _hwnd = IntPtr.Zero;

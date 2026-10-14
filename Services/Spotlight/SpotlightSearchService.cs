@@ -68,9 +68,14 @@ internal sealed class SpotlightSearchService
         if (_usage == null) return results;
         return results
             .Where(item => !_usage.Preferences.IsExcluded(item.Target))
-            .Select(item => _usage.Preferences.Decorate(item) with
+            .Select(item =>
             {
-                Score = item.Score + _usage.GetBoost(item.Id, query) + (_usage.Preferences.IsPinned(item.Target) ? 150 : 0)
+                bool pinned = _usage.Preferences.IsPinned(item.Target);
+                return item with
+                {
+                    IsPinned = pinned,
+                    Score = item.Score + _usage.GetBoost(item.Id, query) + (pinned ? 150 : 0)
+                };
             })
             .ToArray();
     }

@@ -76,6 +76,7 @@ public partial class SpotlightWindow
         if (_settings.SaveAiChatHistory != settings.SaveAiChatHistory)
         {
             // Start a fresh in-memory conversation; never persist an incognito chat on re-enable.
+            _settings.SaveAiChatHistory = settings.SaveAiChatHistory;
             CancelAiRequest();
             _savedChats.Clear();
             _aiHistory.Clear();
@@ -768,6 +769,7 @@ public partial class SpotlightWindow
         {
             _liquidGlass.Stop();
             DetachGpuRefraction();
+            _liquidGlass.Dispose();
             _liquidGlass = null;
             ApplyLiquidGlassSkin();
         }

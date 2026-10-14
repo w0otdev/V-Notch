@@ -28,12 +28,13 @@ internal static class TranslationInput
     {
         if (text.Length <= limit) return text;
         int end = 0;
-        var elements = StringInfo.GetTextElementEnumerator(text);
-        while (elements.MoveNext())
+        int index = 0;
+        while (index < text.Length)
         {
-            int next = elements.ElementIndex + elements.GetTextElement().Length;
+            int next = index + StringInfo.GetNextTextElementLength(text, index);
             if (next > limit) break;
             end = next;
+            index = next;
         }
         return text[..end];
     }

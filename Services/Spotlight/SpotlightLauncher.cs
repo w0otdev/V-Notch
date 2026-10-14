@@ -20,7 +20,8 @@ internal sealed class SpotlightLauncher
                     .AsTask().ConfigureAwait(false);
             if (item.Kind == SpotlightResultKind.SystemAction)
                 return await TryRunSystemActionAsync(item.Target).ConfigureAwait(false);
-            return Process.Start(new ProcessStartInfo(item.Target) { UseShellExecute = true }) != null;
+            using var process = Process.Start(new ProcessStartInfo(item.Target) { UseShellExecute = true });
+            return true;
         }
         catch (Exception ex)
         {
@@ -40,7 +41,7 @@ internal sealed class SpotlightLauncher
                 UseShellExecute = true,
                 ArgumentList = { "shell:RecycleBinFolder" }
             });
-            return explorer != null;
+            return true;
         }
 
         string[]? arguments = target switch
@@ -95,7 +96,8 @@ internal sealed class SpotlightLauncher
                 UseShellExecute = false
             };
             startInfo.ArgumentList.Add($"/select,{item.Target}");
-            return Process.Start(startInfo) != null;
+            using var process = Process.Start(startInfo);
+            return process != null;
         }
         catch (Exception ex)
         {
@@ -114,11 +116,12 @@ internal sealed class SpotlightLauncher
 
         try
         {
-            return Process.Start(new ProcessStartInfo(item.Target)
+            using var process = Process.Start(new ProcessStartInfo(item.Target)
             {
                 UseShellExecute = true,
                 Verb = "runas"
-            }) != null;
+            });
+            return true;
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {

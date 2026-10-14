@@ -74,7 +74,7 @@ internal sealed class CurrencyRateService
 
     private static bool Valid(CurrencyRate rate, string source, string target, DateOnly today) =>
         rate.Base == source && rate.Quote == target && rate.Rate > 0 && rate.Rate <= 1_000_000_000m &&
-        rate.Checked <= today && rate.Date <= today && rate.Date >= today.AddDays(-7) && rate.Date <= rate.Checked;
+        rate.Checked <= today && rate.Date <= today.AddDays(1) && rate.Date >= today.AddDays(-7) && rate.Date <= rate.Checked.AddDays(1);
 
     private static CurrencyConversion Convert(SelectedPrice price, string target, CurrencyRate rate, bool cached) =>
         new(price, target, decimal.Round(price.Amount * rate.Rate, TranslationCurrencies.DecimalPlaces(target), MidpointRounding.AwayFromZero), rate, cached);

@@ -90,7 +90,6 @@ namespace VNotch.Controls
         private const double RightBiasDeadzone = 0.025;
         private const double MinHeightChangeThreshold = 0.0012;
         private const double SmallBarHeightThreshold = 0.30;
-        private const double SmallBarAlphaBoost = 0.0;
         private const double SmallBarTargetDeadzone = 0.001;
         private const double AudioReactiveMotionFloor = 0.04;
         private const double AudioReactiveRhythmPush = 0.08;
@@ -210,9 +209,12 @@ namespace VNotch.Controls
         {
             if (!IsLoaded || !IsVisible || _state == VisualizerState.Idle)
             {
+                _checkMix = 0;
+                _iconMix = 0;
                 ResetPlaybackFeedback();
                 StopRendering();
                 ReleaseCaptureLease();
+                InvalidateVisual();
                 return;
             }
 
@@ -253,6 +255,10 @@ namespace VNotch.Controls
             bool isSettled = UpdateAnimation(dt, totalSec);
             double oldIconMix = _iconMix, oldCheckMix = _checkMix, oldPlayMix = _playMix;
             bool feedbackActive = UpdatePlaybackFeedback(dt, totalSec);
+            bool feedbackChanged =
+                Math.Abs(oldIconMix - _iconMix) > 0.0001 ||
+                Math.Abs(oldCheckMix - _checkMix) > 0.0001 ||
+                Math.Abs(oldPlayMix - _playMix) > 0.0001;
             // Advance smoothing once per animation tick, never once per paint.
             PrepareDrawHeights();
 
@@ -266,18 +272,19 @@ namespace VNotch.Controls
             if (copiedFeedbackSettled ||
                 (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused))
             {
-                InvalidateVisual();
-                StopRendering();
-                ReleaseCaptureLease();
+                if (feedbackChanged || !copiedFeedbackSettled)
+                    InvalidateVisual();
+                if (_state != VisualizerState.Playing)
+                {
+                    StopRendering();
+                    ReleaseCaptureLease();
+                }
                 return;
             }
 
-            if (!isSettled || !drawSettled || opacityChanged ||
-                Math.Abs(oldIconMix - _iconMix) > 0.0001 ||
-                Math.Abs(oldCheckMix - _checkMix) > 0.0001 ||
-                Math.Abs(oldPlayMix - _playMix) > 0.0001)
+            if (!isSettled || !drawSettled || opacityChanged || feedbackChanged)
             {
-                if (NeedsDrawingUpdate()) InvalidateVisual();
+                if (feedbackChanged || NeedsDrawingUpdate()) InvalidateVisual();
             }
         }
 
@@ -427,7 +434,6 @@ namespace VNotch.Controls
                     normalized += (rhythm - 0.5) * (0.08 + (audioEnergy * 0.08));
                     normalized = Math.Max(normalized, GetAudioReactiveFloor(i, totalSec, audioEnergy, beatAccent));
                     normalized = Math.Clamp(normalized + (beatAccent * GetBeatLiftWeight(i) * 0.42), 0.0, 1.0);
-                    normalized = ApplyMiniBarSensitivity(normalized);
                     normalized = ApplyBarPersonality(i, normalized, audioEnergy);
                     normalized = ApplyMotionContrast(normalized);
                     targetH = MapNormalizedToHeight(normalized);
@@ -472,7 +478,6 @@ namespace VNotch.Controls
                 if (smallBarRef < SmallBarHeightThreshold && _state != VisualizerState.Paused)
                 {
                     double smallness = 1.0 - (smallBarRef / SmallBarHeightThreshold);
-                    baseAlpha = Math.Min(0.985, baseAlpha + (smallness * SmallBarAlphaBoost));
 
                     if (Math.Abs(targetH - _currentHeights[i]) < SmallBarTargetDeadzone * (1.0 + smallness))
                     {
@@ -486,15 +491,16 @@ namespace VNotch.Controls
                 double oldH = _currentHeights[i];
                 double newH = (_currentHeights[i] * alpha) + (targetH * (1 - alpha));
 
-                if (Math.Abs(newH - _currentHeights[i]) > MinHeightChangeThreshold)
+                if (Math.Abs(targetH - newH) <= MinHeightChangeThreshold)
                 {
-                    _currentHeights[i] = newH;
-                    if (Math.Abs(_currentHeights[i] - oldH) > 0.001) isSettled = false;
+                    _currentHeights[i] = targetH;
                 }
                 else
                 {
-                    _currentHeights[i] = oldH;
+                    _currentHeights[i] = newH;
                 }
+
+                if (Math.Abs(_currentHeights[i] - oldH) > 0.001) isSettled = false;
             }
 
             return isSettled;
@@ -511,11 +517,6 @@ namespace VNotch.Controls
         {
             double clamped = Math.Clamp(normalized, 0.0, 1.0);
             return Math.Clamp(0.5 + ((clamped - 0.5) * MotionContrast), 0.0, 1.0);
-        }
-
-        private static double ApplyMiniBarSensitivity(double normalized)
-        {
-            return Math.Clamp(normalized, 0.0, 1.0);
         }
 
         private static double ApplyBarPersonality(int barIndex, double normalized, double energy)
@@ -614,10 +615,12 @@ namespace VNotch.Controls
         {
             if (_hashCacheSid == sid) return;
             _hashCacheSid = sid;
+            uint baseHash = GetDeterministicHash(sid);
+            uint floorBaseHash = GetDeterministicHash("floor:" + sid);
             for (int i = 0; i < BarCount; i++)
             {
-                _noAudioHash[i] = GetDeterministicHash(sid + i);
-                _floorHash[i] = GetDeterministicHash("floor:" + sid + i);
+                _noAudioHash[i] = ContinueHashInt(baseHash, i);
+                _floorHash[i] = ContinueHashInt(floorBaseHash, i);
             }
         }
 
@@ -631,20 +634,16 @@ namespace VNotch.Controls
 
         private static uint ContinueHashInt(uint hash, int value)
         {
-            if (value < 0)
-            {
-                hash = (hash ^ (uint)'-') * 16777619;
-                value = -value;
-            }
-            Span<char> digits = stackalloc char[11];
-            int pos = digits.Length;
-            do
-            {
-                digits[--pos] = (char)('0' + (value % 10));
-                value /= 10;
-            } while (value > 0);
-            for (int k = pos; k < digits.Length; k++)
-                hash = (hash ^ (uint)digits[k]) * 16777619;
+            uint u = (uint)value;
+            hash = (hash ^ (u & 0xFFu)) * 16777619u;
+            hash = (hash ^ ((u >> 8) & 0xFFu)) * 16777619u;
+            hash = (hash ^ ((u >> 16) & 0xFFu)) * 16777619u;
+            hash = (hash ^ (u >> 24)) * 16777619u;
+            hash ^= hash >> 16;
+            hash *= 0x85EBCA6Bu;
+            hash ^= hash >> 13;
+            hash *= 0xC2B2AE35u;
+            hash ^= hash >> 16;
             return hash;
         }
 
@@ -715,13 +714,21 @@ namespace VNotch.Controls
 
         private static bool AudioCaptureNeedsRestart(DateTime now)
         {
+            string requestedDeviceId;
             lock (_lockObj)
             {
                 if (_capture == null) return false;
-                try
+                requestedDeviceId = _audioDeviceId;
+            }
+
+            try
+            {
+                using var expected = ResolveLoopbackDevice(requestedDeviceId);
+                string? expectedId = expected?.ID;
+                lock (_lockObj)
                 {
-                    using var expected = ResolveLoopbackDevice(_audioDeviceId);
-                    if (expected == null || expected.ID != _captureDevice?.ID ||
+                    if (_capture == null) return false;
+                    if (expectedId == null || expectedId != _captureDevice?.ID ||
                         _captureDevice.State != DeviceState.Active) return true;
                     long lastFrame;
                     lock (_outputLock) lastFrame = _publishedFrameTicks;
@@ -730,11 +737,11 @@ namespace VNotch.Controls
                     var lastActivity = lastFrame > 0 ? new DateTime(lastFrame, DateTimeKind.Utc) : _captureStartedUtc;
                     return (now - lastActivity).TotalSeconds >= 8;
                 }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine("Visualizer endpoint unavailable: " + ex.Message);
-                    return true;
-                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Visualizer endpoint unavailable: " + ex.Message);
+                return true;
             }
         }
 
@@ -1210,20 +1217,22 @@ namespace VNotch.Controls
 
         private static void OnAudioDataAvailable(object? sender, WaveInEventArgs e)
         {
-            lock (_lockObj)
-            {
-                var capture = _capture;
-                if (capture == null || !ReferenceEquals(sender, capture)) return;
+            var capture = _capture;
+            if (capture == null || !ReferenceEquals(sender, capture)) return;
 
-                ProcessAudioBuffer(e.Buffer, e.BytesRecorded, capture.WaveFormat);
-            }
+            ProcessAudioBuffer(e.Buffer, e.BytesRecorded, capture.WaveFormat);
         }
 
         internal static void ProcessAudioBuffer(byte[] buffer, int bytesRecorded, WaveFormat waveFormat)
         {
             lock (_lockObj)
             {
-                int bytesPerSample = waveFormat.BitsPerSample / 8;
+                bool isFloatLike = waveFormat.Encoding == WaveFormatEncoding.IeeeFloat ||
+                    (waveFormat.Encoding == WaveFormatEncoding.Extensible &&
+                     waveFormat is WaveFormatExtensible extensible &&
+                     extensible.SubFormat == AudioMediaSubtypes.MEDIASUBTYPE_IEEE_FLOAT);
+                int bitsPerSample = waveFormat.BitsPerSample;
+                int bytesPerSample = bitsPerSample / 8;
                 if (bytesPerSample <= 0)
                 {
                     bytesPerSample = waveFormat.Encoding is WaveFormatEncoding.IeeeFloat or WaveFormatEncoding.Extensible
@@ -1245,7 +1254,7 @@ namespace VNotch.Controls
                     for (int ch = 0; ch < channels; ch++)
                     {
                         int sampleOffset = frameOffset + (ch * bytesPerSample);
-                        mixed += ReadSampleAsFloat(buffer, sampleOffset, waveFormat);
+                        mixed += ReadSampleAsFloat(buffer, sampleOffset, isFloatLike, bitsPerSample);
                     }
 
                     PushSample((float)(mixed / channels));
@@ -1591,26 +1600,18 @@ namespace VNotch.Controls
             }
         }
 
-        private static float ReadSampleAsFloat(byte[] buffer, int offset, WaveFormat waveFormat)
+        private static float ReadSampleAsFloat(byte[] buffer, int offset, bool isFloatLike, int bitsPerSample)
         {
-            bool isFloatLike = waveFormat.Encoding == WaveFormatEncoding.IeeeFloat;
-
-            if (waveFormat.Encoding == WaveFormatEncoding.Extensible &&
-                waveFormat is WaveFormatExtensible extensible)
-            {
-                isFloatLike = extensible.SubFormat == AudioMediaSubtypes.MEDIASUBTYPE_IEEE_FLOAT;
-            }
-
             if (isFloatLike)
             {
-                if (waveFormat.BitsPerSample == 64)
+                if (bitsPerSample == 64)
                 {
                     return (float)BitConverter.ToDouble(buffer, offset);
                 }
                 return BitConverter.ToSingle(buffer, offset);
             }
 
-            return waveFormat.BitsPerSample switch
+            return bitsPerSample switch
             {
                 8 => (buffer[offset] - 128) / 128f,
                 16 => BitConverter.ToInt16(buffer, offset) / 32768f,

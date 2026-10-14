@@ -119,9 +119,8 @@ internal sealed class OnnxTranslationEngine : ILocalTranslationEngine
                 string name = value.Name.Replace("present.", "past_key_values.", StringComparison.Ordinal);
                 if (cached && name.Contains(".encoder.", StringComparison.Ordinal)) continue;
                 var tensor = value.AsTensor<float>();
-                cache[name] = new DenseTensor<float>(tensor.ToArray(), tensor.Dimensions.ToArray());
+                cache[name] = GatherRows(tensor, parents);
             }
-            foreach (string name in cache.Keys.ToArray()) cache[name] = GatherRows(cache[name], parents);
             cached = true;
         }
         ct.ThrowIfCancellationRequested();
@@ -134,8 +133,10 @@ internal sealed class OnnxTranslationEngine : ILocalTranslationEngine
         int[] shape = tensor.Dimensions.ToArray();
         int stride = checked((int)tensor.Length / shape[0]);
         shape[0] = rows.Length;
-        T[] source = tensor.ToArray(), result = new T[rows.Length * stride];
-        for (int row = 0; row < rows.Length; row++) Array.Copy(source, rows[row] * stride, result, row * stride, stride);
+        T[] result = new T[rows.Length * stride];
+        ReadOnlySpan<T> source = tensor is DenseTensor<T> dense ? dense.Buffer.Span : tensor.ToArray();
+        for (int row = 0; row < rows.Length; row++)
+            source.Slice(rows[row] * stride, stride).CopyTo(result.AsSpan(row * stride, stride));
         return new DenseTensor<T>(result, shape);
     }
 

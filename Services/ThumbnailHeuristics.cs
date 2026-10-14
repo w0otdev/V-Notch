@@ -78,7 +78,7 @@ internal static class ThumbnailHeuristics
             {
                 formatted.CopyPixels(pixels, stride, 0);
 
-                var quantizedBins = new HashSet<int>();
+                Span<ulong> bins = stackalloc ulong[8];
                 double saturationSum = 0;
                 int nearGrayCount = 0;
                 int brightCount = 0;
@@ -97,15 +97,22 @@ internal static class ThumbnailHeuristics
                     if (delta <= 12) nearGrayCount++;
                     if (max >= 220 && min >= 220) brightCount++;
 
-                    quantizedBins.Add(((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5));
+                    int bin = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
+                    bins[bin >> 6] |= 1UL << (bin & 63);
                     saturationSum += max == 0 ? 0 : (double)delta / max;
+                }
+
+                int uniqueBinCount = 0;
+                for (int i = 0; i < bins.Length; i++)
+                {
+                    uniqueBinCount += System.Numerics.BitOperations.PopCount(bins[i]);
                 }
 
                 double avgSaturation = saturationSum / pixelCount;
                 double grayRatio = (double)nearGrayCount / pixelCount;
                 double brightRatio = (double)brightCount / pixelCount;
 
-                return quantizedBins.Count <= 18 &&
+                return uniqueBinCount <= 18 &&
                        avgSaturation <= 0.08 &&
                        grayRatio >= 0.84 &&
                        brightRatio >= 0.02;

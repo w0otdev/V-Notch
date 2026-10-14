@@ -15,15 +15,11 @@ public sealed class CountdownPresenter : IDisposable
     private static readonly Geometry _pauseGeometry = CreateFrozenGeometry(
         "M224,320a16,16,0,0,1-32,0V192a16,16,0,0,1,32,0Zm96,0a16,16,0,0,1-32,0V192a16,16,0,0,1,32,0Z");
 
-    private static readonly Brush _startIdleBrush = CreateFrozenVerticalGradient(
-        Color.FromRgb(0xFF, 0xA0, 0x33), Color.FromRgb(0xFF, 0x7A, 0x00));
-    private static readonly Brush _startRunningBrush = CreateFrozenVerticalGradient(
-        Color.FromRgb(0xE0, 0x8A, 0x1E), Color.FromRgb(0xC2, 0x64, 0x00));
+    private static readonly Brush _startIdleBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0x1F, 0x8C, 0xF0));
+    private static readonly Brush _startRunningBrush = CreateFrozenBrush(Color.FromArgb(0xFF, 0xE3, 0x56, 0x49));
 
     private static readonly Color _borderIdleColor = Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF);
-    private static readonly Color _borderEditingColor = Color.FromArgb(0x8C, 0xFF, 0x8C, 0x00);
     private static readonly Color _borderFlashColor = Color.FromArgb(0x70, 0xFF, 0x8C, 0x00);
-    private static readonly Color _borderErrorColor = Color.FromArgb(0xB4, 0xFF, 0x45, 0x3A);
     private static readonly Color _digitsRestColor = Color.FromRgb(0xFF, 0xFF, 0xFF);
     private static readonly Color _digitsFlashColor = Color.FromRgb(0xFF, 0xC9, 0x85);
 
@@ -35,7 +31,6 @@ public sealed class CountdownPresenter : IDisposable
     private const int RepeatAccelerateAfter = 4;
 
     private readonly CountdownViewRefs _refs;
-    private readonly Dispatcher _dispatcher;
 
     private UiScheduledTimer? _repeatTimer;
     private Action? _repeatAction;
@@ -45,7 +40,7 @@ public sealed class CountdownPresenter : IDisposable
     public CountdownPresenter(CountdownViewRefs refs, Dispatcher dispatcher)
     {
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
-        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        ArgumentNullException.ThrowIfNull(dispatcher);
     }
 
     public void SetStartVisual(bool running)
@@ -68,6 +63,7 @@ public sealed class CountdownPresenter : IDisposable
         _repeatCount = 0;
 
         _repeatTimer?.Stop();
+        _repeatTimer?.Dispose();
         _repeatTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(RepeatInitialDelayMs)
@@ -87,6 +83,7 @@ public sealed class CountdownPresenter : IDisposable
     public void StopRepeat()
     {
         _repeatTimer?.Stop();
+        _repeatTimer?.Dispose();
         _repeatTimer = null;
         _repeatAction = null;
         _repeatCount = 0;
@@ -189,9 +186,9 @@ public sealed class CountdownPresenter : IDisposable
         return geometry;
     }
 
-    private static Brush CreateFrozenVerticalGradient(Color top, Color bottom)
+    private static SolidColorBrush CreateFrozenBrush(Color color)
     {
-        var brush = new LinearGradientBrush(top, bottom, new Point(0, 0), new Point(0, 1));
+        var brush = new SolidColorBrush(color);
         brush.Freeze();
         return brush;
     }

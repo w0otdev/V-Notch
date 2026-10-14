@@ -106,6 +106,8 @@ public partial class SpotlightWindow
 
     private void SetAiStatus(string key, params object[] args)
     {
+        if (_aiStatusKey == key && _aiStatusArgs.Length == 0 && args.Length == 0 && _aiStatusDiagnostic == null)
+            return;
         _aiStatusKey = key;
         _aiStatusArgs = args;
         _aiStatusDiagnostic = null;
@@ -325,8 +327,9 @@ public partial class SpotlightWindow
                     _aiHistory.Add(new SpotlightAiMessage(AssistantRole, "") { IsIncomplete = true });
                     liveView = AddAiMessage(new SpotlightAiMessage(AssistantRole, ""), animate: true);
                 }
-                _aiHistory[^1] = new SpotlightAiMessage(AssistantRole, response.ToString()) { IsIncomplete = true };
-                receivedText = response.ToString();
+                string currentResponse = response.ToString();
+                _aiHistory[^1] = new SpotlightAiMessage(AssistantRole, currentResponse) { IsIncomplete = true };
+                receivedText = currentResponse;
                 revealCaughtUp = false;
                 if (AnimationConfig.ReduceMotion) RevealText(finish: true);
                 UpdateAiMetadata();

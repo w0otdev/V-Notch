@@ -324,7 +324,7 @@ public partial class DebugWindow : Window
         {
             VNotchRamText.Text = $"{FormatMb(snapshot.ProcessWorkingSetBytes)} MB";
         }
-        double vRamPercent = Math.Clamp((snapshot.ProcessWorkingSetBytes / 1024.0 / 1024.0) / 10.0 * 100.0, 0, 100);
+        double vRamPercent = Math.Clamp((snapshot.ProcessWorkingSetBytes / 1024.0 / 1024.0) / 512.0 * 100.0, 0, 100);
         SetBarPercent(VNotchRamScale, vRamPercent);
 
         if (VNotchPrivateRamText != null && HasChanged(ref _prevVNotchPrivateRam, snapshot.ProcessPrivateBytes))
@@ -769,7 +769,7 @@ public partial class DebugWindow : Window
         (bytes / 1024.0 / 1024.0).ToString("0.0");
 
     private static string FormatGb(ulong bytes) =>
-        (bytes / 1024.0 / 1024.0).ToString("0.0");
+        (bytes / (1024.0 * 1024.0 * 1024.0)).ToString("0.0");
 
     private static string FormatRate(double bytesPerSec)
     {

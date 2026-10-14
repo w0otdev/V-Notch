@@ -1221,8 +1221,9 @@ public partial class AudioMixerView : UserControl, IDisposable
             double usable = Math.Max(0, w - thumbSize);
             double clamped = Math.Clamp(r, 0, 1);
             if (Math.Abs(fill.Width - w) > 0.1) fill.Width = w;
-            if (Math.Abs(fillScale.ScaleX - clamped) > 0.0005) fillScale.ScaleX = clamped;
             double thumbX = clamped * usable;
+            double targetScaleX = w > 0 ? Math.Clamp((thumbX + thumbSize * 0.5) / w, 0, 1) : clamped;
+            if (Math.Abs(fillScale.ScaleX - targetScaleX) > 0.0005) fillScale.ScaleX = targetScaleX;
             if (Math.Abs(thumbTranslate.X - thumbX) > 0.05) thumbTranslate.X = thumbX;
             string percent = ((int)Math.Round(clamped * 100)) + "%";
             if (!string.Equals(percentLabel.Text, percent, StringComparison.Ordinal))
@@ -1239,7 +1240,7 @@ public partial class AudioMixerView : UserControl, IDisposable
         {
             double w = area.ActualWidth;
             if (w <= 0) return;
-            currentRatio = Math.Clamp(x / w, 0, 1);
+            currentRatio = Math.Clamp((x - thumbSize * 0.5) / Math.Max(1.0, w - thumbSize), 0, 1);
             UpdateVisual(currentRatio);
             try
             {
@@ -1273,17 +1274,16 @@ public partial class AudioMixerView : UserControl, IDisposable
             if (!dragging) return;
             dragging = false;
             area.ReleaseMouseCapture();
-            try
-            {
-                onChanged(currentRatio);
-            }
-            catch
-            {
-                // Ignore callback errors on slider release
-            }
             suppressUntil = DateTime.UtcNow.AddMilliseconds(600);
             if (!area.IsMouseOver) AnimateSliderHover(false);
             e.Handled = true;
+        };
+        area.LostMouseCapture += (_, _) =>
+        {
+            if (!dragging) return;
+            dragging = false;
+            suppressUntil = DateTime.UtcNow.AddMilliseconds(600);
+            if (!area.IsMouseOver) AnimateSliderHover(false);
         };
 
         void AnimateSliderHover(bool on)

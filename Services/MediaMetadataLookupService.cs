@@ -280,7 +280,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 }
 
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch
             {
                 // Ignore instance failure and try next instance
@@ -339,7 +339,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 }
 
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch
             {
                 // Ignore instance failure and try next instance
@@ -503,8 +503,10 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
 
         string? apiKey = _apiKey();
+        bool dataApiAttempted = false;
         if (!string.IsNullOrEmpty(apiKey))
         {
+            dataApiAttempted = true;
             var apiResult = await TryGetVideoFromDataApiAsync(videoId, apiKey, ct);
             if (apiResult != null)
             {
@@ -522,7 +524,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         if (oembed == null)
             return null;
 
-        if (!string.IsNullOrEmpty(apiKey))
+        if (!string.IsNullOrEmpty(apiKey) && !dataApiAttempted)
         {
             oembed = await EnrichWithDurationAsync(oembed, apiKey, ct) ?? oembed;
         }

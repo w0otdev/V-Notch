@@ -35,31 +35,43 @@ public sealed class SettingsUpdatePresenter : IDisposable
     {
         if (_refs == null || _checking || _downloading || !_canUseNetwork()) return;
         _checking = true;
-        bool includePrereleases = _includePrereleases();
-        _refs.Status.Text = Loc.Get("settings.checkingUpdates");
-        _refs.Check.IsEnabled = false;
-        _refs.Download.Visibility = Visibility.Collapsed;
         try
         {
-            var update = await _service.CheckForUpdatesAsync(includePrereleases);
-            if (_refs == null || !_canUseNetwork() || includePrereleases != _includePrereleases()) return;
-            _availableUpdate = update;
-            _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") :
-                update.IsNewerVersion ? Loc.Get("settings.updateAvailable", update.Version) : Loc.Get("settings.upToDate");
-            _refs.Download.Visibility = update?.IsNewerVersion == true ? Visibility.Visible : Visibility.Collapsed;
-            try { UpdateDetected?.Invoke(this, update); }
-            catch (Exception ex) { RuntimeLog.Error("SETTINGS", ex, "UpdateDetected handler threw"); }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error("SETTINGS", ex, "Update check failed");
-            if (_refs != null) _refs.Status.Text = Loc.Get("error.updateStatus", ex.Message);
+            while (_refs != null && !_downloading && _canUseNetwork() && !_lifetime.IsCancellationRequested)
+            {
+                bool includePrereleases = _includePrereleases();
+                _refs.Status.Text = Loc.Get("settings.checkingUpdates");
+                _refs.Check.IsEnabled = false;
+                _refs.Download.Visibility = Visibility.Collapsed;
+                try
+                {
+                    var update = await _service.CheckForUpdatesAsync(includePrereleases);
+                    if (_refs == null || !_canUseNetwork() || _lifetime.IsCancellationRequested) return;
+                    if (includePrereleases != _includePrereleases()) continue;
+                    _availableUpdate = update;
+                    _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") :
+                        update.IsNewerVersion ? Loc.Get("settings.updateAvailable", update.Version) : Loc.Get("settings.upToDate");
+                    _refs.Download.Visibility = update?.IsNewerVersion == true ? Visibility.Visible : Visibility.Collapsed;
+                    try { UpdateDetected?.Invoke(this, update); }
+                    catch (Exception ex) { RuntimeLog.Error("SETTINGS", ex, "UpdateDetected handler threw"); }
+                }
+                catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Error("SETTINGS", ex, "Update check failed");
+                    if (_refs != null) _refs.Status.Text = Loc.Get("error.updateStatus", ex.Message);
+                }
+
+                if (_refs == null || includePrereleases == _includePrereleases()) break;
+            }
         }
         finally
         {
             _checking = false;
             if (_refs != null) _refs.Check.IsEnabled = _canUseNetwork();
-            if (_refs != null && includePrereleases != _includePrereleases()) await CheckForUpdatesAsync();
         }
     }
 
@@ -84,7 +96,12 @@ public sealed class SettingsUpdatePresenter : IDisposable
         _refs.Check.IsEnabled = false;
         try
         {
-            _progressWindow = new UpdateDownloadWindow();
+            var dialog = new UpdateDownloadWindow();
+            if (_refs.Owner.IsLoaded)
+            {
+                dialog.Owner = _refs.Owner;
+            }
+            _progressWindow = dialog;
             _progressWindow.SetIndeterminate(Loc.Get("update.preparing"));
             _progressWindow.Show();
             var progress = new Progress<double>(p =>

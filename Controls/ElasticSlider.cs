@@ -68,6 +68,16 @@ public class ElasticSlider : Slider
 
     #endregion
 
+    private static readonly SolidColorBrush MajorTickBrush = CreateFrozenBrush(70);
+    private static readonly SolidColorBrush MinorTickBrush = CreateFrozenBrush(35);
+
+    private static SolidColorBrush CreateFrozenBrush(byte alpha)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(alpha, 255, 255, 255));
+        brush.Freeze();
+        return brush;
+    }
+
     private Border? _rootBorder;
     private Border? _fillBorder;
     private Canvas? _tickCanvas;
@@ -84,6 +94,9 @@ public class ElasticSlider : Slider
     {
         base.OnApplyTemplate();
 
+        if (_rootBorder != null)
+            _rootBorder.SizeChanged -= OnRootBorderSizeChanged;
+
         _rootBorder = Template?.FindName("PART_Root", this) as Border;
         _fillBorder = Template?.FindName("PART_Fill", this) as Border;
         _tickCanvas = Template?.FindName("PART_Ticks", this) as Canvas;
@@ -97,18 +110,20 @@ public class ElasticSlider : Slider
             _rootScale = new ScaleTransform(1, 1);
             _rootBorder.RenderTransform = _rootScale;
             _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
-            _rootBorder.SizeChanged += (_, _) =>
-            {
-                SetFillImmediate();
-                DrawTicks();
-                UpdateIndicatorPosition();
-            };
+            _rootBorder.SizeChanged += OnRootBorderSizeChanged;
         }
 
         SetFillImmediate();
         UpdateLabelText();
         UpdateDescriptionText();
         UpdateValueText();
+        DrawTicks();
+        UpdateIndicatorPosition();
+    }
+
+    private void OnRootBorderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SetFillImmediate();
         DrawTicks();
         UpdateIndicatorPosition();
     }
@@ -190,7 +205,6 @@ public class ElasticSlider : Slider
 
             double tickHeight = isMajor ? 14 : 8;
             double tickWidth = isMajor ? 2 : 1.2;
-            byte alpha = isMajor ? (byte)70 : (byte)35;
 
             var tick = new Rectangle
             {
@@ -198,7 +212,7 @@ public class ElasticSlider : Slider
                 Height = tickHeight,
                 RadiusX = tickWidth / 2,
                 RadiusY = tickWidth / 2,
-                Fill = new SolidColorBrush(Color.FromArgb(alpha, 255, 255, 255)),
+                Fill = isMajor ? MajorTickBrush : MinorTickBrush,
                 SnapsToDevicePixels = true
             };
 
@@ -257,6 +271,15 @@ public class ElasticSlider : Slider
 
     #region Fill
 
+    private double ComputeTargetFillWidth(double width)
+    {
+        double leftPad = 12;
+        double rightReserve = GetRightReserve();
+        double usableWidth = Math.Max(0, width - leftPad - rightReserve);
+        double clampedFraction = Math.Clamp((Value - Minimum) / (Maximum - Minimum), 0, 1);
+        return Math.Clamp(leftPad + usableWidth * clampedFraction, 0, width);
+    }
+
     private void SetFillImmediate()
     {
         if (_fillBorder == null || _rootBorder == null) return;
@@ -267,21 +290,20 @@ public class ElasticSlider : Slider
         {
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
             {
+                if (_fillBorder == null || _rootBorder == null || Maximum <= Minimum) return;
                 double w = _rootBorder.ActualWidth;
                 if (w > 0)
                 {
-                    double f = (Value - Minimum) / (Maximum - Minimum);
                     _fillBorder.BeginAnimation(WidthProperty, null);
-                    _fillBorder.Width = w * Math.Max(0, Math.Min(1, f));
+                    _fillBorder.Width = ComputeTargetFillWidth(w);
                     _lastAnimatedValue = Value;
                 }
             });
             return;
         }
 
-        double fraction = (Value - Minimum) / (Maximum - Minimum);
         _fillBorder.BeginAnimation(WidthProperty, null);
-        _fillBorder.Width = width * Math.Max(0, Math.Min(1, fraction));
+        _fillBorder.Width = ComputeTargetFillWidth(width);
         _lastAnimatedValue = Value;
     }
 
@@ -293,13 +315,10 @@ public class ElasticSlider : Slider
         double width = _rootBorder.ActualWidth;
         if (width <= 0) return;
 
-        double fraction = (Value - Minimum) / (Maximum - Minimum);
-        double targetWidth = width * Math.Max(0, Math.Min(1, fraction));
-        double currentWidth = _fillBorder.Width;
-        if (double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
-        {
-            currentWidth = _fillBorder.ActualWidth;
-        }
+        double targetWidth = ComputeTargetFillWidth(width);
+        double currentWidth = !double.IsNaN(_fillBorder.Width) && _fillBorder.ActualWidth <= 0
+            ? _fillBorder.Width
+            : _fillBorder.ActualWidth;
         if (double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
         {
             _fillBorder.BeginAnimation(WidthProperty, null);
@@ -323,13 +342,10 @@ public class ElasticSlider : Slider
         double width = _rootBorder.ActualWidth;
         if (width <= 0) return;
 
-        double fraction = (Value - Minimum) / (Maximum - Minimum);
-        double targetWidth = width * Math.Max(0, Math.Min(1, fraction));
-        double currentWidth = _fillBorder.Width;
-        if (double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
-        {
-            currentWidth = _fillBorder.ActualWidth;
-        }
+        double targetWidth = ComputeTargetFillWidth(width);
+        double currentWidth = !double.IsNaN(_fillBorder.Width) && _fillBorder.ActualWidth <= 0
+            ? _fillBorder.Width
+            : _fillBorder.ActualWidth;
         if (double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
         {
             _fillBorder.BeginAnimation(WidthProperty, null);
@@ -421,6 +437,16 @@ public class ElasticSlider : Slider
         _isDragging = false;
         ReleaseMouseCapture();
 
+        if (Math.Abs(_dragOverflow) > 1)
+            AnimateRubberBandRelease();
+    }
+
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (!_isDragging) return;
+
+        _isDragging = false;
         if (Math.Abs(_dragOverflow) > 1)
             AnimateRubberBandRelease();
     }

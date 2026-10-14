@@ -163,8 +163,7 @@ internal static class MediaWindowActivator
                     if (!IsMediaBrowserWindow(hwnd, info.SourceAppId)) return true;
 
                     var root = AutomationElement.FromHandle(hwnd);
-                    var tabs = root.FindAll(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+                    var tabs = WindowTitleScanner.FindBrowserChromeElements(root, ControlType.TabItem);
                     foreach (AutomationElement tab in tabs)
                     {
                         if (!NormalizeTitle(tab.Current.Name).Contains(track, StringComparison.OrdinalIgnoreCase))
@@ -202,25 +201,10 @@ internal static class MediaWindowActivator
                     new IntPtr(browserBackward << 16), 0x0002, 500, out _) != IntPtr.Zero;
             }
             // Search browser toolbars only; a web page may also contain Back buttons.
-            var toolbars = window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolBar));
+            var toolbars = WindowTitleScanner.FindBrowserChromeElements(window, ControlType.ToolBar);
             foreach (AutomationElement toolbar in toolbars)
             {
-                bool inDocument = false;
-                for (var parent = TreeWalker.ControlViewWalker.GetParent(toolbar);
-                     parent != null && !Automation.Compare(parent, window);
-                     parent = TreeWalker.ControlViewWalker.GetParent(parent))
-                {
-                    if (parent.Current.ControlType == ControlType.Document)
-                    {
-                        inDocument = true;
-                        break;
-                    }
-                }
-                if (inDocument) continue;
-
-                var buttons = toolbar.FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+                var buttons = WindowTitleScanner.FindBrowserChromeElements(toolbar, ControlType.Button);
                 foreach (AutomationElement button in buttons)
                 {
                     string name = button.Current.Name ?? string.Empty;
@@ -360,9 +344,8 @@ internal static class MediaWindowActivator
             var rootElement = AutomationElement.FromHandle(hwnd);
             if (rootElement == null) return;
 
-            var tabCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
-            var tabs = rootElement.FindAll(TreeScope.Descendants, tabCondition);
-            if (tabs == null || tabs.Count == 0) return;
+            var tabs = WindowTitleScanner.FindBrowserChromeElements(rootElement, ControlType.TabItem);
+            if (tabs.Count == 0) return;
 
             foreach (AutomationElement tab in tabs)
             {

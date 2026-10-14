@@ -227,52 +227,23 @@ public partial class MainWindow
         UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
         UpdateIconBrush.Color = Color.FromRgb(48, 209, 88);
 
-        if (_updatePulseTimer == null)
+        var pulseAnim = new ColorAnimation(Color.FromRgb(48, 209, 88), Colors.White, TimeSpan.FromMilliseconds(1500))
         {
-            _updatePulseTimer = new UiScheduledTimer(DispatcherPriority.Render)
-            {
-                Interval = TimeSpan.FromMilliseconds(33)
-            };
-            _updatePulseTimer.Tick += UpdatePulseTimer_Tick;
-        }
-
-        _updatePulseStartedAtUtc = DateTime.UtcNow;
-        _updatePulseTimer.Start();
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = _easeSineInOut
+        };
+        Timeline.SetDesiredFrameRate(pulseAnim, VNotch.Services.AnimationConfig.TargetFps);
+        UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, pulseAnim);
     }
 
     private void StopUpdatePulseAnimation()
     {
-        if (_updatePulseTimer != null)
-        {
-            _updatePulseTimer.Stop();
-        }
-
         if (UpdateIconBrush != null)
         {
             UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
             UpdateIconBrush.Color = Color.FromRgb(48, 209, 88);
         }
-    }
-
-    private void UpdatePulseTimer_Tick(object? sender, EventArgs e)
-    {
-        if (UpdateIconBrush == null) return;
-
-        if (!_isUpdateAvailable || UpdateNotificationButton.Visibility != Visibility.Visible)
-        {
-            StopUpdatePulseAnimation();
-            return;
-        }
-
-        const double periodMs = 3000.0;
-        var elapsedMs = (DateTime.UtcNow - _updatePulseStartedAtUtc).TotalMilliseconds;
-        var phase = (elapsedMs % periodMs) / periodMs;
-        var mix = 0.5 - (0.5 * Math.Cos(phase * Math.PI * 2.0));
-
-        byte r = (byte)Math.Round(48 + ((255 - 48) * mix));
-        byte g = (byte)Math.Round(209 + ((255 - 209) * mix));
-        byte b = (byte)Math.Round(88 + ((255 - 88) * mix));
-        UpdateIconBrush.Color = Color.FromRgb(r, g, b);
     }
 
     private async void UpdateNotification_Click(object sender, MouseButtonEventArgs e)

@@ -74,6 +74,18 @@ public sealed class ClockWidgetPresenter : IDisposable
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
+        Initialize();
+    }
+
+    public void Initialize()
+    {
+        _refs.CalendarWidget.LostMouseCapture -= OnCalendarWidgetLostMouseCapture;
+        _refs.CalendarWidget.LostMouseCapture += OnCalendarWidgetLostMouseCapture;
+    }
+
+    private void OnCalendarWidgetLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _isWidgetDragging = false;
     }
 
     #region Expanded Widget (Calendar / Clock / Word Clock)
@@ -536,17 +548,21 @@ public sealed class ClockWidgetPresenter : IDisposable
 
     public void ApplyClockViewWindowSize() => ResizeHostWindowHeight(_clockViewHeight);
 
-    public void RestoreExpandedWindowSize() => ResizeHostWindowHeight(_host.ExpandedHeight);
+    public void RestoreExpandedWindowSize() => ResizeHostWindowHeight(_host.ExpandedHeight, allowShrink: true);
 
-    public void ResizeHostWindowHeight(double notchHeightDip)
+    public void ResizeHostWindowHeight(double notchHeightDip, bool allowShrink = false)
     {
         double dpiScale = VisualTreeHelper.GetDpi(_refs.Window).DpiScaleX;
         if (dpiScale <= 0) dpiScale = 1.0;
 
-        double targetHeightDip = Math.Max(notchHeightDip, _host.MaxExpandedHeight) + 80;
+        double baseHeightDip = allowShrink ? notchHeightDip : Math.Max(notchHeightDip, _host.MaxExpandedHeight);
+        double targetHeightDip = baseHeightDip + 80;
         int targetPixelHeight = (int)Math.Round(targetHeightDip * dpiScale);
 
-        if (_refs.Window.Height >= targetHeightDip && _host.WindowHeight >= targetPixelHeight)
+        if (!allowShrink && _refs.Window.Height >= targetHeightDip && _host.WindowHeight >= targetPixelHeight)
+            return;
+
+        if (allowShrink && Math.Abs(_refs.Window.Height - targetHeightDip) < 0.5 && _host.WindowHeight == targetPixelHeight)
             return;
 
         _refs.Window.Height = targetHeightDip;
@@ -635,6 +651,8 @@ public sealed class ClockWidgetPresenter : IDisposable
         if (_disposed) return;
         _disposed = true;
         ++_expandedWidgetSwitchVersion;
+        _refs.CalendarWidget.LostMouseCapture -= OnCalendarWidgetLostMouseCapture;
+        _isWidgetDragging = false;
         if (_refs.CalendarWidget.IsMouseCaptured) _refs.CalendarWidget.ReleaseMouseCapture();
     }
 }

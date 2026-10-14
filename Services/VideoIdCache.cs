@@ -3,11 +3,14 @@ namespace VNotch.Services;
 internal sealed class VideoIdCache
 {
     private const int Capacity = 50;
+    private const int MismatchCapacity = Capacity * 2;
 
     private readonly Dictionary<string, string> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Queue<string> _order = new();
     private readonly object _lock = new();
 
     private readonly HashSet<string> _mismatch = new(StringComparer.Ordinal);
+    private readonly Queue<string> _mismatchOrder = new();
 
     public int Count
     {
@@ -19,12 +22,17 @@ internal sealed class VideoIdCache
         if (string.IsNullOrEmpty(trackIdentity)) return;
         lock (_lock)
         {
-            _cache[trackIdentity] = videoId;
-            if (_cache.Count > Capacity)
+            if (!_cache.ContainsKey(trackIdentity))
             {
-                var firstKey = _cache.Keys.First();
-                _cache.Remove(firstKey);
+                while (_cache.Count >= Capacity && _order.Count > 0)
+                {
+                    string oldest = _order.Dequeue();
+                    if (_cache.Remove(oldest))
+                        break;
+                }
+                _order.Enqueue(trackIdentity);
             }
+            _cache[trackIdentity] = videoId;
         }
     }
 
@@ -50,6 +58,7 @@ internal sealed class VideoIdCache
             if (string.IsNullOrEmpty(currentTrackIdentity))
             {
                 _cache.Clear();
+                _order.Clear();
                 return;
             }
 
@@ -59,6 +68,11 @@ internal sealed class VideoIdCache
             foreach (var key in doomed)
             {
                 _cache.Remove(key);
+            }
+            _order.Clear();
+            foreach (var key in _cache.Keys)
+            {
+                _order.Enqueue(key);
             }
         }
     }
@@ -89,11 +103,29 @@ internal sealed class VideoIdCache
 
     public void MarkMismatch(string videoId)
     {
-        lock (_mismatch) _mismatch.Add(videoId);
+        if (string.IsNullOrEmpty(videoId)) return;
+        lock (_mismatch)
+        {
+            if (_mismatch.Contains(videoId)) return;
+            while (_mismatch.Count >= MismatchCapacity && _mismatchOrder.Count > 0)
+            {
+                string oldest = _mismatchOrder.Dequeue();
+                if (_mismatch.Remove(oldest))
+                    break;
+            }
+            if (_mismatch.Add(videoId))
+            {
+                _mismatchOrder.Enqueue(videoId);
+            }
+        }
     }
 
     public void ClearMismatches()
     {
-        lock (_mismatch) _mismatch.Clear();
+        lock (_mismatch)
+        {
+            _mismatch.Clear();
+            _mismatchOrder.Clear();
+        }
     }
 }

@@ -14,6 +14,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     private readonly SpotifyCanvasViewRefs _refs;
     private readonly Dispatcher _dispatcher;
     private readonly UiScheduledTimer _loopTimer;
+    private readonly UiScheduledTimer _crossfadeTimer;
 
     private MediaElement _activeVideo;
     private MediaElement? _standbyVideo;
@@ -57,12 +58,25 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         };
         _loopTimer.Tick += OnLoopTimerTick;
 
+        _crossfadeTimer = new UiScheduledTimer(DispatcherPriority.Render, _dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(150)
+        };
+        _crossfadeTimer.Tick += OnCrossfadeTimerTick;
+
         _refs.Background.SizeChanged += OnBackgroundSizeChanged;
         HookVideoEvents(_refs.Video);
         if (_refs.VideoAlt != null)
         {
             HookVideoEvents(_refs.VideoAlt);
         }
+    }
+
+    private void StopLoopMonitoring()
+    {
+        _loopTimer.Stop();
+        _crossfadeTimer.Stop();
+        _isSwapping = false;
     }
 
     private void HookVideoEvents(MediaElement video)
@@ -99,6 +113,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             {
                 _activeVideo.Pause();
                 _loopTimer.Stop();
+                _crossfadeTimer.Stop();
                 if (_standbyVideo != null && _standbyVideo.Source != null)
                 {
                     _standbyVideo.Pause();
@@ -134,8 +149,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
                 return;
             }
 
-            _loopTimer.Stop();
-            _isSwapping = false;
+            StopLoopMonitoring();
 
             ++_fadeGeneration;
             _fadeInProgress = false;
@@ -237,8 +251,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     {
         if (_disposed) return;
         _isMediaOpen = false;
-        _loopTimer.Stop();
-        _isSwapping = false;
+        StopLoopMonitoring();
 
         ++_fadeGeneration;
         _fadeInProgress = false;
@@ -272,8 +285,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     public void Release()
     {
         _isMediaOpen = false;
-        _loopTimer.Stop();
-        _isSwapping = false;
+        StopLoopMonitoring();
 
         ++_fadeGeneration;
         _fadeInProgress = false;
@@ -360,7 +372,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         };
         fadeIn.Completed += (s, e) =>
         {
-            if (fadeGeneration != _fadeGeneration) return;
+            if (_disposed || fadeGeneration != _fadeGeneration) return;
             _fadeInProgress = false;
             _refs.Background.Opacity = 1;
             _refs.Background.BeginAnimation(UIElement.OpacityProperty, null);
@@ -603,71 +615,75 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
             // Stage 2: After 150ms of playback, incoming has decoded and buffered its first frames.
             // Now cross-fade incoming over outgoing.
-            var crossfadeTimer = new UiScheduledTimer(DispatcherPriority.Render, _dispatcher)
-            {
-                Interval = TimeSpan.FromMilliseconds(150)
-            };
-            crossfadeTimer.Tick += (s, e) =>
-            {
-                crossfadeTimer.Stop();
-                if (_disposed || !_isSwapping) return;
-
-                try
-                {
-                    // Move incoming to top now that it has real decoded video frames
-                    Panel.SetZIndex(incoming, 2);
-                    Panel.SetZIndex(outgoing, 1);
-
-                    var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(120))
-                    {
-                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
-                    };
-
-                    fadeIn.Completed += (_, _) =>
-                    {
-                        try
-                        {
-                            incoming.BeginAnimation(UIElement.OpacityProperty, null);
-                            incoming.Opacity = 1.0;
-
-                            // Stage 3: Outgoing is now completely covered by incoming's running video.
-                            // Quietly pause outgoing, rewind to 0, and hide it at opacity 0 under incoming.
-                            outgoing.Pause();
-                            outgoing.Position = TimeSpan.Zero;
-                            outgoing.BeginAnimation(UIElement.OpacityProperty, null);
-                            outgoing.Opacity = 0.0;
-                            Panel.SetZIndex(outgoing, 0);
-
-                            // Swap roles
-                            _activeVideo = incoming;
-                            _standbyVideo = outgoing;
-                        }
-                        catch (Exception ex)
-                        {
-                            RuntimeLog.Debug(LogTag, () => $"Outgoing cleanup error: {ex.Message}");
-                        }
-                        finally
-                        {
-                            _isSwapping = false;
-                        }
-                    };
-
-                    Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
-                    incoming.BeginAnimation(UIElement.OpacityProperty, fadeIn);
-                }
-                catch (Exception ex)
-                {
-                    _isSwapping = false;
-                    RuntimeLog.Warn(LogTag, $"Crossfade trigger error: {ex.Message}");
-                }
-            };
-            crossfadeTimer.Start();
+            _crossfadeTimer.Stop();
+            _crossfadeTimer.Start();
         }
         catch (Exception ex)
         {
             _isSwapping = false;
             RuntimeLog.Warn(LogTag, $"Pre-roll loop failed: {ex.Message}");
             FallbackSeekToZero(outgoing);
+        }
+    }
+
+    private void OnCrossfadeTimerTick(object? sender, EventArgs e)
+    {
+        _crossfadeTimer.Stop();
+        if (_disposed || !_isSwapping || _standbyVideo == null) return;
+
+        var outgoing = _activeVideo;
+        var incoming = _standbyVideo;
+        long version = _sourceVersion;
+
+        try
+        {
+            // Move incoming to top now that it has real decoded video frames
+            Panel.SetZIndex(incoming, 2);
+            Panel.SetZIndex(outgoing, 1);
+
+            var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+            };
+
+            fadeIn.Completed += (_, _) =>
+            {
+                if (_disposed || _sourceVersion != version) return;
+
+                try
+                {
+                    incoming.BeginAnimation(UIElement.OpacityProperty, null);
+                    incoming.Opacity = 1.0;
+
+                    // Stage 3: Outgoing is now completely covered by incoming's running video.
+                    // Quietly pause outgoing, rewind to 0, and hide it at opacity 0 under incoming.
+                    outgoing.Pause();
+                    outgoing.Position = TimeSpan.Zero;
+                    outgoing.BeginAnimation(UIElement.OpacityProperty, null);
+                    outgoing.Opacity = 0.0;
+                    Panel.SetZIndex(outgoing, 0);
+
+                    // Swap roles
+                    _activeVideo = incoming;
+                    _standbyVideo = outgoing;
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Debug(LogTag, () => $"Outgoing cleanup error: {ex.Message}");
+                }
+                finally
+                {
+                    _isSwapping = false;
+                }
+            };
+
+            Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
+            incoming.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        }
+        catch (Exception ex)
+        {
+            _isSwapping = false;
+            RuntimeLog.Warn(LogTag, $"Crossfade trigger error: {ex.Message}");
         }
     }
 
@@ -728,8 +744,11 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         if (_disposed) return;
         _disposed = true;
 
-        _loopTimer.Stop();
+        StopLoopMonitoring();
         _loopTimer.Tick -= OnLoopTimerTick;
+        _loopTimer.Dispose();
+        _crossfadeTimer.Tick -= OnCrossfadeTimerTick;
+        _crossfadeTimer.Dispose();
 
         _refs.Background.SizeChanged -= OnBackgroundSizeChanged;
         UnhookVideoEvents(_refs.Video);

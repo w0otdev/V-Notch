@@ -212,17 +212,6 @@ internal sealed class TranslationSelectionService : IDisposable
         a.CompareEndpoints(TextPatternRangeEndpoint.Start, b, TextPatternRangeEndpoint.Start) == 0 &&
         a.CompareEndpoints(TextPatternRangeEndpoint.End, b, TextPatternRangeEndpoint.End) == 0;
 
-    private static bool IsWithinWindow(AutomationElement element, IntPtr window)
-    {
-        AutomationElement? ancestor = element;
-        for (int depth = 0; depth < 64 && ancestor != null; depth++)
-        {
-            if (new IntPtr(ancestor.Current.NativeWindowHandle) == window) return true;
-            ancestor = TreeWalker.ControlViewWalker.GetParent(ancestor);
-        }
-        return false;
-    }
-
     internal async Task<bool> ReplaceAsync(TranslationSelection selection, string text, CancellationToken ct)
     {
         var dispatcher = _dispatcher;

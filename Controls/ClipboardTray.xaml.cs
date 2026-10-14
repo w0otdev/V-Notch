@@ -240,10 +240,19 @@ public partial class ClipboardTray : UserControl, IDisposable
         UpdateSearchEdgeFade();
     }
     private bool _queryDirty = true;
+    private void CancelSearch()
+    {
+        var cts = Interlocked.Exchange(ref _searchCancellation, null);
+        if (cts == null) return;
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
+        finally { cts.Dispose(); }
+    }
     private void QueueRefresh()
     {
+        if (_disposed) return;
         _queryDirty = true;
-        _searchCancellation?.Cancel();
+        CancelSearch();
         _searchTimer.Stop();
         _searchTimer.Start();
     }
@@ -265,10 +274,11 @@ public partial class ClipboardTray : UserControl, IDisposable
             QueueRefresh();
             return;
         }
-        _searchCancellation?.Cancel();
-        _searchCancellation?.Dispose();
-        _searchCancellation = new CancellationTokenSource();
-        var cancellation = _searchCancellation.Token;
+        _searchTimer.Stop();
+        CancelSearch();
+        var searchCts = new CancellationTokenSource();
+        _searchCancellation = searchCts;
+        var cancellation = searchCts.Token;
         int version = ++_refreshVersion;
         if (UpdateCategoryLockState()) return;
         try
@@ -437,7 +447,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (personalTransition)
         {
             ++_refreshVersion;
-            _searchCancellation?.Cancel();
+            CancelSearch();
             Cards.BeginAnimation(OpacityProperty, null);
             Cards.Opacity = 0;
             Cards.Visibility = Visibility.Hidden;
@@ -503,7 +513,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         foreach (var card in _cards) card.IsMenuOpen = false;
         ++_refreshVersion;
-        _searchCancellation?.Cancel();
+        CancelSearch();
         ClearPendingPin();
         _moveToPersonal = null;
         PasscodeBox.Clear();
@@ -1396,6 +1406,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (_disposed) return;
         _disposed = true;
         StopEntranceWork();
+        _entranceWorkTimer?.Dispose();
         _contentLifetime.Cancel();
         _contentLifetime.Dispose();
         _statusTimer.Stop();
@@ -1406,7 +1417,10 @@ public partial class ClipboardTray : UserControl, IDisposable
         _ageTimer.Dispose();
         ClearSelectionContainers();
         StopCategoryScrolling();
+        CancelPendingPersonalDrop();
+        _categoryDropTimer.Dispose();
         CancelThumbnailLoads();
+        _thumbnailSlots.Dispose();
         CancelCardPositionAnimation();
         _realizedCardElements.Clear();
         _arrivingCards.Clear();
@@ -1414,6 +1428,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         _searchTimer.Dispose();
         _searchCancellation?.Cancel();
         _searchCancellation?.Dispose();
+        _searchCancellation = null;
         if (_controller != null)
         {
             _controller.Store.Changed -= StoreChanged;
@@ -1429,9 +1444,6 @@ public partial class ClipboardTray : UserControl, IDisposable
         _openMenus.Clear();
         TrayDropBorder?.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, null);
         TrayDropBorder?.BeginAnimation(OpacityProperty, null);
-        _searchCancellation?.Dispose();
-        _searchCancellation = null;
-        _contentLifetime.Dispose();
     }
 
     private void Tray_Unloaded(object sender, RoutedEventArgs e)

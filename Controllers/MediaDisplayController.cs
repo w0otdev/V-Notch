@@ -168,9 +168,7 @@ public sealed class MediaDisplayController
     public static bool ShouldBeCompactMode(MediaInfo? info)
     {
         if (info == null) return false;
-        if (!info.IsAnyMediaPlaying || string.IsNullOrEmpty(info.CurrentTrack)) return false;
-        if (info.Platform == MediaPlatform.Browser && string.IsNullOrEmpty(info.CurrentTrack)) return false;
-        return true;
+        return info.IsAnyMediaPlaying && !string.IsNullOrEmpty(info.CurrentTrack);
     }
 
     public int IncrementGeneration() => ++_thumbnailSwitchGeneration;

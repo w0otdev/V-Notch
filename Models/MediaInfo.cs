@@ -30,7 +30,19 @@ public class MediaInfo
     public string CurrentTrack { get; set; } = "";
     public string CurrentArtist { get; set; } = "";
     public string YouTubeTitle { get; set; } = "";
-    public string MediaSource { get; set; } = "";
+    private string _mediaSource = "";
+    private MediaPlatform _platform = MediaPlatform.Unknown;
+
+    public string MediaSource
+    {
+        get => _mediaSource;
+        set
+        {
+            if (_mediaSource == value) return;
+            _mediaSource = value ?? "";
+            _platform = MediaPlatformExtensions.ParsePlatform(_mediaSource);
+        }
+    }
     public string SourceAppId { get; set; } = "";
     public string SessionInstanceKey { get; set; } = "";
     public string? YouTubeVideoId { get; set; }
@@ -48,7 +60,7 @@ public class MediaInfo
     public double Progress => Duration.TotalSeconds > 0 ? Position.TotalSeconds / Duration.TotalSeconds : 0;
     public bool HasTimeline => Duration.TotalSeconds > 0 && !IsIndeterminate;
 
-    public MediaPlatform Platform => MediaPlatformExtensions.ParsePlatform(MediaSource);
+    public MediaPlatform Platform => _platform;
 
     public bool IsVideoSource => IsPictureInPicture || Platform is MediaPlatform.YouTube or MediaPlatform.Browser
         or MediaPlatform.Instagram or MediaPlatform.Twitter

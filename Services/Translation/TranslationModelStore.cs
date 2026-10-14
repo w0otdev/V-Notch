@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -81,6 +82,7 @@ internal sealed class TranslationModelStore
 
     internal static async Task VerifyAssetAsync(string path, Asset asset, CancellationToken ct)
     {
+        if (!File.Exists(path)) throw new TranslationException("translation.modelInvalid");
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 131072, true);
         if (stream.Length != asset.Size) throw new TranslationException("translation.modelInvalid");
         var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
@@ -122,40 +124,44 @@ internal sealed class TranslationModelStore
                 if (offset < asset.Size)
                 {
                     details?.Report(new(TranslationDownloadStage.Connecting, completed + offset, TotalBytes));
-                    using var response = await OpenDownloadAsync(asset, offset, ct).ConfigureAwait(false);
+                    using var response = await OpenDownloadAsync(asset, offset, partial, ct).ConfigureAwait(false);
                     bool resumed = response.StatusCode == HttpStatusCode.PartialContent;
                     if (resumed && (response.Content.Headers.ContentRange?.From != offset || response.Content.Headers.ContentRange?.Length != asset.Size))
                         throw new TranslationException("translation.modelInvalid");
                     if (!resumed) offset = 0;
                     await using var input = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                     await using var output = new FileStream(partial, resumed ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 131072, true);
-                    byte[] buffer = new byte[131072];
-                    var clock = Stopwatch.StartNew();
-                    long received = 0;
-                    double lastReport = 0;
-                    details?.Report(new(TranslationDownloadStage.Downloading, completed + offset, TotalBytes));
-                    using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    int count;
-                    while (true)
+                    byte[] buffer = ArrayPool<byte>.Shared.Rent(131072);
+                    try
                     {
-                        readTimeout.CancelAfter(_networkTimeout);
-                        try { count = await input.ReadAsync(buffer, readTimeout.Token).ConfigureAwait(false); }
-                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                        { throw new TranslationException("translation.downloadTimeout"); }
-                        finally { readTimeout.CancelAfter(Timeout.InfiniteTimeSpan); }
-                        if (count == 0) break;
-                        offset += count;
-                        if (offset > asset.Size) throw new TranslationException("translation.modelInvalid");
-                        await output.WriteAsync(buffer.AsMemory(0, count), ct).ConfigureAwait(false);
-                        received += count;
-                        if (clock.Elapsed.TotalSeconds - lastReport >= .25 || offset == asset.Size)
+                        var clock = Stopwatch.StartNew();
+                        long received = 0;
+                        double lastReport = 0;
+                        details?.Report(new(TranslationDownloadStage.Downloading, completed + offset, TotalBytes));
+                        using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        int count;
+                        while (true)
                         {
-                            progress?.Report((completed + offset) / (double)TotalBytes);
-                            details?.Report(new(TranslationDownloadStage.Downloading, completed + offset, TotalBytes,
-                                received / Math.Max(.001, clock.Elapsed.TotalSeconds)));
-                            lastReport = clock.Elapsed.TotalSeconds;
+                            readTimeout.CancelAfter(_networkTimeout);
+                            try { count = await input.ReadAsync(buffer.AsMemory(0, 131072), readTimeout.Token).ConfigureAwait(false); }
+                            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                            { throw new TranslationException("translation.downloadTimeout"); }
+                            finally { readTimeout.CancelAfter(Timeout.InfiniteTimeSpan); }
+                            if (count == 0) break;
+                            offset += count;
+                            if (offset > asset.Size) throw new TranslationException("translation.modelInvalid");
+                            await output.WriteAsync(buffer.AsMemory(0, count), ct).ConfigureAwait(false);
+                            received += count;
+                            if (clock.Elapsed.TotalSeconds - lastReport >= .25 || offset == asset.Size)
+                            {
+                                progress?.Report((completed + offset) / (double)TotalBytes);
+                                details?.Report(new(TranslationDownloadStage.Downloading, completed + offset, TotalBytes,
+                                    received / Math.Max(.001, clock.Elapsed.TotalSeconds)));
+                                lastReport = clock.Elapsed.TotalSeconds;
+                            }
                         }
                     }
+                    finally { ArrayPool<byte>.Shared.Return(buffer); }
                 }
                 details?.Report(new(TranslationDownloadStage.Verifying, completed + offset, TotalBytes));
                 try { await VerifyAssetAsync(partial, asset, ct).ConfigureAwait(false); }
@@ -172,9 +178,10 @@ internal sealed class TranslationModelStore
         finally { Gate.Release(); Changed?.Invoke(); }
     }
 
-    private async Task<HttpResponseMessage> OpenDownloadAsync(Asset asset, long offset, CancellationToken ct)
+    private async Task<HttpResponseMessage> OpenDownloadAsync(Asset asset, long offset, string partialPath, CancellationToken ct)
     {
-        var uri = new Uri($"https://huggingface.co/{Profile.Repository}/resolve/{Profile.Revision}/{asset.RemotePath}");
+        var rootUri = new Uri($"https://huggingface.co/{Profile.Repository}/resolve/{Profile.Revision}/{asset.RemotePath}");
+        var uri = rootUri;
         for (int hop = 0; hop < 5; hop++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -191,6 +198,15 @@ internal sealed class TranslationModelStore
                 response.Dispose();
                 if (!IsAllowedDownloadUri(next)) throw new TranslationException("translation.downloadFailed");
                 uri = next;
+                continue;
+            }
+            if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && offset > 0)
+            {
+                response.Dispose();
+                File.Delete(partialPath);
+                offset = 0;
+                uri = rootUri;
+                hop = -1;
                 continue;
             }
             try { response.EnsureSuccessStatusCode(); return response; }

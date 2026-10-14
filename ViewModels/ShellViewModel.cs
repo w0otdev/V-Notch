@@ -52,13 +52,18 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
         if (_coordinator != null)
         {
-            _coordinator.StateChanged += (_, snapshot) => _dispatcher.BeginInvoke(() =>
-            {
-                if (snapshot != _coordinator.Snapshot) return;
-                CurrentView = snapshot.CurrentView;
-                IsExpanded = snapshot.CurrentView != NotchView.Compact;
-            });
+            _coordinator.StateChanged += OnCoordinatorStateChanged;
         }
+    }
+
+    private void OnCoordinatorStateChanged(object? sender, NotchTransitionSnapshot snapshot)
+    {
+        _dispatcher.BeginInvoke(() =>
+        {
+            if (_coordinator == null || snapshot != _coordinator.Snapshot) return;
+            CurrentView = snapshot.CurrentView;
+            IsExpanded = snapshot.CurrentView != NotchView.Compact;
+        });
     }
 
     public void Initialize()
@@ -87,8 +92,7 @@ public partial class ShellViewModel : ObservableObject, IDisposable
         }
         Media.Update(info);
         Progress.Update(info);
-        IsMusicCompactMode = info.IsAnyMediaPlaying && !string.IsNullOrEmpty(info.CurrentTrack) &&
-            !(info.Platform == MediaPlatform.Browser && string.IsNullOrEmpty(info.CurrentTrack));
+        IsMusicCompactMode = MediaDisplayController.ShouldBeCompactMode(info);
         MediaInfoUpdated?.Invoke(this, info);
     }
 
@@ -159,6 +163,10 @@ public partial class ShellViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_coordinator != null)
+        {
+            _coordinator.StateChanged -= OnCoordinatorStateChanged;
+        }
         _mediaService.MediaChanged -= OnMediaChanged;
         _mediaUpdates.Dispose();
     }

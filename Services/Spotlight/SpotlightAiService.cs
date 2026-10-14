@@ -122,28 +122,33 @@ internal sealed partial class SpotlightAiService
                     string payload = data.ToString();
                     data.Clear();
                     if (payload == "[DONE]") break;
-                    using var json = JsonDocument.Parse(payload);
-                    var root = json.RootElement;
-                    usage = usage.Read(root, settings.SpotlightAiProvider);
-                    onUsage?.Invoke(usage);
-                    if (root.TryGetProperty("error", out var error))
+                    JsonDocument json;
+                    try { json = JsonDocument.Parse(payload); }
+                    catch (JsonException) { throw new SpotlightAiException("spotlight.ai.emptyError"); }
+                    using (json)
                     {
-                        throw StreamError(error);
+                        var root = json.RootElement;
+                        usage = usage.Read(root, settings.SpotlightAiProvider);
+                        onUsage?.Invoke(usage);
+                        if (root.TryGetProperty("error", out var error))
+                        {
+                            throw StreamError(error);
+                        }
+                        if (settings.SpotlightAiProvider == "Gemini" &&
+                            root.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0 &&
+                            candidates[0].TryGetProperty("content", out var content) && content.TryGetProperty("parts", out var parts) && parts.ValueKind == JsonValueKind.Array)
+                            onGeminiParts?.Invoke(parts.EnumerateArray().Select(part => part.Clone()).ToArray());
+                        string delta = ReadDelta(root, settings.SpotlightAiProvider);
+                        if (delta.Length > 0)
+                        {
+                            total += delta.Length;
+                            if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
+                            received = true;
+                            yield return delta;
+                        }
+                        if (settings.SpotlightAiProvider == "Claude" &&
+                            root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop") break;
                     }
-                    if (settings.SpotlightAiProvider == "Gemini" &&
-                        root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0 &&
-                        candidates[0].TryGetProperty("content", out var content) && content.TryGetProperty("parts", out var parts))
-                        onGeminiParts?.Invoke(parts.EnumerateArray().Select(part => part.Clone()).ToArray());
-                    string delta = ReadDelta(root, settings.SpotlightAiProvider);
-                    if (delta.Length > 0)
-                    {
-                        total += delta.Length;
-                        if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
-                        received = true;
-                        yield return delta;
-                    }
-                    if (settings.SpotlightAiProvider == "Claude" &&
-                        root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop") break;
                 }
                 if (line == null) break;
             }
@@ -151,7 +156,7 @@ internal sealed partial class SpotlightAiService
             {
                 if (data.Length > 0) data.Append('\n');
                 data.Append(line.AsSpan(5).TrimStart());
-                if (data.Length > 1024 * 1024) throw new SpotlightAiException("spotlight.ai.emptyError");
+                if (data.Length > 1024 * 1024) throw new SpotlightAiException("spotlight.ai.tooLong");
             }
         }
         if (!received) throw new SpotlightAiException("spotlight.ai.emptyError");
@@ -233,8 +238,8 @@ internal sealed partial class SpotlightAiService
     {
         if (provider == "Gemini")
         {
-            if (!root.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0 ||
-                !candidates[0].TryGetProperty("content", out var content) || !content.TryGetProperty("parts", out var parts)) return "";
+            if (!root.TryGetProperty("candidates", out var candidates) || candidates.ValueKind != JsonValueKind.Array || candidates.GetArrayLength() == 0 ||
+                !candidates[0].TryGetProperty("content", out var content) || !content.TryGetProperty("parts", out var parts) || parts.ValueKind != JsonValueKind.Array) return "";
             return string.Concat(parts.EnumerateArray().Where(p => p.TryGetProperty("text", out _) &&
                 (!p.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True))
                 .Select(p => p.GetProperty("text").GetString()));

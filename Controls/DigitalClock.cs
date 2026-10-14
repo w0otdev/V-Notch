@@ -75,8 +75,9 @@ public class DigitalClock : TextBlock
     private void UpdateText()
     {
         DateTime now = DateTime.Now;
-        if (now.Minute == _lastRenderedMinute) return;
-        _lastRenderedMinute = now.Minute;
+        int minuteKey = now.Hour * 60 + now.Minute;
+        if (minuteKey == _lastRenderedMinute) return;
+        _lastRenderedMinute = minuteKey;
 
         if (IsStacked)
         {

@@ -163,11 +163,11 @@ internal sealed class SpotlightUsageStore
         string normalized = SettingsSearchMatcher.Normalize(query);
         KeyValuePair<string, UsageEntry>[] entries;
         lock (_gate) entries = LoadEntries().Where(pair => pair.Value.Queries?.Contains(normalized) == true).ToArray();
-        return entries.Select(pair => new SpotlightSearchItem(pair.Key, pair.Value.Kind, pair.Value.Title,
-            pair.Value.Subtitle, pair.Value.Target, pair.Value.IconPath)
+        return entries.Select(pair =>
         {
-            Score = Math.Max(1500, SpotlightRanker.Score(new SpotlightSearchItem(pair.Key, pair.Value.Kind,
-                pair.Value.Title, pair.Value.Subtitle, pair.Value.Target), query))
+            var item = new SpotlightSearchItem(pair.Key, pair.Value.Kind, pair.Value.Title,
+                pair.Value.Subtitle, pair.Value.Target, pair.Value.IconPath);
+            return item with { Score = Math.Max(1500, SpotlightRanker.Score(item, query)) };
         }).Where(SpotlightLauncher.IsValidTarget)
             .Where(item => ShouldShowHistoryItem(item, query)).ToArray();
     }
@@ -246,22 +246,28 @@ internal sealed class SpotlightUsageStore
         while (true)
         {
             long version;
+            int entryCount;
             string json = string.Empty;
             Exception? serializationError = null;
 
             lock (_gate)
             {
                 version = _changeVersion;
-                try
+                var entries = LoadEntries();
+                entryCount = entries.Count;
+                if (entryCount > 0)
                 {
-                    json = JsonSerializer.Serialize(LoadEntries());
-                }
-                catch (Exception ex)
-                {
-                    // Clear this while holding the same gate RecordLaunch uses,
-                    // so a later launch cannot miss scheduling a replacement.
-                    _saveWorkerRunning = false;
-                    serializationError = ex;
+                    try
+                    {
+                        json = JsonSerializer.Serialize(entries);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Clear this while holding the same gate RecordLaunch uses,
+                        // so a later launch cannot miss scheduling a replacement.
+                        _saveWorkerRunning = false;
+                        serializationError = ex;
+                    }
                 }
             }
 
@@ -274,13 +280,19 @@ internal sealed class SpotlightUsageStore
                 return;
             }
 
-            try
+            if (entryCount > 0)
             {
-                _persistSnapshot(json);
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Error(LogTag, ex, $"Failed to write {_path}");
+                try
+                {
+                    if (_persistSnapshot == PersistSnapshot)
+                        PersistSnapshotVersioned(json, version);
+                    else
+                        _persistSnapshot(json);
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Error(LogTag, ex, $"Failed to write {_path}");
+                }
             }
 
             lock (_gate)
@@ -294,7 +306,9 @@ internal sealed class SpotlightUsageStore
         }
     }
 
-    private void PersistSnapshot(string json)
+    private void PersistSnapshot(string json) => PersistSnapshotVersioned(json, Interlocked.Read(ref _changeVersion));
+
+    private void PersistSnapshotVersioned(string json, long version)
     {
         string? directory = Path.GetDirectoryName(_path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
@@ -305,7 +319,11 @@ internal sealed class SpotlightUsageStore
         try
         {
             File.WriteAllText(tempPath, json);
-            File.Move(tempPath, _path, overwrite: true);
+            lock (_gate)
+            {
+                if (_changeVersion != version || _entries is { Count: 0 }) return;
+                File.Move(tempPath, _path, overwrite: true);
+            }
         }
         finally
         {

@@ -83,7 +83,6 @@ internal sealed class ShiftTapDetector
     internal bool Process(uint key, bool down, uint time, IntPtr window, bool blocked = false)
     {
         bool shift = key is 0x10 or 0xA0 or 0xA1;
-        if (!shift) { _lastOtherEvent = time; _hasOtherEvent = true; }
         if (shift)
         {
             // One shortcut per burst, even if focus changes while the popup opens.
@@ -94,11 +93,12 @@ internal sealed class ShiftTapDetector
             if (_waitingForQuiet && !quiet) { ResetTaps(); return false; }
             if (quiet) _waitingForQuiet = false;
         }
-        if (blocked || window == IntPtr.Zero || !shift) { ResetTaps(); return false; }
+        if (blocked || window == IntPtr.Zero) { ResetTaps(); return false; }
+        if (!shift) { _lastOtherEvent = time; _hasOtherEvent = true; ResetTaps(); return false; }
         if (_window != window) { ResetTaps(); _window = window; }
         if (down)
         {
-            if (!_hasTap && _hasOtherEvent && unchecked(time - _lastOtherEvent) < 500) { ResetTaps(); return false; }
+            if (!_hasTap && _hasOtherEvent && unchecked(time - _lastOtherEvent) < 150) { ResetTaps(); return false; }
             if (_heldKey == key) return false; // OS key repeat is not another tap.
             if (_heldKey != 0) { ResetTaps(); return false; } // simultaneous left/right Shift
             _secondTap = _hasTap && unchecked(time - _lastTap) <= 500;

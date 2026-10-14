@@ -97,10 +97,6 @@ public partial class SettingsWindow : Window
     private bool _isSpotlightHotkeyRegistered;
     private int _lastAppliedFps;
 
-    // Liquid Glass UI components
-    private LiquidGlassController? _liquidGlass;
-    private double _lastAppliedDpiScale = 1.0;
-
     public event EventHandler<NotchSettings>? SettingsChanged;
     public event EventHandler? AnimatedClosing;
     public event EventHandler<UpdateInfo?>? UpdateDetected;
@@ -699,6 +695,8 @@ public partial class SettingsWindow : Window
         OtherProjectsSubtext.Text = Loc.Get("settings.donating.otherProjects.subtitle");
         ProjectVertexDesc.Text = Loc.Get("settings.donating.otherProjects.vertex.desc");
         ProjectScrollVDesc.Text = Loc.Get("settings.donating.otherProjects.scrollv.desc");
+
+        ApplySupplementalLocalization();
     }
 
     internal void SetSpotlightHotkeyStatus(bool isRegistered)
@@ -1118,7 +1116,6 @@ public partial class SettingsWindow : Window
         Title = Loc.Get("settings.windowTitle");
         ApplyTooltips();
 
-        DownloadUpdateButton.Content = Loc.Get("settings.downloadInstall");
         EnableWeatherCheck.Content = Loc.Get("settings.enableWeather");
         EnableWeatherHint.Text = Loc.Get("settings.enableWeather.hint");
         ManualCityLabel.Text = Loc.Get("settings.manualCity");
@@ -1127,21 +1124,10 @@ public partial class SettingsWindow : Window
         GpuRefractionCheck.Content = Loc.Get("settings.gpuRefraction");
         GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
 
-        if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
-        if (SpotifyCanvasExperimentalBadge != null) SpotifyCanvasExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
-        EnableSpotifyCanvasHint.Text = Loc.Get("settings.enableSpotifyCanvas.hint");
-        SpotifyCanvasAccountLabel.Text = Loc.Get("settings.spotifyCanvasAccount");
-        SpotifyCanvasAccountHint.Text = Loc.Get("settings.spotifyCanvasAccount.hint");
-        SpotifyConnectButton.Content = Loc.Get("settings.spotifyCanvas.connect");
-        SpotifyDisconnectButton.Content = Loc.Get("settings.spotifyCanvas.disconnect");
-        if (YouTubeSubtitlesExperimentalBadge != null)
-            YouTubeSubtitlesExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);
-
         ApplyGpuAndProcessLocalization();
         ApplyBackupSectionLocalization();
         ApplyRestartBannerLocalization();
 
-        UpdateSpotifyCanvasConnectionStatus();
         UpdateYouTubeApiKeyStatus();
     }
 

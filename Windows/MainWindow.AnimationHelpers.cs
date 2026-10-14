@@ -357,7 +357,6 @@ public partial class MainWindow
         }
         else
         {
-            StartStartupHold(TimeSpan.FromMilliseconds(3400));
             opacityAnim.Completed += (s, e) =>
             {
                 StartStartupHold(TimeSpan.FromSeconds(3));
@@ -509,6 +508,8 @@ public partial class MainWindow
         MediaBackground.CornerRadius = cr;
         MediaBackground2.CornerRadius = cr;
         NotchBorderShadow.CornerRadius = cr;
+        HoverGlow.CornerRadius = cr;
+        _glassMaterialPresenter.SyncCornerRadius(cr);
 
         if (NotchContainer != null)
         {
@@ -542,6 +543,8 @@ public partial class MainWindow
         MediaBackground.CornerRadius = cr;
         MediaBackground2.CornerRadius = cr;
         NotchBorderShadow.CornerRadius = cr;
+        HoverGlow.CornerRadius = cr;
+        _glassMaterialPresenter.SyncCornerRadius(cr);
         CurrentCornerRadius = _cornerRadiusCollapsed;
 
         if (NotchContainer != null)

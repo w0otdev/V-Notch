@@ -89,6 +89,7 @@ public partial class SettingsWindow
         if (VisualizerAudioCombo.SelectedItem is AudioDeviceItem item)
         {
             _settings.VisualizerAudioDeviceId = item.Id;
+            if (!_isLoadingSettings) PushLivePreview();
         }
     }
 

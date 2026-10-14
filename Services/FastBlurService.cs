@@ -41,8 +41,10 @@ public static class FastBlurService
 
                 var smallBitmap = new TransformedBitmap(formattedBitmap, new ScaleTransform((double)width / formattedBitmap.PixelWidth, (double)height / formattedBitmap.PixelHeight));
 
-                int stride = width * 4;
-                int bufferSize = height * stride;
+                int actualW = smallBitmap.PixelWidth;
+                int actualH = smallBitmap.PixelHeight;
+                int stride = actualW * 4;
+                int bufferSize = actualH * stride;
 
                 byte[] pixels = ArrayPool<byte>.Shared.Rent(bufferSize);
                 byte[] target = ArrayPool<byte>.Shared.Rent(bufferSize);
@@ -54,14 +56,14 @@ public static class FastBlurService
                     int passes = 2;
                     for (int i = 0; i < passes; i++)
                     {
-                        BoxBlurHorizontal(pixels, target, width, height, blurRadius);
-                        BoxBlurVertical(target, pixels, width, height, blurRadius);
+                        BoxBlurHorizontal(pixels, target, actualW, actualH, blurRadius);
+                        BoxBlurVertical(target, pixels, actualW, actualH, blurRadius);
                     }
 
                     DarkenPixels(pixels, bufferSize);
 
-                    var writeableBitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
-                    writeableBitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, stride, 0);
+                    var writeableBitmap = new WriteableBitmap(actualW, actualH, 96, 96, PixelFormats.Bgra32, null);
+                    writeableBitmap.WritePixels(new Int32Rect(0, 0, actualW, actualH), pixels, stride, 0);
                     writeableBitmap.Freeze();
 
                     return (BitmapSource)writeableBitmap;
@@ -80,13 +82,16 @@ public static class FastBlurService
         }).ConfigureAwait(false);
     }
 
-    internal static void DarkenPixels(byte[] pixels, int length)
+    internal static void DarkenPixels(byte[] pixels, int width, int height, float factor)
+        => DarkenPixels(pixels, width * height * 4, factor);
+
+    internal static void DarkenPixels(byte[] pixels, int length, float factor = 0.96f)
     {
-        // ceil(0.96 * 2^16): matches (byte)(value * 0.96f) for every byte.
+        ushort scale = (ushort)Math.Clamp((int)Math.Ceiling(factor * 65536.0), 0, 65535);
         int i = 0;
         if (Sse2.IsSupported)
         {
-            var factor = Vector128.Create((ushort)62915);
+            var factorVec = Vector128.Create(scale);
             var alphaMask = Vector128.Create(0xff000000u).AsByte();
             for (; i <= length - Vector128<byte>.Count; i += Vector128<byte>.Count)
             {
@@ -94,17 +99,17 @@ public static class FastBlurService
                 var low = Sse2.UnpackLow(original, Vector128<byte>.Zero).AsUInt16();
                 var high = Sse2.UnpackHigh(original, Vector128<byte>.Zero).AsUInt16();
                 var dark = Sse2.PackUnsignedSaturate(
-                    Sse2.MultiplyHigh(low, factor).AsInt16(),
-                    Sse2.MultiplyHigh(high, factor).AsInt16());
+                    Sse2.MultiplyHigh(low, factorVec).AsInt16(),
+                    Sse2.MultiplyHigh(high, factorVec).AsInt16());
                 Sse2.Or(Sse2.AndNot(alphaMask, dark), Sse2.And(alphaMask, original))
                     .StoreUnsafe(ref pixels[i]);
             }
         }
         for (; i < length; i += 4)
         {
-            pixels[i] = (byte)((pixels[i] * 62915) >> 16);
-            pixels[i + 1] = (byte)((pixels[i + 1] * 62915) >> 16);
-            pixels[i + 2] = (byte)((pixels[i + 2] * 62915) >> 16);
+            pixels[i] = (byte)((pixels[i] * scale) >> 16);
+            pixels[i + 1] = (byte)((pixels[i + 1] * scale) >> 16);
+            pixels[i + 2] = (byte)((pixels[i + 2] * scale) >> 16);
         }
     }
 

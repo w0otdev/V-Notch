@@ -70,6 +70,8 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            Interlocked.Exchange(ref _lastFailureTicks, DateTime.UtcNow.Ticks);
+            _isAvailable = false;
             return Array.Empty<SpotlightSearchItem>();
         }
         catch (OleDbException ex)
@@ -100,7 +102,7 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
 
     private static readonly HashSet<string> ExecutableExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".lnk"
+        ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".appref-ms", ".lnk"
     };
 
     private static List<SpotlightSearchItem> ExecuteQuery(
@@ -200,13 +202,13 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
         var builder = new StringBuilder(sanitizedQuery.Length);
         foreach (char character in sanitizedQuery)
         {
-            builder.Append(character switch
+            switch (character)
             {
-                '%' => "[%]",
-                '_' => "[_]",
-                '[' => "[[]",
-                _ => character.ToString()
-            });
+                case '%': builder.Append("[%]"); break;
+                case '_': builder.Append("[_]"); break;
+                case '[': builder.Append("[[]"); break;
+                default: builder.Append(character); break;
+            }
         }
         return builder.ToString();
     }

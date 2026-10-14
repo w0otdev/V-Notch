@@ -477,7 +477,6 @@ public sealed class WebcamCaptureController : IDisposable
         }
         long now = Stopwatch.GetTimestamp();
         if (now - _lastFrameTimestamp < FrameIntervalTicks) return;
-        _lastFrameTimestamp = now;
 
         // Keep at most one copied frame in flight. The UI consumes this buffer
         // asynchronously, so it must release the lease before capture can reuse it.
@@ -485,6 +484,7 @@ public sealed class WebcamCaptureController : IDisposable
         {
             return;
         }
+        _lastFrameTimestamp = now;
 
         bool handedOff = false;
         try

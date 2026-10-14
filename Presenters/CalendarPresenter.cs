@@ -26,9 +26,19 @@ public sealed class CalendarPresenter : IDisposable
     private int _currentCalendarCenterIdx = 5;
     private double _calendarScrollAccumulator = 0;
     private DateTime _lastCalendarScrollTimeUtc = DateTime.MinValue;
-    private DateTime _lastCalendarUpdate = DateTime.Now;
+    private DateTime _lastCalendarUpdate = DateTime.MinValue;
     private bool _isMonthAnimating;
     private string _pendingMonthText = string.Empty;
+
+    private static readonly CubicEase _easeCubicIn = CreateFrozenCubicEase(EasingMode.EaseIn);
+    private static readonly CubicEase _easeCubicOut = CreateFrozenCubicEase(EasingMode.EaseOut);
+
+    private static CubicEase CreateFrozenCubicEase(EasingMode mode)
+    {
+        var ease = new CubicEase { EasingMode = mode };
+        ease.Freeze();
+        return ease;
+    }
 
     private bool _disposed;
 
@@ -111,8 +121,21 @@ public sealed class CalendarPresenter : IDisposable
     {
         if (!_calendarInitialized) InitializeCalendar();
 
-        _lastCalendarUpdate = now;
+        int scrollOffset = _currentCalendarCenterIdx - 5;
+        if (now.Date == _lastCalendarUpdate.Date && scrollOffset == 0)
+        {
+            _lastCalendarUpdate = now;
+            _refs.OnCalendarTick(now);
+            return;
+        }
 
+        _lastCalendarUpdate = now;
+        UpdateCalendarFromOffset(now);
+        _refs.OnCalendarTick(now);
+    }
+
+    private void UpdateCalendarFromOffset(DateTime now)
+    {
         var culture = Loc.GetCulture();
 
         for (int i = -5; i <= 5; i++)
@@ -126,8 +149,6 @@ public sealed class CalendarPresenter : IDisposable
 
         UpdateCalendarHighlight(animate: false, pulse: false);
         _refs.EventText.Text = Loc.Get("greeting.enjoyDay");
-
-        _refs.OnCalendarTick(now);
     }
 
     private void ApplyCalendarCenterVisualState(int centerIdx)
@@ -149,6 +170,7 @@ public sealed class CalendarPresenter : IDisposable
 
     private void AnimateMonthTextChange(string newMonth)
     {
+        if (_disposed) return;
         if (_isMonthAnimating)
         {
             _pendingMonthText = newMonth;
@@ -158,15 +180,12 @@ public sealed class CalendarPresenter : IDisposable
         _isMonthAnimating = true;
         _pendingMonthText = string.Empty;
 
-        var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
-
         var fadeOut = new DoubleAnimation
         {
             From = 1.0,
             To = 0.0,
             Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-            EasingFunction = easeIn
+            EasingFunction = _easeCubicIn
         };
 
         var scaleDown = new DoubleAnimation
@@ -174,7 +193,7 @@ public sealed class CalendarPresenter : IDisposable
             From = 1.0,
             To = 0.85,
             Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-            EasingFunction = easeIn
+            EasingFunction = _easeCubicIn
         };
 
         var slideUp = new DoubleAnimation
@@ -182,11 +201,12 @@ public sealed class CalendarPresenter : IDisposable
             From = 0,
             To = -8,
             Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-            EasingFunction = easeIn
+            EasingFunction = _easeCubicIn
         };
 
         fadeOut.Completed += (s, e) =>
         {
+            if (_disposed) return;
             _refs.MonthText.Text = newMonth;
 
             var fadeIn = new DoubleAnimation
@@ -194,7 +214,7 @@ public sealed class CalendarPresenter : IDisposable
                 From = 0.0,
                 To = 1.0,
                 Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-                EasingFunction = easeOut
+                EasingFunction = _easeCubicOut
             };
 
             var scaleUp = new DoubleAnimation
@@ -202,7 +222,7 @@ public sealed class CalendarPresenter : IDisposable
                 From = 0.85,
                 To = 1.0,
                 Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-                EasingFunction = easeOut
+                EasingFunction = _easeCubicOut
             };
 
             var slideDown = new DoubleAnimation
@@ -210,11 +230,12 @@ public sealed class CalendarPresenter : IDisposable
                 From = 8,
                 To = 0,
                 Duration = new Duration(TimeSpan.FromMilliseconds(140)),
-                EasingFunction = easeOut
+                EasingFunction = _easeCubicOut
             };
 
             fadeIn.Completed += (s2, e2) =>
             {
+                if (_disposed) return;
                 _isMonthAnimating = false;
 
                 if (!string.IsNullOrEmpty(_pendingMonthText) && _pendingMonthText != _refs.MonthText.Text)
@@ -320,7 +341,9 @@ public sealed class CalendarPresenter : IDisposable
     public void RefreshLocale()
     {
         if (_calendarInitialized)
-            HandleCalendarUpdated(_lastCalendarUpdate);
+        {
+            UpdateCalendarFromOffset(_lastCalendarUpdate == DateTime.MinValue ? DateTime.Now : _lastCalendarUpdate);
+        }
     }
 
     #endregion
@@ -345,9 +368,7 @@ public sealed class CalendarPresenter : IDisposable
         double targetLiftY = isHovered ? -3.0 : 0.0;
 
         var duration = new Duration(TimeSpan.FromMilliseconds(isHovered ? 350 : 250));
-        var easing = (IEasingFunction)(isHovered
-            ? new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut }
-            : new CubicEase { EasingMode = EasingMode.EaseOut });
+        var easing = (IEasingFunction)(isHovered ? _easeExpOut6 : _easeCubicOut);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
         var scaleXAnim = new DoubleAnimation { To = targetScale, Duration = duration, EasingFunction = easing };

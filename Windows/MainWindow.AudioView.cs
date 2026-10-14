@@ -42,25 +42,10 @@ public partial class MainWindow
         {
             SwitchFromTimerToAudioView();
         }
-        else if (_isSecondaryView)
-        {
-            SwitchFromSecondaryToAudioView();
-        }
         else
         {
             SwitchToAudioView();
         }
-    }
-
-    private void SwitchFromSecondaryToAudioView(long? transitionId = null)
-    {
-        if (transitionId == null)
-        {
-            _transitionCoordinator.RequestView(VNotch.Models.NotchView.AudioMixer, "SwitchFromSecondaryToAudioView");
-            return;
-        }
-
-        SwitchToAudioViewCore(transitionId.Value, fromSecondary: true, fromTimer: false);
     }
 
     private void SwitchFromTimerToAudioView(long? transitionId = null)
@@ -254,53 +239,6 @@ public partial class MainWindow
                 UpdateProgressSectionLayout();
                 MediaPlayback.RefreshMediaMarquee();
                 FadeInLyricsBlurBackgroundIfActive();
-            },
-            generation: generation);
-    }
-
-    private void SwitchFromAudioToSecondaryView(long? transitionId = null)
-    {
-        if (transitionId == null)
-        {
-            _transitionCoordinator.RequestView(VNotch.Models.NotchView.Secondary, "SwitchFromAudioToSecondaryView");
-            return;
-        }
-
-        int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
-        _isAudioView = false;
-        StopAudioPoll();
-        AudioContent.ReleaseSessionCache();
-        _isSecondaryView = true;
-        _isAnimating = true;
-        _lastViewSwitchUtc = DateTime.UtcNow;
-        _isScrollSessionLocked = true;
-
-        UpdateNavIconsActiveState();
-
-        double fromW = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _audioViewWidth;
-        double fromH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _audioViewHeight;
-
-        AnimateAudioViewSwap(
-            AudioContent, SecondaryContent,
-            new Size(fromW, fromH), new Size(_expandedWidth, _expandedHeight),
-            prepIncoming: () =>
-            {
-                EnableKeyboardInput();
-                SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
-                SecondaryContent.VerticalAlignment = VerticalAlignment.Stretch;
-                SecondaryContent.Width = _expandedWidth
-                    - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
-            },
-            onComplete: () =>
-            {
-                SecondaryContent.HorizontalAlignment = HorizontalAlignment.Center;
-                SecondaryContent.VerticalAlignment = VerticalAlignment.Stretch;
-                SecondaryContent.Width = _expandedWidth
-                    - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right;
-                SecondaryContent.UpdateLayout();
-                RestoreExpandedWindowSize();
-                ResetCameraSectionLayoutInstant();
             },
             generation: generation);
     }
@@ -552,7 +490,6 @@ public partial class MainWindow
 
     private void AnimateAudioNotchHeight(double target, Duration dur, IEasingFunction ease)
     {
-        int generation = ++_audioNotchHeightGeneration;
         if (!_isAudioView || _isAnimating || AudioScrollViewer == null) return;
 
         double current = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : target;
@@ -569,6 +506,7 @@ public partial class MainWindow
             return;
         }
 
+        int generation = ++_audioNotchHeightGeneration;
         int fps = AnimationConfig.TargetFps;
         bool growing = target > current;
         if (growing) ResizeHostWindowHeight(target);
@@ -587,10 +525,10 @@ public partial class MainWindow
 
         notchAnim.Completed += (_, _) =>
         {
+            _isAnimating = false;
             if (generation != _audioNotchHeightGeneration || !_isAudioView)
                 return;
 
-            _isAnimating = false;
             NotchBorder.BeginAnimation(HeightProperty, null);
             NotchBorder.Height = target;
             AudioScrollViewer.BeginAnimation(HeightProperty, null);

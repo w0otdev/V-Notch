@@ -157,6 +157,8 @@ public partial class SettingsWindow
             if (_navPanels.TryGetValue(section, out var newPanel))
                 newPanel.Visibility = Visibility.Visible;
 
+            _scrollTarget = 0;
+            _scrollVelocity = 0;
             SettingsScrollViewer.ScrollToTop();
             AnimateActivePanel(section, direction);
         }

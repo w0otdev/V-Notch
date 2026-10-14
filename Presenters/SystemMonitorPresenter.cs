@@ -30,10 +30,21 @@ public sealed record SystemMonitorShelfViewRefs(
 
 public sealed class SystemMonitorPresenter : IDisposable
 {
+    private static readonly CubicEase _easeCubicOut = CreateFrozenCubicOut();
+
+    private static CubicEase CreateFrozenCubicOut()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        return ease;
+    }
+
     private readonly SystemMonitorModule _module;
     private readonly IDispatcherService _dispatcher;
     private SystemMonitorViewRefs? _refs;
     private int _disposed;
+    private ulong _cachedRamTotalBytes;
+    private string _cachedRamTotalGb = "";
 
     public double LastNetDownBytesPerSec { get; private set; }
     public double LastNetUpBytesPerSec { get; private set; }
@@ -70,10 +81,16 @@ public sealed class SystemMonitorPresenter : IDisposable
         refs.CpuValueText.Text = $"{Math.Round(stats.CpuPercent)}%";
         SetUsageBar(refs.CpuBar, stats.CpuPercent);
 
+        string? usedGb = null;
         if (stats.RamTotalBytes > 0)
         {
-            refs.RamValueText.Text =
-                $"{FormatGb(stats.RamUsedBytes)} / {FormatGb(stats.RamTotalBytes)} GB";
+            usedGb = FormatGb(stats.RamUsedBytes);
+            if (_cachedRamTotalBytes != stats.RamTotalBytes)
+            {
+                _cachedRamTotalBytes = stats.RamTotalBytes;
+                _cachedRamTotalGb = FormatGb(stats.RamTotalBytes);
+            }
+            refs.RamValueText.Text = $"{usedGb} / {_cachedRamTotalGb} GB";
         }
         else
         {
@@ -88,7 +105,7 @@ public sealed class SystemMonitorPresenter : IDisposable
         {
             shelf.CpuValueText.Text = refs.CpuValueText.Text;
             SetUsageBar(shelf.CpuBar, stats.CpuPercent);
-            shelf.RamValueText.Text = stats.RamTotalBytes > 0 ? $"{FormatGb(stats.RamUsedBytes)} GB" : "—";
+            shelf.RamValueText.Text = usedGb != null ? $"{usedGb} GB" : "—";
             SetUsageBar(shelf.RamBar, stats.RamPercent);
             shelf.NetDownText.Text = $"↓ {refs.NetDownText.Text}";
             shelf.NetUpText.Text = $"↑ {refs.NetUpText.Text}";
@@ -119,7 +136,7 @@ public sealed class SystemMonitorPresenter : IDisposable
             From = current,
             To = target,
             Duration = TimeSpan.FromMilliseconds(550),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            EasingFunction = _easeCubicOut,
             FillBehavior = FillBehavior.HoldEnd
         };
 

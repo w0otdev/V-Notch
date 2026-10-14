@@ -73,14 +73,15 @@ internal static class TranslationDateIntegrity
 
     private static int[] Extract(string text, string language)
     {
-        var result = new List<int>();
+        var result = new List<(int Index, int Day)>();
         var patterns = Weekdays[language];
         for (int day = 0; day < patterns.Length; day++)
         {
             string pattern = Pattern(patterns[day], language);
             var matches = Regex.Matches(text, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-            result.AddRange(Enumerable.Repeat(day, matches.Count));
+            foreach (Match match in matches)
+                result.Add((match.Index, day));
         }
-        return result.Order().ToArray();
+        return result.OrderBy(x => x.Index).Select(x => x.Day).ToArray();
     }
 }

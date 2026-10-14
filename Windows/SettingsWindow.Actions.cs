@@ -378,40 +378,7 @@ public partial class SettingsWindow
         ShellContent.UseLayoutRounding = false;
         RenderOptions.SetBitmapScalingMode(MainShell, BitmapScalingMode.LowQuality);
 
-        UIElement? activeCard = _activeNav switch
-        {
-            NavSectionAppearance => AppearanceCard,
-            NavSectionBehavior => BehaviorCard,
-            NavSectionDevices => DisplayCard,
-            NavSectionSystem => SystemCard,
-            NavSectionPrivacy => PrivacyCard,
-            NavSectionSpotlight => SpotlightCard,
-            NavSectionFileTray => FileTrayCard,
-            NavSectionAdvanced => AdvancedCard,
-            NavSectionPerformance => PerformanceCard,
-            NavSectionDonating => DonatingCard,
-            NavSectionUpdates => UpdatesCard,
-            NavSectionSearching => SearchingCard,
-            NavSectionSkins => SkinCard,
-            _ => null
-        };
-        TranslateTransform? activeTranslate = _activeNav switch
-        {
-            NavSectionAppearance => AppearanceCardTranslate,
-            NavSectionBehavior => BehaviorCardTranslate,
-            NavSectionDevices => DisplayCardTranslate,
-            NavSectionSystem => SystemCardTranslate,
-            NavSectionPrivacy => PrivacyCardTranslate,
-            NavSectionSpotlight => SpotlightCardTranslate,
-            NavSectionFileTray => FileTrayCardTranslate,
-            NavSectionAdvanced => AdvancedCardTranslate,
-            NavSectionPerformance => PerformanceCardTranslate,
-            NavSectionDonating => DonatingCardTranslate,
-            NavSectionUpdates => UpdatesCardTranslate,
-            NavSectionSearching => SearchingCardTranslate,
-            NavSectionSkins => SkinCardTranslate,
-            _ => null
-        };
+        var (activeCard, activeTranslate) = GetSectionCardParts(_activeNav);
 
         double notchRadius = 8;
         double notchW = 230, notchH = 32;

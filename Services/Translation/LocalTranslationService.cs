@@ -2,10 +2,10 @@ namespace VNotch.Services.Translation;
 
 internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : IDisposable
 {
+    private sealed record CacheEntry((string Text, string Source, string Target) Key, TranslationResult Result, DateTime ExpiresUtc);
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<(string Text, string Source, string Target), TranslationResult> _cache = new();
-    private readonly LinkedList<(string Text, string Source, string Target)> _order = new();
-    private readonly Dictionary<(string Text, string Source, string Target), DateTime> _expires = new();
+    private readonly Dictionary<(string Text, string Source, string Target), LinkedListNode<CacheEntry>> _cache = new();
+    private readonly LinkedList<CacheEntry> _order = new();
     private TranslationOptions _requestedOptions = new();
     private TranslationOptions _options = new();
     internal void Configure(TranslationOptions options) => Volatile.Write(ref _requestedOptions, options);
@@ -15,7 +15,7 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
         engine.Configure(options);
         if (_options == options) return;
         _options = options;
-        _cache.Clear(); _order.Clear(); _expires.Clear();
+        _cache.Clear(); _order.Clear();
     }
     private bool _disposed;
     internal Task Disposal => (engine as QwenTranslationEngine)?.Disposal ?? Task.CompletedTask;
@@ -43,7 +43,7 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
         if (source != "auto" && !TranslationLanguages.IsSupported(source)) throw new TranslationException("translation.languageUnsupported");
         ct.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (TranslationStructuredText.IsOnlyIcons(TranslationStructuredText.NormalizeSocialIcons(text)))
+        if (TranslationStructuredText.IsOnlyIcons(text))
             return new(text, source, target, true) { InputTruncated = truncated };
         if (TrySameLanguage(text, source, target) is { } unchanged)
         {
@@ -56,11 +56,15 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
             ObjectDisposedException.ThrowIf(_disposed, this);
             ApplyOptions();
             var key = (text, source, target);
-            if (_cache.TryGetValue(key, out var existing))
+            if (_cache.TryGetValue(key, out var existingNode))
             {
-                _order.Remove(key);
-                if (_expires[key] > DateTime.UtcNow) { _order.AddLast(key); return existing with { InputTruncated = existing.InputTruncated || truncated }; }
-                _cache.Remove(key); _expires.Remove(key);
+                _order.Remove(existingNode);
+                if (existingNode.Value.ExpiresUtc > DateTime.UtcNow)
+                {
+                    _order.AddLast(existingNode);
+                    return existingNode.Value.Result with { InputTruncated = existingNode.Value.Result.InputTruncated || truncated };
+                }
+                _cache.Remove(key);
             }
             string fitted = await engine.FitInputAsync(text, ct).ConfigureAwait(false);
             bool tokenTruncated = fitted.Length < text.Length;
@@ -80,14 +84,14 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
             { InputTruncated = tokenTruncated };
             if (literalsPreserved && _options.CacheEntries > 0)
             {
-                while (_cache.Count >= _options.CacheEntries)
+                while (_cache.Count >= _options.CacheEntries && _order.First is { } oldest)
                 {
-                    var oldest = _order.First!.Value;
-                    _order.RemoveFirst(); _cache.Remove(oldest); _expires.Remove(oldest);
+                    _order.RemoveFirst();
+                    _cache.Remove(oldest.Value.Key);
                 }
-                _cache[key] = result;
-                _expires[key] = DateTime.UtcNow.AddMinutes(_options.CacheMinutes);
-                _order.AddLast(key);
+                var node = new LinkedListNode<CacheEntry>(new(key, result, DateTime.UtcNow.AddMinutes(_options.CacheMinutes)));
+                _cache[key] = node;
+                _order.AddLast(node);
             }
             return result with { InputTruncated = tokenTruncated || truncated };
         }
@@ -107,8 +111,18 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
         try
         {
             ApplyOptions();
-            foreach (var key in _expires.Where(p => p.Value <= DateTime.UtcNow).Select(p => p.Key).ToArray())
-            { _cache.Remove(key); _expires.Remove(key); _order.Remove(key); }
+            DateTime now = DateTime.UtcNow;
+            var node = _order.First;
+            while (node != null)
+            {
+                var next = node.Next;
+                if (node.Value.ExpiresUtc <= now)
+                {
+                    _order.Remove(node);
+                    _cache.Remove(node.Value.Key);
+                }
+                node = next;
+            }
             engine.ReleaseIdleResources();
         }
         finally { _gate.Release(); }
@@ -124,7 +138,7 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
     private async Task ClearCacheAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { _cache.Clear(); _order.Clear(); _expires.Clear(); }
+        try { _cache.Clear(); _order.Clear(); }
         finally { _gate.Release(); }
     }
 }

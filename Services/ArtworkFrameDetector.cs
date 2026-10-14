@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -6,8 +7,21 @@ namespace VNotch.Services;
 
 internal static class ArtworkFrameDetector
 {
-    internal static Int32Rect? DetectFrame(BitmapSource source) =>
-        DetectWhiteFrame(source) ?? DetectDarkTexturedFrame(source);
+    internal static Int32Rect? DetectFrame(BitmapSource source)
+    {
+        int width = source.PixelWidth, height = source.PixelHeight;
+        if (Math.Min(width, height) < 64) return null;
+        var (pixels, w, h) = RentDownscaledPixels(source, width, height);
+        try
+        {
+            return DetectWhiteFrameCore(pixels, w, h, width, height)
+                ?? DetectDarkTexturedFrameCore(pixels, w, h, width, height);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pixels);
+        }
+    }
 
     // Album art can be inset into textured video backgrounds. Require four long,
     // straight transitions into a near-square picture rather than trimming darkness.
@@ -15,13 +29,47 @@ internal static class ArtworkFrameDetector
     {
         int width = source.PixelWidth, height = source.PixelHeight;
         if (Math.Min(width, height) < 64) return null;
+        var (pixels, w, h) = RentDownscaledPixels(source, width, height);
+        try
+        {
+            return DetectDarkTexturedFrameCore(pixels, w, h, width, height);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pixels);
+        }
+    }
+
+    // Detect a light mat on all four sides, not white objects within the artwork.
+    internal static Int32Rect? DetectWhiteFrame(BitmapSource source)
+    {
+        int width = source.PixelWidth, height = source.PixelHeight;
+        if (Math.Min(width, height) < 64) return null;
+        var (pixels, w, h) = RentDownscaledPixels(source, width, height);
+        try
+        {
+            return DetectWhiteFrameCore(pixels, w, h, width, height);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pixels);
+        }
+    }
+
+    private static (byte[] Pixels, int W, int H) RentDownscaledPixels(BitmapSource source, int width, int height)
+    {
         double scale = Math.Min(1, 384.0 / Math.Max(width, height));
         BitmapSource sample = new TransformedBitmap(source, new ScaleTransform(scale, scale));
         sample = new FormatConvertedBitmap(sample, PixelFormats.Bgra32, null, 0);
         int w = sample.PixelWidth, h = sample.PixelHeight;
-        byte[] pixels = new byte[w * h * 4];
-        sample.CopyPixels(pixels, w * 4, 0);
+        int stride = w * 4;
+        byte[] pixels = ArrayPool<byte>.Shared.Rent(h * stride);
+        sample.CopyPixels(pixels, stride, 0);
+        return (pixels, w, h);
+    }
 
+    private static Int32Rect? DetectDarkTexturedFrameCore(byte[] pixels, int w, int h, int width, int height)
+    {
         double Brightness(int x, int y)
         {
             int i = (y * w + x) * 4;
@@ -72,15 +120,14 @@ internal static class ArtworkFrameDetector
                         int cw = right - left, ch = bottom - top;
                         double aspect = cw / (double)ch;
                         if (aspect < .85 || aspect > 1.15 || cw < w * .3 || ch < h * .45) continue;
-                        double[] supports =
-                        {
-                EdgeSupport(left, false, 1, top + 3, bottom - 3),
-                EdgeSupport(right, false, -1, top + 3, bottom - 3),
-                EdgeSupport(top, true, 1, left + 3, right - 3),
-                EdgeSupport(bottom, true, -1, left + 3, right - 3)
-            };
-                        if (supports.Min() < .85) continue;
-                        double score = supports.Average() + .05 * cw * ch / (w * h);
+                        double sLeft = EdgeSupport(left, false, 1, top + 3, bottom - 3);
+                        double sRight = EdgeSupport(right, false, -1, top + 3, bottom - 3);
+                        double sTop = EdgeSupport(top, true, 1, left + 3, right - 3);
+                        double sBottom = EdgeSupport(bottom, true, -1, left + 3, right - 3);
+                        double minSupport = Math.Min(Math.Min(sLeft, sRight), Math.Min(sTop, sBottom));
+                        if (minSupport < .85) continue;
+                        double avgSupport = (sLeft + sRight + sTop + sBottom) * 0.25;
+                        double score = avgSupport + .05 * cw * ch / (w * h);
                         if (score <= bestScore) continue;
                         // Move beyond the sampled transition so interpolation cannot retain the mat.
                         int x = (int)Math.Ceiling((left + 3.0) * width / w);
@@ -93,18 +140,8 @@ internal static class ArtworkFrameDetector
         return best;
     }
 
-    // Detect a light mat on all four sides, not white objects within the artwork.
-    internal static Int32Rect? DetectWhiteFrame(BitmapSource source)
+    private static Int32Rect? DetectWhiteFrameCore(byte[] pixels, int w, int h, int width, int height)
     {
-        int width = source.PixelWidth, height = source.PixelHeight;
-        if (Math.Min(width, height) < 64) return null;
-        double scale = Math.Min(1, 384.0 / Math.Max(width, height));
-        BitmapSource sample = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-        sample = new FormatConvertedBitmap(sample, PixelFormats.Bgra32, null, 0);
-        int w = sample.PixelWidth, h = sample.PixelHeight;
-        byte[] pixels = new byte[w * h * 4];
-        sample.CopyPixels(pixels, w * 4, 0);
-
         bool IsWhite(int x, int y)
         {
             int i = (y * w + x) * 4;
