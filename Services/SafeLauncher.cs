@@ -77,7 +77,8 @@ public static class SafeLauncher
                 FileName = uri.AbsoluteUri,
                 UseShellExecute = true
             };
-            return Process.Start(psi) != null;
+            using var process = Process.Start(psi);
+            return process != null;
         }
         catch (Exception ex)
         {

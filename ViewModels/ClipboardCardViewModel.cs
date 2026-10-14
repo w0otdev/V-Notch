@@ -135,40 +135,60 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         }
     }
 
+    private static readonly Brush AccentCodeBrush = CreateFrozenBrush(Color.FromRgb(0x64, 0xD2, 0xFF));
+    private static readonly Brush AccentArchiveBrush = CreateFrozenBrush(Color.FromRgb(0xFF, 0x9F, 0x0A));
+    private static readonly Brush AccentPdfBrush = CreateFrozenBrush(Color.FromRgb(0xFF, 0x45, 0x3A));
+    private static readonly Brush AccentDocumentBrush = CreateFrozenBrush(Color.FromRgb(0x0A, 0x84, 0xFF));
+    private static readonly Brush AccentSpreadsheetBrush = CreateFrozenBrush(Color.FromRgb(0x30, 0xD1, 0x58));
+    private static readonly Brush AccentPresentationBrush = CreateFrozenBrush(Color.FromRgb(0xFF, 0x69, 0x61));
+    private static readonly Brush AccentAudioBrush = CreateFrozenBrush(Color.FromRgb(0xBF, 0x5A, 0xF2));
+    private static readonly Brush AccentVideoBrush = CreateFrozenBrush(Color.FromRgb(0x5E, 0x5C, 0xE6));
+    private static readonly Brush AccentDefaultBrush = CreateFrozenBrush(Color.FromRgb(0x8E, 0x8E, 0x93));
+
+    private static readonly Brush BadgeCodeBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0x64, 0xD2, 0xFF));
+    private static readonly Brush BadgeArchiveBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0xFF, 0x9F, 0x0A));
+    private static readonly Brush BadgePdfBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0xFF, 0x45, 0x3A));
+    private static readonly Brush BadgeDocumentBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0x0A, 0x84, 0xFF));
+    private static readonly Brush BadgeSpreadsheetBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0x30, 0xD1, 0x58));
+    private static readonly Brush BadgePresentationBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0xFF, 0x69, 0x61));
+    private static readonly Brush BadgeAudioBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0xBF, 0x5A, 0xF2));
+    private static readonly Brush BadgeVideoBrush = CreateFrozenBrush(Color.FromArgb(0x28, 0x5E, 0x5C, 0xE6));
+    private static readonly Brush BadgeDefaultBrush = CreateFrozenBrush(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF));
+
     public Brush FileAccentBrush => GetFileAccentBrush(FileExtension, Entry.Kind);
     public Brush FileBadgeBackgroundBrush => GetFileBadgeBackgroundBrush(FileExtension, Entry.Kind);
 
     private static Brush GetFileAccentBrush(string ext, ClipboardKind kind)
     {
-        if (kind == ClipboardKind.Code) return CreateFrozenBrush(Color.FromRgb(0x64, 0xD2, 0xFF));
+        if (kind == ClipboardKind.Code) return AccentCodeBrush;
         return ext switch
         {
-            ".zip" or ".rar" or ".7z" or ".tar" or ".gz" or ".bz2" => CreateFrozenBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)),
-            ".pdf" => CreateFrozenBrush(Color.FromRgb(0xFF, 0x45, 0x3A)),
-            ".doc" or ".docx" or ".rtf" or ".odt" or ".txt" or ".md" => CreateFrozenBrush(Color.FromRgb(0x0A, 0x84, 0xFF)),
-            ".xls" or ".xlsx" or ".csv" or ".tsv" => CreateFrozenBrush(Color.FromRgb(0x30, 0xD1, 0x58)),
-            ".ppt" or ".pptx" or ".key" => CreateFrozenBrush(Color.FromRgb(0xFF, 0x69, 0x61)),
-            ".cs" or ".js" or ".ts" or ".py" or ".cpp" or ".c" or ".h" or ".json" or ".xml" or ".html" or ".css" or ".sql" => CreateFrozenBrush(Color.FromRgb(0x64, 0xD2, 0xFF)),
-            ".mp3" or ".wav" or ".flac" or ".m4a" or ".aac" or ".ogg" => CreateFrozenBrush(Color.FromRgb(0xBF, 0x5A, 0xF2)),
-            ".mp4" or ".mkv" or ".mov" or ".avi" or ".wmv" or ".webm" => CreateFrozenBrush(Color.FromRgb(0x5E, 0x5C, 0xE6)),
-            _ => CreateFrozenBrush(Color.FromRgb(0x8E, 0x8E, 0x93))
+            ".zip" or ".rar" or ".7z" or ".tar" or ".gz" or ".bz2" => AccentArchiveBrush,
+            ".pdf" => AccentPdfBrush,
+            ".doc" or ".docx" or ".rtf" or ".odt" or ".txt" or ".md" => AccentDocumentBrush,
+            ".xls" or ".xlsx" or ".csv" or ".tsv" => AccentSpreadsheetBrush,
+            ".ppt" or ".pptx" or ".key" => AccentPresentationBrush,
+            ".cs" or ".js" or ".ts" or ".py" or ".cpp" or ".c" or ".h" or ".json" or ".xml" or ".html" or ".css" or ".sql" => AccentCodeBrush,
+            ".mp3" or ".wav" or ".flac" or ".m4a" or ".aac" or ".ogg" => AccentAudioBrush,
+            ".mp4" or ".mkv" or ".mov" or ".avi" or ".wmv" or ".webm" => AccentVideoBrush,
+            _ => AccentDefaultBrush
         };
     }
 
     private static Brush GetFileBadgeBackgroundBrush(string ext, ClipboardKind kind)
     {
-        if (kind == ClipboardKind.Code) return CreateFrozenBrush(Color.FromArgb(0x28, 0x64, 0xD2, 0xFF));
+        if (kind == ClipboardKind.Code) return BadgeCodeBrush;
         return ext switch
         {
-            ".zip" or ".rar" or ".7z" or ".tar" or ".gz" or ".bz2" => CreateFrozenBrush(Color.FromArgb(0x28, 0xFF, 0x9F, 0x0A)),
-            ".pdf" => CreateFrozenBrush(Color.FromArgb(0x28, 0xFF, 0x45, 0x3A)),
-            ".doc" or ".docx" or ".rtf" or ".odt" or ".txt" or ".md" => CreateFrozenBrush(Color.FromArgb(0x28, 0x0A, 0x84, 0xFF)),
-            ".xls" or ".xlsx" or ".csv" or ".tsv" => CreateFrozenBrush(Color.FromArgb(0x28, 0x30, 0xD1, 0x58)),
-            ".ppt" or ".pptx" or ".key" => CreateFrozenBrush(Color.FromArgb(0x28, 0xFF, 0x69, 0x61)),
-            ".cs" or ".js" or ".ts" or ".py" or ".cpp" or ".c" or ".h" or ".json" or ".xml" or ".html" or ".css" or ".sql" => CreateFrozenBrush(Color.FromArgb(0x28, 0x64, 0xD2, 0xFF)),
-            ".mp3" or ".wav" or ".flac" or ".m4a" or ".aac" or ".ogg" => CreateFrozenBrush(Color.FromArgb(0x28, 0xBF, 0x5A, 0xF2)),
-            ".mp4" or ".mkv" or ".mov" or ".avi" or ".wmv" or ".webm" => CreateFrozenBrush(Color.FromArgb(0x28, 0x5E, 0x5C, 0xE6)),
-            _ => CreateFrozenBrush(Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF))
+            ".zip" or ".rar" or ".7z" or ".tar" or ".gz" or ".bz2" => BadgeArchiveBrush,
+            ".pdf" => BadgePdfBrush,
+            ".doc" or ".docx" or ".rtf" or ".odt" or ".txt" or ".md" => BadgeDocumentBrush,
+            ".xls" or ".xlsx" or ".csv" or ".tsv" => BadgeSpreadsheetBrush,
+            ".ppt" or ".pptx" or ".key" => BadgePresentationBrush,
+            ".cs" or ".js" or ".ts" or ".py" or ".cpp" or ".c" or ".h" or ".json" or ".xml" or ".html" or ".css" or ".sql" => BadgeCodeBrush,
+            ".mp3" or ".wav" or ".flac" or ".m4a" or ".aac" or ".ogg" => BadgeAudioBrush,
+            ".mp4" or ".mkv" or ".mov" or ".avi" or ".wmv" or ".webm" => BadgeVideoBrush,
+            _ => BadgeDefaultBrush
         };
     }
 

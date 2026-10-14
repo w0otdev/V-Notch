@@ -25,12 +25,22 @@ public partial class SettingsWindow
 {
     #region Entrance Animation
 
+    private static readonly ExponentialEase EntranceEaseOut = CreateFrozenExponentialEase(6);
+    private static readonly ExponentialEase EntranceEaseOutStrong = CreateFrozenExponentialEase(7);
+
+    private static ExponentialEase CreateFrozenExponentialEase(double exponent)
+    {
+        var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = exponent };
+        ease.Freeze();
+        return ease;
+    }
+
     private void PlayEntranceAnimation()
     {
-        var easeOut = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
-        var easeOutStrong = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 7 };
-        var itemEase = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var easeOut = EntranceEaseOut;
+        var easeOutStrong = EntranceEaseOutStrong;
+        var itemEase = EntranceEaseOut;
+        int fps = Math.Min(60, VNotch.Services.AnimationConfig.TargetFps);
 
         var totalDur = TimeSpan.FromMilliseconds(650);
 
@@ -212,7 +222,7 @@ public partial class SettingsWindow
             EasingFunction = easing
         };
 
-        Timeline.SetDesiredFrameRate(animation, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(animation, Math.Min(60, VNotch.Services.AnimationConfig.TargetFps));
         return animation;
     }
 

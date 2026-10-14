@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Threading;
 using VNotch.Models;
 using VNotch.Services;
@@ -32,13 +33,20 @@ public partial class SettingsWindow
             // content to its native surface once without exposing or activating it.
             ShowActivated = false;
             Opacity = 0;
+            MainShell.Opacity = 1;
+            SettingsHeader.Opacity = 1;
+            NavPanel.Opacity = 1;
             Show();
             UpdateLayout();
+            Dispatcher.Invoke(static () => { }, DispatcherPriority.Render);
             Hide();
         }
         finally
         {
             if (IsVisible) Hide();
+            MainShell.Opacity = 0;
+            SettingsHeader.Opacity = 0;
+            NavPanel.Opacity = 0;
             Opacity = opacity;
             ShowActivated = showActivated;
         }
@@ -83,14 +91,15 @@ public partial class SettingsWindow
     {
         if (!IsVisible || _firstShowState != FirstShowState.ReadyForRealShow) return;
         _firstShowState = FirstShowState.Shown;
-        EnsureBackgroundInitializationStarted();
-
         var firstOpenProbe = Stopwatch.StartNew();
         PlayEntranceAnimation();
         FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings entrance {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
-        firstOpenProbe.Restart();
-        LoadVisualizerAudioDevices().SafeFireAndForget("SETTINGS-VIS-AUDIO");
-        FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings audio load dispatch {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (_isClosing || Dispatcher.HasShutdownStarted) return;
+            EnsureBackgroundInitializationStarted();
+            LoadVisualizerAudioDevices().SafeFireAndForget("SETTINGS-AUDIO-DEVICES");
+        });
     }
 
     private void EnsureBackgroundInitializationStarted()
@@ -102,7 +111,7 @@ public partial class SettingsWindow
         if (!_translationHardwareStarted)
         {
             _translationHardwareStarted = true;
-            DetectTranslationHardwareAsync().SafeFireAndForget("SETTINGS-TRANSLATION-HARDWARE");
+            DetectTranslationHardwareAsync().SafeFireAndForget("SETTINGS-TRANSLATION-HW");
         }
         if (_settings.AutoCheckUpdates)
         {

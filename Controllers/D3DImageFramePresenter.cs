@@ -92,28 +92,38 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
         // WPF D3DImage accepts IDirect3DSurface9 back buffers, even on current Windows.
         _direct3D = D3D9.Direct3DCreate9Ex();
-        var present = new PresentParameters
+        try
         {
-            BackBufferWidth = 1,
-            BackBufferHeight = 1,
-            BackBufferFormat = Format.Unknown,
-            BackBufferCount = 1,
-            MultiSampleType = MultisampleType.None,
-            SwapEffect = SwapEffect.Discard,
-            DeviceWindowHandle = windowHandle,
-            Windowed = true,
-            EnableAutoDepthStencil = false,
-            PresentationInterval = PresentInterval.Immediate
-        };
+            var present = new PresentParameters
+            {
+                BackBufferWidth = 1,
+                BackBufferHeight = 1,
+                BackBufferFormat = Format.Unknown,
+                BackBufferCount = 1,
+                MultiSampleType = MultisampleType.None,
+                SwapEffect = SwapEffect.Discard,
+                DeviceWindowHandle = windowHandle,
+                Windowed = true,
+                EnableAutoDepthStencil = false,
+                PresentationInterval = PresentInterval.Immediate
+            };
 
-        _device = _direct3D.CreateDeviceEx(
-            0,
-            DeviceType.Hardware,
-            windowHandle,
-            CreateFlags.Multithreaded |
-            CreateFlags.FpuPreserve |
-            CreateFlags.HardwareVertexProcessing,
-            present);
+            _device = _direct3D.CreateDeviceEx(
+                0,
+                DeviceType.Hardware,
+                windowHandle,
+                CreateFlags.Multithreaded |
+                CreateFlags.FpuPreserve |
+                CreateFlags.HardwareVertexProcessing,
+                present);
+        }
+        catch
+        {
+            _retryTimer.Stop();
+            _retryTimer.Tick -= OnRetryTick;
+            _direct3D.Dispose();
+            throw;
+        }
 
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;
         CompositionTarget.Rendering += OnRendering;

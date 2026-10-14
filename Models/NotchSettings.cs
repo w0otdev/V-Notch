@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json.Serialization;
 
@@ -219,14 +220,75 @@ public class NotchSettings
         typeof(NotchSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance),
         p => p.CanRead && p.CanWrite && p.GetCustomAttribute<JsonIgnoreAttribute>() == null);
 
-    public NotchSettings Clone()
+    private static readonly Func<NotchSettings, NotchSettings, bool> _scalarValueEquals = BuildScalarValueEquals();
+
+    private static bool DoubleEquals(double d1, double d2) => !(Math.Abs(d1 - d2) > 0.0001);
+
+    private static bool NullableDoubleEquals(double? d1, double? d2)
     {
-        var clone = new NotchSettings();
+        if (d1.HasValue != d2.HasValue)
+            return false;
+        return !d1.HasValue || !(Math.Abs(d1.Value - d2!.Value) > 0.0001);
+    }
+
+    private static bool OrdinalStringEquals(string? s1, string? s2) =>
+        string.Equals(s1, s2, StringComparison.Ordinal);
+
+    private static Func<NotchSettings, NotchSettings, bool> BuildScalarValueEquals()
+    {
+        var left = Expression.Parameter(typeof(NotchSettings), "left");
+        var right = Expression.Parameter(typeof(NotchSettings), "right");
+        var doubleEqualsMethod = typeof(NotchSettings).GetMethod(nameof(DoubleEquals), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var nullableDoubleEqualsMethod = typeof(NotchSettings).GetMethod(nameof(NullableDoubleEquals), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var stringEqualsMethod = typeof(NotchSettings).GetMethod(nameof(OrdinalStringEquals), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        Expression? combined = null;
         for (int i = 0; i < _cloneableProperties.Length; i++)
         {
             var prop = _cloneableProperties[i];
-            prop.SetValue(clone, prop.GetValue(this));
+            if (prop.PropertyType == typeof(LiquidGlassConfig))
+                continue;
+
+            var p1 = Expression.Property(left, prop);
+            var p2 = Expression.Property(right, prop);
+            Expression check;
+
+            if (prop.PropertyType == typeof(double))
+            {
+                check = Expression.Call(doubleEqualsMethod, p1, p2);
+            }
+            else if (prop.PropertyType == typeof(double?))
+            {
+                check = Expression.Call(nullableDoubleEqualsMethod, p1, p2);
+            }
+            else if (prop.PropertyType == typeof(string))
+            {
+                check = Expression.Call(stringEqualsMethod, p1, p2);
+            }
+            else if (prop.PropertyType.IsPrimitive || prop.PropertyType.IsEnum)
+            {
+                check = Expression.Equal(p1, p2);
+            }
+            else
+            {
+                var eqMethod = typeof(object).GetMethod(nameof(Equals), BindingFlags.Public | BindingFlags.Static)!;
+                check = Expression.Call(
+                    eqMethod,
+                    Expression.Convert(p1, typeof(object)),
+                    Expression.Convert(p2, typeof(object)));
+            }
+
+            combined = combined is null ? check : Expression.AndAlso(combined, check);
         }
+
+        var body = combined ?? Expression.Constant(true);
+        return Expression.Lambda<Func<NotchSettings, NotchSettings, bool>>(body, left, right).Compile();
+    }
+
+    public NotchSettings Clone()
+    {
+        var clone = (NotchSettings)MemberwiseClone();
+        clone.IsDirty = false;
         clone.LiquidGlass = LiquidGlass?.Clone() ?? new LiquidGlassConfig();
         clone.LiquidGlassCustom = LiquidGlassCustom?.Clone();
         return clone;
@@ -237,39 +299,8 @@ public class NotchSettings
         if (ReferenceEquals(this, other)) return true;
         if (other is null) return false;
 
-        for (int i = 0; i < _cloneableProperties.Length; i++)
-        {
-            var prop = _cloneableProperties[i];
-            if (prop.PropertyType == typeof(LiquidGlassConfig))
-                continue;
-
-            var v1 = prop.GetValue(this);
-            var v2 = prop.GetValue(other);
-
-            if (prop.PropertyType == typeof(double))
-            {
-                if (Math.Abs((double)(v1 ?? 0.0) - (double)(v2 ?? 0.0)) > 0.0001)
-                    return false;
-            }
-            else if (prop.PropertyType == typeof(double?))
-            {
-                var d1 = (double?)v1;
-                var d2 = (double?)v2;
-                if (d1.HasValue != d2.HasValue)
-                    return false;
-                if (d1.HasValue && Math.Abs(d1.Value - d2!.Value) > 0.0001)
-                    return false;
-            }
-            else if (prop.PropertyType == typeof(string))
-            {
-                if (!string.Equals((string?)v1, (string?)v2, StringComparison.Ordinal))
-                    return false;
-            }
-            else if (!Equals(v1, v2))
-            {
-                return false;
-            }
-        }
+        if (!_scalarValueEquals(this, other))
+            return false;
 
         if ((LiquidGlass == null) != (other.LiquidGlass == null))
             return false;

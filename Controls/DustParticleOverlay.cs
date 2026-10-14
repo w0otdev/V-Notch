@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,15 +12,16 @@ using VNotch.Services;
 namespace VNotch.Controls;
 
 /// <summary>
-/// A high-performance particle overlay that renders shimmering floating dust motes ("bụi bay mờ")
-/// over masked passwords. When clicked, particles burst and dissolve outward ("tan ra"),
-/// clearing the blur to reveal the password underneath.
+/// Telegram-style high-density spoiler dust overlay ("bụi bay mờ").
+/// Uses a zero-allocation struct particle engine, R2 quasirandom stratified spawning,
+/// pre-frozen alpha brush LUTs (zero PushOpacity/Pop overhead), and a shared static
+/// frame coordinator with adaptive frame pacing.
 /// </summary>
 public sealed class DustParticleOverlay : FrameworkElement
 {
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
         nameof(IsActive), typeof(bool), typeof(DustParticleOverlay),
-        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, OnIsActiveChanged));
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender, OnIsActiveChanged));
 
     public static readonly DependencyProperty IsDissolvedProperty = DependencyProperty.Register(
         nameof(IsDissolved), typeof(bool), typeof(DustParticleOverlay),
@@ -35,137 +39,295 @@ public sealed class DustParticleOverlay : FrameworkElement
         remove => RemoveHandler(DissolveRequestedEvent, value);
     }
 
+    private const int MinParticles = 96;
+    private const int MaxParticles = 180;
+    private const int AlphaLevels = 20;
+    private const int TintVariants = 3;
+    private const double MaskedBlurRadius = 12.0;
+    private const double DissolveDurationMs = 360.0;
+    private const double ReformDurationMs = 240.0;
+    private const long IdleFrameIntervalMs = 22; // ~45 FPS for sub-pixel idle drift (zero wasted GPU work on 120/240Hz displays)
+
+    // Martin Roberts' R2 low-discrepancy quasirandom constants (plastic constant phi_2 = 1.324717957244746)
+    private const double R2AlphaX = 0.7548776662466927;
+    private const double R2AlphaY = 0.5698402909980532;
+
     private struct DustParticle
     {
-        public double X;
-        public double Y;
-        public double BaseX;
-        public double BaseY;
-        public double Vx;
-        public double Vy;
-        public double Radius;
-        public double BaseRadius;
-        public double Alpha;
-        public double TargetAlpha;
-        public double Phase;
-        public double Speed;
-        public int BrushIndex;
+        public float X;
+        public float Y;
+        public float Vx;
+        public float Vy;
+        public float BaseRadius;
+        public float Radius;
+        public float PeakAlpha;
+        public float Alpha;
+        public float Life;      // 0..1 normalized lifecycle progress
+        public float LifeSpeed; // 1 / lifetimeSeconds
+        public float TwinklePhase;
+        public byte TintIndex;
     }
 
-    private static readonly Brush BackdropBrush = CreateFrozenBrush(Color.FromArgb(0x35, 0x0E, 0x0E, 0x14));
-    private static readonly Brush CapsuleBg = CreateFrozenBrush(Color.FromArgb(0x75, 0x12, 0x12, 0x1C));
-    private static readonly Pen CapsuleBorder = CreateFrozenPen(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF), 1.0);
-    private static readonly Brush TextPillBrush = CreateFrozenBrush(Color.FromArgb(0xD5, 0xF5, 0xF5, 0xFA));
-    private static readonly Brush[] DustBrushes =
-    [
-        CreateFrozenBrush(Color.FromArgb(0xEE, 0xF8, 0xFA, 0xFF)),
-        CreateFrozenBrush(Color.FromArgb(0xD8, 0xA8, 0xD4, 0xFF)),
-        CreateFrozenBrush(Color.FromArgb(0xC0, 0xD0, 0xE4, 0xF8)),
-        CreateFrozenBrush(Color.FromArgb(0xF0, 0xFF, 0xF8, 0xD8))
-    ];
+    // Pre-frozen 2D LUT [tintIndex * AlphaLevels + alphaBucket] to eliminate dc.PushOpacity/Pop per particle.
+    private static readonly Brush[] BrushLut = CreateBrushLut();
 
-    private static Brush CreateFrozenBrush(Color color)
+    private static Brush[] CreateBrushLut()
     {
-        var b = new SolidColorBrush(color);
-        b.Freeze();
-        return b;
+        // Telegram monochrome cool-silver & crisp white spoiler palette
+        ReadOnlySpan<(byte R, byte G, byte B)> tints =
+        [
+            (0xF6, 0xF8, 0xFC), // Crisp ice white
+            (0xE0, 0xE6, 0xF2), // Soft silver-blue mist
+            (0xC8, 0xD1, 0xE0)  // Cool slate-silver grain
+        ];
+
+        var lut = new Brush[TintVariants * AlphaLevels];
+        for (int t = 0; t < TintVariants; t++)
+        {
+            var (r, g, b) = tints[t];
+            for (int a = 0; a < AlphaLevels; a++)
+            {
+                double normalized = (a + 1) / (double)AlphaLevels;
+                byte alphaByte = (byte)Math.Clamp((int)Math.Round(normalized * 242.0), 8, 245);
+                var brush = new SolidColorBrush(Color.FromArgb(alphaByte, r, g, b));
+                brush.Freeze();
+                lut[t * AlphaLevels + a] = brush;
+            }
+        }
+        return lut;
     }
 
-    private static Pen CreateFrozenPen(Color color, double thickness)
-    {
-        var p = new Pen(CreateFrozenBrush(color), thickness);
-        p.Freeze();
-        return p;
-    }
-
-    private readonly DustParticle[] _particles = new DustParticle[38];
+    private readonly DustParticle[] _particles = new DustParticle[MaxParticles];
+    private int _activeCount;
+    private uint _rngState;
+    private int _r2SequenceIndex;
     private bool _particlesInitialized;
     private bool _isDissolving;
-    private long _dissolveStartMs;
-    private long _lastFrameMs;
+    private bool _isReforming;
+    private long _transitionStartMs;
+    private long _lastStepMs;
     private double _dissolveProgress;
-    private bool _isRenderingAttached;
+    private double _reformProgress = 1.0;
 
     public DustParticleOverlay()
     {
         Cursor = Cursors.Hand;
-        Loaded += (_, _) => UpdateRenderingState();
-        Unloaded += (_, _) => StopRendering();
-        IsVisibleChanged += (_, _) => UpdateRenderingState();
+        IsHitTestVisible = false;
+        Visibility = Visibility.Collapsed;
+        _rngState = (uint)(RuntimeHelpers.GetHashCode(this) ^ Environment.TickCount) | 1u;
+
+        Loaded += OnLifecycleStateChanged;
+        Unloaded += OnUnloaded;
+        IsVisibleChanged += OnIsVisibleChanged;
+    }
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (!IsActive) return default;
+        double minW = double.IsInfinity(availableSize.Width) ? 0.0 : Math.Min(availableSize.Width, 64.0);
+        double minH = double.IsInfinity(availableSize.Height) ? 20.0 : Math.Min(availableSize.Height, 20.0);
+        return new Size(minW, minH);
+    }
+
+    protected override void OnVisualParentChanged(DependencyObject oldParent)
+    {
+        base.OnVisualParentChanged(oldParent);
+        if (IsActive)
+        {
+            ResetSiblingBlur(IsDissolved ? 0.0 : MaskedBlurRadius);
+        }
+    }
+
+    private void OnLifecycleStateChanged(object sender, RoutedEventArgs e)
+    {
+        if (IsActive && !_isDissolving)
+        {
+            ResetSiblingBlur(IsDissolved ? 0.0 : MaskedBlurRadius);
+        }
+        UpdateRenderingState();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        StopRendering();
+    }
+
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        UpdateRenderingState();
     }
 
     private static void OnIsActiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is DustParticleOverlay overlay)
+        if (d is not DustParticleOverlay overlay) return;
+
+        bool active = (bool)e.NewValue;
+        overlay._isReforming = false;
+        if (!active)
         {
-            bool active = (bool)e.NewValue;
-            overlay.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
-            overlay.IsHitTestVisible = active && !overlay.IsDissolved;
-            overlay.UpdateRenderingState();
+            overlay._isDissolving = false;
+            overlay.ResetSiblingBlur(0.0);
         }
+        else
+        {
+            overlay.ResetSiblingBlur(overlay.IsDissolved ? 0.0 : MaskedBlurRadius);
+        }
+
+        overlay.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        overlay.IsHitTestVisible = active && !overlay.IsDissolved;
+        overlay.UpdateRenderingState();
     }
 
     private static void OnIsDissolvedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is DustParticleOverlay overlay)
+        if (d is not DustParticleOverlay overlay) return;
+
+        bool dissolved = (bool)e.NewValue;
+        overlay.IsHitTestVisible = overlay.IsActive && !dissolved;
+        if (!overlay.IsActive)
         {
-            bool dissolved = (bool)e.NewValue;
-            overlay.IsHitTestVisible = overlay.IsActive && !dissolved;
-            if (dissolved && !overlay._isDissolving)
-            {
-                overlay.StopRendering();
-                overlay.InvalidateVisual();
-            }
-            else if (!dissolved)
-            {
-                overlay.Reform();
-            }
+            overlay._isDissolving = false;
+            overlay._isReforming = false;
+            overlay.StopRendering();
+            overlay.ResetSiblingBlur(0.0);
+            return;
+        }
+
+        if (dissolved && !overlay._isDissolving)
+        {
+            overlay._isReforming = false;
+            overlay.StopRendering();
+            overlay.ResetSiblingBlur(0.0);
+            overlay.InvalidateVisual();
+        }
+        else if (!dissolved)
+        {
+            overlay.Reform();
         }
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
         base.OnRenderSizeChanged(sizeInfo);
-        if (sizeInfo.NewSize.Width > 5 && sizeInfo.NewSize.Height > 5)
+        if (sizeInfo.NewSize.Width > 4 && sizeInfo.NewSize.Height > 4)
         {
-            InitParticles();
+            InitParticles(sizeInfo.NewSize.Width, sizeInfo.NewSize.Height);
         }
     }
 
-    private void InitParticles()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private float NextFloat()
     {
-        double w = Math.Max(20.0, ActualWidth);
-        double h = Math.Max(20.0, ActualHeight);
-        var rand = new Random(GetHashCode() ^ Environment.TickCount);
+        // Xorshift32: branchless, zero-allocation PRNG
+        uint x = _rngState;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        _rngState = x;
+        return (x & 0x00FFFFFF) * (1.0f / 16777216.0f);
+    }
 
-        for (int i = 0; i < _particles.Length; i++)
+    private void InitParticles(double width, double height)
+    {
+        double w = Math.Max(24.0, width);
+        double h = Math.Max(16.0, height);
+
+        // Scale particle count with area to maintain Telegram's dense micro-grain texture
+        int targetCount = (int)Math.Round((w * h) / 23.0);
+        _activeCount = Math.Clamp(targetCount, MinParticles, MaxParticles);
+
+        Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
+        for (int i = 0; i < span.Length; i++)
         {
-            double bx = 4.0 + rand.NextDouble() * (w - 8.0);
-            double by = 4.0 + rand.NextDouble() * (h - 8.0);
-            double r = 1.2 + rand.NextDouble() * 1.8;
-            double alpha = 0.35 + rand.NextDouble() * 0.50;
-
-            _particles[i] = new DustParticle
-            {
-                BaseX = bx,
-                BaseY = by,
-                X = bx,
-                Y = by,
-                BaseRadius = r,
-                Radius = r,
-                TargetAlpha = alpha,
-                Alpha = alpha,
-                Phase = rand.NextDouble() * Math.PI * 2.0,
-                Speed = 0.8 + rand.NextDouble() * 1.0,
-                BrushIndex = rand.Next(DustBrushes.Length)
-            };
+            SpawnParticle(ref span[i], w, h, randomLifePhase: true);
         }
+
         _particlesInitialized = true;
+    }
+
+    private void SpawnParticle(ref DustParticle p, double width, double height, bool randomLifePhase)
+    {
+        int seq = ++_r2SequenceIndex;
+        double u = (0.5 + seq * R2AlphaX) % 1.0;
+        double v = (0.5 + seq * R2AlphaY) % 1.0;
+
+        // Add subtle jitter around the low-discrepancy R2 lattice point
+        double jitterX = (NextFloat() - 0.5) * 4.5;
+        double jitterY = (NextFloat() - 0.5) * 3.0;
+
+        double padX = Math.Min(3.0, width * 0.04);
+        double padY = Math.Min(2.0, height * 0.08);
+        double usableW = Math.Max(4.0, width - padX * 2.0);
+        double usableH = Math.Max(4.0, height - padY * 2.0);
+
+        float x = (float)Math.Clamp(padX + u * usableW + jitterX, padX, width - padX);
+        float y = (float)Math.Clamp(padY + v * usableH + jitterY, padY, height - padY);
+
+        // 3-tier Telegram size distribution: 62% micro specks, 28% medium motes, 10% crisp highlights
+        float sizeRoll = NextFloat();
+        float radius = sizeRoll < 0.62f
+            ? 0.62f + NextFloat() * 0.24f
+            : sizeRoll < 0.90f
+                ? 0.88f + NextFloat() * 0.24f
+                : 1.14f + NextFloat() * 0.22f;
+
+        // Isotropic drift velocity (Telegram spoiler particles drift continuously across bounds)
+        float angle = NextFloat() * MathF.Tau;
+        float speed = 7.5f + NextFloat() * 14.5f;
+
+        float lifetime = 0.60f + NextFloat() * 0.85f;
+        float life = randomLifePhase ? NextFloat() : 0.0f;
+        float peakAlpha = sizeRoll < 0.62f
+            ? 0.42f + NextFloat() * 0.46f
+            : 0.55f + NextFloat() * 0.40f;
+
+        byte tint = (byte)(seq % TintVariants);
+
+        p.X = x;
+        p.Y = y;
+        p.Vx = MathF.Cos(angle) * speed;
+        p.Vy = MathF.Sin(angle) * speed * 0.78f;
+        p.BaseRadius = radius;
+        p.Radius = radius;
+        p.PeakAlpha = peakAlpha;
+        p.Life = life;
+        p.LifeSpeed = 1.0f / lifetime;
+        p.TwinklePhase = NextFloat() * MathF.Tau;
+        p.TintIndex = tint;
+        p.Alpha = ComputeLifecycleAlpha(life, peakAlpha, p.TwinklePhase);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static float ComputeLifecycleAlpha(float life, float peakAlpha, float twinklePhase)
+    {
+        // Smooth envelope: quick fade-in (0..0.22), shimmering plateau (0.22..0.74), soft fade-out (0.74..1.0)
+        float envelope;
+        if (life < 0.22f)
+        {
+            float t = life * (1.0f / 0.22f);
+            envelope = t * t * (3.0f - 2.0f * t);
+        }
+        else if (life > 0.74f)
+        {
+            float t = (1.0f - life) * (1.0f / 0.26f);
+            envelope = Math.Clamp(t * t * (3.0f - 2.0f * t), 0.0f, 1.0f);
+        }
+        else
+        {
+            envelope = 1.0f;
+        }
+
+        float twinkle = 0.82f + 0.18f * MathF.Sin(life * MathF.Tau * 1.5f + twinklePhase);
+        return peakAlpha * envelope * twinkle;
     }
 
     private void UpdateRenderingState()
     {
-        if (IsActive && IsLoaded && IsVisible && (!IsDissolved || _isDissolving))
+        bool shouldAnimate = IsActive && IsLoaded && IsVisible &&
+                             (!IsDissolved || _isDissolving) &&
+                             (!AnimationConfig.ReduceMotion || _isDissolving || _isReforming);
+
+        if (shouldAnimate)
             StartRendering();
         else
             StopRendering();
@@ -173,20 +335,16 @@ public sealed class DustParticleOverlay : FrameworkElement
 
     private void StartRendering()
     {
-        if (_isRenderingAttached) return;
-        _lastFrameMs = Environment.TickCount64;
-        CompositionTarget.Rendering += OnRendering;
-        _isRenderingAttached = true;
+        _lastStepMs = Environment.TickCount64;
+        FrameCoordinator.Register(this);
     }
 
     private void StopRendering()
     {
-        if (!_isRenderingAttached) return;
-        CompositionTarget.Rendering -= OnRendering;
-        _isRenderingAttached = false;
+        FrameCoordinator.Unregister(this);
     }
 
-    private void OnRendering(object? sender, EventArgs e)
+    internal void OnCoordinatorTick(long nowMs)
     {
         if (!IsActive || !IsLoaded || !IsVisible)
         {
@@ -194,30 +352,52 @@ public sealed class DustParticleOverlay : FrameworkElement
             return;
         }
 
-        long now = Environment.TickCount64;
-        double dt = Math.Clamp((now - _lastFrameMs) * 0.001, 0.001, 0.050);
-        _lastFrameMs = now;
+        bool isTransitioning = _isDissolving || _isReforming;
+        long elapsedMs = nowMs - _lastStepMs;
+
+        // Pace idle simulation to ~45 FPS to save CPU/GPU on high-refresh-rate monitors
+        if (!isTransitioning && elapsedMs < IdleFrameIntervalMs)
+        {
+            return;
+        }
+
+        float dt = (float)Math.Clamp(elapsedMs * 0.001, 0.001, 0.050);
+        _lastStepMs = nowMs;
+
+        double w = Math.Max(24.0, ActualWidth);
+        double h = Math.Max(16.0, ActualHeight);
+        if (!_particlesInitialized)
+        {
+            InitParticles(w, h);
+        }
+
+        Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
 
         if (_isDissolving)
         {
-            double elapsed = (now - _dissolveStartMs) / 380.0;
-            _dissolveProgress = Math.Clamp(elapsed, 0.0, 1.0);
-            double fade = Math.Max(0.0, 1.0 - _dissolveProgress);
+            double progress = Math.Clamp((nowMs - _transitionStartMs) / DissolveDurationMs, 0.0, 1.0);
+            _dissolveProgress = progress;
 
-            for (int i = 0; i < _particles.Length; i++)
+            // Ease-out drag & quadratic alpha decay during shockwave burst
+            float drag = MathF.Exp(-4.8f * dt);
+            float remain = (float)(1.0 - progress);
+            float alphaFade = remain * remain;
+            float radiusScale = 1.0f - (float)progress * 0.35f;
+
+            for (int i = 0; i < span.Length; i++)
             {
-                ref var p = ref _particles[i];
+                ref var p = ref span[i];
                 p.X += p.Vx * dt;
                 p.Y += p.Vy * dt;
-                p.Vx *= 0.93;
-                p.Vy *= 0.93;
-                p.Radius = p.BaseRadius * (1.0 + _dissolveProgress * 1.8);
-                p.Alpha = p.TargetAlpha * fade * fade;
+                p.Vx *= drag;
+                p.Vy *= drag;
+                p.Radius = Math.Max(0.35f, p.BaseRadius * radiusScale);
+                p.Alpha = p.PeakAlpha * alphaFade;
             }
 
             InvalidateVisual();
 
-            if (_dissolveProgress >= 1.0)
+            if (progress >= 1.0)
             {
                 _isDissolving = false;
                 IsDissolved = true;
@@ -225,17 +405,48 @@ public sealed class DustParticleOverlay : FrameworkElement
                 StopRendering();
                 InvalidateVisual();
             }
+            return;
         }
-        else if (!IsDissolved)
+
+        if (_isReforming)
         {
-            double time = now * 0.001;
-            for (int i = 0; i < _particles.Length; i++)
+            double progress = Math.Clamp((nowMs - _transitionStartMs) / ReformDurationMs, 0.0, 1.0);
+            _reformProgress = 1.0 - Math.Pow(1.0 - progress, 3.0);
+            if (progress >= 1.0)
             {
-                ref var p = ref _particles[i];
-                p.X = p.BaseX + Math.Sin(time * p.Speed + p.Phase) * 5.0;
-                p.Y = p.BaseY + Math.Cos(time * 0.8 * p.Speed + p.Phase * 1.3) * 3.5;
-                p.Alpha = p.TargetAlpha * (0.75 + 0.25 * Math.Sin(time * 2.2 + p.Phase));
+                _isReforming = false;
+                _reformProgress = 1.0;
+                if (AnimationConfig.ReduceMotion)
+                {
+                    StopRendering();
+                }
             }
+        }
+
+        if (!IsDissolved)
+        {
+            float maxW = (float)w - 1.5f;
+            float maxH = (float)h - 1.5f;
+            float reformFactor = (float)_reformProgress;
+
+            for (int i = 0; i < span.Length; i++)
+            {
+                ref var p = ref span[i];
+                p.Life += p.LifeSpeed * dt;
+
+                // Subtle curl turbulence keeps trajectories organic
+                float curl = MathF.Sin(p.TwinklePhase + p.Life * 4.2f) * 6.0f;
+                p.X += (p.Vx + curl * 0.25f) * dt;
+                p.Y += (p.Vy - curl * 0.18f) * dt;
+
+                if (p.Life >= 1.0f || p.X < 1.5f || p.X > maxW || p.Y < 1.5f || p.Y > maxH)
+                {
+                    SpawnParticle(ref p, w, h, randomLifePhase: false);
+                }
+
+                p.Alpha = ComputeLifecycleAlpha(p.Life, p.PeakAlpha, p.TwinklePhase) * reformFactor;
+            }
+
             InvalidateVisual();
         }
         else
@@ -248,24 +459,42 @@ public sealed class DustParticleOverlay : FrameworkElement
     {
         if (_isDissolving || IsDissolved) return;
         _isDissolving = true;
-        _dissolveStartMs = Environment.TickCount64;
-        _lastFrameMs = _dissolveStartMs;
-        Point origin = clickPoint ?? new Point(ActualWidth / 2, ActualHeight / 2);
+        _isReforming = false;
+        _transitionStartMs = Environment.TickCount64;
+        _lastStepMs = _transitionStartMs;
 
-        var rand = Random.Shared;
-        for (int i = 0; i < _particles.Length; i++)
+        double w = Math.Max(24.0, ActualWidth);
+        double h = Math.Max(16.0, ActualHeight);
+        if (!_particlesInitialized)
         {
-            ref var p = ref _particles[i];
-            double dx = p.X - origin.X;
-            double dy = p.Y - origin.Y;
-            double dist = Math.Max(2.0, Math.Sqrt(dx * dx + dy * dy));
-            double angle = Math.Atan2(dy, dx) + (rand.NextDouble() - 0.5) * 0.7;
-            double speed = 120.0 + rand.NextDouble() * 240.0;
-            p.Vx = Math.Cos(angle) * speed;
-            p.Vy = Math.Sin(angle) * speed;
+            InitParticles(w, h);
         }
 
-        AnimateBlur(fromRadius: 12.0, toRadius: 0.0);
+        float originX = (float)(clickPoint?.X ?? (w * 0.5));
+        float originY = (float)(clickPoint?.Y ?? (h * 0.5));
+        float maxDist = MathF.Max(24.0f, MathF.Sqrt((float)(w * w + h * h)));
+
+        Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref var p = ref span[i];
+            float dx = p.X - originX;
+            float dy = p.Y - originY;
+            float dist = MathF.Sqrt(dx * dx + dy * dy);
+
+            float baseAngle = dist > 0.5f ? MathF.Atan2(dy, dx) : NextFloat() * MathF.Tau;
+            float scatterAngle = baseAngle + (NextFloat() - 0.5f) * 0.65f;
+
+            // Radial shockwave: particles near the click receive a stronger initial impulse
+            float proximity = 1.0f - Math.Clamp(dist / maxDist, 0.0f, 0.75f);
+            float speed = (85.0f + NextFloat() * 165.0f) * (0.75f + 0.55f * proximity);
+
+            p.Vx = MathF.Cos(scatterAngle) * speed;
+            p.Vy = MathF.Sin(scatterAngle) * speed;
+            p.PeakAlpha = Math.Max(p.Alpha, 0.45f + NextFloat() * 0.45f);
+        }
+
+        AnimateBlur(fromRadius: MaskedBlurRadius, toRadius: 0.0);
         StartRendering();
     }
 
@@ -273,34 +502,106 @@ public sealed class DustParticleOverlay : FrameworkElement
     {
         _isDissolving = false;
         _dissolveProgress = 0.0;
-        InitParticles();
-        AnimateBlur(fromRadius: 0.0, toRadius: 12.0);
-        IsHitTestVisible = true;
-        StartRendering();
+        _isReforming = true;
+        _reformProgress = 0.0;
+        _transitionStartMs = Environment.TickCount64;
+        _lastStepMs = _transitionStartMs;
+
+        InitParticles(ActualWidth, ActualHeight);
+        if (!IsActive)
+        {
+            _isReforming = false;
+            _reformProgress = 1.0;
+            IsHitTestVisible = false;
+            ResetSiblingBlur(0.0);
+            UpdateRenderingState();
+            InvalidateVisual();
+            return;
+        }
+
+        if (!IsLoaded || AnimationConfig.ReduceMotion)
+        {
+            _isReforming = false;
+            _reformProgress = 1.0;
+            ResetSiblingBlur(MaskedBlurRadius);
+        }
+        else
+        {
+            AnimateBlur(fromRadius: 0.0, toRadius: MaskedBlurRadius);
+        }
+
+        IsHitTestVisible = !IsDissolved;
+        UpdateRenderingState();
         InvalidateVisual();
+    }
+
+    private TextBlock? FindSiblingTextBlock()
+    {
+        if (Parent is not Grid grid) return null;
+        for (int i = 0; i < grid.Children.Count; i++)
+        {
+            if (grid.Children[i] is TextBlock tb)
+            {
+                return tb;
+            }
+        }
+        return null;
+    }
+
+    private void ResetSiblingBlur(double targetRadius)
+    {
+        var textBlock = FindSiblingTextBlock();
+        if (textBlock == null) return;
+
+        if (textBlock.Effect is BlurEffect blur)
+        {
+            blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+            blur.SetCurrentValue(BlurEffect.RadiusProperty, targetRadius);
+        }
+
+        // Hide the underlying bullet mask while covered by spoiler dust so it doesn't
+        // cast a bright white blurred blob on the left side under the particles.
+        double targetOpacity = targetRadius > 0.01 ? 0.0 : 1.0;
+        textBlock.BeginAnimation(OpacityProperty, null);
+        textBlock.SetCurrentValue(OpacityProperty, targetOpacity);
     }
 
     private void AnimateBlur(double fromRadius, double toRadius)
     {
-        if (Parent is Grid grid)
+        var textBlock = FindSiblingTextBlock();
+        if (textBlock == null) return;
+
+        if (textBlock.Effect is not BlurEffect blur)
         {
-            var textBlock = grid.Children.OfType<TextBlock>().FirstOrDefault();
-            if (textBlock != null)
-            {
-                if (textBlock.Effect is not BlurEffect blur)
-                {
-                    textBlock.Effect = blur = new BlurEffect { RenderingBias = RenderingBias.Performance };
-                }
-                blur.BeginAnimation(BlurEffect.RadiusProperty, null);
-                blur.Radius = fromRadius;
-                var anim = new DoubleAnimation(fromRadius, toRadius, TimeSpan.FromMilliseconds(320))
-                {
-                    EasingFunction = TrayMotion.EaseOut
-                };
-                Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
-                blur.BeginAnimation(BlurEffect.RadiusProperty, anim);
-            }
+            textBlock.Effect = blur = new BlurEffect { RenderingBias = RenderingBias.Performance };
         }
+
+        blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+        blur.SetCurrentValue(BlurEffect.RadiusProperty, toRadius);
+
+        double fromOpacity = toRadius > 0.01 ? 1.0 : 0.0;
+        double toOpacity = toRadius > 0.01 ? 0.0 : 1.0;
+        textBlock.BeginAnimation(OpacityProperty, null);
+        textBlock.SetCurrentValue(OpacityProperty, toOpacity);
+
+        if (!IsLoaded || AnimationConfig.ReduceMotion) return;
+
+        var duration = TimeSpan.FromMilliseconds(300);
+        var blurAnim = new DoubleAnimation(fromRadius, toRadius, duration)
+        {
+            EasingFunction = TrayMotion.EaseOut,
+            FillBehavior = FillBehavior.Stop
+        };
+        var opacityAnim = new DoubleAnimation(fromOpacity, toOpacity, duration)
+        {
+            EasingFunction = TrayMotion.EaseOut,
+            FillBehavior = FillBehavior.Stop
+        };
+
+        Timeline.SetDesiredFrameRate(blurAnim, AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(opacityAnim, AnimationConfig.TargetFps);
+        blur.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
+        textBlock.BeginAnimation(OpacityProperty, opacityAnim);
     }
 
     protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -322,58 +623,82 @@ public sealed class DustParticleOverlay : FrameworkElement
 
         if (!_particlesInitialized)
         {
-            InitParticles();
+            InitParticles(ActualWidth, ActualHeight);
         }
 
-        // 1. Frosted Backdrop Scrim over text
+        // Transparent hit-test surface across the entire spoiler area so clicking between
+        // fine dust motes still triggers Dissolve reliably.
         if (!_isDissolving)
         {
-            dc.DrawRoundedRectangle(BackdropBrush, null, new Rect(0, 0, ActualWidth, ActualHeight), 8, 8);
+            dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
         }
-        else
+
+        // Render particles using pre-frozen Alpha/Tint LUT brushes (zero PushOpacity/Pop calls, zero heap allocations).
+        ReadOnlySpan<DustParticle> span = _particles.AsSpan(0, _activeCount);
+        for (int i = 0; i < span.Length; i++)
         {
-            double fade = Math.Max(0.0, 1.0 - _dissolveProgress);
-            if (fade > 0.01)
+            ref readonly var p = ref span[i];
+            if (p.Alpha <= 0.015f) continue;
+
+            int alphaBucket = (int)(p.Alpha * (AlphaLevels - 1));
+            if (alphaBucket < 0) continue;
+            if (alphaBucket >= AlphaLevels) alphaBucket = AlphaLevels - 1;
+
+            Brush brush = BrushLut[p.TintIndex * AlphaLevels + alphaBucket];
+            dc.DrawEllipse(brush, null, new Point(p.X, p.Y), p.Radius, p.Radius);
+        }
+    }
+
+    /// <summary>
+    /// Shared static render coordinator so multiple visible spoiler overlays share a single
+    /// CompositionTarget.Rendering subscription.
+    /// </summary>
+    private static class FrameCoordinator
+    {
+        private static readonly List<DustParticleOverlay> ActiveOverlays = new(4);
+        private static bool _isSubscribed;
+
+        public static void Register(DustParticleOverlay overlay)
+        {
+            if (!ActiveOverlays.Contains(overlay))
             {
-                dc.PushOpacity(fade);
-                dc.DrawRoundedRectangle(BackdropBrush, null, new Rect(0, 0, ActualWidth, ActualHeight), 8, 8);
-                dc.Pop();
+                ActiveOverlays.Add(overlay);
+            }
+
+            if (!_isSubscribed && ActiveOverlays.Count > 0)
+            {
+                CompositionTarget.Rendering += OnCompositionTargetRendering;
+                _isSubscribed = true;
             }
         }
 
-        // 2. Floating / Dispersing Dust Particles
-        for (int i = 0; i < _particles.Length; i++)
+        public static void Unregister(DustParticleOverlay overlay)
         {
-            ref var p = ref _particles[i];
-            if (p.Alpha <= 0.01) continue;
-
-            dc.PushOpacity(p.Alpha);
-            var brush = DustBrushes[p.BrushIndex];
-            dc.DrawEllipse(brush, null, new Point(p.X, p.Y), p.Radius, p.Radius);
-            dc.Pop();
+            ActiveOverlays.Remove(overlay);
+            if (_isSubscribed && ActiveOverlays.Count == 0)
+            {
+                CompositionTarget.Rendering -= OnCompositionTargetRendering;
+                _isSubscribed = false;
+            }
         }
 
-        // 3. Central Hint Capsule (Visible when idle)
-        if (!_isDissolving && ActualWidth > 55 && ActualHeight > 22)
+        private static void OnCompositionTargetRendering(object? sender, EventArgs e)
         {
-            double pillW = Math.Min(88, ActualWidth - 16);
-            double pillH = 22;
-            double pillX = (ActualWidth - pillW) / 2;
-            double pillY = (ActualHeight - pillH) / 2;
-            Rect pillRect = new(pillX, pillY, pillW, pillH);
+            if (ActiveOverlays.Count == 0)
+            {
+                CompositionTarget.Rendering -= OnCompositionTargetRendering;
+                _isSubscribed = false;
+                return;
+            }
 
-            dc.DrawRoundedRectangle(CapsuleBg, CapsuleBorder, pillRect, pillH / 2, pillH / 2);
-
-            var text = new FormattedText(
-                "••••••••",
-                System.Globalization.CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                new Typeface(new FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal),
-                11.5,
-                TextPillBrush,
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-
-            dc.DrawText(text, new Point(pillX + (pillW - text.Width) / 2, pillY + (pillH - text.Height) / 2));
+            long now = Environment.TickCount64;
+            for (int i = ActiveOverlays.Count - 1; i >= 0; i--)
+            {
+                if (i < ActiveOverlays.Count)
+                {
+                    ActiveOverlays[i].OnCoordinatorTick(now);
+                }
+            }
         }
     }
 }

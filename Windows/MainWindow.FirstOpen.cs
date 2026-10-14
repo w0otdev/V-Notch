@@ -39,20 +39,24 @@ public partial class MainWindow
     private void PrepareExpandedContentForFirstOpen()
     {
         var visibility = ExpandedContent.Visibility;
+        double opacity = ExpandedContent.Opacity;
         double targetWidth = Math.Max(0, _expandedWidth - ExpandedContentHorizontalInset);
         double targetHeight = Math.Max(0, _expandedHeight - ExpandedContentVerticalInset);
         try
         {
-            ExpandedContent.Visibility = Visibility.Hidden;
+            ExpandedContent.Opacity = 0;
+            ExpandedContent.Visibility = Visibility.Visible;
             ExpandedContent.Width = targetWidth;
             ExpandedContent.Height = targetHeight;
             ExpandedContent.Measure(new Size(targetWidth, targetHeight));
             ExpandedContent.Arrange(new Rect(0, 0, targetWidth, targetHeight));
             PrepareExpandedContentLayoutForReveal();
+            EnsureCachedThumbnailExpandTarget();
         }
         finally
         {
             ExpandedContent.Visibility = visibility;
+            ExpandedContent.Opacity = opacity;
         }
     }
 

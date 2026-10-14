@@ -691,8 +691,8 @@ public partial class MainWindow
     private void AnimateStatusBarReveal(bool show)
     {
         var dur = TimeSpan.FromMilliseconds(show ? 340 : 220);
-        var easing = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 5 };
-        var settingsEase = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.22 };
+        var easing = _easeExpOut5;
+        var settingsEase = _easeBackOut022;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
 
         BatterySection.BeginAnimation(OpacityProperty, null);
@@ -890,7 +890,7 @@ public partial class MainWindow
         var widthAnim = new DoubleAnimationUsingKeyFrames();
         widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakWidth,
             KeyTime.FromTimeSpan(ejectDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentWidth,
             KeyTime.FromTimeSpan(ejectDur + springDur),
             _easeSoftSpring));
@@ -902,7 +902,7 @@ public partial class MainWindow
         var heightAnim = new DoubleAnimationUsingKeyFrames();
         heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakHeight,
             KeyTime.FromTimeSpan(ejectDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentHeight,
             KeyTime.FromTimeSpan(ejectDur + springDur),
             _easeSoftSpring));
@@ -911,7 +911,7 @@ public partial class MainWindow
         var scaleY = new DoubleAnimationUsingKeyFrames();
         scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.15,
             KeyTime.FromTimeSpan(ejectDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
             KeyTime.FromTimeSpan(ejectDur + springDur),
             _easeSoftSpring));
@@ -944,7 +944,7 @@ public partial class MainWindow
         var widthAnim = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
         widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakWidth,
             KeyTime.FromTimeSpan(openDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentWidth,
             KeyTime.FromTimeSpan(openDur + springDur),
             _easeSoftSpring));
@@ -956,7 +956,7 @@ public partial class MainWindow
         var heightAnim = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
         heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakHeight,
             KeyTime.FromTimeSpan(openDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentHeight,
             KeyTime.FromTimeSpan(openDur + springDur),
             _easeSoftSpring));
@@ -968,7 +968,7 @@ public partial class MainWindow
         var radiusAnim = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
         radiusAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakRadius,
             KeyTime.FromTimeSpan(openDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         radiusAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentRadius,
             KeyTime.FromTimeSpan(openDur + springDur),
             _easeSoftSpring));
@@ -977,7 +977,7 @@ public partial class MainWindow
         var scaleY = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
         scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.12,
             KeyTime.FromTimeSpan(openDur),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
             KeyTime.FromTimeSpan(openDur + springDur),
             _easeSoftSpring));

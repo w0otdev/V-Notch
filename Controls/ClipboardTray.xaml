@@ -113,21 +113,37 @@
    <Setter Property="Cursor" Value="Hand"/>
    <Setter Property="Focusable" Value="True"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-    <Border x:Name="Surface" local:TrayMotion.Background="{TemplateBinding Background}" CornerRadius="{StaticResource TrayRadiusMedium}"
+    <Border x:Name="Surface" local:TrayMotion.Background="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}" CornerRadius="{StaticResource TrayRadiusMedium}"
      local:TrayMotion.BorderBrush="#18FFFFFF" BorderThickness="1" Padding="{TemplateBinding Padding}">
      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
     </Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True">
-      <Setter TargetName="Surface" Property="local:TrayMotion.Background" Value="#22FFFFFF"/>
       <Setter TargetName="Surface" Property="local:TrayMotion.BorderBrush" Value="#45FFFFFF"/>
-      <Setter Property="Foreground" Value="White"/>
      </Trigger>
      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.Opacity" Value="0.7"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.BorderBrush" Value="#A0FFFFFF"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
+   <Style.Triggers>
+    <Trigger Property="IsMouseOver" Value="True">
+     <Setter Property="Background" Value="#22FFFFFF"/>
+     <Setter Property="Foreground" Value="White"/>
+    </Trigger>
+   </Style.Triggers>
+  </Style>
+
+  <!-- Primary Unlock Button (Solid White Surface with Crisp Light Hover) -->
+  <Style x:Key="UnlockButtonStyle" TargetType="Button" BasedOn="{StaticResource TrayButton}">
+   <Setter Property="Background" Value="White"/>
+   <Setter Property="Foreground" Value="#121216"/>
+   <Style.Triggers>
+    <Trigger Property="IsMouseOver" Value="True">
+     <Setter Property="Background" Value="#E5E5EA"/>
+     <Setter Property="Foreground" Value="#121216"/>
+    </Trigger>
+   </Style.Triggers>
   </Style>
 
   <!-- Circular Header Companion Button (Keyboard, Pause, Info) -->
@@ -1046,8 +1062,8 @@
                      BorderThickness="0" Padding="0" KeyDown="Passcode_KeyDown"/>
        </Grid>
       </Border>
-      <Button x:Name="UnlockButton" Grid.Column="2" Width="36" Height="36" Margin="8,0,0,0" Background="White" Foreground="#121216" Style="{StaticResource TrayButton}" Padding="0" Click="Unlock_Click">
-       <local:TrayIcon Kind="Arrow" Width="16" Height="16" Foreground="#121216"/>
+      <Button x:Name="UnlockButton" Grid.Column="2" Width="36" Height="36" Margin="8,0,0,0" Style="{StaticResource UnlockButtonStyle}" Padding="0" Click="Unlock_Click">
+       <local:TrayIcon Kind="Arrow" Width="16" Height="16" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
       </Button>
      </Grid>
      <TextBlock x:Name="LockHint" FontSize="12" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource TrayMutedForeground}" HorizontalAlignment="Center" Margin="0,8,0,0"/>

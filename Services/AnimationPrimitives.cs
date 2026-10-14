@@ -13,6 +13,11 @@ internal static class AnimationPrimitives
 
     public static readonly ExponentialEase _easeExpOut7 = Freeze(new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 7 });
     public static readonly ExponentialEase _easeExpOut6 = Freeze(new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 });
+    public static readonly ExponentialEase _easeExpOut5 = Freeze(new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 5 });
+    public static readonly BackEase _easeBackOut018 = Freeze(new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.18 });
+    public static readonly BackEase _easeBackOut022 = Freeze(new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.22 });
+    public static readonly BackEase _easeBackOut032 = Freeze(new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 });
+    public static readonly BackEase _easeBackOut040 = Freeze(new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 });
     public static readonly QuadraticEase _easeQuadOut = Freeze(new QuadraticEase { EasingMode = EasingMode.EaseOut });
     public static readonly QuadraticEase _easeQuadIn = Freeze(new QuadraticEase { EasingMode = EasingMode.EaseIn });
     public static readonly QuadraticEase _easeQuadInOut = Freeze(new QuadraticEase { EasingMode = EasingMode.EaseInOut });

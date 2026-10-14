@@ -170,6 +170,15 @@ public partial class SettingsWindow
         AnimateSectionExit(oldCard, oldTranslate, oldPanel, previous, direction, RevealIncoming);
     }
 
+    private static readonly CubicEase SectionExitEase = CreateFrozenSectionExitEase();
+
+    private static CubicEase CreateFrozenSectionExitEase()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+        ease.Freeze();
+        return ease;
+    }
+
     private void AnimateSectionExit(
         FrameworkElement oldCard,
         TranslateTransform oldTranslate,
@@ -179,7 +188,7 @@ public partial class SettingsWindow
         Action onExitCompleted)
     {
         int fps = VNotch.Services.AnimationConfig.TargetFps;
-        var exitEase = new CubicEase { EasingMode = EasingMode.EaseIn };
+        var exitEase = SectionExitEase;
         var exitDur = TimeSpan.FromMilliseconds(130);
 
         var fadeOut = new DoubleAnimation(oldCard.Opacity, 0, exitDur) { EasingFunction = exitEase };
@@ -274,8 +283,10 @@ public partial class SettingsWindow
             return;
         }
 
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-        var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
+        int fps = entranceDirection
+            ? Math.Min(60, VNotch.Services.AnimationConfig.TargetFps)
+            : VNotch.Services.AnimationConfig.TargetFps;
+        var ease = EntranceEaseOut;
 
         // entranceDirection=true → slide from above (-14px) to match top-down open cascade
         // Normal nav switching uses ±direction * 14

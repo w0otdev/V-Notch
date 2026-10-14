@@ -1420,7 +1420,7 @@ public partial class MainWindow : Window
         var bounce = new DoubleAnimationUsingKeyFrames();
         bounce.KeyFrames.Add(new EasingDoubleKeyFrame(1.12,
             KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120)),
-            new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+            _easeQuadOut));
         bounce.KeyFrames.Add(new EasingDoubleKeyFrame(1,
             KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(600)),
             _easeSoftSpring));
@@ -1862,7 +1862,7 @@ public partial class MainWindow : Window
                     var pulse = new DoubleAnimationUsingKeyFrames();
                     pulse.KeyFrames.Add(new EasingDoubleKeyFrame(1.04,
                         KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(80)),
-                        new QuadraticEase { EasingMode = EasingMode.EaseOut }));
+                        _easeQuadOut));
                     pulse.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
                         KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300)),
                         _easeSoftSpring));
@@ -2495,9 +2495,7 @@ public partial class MainWindow : Window
 
         double targetScale = isHovered ? 1.1 : 1.0;
         var dur = isHovered ? TimeSpan.FromMilliseconds(220) : TimeSpan.FromMilliseconds(280);
-        var ease = isHovered
-            ? (IEasingFunction)new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 }
-            : new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 5 };
+        IEasingFunction ease = isHovered ? _easeBackOut040 : _easeExpOut5;
 
         var anim = new DoubleAnimation(targetScale, dur)
         {
@@ -2540,8 +2538,8 @@ public partial class MainWindow : Window
         var dur = TimeSpan.FromMilliseconds(isEnter ? 360 : 300);
         var scaleDur = new Duration(dur);
         var rotateDur = new Duration(TimeSpan.FromMilliseconds(isEnter ? 520 : 360));
-        var easeOut = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = isEnter ? 0.32 : 0.18 };
-        var rotateEase = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 5 };
+        var easeOut = isEnter ? _easeBackOut032 : _easeBackOut018;
+        var rotateEase = _easeExpOut5;
 
         var scaleAnim = new DoubleAnimation
         {

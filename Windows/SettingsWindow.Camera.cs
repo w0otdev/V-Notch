@@ -29,16 +29,22 @@ public partial class SettingsWindow
     {
         try
         {
-            var groups = await global::Windows.Media.Capture.Frames.MediaFrameSourceGroup.FindAllAsync();
-            var cameras = groups
-                .Where(g => g.SourceInfos.Any(s => s.SourceKind == global::Windows.Media.Capture.Frames.MediaFrameSourceKind.Color))
-                .Select(g => new CameraDeviceItem { Id = g.Id, Name = g.DisplayName })
-                .ToList();
-
-            if (cameras.Count == 0)
+            var cameras = await Task.Run(async () =>
             {
-                cameras.Add(new CameraDeviceItem { Id = "", Name = Loc.Get("settings.camera.none") });
-            }
+                var groups = await global::Windows.Media.Capture.Frames.MediaFrameSourceGroup.FindAllAsync();
+                var list = groups
+                    .Where(g => g.SourceInfos.Any(s => s.SourceKind == global::Windows.Media.Capture.Frames.MediaFrameSourceKind.Color))
+                    .Select(g => new CameraDeviceItem { Id = g.Id, Name = g.DisplayName })
+                    .ToList();
+
+                if (list.Count == 0)
+                {
+                    list.Add(new CameraDeviceItem { Id = "", Name = Loc.Get("settings.camera.none") });
+                }
+                return list;
+            });
+
+            if (_isClosing || Dispatcher.HasShutdownStarted) return;
 
             CameraCombo.ItemsSource = cameras;
             CameraCombo.DisplayMemberPath = "Name";
@@ -48,6 +54,7 @@ public partial class SettingsWindow
         }
         catch
         {
+            if (_isClosing || Dispatcher.HasShutdownStarted) return;
             CameraCombo.ItemsSource = new[] { new CameraDeviceItem { Id = "", Name = Loc.Get("settings.camera.none") } };
             CameraCombo.DisplayMemberPath = "Name";
             CameraCombo.SelectedIndex = 0;

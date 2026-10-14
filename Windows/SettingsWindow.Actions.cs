@@ -536,6 +536,8 @@ public partial class SettingsWindow
         if (d is SettingsWindow window)
         {
             double r = (double)e.NewValue;
+            if (Math.Abs(window.MainShell.CornerRadius.TopLeft - r) < 0.25 && Math.Abs(r - 24.0) > 0.01)
+                return;
             window.MainShell.CornerRadius = new CornerRadius(r);
             window.FooterBar.CornerRadius = new CornerRadius(0, 0, r, r);
         }

@@ -572,6 +572,7 @@ public sealed class ClipboardTrayInteractionTests
         using var tray = new ClipboardTray();
         var forgotButton = (Button)tray.FindName("ForgotPinButton");
         var confirmBorder = (Border)tray.FindName("DeleteConfirmationBorder");
+        var unlockButton = (Button)tray.FindName("UnlockButton");
 
         Assert.NotNull(forgotButton);
         Assert.Equal(0, forgotButton.BorderThickness.Left);
@@ -579,6 +580,20 @@ public sealed class ClipboardTrayInteractionTests
 
         Assert.NotNull(confirmBorder);
         Assert.True(confirmBorder.BorderThickness.Left >= 1.5);
+
+        Assert.NotNull(unlockButton);
+        unlockButton.ApplyTemplate();
+        var surface = (Border)unlockButton.Template.FindName("Surface", unlockButton);
+        Assert.Equal(Colors.White, ((SolidColorBrush)unlockButton.Background).Color);
+        Assert.Equal(Colors.White, ((SolidColorBrush)surface.Background).Color);
+        Assert.Equal(Color.FromRgb(0x12, 0x12, 0x16), ((SolidColorBrush)unlockButton.Foreground).Color);
+
+        var hoverTrigger = unlockButton.Style.Triggers.OfType<Trigger>()
+            .Single(trigger => trigger.Property == UIElement.IsMouseOverProperty && Equals(trigger.Value, true));
+        var hoverBg = hoverTrigger.Setters.OfType<Setter>().Single(setter => setter.Property == Control.BackgroundProperty);
+        var hoverFg = hoverTrigger.Setters.OfType<Setter>().Single(setter => setter.Property == Control.ForegroundProperty);
+        Assert.Equal(Color.FromRgb(0xE5, 0xE5, 0xEA), ((SolidColorBrush)hoverBg.Value).Color);
+        Assert.Equal(Color.FromRgb(0x12, 0x12, 0x16), ((SolidColorBrush)hoverFg.Value).Color);
     });
 
     private static MouseButtonEventArgs Press(UIElement element)
