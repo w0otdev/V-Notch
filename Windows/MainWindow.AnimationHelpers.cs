@@ -335,6 +335,7 @@ public partial class MainWindow
             _isGreetingActive = true;
             _isAnimating = true;
             NotchLiveContent.Visibility = Visibility.Hidden;
+            PrepareGreetingPathsIfNeeded();
         }
 
         NotchBorder.Opacity = 0;
@@ -360,6 +361,7 @@ public partial class MainWindow
             opacityAnim.Completed += (s, e) =>
             {
                 StartStartupHold(TimeSpan.FromSeconds(3));
+                SchedulePostAppearInitialization();
             };
         }
 

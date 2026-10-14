@@ -80,6 +80,31 @@ public sealed class ProgressEnginePreviousTrackTests
         Assert.InRange(engine.GetUiFrame().Position.TotalSeconds, 11.5, 13.0);
     }
 
+    [Fact]
+    public async Task UserSeek_WhenMediaStopsWithUncompensatedTimestamp_FreezesProgressAtSeekTarget()
+    {
+        var engine = CreatePlayingEngine(TimeSpan.FromSeconds(30));
+        engine.NotifyUserSeek(TimeSpan.FromSeconds(120));
+
+        // When media stops while waiting for a seek/new track, SMTC reports IsPlaying=false
+        // with an uncompensated (older) timeline timestamp and pre-seek position.
+        engine.OnMediaSnapshot(new ProgressSnapshot
+        {
+            Position = TimeSpan.FromSeconds(30),
+            Duration = TimeSpan.FromMinutes(3),
+            IsPlaying = false,
+            PlaybackRate = 1,
+            IsSeekEnabled = true,
+            Timestamp = DateTime.UtcNow.AddSeconds(-5),
+            SequenceNumber = 2
+        });
+
+        await Task.Delay(150);
+        var frame = engine.GetUiFrame();
+        Assert.Equal(ProgressState.Paused, frame.State);
+        Assert.Equal(120, frame.Position.TotalSeconds, 1);
+    }
+
     private static ProgressEngine CreatePlayingEngine(TimeSpan position)
     {
         var engine = new ProgressEngine();

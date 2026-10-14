@@ -6,18 +6,18 @@ internal static class TranslationTextFormatting
     // Preserve internal line breaks within Markdown fenced code blocks.
     internal static string Format(string text)
     {
-        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var paragraphs = new List<string>();
         var currentCodeBlock = new List<string>();
         bool inCodeFence = false;
 
-        foreach (var line in lines)
+        foreach (ReadOnlySpan<char> rawLine in text.AsSpan().EnumerateLines())
         {
-            string trimmed = line.Trim();
+            ReadOnlySpan<char> trimmed = rawLine.Trim();
             bool isFence = trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal);
 
             if (isFence)
             {
+                string line = rawLine.ToString();
                 if (inCodeFence)
                 {
                     currentCodeBlock.Add(line);
@@ -36,11 +36,11 @@ internal static class TranslationTextFormatting
 
             if (inCodeFence)
             {
-                currentCodeBlock.Add(line);
+                currentCodeBlock.Add(rawLine.ToString());
             }
-            else if (!string.IsNullOrWhiteSpace(line))
+            else if (!trimmed.IsEmpty)
             {
-                paragraphs.Add(line);
+                paragraphs.Add(rawLine.ToString());
             }
         }
 

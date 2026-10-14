@@ -84,7 +84,14 @@ public partial class SettingsWindow
     private void OnFirstShowVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (!IsVisible || _firstShowState != FirstShowState.ReadyForRealShow) return;
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, CompleteFirstRealShow);
+        if (IsLoaded)
+        {
+            CompleteFirstRealShow();
+        }
+        else
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, CompleteFirstRealShow);
+        }
     }
 
     private void CompleteFirstRealShow()
@@ -94,7 +101,7 @@ public partial class SettingsWindow
         var firstOpenProbe = Stopwatch.StartNew();
         PlayEntranceAnimation();
         FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings entrance {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
         {
             if (_isClosing || Dispatcher.HasShutdownStarted) return;
             EnsureBackgroundInitializationStarted();

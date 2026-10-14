@@ -117,6 +117,7 @@ public abstract class NotchModuleBase : INotchModule
             if (_timer != null)
             {
                 _timer.Tick -= TimerOnTick;
+                _timer.Dispose();
                 _timer = null;
             }
 

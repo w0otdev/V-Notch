@@ -58,6 +58,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
                 OnPropertyChanged(nameof(Title));
                 OnPropertyChanged(nameof(DisplayPreview));
                 OnPropertyChanged(nameof(BlurRadius));
+                OnPropertyChanged(nameof(MaskedTextOpacity));
                 OnPropertyChanged(nameof(RevealIconKind));
                 OnPropertyChanged(nameof(RevealTooltip));
             }
@@ -65,6 +66,8 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     }
 
     public double BlurRadius => IsMasked && !IsRevealed ? 12.0 : 0.0;
+
+    public double MaskedTextOpacity => IsMasked && !IsRevealed ? 0.0 : 1.0;
 
     public bool IsMasked => _isMasked ??= Entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(Entry.Preview, Entry.SourceApp, Entry.SourceExecutable);
 

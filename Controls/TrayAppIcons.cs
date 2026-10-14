@@ -158,10 +158,18 @@ public static class TrayAppIcons
     }
 
     private static SolidColorBrush Brush(string color, double opacity = 1)
-        => new((Color)ColorConverter.ConvertFromString(color)) { Opacity = opacity };
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color)) { Opacity = opacity };
+        brush.Freeze();
+        return brush;
+    }
 
     private static LinearGradientBrush Gradient(string top, string bottom)
-        => new((Color)ColorConverter.ConvertFromString(top), (Color)ColorConverter.ConvertFromString(bottom), 90);
+    {
+        var brush = new LinearGradientBrush((Color)ColorConverter.ConvertFromString(top), (Color)ColorConverter.ConvertFromString(bottom), 90);
+        brush.Freeze();
+        return brush;
+    }
 
     private static void Tile(DrawingContext dc, string top, string bottom)
         => dc.DrawRoundedRectangle(Gradient(top, bottom), new Pen(Brush("#22000000"), 0.7), new Rect(3, 3, 58, 58), 13, 13);

@@ -112,15 +112,20 @@ public static class FastBlurService
     {
         int window = 2 * radius + 1;
         uint reciprocal = GetWindowReciprocal(window);
+        int lastX = w - 1;
 
         for (int y = 0; y < h; y++)
         {
             int pBase = y * w * 4;
+            int firstEdgeCount = radius + 1;
+            int sumB = source[pBase] * firstEdgeCount;
+            int sumG = source[pBase + 1] * firstEdgeCount;
+            int sumR = source[pBase + 2] * firstEdgeCount;
+            int sumA = source[pBase + 3] * firstEdgeCount;
 
-            int sumB = 0, sumG = 0, sumR = 0, sumA = 0;
-            for (int dx = -radius; dx <= radius; dx++)
+            for (int dx = 1; dx <= radius; dx++)
             {
-                int nx = Math.Clamp(dx, 0, w - 1);
+                int nx = dx < lastX ? dx : lastX;
                 int o = pBase + nx * 4;
                 sumB += source[o];
                 sumG += source[o + 1];
@@ -128,23 +133,77 @@ public static class FastBlurService
                 sumA += source[o + 3];
             }
 
-            for (int x = 0; x < w; x++)
+            if (w > window)
             {
-                int t = pBase + x * 4;
-                target[t] = (byte)(((uint)sumB * reciprocal) >> 24);
-                target[t + 1] = (byte)(((uint)sumG * reciprocal) >> 24);
-                target[t + 2] = (byte)(((uint)sumR * reciprocal) >> 24);
-                target[t + 3] = (byte)(((uint)sumA * reciprocal) >> 24);
+                int x = 0;
+                int rightLimit = w - radius - 1;
+                for (; x < radius; x++)
+                {
+                    int t = pBase + x * 4;
+                    target[t] = (byte)(((uint)sumB * reciprocal) >> 24);
+                    target[t + 1] = (byte)(((uint)sumG * reciprocal) >> 24);
+                    target[t + 2] = (byte)(((uint)sumR * reciprocal) >> 24);
+                    target[t + 3] = (byte)(((uint)sumA * reciprocal) >> 24);
 
-                int outX = Math.Clamp(x - radius, 0, w - 1);
-                int inX = Math.Clamp(x + 1 + radius, 0, w - 1);
+                    int oIn = pBase + (x + 1 + radius) * 4;
+                    sumB += source[oIn] - source[pBase];
+                    sumG += source[oIn + 1] - source[pBase + 1];
+                    sumR += source[oIn + 2] - source[pBase + 2];
+                    sumA += source[oIn + 3] - source[pBase + 3];
+                }
 
-                int oOut = pBase + outX * 4;
-                int oIn = pBase + inX * 4;
-                sumB += source[oIn] - source[oOut];
-                sumG += source[oIn + 1] - source[oOut + 1];
-                sumR += source[oIn + 2] - source[oOut + 2];
-                sumA += source[oIn + 3] - source[oOut + 3];
+                for (; x < rightLimit; x++)
+                {
+                    int t = pBase + x * 4;
+                    target[t] = (byte)(((uint)sumB * reciprocal) >> 24);
+                    target[t + 1] = (byte)(((uint)sumG * reciprocal) >> 24);
+                    target[t + 2] = (byte)(((uint)sumR * reciprocal) >> 24);
+                    target[t + 3] = (byte)(((uint)sumA * reciprocal) >> 24);
+
+                    int oOut = pBase + (x - radius) * 4;
+                    int oIn = pBase + (x + 1 + radius) * 4;
+                    sumB += source[oIn] - source[oOut];
+                    sumG += source[oIn + 1] - source[oOut + 1];
+                    sumR += source[oIn + 2] - source[oOut + 2];
+                    sumA += source[oIn + 3] - source[oOut + 3];
+                }
+
+                int oLast = pBase + lastX * 4;
+                for (; x < w; x++)
+                {
+                    int t = pBase + x * 4;
+                    target[t] = (byte)(((uint)sumB * reciprocal) >> 24);
+                    target[t + 1] = (byte)(((uint)sumG * reciprocal) >> 24);
+                    target[t + 2] = (byte)(((uint)sumR * reciprocal) >> 24);
+                    target[t + 3] = (byte)(((uint)sumA * reciprocal) >> 24);
+
+                    int oOut = pBase + (x - radius) * 4;
+                    sumB += source[oLast] - source[oOut];
+                    sumG += source[oLast + 1] - source[oOut + 1];
+                    sumR += source[oLast + 2] - source[oOut + 2];
+                    sumA += source[oLast + 3] - source[oOut + 3];
+                }
+            }
+            else
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int t = pBase + x * 4;
+                    target[t] = (byte)(((uint)sumB * reciprocal) >> 24);
+                    target[t + 1] = (byte)(((uint)sumG * reciprocal) >> 24);
+                    target[t + 2] = (byte)(((uint)sumR * reciprocal) >> 24);
+                    target[t + 3] = (byte)(((uint)sumA * reciprocal) >> 24);
+
+                    int outX = Math.Clamp(x - radius, 0, lastX);
+                    int inX = Math.Clamp(x + 1 + radius, 0, lastX);
+
+                    int oOut = pBase + outX * 4;
+                    int oIn = pBase + inX * 4;
+                    sumB += source[oIn] - source[oOut];
+                    sumG += source[oIn + 1] - source[oOut + 1];
+                    sumR += source[oIn + 2] - source[oOut + 2];
+                    sumA += source[oIn + 3] - source[oOut + 3];
+                }
             }
         }
     }
@@ -163,11 +222,14 @@ public static class FastBlurService
         Span<int> sums = rowStride <= 1024
             ? stackalloc int[rowStride]
             : (rented = ArrayPool<int>.Shared.Rent(rowStride)).AsSpan(0, rowStride);
-        sums.Clear();
         var reciprocalVector = Vector256.Create(reciprocal);
         try
         {
-            for (int dy = -radius; dy <= radius; dy++)
+            int firstEdgeCount = radius + 1;
+            for (int c = 0; c < rowStride; c++)
+                sums[c] = source[c] * firstEdgeCount;
+
+            for (int dy = 1; dy <= radius; dy++)
             {
                 int row = Math.Clamp(dy, 0, h - 1) * rowStride;
                 for (int c = 0; c < rowStride; c++)

@@ -490,12 +490,13 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         {
             try
             {
-                bool forceRefresh = types.HasFlag(ChangeTypes.MediaProperties)
-                    || types.HasFlag(ChangeTypes.Playback)
-                    || types.HasFlag(ChangeTypes.SessionChanged)
-                    || types.HasFlag(ChangeTypes.ForceRefresh);
+                const ChangeTypes ForceRefreshMask = ChangeTypes.MediaProperties
+                    | ChangeTypes.Playback
+                    | ChangeTypes.SessionChanged
+                    | ChangeTypes.ForceRefresh;
+                bool forceRefresh = (types & ForceRefreshMask) != 0;
 
-                if (types.HasFlag(ChangeTypes.SessionChanged))
+                if ((types & ChangeTypes.SessionChanged) != 0)
                 {
                     SubscribeToCurrentSession();
                 }

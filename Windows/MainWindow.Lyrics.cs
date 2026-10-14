@@ -506,13 +506,28 @@ public partial class MainWindow
         return fallback;
     }
 
+    private static readonly SolidColorBrush ReducedMotionLyricsSearchBrush = CreateFrozenBrush(Color.FromArgb(190, 255, 255, 255));
+    private static readonly PropertyPath[] LyricsShimmerStopPaths =
+    [
+        new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[0].(GradientStop.Offset)", Array.Empty<object>()),
+        new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[1].(GradientStop.Offset)", Array.Empty<object>()),
+        new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[2].(GradientStop.Offset)", Array.Empty<object>())
+    ];
+
+    private static SolidColorBrush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
     private void StartLyricsSearchShimmer()
     {
         StopLyricsSearchShimmer();
 
         if (AnimationConfig.ReduceMotion)
         {
-            LyricsSearchText.Foreground = new SolidColorBrush(Color.FromArgb(190, 255, 255, 255));
+            LyricsSearchText.Foreground = ReducedMotionLyricsSearchBrush;
             return;
         }
 
@@ -549,8 +564,7 @@ public partial class MainWindow
         var animation = new DoubleAnimation(from, to, duration);
         Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
         Storyboard.SetTarget(animation, LyricsSearchText);
-        Storyboard.SetTargetProperty(animation,
-            new PropertyPath($"(TextBlock.Foreground).(GradientBrush.GradientStops)[{gradientStopIndex}].(GradientStop.Offset)", Array.Empty<object>()));
+        Storyboard.SetTargetProperty(animation, LyricsShimmerStopPaths[gradientStopIndex]);
         storyboard.Children.Add(animation);
     }
 

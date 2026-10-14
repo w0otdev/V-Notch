@@ -48,7 +48,10 @@ internal sealed class TranslationModelStore
     }
 
     internal bool IsInstalled => File.Exists(Path.Combine(Root, "verified.txt")) && Assets.All(a =>
-        File.Exists(AssetPath(a)) && new FileInfo(AssetPath(a)).Length == a.Size);
+    {
+        var file = new FileInfo(AssetPath(a));
+        return file.Exists && file.Length == a.Size;
+    });
 
     private readonly SemaphoreSlim _verificationGate = new(1, 1);
     private (long Length, DateTime Written, DateTime Created)[]? _verifiedState;
@@ -113,7 +116,8 @@ internal sealed class TranslationModelStore
                     }
                 }
                 string partial = path + ".part";
-                long offset = File.Exists(partial) ? new FileInfo(partial).Length : 0;
+                var partialFile = new FileInfo(partial);
+                long offset = partialFile.Exists ? partialFile.Length : 0;
                 if (offset > asset.Size) { File.Delete(partial); offset = 0; }
                 if (offset < asset.Size)
                 {

@@ -307,6 +307,7 @@ public partial class SettingsWindow
     private void Apply_Click(object sender, RoutedEventArgs e)
     {
         ApplySettingsFromUi(persist: true);
+        CloseWithAnimation();
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -325,7 +326,7 @@ public partial class SettingsWindow
         var easeInStrong = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 7 };
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        var totalDur = TimeSpan.FromMilliseconds(650);
+        var totalDur = TimeSpan.FromMilliseconds(520);
 
         // Window.Top/Left can still be held at the entrance animation's end value
         double currentTop = Top;
@@ -449,18 +450,19 @@ public partial class SettingsWindow
         };
         Timeline.SetDesiredFrameRate(cornerAnim, fps);
 
+        double shellTopMargin = MainShell.Margin.Top;
         double targetLeft = notchLeft + notchW / 2.0 - ActualWidth / 2.0;
-        double targetTop = notchTop;
+        double targetTop = notchTop - shellTopMargin;
 
-        var flyUpWindow = new DoubleAnimation(Top, targetTop, totalDur)
+        var flyUpWindow = new DoubleAnimation(currentTop, targetTop, totalDur)
         {
             EasingFunction = easeInStrong
         };
         Timeline.SetDesiredFrameRate(flyUpWindow, fps);
 
-        if (Math.Abs(Left - targetLeft) >= 0.5)
+        if (Math.Abs(targetLeft - currentLeft) >= 0.5)
         {
-            var flyLeftWindow = new DoubleAnimation(Left, targetLeft, totalDur)
+            var flyLeftWindow = new DoubleAnimation(currentLeft, targetLeft, totalDur)
             {
                 EasingFunction = easeInStrong
             };
@@ -470,6 +472,34 @@ public partial class SettingsWindow
         else
         {
             Left = targetLeft;
+        }
+
+        if (Math.Abs(currentTranslateY) >= 0.5)
+        {
+            var resetTranslateY = new DoubleAnimation(currentTranslateY, 0.0, totalDur)
+            {
+                EasingFunction = easeInStrong
+            };
+            Timeline.SetDesiredFrameRate(resetTranslateY, fps);
+            ShellTranslate.BeginAnimation(TranslateTransform.YProperty, resetTranslateY);
+        }
+        else
+        {
+            ShellTranslate.Y = 0.0;
+        }
+
+        if (Math.Abs(currentTranslateX) >= 0.5)
+        {
+            var resetTranslateX = new DoubleAnimation(currentTranslateX, 0.0, totalDur)
+            {
+                EasingFunction = easeInStrong
+            };
+            Timeline.SetDesiredFrameRate(resetTranslateX, fps);
+            ShellTranslate.BeginAnimation(TranslateTransform.XProperty, resetTranslateX);
+        }
+        else
+        {
+            ShellTranslate.X = 0.0;
         }
 
         squishX.Completed += (s, e) =>

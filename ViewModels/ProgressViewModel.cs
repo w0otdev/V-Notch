@@ -7,7 +7,7 @@ namespace VNotch.ViewModels;
 public partial class ProgressViewModel : ObservableObject
 {
     private readonly IMediaDetectionService _mediaService;
-    private DateTime _lastMediaUpdate = DateTime.Now;
+    private DateTime _lastMediaUpdate = DateTime.UtcNow;
     private TimeSpan _lastKnownPosition;
     private TimeSpan _lastKnownDuration;
     private DateTime _seekDebounceUntil = DateTime.MinValue;
@@ -74,16 +74,17 @@ public partial class ProgressViewModel : ObservableObject
 
         if (_isDragging) return;
         string signature = $"{info.SourceAppId}|{info.MediaSource}|{info.CurrentTrack}|{info.CurrentArtist}";
+        var nowUtc = DateTime.UtcNow;
         if (signature != _lastSignature)
         {
             _lastSignature = signature;
             _seekDebounceUntil = DateTime.MinValue;
             if (info.Duration > TimeSpan.Zero) _lastKnownDuration = info.Duration;
             _lastKnownPosition = info.Position;
-            _lastMediaUpdate = DateTime.Now;
+            _lastMediaUpdate = nowUtc;
         }
 
-        if (DateTime.Now < _seekDebounceUntil)
+        if (nowUtc < _seekDebounceUntil)
         {
             IsPlaying = info.IsAnyMediaPlaying;
             if (info.Duration > TimeSpan.Zero) _lastKnownDuration = info.Duration;
@@ -95,7 +96,7 @@ public partial class ProgressViewModel : ObservableObject
         {
             if (info.Duration > TimeSpan.Zero) _lastKnownDuration = info.Duration;
             _lastKnownPosition = info.Position;
-            _lastMediaUpdate = info.LastUpdated.LocalDateTime;
+            _lastMediaUpdate = info.LastUpdated.UtcDateTime;
             IsIndeterminate = false;
             HasTimeline = true;
         }
@@ -123,10 +124,11 @@ public partial class ProgressViewModel : ObservableObject
         var display = _lastKnownPosition;
         if (IsPlaying)
         {
-            var elapsed = DateTime.Now - _lastMediaUpdate;
+            var elapsed = DateTime.UtcNow - _lastMediaUpdate;
             double cap = CurrentMediaInfo.IsThrottled ? 3600 :
                 CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? 600 : 30;
-            if (elapsed > TimeSpan.FromSeconds(cap)) elapsed = TimeSpan.FromSeconds(cap);
+            var maxElapsed = TimeSpan.FromSeconds(cap);
+            if (elapsed > maxElapsed) elapsed = maxElapsed;
             display += TimeSpan.FromTicks((long)(elapsed.Ticks * CurrentMediaInfo.PlaybackRate));
         }
 
@@ -154,8 +156,9 @@ public partial class ProgressViewModel : ObservableObject
     {
         if (_lastKnownDuration <= TimeSpan.Zero) return;
         _lastKnownPosition = position;
-        _lastMediaUpdate = DateTime.Now;
-        _seekDebounceUntil = DateTime.Now.AddSeconds(2.5);
+        var nowUtc = DateTime.UtcNow;
+        _lastMediaUpdate = nowUtc;
+        _seekDebounceUntil = nowUtc.AddSeconds(2.5);
         if (IsExpandedCheck?.Invoke() == true) Render();
         try { await _mediaService.SeekAsync(position); }
         catch (Exception ex) { RuntimeLog.Error("VM-SEEK", ex.ToString()); }
@@ -164,12 +167,13 @@ public partial class ProgressViewModel : ObservableObject
     public async Task SeekRelative(double seconds)
     {
         if (_lastKnownDuration <= TimeSpan.Zero) return;
-        var elapsed = DateTime.Now - _lastMediaUpdate;
+        var nowUtc = DateTime.UtcNow;
+        var elapsed = nowUtc - _lastMediaUpdate;
         var current = _lastKnownPosition + (IsPlaying ? elapsed : TimeSpan.Zero);
         var target = TimeSpan.FromTicks(Math.Clamp((current + TimeSpan.FromSeconds(seconds)).Ticks, 0, _lastKnownDuration.Ticks));
         _lastKnownPosition = target;
-        _lastMediaUpdate = DateTime.Now;
-        _seekDebounceUntil = DateTime.Now.AddSeconds(2.5);
+        _lastMediaUpdate = nowUtc;
+        _seekDebounceUntil = nowUtc.AddSeconds(2.5);
         if (IsExpandedCheck?.Invoke() == true) Render();
         try { await _mediaService.SeekToAbsoluteAsync(target); }
         catch (Exception ex) { RuntimeLog.Error("VM-SEEK-RELATIVE", ex.ToString()); }

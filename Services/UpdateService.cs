@@ -415,8 +415,8 @@ public class UpdateService : IUpdateService, IDisposable
             return aPre.Length == bPre.Length ? 0 : aPre.Length == 0 ? 1 : -1;
         for (int i = 0; i < Math.Min(aPre.Length, bPre.Length); i++)
         {
-            bool aNumeric = aPre[i].All(char.IsAsciiDigit);
-            bool bNumeric = bPre[i].All(char.IsAsciiDigit);
+            bool aNumeric = IsAllAsciiDigits(aPre[i]);
+            bool bNumeric = IsAllAsciiDigits(bPre[i]);
             if (aNumeric && bNumeric)
             {
                 comparison = aPre[i].Length.CompareTo(bPre[i].Length);
@@ -427,6 +427,15 @@ public class UpdateService : IUpdateService, IDisposable
             if (comparison != 0) return comparison;
         }
         return aPre.Length.CompareTo(bPre.Length);
+    }
+
+    private static bool IsAllAsciiDigits(ReadOnlySpan<char> value)
+    {
+        foreach (char c in value)
+        {
+            if (!char.IsAsciiDigit(c)) return false;
+        }
+        return !value.IsEmpty;
     }
 
     internal static bool TryParseReleaseVersion(string value, out Version version, out string[] prerelease)

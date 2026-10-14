@@ -216,7 +216,10 @@ public partial class MainWindow
                     case ThumbnailAction.RevealFirst:
                         ThumbnailImage.Source = info.Thumbnail;
                         CompactThumbnail.Source = info.Thumbnail;
-                        PlayThumbnailRevealAnimation();
+                        if (_isMusicCompactMode || _isExpanded)
+                        {
+                            PlayThumbnailRevealAnimation();
+                        }
                         break;
 
                     case ThumbnailAction.AnimateSwitch:
@@ -300,7 +303,7 @@ public partial class MainWindow
             }
         }
 
-        if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds > 500 && _isPlaying != info.IsPlaying)
+        if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds > 1200 && _isPlaying != info.IsPlaying)
         {
             _isPlaying = info.IsPlaying;
             UpdatePlayPauseIcon();
@@ -781,16 +784,16 @@ public partial class MainWindow
             return;
         }
 
-        _isMusicCompactMode = shouldBeCompact;
-
-        if (_privacyIndicatorsVisible) UpdatePrivacyDotPosition(animate: true);
-
         if (!_isExpanded)
         {
             if (_isBluetoothNotificationVisible || _isChargingNotificationVisible || _isGreetingActive || _isAnimating)
             {
                 return;
             }
+
+            _isMusicCompactMode = shouldBeCompact;
+            _collapsedWidth = GetCollapsedWidth();
+            if (_privacyIndicatorsVisible) UpdatePrivacyDotPosition(animate: true);
 
             VNotch.Services.RuntimeLog.Log("NOTCH-WIDTH",
                 $"UpdateMusicCompactMode -> animating to _collapsedWidth={_collapsedWidth}, shouldBeCompact={shouldBeCompact}, _isExpanded={_isExpanded}");
@@ -806,37 +809,41 @@ public partial class MainWindow
             {
                 if (info?.Thumbnail != null && !_isClipboardPeekActive)
                 {
-                    string compactTrackId = $"{info.CurrentTrack}|{info.CurrentArtist}";
-                    if (compactTrackId != _lastAnimatedTrackSignature && !_thumbnailShownForCurrentTrack)
-                    {
-                        bool wasHidden = CompactThumbnailBorder.Visibility != Visibility.Visible ||
-                                         CompactThumbnailBorder.Opacity < 0.01;
+                    bool wasHidden = CompactThumbnailBorder.Visibility != Visibility.Visible ||
+                                     CompactThumbnailBorder.Opacity < 0.01;
 
-                        if (wasHidden)
-                        {
-                            CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                            CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                            CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
-                            CompactThumbnailBorder.Visibility = Visibility.Visible;
-                            CompactThumbnail.Source = info.Thumbnail;
-                            ThumbnailImage.Source = info.Thumbnail;
-                            PlayThumbnailRevealAnimation();
-                        }
-                        else
-                        {
-                            AnimateThumbnailSwitchOnly(info.Thumbnail);
-                        }
-                        _thumbnailShownForCurrentTrack = true;
+                    if (wasHidden)
+                    {
+                        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                        CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+                        CompactThumbnailBorder.Visibility = Visibility.Visible;
+                        CompactThumbnail.Source = info.Thumbnail;
+                        ThumbnailImage.Source = info.Thumbnail;
+                        PlayThumbnailRevealAnimation();
                     }
                     else
                     {
-                        ResetCompactThumbnailRestingState();
+                        AnimateThumbnailSwitchOnly(info.Thumbnail);
                     }
+                    _thumbnailShownForCurrentTrack = true;
                 }
                 else
                 {
                     ResetCompactThumbnailRestingState();
                 }
+
+                if (info != null && !_isClipboardPeekActive)
+                {
+                    MusicViz.TrackId = info.GetSignature();
+                    MusicViz.IsPlaying = info.IsPlaying;
+
+                    if (info.IsPlaying && !_isVolumeIndicatorActive)
+                    {
+                        ShowMusicVisualizer(duration: _dur200);
+                    }
+                }
+
                 if (!_isClipboardPeekActive)
                 {
                     FadeSwitch(CollapsedContent, MusicCompactContent);
@@ -853,6 +860,9 @@ public partial class MainWindow
         }
         else
         {
+            _isMusicCompactMode = shouldBeCompact;
+            _collapsedWidth = GetCollapsedWidth();
+            if (_privacyIndicatorsVisible) UpdatePrivacyDotPosition(animate: true);
             MusicCompactContent.Visibility = Visibility.Collapsed;
             MusicCompactContent.Opacity = 0;
             CollapsedContent.Visibility = Visibility.Collapsed;

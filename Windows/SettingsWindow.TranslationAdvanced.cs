@@ -27,7 +27,9 @@ public partial class SettingsWindow
         "TopK",
         "TimeoutSeconds",
     ];
-    private static PropertyInfo AdvancedProperty(string name) => typeof(NotchSettings).GetProperty("Translation" + name)!;
+    private static readonly Dictionary<string, PropertyInfo> TranslationAdvancedProperties =
+        TranslationAdvancedNames.ToDictionary(name => name, name => typeof(NotchSettings).GetProperty("Translation" + name)!);
+    private static PropertyInfo AdvancedProperty(string name) => TranslationAdvancedProperties[name];
     private void LoadTranslationAdvanced(NotchSettings settings)
     {
         if (_translationAdvancedInputs.Count == 0)

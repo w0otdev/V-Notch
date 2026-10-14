@@ -42,7 +42,7 @@ public partial class SettingsWindow
         var itemEase = EntranceEaseOut;
         int fps = Math.Min(60, VNotch.Services.AnimationConfig.TargetFps);
 
-        var totalDur = TimeSpan.FromMilliseconds(650);
+        var totalDur = TimeSpan.FromMilliseconds(520);
 
         double notchLeft = 0, notchTop = 0, notchW = 230, notchH = 32, notchRadius = 8;
         if (Owner is MainWindow mainWindow)
@@ -71,18 +71,19 @@ public partial class SettingsWindow
         ShellContent.SnapsToDevicePixels = false;
         ShellContent.UseLayoutRounding = false;
 
-        ShellScale.ScaleX = startScaleX;
-        ShellScale.ScaleY = startScaleY;
-        ShellTranslate.Y = 0;
-        MainShell.CornerRadius = new CornerRadius(startRadius);
-        FooterBar.CornerRadius = new CornerRadius(0, 0, startRadius, startRadius);
-
         double finalLeft = Left;
         double finalTop = Top;
 
         double targetStartLeft = notchLeft + notchW / 2.0 - ActualWidth / 2.0;
-        Left = targetStartLeft;
-        Top = notchTop;
+        double startOffsetX = Math.Abs(targetStartLeft - finalLeft) >= 0.5 ? targetStartLeft - finalLeft : 0;
+        double startOffsetY = notchTop - finalTop;
+
+        ShellScale.ScaleX = startScaleX;
+        ShellScale.ScaleY = startScaleY;
+        ShellTranslate.X = startOffsetX;
+        ShellTranslate.Y = startOffsetY;
+        MainShell.CornerRadius = new CornerRadius(startRadius);
+        FooterBar.CornerRadius = new CornerRadius(0, 0, startRadius, startRadius);
 
         var expandX = new DoubleAnimation(startScaleX, 1.0, totalDur)
         {
@@ -102,47 +103,50 @@ public partial class SettingsWindow
         };
         Timeline.SetDesiredFrameRate(cornerAnim, fps);
 
-        var moveTop = new DoubleAnimation(Top, finalTop, totalDur)
+        var moveY = new DoubleAnimation(startOffsetY, 0.0, totalDur)
         {
             EasingFunction = easeOutStrong
         };
-        Timeline.SetDesiredFrameRate(moveTop, fps);
-
-        // Release the HoldEnd fill once the fly-in finishes so Top/Left track
-        moveTop.Completed += (s, e) =>
+        Timeline.SetDesiredFrameRate(moveY, fps);
+        moveY.Completed += (s, e) =>
         {
             if (_isClosing) return;
-            Top = finalTop;
-            this.BeginAnimation(TopProperty, null);
+            ShellTranslate.Y = 0;
+            ShellTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         };
 
-        if (Math.Abs(targetStartLeft - finalLeft) >= 0.5)
+        if (Math.Abs(startOffsetX) >= 0.5)
         {
-            var moveLeft = new DoubleAnimation(Left, finalLeft, totalDur)
+            var moveX = new DoubleAnimation(startOffsetX, 0.0, totalDur)
             {
                 EasingFunction = easeOutStrong
             };
-            Timeline.SetDesiredFrameRate(moveLeft, fps);
-            moveLeft.Completed += (s, e) =>
+            Timeline.SetDesiredFrameRate(moveX, fps);
+            moveX.Completed += (s, e) =>
             {
                 if (_isClosing) return;
-                Left = finalLeft;
-                this.BeginAnimation(LeftProperty, null);
+                ShellTranslate.X = 0;
+                ShellTranslate.BeginAnimation(TranslateTransform.XProperty, null);
             };
-            this.BeginAnimation(LeftProperty, moveLeft);
+            ShellTranslate.BeginAnimation(TranslateTransform.XProperty, moveX);
         }
         else
         {
-            Left = finalLeft;
+            ShellTranslate.X = 0;
         }
 
         expandX.Completed += (s, e) =>
         {
             if (_isClosing) return;
 
-            Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+            void AttachEntranceShadow()
             {
                 if (_isClosing) return;
+                if (Mouse.LeftButton == MouseButtonState.Pressed)
+                {
+                    PreviewMouseLeftButtonUp += OnMouseReleasedBeforeShadow;
+                    return;
+                }
 
                 var shadow = new System.Windows.Media.Effects.DropShadowEffect
                 {
@@ -160,42 +164,51 @@ public partial class SettingsWindow
                 Timeline.SetDesiredFrameRate(shadowFade, fps);
 
                 shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, shadowFade);
-            }));
+            }
+
+            void OnMouseReleasedBeforeShadow(object sender, MouseButtonEventArgs args)
+            {
+                PreviewMouseLeftButtonUp -= OnMouseReleasedBeforeShadow;
+                if (_isClosing) return;
+                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(AttachEntranceShadow));
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(AttachEntranceShadow));
         };
 
         ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, expandX);
         ShellScale.BeginAnimation(ScaleTransform.ScaleYProperty, expandY);
         this.BeginAnimation(ShellCornerRadiusProperty, cornerAnim);
-        this.BeginAnimation(TopProperty, moveTop);
+        ShellTranslate.BeginAnimation(TranslateTransform.YProperty, moveY);
 
         // Entrance: cascade top → bottom (Header → Social → Nav → Card → Footer)
         // Items slide in from -10px (above) to 0 — opposite of the close direction.
-        int contentDelay = 250;
+        int contentDelay = 180;
         AnimateEntranceItem(SettingsHeader, HeaderTranslate, contentDelay);
 
-        int socialDelay = contentDelay + 60;
+        int socialDelay = contentDelay + 50;
         AnimateSocialIcon(SocialWebsite, SocialWebsiteTranslate, socialDelay);
-        AnimateSocialIcon(SocialGitHub, SocialGitHubTranslate, socialDelay + 50);
-        AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 100);
-        AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 150);
+        AnimateSocialIcon(SocialGitHub, SocialGitHubTranslate, socialDelay + 40);
+        AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 80);
+        AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 120);
 
-        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 80);
+        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 60);
 
         // Pass entranceDirection so the card slides in from above on first open
         AnimateActivePanel(_activeNav, entranceDirection: true);
 
-        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 200);
+        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 120);
 
         void AnimateSocialIcon(UIElement element, TranslateTransform translate, int delayMs)
         {
             element.Opacity = 0;
             translate.Y = -6;
-            var fade = CreateAnimation(0, 1, 320, itemEase);
+            var fade = CreateAnimation(0, 1, 280, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
 
             // Slide in from above (-6px → 0)
-            var slide = CreateAnimation(-6, 0, 380, itemEase);
+            var slide = CreateAnimation(-6, 0, 320, itemEase);
             slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
         }
@@ -204,12 +217,12 @@ public partial class SettingsWindow
         {
             element.Opacity = 0;
             translate.Y = -10;
-            var fade = CreateAnimation(0, 1, 380, itemEase);
+            var fade = CreateAnimation(0, 1, 320, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
 
             // Slide in from above (-10px → 0) to match the top-down cascade direction
-            var slide = CreateAnimation(-10, 0, 480, itemEase);
+            var slide = CreateAnimation(-10, 0, 360, itemEase);
             slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
         }

@@ -9,16 +9,43 @@ using WpfBlock = System.Windows.Documents.Block;
 
 namespace VNotch.Controls;
 
-internal static class AiMarkdown
+internal static partial class AiMarkdown
 {
     private static readonly Uri FontsBaseUri = new("pack://application:,,,/V-Notch;component/Fonts/");
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras().Build();
+    private static readonly FontFamily FallbackBodyFont = new(FontsBaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
+    private static readonly FontFamily CodeBlockFont = new("Consolas, SF Mono, Menlo, monospace");
+    private static readonly SolidColorBrush BodyForegroundBrush = CreateFrozenBrush(Color.FromRgb(200, 200, 200));
+    private static readonly SolidColorBrush CodeForegroundBrush = CreateFrozenBrush(Color.FromRgb(226, 232, 240));
+    private static readonly SolidColorBrush CodeBackgroundBrush = CreateFrozenBrush(Color.FromArgb(200, 20, 20, 26));
+    private static readonly SolidColorBrush CodeBorderBrush = CreateFrozenBrush(Color.FromArgb(40, 255, 255, 255));
+    private static readonly SolidColorBrush QuoteBorderBrush = CreateFrozenBrush(Color.FromRgb(85, 85, 85));
+    private static readonly SolidColorBrush QuoteForegroundBrush = CreateFrozenBrush(Color.FromArgb(215, 255, 255, 255));
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?m)^\s*```")]
+    private static partial System.Text.RegularExpressions.Regex FenceRegex();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?s)```.*?```|`[^`]*`")]
+    private static partial System.Text.RegularExpressions.Regex CodeSpanRegex();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?<!\\)\*\*")]
+    private static partial System.Text.RegularExpressions.Regex BoldMarkerRegex();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\S+\s*")]
+    private static partial System.Text.RegularExpressions.Regex WordSpanRegex();
+
+    private static SolidColorBrush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false)
     {
         var font = fontFamily
             ?? (FontFamily?)Application.Current?.TryFindResource("SFProDisplay")
-            ?? new FontFamily(FontsBaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
+            ?? FallbackBodyFont;
 
         var doc = new FlowDocument
         {
@@ -27,7 +54,7 @@ internal static class AiMarkdown
             FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold,
             FontFamily = font,
             LineHeight = 22,
-            Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
+            Foreground = BodyForegroundBrush,
             Background = Brushes.Transparent
         };
         foreach (var block in Markdown.Parse(markdown, Pipeline)) doc.Blocks.Add(RenderBlock(block, font, normalBody));
@@ -39,12 +66,12 @@ internal static class AiMarkdown
         if (block is CodeBlock code)
             return new Paragraph(new Run(code.Lines.ToString()))
             {
-                FontFamily = new FontFamily("Consolas, SF Mono, Menlo, monospace"),
+                FontFamily = CodeBlockFont,
                 FontSize = 12.5,
                 FontWeight = FontWeights.Normal,
-                Foreground = new SolidColorBrush(Color.FromRgb(226, 232, 240)),
-                Background = new SolidColorBrush(Color.FromArgb(200, 20, 20, 26)),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
+                Foreground = CodeForegroundBrush,
+                Background = CodeBackgroundBrush,
+                BorderBrush = CodeBorderBrush,
                 BorderThickness = new Thickness(1),
                 Padding = new Thickness(12, 10, 12, 10),
                 Margin = new Thickness(0, 6, 0, 10)
@@ -105,10 +132,10 @@ internal static class AiMarkdown
             var section = new Section { FontFamily = font, FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold };
             if (block is QuoteBlock)
             {
-                section.BorderBrush = new SolidColorBrush(Color.FromRgb(85, 85, 85));
+                section.BorderBrush = QuoteBorderBrush;
                 section.BorderThickness = new Thickness(3, 0, 0, 0);
                 section.Padding = new Thickness(12, 4, 4, 4);
-                section.Foreground = new SolidColorBrush(Color.FromArgb(215, 255, 255, 255));
+                section.Foreground = QuoteForegroundBrush;
             }
             foreach (var child in container) section.Blocks.Add(RenderBlock(child, font, normalBody));
             return section;
@@ -136,13 +163,12 @@ internal static class AiMarkdown
     {
         // Temporarily close common unfinished spans while the next network chunk is pending.
         // These closers are presentation-only and never change the saved response.
-        var fenceCount = System.Text.RegularExpressions.Regex.Matches(markdown, @"(?m)^\s*```").Count;
+        var fenceCount = FenceRegex().Count(markdown);
         if (fenceCount % 2 != 0) markdown += "\n```";
         else
         {
-            string outsideCode = System.Text.RegularExpressions.Regex.Replace(markdown,
-                @"(?s)```.*?```|`[^`]*`", "");
-            if (System.Text.RegularExpressions.Regex.Matches(outsideCode, @"(?<!\\)\*\*").Count % 2 != 0)
+            string outsideCode = CodeSpanRegex().Replace(markdown, "");
+            if (BoldMarkerRegex().Count(outsideCode) % 2 != 0)
                 markdown += "**";
         }
         var doc = Render(markdown);
@@ -157,7 +183,7 @@ internal static class AiMarkdown
             if (cursor.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
             {
                 string text = cursor.GetTextInRun(LogicalDirection.Forward);
-                foreach (System.Text.RegularExpressions.Match word in System.Text.RegularExpressions.Regex.Matches(text, @"\S+\s*"))
+                foreach (var word in WordSpanRegex().EnumerateMatches(text.AsSpan()))
                 {
                     if (shown == wordLimit) { caughtUp = false; break; }
                     lastStart = cursor.GetPositionAtOffset(word.Index);

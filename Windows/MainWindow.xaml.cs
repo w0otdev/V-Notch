@@ -281,6 +281,7 @@ public partial class MainWindow : Window
         _viewModel = viewModel;
         DataContext = _viewModel;
         MediaPlayback.Attach(_viewModel.Media, mediaService);
+        _viewModel.Media.PlayPauseToggled += OnViewModelPlayPauseToggled;
         MediaPlayback.BufferingChanged += value => MusicViz.IsBuffering = value;
         CountdownWidget.Attach(_viewModel.Timer);
         CountdownWidget.Completed += (_, _) => OnCountdownCompleted();
@@ -554,6 +555,7 @@ public partial class MainWindow : Window
         else
         {
             StartStartupHold(TimeSpan.FromSeconds(3));
+            SchedulePostAppearInitialization();
         }
 
         Dispatcher.BeginInvoke(new Action(() =>
@@ -565,14 +567,23 @@ public partial class MainWindow : Window
 
             _isStartupLayoutReady = true;
             _pendingStartupClickToggle = false;
-
-            if (!_isGreetingActive)
-            {
-                _viewModel.Initialize();
-                StartCoreModules();
-                PrewarmAudioSnapshot();
-            }
         }), DispatcherPriority.ContextIdle);
+    }
+
+    private bool _postAppearInitializationStarted;
+
+    private void SchedulePostAppearInitialization()
+    {
+        if (_postAppearInitializationStarted || _cleanedUp) return;
+        _postAppearInitializationStarted = true;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_cleanedUp) return;
+            _viewModel.Initialize();
+            StartCoreModules();
+            PrewarmAudioSnapshot();
+        }), DispatcherPriority.ApplicationIdle);
     }
 
     private void HandleAppDeactivated()
@@ -669,6 +680,7 @@ public partial class MainWindow : Window
         _notchManager.HoverService.HoverEnter -= HoverService_HoverEnter;
         _notchManager.HoverService.HoverLeave -= HoverService_HoverLeave;
         _notchManager.HoverService.MousePositionChanged -= HoverService_MousePositionChangedForDesktopReveal;
+        _viewModel.Media.PlayPauseToggled -= OnViewModelPlayPauseToggled;
         _viewModel.MediaInfoUpdated -= ViewModel_MediaInfoUpdated;
         if (_viewModel.IsExpandedCheck == _isExpandedCheck) _viewModel.IsExpandedCheck = null;
         _batteryModule.BatteryUpdated -= BatteryModule_BatteryUpdated;

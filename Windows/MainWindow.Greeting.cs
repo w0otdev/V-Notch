@@ -44,33 +44,7 @@ public partial class MainWindow
 
         GreetingOverlay.Visibility = Visibility.Visible;
         GreetingOverlay.Opacity = 1;
-        HelloPathContainer.Visibility = Visibility.Collapsed;
-        XinChaoPathContainer.Visibility = Visibility.Collapsed;
-
-        if (_isVietnameseGreeting)
-        {
-            HelloPathContainer.Visibility = Visibility.Collapsed;
-            XinChaoPathContainer.Visibility = Visibility.Visible;
-
-            PreparePath(ViPath1);
-            PreparePath(ViPath2);
-            PreparePath(ViPath3);
-            PreparePath(ViPath4);
-            PreparePath(ViPath5);
-            PreparePath(ViPath6);
-            PreparePath(ViPath7);
-            PreparePath(ViPath8);
-            PreparePath(ViPath9);
-            PreparePath(ViPath10);
-        }
-        else
-        {
-            HelloPathContainer.Visibility = Visibility.Visible;
-            XinChaoPathContainer.Visibility = Visibility.Collapsed;
-
-            PreparePath(HelloPath1);
-            PreparePath(HelloPath2);
-        }
+        PrepareGreetingPathsIfNeeded();
 
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
@@ -160,20 +134,55 @@ public partial class MainWindow
         ScheduleGreetingDismiss(TimeSpan.FromMilliseconds(totalDurationMs));
     }
 
+    private void PrepareGreetingPathsIfNeeded()
+    {
+        if (_cleanedUp || GreetingOverlay == null || HelloPath1 == null || HelloPath2 == null) return;
+
+        _isVietnameseGreeting = StartupGreeting.UsesVietnamese(_settings.Language);
+        HelloPathContainer.Visibility = Visibility.Collapsed;
+        XinChaoPathContainer.Visibility = Visibility.Collapsed;
+
+        if (_isVietnameseGreeting)
+        {
+            XinChaoPathContainer.Visibility = Visibility.Visible;
+
+            PreparePath(ViPath1);
+            PreparePath(ViPath2);
+            PreparePath(ViPath3);
+            PreparePath(ViPath4);
+            PreparePath(ViPath5);
+            PreparePath(ViPath6);
+            PreparePath(ViPath7);
+            PreparePath(ViPath8);
+            PreparePath(ViPath9);
+            PreparePath(ViPath10);
+        }
+        else
+        {
+            HelloPathContainer.Visibility = Visibility.Visible;
+
+            PreparePath(HelloPath1);
+            PreparePath(HelloPath2);
+        }
+    }
+
     private static void PreparePath(Path path)
     {
         path.Visibility = Visibility.Visible;
 
-        var geometry = path.Data.GetFlattenedPathGeometry();
-        double length = GetPathLength(geometry);
-        double normalizedLength = length / path.StrokeThickness;
+        if (path.Tag is not double normalizedLength || normalizedLength <= 0)
+        {
+            var geometry = path.Data.GetFlattenedPathGeometry();
+            double length = GetPathLength(geometry);
+            normalizedLength = length / path.StrokeThickness;
+            path.Tag = normalizedLength;
+        }
 
         path.StrokeDashCap = PenLineCap.Flat;
         path.StrokeStartLineCap = PenLineCap.Flat;
         path.StrokeEndLineCap = PenLineCap.Flat;
         path.StrokeDashArray = new DoubleCollection { normalizedLength, normalizedLength * 3 };
         path.StrokeDashOffset = normalizedLength;
-        path.Tag = normalizedLength;
     }
 
     private static double GetPathLength(PathGeometry geometry)
@@ -313,16 +322,12 @@ public partial class MainWindow
             };
             restoreFade.Completed += (_, _) =>
             {
-                if (!_cleanedUp && generation == _greetingGeneration) StartStartupHold(TimeSpan.FromSeconds(3));
+                if (_cleanedUp || generation != _greetingGeneration) return;
+                StartStartupHold(TimeSpan.FromSeconds(3));
+                SchedulePostAppearInitialization();
             };
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(restoreFade, VNotch.Services.AnimationConfig.TargetFps);
             CollapsedContent.BeginAnimation(OpacityProperty, restoreFade);
-
-            if (_isStartupLayoutReady)
-            {
-                _mediaService.Start();
-                StartCoreModules();
-            }
         };
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);

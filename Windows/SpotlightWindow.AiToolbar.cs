@@ -5,10 +5,14 @@ namespace VNotch;
 
 public partial class SpotlightWindow
 {
+    private object? _aiCopyOriginalContent;
+    private int _aiCopyFeedbackVersion;
+
     private static void SetAiToolLabel(Button button, string key)
     {
-        button.ToolTip = Loc.Get(key);
-        System.Windows.Automation.AutomationProperties.SetName(button, Loc.Get(key));
+        string label = Loc.Get(key);
+        button.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(button, label);
     }
     private void UpdateAiMetadata()
     {
@@ -29,7 +33,8 @@ public partial class SpotlightWindow
         if (TryCopyToClipboard(text))
         {
             SetAiStatus("spotlight.ai.copied");
-            var originalContent = AiCopyButton.Content;
+            _aiCopyOriginalContent ??= AiCopyButton.Content;
+            int version = ++_aiCopyFeedbackVersion;
             AiCopyButton.Content = new TextBlock
             {
                 Text = "✓",
@@ -48,7 +53,11 @@ public partial class SpotlightWindow
                 AiCopyButton.RenderTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, pop);
             }
             await System.Threading.Tasks.Task.Delay(1800);
-            AiCopyButton.Content = originalContent;
+            if (version == _aiCopyFeedbackVersion)
+            {
+                AiCopyButton.Content = _aiCopyOriginalContent;
+                _aiCopyOriginalContent = null;
+            }
         }
     }
 }

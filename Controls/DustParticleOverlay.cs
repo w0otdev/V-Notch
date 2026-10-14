@@ -125,7 +125,14 @@ public sealed class DustParticleOverlay : FrameworkElement
     // Return zero desired size so the sibling TextBlock strictly dictates the container's
     // width and height when HorizontalAlignment="Left", preventing the dust cloud from
     // exceeding the exact rendered length of the secret.
-    protected override Size MeasureOverride(Size availableSize) => default;
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (IsActive && !_isDissolving && !_isReforming)
+        {
+            ResetSiblingBlur(IsDissolved ? 0.0 : MaskedBlurRadius);
+        }
+        return default;
+    }
 
     protected override void OnVisualParentChanged(DependencyObject oldParent)
     {

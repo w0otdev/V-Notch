@@ -18,11 +18,25 @@ internal static class MonitorSelection
 
     public static Screen Resolve(NotchSettings settings)
     {
-        var choices = GetChoices();
-        var selected = string.IsNullOrEmpty(settings.MonitorDeviceId)
-            ? choices.FirstOrDefault(c => c.Index == settings.MonitorIndex)
-            : choices.FirstOrDefault(c => string.Equals(c.Id, settings.MonitorDeviceId, StringComparison.OrdinalIgnoreCase));
-        return selected?.Screen ?? Screen.PrimaryScreen ?? choices[0].Screen!;
+        var screens = Screen.AllScreens;
+        if (screens.Length == 0)
+            return Screen.PrimaryScreen!;
+
+        if (string.IsNullOrEmpty(settings.MonitorDeviceId))
+        {
+            if ((uint)settings.MonitorIndex < (uint)screens.Length)
+                return screens[settings.MonitorIndex];
+        }
+        else
+        {
+            foreach (var screen in screens)
+            {
+                if (string.Equals(GetId(screen), settings.MonitorDeviceId, StringComparison.OrdinalIgnoreCase))
+                    return screen;
+            }
+        }
+
+        return Screen.PrimaryScreen ?? screens[0];
     }
 
     public static double GetScale(Screen screen)

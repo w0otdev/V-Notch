@@ -620,6 +620,28 @@ public sealed class SettingsWindowControlTests
     });
 
     [Fact]
+    public void SettingsApplyClosesWindowEvenDuringEntranceTailAndPersistsSnapshot() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.Top = 20;
+        window.Left = 20;
+        Invoke(window, "PlayEntranceAnimation");
+        int closing = 0;
+        bool closed = false;
+        window.AnimatedClosing += (_, _) => closing++;
+        window.Closed += (_, _) => closed = true;
+        window.WidthSlider.Value = 380;
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(SettingsWindow).GetMethod("Apply_Click", flags)!.Invoke(window, [window, new RoutedEventArgs()]);
+        typeof(SettingsWindow).GetMethod("CloseWithAnimation", flags)!.Invoke(window, null);
+        await WpfFrameWaiter.UntilAsync(() => closed && fixture.Service.Applied != null, "settings apply and close", ct);
+        Assert.Equal(380, fixture.Service.Applied!.Width);
+        Assert.Equal(1, closing);
+        Assert.Equal(0, window.Opacity);
+    });
+
+    [Fact]
     public void SettingsCancelRevertsPreviewWithoutSaving() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new Fixture();

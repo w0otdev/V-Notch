@@ -121,7 +121,7 @@ internal sealed partial class LyricsService : IDisposable
                 result = null;
             else if (result is { Lines.Count: > 0 })
             {
-                if (_cache.Count >= _cacheCapacity)
+                if (_cache.Count >= _cacheCapacity && !_cache.ContainsKey(operation.Key))
                     _cache.Remove(_cache.MinBy(static entry => entry.Value.LastAccess).Key);
                 _cache[operation.Key] = (result, ++_cacheAccess);
             }

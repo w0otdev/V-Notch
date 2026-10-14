@@ -90,10 +90,9 @@ public partial class MediaViewModel : ObservableObject
             HasThumbnail = false;
         }
 
-        if ((DateTime.Now - _lastAction).TotalMilliseconds > 500 && IsPlaying != info.IsPlaying)
+        if ((DateTime.UtcNow - _lastAction).TotalMilliseconds > 1200 && IsPlaying != info.IsPlaying)
         {
             IsPlaying = info.IsPlaying;
-            PlayPauseToggled?.Invoke(this, IsPlaying);
         }
     }
 
@@ -103,7 +102,14 @@ public partial class MediaViewModel : ObservableObject
         if (!BeginAction()) return;
         IsPlaying = !IsPlaying;
         PlayPauseToggled?.Invoke(this, IsPlaying);
-        await _service.PlayPauseAsync();
+        try
+        {
+            await _service.PlayPauseAsync();
+        }
+        finally
+        {
+            _lastAction = DateTime.UtcNow;
+        }
     }
 
     [RelayCommand]
@@ -124,8 +130,8 @@ public partial class MediaViewModel : ObservableObject
 
     private bool BeginAction()
     {
-        if ((DateTime.Now - _lastAction).TotalMilliseconds < 200) return false;
-        _lastAction = DateTime.Now;
+        if ((DateTime.UtcNow - _lastAction).TotalMilliseconds < 200) return false;
+        _lastAction = DateTime.UtcNow;
         return true;
     }
 }

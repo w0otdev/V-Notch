@@ -1818,6 +1818,7 @@
                                 <Border x:Name="TranslationCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
                                     <Border.RenderTransform><TranslateTransform x:Name="TranslationCardTranslate" Y="12"/></Border.RenderTransform>
                                     <StackPanel>
+                                        <!-- 1. Enable Live Translation & Quick Guide -->
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
                                                 <CheckBox x:Name="EnableTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed">
@@ -1830,46 +1831,45 @@
                                                     </WrapPanel>
                                                 </CheckBox>
                                                 <TextBlock x:Name="TranslationEnableHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                                <Expander Foreground="{StaticResource SoftText}" HorizontalContentAlignment="Stretch" Margin="0,12,0,0">
+                                                    <Expander.Header><TextBlock x:Name="TranslationUsageTitle" Style="{StaticResource SettingTitleText}"/></Expander.Header>
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <TextBlock x:Name="TranslationUsageSetup" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                                        <TextBlock x:Name="TranslationUsageSelection" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                                        <TextBlock x:Name="TranslationUsageActions" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                                        <Button x:Name="TranslationPreviewButton" HorizontalAlignment="Left" Click="TranslationPreview_Click"/>
+                                                        <TextBlock x:Name="TranslationQualityHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                                    </StackPanel>
+                                                </Expander>
                                             </StackPanel>
                                         </Border>
-                                        <Border Style="{StaticResource SettingRowBorder}">
+
+                                        <!-- 2. Source & Target Languages -->
+                                        <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
                                             <StackPanel>
-                                                <CheckBox x:Name="AutoTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
-                                                <TextBlock x:Name="TranslationAutoHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                                                <CheckBox x:Name="TranslationIgnoreFullscreenCheck" Margin="0,12,0,0" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
-                                                <TextBlock x:Name="TranslationExcludedAppsLabel" Style="{StaticResource SettingHintText}" Margin="0,12,0,6"/>
-                                                <TextBox x:Name="TranslationExcludedAppsBox" MinHeight="30" TextChanged="TranslationExcludedApps_Changed"/>
-                                                <TextBlock x:Name="TranslationExcludedAppsHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="16"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock x:Name="TranslationSourceLabel" Style="{StaticResource SettingTitleText}"/>
+                                                        <ComboBox x:Name="TranslationSourceCombo" DisplayMemberPath="Name" SelectedValuePath="Code" MinHeight="36" Margin="0,8,0,0" SelectionChanged="TranslationLanguage_Changed"/>
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="2">
+                                                        <TextBlock x:Name="TranslationTargetLabel" Style="{StaticResource SettingTitleText}"/>
+                                                        <ComboBox x:Name="TranslationTargetCombo" DisplayMemberPath="Name" SelectedValuePath="Code" MinHeight="36" Margin="0,8,0,0" SelectionChanged="TranslationLanguage_Changed"/>
+                                                    </StackPanel>
+                                                </Grid>
                                             </StackPanel>
                                         </Border>
-                                        <Border Style="{StaticResource SettingRowBorder}">
+
+                                        <!-- 3. Local AI Model & Download Status -->
+                                        <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
                                             <StackPanel>
-                                                <CheckBox x:Name="FormatTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
-                                                <TextBlock x:Name="TranslationFormatHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Border>
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <CheckBox x:Name="HumanizerTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
-                                                <TextBlock x:Name="TranslationHumanizerHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                                            </StackPanel>
-                                        </Border>
-                                        <Border Style="{StaticResource SettingRowBorder}">
-                                            <StackPanel>
-                                                <TextBlock x:Name="TranslationSourceLabel" Style="{StaticResource SettingTitleText}"/>
-                                                <ComboBox x:Name="TranslationSourceCombo" DisplayMemberPath="Name" SelectedValuePath="Code" MinHeight="36" Margin="0,8,0,14" SelectionChanged="TranslationLanguage_Changed"/>
-                                                <TextBlock x:Name="TranslationTargetLabel" Style="{StaticResource SettingTitleText}"/>
-                                                <ComboBox x:Name="TranslationTargetCombo" DisplayMemberPath="Name" SelectedValuePath="Code" MinHeight="36" Margin="0,8,0,0" SelectionChanged="TranslationLanguage_Changed"/>
-                                            </StackPanel>
-                                        </Border>
-                                        <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,20,0,16" Margin="0,12,0,0">
-                                            <StackPanel>
-                                                <CheckBox x:Name="CurrencyConversionCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
-                                                <TextBlock x:Name="TranslationCurrencyLabel" Style="{StaticResource SettingTitleText}" Margin="0,12,0,0"/>
-                                                <ComboBox x:Name="TranslationCurrencyCombo" DisplayMemberPath="Name" SelectedValuePath="Code" SelectionChanged="TranslationCurrency_Changed" MinHeight="36" Margin="0,8,0,0"/>
-                                                <TextBlock x:Name="TranslationCurrencyHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,20"/>
                                                 <TextBlock x:Name="TranslationModelTitle" Style="{StaticResource SettingTitleText}"/>
-                                                <TextBlock x:Name="TranslationHardwareHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,12"/>
+                                                <TextBlock x:Name="TranslationHardwareHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,12"/>
                                                 <ComboBox x:Name="TranslationModelCombo" TextSearch.TextPath="Name" SelectedValuePath="Id" SelectionChanged="TranslationModel_Changed">
                                                     <ComboBox.ItemTemplate>
                                                         <DataTemplate>
@@ -1896,19 +1896,10 @@
                                                         <DataTemplate><TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{DynamicResource SoftText}" Margin="14,12,14,6"/></DataTemplate>
                                                     </GroupStyle.HeaderTemplate></GroupStyle></ComboBox.GroupStyle>
                                                 </ComboBox>
-                                                <TextBlock x:Name="TranslationModelRating" Foreground="{DynamicResource AccentBrushStrong}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                                                <TextBlock x:Name="TranslationModelRating" Foreground="{DynamicResource AccentBrushStrong}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,10,0,0"/>
                                                 <TextBlock x:Name="TranslationModelRatingHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                                                <TextBlock x:Name="TranslationModelFitHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
-
+                                                <TextBlock x:Name="TranslationModelFitHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                                 <TextBlock x:Name="TranslationModelHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,12"/>
-                                                <TextBlock x:Name="TranslationCustomPromptLabel" Style="{StaticResource SettingTitleText}" Margin="0,8,0,0"/>
-                                                <ComboBox x:Name="TranslationCustomPrompt" SelectedIndex="0" MinHeight="36" Margin="0,8,0,8">
-                                                    <ComboBoxItem x:Name="TranslationCustomGeneral"/>
-                                                    <ComboBoxItem Content="TranslateGemma"/>
-                                                    <ComboBoxItem Content="Hunyuan-MT"/>
-                                                </ComboBox>
-                                                <Button x:Name="TranslationCustomImportButton" HorizontalAlignment="Left" Click="TranslationCustomImport_Click"/>
-                                                <TextBlock x:Name="TranslationCustomHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,12"/>
                                                 <TextBlock x:Name="TranslationModelStatus" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,10"/>
                                                 <Border x:Name="TranslationProgressCard" Visibility="Collapsed" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="12" Padding="14" Margin="0,0,0,14" IsVisibleChanged="TranslationProgress_VisibilityChanged">
                                                     <Border.RenderTransform><TranslateTransform x:Name="TranslationProgressEntrance"/></Border.RenderTransform>
@@ -1958,28 +1949,56 @@
                                                     <Button x:Name="TranslationModelDetailsButton" HorizontalAlignment="Left" Margin="0,0,8,8" Click="TranslationModelDetails_Click"/>
                                                     <Button x:Name="TranslationRemoveButton" Margin="0,0,0,8" Click="TranslationRemove_Click"/>
                                                 </WrapPanel>
-                                                <TextBlock x:Name="TranslationDownloadPrivacy" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                                <TextBlock x:Name="TranslationDownloadPrivacy" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
+
+                                        <!-- 4. Selection Behavior & App Exclusions -->
                                         <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
                                             <StackPanel>
-                                                <Expander Foreground="{StaticResource SoftText}" HorizontalContentAlignment="Stretch">
-                                                    <Expander.Header><TextBlock x:Name="TranslationUsageTitle" Style="{StaticResource SettingTitleText}"/></Expander.Header>
-                                                    <StackPanel Margin="0,12,0,0">
-                                                        <TextBlock x:Name="TranslationUsageSetup" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                                        <TextBlock x:Name="TranslationUsageSelection" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                                        <TextBlock x:Name="TranslationUsageActions" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                                                        <Button x:Name="TranslationPreviewButton" HorizontalAlignment="Left" Click="TranslationPreview_Click"/>
-                                                        <TextBlock x:Name="TranslationQualityHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                                    </StackPanel>
-                                                </Expander>
+                                                <CheckBox x:Name="AutoTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationAutoHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                                <CheckBox x:Name="TranslationIgnoreFullscreenCheck" Margin="0,12,0,0" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationExcludedAppsLabel" Style="{StaticResource SettingHintText}" Margin="0,14,0,6"/>
+                                                <TextBox x:Name="TranslationExcludedAppsBox" MinHeight="34" TextChanged="TranslationExcludedApps_Changed"/>
+                                                <TextBlock x:Name="TranslationExcludedAppsHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                             </StackPanel>
                                         </Border>
+
+                                        <!-- 5. Output Formatting & Humanizer -->
+                                        <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
+                                            <StackPanel>
+                                                <CheckBox x:Name="FormatTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationFormatHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,14" TextWrapping="Wrap"/>
+                                                <CheckBox x:Name="HumanizerTranslationCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationHumanizerHint" Style="{StaticResource SettingHintText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 6. Currency Conversion -->
+                                        <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
+                                            <StackPanel>
+                                                <CheckBox x:Name="CurrencyConversionCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <TextBlock x:Name="TranslationCurrencyLabel" Style="{StaticResource SettingTitleText}" Margin="0,12,0,0"/>
+                                                <ComboBox x:Name="TranslationCurrencyCombo" DisplayMemberPath="Name" SelectedValuePath="Code" SelectionChanged="TranslationCurrency_Changed" MinHeight="36" Margin="0,8,0,0"/>
+                                                <TextBlock x:Name="TranslationCurrencyHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 7. Custom GGUF Model & Advanced Engine Parameters -->
                                         <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
                                             <StackPanel>
                                                 <Expander x:Name="TranslationAdvancedExpander" Foreground="{StaticResource SoftText}" HorizontalContentAlignment="Stretch" FontSize="13">
                                                     <StackPanel>
-                                                        <TextBlock x:Name="TranslationAdvancedHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,8,0,12"/>
+                                                        <TextBlock x:Name="TranslationCustomPromptLabel" Style="{StaticResource SettingTitleText}" Margin="0,10,0,0"/>
+                                                        <ComboBox x:Name="TranslationCustomPrompt" SelectedIndex="0" MinHeight="36" Margin="0,8,0,8">
+                                                            <ComboBoxItem x:Name="TranslationCustomGeneral"/>
+                                                            <ComboBoxItem Content="TranslateGemma"/>
+                                                            <ComboBoxItem Content="Hunyuan-MT"/>
+                                                        </ComboBox>
+                                                        <Button x:Name="TranslationCustomImportButton" HorizontalAlignment="Left" Click="TranslationCustomImport_Click"/>
+                                                        <TextBlock x:Name="TranslationCustomHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,16"/>
+                                                        <TextBlock x:Name="TranslationAdvancedHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                                                         <StackPanel x:Name="TranslationAdvancedFields"/>
                                                         <Button x:Name="TranslationFastPreset" HorizontalAlignment="Left" Margin="0,12,0,0" Click="TranslationFastPreset_Click"/>
                                                         <TextBlock x:Name="TranslationFastHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>

@@ -1,4 +1,3 @@
-using System.Data;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using VNotch.Models;
@@ -16,9 +15,6 @@ internal sealed partial class CalculatorProvider : ISpotlightProvider
 
     [GeneratedRegex(@"^[\d\s+\-*/().%]+$")]
     private static partial Regex ExpressionShape();
-
-    [GeneratedRegex(@"(?<![\d.])(\d+)(?![\d.])")]
-    private static partial Regex IntegerLiteral();
 
     public Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
         string query,
@@ -46,23 +42,11 @@ internal sealed partial class CalculatorProvider : ISpotlightProvider
             return false;
         }
 
-        double value;
-        try
-        {
-            // Promoting integer literals to decimals gives calculator semantics (5/2 = 2.5) instead of integer division.
-            string promoted = IntegerLiteral().Replace(expression, "$1.0");
-            string computeExpr = Regex.Replace(promoted, @"(\d+)\.0\s*%\s*(\d+)\.0", "$1 % $2");
-            using var table = new DataTable();
-            object result = table.Compute(computeExpr, null);
-            if (result is DBNull or null) return false;
-            value = Convert.ToDouble(result, CultureInfo.InvariantCulture);
-        }
-        catch
-        {
-            return false;
-        }
-
-        if (double.IsNaN(value) || double.IsInfinity(value)) return false;
+        int pos = 0;
+        ReadOnlySpan<char> span = expression.AsSpan();
+        if (!TryParseAddSub(span, ref pos, out double value)) return false;
+        SkipWhitespace(span, ref pos);
+        if (pos != span.Length || double.IsNaN(value) || double.IsInfinity(value)) return false;
 
         string display = value.ToString("0.##########", CultureInfo.CurrentCulture);
         item = new SpotlightSearchItem(
@@ -75,5 +59,77 @@ internal sealed partial class CalculatorProvider : ISpotlightProvider
             Score = ResultScore
         };
         return true;
+    }
+
+    private static bool TryParseAddSub(ReadOnlySpan<char> s, ref int pos, out double value)
+    {
+        if (!TryParseMulDivMod(s, ref pos, out value)) return false;
+        while (true)
+        {
+            SkipWhitespace(s, ref pos);
+            if (pos >= s.Length || (s[pos] != '+' && s[pos] != '-')) return true;
+            char op = s[pos++];
+            if (!TryParseMulDivMod(s, ref pos, out double rhs)) return false;
+            value = op == '+' ? value + rhs : value - rhs;
+        }
+    }
+
+    private static bool TryParseMulDivMod(ReadOnlySpan<char> s, ref int pos, out double value)
+    {
+        if (!TryParseFactor(s, ref pos, out value)) return false;
+        while (true)
+        {
+            SkipWhitespace(s, ref pos);
+            if (pos >= s.Length || (s[pos] != '*' && s[pos] != '/' && s[pos] != '%')) return true;
+            char op = s[pos++];
+            if (!TryParseFactor(s, ref pos, out double rhs)) return false;
+            value = op switch
+            {
+                '*' => value * rhs,
+                '/' => value / rhs,
+                _ => value % rhs
+            };
+        }
+    }
+
+    private static bool TryParseFactor(ReadOnlySpan<char> s, ref int pos, out double value)
+    {
+        SkipWhitespace(s, ref pos);
+        value = 0;
+        if (pos >= s.Length) return false;
+
+        if (s[pos] is '+' or '-')
+        {
+            char sign = s[pos++];
+            if (!TryParseFactor(s, ref pos, out double inner)) return false;
+            value = sign == '-' ? -inner : inner;
+            return true;
+        }
+
+        if (s[pos] == '(')
+        {
+            pos++;
+            if (!TryParseAddSub(s, ref pos, out value)) return false;
+            SkipWhitespace(s, ref pos);
+            if (pos >= s.Length || s[pos] != ')') return false;
+            pos++;
+            return true;
+        }
+
+        int start = pos;
+        while (pos < s.Length && (char.IsAsciiDigit(s[pos]) || s[pos] == '.'))
+            pos++;
+
+        return pos > start && double.TryParse(
+            s[start..pos],
+            NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture,
+            out value);
+    }
+
+    private static void SkipWhitespace(ReadOnlySpan<char> s, ref int pos)
+    {
+        while (pos < s.Length && char.IsWhiteSpace(s[pos]))
+            pos++;
     }
 }

@@ -95,7 +95,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(5);
                 _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
 
-                _progressEngine.NotifyUserSeek(TimeSpan.Zero);
+                _progressEngine.NotifyUserSeek(TimeSpan.Zero, isPlaying: _currentMediaInfo?.IsPlaying);
                 _progressEngine.NotifyPreviousTrackRequested();
 
                 AnimateSeekProgressTo(0);
@@ -127,7 +127,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         {
             _lastPrevRewindClickTime = DateTime.MinValue;
             var frame = _progressEngine.GetUiFrame();
-            _progressEngine.NotifyUserSeek(frame.Position);
+            _progressEngine.NotifyUserSeek(frame.Position, isPlaying: false);
             _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
         }
         catch (Exception ex)
@@ -194,9 +194,13 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
     }
 
+    private bool? _presentedPlaying;
+
     internal void PresentPlayback(bool playing)
     {
         System.Windows.Automation.AutomationProperties.SetName(PlayPauseButton, Loc.Get(playing ? "media.pause" : "media.play"));
+        if (_presentedPlaying == playing) return;
+        _presentedPlaying = playing;
         var from = playing ? PlayIcon : PauseIcon;
         var to = playing ? PauseIcon : PlayIcon;
         ButtonFeedback.AnimateIconSwitch(from, to, TimeSpan.FromMilliseconds(180), _easeQuadInOut);
@@ -541,6 +545,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     private string _lastProgressSignature = "";
     private string _lastProgressTimelineKey = "";
     private DateTimeOffset _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+    private bool _lastProgressIsPlaying;
     private long _trackChangeSequence = 0;
 
     internal void UpdateProgressTracking(MediaInfo info)
@@ -566,7 +571,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         if (showProgressDetails || (hasRealTrack && (info.HasTimeline || info.IsIndeterminate)))
         {
-            if (_isDraggingProgress) return;
+            if (_isDraggingProgress)
+            {
+                if (!info.IsPlaying)
+                {
+                    _progressEngine.NotifyUserPlayPause(false);
+                }
+                return;
+            }
 
             string newSignature = $"{info.SourceAppId}|{info.CurrentTrack}|{info.CurrentArtist}";
             bool isTrackChanged = newSignature != _lastProgressSignature;
@@ -611,6 +623,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _lastDisplayedSecond = -1;
                 _progressSnapshotSequence = 0;
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+                _lastProgressIsPlaying = false;
                 StopSpringRenderLoop();
 
                 double fromRatio = visibleRatio;
@@ -660,6 +673,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _progressEngine.Reset();
                 _progressSnapshotSequence = 0;
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+                _lastProgressIsPlaying = false;
                 _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
                 RuntimeLog.Debug("PROGRESS-SESSION", () =>
                     $"Logical session changed for same track: " +
@@ -674,10 +688,13 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             {
                 _lastProgressTimelineKey = timelineKey;
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+                _lastProgressIsPlaying = false;
             }
 
             if (_lastProgressTimelineUpdated != DateTimeOffset.MinValue &&
-                timelineKey == _lastProgressTimelineKey)
+                timelineKey == _lastProgressTimelineKey &&
+                info.IsPlaying &&
+                _lastProgressIsPlaying)
             {
 
                 var infoUpdatedUtc = info.LastUpdated.ToUniversalTime();
@@ -706,10 +723,11 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             };
 
             _progressEngine.OnMediaSnapshot(snapshot);
-            if (info.LastUpdated > _lastProgressTimelineUpdated)
+            if (info.LastUpdated > _lastProgressTimelineUpdated || info.IsPlaying != _lastProgressIsPlaying)
             {
                 _lastProgressTimelineUpdated = info.LastUpdated;
             }
+            _lastProgressIsPlaying = info.IsPlaying;
 
             if (!_isRewindAnimating)
             {
@@ -965,6 +983,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _springSettleFrames = 0;
                 RuntimeLog.Debug("PROGRESS-SPRING", () => $"settled at ratio={_progressDisplayRatio:F4} engineRatio={engineRatio:F4}");
 
+                if (_isClickSeekPending)
+                {
+                    _progressDisplayRatio = _progressTargetRatio;
+                    ProgressBarScale.ScaleX = _progressTargetRatio;
+                    CurrentTimeText.Text = FormatTime(_dragSeekPosition);
+                    return;
+                }
+
                 _progressDisplayRatio = engineRatio;
                 ProgressBarScale.ScaleX = engineRatio;
                 _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(1.5);
@@ -980,7 +1006,11 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 {
                     _progressTargetRatio = engineRatio;
                 }
-                if (frame.Duration.TotalSeconds > 0)
+                if (_isClickSeekPending)
+                {
+                    CurrentTimeText.Text = FormatTime(_dragSeekPosition);
+                }
+                else if (frame.Duration.TotalSeconds > 0)
                 {
                     var pos = TimeSpan.FromSeconds(_progressDisplayRatio * frame.Duration.TotalSeconds);
                     int sec = (int)pos.TotalSeconds;
@@ -993,6 +1023,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 }
                 return;
             }
+        }
+
+        if (_isClickSeekPending)
+        {
+            CurrentTimeText.Text = FormatTime(_dragSeekPosition);
+            return;
         }
 
         if (!_isSeekSpringActive)
@@ -1297,7 +1333,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(3.5);
                 _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
                 _protectSpringTargetUntil = DateTime.UtcNow.AddSeconds(1.5);
-                _progressEngine.NotifyUserSeek(_dragSeekPosition);
+                _progressEngine.NotifyUserSeek(_dragSeekPosition, isPlaying: _currentMediaInfo?.IsPlaying);
 
                 _lastDisplayedSecond = (int)_dragSeekPosition.TotalSeconds;
                 CurrentTimeText.Text = FormatTime(_dragSeekPosition);
@@ -1381,7 +1417,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
             _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(3.5);
             _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
-            _progressEngine.NotifyUserSeek(newPos);
+            _progressEngine.NotifyUserSeek(newPos, isPlaying: _currentMediaInfo?.IsPlaying);
 
             double targetRatio = newPos.TotalSeconds / duration.TotalSeconds;
             targetRatio = Math.Clamp(targetRatio, 0, 1);

@@ -393,7 +393,7 @@ public sealed class SmartThumbnailCropService : IDisposable
 
     private void AddInferenceCacheEntryLocked(ArtworkFingerprint fingerprint, Detection[] detections)
     {
-        if (_inferenceCache.Count >= MaxInferenceCacheEntries)
+        if (_inferenceCache.Count >= MaxInferenceCacheEntries && !_inferenceCache.ContainsKey(fingerprint))
         {
             ArtworkFingerprint oldestKey = _inferenceCache
                 .MinBy(static pair => pair.Value.LastAccess)

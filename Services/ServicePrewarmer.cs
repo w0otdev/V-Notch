@@ -30,7 +30,17 @@ internal static class ServicePrewarmer
             {
                 // Give MainWindow time to finish its first frame layout and render before background warmups
                 await Task.Delay(1200).ConfigureAwait(false);
-                RunBackgroundWarmups(provider);
+                var currentThread = System.Threading.Thread.CurrentThread;
+                var previousPriority = currentThread.Priority;
+                try
+                {
+                    currentThread.Priority = System.Threading.ThreadPriority.BelowNormal;
+                    RunBackgroundWarmups(provider);
+                }
+                finally
+                {
+                    currentThread.Priority = previousPriority;
+                }
             }
             catch (Exception ex)
             {

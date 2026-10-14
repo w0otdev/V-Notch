@@ -114,7 +114,10 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
     {
         bool personal = capture.TargetCategory == "Personal";
         if (personal && !IsPersonalUnlocked) throw new InvalidOperationException("Unlock Personal before importing.");
-        long size = capture.ImagePng?.LongLength ?? Encoding.UTF8.GetByteCount(capture.Text + capture.Html + capture.Rtf);
+        long size = capture.ImagePng?.LongLength
+            ?? ((long)Encoding.UTF8.GetByteCount(capture.Text)
+                + Encoding.UTF8.GetByteCount(capture.Html)
+                + Encoding.UTF8.GetByteCount(capture.Rtf));
         int measuredItems = 0;
         if (capture.FilePaths.Length > 0)
         {
@@ -657,7 +660,8 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
     private void PruneCore(DateTime nowUtc)
     {
         PruneSensitiveCore(nowUtc);
-        foreach (var entry in _entries.Values.Where(entry => !entry.IsPersonal && !entry.IsPinned && !entry.IsArchived && entry.CopiedUtc < nowUtc.AddDays(-30)).ToArray())
+        DateTime cutoffUtc = nowUtc.AddDays(-30);
+        foreach (var entry in _entries.Values.Where(entry => !entry.IsPersonal && !entry.IsPinned && !entry.IsArchived && entry.CopiedUtc < cutoffUtc).ToArray())
         {
             if (TryDeleteDirectory(EntryDirectory(entry))) RemoveEntry(entry.Id);
         }
@@ -670,10 +674,11 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         string root = Path.Combine(_root, "sensitive-expiry");
         if (!Directory.Exists(root)) return;
         bool changed = false;
+        long expiryTicks = nowUtc.AddSeconds(-60).Ticks;
         foreach (string marker in Directory.EnumerateFiles(root))
         {
             if (!Guid.TryParseExact(Path.GetFileName(marker), "N", out var id) ||
-                !long.TryParse(File.ReadAllText(marker), out long ticks) || ticks > nowUtc.AddSeconds(-60).Ticks) continue;
+                !long.TryParse(File.ReadAllText(marker), out long ticks) || ticks > expiryTicks) continue;
             // IDs are unique across the public history and Personal vault. No vault key is needed.
             bool publicDeleted = TryDeleteDirectory(Path.Combine(_root, "items", id.ToString("N")));
             bool personalDeleted = TryDeleteDirectory(Path.Combine(_root, "personal", id.ToString("N")));

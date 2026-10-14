@@ -83,9 +83,9 @@ internal sealed class CurrencyRateService
     {
         try
         {
-            string path = Path.Combine(_root, key + ".json");
-            if (!File.Exists(path) || new FileInfo(path).Length > 16384) return null;
-            var rate = JsonSerializer.Deserialize<CurrencyRate>(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
+            var file = new FileInfo(Path.Combine(_root, key + ".json"));
+            if (!file.Exists || file.Length > 16384) return null;
+            var rate = JsonSerializer.Deserialize<CurrencyRate>(await File.ReadAllTextAsync(file.FullName, ct).ConfigureAwait(false));
             if (rate != null) _rates[key] = rate;
             return rate;
         }
@@ -101,7 +101,9 @@ internal sealed class CurrencyRateService
             await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(rate), ct).ConfigureAwait(false);
             File.Move(temporary, path, true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        finally { try { File.Delete(temporary); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { } }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            try { File.Delete(temporary); } catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException) { }
+        }
     }
 }

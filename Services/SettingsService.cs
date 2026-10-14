@@ -74,6 +74,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         }
 
         _settingsPath = Path.Combine(_appFolder, "settings.json");
+        _mutexName = CreateMutexName(_settingsPath);
         _apiKeySaveWarning = ShowApiKeySaveWarning;
         _worker = StartWorker();
     }
@@ -85,9 +86,16 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         _appFolder = Path.GetDirectoryName(_settingsPath)
             ?? throw new ArgumentException("The settings path must include a directory.", nameof(settingsPath));
         Directory.CreateDirectory(_appFolder);
+        _mutexName = CreateMutexName(_settingsPath);
         _apiKeySaveWarning = apiKeySaveWarning ?? ShowApiKeySaveWarning;
         _worker = StartWorker();
     }
+
+    private readonly string _mutexName;
+
+    private static string CreateMutexName(string settingsPath) =>
+        @"Local\VNotch_Settings_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(settingsPath).ToUpperInvariant())));
 
     public NotchSettings Load()
     {
@@ -233,9 +241,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     private void ExecuteSave(NotchSettings settings, bool keepExistingBackup)
     {
         // Serialize the replace and backup transaction across service instances/processes.
-        var pathKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(_settingsPath).ToUpperInvariant())));
-        using var mutex = new Mutex(false, @"Local\VNotch_Settings_" + pathKey);
+        using var mutex = new Mutex(false, _mutexName);
         try { mutex.WaitOne(); }
         catch (AbandonedMutexException) { /* The previous writer exited; this thread owns the mutex. */ }
         try { ExecuteSaveCore(settings, keepExistingBackup); }

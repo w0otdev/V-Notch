@@ -41,7 +41,7 @@ internal static partial class TranslationLanguages
     {
         string? script = DetectUnambiguousScript(text);
         if (script != null) return script;
-        if (text.Count(char.IsLetter) < 12) return null;
+        if (!HasAtLeastLetters(text, 12)) return null;
         string? code = Detector.Value.Detect(text);
         return FromDetectorCode(code);
     }
@@ -51,20 +51,31 @@ internal static partial class TranslationLanguages
     // and passages with sentences in different languages still reach the model.
     internal static string? DetectForPassthrough(string text)
     {
-        if (text.Count(char.IsLetter) < 40) return null;
+        if (!HasAtLeastLetters(text, 40)) return null;
         string? language = ConfidentLanguage(text);
         if (language == null) return null;
         foreach (string sentence in Regex.Split(text, @"[.!?。！？\r\n]+"))
         {
-            if (sentence.Count(char.IsLetter) >= 12 && ConfidentLanguage(sentence) != language)
+            if (HasAtLeastLetters(sentence, 12) && ConfidentLanguage(sentence) != language)
                 return null;
         }
         return language;
     }
 
+    private static bool HasAtLeastLetters(string text, int minimum)
+    {
+        int count = 0;
+        foreach (char c in text)
+        {
+            if (char.IsLetter(c) && ++count >= minimum)
+                return true;
+        }
+        return false;
+    }
+
     private static string? ConfidentLanguage(string text)
     {
-        var best = Detector.Value.DetectAll(text).OrderByDescending(x => x.Probability).FirstOrDefault();
+        var best = Detector.Value.DetectAll(text).MaxBy(x => x.Probability);
         return best?.Probability >= 0.995 ? FromDetectorCode(best.Language) : null;
     }
 

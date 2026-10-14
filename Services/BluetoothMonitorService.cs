@@ -241,8 +241,8 @@ public sealed class BluetoothMonitorService : IDisposable
 
     private static string ExtractNameFromId(string id)
     {
-        var parts = id.Split(IdSeparators);
-        return parts.Length > 1 ? parts[^1] : id;
+        int sep = id.LastIndexOfAny(IdSeparators);
+        return sep >= 0 ? id[(sep + 1)..] : id;
     }
 
     public void Dispose()

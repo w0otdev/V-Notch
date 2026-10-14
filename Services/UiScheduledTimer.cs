@@ -150,7 +150,7 @@ public sealed class UiScheduledTimer : IDisposable
         {
             _wakeUp.Stop();
             long now = Stopwatch.GetTimestamp();
-            foreach (var schedule in _schedules.ToArray())
+            foreach (var schedule in _schedules)
             {
                 if (!schedule.IsPending && schedule.DueTimestamp <= now)
                     schedule.DispatchTick();

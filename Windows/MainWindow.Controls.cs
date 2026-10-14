@@ -68,10 +68,21 @@ public partial class MainWindow
 
     private void PrevButton_Click(object sender, MouseButtonEventArgs e) => MediaPlayback.PrevButton_Click(sender, e);
 
+    private bool? _presentedInlinePlaying;
+
+    private void OnViewModelPlayPauseToggled(object? sender, bool isPlaying)
+    {
+        _lastMediaActionTime = DateTime.UtcNow;
+        _isPlaying = isPlaying;
+        UpdatePlayPauseIcon();
+    }
+
     private void UpdatePlayPauseIcon()
     {
         RefreshPlaybackAccessibleNames();
         MediaPlayback.PresentPlayback(_isPlaying);
+        if (_presentedInlinePlaying == _isPlaying) return;
+        _presentedInlinePlaying = _isPlaying;
         var duration = TimeSpan.FromMilliseconds(180);
 
         if (_isPlaying)
@@ -89,6 +100,7 @@ public partial class MainWindow
         e.Handled = true;
         try
         {
+            _lastMediaActionTime = DateTime.UtcNow;
             _isPlaying = !_viewModel.IsPlaying;
             UpdatePlayPauseIcon();
             PlayButtonPressAnimation(InlinePlayPauseButton);

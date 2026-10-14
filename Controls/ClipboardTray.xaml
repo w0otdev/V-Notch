@@ -785,7 +785,7 @@
 
         <!-- Layer 6: Text Preview Container with Dust Particle Overlay for Passwords -->
         <Grid Margin="14,13,14,42" HorizontalAlignment="Left" VerticalAlignment="Top" MaxHeight="96" Width="{Binding MaskedPreviewWidth}" Height="{Binding MaskedPreviewHeight}">
-         <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="#F5F5FA">
+         <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" Opacity="{Binding MaskedTextOpacity}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="#F5F5FA">
           <TextBlock.Effect>
            <BlurEffect Radius="{Binding BlurRadius}" RenderingBias="Performance"/>
           </TextBlock.Effect>

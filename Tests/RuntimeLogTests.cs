@@ -24,12 +24,12 @@ public sealed class RuntimeLogTests
             Assert.True(File.Exists(path + ".old"));
             Assert.True(new FileInfo(path).Length <= limit);
             Assert.True(new FileInfo(path + ".old").Length <= limit);
-            Assert.Contains("SIZE-TEST", File.ReadAllText(path));
+            Assert.Contains("SIZE-TEST", await ReadSharedTextAsync(path));
 
             RuntimeLog.Info("OVERSIZED-TEST", new string('z', limit + 1));
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(new FileInfo(path).Length <= limit);
-            Assert.Contains("[truncated]", File.ReadAllText(path));
+            Assert.Contains("[truncated]", await ReadSharedTextAsync(path));
 
             File.WriteAllText(path, new string('x', limit - 100));
             using (var lockedBackup = new FileStream(path + ".old", FileMode.Open, FileAccess.Read, FileShare.None))
@@ -40,7 +40,7 @@ public sealed class RuntimeLogTests
             }
             RuntimeLog.Info("AFTER-UNLOCK", new string('b', 200));
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Contains("AFTER-UNLOCK", File.ReadAllText(path));
+            Assert.Contains("AFTER-UNLOCK", await ReadSharedTextAsync(path));
         }
         finally
         {
@@ -146,7 +146,7 @@ public sealed class RuntimeLogTests
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.True(File.Exists(logPath));
-            string session1Content = await File.ReadAllTextAsync(logPath);
+            string session1Content = await ReadSharedTextAsync(logPath);
             Assert.Contains("SESSION-1", session1Content);
 
             // Start session 2
@@ -155,10 +155,10 @@ public sealed class RuntimeLogTests
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.True(File.Exists(oldPath), "Previous session log was not rotated to .old");
-            string oldContent = await File.ReadAllTextAsync(oldPath);
+            string oldContent = await ReadSharedTextAsync(oldPath);
             Assert.Contains("SESSION-1", oldContent);
 
-            string currentContent = await File.ReadAllTextAsync(logPath);
+            string currentContent = await ReadSharedTextAsync(logPath);
             Assert.Contains("SESSION-2", currentContent);
             Assert.DoesNotContain("SESSION-1", currentContent);
         }
@@ -176,5 +176,12 @@ public sealed class RuntimeLogTests
                 // Best-effort cleanup for test log files.
             }
         }
+    }
+
+    private static async Task<string> ReadSharedTextAsync(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
     }
 }

@@ -1397,10 +1397,13 @@ public partial class ClipboardTray : UserControl, IDisposable
         _disposed = true;
         StopEntranceWork();
         _contentLifetime.Cancel();
+        _contentLifetime.Dispose();
         _statusTimer.Stop();
         _statusTimer.Tick -= StatusTimer_Tick;
+        _statusTimer.Dispose();
         _ageTimer.Stop();
         _ageTimer.Tick -= AgeTimer_Tick;
+        _ageTimer.Dispose();
         ClearSelectionContainers();
         StopCategoryScrolling();
         CancelThumbnailLoads();
@@ -1408,7 +1411,9 @@ public partial class ClipboardTray : UserControl, IDisposable
         _realizedCardElements.Clear();
         _arrivingCards.Clear();
         _searchTimer.Stop();
+        _searchTimer.Dispose();
         _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
         if (_controller != null)
         {
             _controller.Store.Changed -= StoreChanged;

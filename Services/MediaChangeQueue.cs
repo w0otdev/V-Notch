@@ -26,12 +26,21 @@ internal sealed class MediaChangeQueue
     public async IAsyncEnumerable<ChangeTypes> ReadAllAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var _ in _wakeups.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+        while (await _wakeups.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var changes = (ChangeTypes)Interlocked.Exchange(ref _pendingChanges, 0);
-            if (changes != ChangeTypes.None)
+            while (true)
+            {
+                while (_wakeups.Reader.TryRead(out _)) { }
+                var changes = (ChangeTypes)Interlocked.Exchange(ref _pendingChanges, 0);
+                if (changes == ChangeTypes.None)
+                    break;
                 yield return changes;
+            }
         }
+
+        var remaining = (ChangeTypes)Interlocked.Exchange(ref _pendingChanges, 0);
+        if (remaining != ChangeTypes.None)
+            yield return remaining;
     }
 
     public void Clear()

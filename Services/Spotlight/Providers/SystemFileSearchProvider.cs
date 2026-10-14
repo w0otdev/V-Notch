@@ -80,9 +80,8 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
         // Exact command names remain discoverable without Everything or WSearch.
         // Generic partial matches stay below ordinary apps and documents.
         if (name.Equals(requested, StringComparison.OrdinalIgnoreCase)
-            || (file.Kind == SpotlightResultKind.Application && stem.Equals(requested, StringComparison.OrdinalIgnoreCase))
+            || stem.Equals(requested, StringComparison.OrdinalIgnoreCase)
             || target.Equals(requested, StringComparison.OrdinalIgnoreCase)) return 1200;
-        if (file.Kind != SpotlightResultKind.Application) return 0;
         if (stem.StartsWith(requested, StringComparison.OrdinalIgnoreCase)) return 140;
         return requested.Length >= 3 && stem.Contains(requested, StringComparison.OrdinalIgnoreCase) ? 80 : 0;
     }

@@ -57,6 +57,7 @@ public class ProgressEngine
     private DateTime _lastSnapshotTimestampUtc = DateTime.MinValue;
     private long _lastSnapshotSequence = -1;
     private TimeSpan _lastSnapshotPosition = TimeSpan.Zero;
+    private bool _lastSnapshotIsPlaying;
     private DateTime _seekDebounceEndUtc = DateTime.MinValue;
     private DateTime _previousTrackRequestUntilUtc = DateTime.MinValue;
     private DateTime _seekPauseGraceUntilUtc = DateTime.MinValue;
@@ -157,7 +158,12 @@ public class ProgressEngine
             return true;
         }
 
+        bool playStateChanged = snapshot.IsPlaying != _lastSnapshotIsPlaying;
+        bool stoppingActivePlayback = !snapshot.IsPlaying && (_isPlaying || _state == ProgressState.Seeking);
+
         if (_lastSnapshotTimestampUtc != DateTime.MinValue &&
+            !playStateChanged &&
+            !stoppingActivePlayback &&
             snapshotTsUtc < _lastSnapshotTimestampUtc - SnapshotOutOfOrderTolerance)
         {
             RuntimeLog.Log(LogReject, $"timestamp out-of-order: snapshot={snapshotTsUtc:O} < last={_lastSnapshotTimestampUtc:O}");
@@ -165,6 +171,8 @@ public class ProgressEngine
         }
 
         if (_lastSnapshotTimestampUtc != DateTime.MinValue &&
+            !playStateChanged &&
+            !stoppingActivePlayback &&
             snapshotTsUtc == _lastSnapshotTimestampUtc &&
             Math.Abs((snapshot.Position - _lastSnapshotPosition).TotalSeconds) < 0.01)
         {
@@ -224,7 +232,7 @@ public class ProgressEngine
 
     private void UpdateSnapshotMetadata(ProgressSnapshot snapshot, DateTime snapshotTsUtc)
     {
-        if (snapshotTsUtc > _lastSnapshotTimestampUtc)
+        if (snapshotTsUtc > _lastSnapshotTimestampUtc || (!snapshot.IsPlaying && _lastSnapshotIsPlaying))
         {
             _lastSnapshotTimestampUtc = snapshotTsUtc;
         }
@@ -235,6 +243,7 @@ public class ProgressEngine
         }
 
         _lastSnapshotPosition = snapshot.Position;
+        _lastSnapshotIsPlaying = snapshot.IsPlaying;
 
         if (snapshot.Duration.TotalSeconds > 0)
         {
@@ -328,8 +337,9 @@ public class ProgressEngine
             if (observedDuringSeek > _basePosition)
             {
                 _basePosition = observedDuringSeek;
-                _baseTimeUtc = nowUtc;
             }
+            _isPlaying = false;
+            _baseTimeUtc = nowUtc;
             return true;
         }
 
@@ -386,7 +396,7 @@ public class ProgressEngine
         }
 
         TimeSpan startPos = ClampPosition(effectiveSnapshotPosition);
-        if (_state == ProgressState.Paused && startPos < _basePosition - ResumeBackstepTolerance)
+        if ((_state == ProgressState.Paused || _state == ProgressState.Seeking) && startPos < _basePosition - ResumeBackstepTolerance)
         {
             RuntimeLog.Log("PROGRESS-ENGINE-RESUME",
                 $"backstep-blocked: startPos={startPos.TotalSeconds:F2}s < basePos={_basePosition.TotalSeconds:F2}s " +
@@ -408,7 +418,9 @@ public class ProgressEngine
             $"play-start: pos={startPos.TotalSeconds:F2}s prevState={_state} prevBase={_basePosition.TotalSeconds:F2}s");
 
         _isPlaying = true;
-        _state = ProgressState.Playing;
+        _state = _state == ProgressState.Seeking && nowUtc < _seekDebounceEndUtc
+            ? ProgressState.Seeking
+            : ProgressState.Playing;
         _basePosition = startPos;
         _baseTimeUtc = nowUtc;
         _seekPauseGraceUntilUtc = DateTime.MinValue;
@@ -494,15 +506,16 @@ public class ProgressEngine
         _baseTimeUtc = nowUtc;
     }
 
-    public void NotifyUserSeek(TimeSpan position)
+    public void NotifyUserSeek(TimeSpan position, bool? isPlaying = null)
     {
         lock (_lock)
         {
             DateTime nowUtc = DateTime.UtcNow;
             TimeSpan clampedPos = ClampPosition(position);
 
+            bool shouldPlay = isPlaying ?? (_isPlaying && _state != ProgressState.Paused && _state != ProgressState.Stopped);
             _state = ProgressState.Seeking;
-            _isPlaying = true;
+            _isPlaying = shouldPlay;
             _basePosition = clampedPos;
             _baseTimeUtc = nowUtc;
             _seekDebounceEndUtc = nowUtc + UserSeekDebounceDuration;
@@ -648,6 +661,7 @@ public class ProgressEngine
             _lastSnapshotTimestampUtc = DateTime.MinValue;
             _lastSnapshotSequence = -1;
             _lastSnapshotPosition = TimeSpan.Zero;
+            _lastSnapshotIsPlaying = false;
             _seekDebounceEndUtc = DateTime.MinValue;
             _previousTrackRequestUntilUtc = DateTime.MinValue;
             _seekPauseGraceUntilUtc = DateTime.MinValue;
@@ -662,17 +676,29 @@ public class ProgressEngine
         lock (_lock)
         {
             DateTime nowUtc = DateTime.UtcNow;
+            if (_state == ProgressState.Seeking &&
+                !_isPlaying &&
+                nowUtc >= _seekDebounceEndUtc &&
+                nowUtc >= _seekPauseGraceUntilUtc)
+            {
+                _state = ProgressState.Paused;
+            }
+
             TimeSpan pos = ClampPosition(PredictPosition(nowUtc));
 
             bool durationChanged = _durationJustChanged;
             _durationJustChanged = false;
+
+            ProgressState uiState = _state == ProgressState.Seeking && !_isPlaying
+                ? ProgressState.Paused
+                : _state;
 
             return new UiProgressFrame
             {
                 Position = pos,
                 Duration = _duration,
                 ShowIndeterminate = _isIndeterminate || (_duration.TotalSeconds <= 0 && pos.TotalSeconds > 0 && !_isSeekEnabled),
-                State = _state,
+                State = uiState,
                 DurationJustChanged = durationChanged
             };
         }

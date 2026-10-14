@@ -9,13 +9,18 @@ internal static class SpotlightSystemCatalog
     internal sealed record Entry(string Key, SpotlightResultKind Kind, string Target,
         string Glyph, string Keywords, bool RequiresConfirmation = false)
     {
-        public SpotlightSearchItem CreateItem() => new($"system:{Key}", Kind,
-            GetLabel($"spotlight.system.{Key}", Keywords.Split(';')[0]), Kind switch
-            {
-                SpotlightResultKind.Settings => GetLabel("spotlight.system.settings", "Windows Settings"),
-                SpotlightResultKind.SystemAction => GetLabel("spotlight.system.actions", "System actions"),
-                _ => GetLabel("spotlight.system.tools", "Windows tools")
-            }, Target, Kind == SpotlightResultKind.Application ? Target : null);
+        public SpotlightSearchItem CreateItem()
+        {
+            int sep = Keywords.IndexOf(';');
+            string fallback = sep >= 0 ? Keywords[..sep] : Keywords;
+            return new($"system:{Key}", Kind,
+                GetLabel($"spotlight.system.{Key}", fallback), Kind switch
+                {
+                    SpotlightResultKind.Settings => GetLabel("spotlight.system.settings", "Windows Settings"),
+                    SpotlightResultKind.SystemAction => GetLabel("spotlight.system.actions", "System actions"),
+                    _ => GetLabel("spotlight.system.tools", "Windows tools")
+                }, Target, Kind == SpotlightResultKind.Application ? Target : null);
+        }
     }
 
     internal static IReadOnlyList<Entry> Entries { get; } = Array.AsReadOnly(new[]
@@ -77,7 +82,7 @@ internal static class SpotlightSystemCatalog
     internal static bool IsKnownTarget(SpotlightSearchItem item) => Find(item.Target)?.Kind == item.Kind;
 
     internal static bool RequiresConfirmation(SpotlightSearchItem item) =>
-        IsKnownTarget(item) && Find(item.Target)!.RequiresConfirmation;
+        Find(item.Target) is { } entry && entry.Kind == item.Kind && entry.RequiresConfirmation;
 
     private static Entry Tool(string key, string file, string keywords, bool windowsRoot = false) =>
         new(key, SpotlightResultKind.Application, Path.Combine(windowsRoot

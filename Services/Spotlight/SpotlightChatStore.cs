@@ -11,8 +11,16 @@ internal sealed class SpotlightSavedChat
     public string Draft { get; set; } = "";
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public List<SpotlightAiMessage> Messages { get; set; } = new();
-    public string Title => Messages.FirstOrDefault(m => m.Role == "user")?.Content.Split('\n')[0] is { } title
-        ? title[..Math.Min(64, title.Length)] : "…";
+    public string Title
+    {
+        get
+        {
+            if (Messages.FirstOrDefault(m => m.Role == "user")?.Content is not { } content) return "…";
+            int lineEnd = content.AsSpan().IndexOfAny('\r', '\n');
+            int length = Math.Min(64, lineEnd >= 0 ? lineEnd : content.Length);
+            return content[..length];
+        }
+    }
 }
 
 internal sealed class SpotlightChatStore
@@ -37,19 +45,21 @@ internal sealed class SpotlightChatStore
         lock (_gate)
         {
             if (!_canSave) return false;
+            string tempPath = _path + ".tmp";
             try
             {
                 string encrypted = DataProtection.Protect(JsonSerializer.Serialize(chats));
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-                File.WriteAllText(_path + ".tmp", encrypted);
-                File.Move(_path + ".tmp", _path, true);
+                File.WriteAllText(tempPath, encrypted);
+                File.Move(tempPath, _path, true);
                 return true;
             }
-            catch { RuntimeLog.Warn("SPOTLIGHT-CHAT", "Could not save chat history."); return false; }
-            finally
+            catch
             {
-                try { File.Delete(_path + ".tmp"); }
+                try { File.Delete(tempPath); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                RuntimeLog.Warn("SPOTLIGHT-CHAT", "Could not save chat history.");
+                return false;
             }
         }
     }

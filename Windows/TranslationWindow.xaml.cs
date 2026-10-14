@@ -525,7 +525,7 @@ public partial class TranslationWindow : Window
         StopResultReveal();
         if (_result == null) return;
         string text = _result.Text;
-        bool longText = text.Length >= 400 || text.Count(c => c == '\n') >= 5;
+        bool longText = text.Length >= 400 || HasAtLeastNewlines(text, 5);
         ResultText.FontSize = longText ? 15 : 19;
         ResultText.FontWeight = FontWeights.Bold;
         bool markdown = _formatText && _result.Currency == null && TranslationStructuredText.HasMarkdown(text);
@@ -539,6 +539,19 @@ public partial class TranslationWindow : Window
         }
         else MarkdownResult.Document.Blocks.Clear();
         if (IsVisible) SchedulePresentation();
+    }
+
+    private static bool HasAtLeastNewlines(ReadOnlySpan<char> text, int minimum)
+    {
+        int found = 0;
+        while (!text.IsEmpty)
+        {
+            int idx = text.IndexOf('\n');
+            if (idx < 0) break;
+            if (++found >= minimum) return true;
+            text = text[(idx + 1)..];
+        }
+        return false;
     }
 
     internal void ShowResult(TranslationResult result)

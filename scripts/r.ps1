@@ -101,15 +101,96 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- 4. Launch --------------------------------------------------------------
+Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class VNotchDesktopLauncher
+{
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public string lpReserved;
+        public string lpDesktop;
+        public string lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool CreateProcessW(
+        string lpApplicationName,
+        string lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    public static int StartOnDefaultDesktop(string exePath, string workingDir)
+    {
+        var si = new STARTUPINFO();
+        si.cb = Marshal.SizeOf<STARTUPINFO>();
+        si.lpDesktop = @"WinSta0\Default";
+        si.dwFlags = 0x00000001; // STARTF_USESHOWWINDOW
+        si.wShowWindow = 1;     // SW_SHOWNORMAL
+
+        string cmdLine = "\"" + exePath + "\"";
+        if (!CreateProcessW(exePath, cmdLine, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, workingDir, ref si, out var pi))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return (int)pi.dwProcessId;
+    }
+}
+"@ -ErrorAction SilentlyContinue
+
 Write-Host ">>> Launching V-Notch (press Ctrl+C to stop)..." -ForegroundColor Green
 try {
     if (Test-Path $exePath) {
         Write-Host ">>> Launching: $exePath" -ForegroundColor Gray
-        $psi = [System.Diagnostics.ProcessStartInfo]::new($exePath)
-        $psi.UseShellExecute = $false
-        $psi.WorkingDirectory = Split-Path $exePath -Parent
-        $proc = [System.Diagnostics.Process]::Start($psi)
-        Wait-Process -Id $proc.Id
+        $workDir = Split-Path $exePath -Parent
+        try {
+            $procId = [VNotchDesktopLauncher]::StartOnDefaultDesktop($exePath, $workDir)
+        } catch {
+            $psi = [System.Diagnostics.ProcessStartInfo]::new($exePath)
+            $psi.UseShellExecute = $false
+            $psi.WorkingDirectory = $workDir
+            $procId = ([System.Diagnostics.Process]::Start($psi)).Id
+        }
+        Wait-Process -Id $procId
     } else {
         Write-Host ">>> Exe not found, running via dotnet run --no-build..." -ForegroundColor Yellow
         dotnet run --project (Join-Path $repoRoot "V-Notch.csproj") --no-build
