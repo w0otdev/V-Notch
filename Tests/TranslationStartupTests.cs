@@ -9,6 +9,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class TranslationStartupTests
 {
     [Theory]
@@ -87,7 +88,7 @@ public sealed class TranslationStartupTests
     }
 
     [Fact]
-    public async Task TestActualGemmaInference()
+    public async Task ConsecutiveSpecialistInferencesDoNotDisposeContextHandle()
     {
         string userModelDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "translation-models", "translategemma-4b");
         if (!Directory.Exists(userModelDir)) return;
@@ -96,10 +97,20 @@ public sealed class TranslationStartupTests
         using var engine = new QwenTranslationEngine(store);
         using var service = new LocalTranslationService(engine);
         service.Configure(new TranslationOptions { GpuLayers = 36, ContextSize = 2048 });
-        string text = "Bây giờ bạn có thể thử bôi đen lại 1000 dollar hoặc bất kỳ văn bản nào khác, ứng dụng sẽ hoạt động bình thường mà không bị báo lỗi VC++ nữa.";
-        var result = await service.TranslateAsync(text, "auto", "vi", default);
-        Assert.NotNull(result.Text);
-        Assert.NotEmpty(result.Text);
+        string[] samples =
+        [
+            "*(Lưu ý: Hiện có một tiến trình V-Notch.exe bản cũ đang chạy nền trên máy, bạn hãy tắt và build/chạy lại app để áp dụng code mới).*",
+            "Lưu ý: V-Notch.exe đang chạy nền.",
+            "Please check `SelectionTextReader.cs` and `TranslationSelectionService.cs`.",
+            "See https://github.com/example/repo for details.",
+            "**Important**: Restart `V-Notch.exe` to apply the fix."
+        ];
+        foreach (string s in samples)
+        {
+            var res = await service.TranslateAsync(s, "auto", "vi", default);
+            Assert.False(string.IsNullOrWhiteSpace(res.Text));
+            Assert.True(res.LiteralsPreserved);
+        }
     }
 
     [Fact]

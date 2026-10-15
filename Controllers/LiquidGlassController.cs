@@ -98,6 +98,7 @@ public sealed class LiquidGlassController : IDisposable
     private volatile bool _animating;
     private volatile bool _presentationPaused;
     private readonly AutoResetEvent _idleWakeEvent = new(false);
+    private int _disposed;
     private volatile bool _forceRefreshNeeded;
 
     private readonly object _sync = new();
@@ -130,12 +131,6 @@ public sealed class LiquidGlassController : IDisposable
     private IntPtr _oldBmp;
     private int _dibW, _dibH;
 
-    private IntPtr _stagingDc;
-    private IntPtr _stagingBmp;
-    private IntPtr _stagingBits;
-    private IntPtr _stagingOldBmp;
-    private int _stagingW, _stagingH;
-
     private int[] _idxR = Array.Empty<int>();
     private int[] _auxR = Array.Empty<int>();
     private int[] _idxG = Array.Empty<int>();
@@ -149,7 +144,6 @@ public sealed class LiquidGlassController : IDisposable
     private double _outScale = 1.0;
     private double _mapTopCornerRadius = -1;
     private double _mapBottomCornerRadius = -1;
-    private double _mapZRadius = -1;
     private int _mapNotchW = -1, _mapNotchH = -1, _mapNotchOffX = -1, _mapNotchOffY = -1;
     private int _mapCaptureShiftX = int.MinValue, _mapCaptureShiftY = int.MinValue;
 
@@ -226,8 +220,23 @@ public sealed class LiquidGlassController : IDisposable
         }
     }
 
-    public int LastPresentedCaptureOriginX => _hasPresentedGpuGeometry ? _lastPresentedGpuGeometry.CaptureOriginX : int.MinValue;
-    public int LastPresentedCaptureOriginY => _hasPresentedGpuGeometry ? _lastPresentedGpuGeometry.CaptureOriginY : int.MinValue;
+    public int LastPresentedCaptureOriginX
+    {
+        get
+        {
+            lock (_sync)
+                return _hasPresentedGpuGeometry ? _lastPresentedGpuGeometry.CaptureOriginX : int.MinValue;
+        }
+    }
+
+    public int LastPresentedCaptureOriginY
+    {
+        get
+        {
+            lock (_sync)
+                return _hasPresentedGpuGeometry ? _lastPresentedGpuGeometry.CaptureOriginY : int.MinValue;
+        }
+    }
 
     public readonly record struct GpuGeometry(
         double SrcW, double SrcH, double NotchW, double NotchH, double OffX, double OffY,
@@ -367,8 +376,11 @@ public sealed class LiquidGlassController : IDisposable
 
     private void ResetGpuGeometryTracking()
     {
-        _lastPresentedGpuGeometry = default;
-        _hasPresentedGpuGeometry = false;
+        lock (_sync)
+        {
+            _lastPresentedGpuGeometry = default;
+            _hasPresentedGpuGeometry = false;
+        }
         _hasUploadedGpuFrame = false;
         _hasPresentedCpuFrame = false;
         _hasVisibleFrame = false;
@@ -381,12 +393,18 @@ public sealed class LiquidGlassController : IDisposable
         _hasVisibleFrame = true;
         Interlocked.Increment(ref _dbgPresentCount);
 
-        if (!_hasPresentedGpuGeometry || !_lastPresentedGpuGeometry.Equals(geom))
+        bool geometryChanged;
+        lock (_sync)
         {
-            _lastPresentedGpuGeometry = geom;
-            _hasPresentedGpuGeometry = true;
-            _onGpuGeometry?.Invoke(geom);
+            geometryChanged = !_hasPresentedGpuGeometry || !_lastPresentedGpuGeometry.Equals(geom);
+            if (geometryChanged)
+            {
+                _lastPresentedGpuGeometry = geom;
+                _hasPresentedGpuGeometry = true;
+            }
         }
+        if (geometryChanged)
+            _onGpuGeometry?.Invoke(geom);
 
         // Geometry is applied before the initialized source becomes visible so
         var presenter = _d3dPresenter;
@@ -518,40 +536,42 @@ public sealed class LiquidGlassController : IDisposable
             // The held frame used the pre-hover capture rectangle. Force the next
             Volatile.Write(ref _lastRegionFetchMs, double.NegativeInfinity);
             _forceRefreshNeeded = true;
-            _idleWakeEvent.Set();
+            SignalWakeEventSafe();
         }
     }
 
     public void ForceRefresh()
     {
         _forceRefreshNeeded = true;
-        _idleWakeEvent.Set();
+        SignalWakeEventSafe();
+    }
+
+    private void SignalWakeEventSafe()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        try { _idleWakeEvent.Set(); }
+        catch (ObjectDisposedException) { /* disposed concurrently */ }
     }
 
     public void SetParams(GlassParams p)
     {
         lock (_sync)
         {
-            bool geometryChanged =
+            bool cpuMapChanged =
                 Math.Abs(p.PowerFactor - _params.PowerFactor) > 1e-4 ||
                 Math.Abs(p.RefractionA - _params.RefractionA) > 1e-4 ||
                 Math.Abs(p.RefractionB - _params.RefractionB) > 1e-4 ||
                 Math.Abs(p.RefractionC - _params.RefractionC) > 1e-4 ||
                 Math.Abs(p.RefractionD - _params.RefractionD) > 1e-4 ||
                 Math.Abs(p.FPower - _params.FPower) > 1e-4 ||
-                Math.Abs(p.Noise - _params.Noise) > 1e-4 ||
-                Math.Abs(p.GlowWeight - _params.GlowWeight) > 1e-4 ||
-                Math.Abs(p.Refraction - _params.Refraction) > 1e-4 ||
                 Math.Abs(p.EdgeBend - _params.EdgeBend) > 1e-4 ||
                 Math.Abs(p.ChromaticAberration - _params.ChromaticAberration) > 1e-4 ||
                 Math.Abs(p.Distortion - _params.Distortion) > 1e-4 ||
-                Math.Abs(p.ZRadius - _params.ZRadius) > 1e-4 ||
                 Math.Abs(p.TopCornerRadius - _params.TopCornerRadius) > 1e-4 ||
-                Math.Abs(p.BottomCornerRadius - _params.BottomCornerRadius) > 1e-4 ||
-                p.BevelMode != _params.BevelMode;
+                Math.Abs(p.BottomCornerRadius - _params.BottomCornerRadius) > 1e-4;
 
             _params = p;
-            if (geometryChanged) _mapsDirty = true;
+            if (cpuMapChanged) _mapsDirty = true;
         }
     }
 
@@ -573,7 +593,7 @@ public sealed class LiquidGlassController : IDisposable
 
     public void Start()
     {
-        if (_isActive) return;
+        if (_isActive || Volatile.Read(ref _disposed) != 0) return;
         _isActive = true;
         _nextDisplayRefreshProbe = 0;
         ++_renderGeneration;
@@ -588,7 +608,7 @@ public sealed class LiquidGlassController : IDisposable
         _hasUploadedGpuFrame = false;
         _hasPresentedCpuFrame = false;
         _forceRefreshNeeded = true;
-        _idleWakeEvent.Set();
+        SignalWakeEventSafe();
 
         _exactBitBltCapture = _hideFromCapture && SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
         if (!_hideFromCapture) SetWindowDisplayAffinitySafe(WDA_NONE);
@@ -598,6 +618,7 @@ public sealed class LiquidGlassController : IDisposable
             {
                 IntPtr h = _getHwnd();
                 _mag = MagnifierCaptureSource.AcquireShared(h);
+                _mag.RegisterExcludeHwndProvider(_getHwnd);
                 _magReady = _mag.IsReady;
                 RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier Hardware Capture acquired: ready={_magReady}");
             }
@@ -636,7 +657,15 @@ public sealed class LiquidGlassController : IDisposable
         catch (Exception ex) { OnD3DPresenterFailed(ex); }
     }
 
-    public void Dispose() => Stop(retainGpuResources: false);
+    public void Dispose()
+    {
+        Stop(retainGpuResources: false);
+        if (Interlocked.Exchange(ref _disposed, 1) == 0 && _worker == null)
+        {
+            try { _idleWakeEvent.Dispose(); }
+            catch { /* best-effort handle cleanup */ }
+        }
+    }
 
     public void Stop() => Stop(retainGpuResources: false);
 
@@ -653,7 +682,7 @@ public sealed class LiquidGlassController : IDisposable
         ClearLiveRegion();
         _presentationPaused = false;
         _exactBitBltCapture = false;
-        _idleWakeEvent.Set();
+        SignalWakeEventSafe();
         // The worker owns the timer until its wait has returned and it exits.
         // Closing that handle here races WaitForMultipleObjects during Stop.
 
@@ -662,7 +691,11 @@ public sealed class LiquidGlassController : IDisposable
 
         IntPtr h = IntPtr.Zero;
         try { h = _getHwnd(); } catch { /* best-effort handle retrieval during shutdown */ }
-        if (_mag != null) MagnifierCaptureSource.ReleaseShared(h);
+        if (_mag != null)
+        {
+            _mag.UnregisterExcludeHwndProvider(_getHwnd);
+            MagnifierCaptureSource.ReleaseShared(h);
+        }
         _mag = null;
         _magReady = false;
         _magFailStreak = 0;
@@ -670,7 +703,15 @@ public sealed class LiquidGlassController : IDisposable
         try
         {
             if (!retainGpuResources) DisposeGpuPresenter();
-            _host.Source = null;
+            if (_dispatcher.CheckAccess())
+                _host.Source = null;
+            else
+                _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() => _host.Source = null));
+        }
+        catch { /* shutting down */ }
+
+        try
+        {
             if (retainGpuResources) _d3dPresenter?.SuspendPresentation();
             _bitmap = null;
             ResetGpuGeometryTracking();
@@ -740,18 +781,25 @@ public sealed class LiquidGlassController : IDisposable
             EnsureWaitableTimer();
             while (ShouldContinueWorker(generation))
             {
-                if (!ExecuteWorkerFrame(generation, clock, ref nextFrameAtMs))
-                    break;
+                try
+                {
+                    if (!ExecuteWorkerFrame(generation, clock, ref nextFrameAtMs))
+                        break;
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Log(LogCategory, $"[{_logTag}] Capture worker interrupted: {ex.Message}");
+                    if (ShouldContinueWorker(generation))
+                    {
+                        WaitForIdleOrEvent(250);
+                        nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
+                    }
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log(LogCategory, $"[{_logTag}] Capture worker interrupted: {ex.Message}");
-            if (ShouldContinueWorker(generation)) WaitForIdleOrEvent(250);
         }
         finally
         {
-            CleanupWorkerResources();
+            CleanupWorkerResources(generation);
         }
     }
 
@@ -826,15 +874,19 @@ public sealed class LiquidGlassController : IDisposable
             LogPeriodicFpsDiagnostics(frameStart, sinceLastLog);
     }
 
-    private void CleanupWorkerResources()
+    private void CleanupWorkerResources(int generation)
     {
         // Start can arrive before the old worker's finally block. Reset all
         // worker-owned frame state here before permitting its replacement.
-        _hasUploadedGpuFrame = false;
-        _hasPresentedCpuFrame = false;
+        if (generation == Volatile.Read(ref _renderGeneration))
+        {
+            _hasUploadedGpuFrame = false;
+            _hasPresentedCpuFrame = false;
+            _cachedRegion = null;
+            _lastRegionFetchMs = double.NegativeInfinity;
+            _presentInFlight = false;
+        }
         _fullSurfaceCaptureBounds = null;
-        _cachedRegion = null;
-        _lastRegionFetchMs = double.NegativeInfinity;
         _dbgFrameCount = 0;
         _dbgLastLogMs = 0;
         _frameWorkMs = 0;
@@ -843,10 +895,16 @@ public sealed class LiquidGlassController : IDisposable
         _outBuffer = Array.Empty<byte>();
         _idxR = _auxR = _idxG = _auxG = _idxB = _auxB = Array.Empty<int>();
         _outW = _outH = _srcW = _srcH = _margin = 0;
-        _presentInFlight = false;
         ReleaseRenderTimerPeriod();
         DisposeWaitableTimer();
         _sourceBlurBuffer = _sourceBlurTmp = Array.Empty<byte>();
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            _worker = null;
+            try { _idleWakeEvent.Dispose(); }
+            catch { /* best-effort handle cleanup */ }
+            return;
+        }
         try
         {
             _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
@@ -866,8 +924,19 @@ public sealed class LiquidGlassController : IDisposable
     {
         if (!_hideFromCapture)
         {
-            _exactBitBltCapture = false;
-            SetWindowDisplayAffinitySafe(WDA_NONE);
+            if (_magReady && _mag != null)
+            {
+                if (_exactBitBltCapture)
+                {
+                    _exactBitBltCapture = false;
+                    SetWindowDisplayAffinitySafe(WDA_NONE);
+                }
+                return false;
+            }
+            if (!_exactBitBltCapture)
+            {
+                _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+            }
             if (_mag == null) RequestMagnifierFallback();
             return false;
         }
@@ -901,6 +970,7 @@ public sealed class LiquidGlassController : IDisposable
                     if (!_isActive || _exactBitBltCapture || _mag != null ||
                         generation != Volatile.Read(ref _renderGeneration)) return;
                     _mag = MagnifierCaptureSource.AcquireShared(_getHwnd());
+                    _mag.RegisterExcludeHwndProvider(_getHwnd);
                     _magReady = _mag.IsReady;
                 }
                 catch (Exception ex)
@@ -941,11 +1011,18 @@ public sealed class LiquidGlassController : IDisposable
         double targetFps = 1000.0 / _activeIntervalMs;
         BackdropOptics optics = CurrentBackdropOptics;
         var outside = OutsideBackdropColor;
-        string geometry = _hasPresentedGpuGeometry
-            ? $" src={_lastPresentedGpuGeometry.SrcW:F0}x{_lastPresentedGpuGeometry.SrcH:F0}" +
-              $" notch={_lastPresentedGpuGeometry.NotchW:F0}x{_lastPresentedGpuGeometry.NotchH:F0}" +
-              $" off={_lastPresentedGpuGeometry.OffX:F1},{_lastPresentedGpuGeometry.OffY:F1}" +
-              $" origin={_lastPresentedGpuGeometry.CaptureOriginX},{_lastPresentedGpuGeometry.CaptureOriginY}"
+        GpuGeometry lastGeom;
+        bool hasGeom;
+        lock (_sync)
+        {
+            hasGeom = _hasPresentedGpuGeometry;
+            lastGeom = _lastPresentedGpuGeometry;
+        }
+        string geometry = hasGeom
+            ? $" src={lastGeom.SrcW:F0}x{lastGeom.SrcH:F0}" +
+              $" notch={lastGeom.NotchW:F0}x{lastGeom.NotchH:F0}" +
+              $" off={lastGeom.OffX:F1},{lastGeom.OffY:F1}" +
+              $" origin={lastGeom.CaptureOriginX},{lastGeom.CaptureOriginY}"
             : string.Empty;
         RuntimeLog.Log(LogCategory,
             $"[{_logTag}] fps={loopFps:F1}/{targetFps:F0} presented={presented} " +
@@ -990,6 +1067,7 @@ public sealed class LiquidGlassController : IDisposable
     private readonly object _liveRegionSync = new();
     private CaptureRegion? _liveRegion;
     private bool _hasLiveRegion;
+    private long _liveRegionRevision;
 
     public void SetLiveRegion(CaptureRegion? region)
     {
@@ -1000,16 +1078,23 @@ public sealed class LiquidGlassController : IDisposable
             if (_hasLiveRegion && _liveRegion == region) return;
             _liveRegion = region;
             _hasLiveRegion = true;
+            _liveRegionRevision++;
+            _regionQueryCompleted = false;
         }
-        _idleWakeEvent.Set();
+        SignalWakeEventSafe();
     }
 
     public void ClearLiveRegion()
     {
         lock (_liveRegionSync)
         {
+            if (_hasLiveRegion && _liveRegion != null)
+                _cachedRegion = _liveRegion;
             _liveRegion = null;
             _hasLiveRegion = false;
+            _liveRegionRevision++;
+            _regionQueryCompleted = false;
+            _lastRegionFetchMs = double.NegativeInfinity;
         }
     }
 
@@ -1017,6 +1102,12 @@ public sealed class LiquidGlassController : IDisposable
     {
         lock (_liveRegionSync)
         {
+            if (_regionQueryCompleted && _queriedRegionGeneration == Volatile.Read(ref _renderGeneration))
+            {
+                _cachedRegion = _queriedRegion;
+                _lastRegionFetchMs = nowMs;
+                _regionQueryCompleted = false;
+            }
             if (_hasLiveRegion)
             {
                 _cachedRegion = _liveRegion;
@@ -1043,6 +1134,8 @@ public sealed class LiquidGlassController : IDisposable
 
     private long _lastOverlayCheckTicks;
     private bool _overlayActiveCached;
+    private volatile bool _scannedOverlayActive;
+    private int _overlayScanQueued;
     private long _captureVisibilityUntilTicks;
 
     private const int VK_SNAPSHOT = 0x2C;
@@ -1053,6 +1146,8 @@ public sealed class LiquidGlassController : IDisposable
 
     private bool CaptureHotkeyRequested(long now)
     {
+        if (now < _nextCaptureHotkeyProbeTicks) return false;
+        _nextCaptureHotkeyProbeTicks = now + 8;
         short snapshotState = GetAsyncKeyState(VK_SNAPSHOT);
         bool snipChord = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
             (GetAsyncKeyState(VK_S) & 0x8000) != 0 &&
@@ -1263,10 +1358,21 @@ public sealed class LiquidGlassController : IDisposable
             return true;
         }
 
-        // Hotkeys and foreground capture tools are checked above on every frame.
+        // Enumeration is a fallback for capture tools which do not take focus.
+        // Keep its DWM/process queries off the frame capture worker.
+        _overlayActiveCached = _scannedOverlayActive;
         if (now - _lastOverlayCheckTicks < 500) return _overlayActiveCached;
         _lastOverlayCheckTicks = now;
-        _overlayActiveCached = DetectCaptureOverlay();
+        if (Interlocked.CompareExchange(ref _overlayScanQueued, 1, 0) == 0)
+            _ = Task.Run(() =>
+            {
+                try { _scannedOverlayActive = DetectCaptureOverlay(); }
+                finally
+                {
+                    Interlocked.Exchange(ref _overlayScanQueued, 0);
+                    SignalWakeEventSafe();
+                }
+            });
         if (_overlayActiveCached)
             _captureVisibilityUntilTicks = now + 800;
         return _overlayActiveCached;
@@ -1274,7 +1380,7 @@ public sealed class LiquidGlassController : IDisposable
 
     private bool ForegroundIsCaptureTool()
     {
-        IntPtr fg = GetForegroundWindow();
+        IntPtr fg = ZOrderManager.GetForegroundWindowCached();
         if (fg == IntPtr.Zero) return false;
         if (fg == _fgProbeHwnd) return _fgProbeResult;
 
@@ -1282,7 +1388,7 @@ public sealed class LiquidGlassController : IDisposable
         _fgProbeResult = false;
         try
         {
-            var sb = new StringBuilder(128);
+            var sb = GetCaptureClassNameBuffer();
             if (GetClassName(fg, sb, sb.Capacity) > 0 &&
                 sb.ToString().IndexOf("ScreenClipping", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -1322,7 +1428,7 @@ public sealed class LiquidGlassController : IDisposable
     private static bool DetectCaptureOverlay()
     {
         bool found = false;
-        var className = new StringBuilder(128);
+        var className = GetCaptureClassNameBuffer();
         try
         {
             EnumWindows((hwnd, _) =>
@@ -1367,6 +1473,16 @@ public sealed class LiquidGlassController : IDisposable
         return IsCaptureProcess(name);
     }
 
+    private long _nextCaptureHotkeyProbeTicks;
+    [ThreadStatic] private static StringBuilder? _captureClassNameBuffer;
+
+    private static StringBuilder GetCaptureClassNameBuffer()
+    {
+        var buffer = _captureClassNameBuffer ??= new StringBuilder(128);
+        buffer.Clear();
+        return buffer;
+    }
+
     private static readonly ConcurrentDictionary<uint, (string Name, long ExpireTicks)> _pidNameCache = new();
 
     private static string SafeProcessName(uint pid)
@@ -1378,8 +1494,7 @@ public sealed class LiquidGlassController : IDisposable
         string name = string.Empty;
         try
         {
-            using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-            name = proc.ProcessName;
+            name = ProcessNameResolver.TryGetName(pid) ?? string.Empty;
         }
         catch
         {
@@ -1401,16 +1516,49 @@ public sealed class LiquidGlassController : IDisposable
         return name;
     }
 
+    private int _regionQueryQueued;
+    private CaptureRegion? _queriedRegion;
+    private int _queriedRegionGeneration = -1;
+    private bool _regionQueryCompleted;
+
     private CaptureRegion? TryGetRegionOnUi()
     {
-        try
+        int generation = Volatile.Read(ref _renderGeneration);
+        long revision;
+        lock (_liveRegionSync) revision = _liveRegionRevision;
+        if (Interlocked.CompareExchange(ref _regionQueryQueued, 1, 0) == 0)
         {
-            return _dispatcher.Invoke(_regionProvider, DispatcherPriority.Send, CancellationToken.None);
+            try
+            {
+                _dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+                {
+                    try
+                    {
+                        if (!_isActive || generation != Volatile.Read(ref _renderGeneration)) return;
+                        var region = _regionProvider();
+                        lock (_liveRegionSync)
+                        {
+                            if (revision != _liveRegionRevision) return;
+                            _queriedRegion = region;
+                            _queriedRegionGeneration = generation;
+                            _regionQueryCompleted = true;
+                        }
+                        SignalWakeEventSafe();
+                    }
+                    catch (Exception ex)
+                    {
+                        RuntimeLog.Log(LogCategory, $"Region query failed: {ex.Message}");
+                    }
+                    finally { Interlocked.Exchange(ref _regionQueryQueued, 0); }
+                }));
+            }
+            catch (InvalidOperationException)
+            {
+                Interlocked.Exchange(ref _regionQueryQueued, 0);
+            }
         }
-        catch (Exception)
-        {
-            return null;
-        }
+        lock (_liveRegionSync)
+            return _cachedRegion;
     }
 
     private readonly record struct FrameDimensions(
@@ -1460,7 +1608,7 @@ public sealed class LiquidGlassController : IDisposable
         // IsReady only means initialization succeeded; promoting it blindly every
         // three seconds used to freeze presentation for another 60 failed captures.
         long now = Environment.TickCount64;
-        if (!_exactBitBltCapture && !_magReady && _mag?.IsReady == true &&
+        if ((!_exactBitBltCapture || !_hideFromCapture) && !_magReady && _mag?.IsReady == true &&
             (now >= _nextMagnifierRetryTicks || now < _magnifierProbeUntilTicks))
         {
             if (now >= _nextMagnifierRetryTicks)
@@ -1474,7 +1622,7 @@ public sealed class LiquidGlassController : IDisposable
             if (TryRestoreMagnifier(probe.SrcX, probe.SrcY, probe.PhysSrcW, probe.PhysSrcH))
                 _magnifierProbeUntilTicks = 0;
         }
-        bool useMag = !_exactBitBltCapture && _magReady && _mag != null;
+        bool useMag = (!_exactBitBltCapture || !_hideFromCapture) && _magReady && _mag != null;
         var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
         _outScale = dims.OutScale;
 
@@ -1497,6 +1645,11 @@ public sealed class LiquidGlassController : IDisposable
         if (_mag?.HasUsableFrame(x, y, width, height) != true) return false;
         _magFailStreak = 0;
         _magReady = true;
+        if (!_hideFromCapture && _exactBitBltCapture)
+        {
+            _exactBitBltCapture = false;
+            SetWindowDisplayAffinitySafe(WDA_NONE);
+        }
         return true;
     }
 
@@ -1572,8 +1725,7 @@ public sealed class LiquidGlassController : IDisposable
         int captureShiftX = srcX - requestedSrcX;
         int captureShiftY = srcY - requestedSrcY;
 
-        bool spatiallyExactSource = useMag || _exactBitBltCapture;
-        int mapCaptureShiftY = spatiallyExactSource ? captureShiftY : 0;
+        int mapCaptureShiftY = captureShiftY;
 
         return new FrameDimensions(
             outW, outH, outScale,
@@ -1599,15 +1751,15 @@ public sealed class LiquidGlassController : IDisposable
             var captureParams = new BackdropCaptureParams(
                 dims.SrcX, dims.SrcY, dims.SrcW, dims.SrcH,
                 dims.PhysSrcW, dims.PhysSrcH, region.Y, ctx.DisplayH, ctx.UseMag, screenDc);
-            if (!CaptureBackdrop(captureParams))
+            if (!CaptureBackdrop(captureParams, out bool isSyntheticBackdrop))
                 return false;
 
-            if ((_dbgFrameCount & 3) == 0)
+            if (!isSyntheticBackdrop && (_dbgFrameCount & 3) == 0)
             {
                 UpdateBackdropOptics(
                     dims.SrcW, dims.SrcH,
-                    dims.Margin + dims.NotchOffX - dims.CaptureShiftX,
-                    dims.Margin + dims.NotchOffY - dims.MapCaptureShiftY,
+                    region.X - dims.SrcX,
+                    region.Y - dims.SrcY,
                     dims.OutW, dims.OutH);
             }
 
@@ -1615,24 +1767,26 @@ public sealed class LiquidGlassController : IDisposable
                 return false;
 
             if (ctx.GpuMode)
-                return ProcessGpuFrame(p, dims, generation);
+                return ProcessGpuFrame(p, region, dims, generation);
 
             return ProcessCpuFrame(p, dims.SrcW, dims.SrcH, ctx.MapsChanged, ctx.BlurSigma, ctx.BlurPassRadii);
         }
         finally
         {
-            ReleaseDC(IntPtr.Zero, screenDc);
+            if (screenDc != IntPtr.Zero)
+                ReleaseDC(IntPtr.Zero, screenDc);
         }
     }
 
-    private bool CaptureBackdrop(BackdropCaptureParams cp)
+    private bool CaptureBackdrop(BackdropCaptureParams cp, out bool isSyntheticBackdrop)
     {
+        isSyntheticBackdrop = false;
         // Retain last presented frame on missed Magnifier frames to avoid geometry
         // jumps from fallback mixing; persistent failures cleanly disable Magnifier.
         if (cp.UseMag)
             return TryMagnifierCapture(cp);
 
-        return BitBltCapture(cp);
+        return BitBltCapture(cp, out isSyntheticBackdrop);
     }
 
     private bool TryMagnifierCapture(BackdropCaptureParams cp)
@@ -1640,58 +1794,43 @@ public sealed class LiquidGlassController : IDisposable
         var mag = _mag;
         if (mag == null) return false;
 
-        bool captured = false;
-        if (cp.PhysSrcW == cp.SrcW && cp.PhysSrcH == cp.SrcH)
+        if (mag.CaptureInto(cp.SrcX, cp.SrcY, cp.SrcW, cp.SrcH, _dibBits, out _, out _))
         {
-            if (mag.CaptureInto(cp.SrcX, cp.SrcY, cp.PhysSrcW, cp.PhysSrcH, _dibBits, out _, out _))
-            {
-                captured = true;
-                _magFailStreak = 0;
-            }
-            else if (++_magFailStreak >= 60)
-            {
-                _magReady = false;
-                _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
-                RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
-            }
+            _magFailStreak = 0;
+            return true;
         }
-        else
+
+        if (++_magFailStreak >= 60)
         {
-            IntPtr screenDc = cp.ScreenDc;
-            bool release = false;
-            if (screenDc == IntPtr.Zero)
+            _magReady = false;
+            _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
+            if (!_exactBitBltCapture && (!_hideFromCapture || !IsCaptureOverlayActive()))
             {
-                screenDc = GetDC(IntPtr.Zero);
-                release = true;
+                _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
             }
-            try
-            {
-                if (EnsureStagingResources(cp.PhysSrcW, cp.PhysSrcH, screenDc) &&
-                    mag.CaptureInto(cp.SrcX, cp.SrcY, cp.PhysSrcW, cp.PhysSrcH, _stagingBits, out _, out _) &&
-                    StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, _stagingDc, 0, 0, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY))
-                {
-                    GdiFlush();
-                    captured = true;
-                    _magFailStreak = 0;
-                }
-                else if (++_magFailStreak >= 60)
-                {
-                    _magReady = false;
-                    _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
-                    RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly; falling back to BitBlt.");
-                }
-            }
-            finally
-            {
-                if (release && screenDc != IntPtr.Zero)
-                    ReleaseDC(IntPtr.Zero, screenDc);
-            }
+            RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly ({mag.GetDebugStatus(cp.SrcX, cp.SrcY, cp.SrcW, cp.SrcH)}); falling back to BitBlt (exactBitBlt={_exactBitBltCapture}).");
+            return BitBltCapture(cp, out _);
         }
-        return captured;
+        return false;
     }
 
-    private bool BitBltCapture(BackdropCaptureParams cp)
+    private bool BitBltCapture(BackdropCaptureParams cp, out bool isSyntheticBackdrop)
     {
+        isSyntheticBackdrop = false;
+        if (!_exactBitBltCapture && !_magReady && (!_hideFromCapture || !IsCaptureOverlayActive()))
+        {
+            _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+        }
+
+        // Without capture exclusion, BitBlt would capture the notch itself.
+        // Sampling below it avoids feedback but displays unrelated desktop pixels
+        // at the notch's coordinates. Keep a plain material until Magnifier recovers.
+        if (!_exactBitBltCapture)
+        {
+            isSyntheticBackdrop = true;
+            return FillUnavailableBackdrop(cp.SrcW, cp.SrcH);
+        }
+
         IntPtr screenDc = cp.ScreenDc;
         bool release = false;
         if (screenDc == IntPtr.Zero)
@@ -1701,11 +1840,7 @@ public sealed class LiquidGlassController : IDisposable
         }
         try
         {
-            int bltSrcY = _exactBitBltCapture ? cp.SrcY : ComputeFallbackSourceY(cp.RegionY, cp.DisplayH);
-            bool captured = cp.SrcW == cp.PhysSrcW && cp.SrcH == cp.PhysSrcH
-                ? BitBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, SRCCOPY)
-                : StretchBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, bltSrcY, cp.PhysSrcW, cp.PhysSrcH, SRCCOPY);
-            if (!captured)
+            if (!BitBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, cp.SrcY, SRCCOPY))
                 return false;
             GdiFlush();
             return true;
@@ -1717,17 +1852,25 @@ public sealed class LiquidGlassController : IDisposable
         }
     }
 
-    private bool ProcessGpuFrame(GlassParams p, FrameDimensions dims, int generation)
+    private unsafe bool FillUnavailableBackdrop(int width, int height)
+    {
+        if (_dibBits == IntPtr.Zero || width <= 0 || height <= 0) return false;
+        uint color = 0xFF000000u | (uint)Volatile.Read(ref _averageBackgroundColorRgb);
+        new Span<uint>((void*)_dibBits, checked(width * height)).Fill(color);
+        return true;
+    }
+
+    private GpuGeometry CreateGpuGeometry(GlassParams p, CaptureRegion region, FrameDimensions dims)
     {
         double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, dims.MinHalf);
         double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, dims.MinHalf);
 
-        double offX = Math.Clamp(
-            dims.Margin - dims.CaptureShiftX + _presentSubX, 0, Math.Max(0, dims.SrcW - dims.OutW));
-        double offY = Math.Clamp(
-            dims.Margin - dims.MapCaptureShiftY + _presentSubY, 0, Math.Max(0, dims.SrcH - dims.OutH));
+        // The origin can be clamped to a monitor edge or retained across a resize.
+        // A padding value alone is not the offset into that captured desktop frame.
+        double offX = region.X - dims.SrcX + region.SubX;
+        double offY = region.Y - dims.SrcY + region.SubY;
 
-        var geom = new GpuGeometry(
+        return new GpuGeometry(
             dims.SrcW, dims.SrcH, dims.OutW, dims.OutH, offX, offY,
             topR, bottomR,
             p.PowerFactor, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD,
@@ -1737,6 +1880,11 @@ public sealed class LiquidGlassController : IDisposable
             1.0 + p.Saturation, p.Brightness,
             p.BevelMode >= 1 ? 1.0 : 0.0,
             dims.SrcX, dims.SrcY);
+    }
+
+    private bool ProcessGpuFrame(GlassParams p, CaptureRegion region, FrameDimensions dims, int generation)
+    {
+        var geom = CreateGpuGeometry(p, region, dims);
 
         long nowTicks = Environment.TickCount64;
         // Avoid re-uploading desktop texture when only lens geometry moves or resizes,
@@ -1858,9 +2006,6 @@ public sealed class LiquidGlassController : IDisposable
     internal static bool IsGpuGeometryValid(double srcW, double srcH, double notchW, double notchH) =>
         srcW >= 1.0 && srcH >= 1.0 && notchW >= 1.0 && notchH >= 1.0 &&
         srcW + 1.5 >= notchW && srcH + 1.5 >= notchH;
-
-    internal static int ComputeFallbackSourceY(int regionY, int displayHeight) =>
-        checked(regionY + Math.Max(0, displayHeight) + 2);
 
     internal static int ComputeSamplingMargin(double rimWidth, double refraction, double chroma,
         double distortion, int bevelMode, double edgeBend = 1.0)
@@ -2143,54 +2288,6 @@ public sealed class LiquidGlassController : IDisposable
         if (_memDc != IntPtr.Zero) DeleteDC(_memDc);
         _memDc = _dibBmp = _dibBits = _oldBmp = IntPtr.Zero;
         _dibW = _dibH = 0;
-
-        ReleaseStagingResources();
-    }
-
-    private bool EnsureStagingResources(int w, int h, IntPtr screenDc)
-    {
-        if (w <= 0 || h <= 0) return false;
-        if (_stagingDc != IntPtr.Zero && _stagingBits != IntPtr.Zero && _stagingW == w && _stagingH == h)
-            return true;
-
-        ReleaseStagingResources();
-
-        _stagingDc = CreateCompatibleDC(screenDc);
-        if (_stagingDc == IntPtr.Zero) return false;
-
-        var bmi = new BITMAPINFO
-        {
-            bmiHeader = new BITMAPINFOHEADER
-            {
-                biSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<BITMAPINFOHEADER>(),
-                biWidth = w,
-                biHeight = -h,
-                biPlanes = 1,
-                biBitCount = 32,
-                biCompression = BI_RGB
-            },
-            bmiColors = new uint[256]
-        };
-
-        _stagingBmp = CreateDIBSection(screenDc, ref bmi, DIB_RGB_COLORS, out _stagingBits, IntPtr.Zero, 0);
-        if (_stagingBmp == IntPtr.Zero || _stagingBits == IntPtr.Zero)
-        {
-            ReleaseStagingResources();
-            return false;
-        }
-
-        _stagingOldBmp = SelectObject(_stagingDc, _stagingBmp);
-        _stagingW = w; _stagingH = h;
-        return true;
-    }
-
-    private void ReleaseStagingResources()
-    {
-        if (_stagingDc != IntPtr.Zero && _stagingOldBmp != IntPtr.Zero) SelectObject(_stagingDc, _stagingOldBmp);
-        if (_stagingBmp != IntPtr.Zero) DeleteObject(_stagingBmp);
-        if (_stagingDc != IntPtr.Zero) DeleteDC(_stagingDc);
-        _stagingDc = _stagingBmp = _stagingBits = _stagingOldBmp = IntPtr.Zero;
-        _stagingW = _stagingH = 0;
     }
 
     private const int ParallelPixelThreshold = 40_000;
@@ -2200,7 +2297,7 @@ public sealed class LiquidGlassController : IDisposable
         MaxDegreeOfParallelism = Math.Max(1, Math.Min(Environment.ProcessorCount - 1, 8))
     };
 
-    private readonly record struct ColorAdjustment(bool Adjust, double SatFactor, double BrightAdd);
+    private readonly record struct ColorAdjustment(bool Adjust, float SatFactor, float BrightAdd);
 
     private readonly unsafe struct GatherChannelMap
     {
@@ -2246,8 +2343,8 @@ public sealed class LiquidGlassController : IDisposable
         double sat = p.Saturation;
         double bright = p.Brightness;
         bool adjust = Math.Abs(sat) > 1e-3 || Math.Abs(bright) > 1e-3;
-        double satFactor = 1.0 + sat;
-        double brightAdd = bright * 255.0;
+        float satFactor = (float)(1.0 + sat);
+        float brightAdd = (float)(bright * 255.0);
         var colorAdj = new ColorAdjustment(adjust, satFactor, brightAdd);
 
         fixed (byte* dst = _outBuffer)
@@ -2287,6 +2384,23 @@ public sealed class LiquidGlassController : IDisposable
         int* idxG = buffers.G.Idx, auxG = buffers.G.Aux;
         int* idxB = buffers.B.Idx, auxB = buffers.B.Aux;
 
+        if (!color.Adjust)
+        {
+            for (int i = start; i < end; i++)
+            {
+                int o = i << 2;
+                dst[o + 0] = (byte)Bilerp(src, idxB[i], auxB[i], stride, 0);
+                dst[o + 1] = (byte)Bilerp(src, idxG[i], auxG[i], stride, 1);
+                dst[o + 2] = (byte)Bilerp(src, idxR[i], auxR[i], stride, 2);
+                dst[o + 3] = 255;
+            }
+            return;
+        }
+
+        float satFactor = color.SatFactor;
+        float oneMinusSat = 1.0f - satFactor;
+        float brightAdd = color.BrightAdd;
+
         for (int i = start; i < end; i++)
         {
             int o = i << 2;
@@ -2294,21 +2408,11 @@ public sealed class LiquidGlassController : IDisposable
             int g = Bilerp(src, idxG[i], auxG[i], stride, 1);
             int r = Bilerp(src, idxR[i], auxR[i], stride, 2);
 
-            if (!color.Adjust)
-            {
-                dst[o + 0] = (byte)b;
-                dst[o + 1] = (byte)g;
-                dst[o + 2] = (byte)r;
-                dst[o + 3] = 255;
-            }
-            else
-            {
-                double lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                dst[o + 0] = ClampByte(lum + (b - lum) * color.SatFactor + color.BrightAdd);
-                dst[o + 1] = ClampByte(lum + (g - lum) * color.SatFactor + color.BrightAdd);
-                dst[o + 2] = ClampByte(lum + (r - lum) * color.SatFactor + color.BrightAdd);
-                dst[o + 3] = 255;
-            }
+            float lum = ((77 * r + 150 * g + 29 * b) * (1.0f / 256.0f)) * oneMinusSat + brightAdd;
+            dst[o + 0] = ClampByte(lum + b * satFactor);
+            dst[o + 1] = ClampByte(lum + g * satFactor);
+            dst[o + 2] = ClampByte(lum + r * satFactor);
+            dst[o + 3] = 255;
         }
     }
 
@@ -2332,11 +2436,11 @@ public sealed class LiquidGlassController : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte ClampByte(double v)
+    private static byte ClampByte(float v)
     {
-        if (v <= 0) return 0;
-        if (v >= 255) return 255;
-        return (byte)(v + 0.5);
+        if (v <= 0f) return 0;
+        if (v >= 255f) return 255;
+        return (byte)(v + 0.5f);
     }
 
     internal static int[] GaussianBoxRadii(double sigma, int passes = 3)
@@ -2367,16 +2471,18 @@ public sealed class LiquidGlassController : IDisposable
         return radii;
     }
 
-    private byte[] BlurCapturedSource(int w, int h, int[] passRadii)
+    private unsafe byte[] BlurCapturedSource(int w, int h, int[] passRadii)
     {
         int bytes = checked(w * h * 4);
         if (_sourceBlurBuffer.Length < bytes)
-            _sourceBlurBuffer = new byte[bytes];
+            _sourceBlurBuffer = new byte[checked(GrowPixelBufferCapacity(_sourceBlurBuffer.Length / 4, bytes / 4) * 4)];
         if (_sourceBlurTmp.Length < bytes)
-            _sourceBlurTmp = new byte[bytes];
+            _sourceBlurTmp = new byte[_sourceBlurBuffer.Length];
 
-        System.Runtime.InteropServices.Marshal.Copy(
-            _dibBits, _sourceBlurBuffer, 0, bytes);
+        fixed (byte* dst = _sourceBlurBuffer)
+        {
+            Buffer.MemoryCopy((void*)_dibBits, dst, _sourceBlurBuffer.Length, bytes);
+        }
 
         byte[] a = _sourceBlurBuffer, b = _sourceBlurTmp;
         int maximumRadius = Math.Max(1, Math.Min(w, h) / 2);
@@ -2421,6 +2527,9 @@ public sealed class LiquidGlassController : IDisposable
 
     private readonly record struct SampleBounds(int SrcW, int MaxX, int MaxY);
 
+    private const int RefractionLutSize = 512;
+    private readonly double[] _refractLut = new double[RefractionLutSize];
+
     private bool EnsureMaps(GlassParams p, MapDimensions d)
     {
         p.TopCornerRadius = Math.Round(p.TopCornerRadius * 2.0) / 2.0;
@@ -2434,6 +2543,15 @@ public sealed class LiquidGlassController : IDisposable
 
         var geom = CreateMapGeometry(p, d);
         var bounds = new SampleBounds(d.SrcW, d.SrcW - 1, d.SrcH - 1);
+
+        double fPow = Math.Max(p.FPower, 0.1);
+        double invLutMax = 1.0 / (RefractionLutSize - 1);
+        for (int i = 0; i < RefractionLutSize; i++)
+        {
+            double distNorm = i * invLutMax;
+            double fVal = ExponentialRefract(distNorm, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD);
+            _refractLut[i] = Math.Pow(Math.Max(fVal, 0.0001), fPow);
+        }
 
         void BuildRows(int y0, int y1)
         {
@@ -2463,13 +2581,12 @@ public sealed class LiquidGlassController : IDisposable
             && _outW == d.OutW && _outH == d.OutH
             && _srcW == d.SrcW && _srcH == d.SrcH
             && _margin == d.Margin
-            && _idxR.Length == d.OutW * d.OutH
+            && _idxR.Length >= d.OutW * d.OutH
             && _mapNotchW == d.NotchW && _mapNotchH == d.NotchH
             && _mapNotchOffX == d.NotchOffX && _mapNotchOffY == d.NotchOffY
             && _mapCaptureShiftX == d.CaptureShiftX && _mapCaptureShiftY == d.CaptureShiftY
             && Math.Abs(_mapTopCornerRadius - p.TopCornerRadius) < 1e-3
-            && Math.Abs(_mapBottomCornerRadius - p.BottomCornerRadius) < 1e-3
-            && Math.Abs(_mapZRadius - p.ZRadius) < 1e-4;
+            && Math.Abs(_mapBottomCornerRadius - p.BottomCornerRadius) < 1e-3;
     }
 
     private void UpdateMapCacheState(GlassParams p, MapDimensions d)
@@ -2480,23 +2597,32 @@ public sealed class LiquidGlassController : IDisposable
         _mapCaptureShiftX = d.CaptureShiftX; _mapCaptureShiftY = d.CaptureShiftY;
         _mapTopCornerRadius = p.TopCornerRadius;
         _mapBottomCornerRadius = p.BottomCornerRadius;
-        _mapZRadius = p.ZRadius;
     }
 
     private void EnsureMapBuffers(int outW, int outH)
     {
-        int n = outW * outH;
-        int needed = n * 4;
+        int n = checked(outW * outH);
+        int needed = checked(n * 4);
         if (_outBuffer.Length < needed)
         {
-            _outBuffer = new byte[needed];
+            _outBuffer = new byte[checked(GrowPixelBufferCapacity(_outBuffer.Length / 4, n) * 4)];
         }
         if (_idxR.Length < n)
         {
-            _idxR = new int[n]; _auxR = new int[n];
-            _idxG = new int[n]; _auxG = new int[n];
-            _idxB = new int[n]; _auxB = new int[n];
+            int capacity = GrowPixelBufferCapacity(_idxR.Length, n);
+            _idxR = new int[capacity]; _auxR = new int[capacity];
+            _idxG = new int[capacity]; _auxG = new int[capacity];
+            _idxB = new int[capacity]; _auxB = new int[capacity];
         }
+    }
+
+    internal static int GrowPixelBufferCapacity(int current, int required)
+    {
+        if (current >= required) return current;
+        // Amortize LOH allocations through expansion. Bound unused capacity to
+        // 64K pixels per buffer instead of retaining another full-sized frame.
+        int slack = Math.Clamp(current / 4, 4096, 65536);
+        return Math.Max(required, checked(current + slack));
     }
 
     private MapGeometry CreateMapGeometry(GlassParams p, MapDimensions d)
@@ -2540,9 +2666,11 @@ public sealed class LiquidGlassController : IDisposable
         double pyNorm = ly / Math.Max(geom.HalfY, 1.0);
         double distNorm = Math.Clamp(inside / Math.Max(geom.MinHalf, 1.0), 0.0, 1.0);
 
-        double fVal = ExponentialRefract(distNorm, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD);
-        double fPow = Math.Max(p.FPower, 0.1);
-        double refractFactor = Math.Pow(Math.Max(fVal, 0.0001), fPow);
+        double lutPos = distNorm * (RefractionLutSize - 1);
+        int lutIdx = (int)lutPos;
+        double refractFactor = lutIdx >= RefractionLutSize - 1
+            ? _refractLut[RefractionLutSize - 1]
+            : _refractLut[lutIdx] + (_refractLut[lutIdx + 1] - _refractLut[lutIdx]) * (lutPos - lutIdx);
 
         double bend = Math.Max(p.EdgeBend, 0.1);
         double dispX = (pxNorm * refractFactor - pxNorm) * geom.HalfX * bend;
@@ -2592,19 +2720,25 @@ public sealed class LiquidGlassController : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double Hash(double px, double py)
+    private static double Hash(int ix, int iy)
     {
-        double s = Math.Sin(px * 127.1 + py * 311.7) * 43758.5453;
-        return s - Math.Floor(s);
+        uint h = (uint)(ix * 374761393 + iy * 668265263);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return ((h ^ (h >> 16)) & 0xFFFFFFu) * (1.0 / 16777216.0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double ValueNoise(double px, double py)
     {
-        double ix = Math.Floor(px), iy = Math.Floor(py);
-        double fx = Smoother01(px - ix), fy = Smoother01(py - iy);
-        double top = Hash(ix, iy) + (Hash(ix + 1.0, iy) - Hash(ix, iy)) * fx;
-        double bottom = Hash(ix, iy + 1.0) + (Hash(ix + 1.0, iy + 1.0) - Hash(ix, iy + 1.0)) * fx;
+        double floorX = Math.Floor(px), floorY = Math.Floor(py);
+        int ix = (int)floorX, iy = (int)floorY;
+        double fx = Smoother01(px - floorX), fy = Smoother01(py - floorY);
+        double h00 = Hash(ix, iy);
+        double h10 = Hash(ix + 1, iy);
+        double h01 = Hash(ix, iy + 1);
+        double h11 = Hash(ix + 1, iy + 1);
+        double top = h00 + (h10 - h00) * fx;
+        double bottom = h01 + (h11 - h01) * fx;
         return top + (bottom - top) * fy;
     }
 

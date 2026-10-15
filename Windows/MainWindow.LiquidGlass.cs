@@ -50,15 +50,33 @@ public partial class MainWindow
             if (!sysTrans)
             {
                 GlassMaterialClipHost.Visibility = Visibility.Collapsed;
-                NotchBackground.Opacity = 1;
-                ExpandedContent.Background = (System.Windows.Media.Brush)FindResource("NotchGradient");
+                _glassInitialFramePending = false;
+                StopLiquidGlass();
+
+                ApplyGlassContentShadow(false);
+                ApplyGlassToTimerBar(false);
+                ApplyGlassToTimerFinishedView(false);
+                ApplyGlassPanelMaterial(false);
 
                 GlassBackdropHost.Visibility = Visibility.Collapsed;
+                GlassBackdropHost.Background = null;
                 GlassTintOverlay.Visibility = Visibility.Collapsed;
+                if (GlassGrainOverlay != null)
+                {
+                    GlassGrainOverlay.Visibility = Visibility.Collapsed;
+                    GlassGrainOverlay.Opacity = 0;
+                }
                 SetOpticalRimVisibility(Visibility.Collapsed);
-                if (GlassDarkOverlay != null) GlassDarkOverlay.Visibility = Visibility.Collapsed;
+                if (GlassDarkOverlay != null)
+                {
+                    GlassDarkOverlay.Visibility = Visibility.Collapsed;
+                    GlassDarkOverlay.Opacity = 0;
+                }
 
-                StopLiquidGlass();
+                NotchBackground.Opacity = 1;
+                ExpandedContent.Background = (System.Windows.Media.Brush)FindResource("NotchGradient");
+                RestoreNotchShadowDefaults();
+                UpdateEarVisibility();
                 return;
             }
 
@@ -68,7 +86,11 @@ public partial class MainWindow
             GlassBackdropHost.Visibility = Visibility.Visible;
             GlassTintOverlay.Visibility = Visibility.Visible;
             SetOpticalRimVisibility(Visibility.Visible);
-            if (GlassDarkOverlay != null) GlassDarkOverlay.Visibility = Visibility.Visible;
+            if (GlassDarkOverlay != null)
+            {
+                GlassDarkOverlay.Visibility = Visibility.Collapsed;
+                GlassDarkOverlay.Opacity = 0;
+            }
             if (GlassGrainOverlay != null) GlassGrainOverlay.Background = GlassGrainBrush.Instance;
 
             CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
@@ -93,12 +115,17 @@ public partial class MainWindow
             // Match the controller to the notch's current motion state so it starts
             UpdateGlassMotionState();
 
+            bool hadFailedBefore = _gpuRefractionFailed;
             ConfigureGpuRefraction();
 
-            ApplyLiquidGlassConfig();
+            // If ConfigureGpuRefraction just failed synchronously, OnGpuRefractionFailure
+            // already called ApplyLiquidGlassConfig() and ScheduleGlassGpuRetry().
+            if (!_gpuRefractionFailed || hadFailedBefore)
+            {
+                ApplyLiquidGlassConfig();
+                if (_gpuRefractionFailed) ScheduleGlassGpuRetry();
+            }
             _liquidGlass.Start();
-            if (_gpuRefractionFailed) ScheduleGlassGpuRetry();
-            _glassMaterialPresenter.SyncCornerRadius(NotchBorder.CornerRadius);
             ApplyGlassContentShadow(true);
             ApplyGlassToTimerBar(true);
             ApplyGlassToTimerFinishedView(true);
@@ -143,10 +170,14 @@ public partial class MainWindow
     private void ApplyLiquidGlassConfig()
     {
         if (GlassBackdropHost == null) return;
+        _lastGpuGeometry = null;
+        _lastAppliedGpuOptics = null;
+        _lastDynamicTopCornerR = -1;
+        _lastDynamicBottomCornerR = -1;
+
         var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
         _glassMaterialPresenter.PowerFactor = cfg.PowerFactor;
         UpdateNotchClip();
-        UpdateGlassClip();
 
         double dipRadius = Math.Clamp(cfg.BlurAmount, 0, 1) * 28.0;
         double dpiScale = GetGlassDpiScale();
@@ -204,6 +235,8 @@ public partial class MainWindow
             dse.BlurRadius = Math.Clamp(cfg.ShadowSpread, 0, 60);
         }
 
+        _lastDynamicTopCornerR = NotchBorder.CornerRadius.TopLeft;
+        _lastDynamicBottomCornerR = NotchBorder.CornerRadius.BottomLeft;
         _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
         {
             PowerFactor = cfg.PowerFactor,
@@ -220,13 +253,13 @@ public partial class MainWindow
             Refraction = cfg.Refraction,
             EdgeBend = cfg.EdgeBend,
             ChromaticAberration = cfg.ChromaticAberration,
-            Distortion = cfg.Distortion,
+            Distortion = VNotch.Services.AnimationConfig.ReduceMotion ? 0.0 : cfg.Distortion,
             ZRadius = cfg.ZRadius,
             Saturation = cfg.Saturation,
             Brightness = cfg.Brightness,
             BevelMode = cfg.BevelMode,
-            TopCornerRadius = NotchBorder.CornerRadius.TopLeft,
-            BottomCornerRadius = NotchBorder.CornerRadius.BottomLeft
+            TopCornerRadius = _lastDynamicTopCornerR,
+            BottomCornerRadius = _lastDynamicBottomCornerR
         });
     }
 
@@ -268,7 +301,6 @@ public partial class MainWindow
                 $"GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS");
             _gpuRefractionConfigured = true;
             _glassGpuRetryTimer?.Stop();
-            _glassGpuRetrySeconds = 5;
         }
         catch (Exception ex)
         {
@@ -310,8 +342,11 @@ public partial class MainWindow
             !(_settings.LiquidGlass?.UseGpuRefraction ?? true) || !IsSystemTransparencyEnabled()) return;
         _gpuRefractionFailed = false;
         ConfigureGpuRefraction();
-        ApplyLiquidGlassConfig();
-        _liquidGlass.ForceRefresh();
+        if (!_gpuRefractionFailed)
+        {
+            ApplyLiquidGlassConfig();
+            _liquidGlass.ForceRefresh();
+        }
     }
 
     private void StopLiquidGlass()
@@ -358,8 +393,38 @@ public partial class MainWindow
 
     private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
     {
+        _glassGpuRetrySeconds = 5;
         _lastGpuGeometry = g;
         UpdateShaderGeometryPerFrame();
+    }
+
+    private bool _hasCachedFrameMetrics;
+    private double _cachedFrameNotchW;
+    private double _cachedFrameNotchH;
+    private double _cachedFrameDpiScale = 1.0;
+    private double _cachedFrameScreenLeft;
+    private double _cachedFrameScreenTop;
+
+    private (double NotchW, double NotchH, double DpiScale, double ScreenLeft, double ScreenTop) GetOrComputeFrameMetrics()
+    {
+        if (_hasCachedFrameMetrics)
+        {
+            return (_cachedFrameNotchW, _cachedFrameNotchH, _cachedFrameDpiScale, _cachedFrameScreenLeft, _cachedFrameScreenTop);
+        }
+
+        double dpiScale = GetGlassDpiScale();
+        if (!double.IsFinite(dpiScale) || dpiScale <= 0) dpiScale = 1.0;
+        var (notchW, notchH) = GetCurrentInstantaneousNotchSize();
+        double exactW = notchW * dpiScale;
+        var (screenLeft, screenTop) = GetNotchScreenPosition(exactW, dpiScale);
+
+        _cachedFrameNotchW = notchW;
+        _cachedFrameNotchH = notchH;
+        _cachedFrameDpiScale = dpiScale;
+        _cachedFrameScreenLeft = screenLeft;
+        _cachedFrameScreenTop = screenTop;
+
+        return (notchW, notchH, dpiScale, screenLeft, screenTop);
     }
 
     private (double Width, double Height) GetCurrentInstantaneousNotchSize()
@@ -402,8 +467,7 @@ public partial class MainWindow
         {
             if (NotchBorder != null && NotchBorder.IsVisible && PresentationSource.FromVisual(NotchBorder) != null)
             {
-                var pt = NotchBorder.PointToScreen(new Point(0, 0));
-                if (double.IsFinite(pt.X) && double.IsFinite(pt.Y))
+                if ((_glassScreenGeometry ??= new(this)).TryGetPosition(NotchBorder, out var pt))
                     return (pt.X, pt.Y);
             }
         }
@@ -424,20 +488,24 @@ public partial class MainWindow
         var lg = _liquidGlass;
         if (fx == null || lg == null || GlassBackdropHost == null) return;
 
-        double dpiScale = GetGlassDpiScale();
-        if (!double.IsFinite(dpiScale) || dpiScale <= 0) dpiScale = 1.0;
-        var (notchW, notchH) = GetCurrentInstantaneousNotchSize();
+        var (notchW, notchH, dpiScale, screenLeft, screenTop) = GetOrComputeFrameMetrics();
         double exactW = notchW * dpiScale;
         double exactH = notchH * dpiScale;
 
         double sourceW = lg.SurfaceWidth;
         double sourceH = lg.SurfaceHeight;
-        if (Math.Abs(GlassBackdropImage.Width - sourceW / dpiScale) > 0.01)
-            GlassBackdropImage.Width = sourceW / dpiScale;
-        if (Math.Abs(GlassBackdropImage.Height - sourceH / dpiScale) > 0.01)
-            GlassBackdropImage.Height = sourceH / dpiScale;
-
-        var (screenLeft, screenTop) = GetNotchScreenPosition(exactW, dpiScale);
+        // The shader works in physical screen pixels. Compensate the ancestor's
+        // hover scale so WPF does not magnify the captured desktop a second time.
+        double scaleX = NotchScale?.ScaleX ?? 1.0;
+        double scaleY = NotchScale?.ScaleY ?? 1.0;
+        if (!double.IsFinite(scaleX) || scaleX <= 0) scaleX = 1.0;
+        if (!double.IsFinite(scaleY) || scaleY <= 0) scaleY = 1.0;
+        double imageWidth = sourceW / (dpiScale * scaleX);
+        double imageHeight = sourceH / (dpiScale * scaleY);
+        if (!double.IsFinite(GlassBackdropImage.Width) || Math.Abs(GlassBackdropImage.Width - imageWidth) > 0.01)
+            GlassBackdropImage.Width = imageWidth;
+        if (!double.IsFinite(GlassBackdropImage.Height) || Math.Abs(GlassBackdropImage.Height - imageHeight) > 0.01)
+            GlassBackdropImage.Height = imageHeight;
 
         int captureOriginX = lg.LastPresentedCaptureOriginX;
         int captureOriginY = lg.LastPresentedCaptureOriginY;
@@ -472,26 +540,23 @@ public partial class MainWindow
         var cfg = _settings.LiquidGlass ?? new Models.LiquidGlassConfig();
         if (_lastGpuGeometry is { } g)
         {
-            if (_lastAppliedGpuOptics == null || !_lastAppliedGpuOptics.Value.Equals(g))
-            {
-                _lastAppliedGpuOptics = g;
-                fx.PowerFactor = g.PowerFactor;
-                fx.A = g.A;
-                fx.B = g.B;
-                fx.C = g.C;
-                fx.D = g.D;
-                fx.FPower = g.FPower;
-                fx.Noise = g.Noise;
-                fx.GlowWeight = g.GlowWeight;
-                fx.GlowBias = g.GlowBias;
-                fx.GlowEdge0 = g.GlowEdge0;
-                fx.GlowEdge1 = g.GlowEdge1;
-                fx.Chroma = g.Chroma;
-                fx.EdgeBend = g.EdgeBend;
-                fx.BevelMode = g.BevelMode;
-                fx.SatFactor = g.SatFactor;
-                fx.BrightAdd = g.BrightAdd;
-            }
+            _lastAppliedGpuOptics = g;
+            if (Math.Abs(fx.PowerFactor - g.PowerFactor) > 1e-4) fx.PowerFactor = g.PowerFactor;
+            if (Math.Abs(fx.A - g.A) > 1e-4) fx.A = g.A;
+            if (Math.Abs(fx.B - g.B) > 1e-4) fx.B = g.B;
+            if (Math.Abs(fx.C - g.C) > 1e-4) fx.C = g.C;
+            if (Math.Abs(fx.D - g.D) > 1e-4) fx.D = g.D;
+            if (Math.Abs(fx.FPower - g.FPower) > 1e-4) fx.FPower = g.FPower;
+            if (Math.Abs(fx.Noise - g.Noise) > 1e-4) fx.Noise = g.Noise;
+            if (Math.Abs(fx.GlowWeight - g.GlowWeight) > 1e-4) fx.GlowWeight = g.GlowWeight;
+            if (Math.Abs(fx.GlowBias - g.GlowBias) > 1e-4) fx.GlowBias = g.GlowBias;
+            if (Math.Abs(fx.GlowEdge0 - g.GlowEdge0) > 1e-4) fx.GlowEdge0 = g.GlowEdge0;
+            if (Math.Abs(fx.GlowEdge1 - g.GlowEdge1) > 1e-4) fx.GlowEdge1 = g.GlowEdge1;
+            if (Math.Abs(fx.Chroma - g.Chroma) > 1e-4) fx.Chroma = g.Chroma;
+            if (Math.Abs(fx.EdgeBend - g.EdgeBend) > 1e-4) fx.EdgeBend = g.EdgeBend;
+            if (Math.Abs(fx.BevelMode - g.BevelMode) > 1e-4) fx.BevelMode = g.BevelMode;
+            if (Math.Abs(fx.SatFactor - g.SatFactor) > 1e-4) fx.SatFactor = g.SatFactor;
+            if (Math.Abs(fx.BrightAdd - g.BrightAdd) > 1e-4) fx.BrightAdd = g.BrightAdd;
         }
         else
         {
@@ -548,20 +613,33 @@ public partial class MainWindow
 
     private void SetOpticalRimVisibility(Visibility visibility)
     {
-        GlassDepthRimBorder.Visibility = visibility;
-        GlassCoolRimBorder.Visibility = visibility;
-        GlassWarmRimBorder.Visibility = visibility;
-        GlassFresnelBloomBorder.Visibility = visibility;
-        GlassFresnelBorder.Visibility = visibility;
-        GlassInnerFresnelBorder.Visibility = visibility;
+        Visibility cpuRimVis = visibility == Visibility.Visible && UseGpuRefraction
+            ? Visibility.Collapsed
+            : visibility;
+        GlassDepthRimBorder.Visibility = cpuRimVis;
+        GlassCoolRimBorder.Visibility = cpuRimVis;
+        GlassWarmRimBorder.Visibility = cpuRimVis;
+        GlassFresnelBloomBorder.Visibility = cpuRimVis;
+        GlassFresnelBorder.Visibility = cpuRimVis;
+        GlassInnerFresnelBorder.Visibility = cpuRimVis;
+        GlassSpecularBorder.Visibility = cpuRimVis;
         GlassRimBorder.Visibility = visibility;
-        GlassSpecularBorder.Visibility = visibility;
     }
 
     private void ApplyOpticalRimLevels(double edgeHighlight, double specular, double fresnel, double chroma)
     {
         if (UseGpuRefraction)
         {
+            if (GlassDepthRimBorder.Visibility != Visibility.Collapsed)
+            {
+                GlassDepthRimBorder.Visibility = Visibility.Collapsed;
+                GlassCoolRimBorder.Visibility = Visibility.Collapsed;
+                GlassWarmRimBorder.Visibility = Visibility.Collapsed;
+                GlassFresnelBloomBorder.Visibility = Visibility.Collapsed;
+                GlassFresnelBorder.Visibility = Visibility.Collapsed;
+                GlassInnerFresnelBorder.Visibility = Visibility.Collapsed;
+                GlassSpecularBorder.Visibility = Visibility.Collapsed;
+            }
             GlassDepthRimBorder.Opacity = 0;
             GlassCoolRimBorder.Opacity = 0;
             GlassWarmRimBorder.Opacity = 0;
@@ -571,6 +649,17 @@ public partial class MainWindow
             GlassSpecularBorder.Opacity = 0;
             GlassRimBorder.Opacity = Math.Clamp(edgeHighlight * 0.50, 0.0, 0.65);
             return;
+        }
+
+        if (IsLiquidGlassEnabled && GlassDepthRimBorder.Visibility != Visibility.Visible)
+        {
+            GlassDepthRimBorder.Visibility = Visibility.Visible;
+            GlassCoolRimBorder.Visibility = Visibility.Visible;
+            GlassWarmRimBorder.Visibility = Visibility.Visible;
+            GlassFresnelBloomBorder.Visibility = Visibility.Visible;
+            GlassFresnelBorder.Visibility = Visibility.Visible;
+            GlassInnerFresnelBorder.Visibility = Visibility.Visible;
+            GlassSpecularBorder.Visibility = Visibility.Visible;
         }
 
         EnsureDynamicFresnelBrush();
@@ -667,43 +756,43 @@ public partial class MainWindow
         Color targetTint = BuildContentFresnelTint(optics.Red, optics.Green, optics.Blue);
         _dynamicFresnelTint = InterpolateColor(_dynamicFresnelTint, targetTint, response);
 
-        brush.Center = new Point(_dynamicFresnelX, _dynamicFresnelY);
-        brush.GradientOrigin = new Point(
+        GlassVisualUpdates.SetPoint(brush, RadialGradientBrush.CenterProperty, new Point(_dynamicFresnelX, _dynamicFresnelY));
+        GlassVisualUpdates.SetPoint(brush, RadialGradientBrush.GradientOriginProperty, new Point(
             Math.Clamp(0.5 + (_dynamicFresnelX - 0.5) * 0.72, 0.30, 0.62),
-            Math.Clamp(0.5 + (_dynamicFresnelY - 0.5) * 0.72, 0.26, 0.58));
-        brush.RadiusX = 0.84 - _dynamicFresnelContrast * 0.08;
-        brush.RadiusY = 0.90 - _dynamicFresnelContrast * 0.06;
+            Math.Clamp(0.5 + (_dynamicFresnelY - 0.5) * 0.72, 0.26, 0.58)));
+        GlassVisualUpdates.SetDouble(brush, RadialGradientBrush.RadiusXProperty, 0.84 - _dynamicFresnelContrast * 0.08);
+        GlassVisualUpdates.SetDouble(brush, RadialGradientBrush.RadiusYProperty, 0.90 - _dynamicFresnelContrast * 0.06);
 
         // Keep the inner reflection axis fixed. Normalizing the tiny per-frame
 
         Color bright = InterpolateColor(_dynamicFresnelTint, Colors.White, 0.68);
         Color mid = InterpolateColor(_dynamicFresnelTint, Colors.White, 0.42);
-        brush.GradientStops[0].Color = Color.FromArgb(255, bright.R, bright.G, bright.B);
-        brush.GradientStops[1].Color = Color.FromArgb(200, mid.R, mid.G, mid.B);
-        brush.GradientStops[2].Color = Color.FromArgb(
-            112, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B);
-        brush.GradientStops[3].Color = Color.FromArgb(
-            18, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B);
-        brush.GradientStops[4].Color = Color.FromArgb(
-            0, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B);
+        GlassVisualUpdates.SetColor(brush.GradientStops[0], Color.FromArgb(255, bright.R, bright.G, bright.B));
+        GlassVisualUpdates.SetColor(brush.GradientStops[1], Color.FromArgb(200, mid.R, mid.G, mid.B));
+        GlassVisualUpdates.SetColor(brush.GradientStops[2], Color.FromArgb(
+            112, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
+        GlassVisualUpdates.SetColor(brush.GradientStops[3], Color.FromArgb(
+            18, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
+        GlassVisualUpdates.SetColor(brush.GradientStops[4], Color.FromArgb(
+            0, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
 
-        innerBrush.GradientStops[0].Color = Color.FromArgb(255, bright.R, bright.G, bright.B);
-        innerBrush.GradientStops[1].Color = Color.FromArgb(
-            150, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B);
-        innerBrush.GradientStops[2].Color = Color.FromArgb(
-            18, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B);
-        innerBrush.GradientStops[3].Color = Color.FromArgb(
-            (byte)Math.Round(82 + _dynamicFresnelContrast * 48), 0, 0, 0);
-        innerBrush.GradientStops[4].Color = Color.FromArgb(184, mid.R, mid.G, mid.B);
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[0], Color.FromArgb(255, bright.R, bright.G, bright.B));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[1], Color.FromArgb(
+            150, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[2], Color.FromArgb(
+            18, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[3], Color.FromArgb(
+            (byte)Math.Round(82 + _dynamicFresnelContrast * 48), 0, 0, 0));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[4], Color.FromArgb(184, mid.R, mid.G, mid.B));
 
         double fresnelEnergy = Math.Sqrt(Math.Clamp(_activeFresnelLevel, 0.0, 1.0));
         double contrastResponse = 0.94 + _dynamicFresnelContrast * 0.12;
-        GlassFresnelBloomBorder.Opacity = Math.Clamp(
-            fresnelEnergy * (0.24 + _dynamicFresnelContrast * 0.08), 0.0, 0.42);
-        GlassFresnelBorder.Opacity = Math.Clamp(
-            fresnelEnergy * 0.98 * contrastResponse, 0.0, 1.0);
-        GlassInnerFresnelBorder.Opacity = Math.Clamp(
-            fresnelEnergy * (0.58 + _dynamicFresnelContrast * 0.10), 0.0, 0.76);
+        GlassVisualUpdates.SetDouble(GlassFresnelBloomBorder, UIElement.OpacityProperty, Math.Clamp(
+            fresnelEnergy * (0.24 + _dynamicFresnelContrast * 0.08), 0.0, 0.42));
+        GlassVisualUpdates.SetDouble(GlassFresnelBorder, UIElement.OpacityProperty, Math.Clamp(
+            fresnelEnergy * 0.98 * contrastResponse, 0.0, 1.0));
+        GlassVisualUpdates.SetDouble(GlassInnerFresnelBorder, UIElement.OpacityProperty, Math.Clamp(
+            fresnelEnergy * (0.58 + _dynamicFresnelContrast * 0.10), 0.0, 0.76));
     }
 
     private static Color BuildContentFresnelTint(byte red, byte green, byte blue)
@@ -741,9 +830,7 @@ public partial class MainWindow
     // Liquid-glass "material" matching the audio redirect frame.
     private static readonly SolidColorBrush _glassPanelBg = Frozen(0x33, 0, 0, 0);
     private static readonly SolidColorBrush _glassPanelBorder = Frozen(0x26, 255, 255, 255);
-    private static readonly SolidColorBrush _glassDashStroke = Frozen(0x40, 255, 255, 255);
     private static readonly SolidColorBrush _defaultPanelBg = Frozen(0xFF, 0x1A, 0x1A, 0x1A);
-    private static readonly SolidColorBrush _defaultDashStroke = Frozen(0xFF, 0x33, 0x33, 0x33);
     // The idle camera box should read the same as the file tray (both #1A1A1A)
     private static readonly SolidColorBrush _cameraOverlayDefault = Frozen(0x00, 0, 0, 0);
 
@@ -842,15 +929,17 @@ public partial class MainWindow
         }
     }
 
+    private WindowScreenGeometry? _glassScreenGeometry;
+
     private double GetGlassDpiScale()
     {
-        double scale = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
+        double scale = (_glassScreenGeometry ??= new(this)).DpiScaleX;
         return scale > 0 ? scale : 1.0;
     }
 
     private void InvalidateGlassDpiScale()
     {
-        // VisualTreeHelper.GetDpi queries current window DPI dynamically, no caching needed
+        _glassScreenGeometry?.Invalidate();
     }
 
     // Hover applies a transient scale to the collapsed notch without flipping the
@@ -900,20 +989,35 @@ public partial class MainWindow
         _glassGestureSnapBackMotion = true;
         UpdateGlassMotionState();
 
-        completionAnim.Completed += (_, _) =>
+        TimeSpan motionDuration = completionAnim.Duration.HasTimeSpan
+            ? completionAnim.Duration.TimeSpan
+            : TimeSpan.FromMilliseconds(350);
+        var safetyTimer = new UiScheduledTimer(
+            System.Windows.Threading.DispatcherPriority.Background,
+            Dispatcher)
         {
+            Interval = motionDuration + TimeSpan.FromMilliseconds(180)
+        };
+
+        void FinishSnapBackMotion()
+        {
+            safetyTimer.Stop();
             if (gen != _glassGestureSnapBackGen) return;
             _glassGestureSnapBackMotion = false;
             UpdateGlassMotionState();
-        };
+        }
+
+        completionAnim.Completed += (_, _) => FinishSnapBackMotion();
+        safetyTimer.Tick += (_, _) => FinishSnapBackMotion();
+        safetyTimer.Start();
     }
 
     private bool _glassRegionPushActive;
 
     private void UpdateGlassMotionState()
     {
-        // Hover applies a ScaleTransform (NotchScale) that renders the notch â€” and
-        bool motion = _isAnimating || _isGestureActive ||
+        // Hover applies a ScaleTransform (NotchScale) that renders the notch — and
+        bool motion = _isAnimating || _isModeTransitioning || _isGestureActive ||
                       _glassGestureSnapBackMotion || _glassHoverMotion;
 
         _liquidGlass?.SetAnimating(motion);
@@ -927,22 +1031,20 @@ public partial class MainWindow
         if (enabled == _glassRegionPushActive) return;
         _glassRegionPushActive = enabled;
 
-        if (enabled)
+        if (!enabled)
         {
-            CompositionTarget.Rendering += OnGlassRegionRendering;
+            if (_liquidGlass != null && IsLiquidGlassEnabled)
+            {
+                _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
+                _liquidGlass.ClearLiveRegion();
+                UpdateShaderGeometryPerFrame();
+                UpdateDynamicGlassParams();
+            }
+            else
+            {
+                _liquidGlass?.ClearLiveRegion();
+            }
         }
-        else
-        {
-            CompositionTarget.Rendering -= OnGlassRegionRendering;
-            _liquidGlass?.ClearLiveRegion();
-        }
-    }
-
-    private void OnGlassRegionRendering(object? sender, EventArgs e)
-    {
-        if (_liquidGlass == null) { SetGlassRegionPush(false); return; }
-        _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
-        UpdateShaderGeometryPerFrame();
     }
 
     private System.Windows.Media.Effects.DropShadowEffect? _glassContentShadow;
@@ -1113,7 +1215,7 @@ public partial class MainWindow
     {
         if (_hwnd == IntPtr.Zero || !IsEffectivelyNotchVisible) return null;
 
-        double dpiScale = GetGlassDpiScale();
+        var (notchW, notchH, dpiScale, screenLeft, screenTop) = GetOrComputeFrameMetrics();
         if (Math.Abs(dpiScale - _lastAppliedDpiScale) > 0.01)
         {
             _lastAppliedDpiScale = dpiScale;
@@ -1126,7 +1228,6 @@ public partial class MainWindow
             }
         }
 
-        var (notchW, notchH) = GetCurrentInstantaneousNotchSize();
         if (notchW <= 0 || notchH <= 0) return null;
 
         double exactW = notchW * dpiScale;
@@ -1134,8 +1235,6 @@ public partial class MainWindow
         int physW = Math.Max(1, (int)Math.Round(exactW));
         int physH = Math.Max(1, (int)Math.Round(exactH));
         QueueGlassRendererRebuildIfTooSmall(physW, physH, dpiScale);
-
-        var (screenLeft, screenTop) = GetNotchScreenPosition(exactW, dpiScale);
 
         int physLeft = (int)Math.Round(screenLeft, MidpointRounding.AwayFromZero);
         int physTop = (int)Math.Round(screenTop, MidpointRounding.AwayFromZero);
@@ -1206,16 +1305,22 @@ public partial class MainWindow
     }
 
     private double _lastActualHeight = -1;
+    private double _lastDynamicTopCornerR = -1;
+    private double _lastDynamicBottomCornerR = -1;
 
     private void OnLiquidGlassFrameUpdate(object? sender, EventArgs e)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled) return;
 
-        if (_glassInitialFramePending && _liquidGlass.HasPresentedFrame)
+        if (_liquidGlass.HasPresentedFrame)
         {
-            _glassInitialFramePending = false;
-            GlassBackdropHost.BeginAnimation(OpacityProperty, null);
-            GlassBackdropHost.Opacity = _glassConfiguredOpacity;
+            _glassGpuRetrySeconds = 5;
+            if (_glassInitialFramePending)
+            {
+                _glassInitialFramePending = false;
+                GlassBackdropHost.BeginAnimation(OpacityProperty, null);
+                GlassBackdropHost.Opacity = _glassConfiguredOpacity;
+            }
         }
 
         // When idle and not animating, skip redundant per-frame recalculations and DependencyProperty updates
@@ -1224,16 +1329,30 @@ public partial class MainWindow
             return;
         }
 
-        double curHeight = GlassBackdropHost?.ActualHeight ?? 0;
-        if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
+        _hasCachedFrameMetrics = false;
+        GetOrComputeFrameMetrics();
+        _hasCachedFrameMetrics = true;
+        try
         {
-            _lastActualHeight = curHeight;
-            UpdateDynamicGlassParams();
-        }
+            if (_isAnimating || _glassRegionPushActive)
+            {
+                _liquidGlass.SetLiveRegion(GetGlassCaptureRegion());
+            }
 
-        UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
-        UpdateDynamicGlassTint();
-        UpdateShaderGeometryPerFrame();
+            double curHeight = GlassBackdropHost?.ActualHeight ?? 0;
+            if (Math.Abs(curHeight - _lastActualHeight) > 0.1)
+            {
+                _lastActualHeight = curHeight;
+                UpdateDynamicGlassParams();
+            }
+
+            UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
+            UpdateShaderGeometryPerFrame();
+        }
+        finally
+        {
+            _hasCachedFrameMetrics = false;
+        }
     }
 
     private void UpdateDynamicGlassParams()
@@ -1249,61 +1368,61 @@ public partial class MainWindow
         // Accessibility: ReduceMotion locks the progress factor to 0.0 to eliminate dynamic bending/shadow motion
         double factor = VNotch.Services.AnimationConfig.ReduceMotion ? 0.0 : Math.Clamp((height - collapsedH) / 160.0, 0.0, 1.0);
 
-        // Preserve optical density as the notch grows. The previous 65%/40% boosts
-        double activeZRadius = cfg.ZRadius * (1.0 + factor * 0.12);
-        double activeRefraction = cfg.Refraction * (1.0 + factor * 0.06);
-
-        // 2. Dynamic Shadowing (larger elements float higher and cast wider, darker shadows)
-        double activeShadowOpacity = cfg.ShadowOpacity + (1.0 - cfg.ShadowOpacity) * factor * 0.35;
-        double activeShadowSpread = cfg.ShadowSpread * (1.0 + factor * 1.4);
+        // Dynamic Shadowing (modulate opacity only; never mutate BlurRadius per frame to avoid render target reallocation)
+        double activeShadowOpacity = Math.Clamp(cfg.ShadowOpacity + (1.0 - cfg.ShadowOpacity) * factor * 0.35, 0, 1);
 
         if (NotchShadowWrapper?.Effect is System.Windows.Media.Effects.DropShadowEffect dse)
         {
-            dse.Opacity = Math.Clamp(activeShadowOpacity, 0, 1);
-            dse.BlurRadius = Math.Clamp(activeShadowSpread, 0, 150);
+            if (Math.Abs(dse.Opacity - activeShadowOpacity) > 0.005)
+                dse.Opacity = activeShadowOpacity;
         }
 
-        // 3. Dynamic Specular & Fresnel edge highlighting
+        // Dynamic Specular & Fresnel edge highlighting
         double activeSpecular = cfg.Specular + (1.0 - cfg.Specular) * factor * 0.15;
         double activeFresnel = cfg.Fresnel + (1.0 - cfg.Fresnel) * factor * 0.2;
 
         double activeEdge = Math.Clamp(cfg.EdgeHighlight * (1.0 + factor * 0.5), 0, 1);
         ApplyOpticalRimLevels(activeEdge, activeSpecular, activeFresnel, cfg.ChromaticAberration);
 
-        // Accessibility: ReduceMotion sets refraction distortion to a flat minimum
-        double activeDistortion = VNotch.Services.AnimationConfig.ReduceMotion ? 0.0 : cfg.Distortion;
-
-        _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
+        double topR = NotchBorder.CornerRadius.TopLeft;
+        double bottomR = NotchBorder.CornerRadius.BottomLeft;
+        if (Math.Abs(topR - _lastDynamicTopCornerR) > 0.25 ||
+            Math.Abs(bottomR - _lastDynamicBottomCornerR) > 0.25)
         {
-            PowerFactor = cfg.PowerFactor,
-            RefractionA = cfg.RefractionA,
-            RefractionB = cfg.RefractionB,
-            RefractionC = cfg.RefractionC,
-            RefractionD = cfg.RefractionD,
-            FPower = cfg.FPower,
-            Noise = cfg.Noise,
-            GlowWeight = cfg.GlowWeight,
-            GlowBias = cfg.GlowBias,
-            GlowEdge0 = cfg.GlowEdge0,
-            GlowEdge1 = cfg.GlowEdge1,
-            Refraction = activeRefraction,
-            EdgeBend = cfg.EdgeBend,
-            ChromaticAberration = cfg.ChromaticAberration,
-            Distortion = activeDistortion,
-            ZRadius = activeZRadius,
-            Saturation = cfg.Saturation,
-            Brightness = cfg.Brightness,
-            BevelMode = cfg.BevelMode,
-            TopCornerRadius = NotchBorder.CornerRadius.TopLeft,
-            BottomCornerRadius = NotchBorder.CornerRadius.BottomLeft
-        });
+            _lastDynamicTopCornerR = topR;
+            _lastDynamicBottomCornerR = bottomR;
+            double activeDistortion = VNotch.Services.AnimationConfig.ReduceMotion ? 0.0 : cfg.Distortion;
+
+            _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
+            {
+                PowerFactor = cfg.PowerFactor,
+                RefractionA = cfg.RefractionA,
+                RefractionB = cfg.RefractionB,
+                RefractionC = cfg.RefractionC,
+                RefractionD = cfg.RefractionD,
+                FPower = cfg.FPower,
+                Noise = cfg.Noise,
+                GlowWeight = cfg.GlowWeight,
+                GlowBias = cfg.GlowBias,
+                GlowEdge0 = cfg.GlowEdge0,
+                GlowEdge1 = cfg.GlowEdge1,
+                Refraction = cfg.Refraction,
+                EdgeBend = cfg.EdgeBend,
+                ChromaticAberration = cfg.ChromaticAberration,
+                Distortion = activeDistortion,
+                ZRadius = cfg.ZRadius,
+                Saturation = cfg.Saturation,
+                Brightness = cfg.Brightness,
+                BevelMode = cfg.BevelMode,
+                TopCornerRadius = topR,
+                BottomCornerRadius = bottomR
+            });
+        }
     }
 
     private void UpdateDynamicGlassTint()
     {
         if (GlassDarkOverlay == null || !IsLiquidGlassEnabled) return;
-
-        // True Apple HIG Materials rely on the internal shader's Brightness/Saturation variables
         if (GlassDarkOverlay.Opacity > 0)
         {
             GlassDarkOverlay.BeginAnimation(OpacityProperty, null);

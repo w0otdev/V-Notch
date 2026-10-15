@@ -6,6 +6,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class WindowAnimationPolicyTests
 {
     [System.Runtime.InteropServices.DllImport("user32.dll")]

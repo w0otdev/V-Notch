@@ -156,22 +156,12 @@ public sealed class GreetingAcceptanceTests
     });
 
     [Theory]
-    [InlineData("en", 96)]
-    [InlineData("en", 144)]
-    [InlineData("en", 192)]
-    [InlineData("vi", 96)]
-    [InlineData("vi", 144)]
-    [InlineData("vi", 192)]
-    [InlineData("ar", 96)]
-    [InlineData("ar", 144)]
-    [InlineData("ar", 192)]
-    [InlineData("de", 96)]
-    [InlineData("de", 144)]
-    [InlineData("de", 192)]
-    [InlineData("ru", 96)]
-    [InlineData("ru", 144)]
-    [InlineData("ru", 192)]
-    public void GreetingGeometryRendersInsideViewportAt100150And200Percent(string language, int dpi) => SharedStaTestRunner.Run(() =>
+    [InlineData("en")]
+    [InlineData("vi")]
+    [InlineData("ar")]
+    [InlineData("de")]
+    [InlineData("ru")]
+    public void GreetingGeometryRendersInsideViewportAt100150And200Percent(string language) => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new MainWindowFixture(language);
         var window = fixture.Window;
@@ -207,28 +197,31 @@ public sealed class GreetingAcceptanceTests
                     ? new ScaleTransform(-1, 1, .5, .5) : Transform.Identity
             }, null, new Rect(0, 0, width, height));
         }
-        double scale = dpi / 96d;
-        var bitmap = new RenderTargetBitmap((int)(width * scale), (int)(height * scale), dpi, dpi, PixelFormats.Pbgra32);
-        bitmap.Render(visual);
-        int stride = bitmap.PixelWidth * 4;
-        var pixels = new byte[stride * bitmap.PixelHeight];
-        bitmap.CopyPixels(pixels, stride, 0);
-        int ink = 0, minX = bitmap.PixelWidth, minY = bitmap.PixelHeight, maxX = 0, maxY = 0;
-        for (int y = 0; y < bitmap.PixelHeight; y++)
-            for (int x = 0; x < bitmap.PixelWidth; x++)
-                if (pixels[y * stride + x * 4] > 32)
-                { ink++; minX = Math.Min(minX, x); maxX = Math.Max(maxX, x); minY = Math.Min(minY, y); maxY = Math.Max(maxY, y); }
-        Assert.True(ink > 100, "The greeting must render visible strokes.");
-        Assert.True(minX / scale >= 8 && maxX / scale <= width - 8, $"Horizontal ink bounds: {minX}..{maxX} at {dpi} DPI.");
-        Assert.True(minY / scale >= 8 && maxY / scale <= height - 8, $"Vertical ink bounds: {minY}..{maxY} at {dpi} DPI.");
         string? artifacts = Environment.GetEnvironmentVariable("VNOTCH_QA_ARTIFACT_DIR");
-        if (!string.IsNullOrEmpty(artifacts))
+        foreach (int dpi in new[] { 96, 144, 192 })
         {
-            Directory.CreateDirectory(artifacts);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            using var stream = File.Create(System.IO.Path.Combine(artifacts, $"greeting-{language}-{(int)(scale * 100)}.png"));
-            encoder.Save(stream);
+            double scale = dpi / 96d;
+            var bitmap = new RenderTargetBitmap((int)(width * scale), (int)(height * scale), dpi, dpi, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            int stride = bitmap.PixelWidth * 4;
+            var pixels = new byte[stride * bitmap.PixelHeight];
+            bitmap.CopyPixels(pixels, stride, 0);
+            int ink = 0, minX = bitmap.PixelWidth, minY = bitmap.PixelHeight, maxX = 0, maxY = 0;
+            for (int y = 0; y < bitmap.PixelHeight; y++)
+                for (int x = 0; x < bitmap.PixelWidth; x++)
+                    if (pixels[y * stride + x * 4] > 32)
+                    { ink++; minX = Math.Min(minX, x); maxX = Math.Max(maxX, x); minY = Math.Min(minY, y); maxY = Math.Max(maxY, y); }
+            Assert.True(ink > 100, "The greeting must render visible strokes.");
+            Assert.True(minX / scale >= 8 && maxX / scale <= width - 8, $"Horizontal ink bounds: {minX}..{maxX} at {dpi} DPI.");
+            Assert.True(minY / scale >= 8 && maxY / scale <= height - 8, $"Vertical ink bounds: {minY}..{maxY} at {dpi} DPI.");
+            if (!string.IsNullOrEmpty(artifacts))
+            {
+                Directory.CreateDirectory(artifacts);
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var stream = File.Create(System.IO.Path.Combine(artifacts, $"greeting-{language}-{(int)(scale * 100)}.png"));
+                encoder.Save(stream);
+            }
         }
     });
 

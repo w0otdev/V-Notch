@@ -4,6 +4,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class TranslationSocialIconTests
 {
     private const string Asset = "https://static.xx.fbcdn.net/images/emoji.php/v9/t40/1/16/1f62d.png";

@@ -9,6 +9,7 @@ using Xunit.Abstractions;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class TranslationPresentationTests(ITestOutputHelper output)
 {
     [Fact]

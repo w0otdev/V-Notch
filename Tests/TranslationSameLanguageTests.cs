@@ -10,6 +10,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class TranslationSameLanguageTests
 {
     private const string ScreenshotText = "Mng cho em hỏi cấu hình như này có thể build AI local về máy được không ạ? Em tính vọc vạch 1 tí vì cũng hơi tò mò về mảng này.";

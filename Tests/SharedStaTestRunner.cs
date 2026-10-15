@@ -8,7 +8,8 @@ namespace VNotch.Tests;
 
 internal static class SharedStaTestRunner
 {
-    private static readonly object _sync = new();
+    private static readonly SemaphoreSlim _gate = new(1, 1);
+    private static readonly object _initSync = new();
     private static Thread? _thread;
     private static Dispatcher? _dispatcher;
 
@@ -19,7 +20,9 @@ internal static class SharedStaTestRunner
 
     public static void RunAsync(Func<CancellationToken, Task> action, int timeoutSeconds = 45)
     {
-        lock (_sync)
+        if (!_gate.Wait(TimeSpan.FromSeconds(timeoutSeconds + 15)))
+            throw new TimeoutException("Timed out waiting to acquire the shared STA test runner.");
+        try
         {
             EnsureDispatcher();
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
@@ -38,11 +41,17 @@ internal static class SharedStaTestRunner
             // before the next serialized test acquires this dispatcher.
             completion.Task.WaitAsync(TimeSpan.FromSeconds(timeoutSeconds + 5)).GetAwaiter().GetResult();
         }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     public static void Run(Action action, int timeoutSeconds = 45)
     {
-        lock (_sync)
+        if (!_gate.Wait(TimeSpan.FromSeconds(timeoutSeconds + 15)))
+            throw new TimeoutException("Timed out waiting to acquire the shared STA test runner.");
+        try
         {
             EnsureDispatcher();
 
@@ -67,32 +76,40 @@ internal static class SharedStaTestRunner
             if (failure != null)
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
         }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private static void EnsureDispatcher()
     {
-        if (_thread?.IsAlive == true && _dispatcher != null && !_dispatcher.HasShutdownStarted) return;
-        using var ready = new ManualResetEventSlim(false);
-        Exception? startupFailure = null;
-        _thread = new Thread(() =>
+        lock (_initSync)
         {
-            try
+            if (_thread?.IsAlive == true && _dispatcher != null && !_dispatcher.HasShutdownStarted) return;
+            using var ready = new ManualResetEventSlim(false);
+            Exception? startupFailure = null;
+            _thread = new Thread(() =>
             {
-                if (!DesktopTestMode.Enabled) BackgroundTestDesktop.AttachCurrentThread();
-                SynchronizationContext.SetSynchronizationContext(
-                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-                _dispatcher = Dispatcher.CurrentDispatcher;
-            }
-            catch (Exception ex) { startupFailure = ex; }
-            finally { ready.Set(); }
-            if (startupFailure != null) return;
-            Dispatcher.Run();
-        })
-        { IsBackground = true, Name = "VNotchSharedStaRunner" };
-        _thread.SetApartmentState(ApartmentState.STA);
-        _thread.Start();
-        ready.Wait();
-        if (startupFailure != null)
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(startupFailure).Throw();
+                try
+                {
+                    if (!DesktopTestMode.Enabled) BackgroundTestDesktop.AttachCurrentThread();
+                    SynchronizationContext.SetSynchronizationContext(
+                        new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+                    _dispatcher = Dispatcher.CurrentDispatcher;
+                }
+                catch (Exception ex) { startupFailure = ex; }
+                finally { ready.Set(); }
+                if (startupFailure != null) return;
+                Dispatcher.Run();
+            })
+            { IsBackground = true, Name = "VNotchSharedStaRunner" };
+            _thread.SetApartmentState(ApartmentState.STA);
+            _thread.Start();
+            ready.Wait();
+            if (startupFailure != null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(startupFailure).Throw();
+        }
     }
 }
+

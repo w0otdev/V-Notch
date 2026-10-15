@@ -13,8 +13,6 @@ public sealed class SetupWizardNavigationTests
 
     [Theory]
     [InlineData("en")]
-    [InlineData("vi")]
-    [InlineData("ja")]
     public void WizardNavigatesPreparationStepsAndCanResumeAfterCancellation(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();

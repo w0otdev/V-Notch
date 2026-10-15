@@ -10,6 +10,9 @@ internal static class GlassBoxBlur
         var divisor = new ExactByteAverage(2 * radius + 1);
         fixed (byte* source = src, destination = dst)
         {
+            int leftEnd = Math.Min(w, radius);
+            int rightStart = Math.Max(leftEnd, w - radius - 1);
+
             for (int y = y0; y < y1; y++)
             {
                 int rowBase = y * w * 4;
@@ -20,7 +23,43 @@ internal static class GlassBoxBlur
                     int o = rowBase + nx * 4;
                     sumB += source[o]; sumG += source[o + 1]; sumR += source[o + 2]; sumA += source[o + 3];
                 }
-                for (int x = 0; x < w; x++)
+
+                int x = 0;
+                for (; x < leftEnd; x++)
+                {
+                    int t = rowBase + x * 4;
+                    destination[t] = divisor.Divide(sumB);
+                    destination[t + 1] = divisor.Divide(sumG);
+                    destination[t + 2] = divisor.Divide(sumR);
+                    destination[t + 3] = divisor.Divide(sumA);
+
+                    int inX = Math.Min(w - 1, x + 1 + radius);
+                    int oOut = rowBase;
+                    int oIn = rowBase + inX * 4;
+                    sumB += source[oIn] - source[oOut];
+                    sumG += source[oIn + 1] - source[oOut + 1];
+                    sumR += source[oIn + 2] - source[oOut + 2];
+                    sumA += source[oIn + 3] - source[oOut + 3];
+                }
+
+                for (; x < rightStart; x++)
+                {
+                    int t = rowBase + x * 4;
+                    destination[t] = divisor.Divide(sumB);
+                    destination[t + 1] = divisor.Divide(sumG);
+                    destination[t + 2] = divisor.Divide(sumR);
+                    destination[t + 3] = divisor.Divide(sumA);
+
+                    int oOut = t - radius * 4;
+                    int oIn = t + (radius + 1) * 4;
+                    sumB += source[oIn] - source[oOut];
+                    sumG += source[oIn + 1] - source[oOut + 1];
+                    sumR += source[oIn + 2] - source[oOut + 2];
+                    sumA += source[oIn + 3] - source[oOut + 3];
+                }
+
+                int lastPixelOffset = rowBase + (w - 1) * 4;
+                for (; x < w; x++)
                 {
                     int t = rowBase + x * 4;
                     destination[t] = divisor.Divide(sumB);
@@ -29,9 +68,8 @@ internal static class GlassBoxBlur
                     destination[t + 3] = divisor.Divide(sumA);
 
                     int outX = Math.Max(0, x - radius);
-                    int inX = Math.Min(w - 1, x + 1 + radius);
                     int oOut = rowBase + outX * 4;
-                    int oIn = rowBase + inX * 4;
+                    int oIn = lastPixelOffset;
                     sumB += source[oIn] - source[oOut];
                     sumG += source[oIn + 1] - source[oOut + 1];
                     sumR += source[oIn + 2] - source[oOut + 2];
@@ -48,6 +86,10 @@ internal static class GlassBoxBlur
         int window = 2 * radius + 1;
         int stride = w * 4;
         int column = x0 * 4, end = x1 * 4;
+        int topEnd = Math.Min(h, radius);
+        int bottomStart = Math.Max(topEnd, h - radius - 1);
+        int lastRowOffset = (h - 1) * stride;
+
         if (Vector.IsHardwareAccelerated && window <= 4097)
         {
             var divisor = new Vector<float>(window);
@@ -60,16 +102,40 @@ internal static class GlassBoxBlur
                         out var a, out var b, out var c, out var d);
                     s0 += a; s1 += b; s2 += c; s3 += d;
                 }
-                for (int y = 0; y < h; y++)
+
+                Widen(new Vector<byte>(src, column), out var topA, out var topB, out var topC, out var topD);
+                Widen(new Vector<byte>(src, lastRowOffset + column), out var botA, out var botB, out var botC, out var botD);
+
+                int y = 0;
+                for (; y < topEnd; y++)
                 {
                     var lo = Vector.Narrow(Average(s0, divisor), Average(s1, divisor));
                     var hi = Vector.Narrow(Average(s2, divisor), Average(s3, divisor));
                     Vector.AsVectorByte(Vector.Narrow(lo, hi)).CopyTo(dst, y * stride + column);
                     Widen(new Vector<byte>(src, Math.Min(h - 1, y + radius + 1) * stride + column),
                         out var a, out var b, out var c, out var d);
-                    Widen(new Vector<byte>(src, Math.Max(0, y - radius) * stride + column),
+                    s0 = s0 + a - topA; s1 = s1 + b - topB; s2 = s2 + c - topC; s3 = s3 + d - topD;
+                }
+                for (; y < bottomStart; y++)
+                {
+                    int rowOffset = y * stride + column;
+                    var lo = Vector.Narrow(Average(s0, divisor), Average(s1, divisor));
+                    var hi = Vector.Narrow(Average(s2, divisor), Average(s3, divisor));
+                    Vector.AsVectorByte(Vector.Narrow(lo, hi)).CopyTo(dst, rowOffset);
+                    Widen(new Vector<byte>(src, rowOffset + (radius + 1) * stride),
+                        out var a, out var b, out var c, out var d);
+                    Widen(new Vector<byte>(src, rowOffset - radius * stride),
                         out var e, out var f, out var g, out var i);
                     s0 = s0 + a - e; s1 = s1 + b - f; s2 = s2 + c - g; s3 = s3 + d - i;
+                }
+                for (; y < h; y++)
+                {
+                    var lo = Vector.Narrow(Average(s0, divisor), Average(s1, divisor));
+                    var hi = Vector.Narrow(Average(s2, divisor), Average(s3, divisor));
+                    Vector.AsVectorByte(Vector.Narrow(lo, hi)).CopyTo(dst, y * stride + column);
+                    Widen(new Vector<byte>(src, Math.Max(0, y - radius) * stride + column),
+                        out var e, out var f, out var g, out var i);
+                    s0 = s0 + botA - e; s1 = s1 + botB - f; s2 = s2 + botC - g; s3 = s3 + botD - i;
                 }
             }
         }

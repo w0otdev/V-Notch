@@ -22,6 +22,7 @@ public sealed class NotchNavigationIntegrationTests
     [InlineData(true)]
     public void EveryExpandedViewCanNavigateToEveryOtherViewAndCollapse(bool blurEnabled) => SharedStaTestRunner.RunAsync(async ct =>
     {
+        bool previousReducedMotion = AnimationConfig.ReduceMotion;
         await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
             settings =>
             {
@@ -34,43 +35,53 @@ public sealed class NotchNavigationIntegrationTests
         using var mixer = new AudioMixerService();
         typeof(Controls.AudioMixerView).GetField("_audioMixerServiceCached", Private)!.SetValue(window.AudioContent, mixer);
         typeof(Controls.AudioMixerView).GetField("_masterVolumeCached", Private)!.SetValue(window.AudioContent, new Fakes.FakeVolumeService());
-        await StartAsync(window, ct);
-        var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
-        var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera };
-        async Task Navigate(NotchView view)
+        try
         {
-            if (coordinator.CurrentView != view)
+            await StartAsync(window, ct);
+            var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+            var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera };
+            async Task Navigate(NotchView view)
             {
-                if (view == NotchView.Compact) window.SetDebugViewLock(false);
-                Assert.True(coordinator.RequestView(view, "NavigationMatrix"), $"Navigation from {coordinator.CurrentView} to {view} was rejected.");
-                window.SetDebugViewLock(true);
-                await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window),
-                    $"navigation to {view}", ct);
-            }
-            Assert.Equal(view, coordinator.CurrentView);
-            Assert.Equal(view, ((ShellViewModel)window.DataContext).CurrentView);
-            Assert.Equal(view != NotchView.Compact, Property<bool>(window, "_isExpanded"));
-            Assert.True(window.NotchBorder.IsHitTestVisible);
-        }
-        foreach (var from in views)
-        {
-            foreach (var to in views.Where(view => view != from))
-            {
-                await Navigate(from);
-                await Navigate(to);
-                FrameworkElement content = to switch
+                if (coordinator.CurrentView != view)
                 {
-                    NotchView.Media => window.ExpandedContent,
-                    NotchView.Secondary => window.SecondaryContent,
-                    NotchView.Timer => window.TimerContent,
-                    NotchView.Camera => window.CameraContent,
-                    _ => window.AudioContent
-                };
-                Assert.Equal(Visibility.Visible, content.Visibility);
+                    if (view == NotchView.Compact) window.SetDebugViewLock(false);
+                    Assert.True(coordinator.RequestView(view, "NavigationMatrix"), $"Navigation from {coordinator.CurrentView} to {view} was rejected.");
+                    window.SetDebugViewLock(true);
+                    await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window),
+                        $"navigation to {view}", ct);
+                }
+                Assert.Equal(view, coordinator.CurrentView);
+                Assert.Equal(view, ((ShellViewModel)window.DataContext).CurrentView);
+                Assert.Equal(view != NotchView.Compact, Property<bool>(window, "_isExpanded"));
+                Assert.True(window.NotchBorder.IsHitTestVisible);
             }
-            await Navigate(NotchView.Compact);
+            int pairIndex = 0;
+            foreach (var from in views)
+            {
+                foreach (var to in views.Where(view => view != from))
+                {
+                    // Exercise full storyboard clocks for the first cycle of every view, then fast-forward remaining permutations.
+                    AnimationConfig.SetReduceMotion(pairIndex++ >= views.Length);
+                    await Navigate(from);
+                    await Navigate(to);
+                    FrameworkElement content = to switch
+                    {
+                        NotchView.Media => window.ExpandedContent,
+                        NotchView.Secondary => window.SecondaryContent,
+                        NotchView.Timer => window.TimerContent,
+                        NotchView.Camera => window.CameraContent,
+                        _ => window.AudioContent
+                    };
+                    Assert.Equal(Visibility.Visible, content.Visibility);
+                }
+                await Navigate(NotchView.Compact);
+            }
+            Assert.Equal(NotchShapeState.Collapsed, coordinator.ShapeState);
         }
-        Assert.Equal(NotchShapeState.Collapsed, coordinator.ShapeState);
+        finally
+        {
+            AnimationConfig.SetReduceMotion(previousReducedMotion);
+        }
     }, timeoutSeconds: 90);
 
     [Fact]

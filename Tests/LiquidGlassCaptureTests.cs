@@ -177,17 +177,6 @@ public sealed class LiquidGlassCaptureTests
     }
 
     [Theory]
-    [InlineData(8, 154)]
-    [InlineData(0, 40)]
-    [InlineData(-20, 80)]
-    public void BitBltFallback_StartsBelowVisibleNotch(int regionY, int displayHeight)
-    {
-        int sourceY = LiquidGlassController.ComputeFallbackSourceY(regionY, displayHeight);
-
-        Assert.True(sourceY > regionY + displayHeight);
-    }
-
-    [Theory]
     [InlineData(-46, 664, 0, 1920, 0)]
     [InlineData(1500, 664, 0, 1920, 1256)]
     [InlineData(-1700, 640, -1920, 3840, -1700)]

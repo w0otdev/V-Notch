@@ -9,6 +9,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class SystemMonitorPresenterLifetimeTests
 {
     private static void Publish(SystemMonitorModule module, SystemMonitorInfo stats)

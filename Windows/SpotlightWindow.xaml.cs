@@ -246,7 +246,21 @@ public partial class SpotlightWindow : Window
         {
             RefreshLocalization();
             if (_isParked) UnparkWindow();
-            else if (!IsVisible) Show();
+            else if (!IsVisible)
+            {
+                Show();
+                if (IsLiquidGlassEnabled && GlassBackdropHost.Visibility == Visibility.Visible)
+                {
+                    CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+                    CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
+                }
+            }
+            if (IsLiquidGlassEnabled && !_gpuRefractionConfigured)
+            {
+                ConfigureGpuRefraction();
+                ApplyLiquidGlassConfig();
+                _liquidGlass?.PrepareGpuResources();
+            }
             IntPtr hwnd = EnsureHwnd();
             // Reserve content against the same inner width used after the morph.
             Shell.BorderThickness = new Thickness(IsLiquidGlassEnabled ? 0 : 1);

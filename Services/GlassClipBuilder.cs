@@ -5,12 +5,62 @@ namespace VNotch.Services;
 
 internal static class GlassClipBuilder
 {
+    // The shell, hover glow and material host request the same silhouette in
+    // one layout pass. Share the frozen resource without retaining old frames.
+    [ThreadStatic] private static StreamGeometry? _lastClip;
+    [ThreadStatic] private static Size _lastClipSize;
+    [ThreadStatic] private static CornerRadius _lastClipRadius;
+    [ThreadStatic] private static double _lastClipPower;
+    private const int CornerSegments = 64;
+    private static readonly double[] _unitCos = CreateUnitTrig(useSin: false);
+    private static readonly double[] _unitSin = CreateUnitTrig(useSin: true);
+
+    private static double _cachedPower = double.NaN;
+    private static double[] _cachedPowCos = System.Array.Empty<double>();
+    private static double[] _cachedPowSin = System.Array.Empty<double>();
+    private static readonly object _lutLock = new();
+
+    private static double[] CreateUnitTrig(bool useSin)
+    {
+        var table = new double[CornerSegments];
+        for (int i = 1; i < CornerSegments; i++)
+        {
+            double angle = Math.PI / 2 * i / CornerSegments;
+            table[i] = useSin ? Math.Sin(angle) : Math.Cos(angle);
+        }
+        return table;
+    }
+
+    private static (double[] PowCos, double[] PowSin) GetUnitCurve(double power)
+    {
+        lock (_lutLock)
+        {
+            if (Math.Abs(power - _cachedPower) < 1e-6 && _cachedPowCos.Length == CornerSegments)
+                return (_cachedPowCos, _cachedPowSin);
+
+            double exp = 2.0 / power;
+            var powCos = new double[CornerSegments];
+            var powSin = new double[CornerSegments];
+            for (int i = 1; i < CornerSegments; i++)
+            {
+                powCos[i] = Math.Pow(_unitCos[i], exp);
+                powSin[i] = Math.Pow(_unitSin[i], exp);
+            }
+            _cachedPower = power;
+            _cachedPowCos = powCos;
+            _cachedPowSin = powSin;
+            return (powCos, powSin);
+        }
+    }
+
     public static StreamGeometry? CreateClip(Size size, CornerRadius radius, double powerFactor = 2)
     {
         double w = size.Width;
         double h = size.Height;
         if (!double.IsFinite(w) || !double.IsFinite(h) || w <= 0 || h <= 0) return null;
         double power = double.IsFinite(powerFactor) ? Math.Max(1.05, powerFactor) : 2;
+        if (_lastClip != null && size == _lastClipSize && radius == _lastClipRadius && power == _lastClipPower)
+            return _lastClip;
 
         // Keep the notch silhouette inside its bounds during animated resizing.
         double maxRadius = Math.Min(w, h) / 2;
@@ -19,20 +69,28 @@ internal static class GlassClipBuilder
         double bottomRight = ClampRadius(radius.BottomRight, maxRadius);
         double bottomLeft = ClampRadius(radius.BottomLeft, maxRadius);
 
+        var (powCos, powSin) = Math.Abs(power - 2) >= 0.01
+            ? GetUnitCurve(power)
+            : (System.Array.Empty<double>(), System.Array.Empty<double>());
+
         var geometry = new StreamGeometry();
         using (var context = geometry.Open())
         {
             context.BeginFigure(new Point(topLeft, 0), true, true);
-            context.LineTo(new Point(w - topRight, 0), true, false);
-            AddCorner(context, new Point(w, topRight), new Point(w - topRight, topRight), -Math.PI / 2, topRight, power);
-            context.LineTo(new Point(w, h - bottomRight), true, false);
-            AddCorner(context, new Point(w - bottomRight, h), new Point(w - bottomRight, h - bottomRight), 0, bottomRight, power);
-            context.LineTo(new Point(bottomLeft, h), true, false);
-            AddCorner(context, new Point(0, h - bottomLeft), new Point(bottomLeft, h - bottomLeft), Math.PI / 2, bottomLeft, power);
-            context.LineTo(new Point(0, topLeft), true, false);
-            AddCorner(context, new Point(topLeft, 0), new Point(topLeft, topLeft), Math.PI, topLeft, power);
+            context.LineTo(new Point(w - topRight, 0), false, false);
+            AddCorner(context, new Point(w, topRight), new Point(w - topRight, topRight), 0, topRight, power, powCos, powSin);
+            context.LineTo(new Point(w, h - bottomRight), false, false);
+            AddCorner(context, new Point(w - bottomRight, h), new Point(w - bottomRight, h - bottomRight), 1, bottomRight, power, powCos, powSin);
+            context.LineTo(new Point(bottomLeft, h), false, false);
+            AddCorner(context, new Point(0, h - bottomLeft), new Point(bottomLeft, h - bottomLeft), 2, bottomLeft, power, powCos, powSin);
+            context.LineTo(new Point(0, topLeft), false, false);
+            AddCorner(context, new Point(topLeft, 0), new Point(topLeft, topLeft), 3, topLeft, power, powCos, powSin);
         }
         geometry.Freeze();
+        _lastClipSize = size;
+        _lastClipRadius = radius;
+        _lastClipPower = power;
+        _lastClip = geometry;
         return geometry;
     }
 
@@ -40,27 +98,34 @@ internal static class GlassClipBuilder
         double.IsNaN(radius) ? 0 : Math.Clamp(radius, 0, maxRadius);
 
     private static void AddCorner(StreamGeometryContext context, Point end, Point center,
-        double startAngle, double radius, double power)
+        int quadrant, double radius, double power, double[] powCos, double[] powSin)
     {
         if (radius > 0 && Math.Abs(power - 2) < 0.01)
-            context.ArcTo(end, new Size(radius, radius), 0, false, SweepDirection.Clockwise, true, false);
+            context.ArcTo(end, new Size(radius, radius), 0, false, SweepDirection.Clockwise, false, false);
         else if (radius > 0)
         {
-            // Match the shader's |x/r|^n + |y/r|^n = 1 boundary. Keep the
-            // exact endpoint so floating-point trig cannot shift geometry bounds.
-            const int segments = 64;
-            for (int i = 1; i < segments; i++)
+            // Match the shader's |x/r|^n + |y/r|^n = 1 boundary using cached unit quadrant curve.
+            for (int i = 1; i < CornerSegments; i++)
             {
-                double angle = startAngle + Math.PI / 2 * i / segments;
-                double x = Math.Cos(angle);
-                double y = Math.Sin(angle);
-                context.LineTo(new Point(
-                    center.X + radius * Math.CopySign(Math.Pow(Math.Abs(x), 2 / power), x),
-                    center.Y + radius * Math.CopySign(Math.Pow(Math.Abs(y), 2 / power), y)), true, false);
+                double c = powCos[i];
+                double s = powSin[i];
+                double dx, dy;
+                switch (quadrant)
+                {
+                    case 0: // Top-Right: startAngle = -PI/2 -> cos(t - PI/2) = sin(t), sin(t - PI/2) = -cos(t)
+                        dx = s; dy = -c; break;
+                    case 1: // Bottom-Right: startAngle = 0 -> cos(t), sin(t)
+                        dx = c; dy = s; break;
+                    case 2: // Bottom-Left: startAngle = PI/2 -> cos(t + PI/2) = -sin(t), sin(t + PI/2) = cos(t)
+                        dx = -s; dy = c; break;
+                    default: // Top-Left: startAngle = PI -> cos(t + PI) = -cos(t), sin(t + PI) = -sin(t)
+                        dx = -c; dy = -s; break;
+                }
+                context.LineTo(new Point(center.X + radius * dx, center.Y + radius * dy), false, false);
             }
-            context.LineTo(end, true, false);
+            context.LineTo(end, false, false);
         }
         else
-            context.LineTo(end, true, false);
+            context.LineTo(end, false, false);
     }
 }

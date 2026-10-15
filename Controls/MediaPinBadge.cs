@@ -23,11 +23,13 @@ public sealed class MediaPinBadge : FrameworkElement
 
     private static readonly DependencyProperty RevealProperty = DependencyProperty.Register(
         nameof(Reveal), typeof(double), typeof(MediaPinBadge),
-        new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+        new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender,
+            (sender, args) => ((MediaPinBadge)sender).Effect = (double)args.NewValue > 0 ? PinShadow : null));
     private static readonly Geometry Pin = CreatePin();
     private static readonly DropShadowEffect PinShadow = CreateShadow();
     private static readonly CubicEase RevealEase = CreateRevealEase();
     private bool _pinned;
+    private readonly MatrixTransform _pinTransform = new();
 
     private double Reveal
     {
@@ -38,7 +40,6 @@ public sealed class MediaPinBadge : FrameworkElement
     public MediaPinBadge()
     {
         IsHitTestVisible = false;
-        Effect = PinShadow;
         Unloaded += (_, _) => Snap();
         IsVisibleChanged += (_, _) =>
         {
@@ -89,11 +90,10 @@ public sealed class MediaPinBadge : FrameworkElement
         matrix.Scale(combinedScale, combinedScale);
         matrix.Rotate(35 - 12 * (1 - reveal));
         matrix.Translate(center.X, center.Y);
-        var transform = new MatrixTransform(matrix);
-        transform.Freeze();
+        _pinTransform.Matrix = matrix;
 
         dc.PushOpacity(reveal);
-        dc.PushTransform(transform);
+        dc.PushTransform(_pinTransform);
         dc.DrawGeometry(Brushes.White, null, Pin);
         dc.Pop();
         dc.Pop();

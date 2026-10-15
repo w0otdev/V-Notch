@@ -92,9 +92,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             if (!isConsecutive && frame.Duration.TotalSeconds > 0 && frame.Position.TotalSeconds > 3.0)
             {
                 _lastPrevRewindClickTime = DateTime.UtcNow;
-                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(5);
-                _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(5);
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
+                _allowProgressBackwardRenderUntil = DateTime.UtcNow.AddSeconds(5);
+                _blockBackwardAfterSeekUntil = DateTime.UtcNow.AddSeconds(5);
+                _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(5);
 
                 _progressEngine.NotifyUserSeek(TimeSpan.Zero, isPlaying: _currentMediaInfo?.IsPlaying);
                 _progressEngine.NotifyPreviousTrackRequested();
@@ -109,8 +109,8 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             else
             {
                 _lastPrevRewindClickTime = DateTime.MinValue;
-                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(5);
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(5);
+                _allowProgressBackwardRenderUntil = DateTime.UtcNow.AddSeconds(5);
+                _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(5);
                 _progressEngine.NotifyPreviousTrackRequested();
 
                 RuntimeLog.Log("PROGRESS-PREV-PREP", $"Skip to previous track (pos={frame.Position.TotalSeconds:F1}s, consecutive={isConsecutive})");
@@ -129,7 +129,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _lastPrevRewindClickTime = DateTime.MinValue;
             var frame = _progressEngine.GetUiFrame();
             _progressEngine.NotifyUserSeek(frame.Position, isPlaying: false);
-            _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
+            _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(3);
         }
         catch (Exception ex)
         {
@@ -668,7 +668,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     CurrentTimeText.Text = "0:00";
                 }
 
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(2);
+                _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(2);
             }
             else if (isSessionSwitch)
             {
@@ -676,7 +676,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _progressSnapshotSequence = 0;
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
                 _lastProgressIsPlaying = false;
-                _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
+                _allowProgressBackwardRenderUntil = DateTime.UtcNow.AddSeconds(3);
                 RuntimeLog.Debug("PROGRESS-SESSION", () =>
                     $"Logical session changed for same track: " +
                     $"'{_lastProgressSessionInstanceKey}' -> '{info.SessionInstanceKey}'");
@@ -872,6 +872,28 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     private DateTime _lastProgressMovementUtc = DateTime.UtcNow;
     private double _lastProgressMovementRatio = -1;
 
+    private string? _progressSourceAppId;
+    private MediaPlatform _progressSourcePlatform;
+    private bool _progressSourceIsBrowser;
+
+    private bool IsBrowserProgressSource()
+    {
+        if (_currentMediaInfo == null) return false;
+        if (_progressSourceAppId == _currentMediaInfo.SourceAppId &&
+            _progressSourcePlatform == _currentMediaInfo.Platform)
+            return _progressSourceIsBrowser;
+        _progressSourceAppId = _currentMediaInfo.SourceAppId;
+        _progressSourcePlatform = _currentMediaInfo.Platform;
+        _progressSourceIsBrowser = _currentMediaInfo.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud ||
+                                          (!string.IsNullOrEmpty(_currentMediaInfo.SourceAppId) &&
+                                           ((_currentMediaInfo.SourceAppId.Contains("chrome", StringComparison.OrdinalIgnoreCase)) ||
+                                            (_currentMediaInfo.SourceAppId.Contains("edge", StringComparison.OrdinalIgnoreCase)) ||
+                                            (_currentMediaInfo.SourceAppId.Contains("firefox", StringComparison.OrdinalIgnoreCase)) ||
+                                            (_currentMediaInfo.SourceAppId.Contains("brave", StringComparison.OrdinalIgnoreCase)) ||
+                                            (_currentMediaInfo.SourceAppId.Contains("opera", StringComparison.OrdinalIgnoreCase))));
+        return _progressSourceIsBrowser;
+    }
+
     internal void RenderProgressBar()
     {
         if (_isDraggingProgress || _currentMediaInfo == null) return;
@@ -897,8 +919,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             return;
         }
 
+        DateTime renderNow = DateTime.UtcNow;
         var frame = _progressEngine.GetUiFrame();
-        bool isTrackChangeGrace = DateTime.UtcNow < _suppressIndeterminateUntilUtc;
+        bool isTrackChangeGrace = renderNow < _suppressIndeterminateUntilUtc;
         bool isLiveStream = !isTrackChangeGrace && frame.Duration.TotalSeconds <= 0 && frame.State == ProgressState.Playing;
 
         if (frame.Duration.TotalSeconds <= 0 && (!frame.ShowIndeterminate || isLiveStream || isTrackChangeGrace))
@@ -946,7 +969,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _progressVelocity = 0;
                 _springSettleFrames = 0;
                 _isSeekSpringActive = true;
-                _protectSpringTargetUntil = DateTime.UtcNow.AddSeconds(1.5);
+                _protectSpringTargetUntil = renderNow.AddSeconds(1.5);
                 StartSpringRenderLoop();
                 CurrentTimeText.Text = FormatTime(frame.Position);
                 _lastRenderedRatio = engineRatio;
@@ -973,7 +996,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _progressTargetRatio = engineRatio;
             _progressSpringTargetRatio = engineRatio;
             ProgressBarScale.ScaleX = engineRatio;
-            _lastRenderTime = DateTime.Now;
+            _lastRenderTime = renderNow;
         }
         else if (_isSeekSpringActive)
         {
@@ -996,7 +1019,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
                 _progressDisplayRatio = engineRatio;
                 ProgressBarScale.ScaleX = engineRatio;
-                _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(1.5);
+                _suppressExternalSeekDetectionUntil = renderNow.AddSeconds(1.5);
             }
             else
             {
@@ -1005,7 +1028,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     StartSpringRenderLoop();
                 }
 
-                if (!_isClickSeekPending && DateTime.UtcNow >= _protectSpringTargetUntil)
+                if (!_isClickSeekPending && renderNow >= _protectSpringTargetUntil)
                 {
                     _progressTargetRatio = engineRatio;
                 }
@@ -1036,7 +1059,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         if (!_isSeekSpringActive)
         {
-            DateTime now = DateTime.Now;
+            DateTime now = renderNow;
             _lastRenderTime = now;
 
             bool isRealtimeProgressing = frame.State == ProgressState.Playing || frame.State == ProgressState.Seeking;
@@ -1051,7 +1074,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 !_isSeekSpringActive &&
                 frame.Duration.TotalSeconds > 0 &&
                 _progressDisplayRatio > 0.005 &&
-                DateTime.Now >= _suppressExternalSeekDetectionUntil)
+                renderNow >= _suppressExternalSeekDetectionUntil)
             {
                 bool playing = frame.State == ProgressState.Playing ||
                                frame.State == ProgressState.Seeking;
@@ -1083,7 +1106,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 if (playing && (forwardJump || backwardJump) && !isLikelyTrackSkip && !isFalseZeroReport && !isSuspiciousBackward)
                 {
                     AnimateExternalSeekTo(rawTargetRatio);
-                    _suppressExternalSeekDetectionUntil = DateTime.Now.AddMilliseconds(800);
+                    _suppressExternalSeekDetectionUntil = renderNow.AddMilliseconds(800);
                     _lastRenderTime = now;
                     return;
                 }
@@ -1114,13 +1137,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 double backwardThreshold = 0.5;
                 if (_currentMediaInfo != null)
                 {
-                    bool isBrowserSource = _currentMediaInfo.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud ||
-                                          (!string.IsNullOrEmpty(_currentMediaInfo.SourceAppId) &&
-                                           ((_currentMediaInfo.SourceAppId.Contains("chrome", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("edge", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("firefox", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("brave", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("opera", StringComparison.OrdinalIgnoreCase))));
+                    bool isBrowserSource = IsBrowserProgressSource();
 
                     if (isBrowserSource)
                     {
@@ -1128,8 +1145,8 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     }
                 }
 
-                bool isUserSeekWindow = frame.State == ProgressState.Seeking || DateTime.Now < _allowProgressBackwardRenderUntil;
-                bool isPostSeekStabilization = DateTime.Now < _blockBackwardAfterSeekUntil;
+                bool isUserSeekWindow = frame.State == ProgressState.Seeking || renderNow < _allowProgressBackwardRenderUntil;
+                bool isPostSeekStabilization = renderNow < _blockBackwardAfterSeekUntil;
 
                 if (_progressTargetRatio < _progressDisplayRatio)
                 {
@@ -1188,15 +1205,15 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             if (_lastProgressMovementRatio < 0 || Math.Abs(_progressDisplayRatio - _lastProgressMovementRatio) > 0.0015)
             {
                 _lastProgressMovementRatio = _progressDisplayRatio;
-                _lastProgressMovementUtc = DateTime.UtcNow;
+                _lastProgressMovementUtc = renderNow;
             }
             else
             {
-                var stuckFor = DateTime.UtcNow - _lastProgressMovementUtc;
+                var stuckFor = renderNow - _lastProgressMovementUtc;
                 var visualDrift = Math.Abs(engineRatio - _progressDisplayRatio);
                 if (stuckFor.TotalMilliseconds > 900 && visualDrift > 0.02)
                 {
-                    _lastProgressMovementUtc = DateTime.UtcNow;
+                    _lastProgressMovementUtc = renderNow;
                 }
             }
         }
@@ -1412,9 +1429,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         try
         {
-            _allowProgressBackwardRenderUntil = DateTime.Now.AddSeconds(3);
-            _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(3.5);
-            _suppressExternalSeekDetectionUntil = DateTime.Now.AddSeconds(3);
+            _allowProgressBackwardRenderUntil = DateTime.UtcNow.AddSeconds(3);
+            _blockBackwardAfterSeekUntil = DateTime.UtcNow.AddSeconds(3.5);
+            _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(3);
             _progressEngine.NotifyUserSeek(newPos, isPlaying: _currentMediaInfo?.IsPlaying);
 
             double targetRatio = newPos.TotalSeconds / duration.TotalSeconds;
@@ -1606,7 +1623,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             RemainingTimeText.Text = newDuration > TimeSpan.Zero ? FormatDuration(newDuration) : "0:00";
             StopRewindTextAnimation();
             _isRewindAnimating = false;
-            _lastRenderTime = DateTime.Now;
+            _lastRenderTime = DateTime.UtcNow;
             UpdateProgressTimerState();
         };
 
@@ -1720,8 +1737,8 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             CurrentTimeText.Text = FormatTime(GetPositionForRatio(targetRatio));
             StopRewindTextAnimation();
             _isRewindAnimating = false;
-            _lastRenderTime = DateTime.Now;
-            _blockBackwardAfterSeekUntil = DateTime.Now.AddSeconds(3.5);
+            _lastRenderTime = DateTime.UtcNow;
+            _blockBackwardAfterSeekUntil = DateTime.UtcNow.AddSeconds(3.5);
             UpdateProgressTimerState();
         };
 

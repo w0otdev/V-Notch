@@ -404,16 +404,36 @@ public partial class MainWindow
         {
             double radius = (double)e.NewValue;
             var cr = window.MakeNotchCornerRadius(radius);
-            window.NotchBorder.CornerRadius = cr;
-            window.InnerClipBorder.CornerRadius = cr;
-            window.NotchBackground.CornerRadius = cr;
-            window.MediaBackground.CornerRadius = cr;
-            window.MediaBackground2.CornerRadius = cr;
-            window.NotchBorderShadow.CornerRadius = cr;
-            window.HoverGlow.CornerRadius = cr;
+            window.SyncShellCornerRadius(cr);
             window._glassMaterialPresenter.SyncCornerRadius(cr);
             window.UpdateNotchClip();
         }
+    }
+
+    private void InitializeShellCornerRadiusSync()
+    {
+        foreach (var layer in new[] { InnerClipBorder, NotchBackground, MediaBackground, MediaBackground2, NotchBorderShadow, HoverGlow })
+            layer.IsVisibleChanged += (_, _) =>
+            {
+                if (layer.IsVisible) layer.CornerRadius = NotchBorder.CornerRadius;
+            };
+    }
+
+    private void SyncShellCornerRadius(CornerRadius radius)
+    {
+        NotchBorder.CornerRadius = radius;
+        SyncVisibleRadius(InnerClipBorder, radius);
+        SyncVisibleRadius(NotchBackground, radius);
+        SyncVisibleRadius(MediaBackground, radius);
+        SyncVisibleRadius(MediaBackground2, radius);
+        SyncVisibleRadius(NotchBorderShadow, radius);
+        SyncVisibleRadius(HoverGlow, radius);
+    }
+
+    private static void SyncVisibleRadius(Border layer, CornerRadius radius)
+    {
+        if (layer.Visibility != Visibility.Collapsed && layer.CornerRadius != radius)
+            layer.CornerRadius = radius;
     }
 
     private CornerRadius MakeNotchCornerRadius(double radius)
@@ -465,6 +485,7 @@ public partial class MainWindow
         _mtIslandR = Math.Max(0, _mtIslandH / 2.0);
 
         _isModeTransitioning = true;
+        UpdateGlassMotionState();
 
         bool showEars = !toIsland && !IsLiquidGlassEnabled;
         var earVisStart = showEars ? Visibility.Visible : Visibility.Collapsed;
@@ -502,13 +523,7 @@ public partial class MainWindow
         NotchBorder.Height = height;
 
         var cr = new CornerRadius(topRadius, topRadius, bottomRadius, bottomRadius);
-        NotchBorder.CornerRadius = cr;
-        InnerClipBorder.CornerRadius = cr;
-        NotchBackground.CornerRadius = cr;
-        MediaBackground.CornerRadius = cr;
-        MediaBackground2.CornerRadius = cr;
-        NotchBorderShadow.CornerRadius = cr;
-        HoverGlow.CornerRadius = cr;
+        SyncShellCornerRadius(cr);
         _glassMaterialPresenter.SyncCornerRadius(cr);
 
         if (NotchContainer != null)
@@ -532,6 +547,7 @@ public partial class MainWindow
     private void FinalizeModeTransition(bool toIsland)
     {
         _isModeTransitioning = false;
+        UpdateGlassMotionState();
 
         NotchBorder.Width = _collapsedWidth;
         NotchBorder.Height = _collapsedHeight;

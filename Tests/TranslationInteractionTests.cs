@@ -6,6 +6,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class TranslationInteractionTests
 {
     private static string LongResult => string.Join("\n", Enumerable.Repeat("A long translated paragraph that needs scrolling while keeping the menu within the screen.", 30));

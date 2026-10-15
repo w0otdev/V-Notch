@@ -9,6 +9,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class MediaThumbnailPipelineTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;

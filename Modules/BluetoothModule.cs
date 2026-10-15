@@ -35,7 +35,7 @@ public class BluetoothModule : NotchModuleBase
 
     protected override void OnDispose()
     {
-        _bluetoothService.Dispose();
+        OnStop();
     }
 
     protected override void OnTick()

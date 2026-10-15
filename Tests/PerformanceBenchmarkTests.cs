@@ -11,6 +11,7 @@ using Xunit.Abstractions;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class PerformanceBenchmarkTests
 {
     private readonly ITestOutputHelper _output;

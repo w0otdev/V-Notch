@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.ViewModels;
@@ -18,25 +19,24 @@ namespace VNotch.Tests;
 public sealed class NotchDesignAcceptanceTests
 {
     [Theory]
-    [InlineData("en", 96)]
-    [InlineData("en", 144)]
-    [InlineData("en", 192)]
-    [InlineData("vi", 144)]
-    [InlineData("ar", 144)]
-    public void MediaTextUsesArtworkColorsAndReturnsToNeutralWithoutArtwork(string language, int dpi) => SharedStaTestRunner.Run(() =>
+    [InlineData("en")]
+    [InlineData("vi")]
+    [InlineData("ar")]
+    public void MediaTextUsesArtworkColorsAndReturnsToNeutralWithoutArtwork(string language) => SharedStaTestRunner.Run(() =>
     {
+        int[] dpis = language == "en" ? new[] { 96, 144, 192 } : new[] { 144 };
         using var fixture = new GreetingAcceptanceTests.MainWindowFixture(language, greeting: false, options =>
         {
             options.EnableLocalOnlyMode = true;
             options.EnableSubjectBlur = false;
-        });
+        }, services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         var window = fixture.Window;
         // Keep physical desktop clicks/deactivation from changing the view under a render assertion.
         window.SetDebugViewLock(true);
         window.ShowActivated = false;
         window.Show();
         PumpUntil(() => Field<bool>(window, "_isStartupLayoutReady"));
-        Field<MediaDetectionService>(window, "_mediaService").Stop();
+        Field<IMediaDetectionService>(window, "_mediaService").Stop();
         Field<UiScheduledTimer>(window, "_updateTimer").Stop();
         PumpUntil(() => !IsAnimating(window));
         PumpFor(TimeSpan.FromMilliseconds(150)); // Drain the service's final empty snapshot.
@@ -63,7 +63,7 @@ public sealed class NotchDesignAcceptanceTests
         Assert.Equal(info.CurrentTrack, ((ShellViewModel)window.DataContext).Media.Title);
         Assert.Equal(info.CurrentTrack, Field<MediaInfo>(window, "_currentMediaInfo").CurrentTrack);
         Invoke(window, "ExpandNotch", null, NotchView.Media, NotchView.Compact);
-        CaptureTransitionIfRequested(window, language, dpi);
+        CaptureTransitionIfRequested(window, language, 144);
         PumpUntil(() => !IsAnimating(window));
         PumpFor(TimeSpan.FromMilliseconds(650));
         Assert.Equal(Visibility.Visible, window.ExpandedContent.Visibility);
@@ -75,17 +75,17 @@ public sealed class NotchDesignAcceptanceTests
         Assert.Equal(1, window.HomeIconButton.Opacity, 3);
         var navInk = Assert.IsType<SolidColorBrush>(((System.Windows.Shapes.Path)((System.Windows.Controls.Viewbox)window.ClipboardIconButton.Child).Child).Fill);
         Assert.Equal(Colors.White, navInk.Color);
-        SaveFrame(window, language, dpi, "artwork");
+        foreach (int dpi in dpis) SaveFrame(window, language, dpi, "artwork");
         Invoke(window, "HideMediaBackground");
         PumpFor(TimeSpan.FromMilliseconds(550));
         AssertMediaInk(window, hasArtwork: false);
-        SaveFrame(window, language, dpi, "black");
+        foreach (int dpi in dpis) SaveFrame(window, language, dpi, "black");
         window.SetDebugViewLock(false);
         Invoke(window, "CollapseNotch", new object?[] { null });
         PumpUntil(() => !IsAnimating(window) && ((ShellViewModel)window.DataContext).CurrentView == NotchView.Compact);
         Invoke(window, "AnimateNotchHover", true);
         PumpFor(TimeSpan.FromMilliseconds(550));
-        SaveFrame(window, language, dpi, "hover");
+        foreach (int dpi in dpis) SaveFrame(window, language, dpi, "hover");
     });
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class NotchDesignAcceptanceTests
             fixture.Window.ShowActivated = false;
             fixture.Window.Show();
             PumpUntil(() => Field<bool>(fixture.Window, "_isStartupLayoutReady"));
-            Field<MediaDetectionService>(fixture.Window, "_mediaService").Stop();
+            Field<IMediaDetectionService>(fixture.Window, "_mediaService").Stop();
             PumpUntil(() => !IsAnimating(fixture.Window));
             AnimationConfig.SetReduceMotion(true);
             Invoke(fixture.Window, "AnimateNotchHover", true);

@@ -9,11 +9,19 @@ internal static class TranslationInput
 
     internal static string Prepare(string text)
     {
-        string prefix = Prefix(text, MaxCharacters);
+        string sanitized = Sanitize(text);
+        string prefix = Prefix(sanitized, MaxCharacters);
         if (string.IsNullOrWhiteSpace(prefix)) throw new TranslationException("translation.noSelection");
-        if ((!prefix.EnumerateRunes().Any(Rune.IsLetterOrDigit) && !TranslationStructuredText.IsOnlyIcons(prefix)) || IsKeyboardMash(prefix.Trim()))
+        if ((!prefix.EnumerateRunes().Any(r => Rune.IsLetterOrDigit(r) || Rune.IsSymbol(r)) && !TranslationStructuredText.IsOnlyIcons(prefix)) || IsKeyboardMash(prefix.Trim()))
             throw new TranslationException("translation.invalidSelection");
         return prefix;
+    }
+
+    internal static string Sanitize(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        if (text.IndexOfAny(['\0', '\uFFFC']) < 0) return text;
+        return string.Concat(text.Where(c => c is not ('\0' or '\uFFFC')));
     }
 
     private static bool IsKeyboardMash(string text)

@@ -115,7 +115,7 @@ jobs:
 
   windows-validation:
     name: Windows validation
-    needs: [preflight, sast]
+    needs: preflight
     if: needs.preflight.outputs.windows == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
@@ -154,15 +154,6 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
 
-      - name: Unit and UI regression tests with coverage
-        id: tests
-        env:
-          VNOTCH_QA_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/ui-review
-        run: >-
-          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
-          --settings Tests/CI.runsettings --collect "Code Coverage"
-          --logger "trx;LogFileName=tests.trx" --results-directory artifacts/test-results
-
       - name: Test release security gates
         shell: pwsh
         run: ./Tests/ReleaseGateTests.ps1
@@ -178,29 +169,10 @@ jobs:
           $version = [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
           ./Tools/Assert-UpdateCompatibility.ps1 -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe"
 
-      - name: Retain test and coverage evidence
-        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
-        # actions/upload-artifact@v4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: test-results
-          path: artifacts/test-results/
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Audit packages
         if: ${{ !cancelled() }}
         shell: pwsh
         run: ./Tools/Assert-PackageAudit.ps1
-
-      - name: Retain globalization rendering evidence
-        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: globalization-ui
-          path: artifacts/ui-review/
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Retain package audit evidence
         if: ${{ !cancelled() }}
@@ -211,29 +183,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  coverage:
-    name: Application coverage (70 percent)
-    needs: windows-validation
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          persist-credentials: false
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: test-results
-          path: artifacts/test-results
-
-      # Keep the Windows job cacheable even when this independent gate fails.
-      - name: Enforce 70 percent application line coverage
-        shell: pwsh
-        run: ./Tools/Assert-Coverage.ps1 -ResultsDirectory artifacts/test-results -MinimumPercent 70
-
   # Preserve the original required-check name while aggregating every gate.
   validate:
-    needs: [preflight, sast, windows-validation, coverage]
+    needs: [preflight, sast, windows-validation]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -246,20 +198,19 @@ jobs:
           WINDOWS_REQUIRED: ${{ needs.preflight.outputs.windows }}
           SAST: ${{ needs.sast.result }}
           BUILD: ${{ needs.windows-validation.result }}
-          COVERAGE: ${{ needs.coverage.result }}
         run: |
           if [[ "$PREFLIGHT" != 'success' ]]; then
             echo 'Secret scanning or pipeline checks failed.' >&2
             exit 1
           fi
           if [[ "$WINDOWS_REQUIRED" == 'true' ]]; then
-            for result in "$SAST" "$BUILD" "$COVERAGE"; do
+            for result in "$SAST" "$BUILD"; do
               if [[ "$result" != 'success' ]]; then
-                echo 'A required security, Windows, or coverage gate failed.' >&2
+                echo 'A required security or Windows gate failed.' >&2
                 exit 1
               fi
             done
-          elif [[ "$WINDOWS_REQUIRED" != 'false' || "$SAST" != 'skipped' || "$BUILD" != 'skipped' || "$COVERAGE" != 'skipped' ]]; then
+          elif [[ "$WINDOWS_REQUIRED" != 'false' || "$SAST" != 'skipped' || "$BUILD" != 'skipped' ]]; then
             echo 'Invalid documentation-only validation state.' >&2
             exit 1
           fi

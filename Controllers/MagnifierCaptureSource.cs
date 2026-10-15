@@ -74,11 +74,11 @@ public sealed class MagnifierCaptureSource : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    [DllImport(MagDll)] private static extern bool MagInitialize();
-    [DllImport(MagDll)] private static extern bool MagUninitialize();
-    [DllImport(MagDll)] private static extern bool MagSetWindowSource(IntPtr hwnd, Win32Interop.RECT rect);
-    [DllImport(MagDll)] private static extern bool MagSetWindowFilterList(IntPtr hwnd, int dwFilterMode, int count, IntPtr[] pHWND);
-    [DllImport(MagDll)] private static extern bool MagSetImageScalingCallback(IntPtr hwnd, MagImageScalingCallback callback);
+    [DllImport(MagDll, SetLastError = true)] private static extern bool MagInitialize();
+    [DllImport(MagDll, SetLastError = true)] private static extern bool MagUninitialize();
+    [DllImport(MagDll, SetLastError = true)] private static extern bool MagSetWindowSource(IntPtr hwnd, Win32Interop.RECT rect);
+    [DllImport(MagDll, SetLastError = true)] private static extern bool MagSetWindowFilterList(IntPtr hwnd, int dwFilterMode, int count, IntPtr[] pHWND);
+    [DllImport(MagDll, SetLastError = true)] private static extern bool MagSetImageScalingCallback(IntPtr hwnd, MagImageScalingCallback callback);
 
     [DllImport("user32.dll", SetLastError = true)] private static extern ushort RegisterClassW(ref WNDCLASS lpWndClass);
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -94,6 +94,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr DispatchMessageW(ref MSG msg);
     [DllImport("user32.dll")] private static extern bool InvalidateRect(IntPtr hWnd, IntPtr lpRect, bool bErase);
     [DllImport("user32.dll")] private static extern bool UpdateWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hWnd);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool GetWindowDisplayAffinity(IntPtr hWnd, out uint pdwAffinity);
     [DllImport("kernel32.dll")] private static extern IntPtr GetModuleHandleW(string? name);
 
@@ -183,6 +184,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 
     private readonly object _filterLock = new();
     private readonly HashSet<IntPtr> _filterHwnds = new();
+    private readonly List<Func<IntPtr>> _dynamicExcludeProviders = new();
     private volatile bool _filterListDirty = true;
 
     private CaptureRequest _activeRequest;
@@ -195,13 +197,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     private int _completedWidth, _completedHeight;
     private int _completedX, _completedY;
     private bool _hasCompletedFrame;
-    // Desktop frame captured before Magnifier exclusion list inclusion, avoiding
-    // layered windows returning opaque black rectangles.
-    private byte[] _unfilteredBuffer = Array.Empty<byte>();
-    private int _unfilteredWidth, _unfilteredHeight;
-    private int _unfilteredX, _unfilteredY;
     private bool _hasUnfilteredFrame;
-    private ulong _frameCounter;
     private long _completedFrameTicks;
     private int _filterVersion;
     private int _appliedFilterVersion;
@@ -244,6 +240,43 @@ public sealed class MagnifierCaptureSource : IDisposable
         _request.Set();
     }
 
+    public void RegisterExcludeHwndProvider(Func<IntPtr>? provider)
+    {
+        if (provider == null) return;
+        lock (_filterLock)
+        {
+            if (!_dynamicExcludeProviders.Contains(provider))
+                _dynamicExcludeProviders.Add(provider);
+        }
+    }
+
+    public void UnregisterExcludeHwndProvider(Func<IntPtr>? provider)
+    {
+        if (provider == null) return;
+        lock (_filterLock)
+        {
+            _dynamicExcludeProviders.Remove(provider);
+        }
+    }
+
+    private void PollDynamicExcludeProviders()
+    {
+        lock (_filterLock)
+        {
+            for (int i = 0; i < _dynamicExcludeProviders.Count; i++)
+            {
+                IntPtr h;
+                try { h = _dynamicExcludeProviders[i](); }
+                catch { continue; }
+                if (h != IntPtr.Zero && _filterHwnds.Add(h))
+                {
+                    _filterListDirty = true;
+                    _filterVersion++;
+                }
+            }
+        }
+    }
+
     public void RemoveExcludeHwnd(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return;
@@ -261,6 +294,7 @@ public sealed class MagnifierCaptureSource : IDisposable
 #pragma warning disable S3776 // High performance filter list compilation requires nested checks
     private void ApplyFiltersIfDirty()
     {
+        PollDynamicExcludeProviders();
         if (!_filterListDirty || _magWnd == IntPtr.Zero) return;
         var list = new List<IntPtr>();
         int version;
@@ -268,7 +302,7 @@ public sealed class MagnifierCaptureSource : IDisposable
         {
             foreach (var h in _filterHwnds)
             {
-                if (h != IntPtr.Zero && !list.Contains(h))
+                if (h != IntPtr.Zero && IsWindow(h) && !list.Contains(h))
                 {
                     // Rely on WDA_EXCLUDEFROMCAPTURE; passing display-affinity layered windows
                     // to MagSetWindowFilterList causes DWM to render black regions.
@@ -281,13 +315,16 @@ public sealed class MagnifierCaptureSource : IDisposable
             version = _filterVersion;
         }
         if (_hostWnd != IntPtr.Zero && !list.Contains(_hostWnd)) list.Add(_hostWnd);
-        if (_magWnd != IntPtr.Zero && !list.Contains(_magWnd)) list.Add(_magWnd);
 
         IntPtr[] arr = list.ToArray();
         if (MagSetWindowFilterList(_magWnd, MW_FILTERMODE_EXCLUDE, arr.Length, arr))
+        {
             _appliedFilterVersion = version;
+        }
         else
         {
+            int err = Marshal.GetLastWin32Error();
+            RuntimeLog.Log(LogTag, $"MagSetWindowFilterList failed (err={err}, count={arr.Length}, version={version}).");
             // Retain the last displayed texture until exclusion is working;
             // capturing the glass itself creates dark recursive feedback.
             _appliedFilterVersion = -1;
@@ -316,6 +353,8 @@ public sealed class MagnifierCaptureSource : IDisposable
         _initDone.Wait(2000);
         return IsReady;
     }
+
+    private ulong _frameCounter;
 
     public bool CaptureInto(int x, int y, int w, int h, IntPtr destBits, out int actualX, out int actualY)
     {
@@ -363,9 +402,52 @@ public sealed class MagnifierCaptureSource : IDisposable
     private bool HasUsableFrameCore(int x, int y, int width, int height) =>
         _hasCompletedFrame &&
         _completedFilterVersion == Volatile.Read(ref _filterVersion) &&
+        // Requests actively repaint the Magnifier even for a static desktop.
+        // A cached image is not proof that callbacks are still delivering frames.
         Environment.TickCount64 - _completedFrameTicks <= 500 &&
-        !IsEffectivelyBlackCrop(_completedBuffer, _completedWidth, _completedHeight,
+        !IsUninitializedZeroCrop(_completedBuffer, _completedWidth, _completedHeight,
             _completedX, _completedY, x, y, width, height);
+
+    private long _magSourceFailCount;
+    private long _callbackEnterCount;
+
+    internal string GetDebugStatus(int x, int y, int width, int height)
+    {
+        int filterCount;
+        lock (_filterLock) filterCount = _filterHwnds.Count;
+        lock (_frameLock)
+        {
+            long age = _hasCompletedFrame ? Environment.TickCount64 - _completedFrameTicks : -1;
+            bool zeroCrop = _hasCompletedFrame && IsUninitializedZeroCrop(
+                _completedBuffer, _completedWidth, _completedHeight,
+                _completedX, _completedY, x, y, width, height);
+            uint sampleCrop = 0;
+            uint sampleCenter = 0;
+            int nonZeroCount = 0;
+            if (_completedBuffer.Length >= 4 && _completedWidth > 0 && _completedHeight > 0)
+            {
+                int cx = Math.Clamp(x - _completedX + width / 2, 0, _completedWidth - 1);
+                int cy = Math.Clamp(y - _completedY + height / 2, 0, _completedHeight - 1);
+                int offCrop = (cy * _completedWidth + cx) * 4;
+                if (offCrop + 4 <= _completedBuffer.Length)
+                    sampleCrop = BitConverter.ToUInt32(_completedBuffer, offCrop);
+                int offCenter = ((_completedHeight / 2) * _completedWidth + (_completedWidth / 2)) * 4;
+                if (offCenter + 4 <= _completedBuffer.Length)
+                    sampleCenter = BitConverter.ToUInt32(_completedBuffer, offCenter);
+                int step = Math.Max(4, (_completedBuffer.Length / 4096) & ~3);
+                for (int i = 0; i + 3 < _completedBuffer.Length; i += step)
+                {
+                    if (_completedBuffer[i] != 0 || _completedBuffer[i + 1] != 0 || _completedBuffer[i + 2] != 0 || _completedBuffer[i + 3] != 0)
+                        nonZeroCount++;
+                }
+            }
+            return $"ready={IsReady} running={_running} enabled={_captureEnabled} hasFrame={_hasCompletedFrame} " +
+                   $"frames={_frameCounter} cbEnter={Interlocked.Read(ref _callbackEnterCount)} srcFail={Interlocked.Read(ref _magSourceFailCount)} " +
+                   $"filters={filterCount} filterVer={_completedFilterVersion}/{Volatile.Read(ref _filterVersion)} (applied={_appliedFilterVersion}) " +
+                   $"ageMs={age} zeroCrop={zeroCrop} sampleCrop=0x{sampleCrop:X8} sampleCenter=0x{sampleCenter:X8} nonZero={nonZeroCount} " +
+                   $"frame={_completedWidth}x{_completedHeight}@({_completedX},{_completedY}) req=({x},{y} {width}x{height})";
+        }
+    }
 
 #pragma warning disable S3776 // Win32 message pump STA loop handles device lifecycle, window layout, and DWM sync
     private void PumpThread()
@@ -431,7 +513,7 @@ public sealed class MagnifierCaptureSource : IDisposable
             // High-frequency pump loop: update source rect and query DWM for the freshest frame
             while (_running)
             {
-                if (_request.WaitOne(1))
+                if (_request.WaitOne(_captureEnabled ? 1 : 25))
                 {
                     if (!_running) break;
                     if (!_captureEnabled)
@@ -445,7 +527,6 @@ public sealed class MagnifierCaptureSource : IDisposable
                             _hasCompletedFrame = false;
                             _hasUnfilteredFrame = false;
                             _completedBuffer = Array.Empty<byte>();
-                            _unfilteredBuffer = Array.Empty<byte>();
                             _frameReceivedEvent.Reset();
                             _unfilteredFrameReceivedEvent.Reset();
                         }
@@ -484,7 +565,11 @@ public sealed class MagnifierCaptureSource : IDisposable
 
                         // Refresh source on every capture request using fixed physical bounds to
                         // ensure fresh desktop frames without jitter in the shared texture.
-                        if (!MagSetWindowSource(_magWnd, rect)) continue;
+                        if (!MagSetWindowSource(_magWnd, rect))
+                        {
+                            Interlocked.Increment(ref _magSourceFailCount);
+                            continue;
+                        }
 
                         InvalidateRect(_magWnd, IntPtr.Zero, false);
                         UpdateWindow(_magWnd);
@@ -541,6 +626,7 @@ public sealed class MagnifierCaptureSource : IDisposable
     {
         try
         {
+            Interlocked.Increment(ref _callbackEnterCount);
             if (srcdata == IntPtr.Zero || !_captureEnabled) return false;
 
             int w = (int)srcheader.width;
@@ -552,7 +638,10 @@ public sealed class MagnifierCaptureSource : IDisposable
                 !IsCompleteFrame(w, rows, w, rows, srcStride,
                     (int)Math.Min(int.MaxValue, available - srcheader.offset)) ||
                 w < _activeRequest.Width || rows < _activeRequest.Height)
+            {
+                RuntimeLog.Log(LogTag, $"ScalingCallback rejected: w={w} rows={rows} stride={srcStride} offset={srcheader.offset} cbSize={available} req={_activeRequest.Width}x{_activeRequest.Height}");
                 return false;
+            }
 
             int dstStride = checked(w * 4);
             int needed = checked(dstStride * rows);
@@ -593,13 +682,6 @@ public sealed class MagnifierCaptureSource : IDisposable
 
                 if (_appliedFilterVersion == 0)
                 {
-                    if (_unfilteredBuffer.Length < needed)
-                        _unfilteredBuffer = new byte[needed];
-                    Buffer.BlockCopy(_completedBuffer, 0, _unfilteredBuffer, 0, needed);
-                    _unfilteredWidth = w;
-                    _unfilteredHeight = rows;
-                    _unfilteredX = _activeRequest.X;
-                    _unfilteredY = _activeRequest.Y;
                     _hasUnfilteredFrame = true;
                     _unfilteredFrameReceivedEvent.Set();
                 }
@@ -654,14 +736,16 @@ public sealed class MagnifierCaptureSource : IDisposable
     }
 #pragma warning restore S6640, S107
 
-#pragma warning disable S107 // Black crop analysis parameters
-    private static bool IsEffectivelyBlackCrop(byte[] source, int sourceWidth, int sourceHeight,
+#pragma warning disable S107
+    private static bool IsUninitializedZeroCrop(byte[] source, int sourceWidth, int sourceHeight,
         int desktopX, int desktopY, int x, int y, int width, int height)
     {
         if (sourceWidth <= 0 || sourceHeight <= 0 ||
             (long)sourceWidth * sourceHeight * 4 > source.Length)
             return true;
 
+        // Only reject when DWM returned uninitialized all-zero pixels (B=0, G=0, R=0, A=0).
+        // Opaque dark/black desktop content has A=255 and must never be rejected.
         const int samplesPerAxis = 6;
         for (int row = 0; row < samplesPerAxis; row++)
         {
@@ -670,7 +754,7 @@ public sealed class MagnifierCaptureSource : IDisposable
             {
                 int sx = Math.Clamp(x - desktopX + (width - 1) * column / (samplesPerAxis - 1), 0, sourceWidth - 1);
                 int offset = (sy * sourceWidth + sx) * 4;
-                if (source[offset] > 8 || source[offset + 1] > 8 || source[offset + 2] > 8)
+                if (source[offset] > 0 || source[offset + 1] > 0 || source[offset + 2] > 0 || source[offset + 3] > 0)
                     return false;
             }
         }

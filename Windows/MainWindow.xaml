@@ -427,7 +427,7 @@
                         UseLayoutRounding="False"
                         SnapsToDevicePixels="False">
 
-                <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" ClipToBounds="True" Background="Transparent" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                <Border x:Name="InnerClipBorder" CornerRadius="0,0,20,20" Background="Transparent" UseLayoutRounding="False" SnapsToDevicePixels="False">
                     <Grid SnapsToDevicePixels="False">
 
                         <Border x:Name="ClipboardDropGlow" Panel.ZIndex="100"
@@ -457,7 +457,6 @@
                               SizeChanged="GlassMaterialClipHost_SizeChanged">
                         <Border x:Name="GlassBackdropHost"
                                 IsHitTestVisible="False"
-                                ClipToBounds="True"
                                 Visibility="Collapsed"
                                 CornerRadius="0,0,20,20">
 

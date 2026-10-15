@@ -148,13 +148,13 @@ public partial class TranslationWindow : Window
         UpdatePresentation(selection.Bounds, newPresentation: true);
     }
 
-    internal void ShowClipboard(string text)
+    internal void ShowClipboard(string text, bool truncated = false)
     {
         ClearDeferredPresentation();
         StopResultReveal();
         _selection = null; _result = null;
         ResetSelectionUx();
-        SetInputTruncated(text.Length > TranslationInput.MaxCharacters);
+        SetInputTruncated(truncated || text.Length > TranslationInput.MaxCharacters);
         UpdateLanguageSummary();
         OriginalText.Text = text; ResultText.Clear();
         CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
@@ -437,6 +437,8 @@ public partial class TranslationWindow : Window
             ClearDeferredPresentation();
             ApplyStatus("translation.pressEnter");
             UpdatePresentation(_presentationBounds);
+            Activate();
+            TranslateButton.Focus();
             return;
         }
         _expanded = true;

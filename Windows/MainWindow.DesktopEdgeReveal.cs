@@ -223,31 +223,48 @@ public partial class MainWindow
     }
 
     private long _lastNotchObscuredCheckTicks;
-    private bool _lastNotchObscuredResult;
+    private volatile bool _lastNotchObscuredResult = true;
+    private int _notchObscuredCheckQueued;
 
     private bool IsNotchObscuredByAnyWindow()
     {
-        if (_hwnd == IntPtr.Zero) return false;
-
+        IntPtr notchHwnd = _hwnd;
+        if (notchHwnd == IntPtr.Zero) return false;
         long now = Environment.TickCount64;
-        if (now - _lastNotchObscuredCheckTicks < 250)
-            return _lastNotchObscuredResult;
+        bool expired = now - Interlocked.Read(ref _lastNotchObscuredCheckTicks) >= 250;
+        if (expired &&
+            Interlocked.CompareExchange(ref _notchObscuredCheckQueued, 1, 0) == 0)
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    _lastNotchObscuredResult = ProbeNotchObscuredByAnyWindow(notchHwnd);
+                    Interlocked.Exchange(ref _lastNotchObscuredCheckTicks, Environment.TickCount64);
+                }
+                finally { Interlocked.Exchange(ref _notchObscuredCheckQueued, 0); }
+            });
+        }
+        // Until the first probe completes, use the fade path to avoid exposing
+        // an opaque stale frame. Mouse input never waits on desktop enumeration.
+        return expired || _lastNotchObscuredResult;
+    }
 
-        _lastNotchObscuredCheckTicks = now;
-
-        if (!GetWindowRect(_hwnd, out var notchRect))
+    private static bool ProbeNotchObscuredByAnyWindow(IntPtr notchHwnd)
+    {
+        if (!GetWindowRect(notchHwnd, out var notchRect))
             return false;
 
         if (notchRect.Right <= notchRect.Left || notchRect.Bottom <= notchRect.Top)
             return false;
 
-        GetWindowThreadProcessId(_hwnd, out uint myPid);
+        GetWindowThreadProcessId(notchHwnd, out uint myPid);
 
         bool isObscured = false;
 
         EnumWindows((hwnd, _) =>
         {
-            if (hwnd == _hwnd) return true;
+            if (hwnd == notchHwnd) return true;
 
             GetWindowThreadProcessId(hwnd, out uint pid);
             if (pid == myPid) return true;
@@ -278,7 +295,6 @@ public partial class MainWindow
             return true;
         }, IntPtr.Zero);
 
-        _lastNotchObscuredResult = isObscured;
         return isObscured;
     }
 

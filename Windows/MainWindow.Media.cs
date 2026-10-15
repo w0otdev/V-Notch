@@ -51,8 +51,6 @@ public partial class MainWindow
         ThumbnailImage.BeginAnimation(OpacityProperty, fade);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(1, 0.88, duration, _easeQuadOut));
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(1, 0.88, duration, _easeQuadOut));
-        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty,
-            MakeAnim(0, _settings.EnableBlurEffects ? 8 : 0, duration, _easeQuadOut));
         ThumbnailFallback.BeginAnimation(OpacityProperty, MakeAnim(0, 1, duration, _easeQuadOut));
     }
 
@@ -257,17 +255,10 @@ public partial class MainWindow
                 else
                 {
                     double transitionBlurRadius = _settings.EnableBlurEffects ? 12 : 0;
-                    var transitionBlur = new DoubleAnimation(0, transitionBlurRadius, TimeSpan.FromMilliseconds(300))
-                    {
-                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                    };
-                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(transitionBlur, VNotch.Services.AnimationConfig.TargetFps);
-                    ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, transitionBlur);
-                    CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty,
-                        new DoubleAnimation(0, _settings.EnableBlurEffects ? 6 : 0, TimeSpan.FromMilliseconds(300))
-                        {
-                            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                        });
+                    ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+                    CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+                    ThumbnailOutBlur.Radius = transitionBlurRadius;
+                    CompactThumbnailOutBlur.Radius = _settings.EnableBlurEffects ? 6 : 0;
 
                     if (CompactThumbnail.Source == null)
                     {
@@ -338,7 +329,7 @@ public partial class MainWindow
         if (_isThumbnailSwitchActive && !force)
         {
             VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, () =>
-                $"coalesced (blur morph already active, updating target) force={force}");
+                $"coalesced (artwork transition already active, updating target) force={force}");
             ThumbnailImageNext.Source = newThumb;
             CompactThumbnailNext.Source = newThumb;
             return;
@@ -355,7 +346,7 @@ public partial class MainWindow
             return;
         }
 
-        VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, () => $"BLUR-MORPH-START force={force}");
+        VNotch.Services.RuntimeLog.Debug(ThumbAnimLogTag, () => $"ARTWORK-TRANSITION-START force={force}");
 
         _suppressOutsideClickUntilUtc = DateTime.UtcNow.AddMilliseconds(700);
 
@@ -368,9 +359,6 @@ public partial class MainWindow
         var inDur = TimeSpan.FromMilliseconds(440);
         var overlap = TimeSpan.FromMilliseconds(180);
         var totalDur = overlap + inDur;
-
-        double expandedPeakBlur = _settings.EnableBlurEffects ? 18.0 : 0.0;
-        double compactPeakBlur = _settings.EnableBlurEffects ? 6.0 : 0.0;
 
         var quintOut = new QuinticEase { EasingMode = EasingMode.EaseOut };
         var cubicOut = new CubicEase { EasingMode = EasingMode.EaseOut };
@@ -385,12 +373,12 @@ public partial class MainWindow
         ThumbnailNextScale.ScaleX = 1.05;
         ThumbnailNextScale.ScaleY = 1.05;
         ThumbnailImageNext.Opacity = 0.0;
-        ThumbnailNextBlur.Radius = expandedPeakBlur;
+        ThumbnailNextBlur.Radius = 0;
 
         CompactThumbnailNextScale.ScaleX = 1.05;
         CompactThumbnailNextScale.ScaleY = 1.05;
         CompactThumbnailNext.Opacity = 0.0;
-        CompactThumbnailNextBlur.Radius = compactPeakBlur;
+        CompactThumbnailNextBlur.Radius = 0;
 
         ThumbnailOutScale.ScaleX = 1.0;
         ThumbnailOutScale.ScaleY = 1.0;
@@ -405,26 +393,10 @@ public partial class MainWindow
                                 CompactThumbnailBorder.Opacity < 0.01;
         CompactThumbnail.Opacity = compactWasHidden ? 0.0 : 1.0;
 
-        var outBlurExpanded = new DoubleAnimation(0.0, expandedPeakBlur, outDur) { EasingFunction = cubicOut };
-        var outBlurCompact = new DoubleAnimation(0.0, compactPeakBlur, outDur) { EasingFunction = cubicOut };
         var outFade = new DoubleAnimation(1.0, 0.0, outDur) { EasingFunction = cubicIn };
         var outScale = new DoubleAnimation(1.0, 0.96, totalDur) { EasingFunction = sineInOut };
-        Timeline.SetDesiredFrameRate(outBlurExpanded, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(outBlurCompact, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(outFade, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(outScale, VNotch.Services.AnimationConfig.TargetFps);
-
-        DoubleAnimationUsingKeyFrames MakeInBlur(double peak)
-        {
-            var a = new DoubleAnimationUsingKeyFrames();
-            a.KeyFrames.Add(new DiscreteDoubleKeyFrame(peak, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-            a.KeyFrames.Add(new DiscreteDoubleKeyFrame(peak, KeyTime.FromTimeSpan(overlap)));
-            a.KeyFrames.Add(new EasingDoubleKeyFrame(0.0, KeyTime.FromTimeSpan(totalDur), quintOut));
-            return a;
-        }
-
-        var inBlurExpanded = MakeInBlur(expandedPeakBlur);
-        var inBlurCompact = MakeInBlur(compactPeakBlur);
 
         var inFade = new DoubleAnimationUsingKeyFrames();
         inFade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
@@ -436,8 +408,6 @@ public partial class MainWindow
         inScale.KeyFrames.Add(new DiscreteDoubleKeyFrame(1.05, KeyTime.FromTimeSpan(overlap)));
         inScale.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(totalDur), quintOut));
 
-        Timeline.SetDesiredFrameRate(inBlurExpanded, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(inBlurCompact, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(inFade, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(inScale, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -504,20 +474,16 @@ public partial class MainWindow
         ThumbnailImage.BeginAnimation(OpacityProperty, outFade);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
-        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurExpanded);
         ThumbnailImageNext.BeginAnimation(OpacityProperty, inFade);
         ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
         ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
-        ThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurExpanded);
 
         CompactThumbnail.BeginAnimation(OpacityProperty, outFade);
         CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
         CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
-        CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurCompact);
         CompactThumbnailNext.BeginAnimation(OpacityProperty, inFade);
         CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
         CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
-        CompactThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurCompact);
     }
 #pragma warning restore S3776
 

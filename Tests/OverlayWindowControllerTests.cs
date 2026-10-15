@@ -8,6 +8,7 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class OverlayWindowControllerTests
 {
     [Fact]

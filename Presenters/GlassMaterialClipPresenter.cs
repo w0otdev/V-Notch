@@ -4,8 +4,22 @@ using VNotch.Services;
 
 namespace VNotch.Presenters;
 
-internal sealed class GlassMaterialClipPresenter(FrameworkElement clipHost, params Border[] layers)
+internal sealed class GlassMaterialClipPresenter
 {
+    private readonly FrameworkElement clipHost;
+    private readonly Border[] layers;
+    private CornerRadius _requestedRadius;
+
+    public GlassMaterialClipPresenter(FrameworkElement clipHost, params Border[] layers)
+    {
+        this.clipHost = clipHost;
+        this.layers = layers;
+        foreach (var layer in layers)
+            layer.IsVisibleChanged += (_, _) =>
+            {
+                if (layer.IsVisible) layer.CornerRadius = _requestedRadius;
+            };
+    }
     private Size _lastSize = Size.Empty;
     private CornerRadius _lastRadius;
     private double _lastPowerFactor = double.NaN;
@@ -13,8 +27,11 @@ internal sealed class GlassMaterialClipPresenter(FrameworkElement clipHost, para
 
     public void SyncCornerRadius(CornerRadius radius)
     {
+        _requestedRadius = radius;
         if (clipHost.Visibility != Visibility.Visible) return;
-        foreach (var layer in layers) layer.CornerRadius = radius;
+        foreach (var layer in layers)
+            if (layer.Visibility != Visibility.Collapsed && layer.CornerRadius != radius)
+                layer.CornerRadius = radius;
         UpdateClip(radius);
     }
 

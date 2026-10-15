@@ -6,6 +6,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class LiquidGlassRecoveryTests
 {
     [Theory]
@@ -66,6 +67,30 @@ public sealed class LiquidGlassRecoveryTests
             }
             finally { Marshal.FreeHGlobal(destination); }
         });
+    }
+
+    [Fact]
+    public void CaptureRejectsStalledCallbacksAndAcceptsFreshOpaqueBlackFrames()
+    {
+        using var source = CreateSource();
+        var pixels = Get<byte[]>(source, "_completedBuffer");
+        Array.Clear(pixels);
+        for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
+        IntPtr destination = Marshal.AllocHGlobal(4 * 4 * 4);
+        try
+        {
+            Set(source, "_completedFrameTicks", Environment.TickCount64 - 1000);
+            Assert.False(source.CaptureInto(0, 0, 4, 4, destination));
+            Assert.False(source.HasUsableFrame(0, 0, 4, 4));
+
+            // Freshness comes from callback delivery, not a change in pixel values.
+            Set(source, "_completedFrameTicks", Environment.TickCount64);
+            Assert.True(source.CaptureInto(0, 0, 4, 4, destination));
+            Assert.True(source.HasUsableFrame(0, 0, 4, 4));
+            Assert.Equal(0, Marshal.ReadByte(destination));
+            Assert.Equal(255, Marshal.ReadByte(destination, 3));
+        }
+        finally { Marshal.FreeHGlobal(destination); }
     }
 
     private static MagnifierCaptureSource CreateSource()

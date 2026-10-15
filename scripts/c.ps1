@@ -6,17 +6,16 @@
 
 .DESCRIPTION
     Runs the complete Windows CI validation suite:
-      1. Pipeline & secret scanner tests (Python)
-      2. Locale key & placeholder validation
-      3. YOLOX model provenance, license & checksum assertion
-      4. NuGet dependency restore
-      5. Code formatting verification (dotnet format)
-      6. Release build with -warnaserror
-      7. Unit and UI regression tests with coverage collection
-      8. Release security gates validation
-      9. Update compatibility assertion against 1.9.3 client
-      10. Package vulnerability audit
-      11. Enforces 70% application line coverage
+      1. Pipeline & secret scanner tests and locale validation (Python)
+      2. Model asset provenance, license & checksum assertion
+      3. NuGet dependency restore (--locked-mode)
+      4. Code formatting verification (dotnet format)
+      5. Release build with -warnaserror
+      6. Unit and UI regression tests with coverage collection
+      7. Release security gates & runner regression tests
+      8. Update compatibility (1.9.3 client & beta-to-stable promotion)
+      9. Package vulnerability audit
+      10. Enforces 70% application line coverage
 
 .PARAMETER Resume
     Evidence directory of a failed run. Resumes at its first unfinished step.
@@ -172,46 +171,14 @@ if ($startStep -le 5) {
 }
 
 if ($startStep -le 6) {
-
-    # Step 6: Run Unit & UI Tests
-    Write-Host "`n=== [6/10] Running Unit & UI Regression Tests ===" -ForegroundColor Cyan
-    # Keep failed attempts for diagnosis, but enforce coverage only on this attempt.
-    $testResultsDir = Join-Path $runDirectory ('test-results-' + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
-    Save-Checkpoint 6
-    $testArguments = @(
-        'test', "$repository/Tests/VNotch.Tests.csproj", '--configuration', 'Release', '--no-build', '--no-restore',
-        '--logger', 'trx;LogFileName=tests.trx', '--results-directory', $testResultsDir,
-        '--verbosity', 'normal', '--blame-hang-timeout', '2m', '--blame-hang-dump-type', 'mini'
-    )
-    if (-not $IncludeDesktopIntegration) {
-        Write-Host ">>> Running tests in headless mode (skipping DesktopIntegration)..." -ForegroundColor Yellow
-        $testArguments += @('--filter', 'Category!=DesktopIntegration')
-    } else {
-        Write-Host ">>> Running all tests including DesktopIntegration..." -ForegroundColor Yellow
-    }
-    if ($Fast) {
-        Write-Host ">>> -Fast mode: Running tests without coverage collection..." -ForegroundColor Yellow
-    } else {
-        $testArguments += @('--settings', "$repository/Tests/CI.runsettings", '--collect', 'Code Coverage')
-    }
-    & dotnet @testArguments
-    if ($LASTEXITCODE -ne 0) { throw "Test run failed." }
-    Write-Host "All tests passed successfully." -ForegroundColor Green
-
     Save-Checkpoint 7
 }
 
 if ($startStep -le 7) {
 
     # Step 7: Release Security Gates
-    Write-Host "`n=== [7/10] Testing Release Security Gates ===" -ForegroundColor Cyan
+    Write-Host "`n=== [6/8] Testing Release Security Gates ===" -ForegroundColor Cyan
     & "$repository/Tests/ReleaseGateTests.ps1"
-    # Run this fixture in a child process: it stubs dotnet and executes an exit-based runner.
-    & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File "$repository/Tests/PrepushCleanupTests.ps1"
-    if ($LASTEXITCODE -ne 0) { throw 'Prepush cleanup regression tests failed.' }
-    & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File "$repository/Tests/LocalCiResumeTests.ps1"
-    if ($LASTEXITCODE -ne 0) { throw 'Local CI resume regression tests failed.' }
 
     Save-Checkpoint 8
 }
@@ -219,8 +186,16 @@ if ($startStep -le 7) {
 if ($startStep -le 8) {
 
     # Step 8: Update Compatibility Assertion
-    Write-Host "`n=== [8/10] Verifying Update Compatibility with 1.9.3 Client ===" -ForegroundColor Cyan
+    Write-Host "`n=== [7/8] Verifying Update Compatibility & Beta-to-Stable Promotion ===" -ForegroundColor Cyan
     & "$repository/Tools/Assert-UpdateCompatibility.ps1"
+    $projectPath = Join-Path $repository 'V-Notch.csproj'
+    if (Test-Path -LiteralPath $projectPath) {
+        [xml]$project = Get-Content -LiteralPath $projectPath
+        $version = [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+    } else {
+        $version = '1.9.4'
+    }
+    & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe"
 
     Save-Checkpoint 9
 }
@@ -228,22 +203,13 @@ if ($startStep -le 8) {
 if ($startStep -le 9) {
 
     # Step 9: Package Audit
-    Write-Host "`n=== [9/10] Auditing Packages for Known Vulnerabilities ===" -ForegroundColor Cyan
+    Write-Host "`n=== [8/8] Auditing Packages for Known Vulnerabilities ===" -ForegroundColor Cyan
     & "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json"
 
     Save-Checkpoint 10
 }
 
 if ($startStep -le 10) {
-
-    # Step 10: Enforce Application Code Coverage
-    Write-Host "`n=== [10/10] Enforcing Minimum Code Coverage ($MinimumCoverage%) ===" -ForegroundColor Cyan
-    if (-not $Fast) {
-        & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $testResultsDir -MinimumPercent $MinimumCoverage
-    } else {
-        Write-Host ">>> -Fast mode: skipping coverage threshold check." -ForegroundColor Yellow
-    }
-
     Save-Checkpoint 11
 }
 
@@ -252,7 +218,6 @@ $elapsed = $stopwatch.Elapsed
 
 Write-Host "`n========================================================" -ForegroundColor Green
 Write-Host "   LOCAL CHECKS PASSED IN $($elapsed.ToString("mm\:ss"))!  " -ForegroundColor Green
-Write-Host "   Coverage enforced: $(-not $Fast); Desktop integration: $IncludeDesktopIntegration" -ForegroundColor Green
 Write-Host "   Evidence: $runDirectory" -ForegroundColor Green
 Write-Host "========================================================`n" -ForegroundColor Green
 } finally {

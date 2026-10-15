@@ -362,41 +362,44 @@ public class LiquidGlassConfig
 
     public LiquidGlassConfig Clone() => (LiquidGlassConfig)MemberwiseClone();
 
+    private static bool DoubleEquals(double a, double b) =>
+        !(Math.Abs(a - b) > 0.0001) || (double.IsNaN(a) && double.IsNaN(b));
+
     public bool ValueEquals(LiquidGlassConfig? other)
     {
         if (ReferenceEquals(this, other)) return true;
         if (other is null) return false;
 
-        return Math.Abs(BlurAmount - other.BlurAmount) < 0.0001
-            && Math.Abs(Refraction - other.Refraction) < 0.0001
-            && Math.Abs(EdgeBend - other.EdgeBend) < 0.0001
-            && Math.Abs(ChromaticAberration - other.ChromaticAberration) < 0.0001
-            && Math.Abs(EdgeHighlight - other.EdgeHighlight) < 0.0001
-            && Math.Abs(TouchLight - other.TouchLight) < 0.0001
-            && Math.Abs(Specular - other.Specular) < 0.0001
-            && Math.Abs(Fresnel - other.Fresnel) < 0.0001
-            && Math.Abs(Distortion - other.Distortion) < 0.0001
+        return DoubleEquals(BlurAmount, other.BlurAmount)
+            && DoubleEquals(Refraction, other.Refraction)
+            && DoubleEquals(EdgeBend, other.EdgeBend)
+            && DoubleEquals(ChromaticAberration, other.ChromaticAberration)
+            && DoubleEquals(EdgeHighlight, other.EdgeHighlight)
+            && DoubleEquals(TouchLight, other.TouchLight)
+            && DoubleEquals(Specular, other.Specular)
+            && DoubleEquals(Fresnel, other.Fresnel)
+            && DoubleEquals(Distortion, other.Distortion)
             && CornerRadius == other.CornerRadius
-            && Math.Abs(ZRadius - other.ZRadius) < 0.0001
-            && Math.Abs(Opacity - other.Opacity) < 0.0001
-            && Math.Abs(Saturation - other.Saturation) < 0.0001
-            && Math.Abs(Brightness - other.Brightness) < 0.0001
-            && Math.Abs(ShadowOpacity - other.ShadowOpacity) < 0.0001
+            && DoubleEquals(ZRadius, other.ZRadius)
+            && DoubleEquals(Opacity, other.Opacity)
+            && DoubleEquals(Saturation, other.Saturation)
+            && DoubleEquals(Brightness, other.Brightness)
+            && DoubleEquals(ShadowOpacity, other.ShadowOpacity)
             && ShadowSpread == other.ShadowSpread
             && BevelMode == other.BevelMode
             && TargetFps == other.TargetFps
             && Variant == other.Variant
-            && Math.Abs(PowerFactor - other.PowerFactor) < 0.0001
-            && Math.Abs(RefractionA - other.RefractionA) < 0.0001
-            && Math.Abs(RefractionB - other.RefractionB) < 0.0001
-            && Math.Abs(RefractionC - other.RefractionC) < 0.0001
-            && Math.Abs(RefractionD - other.RefractionD) < 0.0001
-            && Math.Abs(FPower - other.FPower) < 0.0001
-            && Math.Abs(Noise - other.Noise) < 0.0001
-            && Math.Abs(GlowWeight - other.GlowWeight) < 0.0001
-            && Math.Abs(GlowBias - other.GlowBias) < 0.0001
-            && Math.Abs(GlowEdge0 - other.GlowEdge0) < 0.0001
-            && Math.Abs(GlowEdge1 - other.GlowEdge1) < 0.0001
+            && DoubleEquals(PowerFactor, other.PowerFactor)
+            && DoubleEquals(RefractionA, other.RefractionA)
+            && DoubleEquals(RefractionB, other.RefractionB)
+            && DoubleEquals(RefractionC, other.RefractionC)
+            && DoubleEquals(RefractionD, other.RefractionD)
+            && DoubleEquals(FPower, other.FPower)
+            && DoubleEquals(Noise, other.Noise)
+            && DoubleEquals(GlowWeight, other.GlowWeight)
+            && DoubleEquals(GlowBias, other.GlowBias)
+            && DoubleEquals(GlowEdge0, other.GlowEdge0)
+            && DoubleEquals(GlowEdge1, other.GlowEdge1)
             && HideFromScreenCapture == other.HideFromScreenCapture
             && UseGpuRefraction == other.UseGpuRefraction;
     }

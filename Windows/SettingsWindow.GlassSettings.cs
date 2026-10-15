@@ -25,6 +25,12 @@ public partial class SettingsWindow
 {
     #region Liquid Glass skin
 
+    private const string GlassPresetDark = "dark";
+    private const string GlassPresetUltraThin = "ultrathin";
+    private const string GlassPresetThin = "thin";
+    private const string GlassPresetThick = "thick";
+    private const string GlassPresetUltraThick = "ultrathick";
+
     // Snapshot of the user's manually-tuned glass values, preserved so the
     private Models.LiquidGlassConfig? _customGlassSnapshot;
     private bool _suppressGlassPresetChange;
@@ -36,6 +42,7 @@ public partial class SettingsWindow
         EdgeBend = 1.0,
         ChromaticAberration = 0.06,
         EdgeHighlight = 0.30,
+        TouchLight = 0.9,
         Specular = 0.0,
         Fresnel = 0.0,
         Distortion = 0.03,
@@ -67,6 +74,7 @@ public partial class SettingsWindow
         EdgeBend = 1.2,
         ChromaticAberration = 0.10,
         EdgeHighlight = 0.12,
+        TouchLight = 0.9,
         Specular = 0.0,
         Fresnel = 0.0,
         Distortion = 0.06,
@@ -98,6 +106,7 @@ public partial class SettingsWindow
         EdgeBend = 1.0,
         ChromaticAberration = 0.08,
         EdgeHighlight = 0.25,
+        TouchLight = 0.9,
         Specular = 0.0,
         Fresnel = 0.0,
         Distortion = 0.04,
@@ -129,6 +138,7 @@ public partial class SettingsWindow
         EdgeBend = 1.25,
         ChromaticAberration = 0.04,
         EdgeHighlight = 0.30,
+        TouchLight = 0.9,
         Specular = 0.35,
         Fresnel = 0.45,
         Distortion = 0.01,
@@ -150,6 +160,7 @@ public partial class SettingsWindow
         EdgeBend = 1.10,
         ChromaticAberration = 0.04,
         EdgeHighlight = 0.20,
+        TouchLight = 0.9,
         Specular = 0.35,
         Fresnel = 0.25,
         Distortion = 0.015,
@@ -171,6 +182,7 @@ public partial class SettingsWindow
         EdgeBend = 1.30,
         ChromaticAberration = 0.05,
         EdgeHighlight = 0.22,
+        TouchLight = 0.9,
         Specular = 0.32,
         Fresnel = 0.30,
         Distortion = 0.02,
@@ -192,6 +204,7 @@ public partial class SettingsWindow
         EdgeBend = 1.75,
         ChromaticAberration = 0.10,
         EdgeHighlight = 0.28,
+        TouchLight = 0.9,
         Specular = 0.28,
         Fresnel = 0.40,
         Distortion = 0.05,
@@ -213,6 +226,7 @@ public partial class SettingsWindow
         EdgeBend = 1.90,
         ChromaticAberration = 0.12,
         EdgeHighlight = 0.32,
+        TouchLight = 0.9,
         Specular = 0.25,
         Fresnel = 0.45,
         Distortion = 0.06,
@@ -232,12 +246,12 @@ public partial class SettingsWindow
         if (GlassPresetCombo.Items.Count > 0) return;
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.custom"), Tag = GlassPresetCustom });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.frosted"), Tag = GlassPresetFrosted });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.dark"), Tag = "dark" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.ultrathin"), Tag = "ultrathin" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.thin"), Tag = "thin" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.dark"), Tag = GlassPresetDark });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.ultrathin"), Tag = GlassPresetUltraThin });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.thin"), Tag = GlassPresetThin });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.regular"), Tag = GlassPresetRegular });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.thick"), Tag = "thick" });
-        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.ultrathick"), Tag = "ultrathick" });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.thick"), Tag = GlassPresetThick });
+        GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.ultrathick"), Tag = GlassPresetUltraThick });
         GlassPresetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.glass.preset.clear"), Tag = GlassPresetClear });
     }
 
@@ -288,7 +302,7 @@ public partial class SettingsWindow
             GlassShadowOpacitySlider.Value = Math.Round(c.ShadowOpacity * 100);
             GlassShadowSpreadSlider.Value = c.ShadowSpread;
             GlassBevelModeSlider.Value = c.BevelMode;
-            GlassFpsSlider.Value = (c.TargetFps <= 0 || c.TargetFps == 60) ? 0 : c.TargetFps;
+            GlassFpsSlider.Value = c.TargetFps <= 0 ? 0 : c.TargetFps;
         }
         finally
         {
@@ -335,6 +349,8 @@ public partial class SettingsWindow
 
             // The user's tuned values live in their own persistent slot. If it's
             _settings.LiquidGlassCustom ??= c.Clone();
+            if (_originalSettings != null) _originalSettings.LiquidGlassCustom ??= _settings.LiquidGlassCustom.Clone();
+            if (_appliedSettings != null) _appliedSettings.LiquidGlassCustom ??= _settings.LiquidGlassCustom.Clone();
             _customGlassSnapshot = _settings.LiquidGlassCustom.Clone();
 
             string preset = string.IsNullOrWhiteSpace(_settings.LiquidGlassPreset) ? GlassPresetCustom : _settings.LiquidGlassPreset;
@@ -376,16 +392,26 @@ public partial class SettingsWindow
         c.ShadowSpread = ui.ShadowSpread;
         c.BevelMode = ui.BevelMode;
         c.TargetFps = ui.TargetFps;
+        c.PowerFactor = ui.PowerFactor;
+        c.RefractionA = ui.RefractionA;
+        c.RefractionB = ui.RefractionB;
+        c.RefractionC = ui.RefractionC;
+        c.RefractionD = ui.RefractionD;
+        c.FPower = ui.FPower;
+        c.GlowWeight = ui.GlowWeight;
+        c.GlowBias = ui.GlowBias;
+        c.GlowEdge0 = ui.GlowEdge0;
+        c.GlowEdge1 = ui.GlowEdge1;
 
         string activePreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
         if (activePreset == GlassPresetClear) c.Variant = 1;
-        else if (activePreset == GlassPresetRegular || activePreset == GlassPresetFrosted || activePreset == "dark" || activePreset == "ultrathin" || activePreset == "thin" || activePreset == "thick" || activePreset == "ultrathick") c.Variant = 0;
+        else if (activePreset == GlassPresetRegular || activePreset == GlassPresetFrosted || activePreset == GlassPresetDark || activePreset == GlassPresetUltraThin || activePreset == GlassPresetThin || activePreset == GlassPresetThick || activePreset == GlassPresetUltraThick) c.Variant = 0;
         else c.Variant = _customGlassSnapshot?.Variant ?? c.Variant;
 
         c.UseGpuRefraction = GpuRefractionCheck?.IsChecked ?? false;
 
         // Persist which preset is active and the user's custom slot. A built-in
-        target.LiquidGlassPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
+        target.LiquidGlassPreset = activePreset;
         if (_customGlassSnapshot != null)
             target.LiquidGlassCustom = _customGlassSnapshot.Clone();
     }
@@ -399,12 +425,12 @@ public partial class SettingsWindow
         switch (item.Tag as string)
         {
             case GlassPresetFrosted: preset = FrostedGlassPreset(); break;
-            case "dark": preset = DarkGlassPreset(); break;
+            case GlassPresetDark: preset = DarkGlassPreset(); break;
             case GlassPresetRegular: preset = RegularGlassPreset(); break;
-            case "ultrathin": preset = UltraThinGlassPreset(); break;
-            case "thin": preset = ThinGlassPreset(); break;
-            case "thick": preset = ThickGlassPreset(); break;
-            case "ultrathick": preset = UltraThickGlassPreset(); break;
+            case GlassPresetUltraThin: preset = UltraThinGlassPreset(); break;
+            case GlassPresetThin: preset = ThinGlassPreset(); break;
+            case GlassPresetThick: preset = ThickGlassPreset(); break;
+            case GlassPresetUltraThick: preset = UltraThickGlassPreset(); break;
             case GlassPresetClear: preset = ClearGlassPreset(); break;
             default:
                 if (_customGlassSnapshot != null) preset = _customGlassSnapshot;
@@ -458,7 +484,24 @@ public partial class SettingsWindow
     {
         if (_isLoadingSettings) return;
 
-        // A manual slider tweak means the values no longer match a named preset â€”
+        string currentPreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
+        if (currentPreset != GlassPresetCustom && _settings.LiquidGlass != null)
+        {
+            var defaults = new Models.LiquidGlassConfig();
+            _settings.LiquidGlass.PowerFactor = defaults.PowerFactor;
+            _settings.LiquidGlass.RefractionA = defaults.RefractionA;
+            _settings.LiquidGlass.RefractionB = defaults.RefractionB;
+            _settings.LiquidGlass.RefractionC = defaults.RefractionC;
+            _settings.LiquidGlass.RefractionD = defaults.RefractionD;
+            _settings.LiquidGlass.FPower = defaults.FPower;
+            _settings.LiquidGlass.GlowWeight = defaults.GlowWeight;
+            _settings.LiquidGlass.GlowBias = defaults.GlowBias;
+            _settings.LiquidGlass.GlowEdge0 = defaults.GlowEdge0;
+            _settings.LiquidGlass.GlowEdge1 = defaults.GlowEdge1;
+            _settings.LiquidGlass.Variant = defaults.Variant;
+        }
+
+        // A manual slider tweak means the values no longer match a named preset —
         _customGlassSnapshot = ReadGlassConfigFromSliders();
         SelectGlassPreset(GlassPresetCustom);
 

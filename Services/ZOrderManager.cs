@@ -5,6 +5,12 @@ namespace VNotch.Services;
 
 public sealed class ZOrderManager : IDisposable
 {
+    private static IntPtr _currentForegroundWindow;
+    private static int _activeForegroundHooks;
+
+    internal static IntPtr GetForegroundWindowCached() => Volatile.Read(ref _activeForegroundHooks) > 0
+        ? Interlocked.CompareExchange(ref _currentForegroundWindow, IntPtr.Zero, IntPtr.Zero)
+        : GetForegroundWindow();
     private readonly Func<IntPtr> _getHwnd;
     private readonly Func<bool> _isEffectivelyVisible;
     private readonly Func<bool> _isSuspended;
@@ -91,6 +97,8 @@ public sealed class ZOrderManager : IDisposable
         uint idEventThread,
         uint dwmsEventTime)
     {
+        if (eventType == EVENT_SYSTEM_FOREGROUND)
+            Interlocked.Exchange(ref _currentForegroundWindow, hwnd);
         if (eventType != EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero || hwnd == _getHwnd())
             return;
 
@@ -161,6 +169,11 @@ public sealed class ZOrderManager : IDisposable
                 EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
                 IntPtr.Zero, _foregroundWinEventProc,
                 0, 0, WINEVENT_OUTOFCONTEXT);
+            if (_foregroundWinEventHook != IntPtr.Zero)
+            {
+                Interlocked.Exchange(ref _currentForegroundWindow, GetForegroundWindow());
+                Interlocked.Increment(ref _activeForegroundHooks);
+            }
         }
         AssertNow();
     }
@@ -175,6 +188,7 @@ public sealed class ZOrderManager : IDisposable
         {
             UnhookWinEvent(_foregroundWinEventHook);
             _foregroundWinEventHook = IntPtr.Zero;
+            Interlocked.Decrement(ref _activeForegroundHooks);
         }
         _foregroundWinEventProc = null;
     }

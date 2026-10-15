@@ -234,6 +234,9 @@ public partial class MainWindow : Window
         VNotch.Services.Clipboard.ClipboardHistoryStore? clipboardHistoryStore = null)
     {
         InitializeComponent();
+        InitializeShellCornerRadiusSync();
+        MusicCompactContent.Loaded += (_, _) => MusicCompactContent.LayoutUpdated += CacheCompactThumbnailRestOffset;
+        MusicCompactContent.Unloaded += (_, _) => MusicCompactContent.LayoutUpdated -= CacheCompactThumbnailRestOffset;
         System.Windows.Input.InputManager.Current.PreProcessInput += BlockGreetingInput;
         ClipboardTrayView.IsVisibleChanged += (_, _) => ApplyGlassContentShadow(IsLiquidGlassEnabled);
         _glassMaterialPresenter = new(GlassMaterialClipHost,
@@ -2631,9 +2634,13 @@ public partial class MainWindow : Window
         MediaBackground2.Height = secondaryBreadth;
     }
 
+    private double _lastNotchClipW = -1;
+    private double _lastNotchClipH = -1;
+    private CornerRadius _lastNotchClipCr = new CornerRadius(-1);
+    private double _lastNotchClipPower = -1;
+
     private void UpdateNotchClip()
     {
-
         if (NotchContent == null || NotchBorder == null) return;
 
         double w = NotchContent.ActualWidth;
@@ -2641,11 +2648,26 @@ public partial class MainWindow : Window
 
         if (w <= 0 || h <= 0) return;
 
-        var geometry = BuildNotchClipGeometry(w, h);
-        if (geometry == null) return;
+        CornerRadius cr = NotchBorder.CornerRadius;
+        double power = IsLiquidGlassEnabled ? _settings.LiquidGlass?.PowerFactor ?? 3 : 2;
 
-        NotchContent.Clip = geometry;
-        HoverGlow.Clip = geometry;
+        if (NotchContent.Clip == null ||
+            Math.Abs(w - _lastNotchClipW) > 0.05 ||
+            Math.Abs(h - _lastNotchClipH) > 0.05 ||
+            !cr.Equals(_lastNotchClipCr) ||
+            Math.Abs(power - _lastNotchClipPower) > 1e-3)
+        {
+            var geometry = BuildNotchClipGeometry(w, h);
+            if (geometry != null)
+            {
+                _lastNotchClipW = w;
+                _lastNotchClipH = h;
+                _lastNotchClipCr = cr;
+                _lastNotchClipPower = power;
+                NotchContent.Clip = geometry;
+                HoverGlow.Clip = geometry;
+            }
+        }
 
         // Keep the complete glass material stack clipped to its current silhouette.
         UpdateGlassClip();

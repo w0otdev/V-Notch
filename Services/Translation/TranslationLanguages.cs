@@ -71,7 +71,7 @@ internal static partial class TranslationLanguages
         if (!HasAtLeastLetters(text, 40)) return null;
         string? language = ConfidentLanguage(text);
         if (language == null) return null;
-        foreach (string sentence in Regex.Split(text, @"[.!?。！？\r\n]+"))
+        foreach (string sentence in Regex.Split(text, @"[\r\n。！？]+|(?<=[.!?])\s+"))
         {
             if (HasAtLeastLetters(sentence, 12) && ConfidentLanguage(sentence) != language)
                 return null;

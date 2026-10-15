@@ -8,6 +8,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class LiquidGlassInteractionTests
 {
     [Fact]

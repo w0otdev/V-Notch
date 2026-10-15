@@ -30,6 +30,7 @@ public sealed class LiquidGlassInteractionController : IDisposable
         _eventSource.MouseMove += OnMouseMove;
         _eventSource.PreviewMouseLeftButtonDown += OnMouseDown;
         _eventSource.PreviewMouseLeftButtonUp += OnMouseUp;
+        _eventSource.LostMouseCapture += OnLostMouseCapture;
         _eventSource.IsVisibleChanged += OnVisibilityChanged;
         _coordinateElement.IsVisibleChanged += OnVisibilityChanged;
         AnimationConfig.ReduceMotionChanged += OnReduceMotionChanged;
@@ -45,6 +46,8 @@ public sealed class LiquidGlassInteractionController : IDisposable
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
+        if (e.LeftButton == MouseButtonState.Released && _state.Frame.Press > 0)
+            _state.SetPressed(false);
         UpdatePointer(e.GetPosition(_coordinateElement));
         RequestRendering();
     }
@@ -57,6 +60,13 @@ public sealed class LiquidGlassInteractionController : IDisposable
     }
 
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        _state.SetPressed(false);
+        _state.SetActive(_eventSource.IsMouseOver);
+        RequestRendering();
+    }
+
+    private void OnLostMouseCapture(object sender, MouseEventArgs e)
     {
         _state.SetPressed(false);
         _state.SetActive(_eventSource.IsMouseOver);
@@ -93,6 +103,7 @@ public sealed class LiquidGlassInteractionController : IDisposable
         double deltaTime = _clock.Elapsed.TotalSeconds;
         _clock.Restart();
         _state.Advance(deltaTime);
+        if (_state.IsSettled) _state.SnapToTargets();
         ApplyFrame();
         if (_state.IsSettled) StopRendering();
     }
@@ -100,12 +111,15 @@ public sealed class LiquidGlassInteractionController : IDisposable
     private void ApplyFrame()
     {
         var frame = _state.Frame;
-        if (_effect.PointerX != frame.PointerX) _effect.PointerX = frame.PointerX;
-        if (_effect.PointerY != frame.PointerY) _effect.PointerY = frame.PointerY;
-        if (_effect.PointerActive != frame.Active) _effect.PointerActive = frame.Active;
-        if (_effect.PressAmount != frame.Press) _effect.PressAmount = frame.Press;
-        if (_effect.LightX != frame.LightX) _effect.LightX = frame.LightX;
-        if (_effect.LightY != frame.LightY) _effect.LightY = frame.LightY;
+        // Flush the exact resting state before unhooking, even if the last
+        // spring step was smaller than the per-frame invalidation threshold.
+        double tolerance = _state.IsSettled ? 0 : 1e-4;
+        if (Math.Abs(_effect.PointerX - frame.PointerX) > tolerance) _effect.PointerX = frame.PointerX;
+        if (Math.Abs(_effect.PointerY - frame.PointerY) > tolerance) _effect.PointerY = frame.PointerY;
+        if (Math.Abs(_effect.PointerActive - frame.Active) > tolerance) _effect.PointerActive = frame.Active;
+        if (Math.Abs(_effect.PressAmount - frame.Press) > tolerance) _effect.PressAmount = frame.Press;
+        if (Math.Abs(_effect.LightX - frame.LightX) > tolerance) _effect.LightX = frame.LightX;
+        if (Math.Abs(_effect.LightY - frame.LightY) > tolerance) _effect.LightY = frame.LightY;
     }
 
     private void OnVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -141,6 +155,7 @@ public sealed class LiquidGlassInteractionController : IDisposable
         _eventSource.MouseMove -= OnMouseMove;
         _eventSource.PreviewMouseLeftButtonDown -= OnMouseDown;
         _eventSource.PreviewMouseLeftButtonUp -= OnMouseUp;
+        _eventSource.LostMouseCapture -= OnLostMouseCapture;
         _eventSource.IsVisibleChanged -= OnVisibilityChanged;
         _coordinateElement.IsVisibleChanged -= OnVisibilityChanged;
         AnimationConfig.ReduceMotionChanged -= OnReduceMotionChanged;

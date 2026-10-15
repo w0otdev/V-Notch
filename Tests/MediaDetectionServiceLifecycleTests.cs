@@ -10,6 +10,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class MediaDetectionServiceLifecycleTests
 {
     [Fact]

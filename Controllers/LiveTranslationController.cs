@@ -59,7 +59,7 @@ internal sealed class LiveTranslationController : IDisposable
         if (!_injected && _store.Profile.Id != modelId)
         {
             changed = true;
-            CancelRequest(); StopWatcher();
+            CancelRequest();
             _store.Changed -= ModelChanged;
             _service.Dispose();
             Task previousDisposal = _service.Disposal;
@@ -256,16 +256,25 @@ internal sealed class LiveTranslationController : IDisposable
         _selection = null;
         _manualPresentationWindow = IntPtr.Zero;
         _sourceCurrencyOverride = _targetCurrencyOverride = null;
+        _text = "";
+        _inputWasTruncated = false;
         try
         {
-            _text = Clipboard.ContainsText() ? Clipboard.GetText() : "";
-            _inputWasTruncated = _text.Length > TranslationInput.MaxCharacters;
-            _text = TranslationInput.Prefix(_text, TranslationInput.MaxCharacters);
-            EnsureWindow().ShowClipboard(_text);
-            _window!.SetInputTruncated(_inputWasTruncated);
-            if (_text.Length == 0) _window!.SetStatus("translation.noSelection");
+            string raw = Clipboard.ContainsText() ? Clipboard.GetText() : "";
+            _inputWasTruncated = raw.Length > TranslationInput.MaxCharacters;
+            _text = TranslationInput.Prefix(raw, TranslationInput.MaxCharacters);
+            var window = EnsureWindow();
+            window.ShowClipboard(_text, _inputWasTruncated);
+            if (_text.Length == 0) window.SetStatus("translation.noSelection");
         }
-        catch (System.Runtime.InteropServices.COMException) { EnsureWindow().SetStatus("translation.clipboardBusy"); }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            _text = "";
+            _inputWasTruncated = false;
+            var window = EnsureWindow();
+            window.ShowClipboard("");
+            window.SetStatus("translation.clipboardBusy");
+        }
     }
 
     private async Task TranslateAsync()

@@ -9,6 +9,7 @@ using Detection = VNotch.Services.SmartThumbnailCropService.Detection;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class SmartCropInferenceAndFramingTests
 {
     private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;

@@ -7,6 +7,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class MusicVisualizerRenderingTests
 {
     private const BindingFlags Instance = BindingFlags.Instance | BindingFlags.NonPublic;

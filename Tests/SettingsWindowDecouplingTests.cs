@@ -11,6 +11,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class SettingsWindowDecouplingTests
 {
     private static void EnsureApplicationResources()

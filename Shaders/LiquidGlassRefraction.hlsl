@@ -153,11 +153,12 @@ float3 notchDistanceField(
     }
     else
     {
-        // Inside central rect core
+        // Inside central rect core: blend smoothly across corner miter to avoid 90-degree normal step when topRadius == 0
         float dX = qx - r;
         float dY = qy - r;
         sdf = max(dX, dY);
-        d = (dX > dY) ? float2(1.0, 0.0) : float2(0.0, py < 0.0 ? -1.0 : 1.0);
+        float2 w = exp(float2(dX - sdf, dY - sdf) * 0.35);
+        d = float2(w.x, w.y * (py < 0.0 ? -1.0 : 1.0));
     }
 
     float2 pSign = float2(localPos.x < 0.0 ? -1.0 : 1.0, 1.0);
@@ -233,18 +234,17 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float distNorm = saturate(insidePixels / max(notchRadius, 1.0));
 
     // -----------------------------------------------------------------
-    // Pointer interaction & dynamic ripple
+    // Pointer interaction & dynamic ripple (only evaluated when pressed > 0.001)
     // -----------------------------------------------------------------
     float flexPixels = 0.0;
     float interactionMask = 0.0;
     float interactionEnergy = 0.0;
     float2 pointerLocal = float2(0.0, 0.0);
     float active = saturate(pointerActive);
-    float pressed = 0.0;
+    float pressed = saturate(pressAmount) * active;
 
-    if (active > 0.001)
+    if (pressed > 0.001)
     {
-        pressed = saturate(pressAmount) * active;
         float2 pointer01 = saturate(float2(pointerX, pointerY));
         pointerLocal = pointer01 * notchSize - halfSize;
         float2 pointerDelta = localPos - pointerLocal;
@@ -288,7 +288,8 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // Chromatic Dispersion (Aberration) - Fast 3-Tap RGB
     // -----------------------------------------------------------------
     float3 col = float3(0.0, 0.0, 0.0);
-    float chromaAmount = max(u_chroma, 0.0) * (1.0 - distNorm) * 2.0;
+    float dispMag = length(displacement);
+    float chromaAmount = max(u_chroma, 0.0) * (1.0 - distNorm) * saturate(dispMag * 0.5) * 2.0;
 
     if (chromaAmount > 0.001)
     {
@@ -320,8 +321,8 @@ float4 main(float2 uv : TEXCOORD) : COLOR
         // Animated/spring-tracked light source local coordinate
         float2 lightLocal = float2(lightX, lightY) * notchSize - halfSize;
 
-        // Vector from light source to current pixel
-        float2 lightRay = safeNormalize(localPos - lightLocal);
+        // Vector from current surface pixel toward light source
+        float2 lightRay = safeNormalize(lightLocal - localPos);
         float lightFacing = saturate(dot(outwardNormal, lightRay));
 
         float2 lightDistanceScale = max(notchSize * float2(0.72, 0.95), float2(1.0, 1.0));

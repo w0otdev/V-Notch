@@ -4,6 +4,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public sealed class DebouncerThreadTests
 {
     [Fact]

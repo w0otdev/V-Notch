@@ -19,7 +19,32 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
         var ps = new PixelShader();
         try
         {
-            // 1. Try loading directly from file on disk next to executable or project root
+            // 1. Try loading from embedded application resource stream first
+#pragma warning disable S1075 // Pack URI scheme is required to access WPF embedded assembly resources
+            string assemblyName = typeof(LiquidGlassRefractionEffect).Assembly.GetName().Name ?? "V-Notch";
+            var resourceUri = new Uri($"pack://application:,,,/{assemblyName};component/Shaders/LiquidGlassRefraction.ps", UriKind.Absolute);
+#pragma warning restore S1075
+            try
+            {
+                var streamInfo = Application.GetResourceStream(resourceUri);
+                if (streamInfo != null)
+                {
+                    using (streamInfo.Stream)
+                    {
+                        ps.SetStreamSource(streamInfo.Stream);
+                        if (ps.CanFreeze) ps.Freeze();
+                        IsAvailable = true;
+                        RuntimeLog.Log("LIQUIDGLASS", "GPU shader loaded from Application Resource Stream.");
+                        return ps;
+                    }
+                }
+            }
+            catch
+            {
+                // Fall back to local file lookup when Application resource table is not yet initialized (e.g. unit tests)
+            }
+
+            // 2. Try loading from application directory
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string[] candidatePaths =
             {
@@ -33,32 +58,16 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
             {
                 using var stream = File.OpenRead(existingPath);
                 ps.SetStreamSource(stream);
+                if (ps.CanFreeze) ps.Freeze();
                 IsAvailable = true;
                 RuntimeLog.Log("LIQUIDGLASS", $"GPU shader loaded from file: {existingPath}");
                 return ps;
             }
 
-            // 2. Try loading from application resource stream
-#pragma warning disable S1075 // Pack URI scheme is required to access WPF embedded assembly resources
-            string assemblyName = typeof(LiquidGlassRefractionEffect).Assembly.GetName().Name ?? "V-Notch";
-            var resourceUri = new Uri($"pack://application:,,,/{assemblyName};component/Shaders/LiquidGlassRefraction.ps", UriKind.Absolute);
-#pragma warning restore S1075
-            var streamInfo = Application.GetResourceStream(resourceUri);
-            if (streamInfo != null)
-            {
-                using (streamInfo.Stream)
-                {
-                    ps.SetStreamSource(streamInfo.Stream);
-                    IsAvailable = true;
-                    RuntimeLog.Log("LIQUIDGLASS", "GPU shader loaded from Application Resource Stream.");
-                    return ps;
-                }
-            }
-
             // 3. Fallback to UriSource
             ps.UriSource = resourceUri;
-            IsAvailable = true;
             if (ps.CanFreeze) ps.Freeze();
+            IsAvailable = true;
             return ps;
         }
         catch (Exception ex)
@@ -66,11 +75,6 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
             RuntimeLog.Log("LIQUIDGLASS", $"GPU shader load failed: {ex.Message}");
             IsAvailable = false;
             return ps;
-        }
-        finally
-        {
-            if (ps.CanFreeze && !ps.IsFrozen)
-                ps.Freeze();
         }
     }
 

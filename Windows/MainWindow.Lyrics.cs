@@ -338,37 +338,34 @@ public partial class MainWindow
         // ensuring CalendarWidget is collapsed and LyricsWidget is visible even after races.
         ShowLyricsWidget();
 
-        Dispatcher.Invoke(() =>
+        bool transitionFromSearch =
+            _isLyricsSearchVisible && LyricsSearchPanel.Visibility == Visibility.Visible;
+        HideLyricsSearchState(immediate: true);
+
+        int idx = FindCurrentLyricIndex();
+        if (idx >= 0)
         {
-            bool transitionFromSearch =
-                _isLyricsSearchVisible && LyricsSearchPanel.Visibility == Visibility.Visible;
-            HideLyricsSearchState(immediate: true);
+            bool fromPlaceholder = LyricsPlaceholderPanel != null &&
+                LyricsPlaceholderPanel.Visibility == Visibility.Visible &&
+                LyricsPlaceholderPanel.Opacity > 0.05;
 
-            int idx = FindCurrentLyricIndex();
-            if (idx >= 0)
-            {
-                bool fromPlaceholder = LyricsPlaceholderPanel != null &&
-                    LyricsPlaceholderPanel.Visibility == Visibility.Visible &&
-                    LyricsPlaceholderPanel.Opacity > 0.05;
-
-                _currentLyricIndex = idx;
-                HideLyricsPlaceholder();
-                AnimateLyricLine(_currentLyrics[idx].Text, transitionFromSearch, transitionFromPlaceholder: fromPlaceholder);
-            }
-            else
-            {
-                string placeholderTitle = !string.IsNullOrWhiteSpace(info.CurrentTrack) ? info.CurrentTrack : "";
-                string placeholderArtist = (!string.IsNullOrWhiteSpace(info.CurrentArtist) &&
-                    MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser))
-                    ? info.CurrentArtist
-                    : "";
-                ShowLyricsPlaceholder(
-                    placeholderTitle,
-                    placeholderArtist,
-                    _lyricsProvider,
-                    transitionFromSearch);
-            }
-        });
+            _currentLyricIndex = idx;
+            HideLyricsPlaceholder();
+            AnimateLyricLine(_currentLyrics[idx].Text, transitionFromSearch, transitionFromPlaceholder: fromPlaceholder);
+        }
+        else
+        {
+            string placeholderTitle = !string.IsNullOrWhiteSpace(info.CurrentTrack) ? info.CurrentTrack : "";
+            string placeholderArtist = (!string.IsNullOrWhiteSpace(info.CurrentArtist) &&
+                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser))
+                ? info.CurrentArtist
+                : "";
+            ShowLyricsPlaceholder(
+                placeholderTitle,
+                placeholderArtist,
+                _lyricsProvider,
+                transitionFromSearch);
+        }
     }
 
     private void ShowLyricsSearchState(bool isYouTube)
@@ -980,9 +977,8 @@ public partial class MainWindow
         outTransform.Y = 0;
         incoming.Opacity = 0;
         incoming.Text = newText;
-        // Resolve wrapping and the centered multiline height while this layer is
-        // still invisible, before attaching the entrance animation clocks.
-        AnimatedLyricsLayer.UpdateLayout();
+        // WPF arranges the new text before rendering. The entrance delay keeps
+        // it invisible during that pass without flushing the entire layout queue.
         // Keep the base position identical to the animation endpoint. The
         // delayed animation supplies startY without changing the resting layout.
         inTransform.Y = 0;
@@ -1013,8 +1009,8 @@ public partial class MainWindow
         }
 
         var inDelay = TimeSpan.FromMilliseconds(delayMs);
-        var easeOut = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
-        var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
+        var easeOut = _easeExpOut5;
+        var easeIn = _easeCubicIn;
 
         var fadeOut = new DoubleAnimation(1, 0, outDur) { EasingFunction = easeIn };
         var slideOut = new DoubleAnimation(0, -14, outDur) { EasingFunction = easeIn };

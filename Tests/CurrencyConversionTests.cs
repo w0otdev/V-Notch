@@ -138,7 +138,7 @@ public sealed class CurrencyConversionTests
     [Theory]
     [InlineData("{\"base\":\"EUR\",\"quote\":\"VND\",\"rate\":25000,\"date\":\"2026-10-11\"}")]
     [InlineData("{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":-1,\"date\":\"2026-10-11\"}")]
-    [InlineData("{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":25000,\"date\":\"2026-10-12\"}")]
+    [InlineData("{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":25000,\"date\":\"2026-10-13\"}")]
     [InlineData("{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":25000,\"date\":null}")]
     [InlineData("{}")]
     [InlineData("not json")]
@@ -210,7 +210,8 @@ public sealed class CurrencyConversionTests
         internal DateTimeOffset Now = new(2026, 10, 11, 12, 0, 0, TimeSpan.Zero);
         internal readonly NetworkPrivacy Privacy = new();
         internal readonly HttpClient Client;
-        internal readonly CurrencyRateService Service;
+        private CurrencyRateService? _service;
+        internal CurrencyRateService Service => _service ??= NewService();
         internal int Calls;
         internal string? LastUri, Response;
         internal Fixture()
@@ -221,7 +222,6 @@ public sealed class CurrencyConversionTests
                 Calls++; LastUri = request.RequestUri!.AbsoluteUri;
                 return new(HttpStatusCode.OK) { Content = new StringContent(Response ?? $"{{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":25000,\"date\":\"{Now:yyyy-MM-dd}\"}}") };
             }));
-            Service = NewService();
         }
         internal CurrencyRateService NewService() => new(Client, Privacy, _root, () => Now);
         public void Dispose() { Client.Dispose(); if (Directory.Exists(_root)) Directory.Delete(_root, true); }

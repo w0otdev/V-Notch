@@ -237,6 +237,8 @@ public sealed class MainWindowGlassPresentationTests
         double dpi = VisualTreeHelper.GetDpi(window).DpiScaleX;
         Assert.Equal(360 * dpi, effect.NotchW);
         Assert.Equal(44 * dpi, effect.NotchH);
+        Assert.Equal(effect.SrcW, window.GlassBackdropImage.Width * dpi * window.NotchScale.ScaleX, 6);
+        Assert.Equal(effect.SrcH, window.GlassBackdropImage.Height * dpi * window.NotchScale.ScaleY, 6);
         Assert.Equal(2, effect.PowerFactor);
         Assert.Equal(4, effect.D);
         Assert.Equal(1.3, effect.SatFactor);
@@ -249,6 +251,11 @@ public sealed class MainWindowGlassPresentationTests
         Assert.Equal(1.4, effect.SatFactor);
         Invoke(window, "UpdateShaderGeometryPerFrame");
         Assert.Equal(3, effect.PowerFactor);
+        window.NotchScale.ScaleX = 1;
+        window.NotchScale.ScaleY = 1;
+        Invoke(window, "UpdateShaderGeometryPerFrame");
+        Assert.Equal(effect.SrcW, window.GlassBackdropImage.Width * dpi, 6);
+        Assert.Equal(effect.SrcH, window.GlassBackdropImage.Height * dpi, 6);
         Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("fixture GPU unavailable"));
         Assert.Null(window.GlassBackdropImage.Effect);
         Assert.Null(window.GlassBackdropHost.Effect);

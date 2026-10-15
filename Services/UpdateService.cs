@@ -97,7 +97,7 @@ public class UpdateService : IUpdateService, IDisposable
                 return result;
             }
             response.EnsureSuccessStatusCode();
-            using var jsonDoc = await WeatherService.ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false)
+            using var jsonDoc = await ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false)
                 ?? throw new InvalidDataException("Release metadata response was empty or exceeded size limit.");
             UpdateInfo? info;
             if (includePrereleases)
@@ -110,7 +110,7 @@ public class UpdateService : IUpdateService, IDisposable
                     pageRequest.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
                     using var pageResponse = await SendHttpsAsync(pageRequest, CancellationToken.None).ConfigureAwait(false);
                     pageResponse.EnsureSuccessStatusCode();
-                    using var pageJson = await WeatherService.ReadLimitedJsonAsync(pageResponse, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
+                    using var pageJson = await ReadLimitedJsonAsync(pageResponse, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
                     if (pageJson == null) break;
                     info = SelectLatestRelease(pageJson.RootElement, info);
                     count = pageJson.RootElement.GetArrayLength();
@@ -187,7 +187,7 @@ public class UpdateService : IUpdateService, IDisposable
             using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            using var jsonDoc = await WeatherService.ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
+            using var jsonDoc = await ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
             if (jsonDoc == null) return Array.Empty<UpdateInfo>();
             var releases = new List<UpdateInfo>();
 
@@ -462,6 +462,30 @@ public class UpdateService : IUpdateService, IDisposable
         if (!Version.TryParse(value, out var parsed)) return false;
         version = new Version(parsed.Major, parsed.Minor, Math.Max(0, parsed.Build), Math.Max(0, parsed.Revision));
         return true;
+    }
+
+    private static async Task<JsonDocument?> ReadLimitedJsonAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
+    {
+        var length = response.Content.Headers.ContentLength;
+        if (length.HasValue && length.Value > maxBytes) return null;
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var memory = new MemoryStream(length.HasValue ? (int)length.Value : 4096);
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            int totalRead = 0;
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maxBytes - totalRead + 1)), token).ConfigureAwait(false);
+                if (read == 0) break;
+                totalRead += read;
+                if (totalRead > maxBytes) return null;
+                memory.Write(buffer, 0, read);
+            }
+            return totalRead == 0 ? null : JsonDocument.Parse(memory.GetBuffer().AsMemory(0, totalRead));
+        }
+        finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
     }
 
     private static bool ValidIdentifiers(string value, bool numericLeadingZerosAllowed) => value.Split('.').All(part =>

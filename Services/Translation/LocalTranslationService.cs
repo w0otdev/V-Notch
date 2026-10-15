@@ -17,7 +17,7 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
         _options = options;
         _cache.Clear(); _order.Clear();
     }
-    private bool _disposed;
+    private volatile bool _disposed;
     internal Task Disposal => (engine as QwenTranslationEngine)?.Disposal ?? Task.CompletedTask;
     internal TranslationStage Stage => engine.Stage;
 

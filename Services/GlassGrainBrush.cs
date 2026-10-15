@@ -27,7 +27,7 @@ public static class GlassGrainBrush
     private static ImageBrush CreateBrush()
     {
         const int size = 256;
-        var wb = new WriteableBitmap(size, size, 96, 96, PixelFormats.Bgra32, null);
+        var wb = new WriteableBitmap(size, size, 96, 96, PixelFormats.Pbgra32, null);
         int[] pixels = new int[size * size];
 
 #pragma warning disable S2245 // Pseudo-random generator is used solely for deterministic visual noise texture generation, not security or cryptography
@@ -35,12 +35,13 @@ public static class GlassGrainBrush
 #pragma warning restore S2245
         for (int i = 0; i < pixels.Length; i++)
         {
-            // Monochromatic noise: fine micro-dots with subtle contrast
-            double n = rng.NextDouble() - 0.5;
-            byte lum = n >= 0 ? (byte)255 : (byte)0;
-            byte alpha = (byte)Math.Clamp(Math.Abs(n) * 110.0, 0, 255);
-
-            pixels[i] = (alpha << 24) | (lum << 16) | (lum << 8) | lum;
+            // Triangular zero-mean micro-grain distribution (avoids harsh binary clumping)
+            double t = rng.NextDouble() - rng.NextDouble();
+            byte alpha = (byte)(Math.Abs(t) * 55.0);
+            // Premultiplied Pbgra32: white highlight grain uses (a, a, a, a), dark shadow grain uses (a, 0, 0, 0)
+            pixels[i] = t >= 0
+                ? (alpha << 24) | (alpha << 16) | (alpha << 8) | alpha
+                : alpha << 24;
         }
 
         wb.WritePixels(new Int32Rect(0, 0, size, size), pixels, size * 4, 0);
@@ -53,7 +54,7 @@ public static class GlassGrainBrush
             ViewportUnits = BrushMappingMode.Absolute,
             Stretch = Stretch.None
         };
-        RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.NearestNeighbor);
+        RenderOptions.SetBitmapScalingMode(brush, BitmapScalingMode.Linear);
         brush.Freeze();
         return brush;
     }

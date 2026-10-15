@@ -182,8 +182,9 @@ internal sealed class D3DImageFramePresenter : IDisposable
                         // scheduling/tag intact until WPF consumes them.
                         return true;
                     }
-                    // Geometry changes/periodic refresh still submit a frame.
-                    if (forcePresent) dirtyRows = new GlassDirtyRows(0, height);
+                    // Geometry changes/periodic refresh still submit a frame; only
+                    // expand to full height when no specific dirty rows were detected.
+                    if (dirtyRows.IsEmpty && forcePresent) dirtyRows = new GlassDirtyRows(0, height);
                     _pendingDirtyRows = _pendingDirtyRows.Union(dirtyRows);
                 }
                 finally
@@ -225,7 +226,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
     private void EnsureResources()
     {
-        if (_uploadSurface != null && _renderSurface != null)
+        if (Volatile.Read(ref _uploadSurface) != null && Volatile.Read(ref _renderSurface) != null)
             return;
 
         if (_dispatcher.CheckAccess())
@@ -244,7 +245,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_disposed || _device == null)
             throw new ObjectDisposedException(nameof(D3DImageFramePresenter));
 
-        if (_uploadSurface != null && _renderSurface != null)
+        if (Volatile.Read(ref _uploadSurface) != null && Volatile.Read(ref _renderSurface) != null)
             return;
 
         IDirect3DSurface9? nextUpload = null;
@@ -346,8 +347,9 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 if (_renderSurface == null || _uploadSurface == null)
                     return;
 
-                // Unlock on TryLock failure to avoid permanent lockouts, and skip
-                // waiting on WPF render thread so we can retry on the next upload.
+                // WPF D3DImage.LockImpl increments its lock count even on timeout.
+                // Every non-throwing TryLock needs Unlock; false only forbids writes.
+                // Otherwise one busy compositor frame permanently blocks presentation.
                 bool imageWritable = _image.TryLock(new Duration(TimeSpan.Zero));
                 try
                 {
@@ -510,6 +512,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
         if (_attachedSurface == null || !_image.IsFrontBufferAvailable)
             return;
 
+        // Balance the WPF lock count on timeout here as well as during presentation.
         bool imageWritable = _image.TryLock(new Duration(TimeSpan.FromMilliseconds(5)));
         try
         {

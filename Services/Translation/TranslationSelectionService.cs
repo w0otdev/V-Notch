@@ -14,7 +14,6 @@ internal sealed class TranslationSelectionService : IDisposable
     private readonly TaskCompletionSource<Dispatcher> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _manualRequestVersion;
     private UiScheduledTimer? _debounce;
-    private readonly AutomationFocusChangedEventHandler _focusChanged;
     private readonly AutomationEventHandler _selectionChanged;
     private AutomationElement? _root, _element, _eventElement;
     private TextPatternRange? _range;
@@ -24,7 +23,8 @@ internal sealed class TranslationSelectionService : IDisposable
     private volatile bool _disposed;
     private int _queued;
     private readonly WinEventCallback _foregroundChanged;
-    private IntPtr _foregroundHook, _lastExternalWindow;
+    private readonly WinEventCallback _objectEventChanged;
+    private IntPtr _foregroundHook, _focusHook, _selectionHook, _lastExternalWindow;
     private readonly Func<IntPtr, bool>? _isBlocked;
     internal event Action<TranslationSelection?>? SelectionChanged;
     internal event Action<TranslationSelection?>? ManualTranslationRequested;
@@ -92,13 +92,17 @@ internal sealed class TranslationSelectionService : IDisposable
     internal TranslationSelectionService(Func<IntPtr, bool>? isBlocked = null)
     {
         _isBlocked = isBlocked;
-        _focusChanged = (_, _) => QueueCapture();
         _selectionChanged = (sender, _) => { _eventElement = sender as AutomationElement; QueueCapture(); };
         _foregroundChanged = (_, _, hwnd, _, _, _, _) =>
         {
             if (hwnd == IntPtr.Zero || IsOwnWindow(hwnd)) return;
             _lastExternalWindow = hwnd;
             if (_snapshot != null && _snapshot.Window != hwnd) Publish(null);
+            QueueCapture();
+        };
+        _objectEventChanged = (_, _, hwnd, _, _, _, _) =>
+        {
+            if (hwnd == IntPtr.Zero || IsOwnWindow(hwnd)) return;
             QueueCapture();
         };
         _thread = new Thread(Watch) { IsBackground = true, Name = "VNotch translation selection" };
@@ -120,9 +124,9 @@ internal sealed class TranslationSelectionService : IDisposable
         try
         {
             if (_disposed) return;
-            try { Automation.AddAutomationFocusChangedEventHandler(_focusChanged); }
-            catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { }
             _foregroundHook = SetWinEventHook(3, 3, IntPtr.Zero, _foregroundChanged, 0, 0, 2);
+            _focusHook = SetWinEventHook(0x8005, 0x8005, IntPtr.Zero, _objectEventChanged, 0, 0, 2);
+            _selectionHook = SetWinEventHook(0x8014, 0x8014, IntPtr.Zero, _objectEventChanged, 0, 0, 2);
             if (_disposed) return;
             _ready.TrySetResult(dispatcher);
             QueueCapture();
@@ -139,8 +143,9 @@ internal sealed class TranslationSelectionService : IDisposable
             _ready.TrySetCanceled();
             _debounce.Stop();
             if (_foregroundHook != IntPtr.Zero) UnhookWinEvent(_foregroundHook);
+            if (_focusHook != IntPtr.Zero) UnhookWinEvent(_focusHook);
+            if (_selectionHook != IntPtr.Zero) UnhookWinEvent(_selectionHook);
             DetachSelection();
-            try { Automation.RemoveAutomationFocusChangedEventHandler(_focusChanged); } catch (Exception) { }
             _element = null; _range = null; _snapshot = null;
         }
     }
@@ -157,6 +162,9 @@ internal sealed class TranslationSelectionService : IDisposable
         }, DispatcherPriority.Background);
     }
 
+    private TranslationSelection? _lastValidSnapshot;
+    private long _lastValidTick;
+
     private void Capture(bool manual = false)
     {
         try
@@ -165,36 +173,55 @@ internal sealed class TranslationSelectionService : IDisposable
             if (window == IntPtr.Zero || IsOwnWindow(window)) return;
             if (_isBlocked?.Invoke(window) == true)
             {
-                DetachSelection(); Publish(null, !manual); return;
+                DetachSelection(); _lastValidSnapshot = null; Publish(null, !manual); return;
             }
             _lastExternalWindow = window;
             if ((GetAsyncKeyState(1) & 0x8000) != 0) { _debounce!.Start(); return; }
             if (window != _watchedWindow)
             {
                 DetachSelection();
+                _lastValidSnapshot = null;
                 Publish(null, !manual);
                 _root = AutomationElement.FromHandle(window);
                 _watchedWindow = window;
                 try { Automation.AddAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, TreeScope.Subtree, _selectionChanged); }
                 catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { }
             }
-            var eventElement = _eventElement;
-            _eventElement = null;
-            var result = SelectionTextReader.Read(window, eventElement, manual, out bool protectedInput);
+            var result = SelectionTextReader.Read(window, _eventElement, manual, out bool protectedInput, _element, _root);
             if (Win32Interop.GetForegroundWindow() != window) return;
             if (result == null)
             {
                 var native = protectedInput ? null : NativeSelectionReader.Read(window);
                 if (Win32Interop.GetForegroundWindow() != window) return;
+                if (native == null && manual && !protectedInput && _lastValidSnapshot?.Window == window &&
+                    Environment.TickCount64 - _lastValidTick <= 5000)
+                {
+                    // Preserve a selection captured moments before Shift key-down cleared or unfocused the provider.
+                    native = _lastValidSnapshot;
+                }
+                if (native != null)
+                {
+                    _lastValidSnapshot = native;
+                    _lastValidTick = Environment.TickCount64;
+                }
                 if (native != null && _snapshot?.Window == native.Window && _snapshot.Text == native.Text && !_snapshot.CanReplace) return;
                 _element = null; _range = null;
                 Publish(native, !manual);
                 return;
             }
+            _eventElement = result.Element;
             if (_snapshot?.Text == result.Text && _snapshot.Window == window && _element != null &&
-                Automation.Compare(_element, result.Element) && _range != null && result.Range != null && SameRange(_range, result.Range)) return;
+                Automation.Compare(_element, result.Element) && _range != null && result.Range != null && SameRange(_range, result.Range))
+            {
+                _lastValidSnapshot = _snapshot;
+                _lastValidTick = Environment.TickCount64;
+                return;
+            }
             _element = result.Element; _range = result.Range;
-            Publish(new(++_nextId, result.Text, result.Bounds, window, result.Editable) { InputTruncated = result.InputTruncated }, !manual);
+            var published = new TranslationSelection(++_nextId, result.Text, result.Bounds, window, result.Editable) { InputTruncated = result.InputTruncated };
+            _lastValidSnapshot = published;
+            _lastValidTick = Environment.TickCount64;
+            Publish(published, !manual);
         }
         catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException or ArgumentException)
         { Publish(null, !manual); }

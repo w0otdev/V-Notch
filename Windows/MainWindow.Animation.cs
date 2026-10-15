@@ -38,7 +38,6 @@ public partial class MainWindow
 
         double restY = ExpandedContentRestY;
         ExpandedContent.RenderTransform = restY != 0 ? new TranslateTransform(0, restY) : null;
-        ExpandedContent.UpdateLayout();
     }
 
     private void PrepareExpandedContentLayoutForReveal()
@@ -47,7 +46,6 @@ public partial class MainWindow
 
         UpdateProgressSectionLayout();
         MediaPlayback.RefreshMediaMarquee();
-        ExpandedContent.UpdateLayout();
     }
 
     private static DoubleAnimationUsingKeyFrames MakeExpandGeometryAnimation(
@@ -188,16 +186,34 @@ public partial class MainWindow
         }
     }
 
+    private (double X, double Y)? _cachedCompactThumbnailOffset;
+    private bool _cachedCompactIslandMode;
+    private double _cachedCompactHeight;
+    private double _cachedCompactDpi;
+
+    private void CacheCompactThumbnailRestOffset(object? sender, EventArgs e)
+    {
+        if (_isAnimating || _isExpanded || _isMusicExpanded ||
+            MusicCompactContent.Visibility == Visibility.Collapsed ||
+            !MusicCompactContent.IsArrangeValid || !CompactThumbnailBorder.IsArrangeValid) return;
+        if (TryComputeCompactThumbnailRestOffset(out var offset))
+        {
+            _cachedCompactThumbnailOffset = offset;
+            _cachedCompactIslandMode = _settings.EnableDynamicIslandMode;
+            _cachedCompactHeight = GetCollapsedHeight();
+            _cachedCompactDpi = GetGlassDpiScale();
+        }
+    }
+
     private (double X, double Y) MeasureCompactThumbnailRestOffset()
     {
-        ApplyDynamicIslandContentAlignment(_settings.EnableDynamicIslandMode);
-        MusicCompactContent.InvalidateMeasure();
-        MusicCompactContent.InvalidateArrange();
-        MusicCompactContent.UpdateLayout();
-
-        return TryComputeCompactThumbnailRestOffset(out var measuredOffset)
-            ? measuredOffset
-            : (0, 0);
+        if (_cachedCompactThumbnailOffset.HasValue &&
+            _cachedCompactIslandMode == _settings.EnableDynamicIslandMode &&
+            _cachedCompactHeight == GetCollapsedHeight() &&
+            _cachedCompactDpi == GetGlassDpiScale())
+            return _cachedCompactThumbnailOffset.Value;
+        return MusicCompactContent.Visibility != Visibility.Collapsed && MusicCompactContent.IsArrangeValid &&
+            TryComputeCompactThumbnailRestOffset(out var measuredOffset) ? measuredOffset : (0, 0);
     }
 
     private bool _isThumbnailExpandAnimating;
@@ -459,34 +475,23 @@ public partial class MainWindow
             return _cachedThumbnailExpandTarget;
         }
 
-        double prevNotchWidth = NotchBorder.Width;
-        double prevNotchHeight = NotchBorder.Height;
-        double prevExpandedWidth = ExpandedContent.Width;
-        double prevExpandedHeight = ExpandedContent.Height;
-
-        NotchBorder.Width = _expandedWidth;
-        NotchBorder.Height = _expandedHeight;
-        ExpandedContent.Width = _expandedWidth - ExpandedContentHorizontalInset;
-        ExpandedContent.Height = _expandedHeight - ExpandedContentVerticalInset;
-
-        // Coalesce mutations before a single measurement layout pass
-        PrepareExpandedContentLayoutForReveal();
-        UpdateLayout();
-
-        if (TryComputeThumbnailExpandTarget(out var computedTarget))
+        // A cold cache needs only the media subtree's destination layout. Never
+        // resize the shell or flush the window's pending Measure/Arrange queue.
+        var destination = new Size(_expandedWidth, _expandedHeight);
+        ExpandedContent.Measure(destination);
+        ExpandedContent.Arrange(new Rect(destination));
+        if (ThumbnailBorder.ActualWidth > 0 && ThumbnailBorder.ActualHeight > 0)
         {
-            _cachedThumbnailExpandTarget = computedTarget;
+            ConfigureAnimationThumbnailRestSlot();
+            var local = ThumbnailBorder.TransformToAncestor(ExpandedContent).Transform(new Point());
+            _cachedThumbnailExpandTarget = (
+                local.X + (_expandedWidth - ExpandedContent.ActualWidth) / 2 - AnimationThumbnailBorder.Margin.Left,
+                local.Y + ExpandedContent.Margin.Top + ExpandedContentRestY - AnimationThumbnailBorder.Margin.Top);
             _lastMeasuredTargetExpandedWidth = _expandedWidth;
             _lastMeasuredTargetExpandedHeight = _expandedHeight;
             _lastMeasuredTargetDpi = dpi;
         }
 
-        NotchBorder.Width = prevNotchWidth;
-        NotchBorder.Height = prevNotchHeight;
-        ExpandedContent.Width = prevExpandedWidth;
-        ExpandedContent.Height = prevExpandedHeight;
-
-        UpdateLayout();
         return _cachedThumbnailExpandTarget;
     }
 
@@ -594,9 +599,7 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
         {
-            animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, MakeAnim(4, 12, thumbDur, _easeExpOut6));
             animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.35, 0.55, thumbDur, _easeExpOut6));
-            animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, MakeAnim(0.8, 2.0, thumbDur, _easeExpOut6));
         }
 
         if (CompactThumbnailBorder != null)
@@ -1141,11 +1144,10 @@ public partial class MainWindow
         CollapsedContent.BeginAnimation(OpacityProperty, fadeOutAnim);
         MusicCompactContent.BeginAnimation(OpacityProperty, fadeOutAnim);
 
-        double contentBlurRadius = _settings.EnableBlurEffects ? 24 : 0;
-        var blurOutAnim = MakeAnim(0, contentBlurRadius, _dur350, _easeQuadIn);
-        var blurInAnim = MakeAnim(contentBlurRadius, 0, _dur500, _easePowerOut3);
-        CollapsedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
-        MusicCompactContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
+        // Opacity/transform clocks keep the transition on the compositor without
+        // changing the blur kernel and intermediate surface on every tick.
+        CollapsedContentBlur.Radius = 0;
+        MusicCompactContentBlur.Radius = 0;
 
         if (_notchContentPresenter != null)
         {
@@ -1206,9 +1208,8 @@ public partial class MainWindow
             ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
             var springSlide = MakeAnim(10, contentTargetY, _dur400, _easeExpOut6);
 
-            ExpandedContentBlur.Radius = contentBlurRadius;
+            ExpandedContentBlur.Radius = 0;
             expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-            ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
         }
 
         HoverGlow.BeginAnimation(OpacityProperty, glowAnim);
@@ -1386,9 +1387,7 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
         {
-            animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, MakeAnim(12, 4, thumbDur, thumbEase, thumbDelay));
             animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.55, 0.35, thumbDur, thumbEase, thumbDelay));
-            animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, MakeAnim(2.0, 0.8, thumbDur, thumbEase, thumbDelay));
         }
     }
 
@@ -1709,12 +1708,11 @@ public partial class MainWindow
 
         var glowAnim = MakeAnim(0, _dur150);
 
-        double contentBlurRadius = _settings.EnableBlurEffects ? 24 : 0;
-        var blurOutAnim = MakeAnim(0, contentBlurRadius, _dur350, _easeQuadIn);
-        var blurInAnim = MakeAnim(contentBlurRadius, 0, _dur500, _easePowerOut3);
+        // Opacity/transform clocks keep the transition on the compositor without
+        // changing the blur kernel and intermediate surface on every tick.
 
-        CollapsedContentBlur.Radius = contentBlurRadius;
-        MusicCompactContentBlur.Radius = contentBlurRadius;
+        CollapsedContentBlur.Radius = 0;
+        MusicCompactContentBlur.Radius = 0;
 
         bool suppressCompactThumbnailMotion = IsCountdownCompletionVisualActive;
         if (_lastExpandedViewBeforeCollapse == LastExpandedView.Primary && !AnimationConfig.ReduceMotion &&
@@ -1795,7 +1793,7 @@ public partial class MainWindow
         AnimateAuxiliaryViewCollapse(AudioContent, generation);
 
         expandedTranslate.BeginAnimation(TranslateTransform.YProperty, slideOutAnim);
-        ExpandedContentBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
+        ExpandedContentBlur.Radius = 0;
 
         {
             contentToShow.Visibility = Visibility.Visible;
@@ -1805,7 +1803,7 @@ public partial class MainWindow
         showScale.BeginAnimation(ScaleTransform.ScaleYProperty, springShow);
 
         var compactBlurTarget = _isMusicCompactMode ? MusicCompactContentBlur : CollapsedContentBlur;
-        compactBlurTarget.BeginAnimation(BlurEffect.RadiusProperty, blurInAnim);
+        compactBlurTarget.Radius = 0;
 
         HoverGlow.BeginAnimation(OpacityProperty, glowAnim);
     }
