@@ -114,6 +114,33 @@ public sealed class TranslationStartupTests
     }
 
     [Fact]
+    public void CachedResultReachesPopupWhileModelPreparationIsStillRunning() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { BlockPreparation = true };
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi", EnableCurrencyConversion = false });
+        var service = (LocalTranslationService)typeof(LiveTranslationController).GetField("_service", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller)!;
+        await service.TranslateAsync("hello", "en", "vi", ct);
+        var preparation = controller.PrepareModelAsync();
+        await engine.Preparing.Task.WaitAsync(ct);
+        try
+        {
+            var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
+            BackgroundTestWindows.ProtectInput(window);
+            window.Opacity = 0;
+            window.ShowActivated = false;
+            typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+            window.ShowClipboard("hello");
+            window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            await WpfFrameWaiter.UntilAsync(() => window.OutputText == "vi result" && window.CopyButton.IsEnabled, "cached result during model preparation", ct);
+            Assert.False(preparation.IsCompleted);
+            Assert.Equal(1, engine.Calls);
+        }
+        finally { engine.Prepared.TrySetResult(); await preparation.WaitAsync(ct); }
+    });
+
+    [Fact]
     public void StartupPreparesInstalledModelOffDispatcherWithTranslationDisabled() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new ModelFixture();

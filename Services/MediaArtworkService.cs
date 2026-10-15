@@ -160,6 +160,10 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     {
         try
         {
+            // SoundCloud supplies finished cover art; preserve its framing and bypass crop analysis/cache.
+            if (MediaPlatformExtensions.ParsePlatform(mediaSource) == MediaPlatform.SoundCloud)
+                return source;
+
             int width = source.PixelWidth;
             int height = source.PixelHeight;
 

@@ -57,8 +57,10 @@ public class MediaInfo
     public bool IsThrottled { get; set; }
     public bool IsThumbnailOnlyUpdate { get; set; }
 
-    public double Progress => Duration.TotalSeconds > 0 ? Position.TotalSeconds / Duration.TotalSeconds : 0;
-    public bool HasTimeline => Duration.TotalSeconds > 0 && !IsIndeterminate;
+    public bool IsTimelineIndeterminate => MediaTimelinePolicy.IsIndeterminate(Duration, IsIndeterminate);
+    public double Progress => HasTimeline ? Position.TotalSeconds / Duration.TotalSeconds : 0;
+    public bool HasTimeline => !IsTimelineIndeterminate;
+    public bool CanSeekTimeline => HasTimeline && IsSeekEnabled;
 
     public MediaPlatform Platform => _platform;
 

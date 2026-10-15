@@ -44,9 +44,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _isDraggingProgress = false;
                 _isClickSeekPending = false;
                 if (ProgressBarContainer.IsMouseCaptured) ProgressBarContainer.ReleaseMouseCapture();
+                IndeterminateProgress.BeginAnimation(OpacityProperty, null);
                 BufferingChanged?.Invoke(false);
             }
-            else RefreshMediaMarquee();
+            else
+            {
+                RefreshMediaMarquee();
+                RenderProgressBar();
+            }
         };
     }
 
@@ -146,6 +151,8 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         {
             ButtonFeedback.PlayButtonPressAnimation(PlayPauseButton);
             _progressEngine.NotifyUserPlayPause(!_viewModel.IsPlaying);
+            RenderProgressBar();
+            UpdateProgressTimerState();
             await _viewModel.PlayPauseCommand.ExecuteAsync(null);
         }
         catch (Exception ex) { RuntimeLog.Error("MEDIA-CTRL", ex, "PlayPause failed"); }
@@ -228,6 +235,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         StopCatchUpAnimation();
         CancelRewindForNavigation();
         StopRewindTextAnimation();
+        IndeterminateProgress.BeginAnimation(OpacityProperty, null);
         _marqueeController?.Stop();
         if (ProgressBarContainer.IsMouseCaptured) ProgressBarContainer.ReleaseMouseCapture();
         BufferingChanged = null;
@@ -466,7 +474,6 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     private const double DRAG_THRESHOLD = 3.0;
     private DateTime _suppressExternalSeekDetectionUntil = DateTime.MinValue;
     private DateTime _protectSpringTargetUntil = DateTime.MinValue;
-    private DateTime _suppressIndeterminateUntilUtc = DateTime.MinValue;
 
     private ProgressSpringRenderer? _springRenderer;
     private ProgressSpringRenderer Spring => _springRenderer ??= new ProgressSpringRenderer(
@@ -510,8 +517,11 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     internal void StopSpringRenderLoop()
     {
         if (_springRenderer == null) return;
+        bool wasActive = Spring.IsActive;
         Spring.Stop();
-        _progressDisplayRatio = Spring.DisplayRatio;
+        // A completed spring can predate a later seek or normal playback.
+        // Stopping an idle renderer must not restore its old display position.
+        if (wasActive) _progressDisplayRatio = Spring.DisplayRatio;
         _progressVelocity = Spring.Velocity;
         _springSettleFrames = Spring.SettleFrames;
         _isSeekSpringActive = Spring.IsActive;
@@ -569,11 +579,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         bool hasRealTrack = !string.IsNullOrWhiteSpace(info.CurrentTrack) &&
                             !string.Equals(info.CurrentTrack, "No media playing", StringComparison.OrdinalIgnoreCase);
-        bool showProgressDetails = (info.IsAnyMediaPlaying || info.Duration.TotalSeconds > 0) && hasRealTrack;
-
-        if (showProgressDetails || (hasRealTrack && (info.HasTimeline || info.IsIndeterminate)))
+        if (hasRealTrack)
         {
-            if (_isDraggingProgress)
+            if (_isDraggingProgress && info.HasTimeline)
             {
                 if (!info.IsPlaying)
                 {
@@ -606,7 +614,6 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
             if (isTrackChanged)
             {
-                _suppressIndeterminateUntilUtc = DateTime.UtcNow.AddSeconds(4);
                 _lastProgressSignature = newSignature;
                 double visibleRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
 
@@ -637,7 +644,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
                 if (isFirstEverTrack)
                 {
-                    if (info.IsPlaying && info.Position > TimeSpan.Zero && info.Duration.TotalSeconds > 0)
+                    if (info.IsPlaying && info.Position > TimeSpan.Zero && info.HasTimeline)
                     {
                         double initialRatio = Math.Clamp(info.Position.TotalSeconds / info.Duration.TotalSeconds, 0, 1);
                         _progressDisplayRatio = initialRatio;
@@ -657,7 +664,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                         CurrentTimeText.Text = "0:00";
                     }
                 }
-                else if (IsVisible)
+                else if (IsVisible && info.HasTimeline)
                 {
                     AnimateTrackChangeRewindToZero(fromRatio, info.Duration);
                 }
@@ -685,7 +692,19 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _lastSessionId = info.SourceAppId ?? "";
             _lastProgressSessionInstanceKey = info.SessionInstanceKey ?? "";
 
-            string timelineKey = $"{info.SourceAppId}|{info.SessionInstanceKey}|{info.CurrentTrack}|{info.CurrentArtist}|{Math.Round(info.Duration.TotalSeconds):F0}";
+            if (info.IsTimelineIndeterminate)
+            {
+                StopCatchUpAnimation();
+                CancelRewindForNavigation();
+                StopSpringRenderLoop();
+                ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                _isDraggingProgress = false;
+                _isClickSeekPending = false;
+                if (ProgressBarContainer.IsMouseCaptured) ProgressBarContainer.ReleaseMouseCapture();
+                BufferingChanged?.Invoke(false);
+            }
+
+            string timelineKey = $"{info.SourceAppId}|{info.SessionInstanceKey}|{info.CurrentTrack}|{info.CurrentArtist}|{info.IsTimelineIndeterminate}";
             if (timelineKey != _lastProgressTimelineKey)
             {
                 _lastProgressTimelineKey = timelineKey;
@@ -719,7 +738,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 IsYouTube = IsLikelyBrowserProgressSource(info),
                 PlaybackRate = info.PlaybackRate,
                 IsSeekEnabled = info.IsSeekEnabled,
-                IsIndeterminate = info.IsIndeterminate,
+                IsIndeterminate = info.IsTimelineIndeterminate,
                 Timestamp = info.LastUpdated.UtcDateTime,
                 SequenceNumber = System.Threading.Interlocked.Increment(ref _progressSnapshotSequence)
             };
@@ -731,35 +750,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             }
             _lastProgressIsPlaying = info.IsPlaying;
 
-            if (!_isRewindAnimating)
-            {
-                bool isTrackChangeGrace = DateTime.UtcNow < _suppressIndeterminateUntilUtc;
-                bool isLiveStream = !isTrackChangeGrace && info.Duration.TotalSeconds <= 0 && info.IsPlaying;
-
-                if (!isTrackChangeGrace && (isLiveStream || info.IsIndeterminate))
-                {
-                    bool wasIndeterminate = IndeterminateProgress.Visibility == Visibility.Visible;
-                    IndeterminateProgress.Visibility = Visibility.Visible;
-                    ProgressBar.Visibility = Visibility.Collapsed;
-                    ProgressBarBg.Visibility = Visibility.Visible;
-                    if (!wasIndeterminate)
-                    {
-                        StartIndeterminateAnimation();
-                    }
-                }
-                else
-                {
-                    if (IndeterminateProgress.Visibility == Visibility.Visible)
-                    {
-                        IndeterminateProgress.BeginAnimation(OpacityProperty, null);
-                    }
-                    IndeterminateProgress.Visibility = Visibility.Collapsed;
-                    ProgressBar.Visibility = Visibility.Visible;
-                    ProgressBarBg.Visibility = Visibility.Visible;
-                }
-            }
-
-            bool canSeek = info.IsSeekEnabled && info.Duration.TotalSeconds > 0;
+            bool canSeek = info.CanSeekTimeline;
             ProgressBarContainer.Cursor = canSeek ? Cursors.Hand : Cursors.Arrow;
 
             UpdateProgressTimerState();
@@ -777,6 +768,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _lastProgressSessionInstanceKey = "";
 
             IndeterminateProgress.Visibility = Visibility.Collapsed;
+            IndeterminateProgress.BeginAnimation(OpacityProperty, null);
             ProgressBar.Visibility = Visibility.Visible;
             ProgressBarContainer.Cursor = Cursors.Arrow;
 
@@ -831,7 +823,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     internal void StartIndeterminateAnimation()
     {
-        if (IndeterminateProgress.Visibility != Visibility.Visible) return;
+        if (!IsVisible || IndeterminateProgress.Visibility != Visibility.Visible || IndeterminateProgress.HasAnimatedProperties) return;
 
         var anim = new DoubleAnimation(0.3, 0.8, TimeSpan.FromSeconds(1))
         {
@@ -840,6 +832,23 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         };
         Timeline.SetDesiredFrameRate(anim, VNotch.Services.AnimationConfig.TargetFps);
         IndeterminateProgress.BeginAnimation(OpacityProperty, anim);
+    }
+
+    private void PresentTimelineMode(bool isIndeterminate, bool playing)
+    {
+        IndeterminateProgress.Visibility = isIndeterminate ? Visibility.Visible : Visibility.Collapsed;
+        ProgressBar.Visibility = isIndeterminate ? Visibility.Collapsed : Visibility.Visible;
+        ProgressBarBg.Visibility = Visibility.Visible;
+        if (isIndeterminate && playing && IsVisible)
+        {
+            StartIndeterminateAnimation();
+        }
+        else
+        {
+            if (IndeterminateProgress.HasAnimatedProperties)
+                IndeterminateProgress.BeginAnimation(OpacityProperty, null);
+            IndeterminateProgress.Opacity = 0.55;
+        }
     }
 
     internal void ResetProgressUI()
@@ -885,12 +894,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         _progressSourceAppId = _currentMediaInfo.SourceAppId;
         _progressSourcePlatform = _currentMediaInfo.Platform;
         _progressSourceIsBrowser = _currentMediaInfo.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud ||
-                                          (!string.IsNullOrEmpty(_currentMediaInfo.SourceAppId) &&
-                                           ((_currentMediaInfo.SourceAppId.Contains("chrome", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("edge", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("firefox", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("brave", StringComparison.OrdinalIgnoreCase)) ||
-                                            (_currentMediaInfo.SourceAppId.Contains("opera", StringComparison.OrdinalIgnoreCase))));
+                                   PlatformDetector.IsBrowserApp(_currentMediaInfo.SourceAppId);
         return _progressSourceIsBrowser;
     }
 
@@ -921,12 +925,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         DateTime renderNow = DateTime.UtcNow;
         var frame = _progressEngine.GetUiFrame();
-        bool isTrackChangeGrace = renderNow < _suppressIndeterminateUntilUtc;
-        bool isLiveStream = !isTrackChangeGrace && frame.Duration.TotalSeconds <= 0 && frame.State == ProgressState.Playing;
+        if (frame.ShowIndeterminate || IndeterminateProgress.Visibility == Visibility.Visible)
+            PresentTimelineMode(frame.ShowIndeterminate, frame.State == ProgressState.Playing);
 
-        if (frame.Duration.TotalSeconds <= 0 && (!frame.ShowIndeterminate || isLiveStream || isTrackChangeGrace))
+        if (frame.ShowIndeterminate || frame.Duration <= TimeSpan.Zero)
         {
-            if (isLiveStream)
+            if (frame.ShowIndeterminate)
             {
                 CurrentTimeText.Text = "";
                 RemainingTimeText.Text = "LIVE";
@@ -936,6 +940,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 CurrentTimeText.Text = "0:00";
                 RemainingTimeText.Text = "0:00";
             }
+            StopSpringRenderLoop();
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
             _progressDisplayRatio = 0;
@@ -944,9 +949,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _progressVelocity = 0;
             _springSettleFrames = 0;
             _isSeekSpringActive = false;
-            StopSpringRenderLoop();
             _lastRenderTime = DateTime.MinValue;
             _lastDisplayedSecond = -1;
+            UpdateProgressTimerState();
             return;
         }
 
@@ -1254,7 +1259,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     private void ProgressBar_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (_currentMediaInfo == null || !_currentMediaInfo.IsSeekEnabled || _currentMediaInfo.Duration.TotalSeconds <= 0) return;
+        if (_currentMediaInfo?.CanSeekTimeline != true) return;
 
         e.Handled = true;
 
@@ -1364,6 +1369,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     private void UpdateProgressFromMouse(MouseEventArgs e)
     {
+        if (_currentMediaInfo?.CanSeekTimeline != true) return;
         var duration = _progressEngine.GetUiFrame().Duration;
         if (duration.TotalSeconds <= 0) return;
 
@@ -1415,15 +1421,17 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     internal TimeSpan GetPositionForRatio(double ratio)
     {
-        var duration = _progressEngine.GetUiFrame().Duration;
-        if (duration.TotalSeconds <= 0) return TimeSpan.Zero;
+        var frame = _progressEngine.GetUiFrame();
+        var duration = frame.Duration;
+        if (frame.ShowIndeterminate || duration.TotalSeconds <= 0) return TimeSpan.Zero;
         return TimeSpan.FromSeconds(Math.Clamp(ratio, 0, 1) * duration.TotalSeconds);
     }
 
     internal async Task SeekToPosition(TimeSpan newPos)
     {
-        var duration = _progressEngine.GetUiFrame().Duration;
-        if (duration.TotalSeconds <= 0) return;
+        var frame = _progressEngine.GetUiFrame();
+        var duration = frame.Duration;
+        if (_currentMediaInfo?.CanSeekTimeline != true || frame.ShowIndeterminate || duration.TotalSeconds <= 0) return;
 
         newPos = ClampSeekTarget(newPos, duration);
 
@@ -1472,10 +1480,8 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     internal void UpdateProgressTimerState()
     {
         bool springActive = _isSeekSpringActive || (_springRenderer != null && Spring.IsActive);
-        bool isIndeterminate = _currentMediaInfo?.IsIndeterminate == true || IndeterminateProgress.Visibility == Visibility.Visible;
-        bool isBuffering = _progressEngine.GetUiFrame().State == ProgressState.Seeking;
-        bool shouldRender = !_disposed && IsVisible && _currentMediaInfo != null &&
-            (_currentMediaInfo.IsPlaying || springActive || _isRewindAnimating || _isCatchUpAnimating || isIndeterminate || isBuffering);
+        bool shouldRender = !_disposed && IsVisible && _currentMediaInfo?.HasTimeline == true &&
+            (_progressEngine.RequiresPositionUpdates || springActive || _isRewindAnimating || _isCatchUpAnimating);
         SetProgressRenderingEnabled(shouldRender);
     }
 
@@ -1490,7 +1496,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         if (_currentMediaInfo == null) return;
 
         var frame = _progressEngine.GetUiFrame();
-        if (frame.Duration.TotalSeconds <= 0) return;
+        if (frame.ShowIndeterminate || frame.Duration.TotalSeconds <= 0) return;
 
         double targetRatio = frame.Position.TotalSeconds / frame.Duration.TotalSeconds;
         targetRatio = Math.Clamp(targetRatio, 0, 1);

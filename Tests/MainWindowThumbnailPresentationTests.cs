@@ -16,6 +16,59 @@ public sealed class MainWindowThumbnailPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData("SoundCloud")]
+    [InlineData("Browser")]
+    public void NextSoundCloudTrackKeepsOutgoingVisualUntilNewArtworkArrives(string source) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(true);
+        var window = fixture.Window;
+        window.SetDebugViewLock(true);
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !Property<bool>(window, "_isAnimating"), "window startup", ct);
+        window.SetDebugViewState("MediaExpanded");
+        await WpfFrameWaiter.UntilAsync(() => !Property<bool>(window, "_isAnimating"), "media layout", ct);
+        var old = new MediaInfo
+        {
+            CurrentTrack = "First",
+            CurrentArtist = "Artist",
+            MediaSource = source,
+            SourceAppId = "Helium",
+            IsAnyMediaPlaying = true,
+            IsPlaying = true,
+            Thumbnail = Bitmap("white-mat-artwork.png")
+        };
+        Invoke(window, "ApplyMediaUpdate", old);
+        var next = old.Clone();
+        next.CurrentTrack = "Next";
+        next.Thumbnail = null;
+        Invoke(window, "ApplyMediaUpdate", next);
+        Assert.Same(old.Thumbnail, window.ThumbnailImage.Source);
+        Assert.Same(old.Thumbnail, window.CompactThumbnail.Source);
+        Assert.Null(window.ThumbnailImageNext.Source);
+        Assert.Null(window.CompactThumbnailNext.Source);
+        Assert.Equal(Visibility.Collapsed, window.ThumbnailFallback.Visibility);
+        Assert.Null(next.Thumbnail);
+        // Repeated missing-art snapshots and rapid next must not flash the empty icon.
+        Invoke(window, "ApplyMediaUpdate", next.Clone());
+        next.CurrentTrack = "Rapid next";
+        Invoke(window, "ApplyMediaUpdate", next.Clone());
+        Assert.Same(old.Thumbnail, window.ThumbnailImage.Source);
+        Assert.Equal(Visibility.Collapsed, window.ThumbnailFallback.Visibility);
+        Assert.Null(Field<MediaInfo>(window, "_currentMediaInfo").Thumbnail);
+        next = next.Clone();
+        next.Thumbnail = Bitmap("dark-textured-artwork.png");
+        Invoke(window, "ApplyMediaUpdate", next);
+        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isThumbnailSwitchActive"), "delayed cover reveal", ct);
+        Assert.Same(next.Thumbnail, window.ThumbnailImage.Source);
+        Assert.Same(next.Thumbnail, window.CompactThumbnail.Source);
+        var corrected = next.Clone();
+        corrected.Thumbnail = Bitmap("white-mat-artwork.png");
+        Invoke(window, "ApplyMediaUpdate", corrected);
+        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isThumbnailSwitchActive"), "corrected session cover", ct);
+        Assert.Same(corrected.Thumbnail, window.ThumbnailImage.Source);
+    });
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ThumbnailMorphCoalescesLatestImageAndCancellationRestoresBothLayers(bool blurEnabled) => SharedStaTestRunner.RunAsync(async ct =>

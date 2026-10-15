@@ -189,8 +189,8 @@ public sealed class MainWindowProgressPresentationTests
 
     [Theory]
     [InlineData(true, "LIVE")]
-    [InlineData(false, "0:00")]
-    public void UnknownDurationDistinguishesLivePlaybackFromPausedMedia(bool playing, string expected) => SharedStaTestRunner.Run(() =>
+    [InlineData(false, "LIVE")]
+    public void UnknownDurationKeepsLiveLabelWhenPaused(bool playing, string expected) => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture(new FakeMediaDetectionService());
         var window = fixture.Window;

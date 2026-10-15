@@ -67,6 +67,7 @@ public sealed class ProgressViewModelPerformanceTests
     {
         IsAnyMediaPlaying = true,
         IsPlaying = false,
+        IsSeekEnabled = true,
         Duration = TimeSpan.FromSeconds(duration),
         Position = TimeSpan.FromSeconds(position),
         CurrentTrack = "Track",

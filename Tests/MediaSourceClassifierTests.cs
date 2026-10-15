@@ -348,5 +348,26 @@ public class MediaSourceClassifierTests
         Assert.True(info.IsSoundCloudRunning);
     }
 
+    [Fact]
+    public void RefineFromMetadata_TrackMentioningSoundCloudInTitle_DoesNotFalsePositiveAsSoundCloud()
+    {
+        var info = new MediaInfo { MediaSource = "Browser" };
+        MediaSourceClassifier.RefineFromMetadata(info, "The History of SoundCloud Rap Documentary", "Music Historian", "");
+
+        Assert.Equal("Browser", info.MediaSource);
+        Assert.False(info.IsSoundCloudRunning);
+    }
+
+    [Fact]
+    public void SetPlatformRunning_SwitchingFromYouTubeToSoundCloud_ClearsYouTubeRunningFlag()
+    {
+        var info = new MediaInfo { MediaSource = "YouTube", IsYouTubeRunning = true };
+        MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
+
+        Assert.Equal("SoundCloud", info.MediaSource);
+        Assert.True(info.IsSoundCloudRunning);
+        Assert.False(info.IsYouTubeRunning);
+    }
+
     #endregion
 }

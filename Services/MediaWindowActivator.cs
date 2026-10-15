@@ -62,6 +62,21 @@ internal static class MediaWindowActivator
             }
         }
 
+        bool preferBrowserTabMatch = info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud;
+        var explicitBrowsers = GetExplicitBrowserCandidates(info.SourceAppId ?? string.Empty);
+        if (explicitBrowsers.Count > 0)
+        {
+            if (TryActivateExactBrowserTab(info, explicitBrowsers))
+            {
+                return true;
+            }
+
+            if (preferBrowserTabMatch && TryActivateBestMatchingWindow(info, explicitBrowsers, out _))
+            {
+                return true;
+            }
+        }
+
         var candidates = GetProcessCandidates(info).ToList();
         var processNames = new HashSet<string>(candidates, StringComparer.OrdinalIgnoreCase);
 
@@ -70,9 +85,12 @@ internal static class MediaWindowActivator
             return true;
         }
 
-        bool preferBrowserTabMatch = info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud;
-
         if (preferBrowserTabMatch && TryActivateBestMatchingWindow(info, processNames, out _))
+        {
+            return true;
+        }
+
+        if (explicitBrowsers.Count > 0 && TryActivateByProcessCandidates(explicitBrowsers))
         {
             return true;
         }
@@ -83,6 +101,22 @@ internal static class MediaWindowActivator
         }
 
         return TryActivateBestMatchingWindow(info, processNames, out _);
+    }
+
+    private static HashSet<string> GetExplicitBrowserCandidates(string sourceAppId)
+    {
+        var explicitBrowsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(sourceAppId))
+            return explicitBrowsers;
+
+        ExtractProcessesFromSourceAppId(sourceAppId, explicitBrowsers);
+        explicitBrowsers.RemoveWhere(p => !IsBrowserProcess(p));
+        foreach (var browser in KnownBrowserProcesses.Where(b => sourceAppId.Contains(b, StringComparison.OrdinalIgnoreCase)))
+        {
+            explicitBrowsers.Add(browser);
+        }
+
+        return explicitBrowsers;
     }
 
     private static bool TryActivateByProcessCandidates(IEnumerable<string> candidates)
@@ -597,13 +631,18 @@ internal static class MediaWindowActivator
 
         if (!string.IsNullOrWhiteSpace(source) && title.Contains(source, StringComparison.OrdinalIgnoreCase)) score += 80;
         if (!string.IsNullOrWhiteSpace(track) && window.Contains(track, StringComparison.OrdinalIgnoreCase)) score += 140;
-        if (!string.IsNullOrWhiteSpace(artist) && artist is not YouTubeToken and not BrowserToken && window.Contains(artist, StringComparison.OrdinalIgnoreCase)) score += 70;
+        if (!string.IsNullOrWhiteSpace(artist) &&
+            artist is not YouTubeToken and not BrowserToken and not SpotifyToken and not SoundCloudToken &&
+            window.Contains(artist, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 70;
+        }
 
         if (PipDetector.IsPipTitle(title)) score += 220;
 
         score += ScoreWindowPlatform(title, info.Platform);
 
-        if (info.IsVideoSource && IsBrowserProcess(processName)) score += 25;
+        if ((info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud) && IsBrowserProcess(processName)) score += 25;
 
         return score;
     }

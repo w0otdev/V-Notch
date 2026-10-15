@@ -129,6 +129,28 @@ public sealed class ArtworkFrameDetectorTests
             Assert.Null(ArtworkFrameDetector.DetectFrame(CreateImage(640, 360, new Int32Rect(x, y, w, h)))));
     }
 
+    [Theory]
+    [InlineData("SoundCloud", false, false)]
+    [InlineData("soundcloud", true, false)]
+    [InlineData("SOUNDCLOUD", true, true)]
+    public void SoundCloudPreservesCoverArtEvenWhenItLooksLikeAnInsetFrame(string mediaSource, bool smartCrop, bool forceCenterCrop)
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            var source = CreateImage(360, 360, new Int32Rect(90, 30, 180, 300));
+            using var service = new MediaArtworkService { EnableSmartCrop = smartCrop };
+            Assert.Same(source, service.CropToSquare(source, mediaSource, forceCenterCrop));
+
+            var cropped = service.CropToSquare(source, "YouTube", forceCenterCrop);
+            Assert.NotNull(cropped);
+            Assert.NotSame(source, cropped);
+            Assert.True(cropped.PixelWidth < source.PixelWidth);
+
+            Assert.Same(source, service.CropToSquare(source, mediaSource, forceCenterCrop));
+            Assert.Same(cropped, service.CropToSquare(source, "YouTube", forceCenterCrop));
+        });
+    }
+
     private static BitmapSource CreateImage(int width, int height, Int32Rect picture)
     {
         byte[] pixels = new byte[width * height * 4];

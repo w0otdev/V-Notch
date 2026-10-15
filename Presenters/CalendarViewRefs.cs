@@ -16,6 +16,7 @@ public sealed class CalendarViewRefs
     public required ScaleTransform CalendarHighlightScale { get; init; }
 
     public required TextBlock MonthText { get; init; }
+    public TextBlock? DayText { get; init; }
     public required ScaleTransform MonthTextScale { get; init; }
     public required TranslateTransform MonthTextTranslate { get; init; }
 

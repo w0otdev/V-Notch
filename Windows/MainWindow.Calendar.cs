@@ -23,6 +23,7 @@ public partial class MainWindow
             CalendarHighlightTranslate = CalendarHighlightTranslate,
             CalendarHighlightScale = CalendarHighlightScale,
             MonthText = MonthText,
+            DayText = DayText,
             MonthTextScale = MonthTextScale,
             MonthTextTranslate = MonthTextTranslate,
             EventText = EventText,

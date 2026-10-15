@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using LanguageDetection;
 
@@ -53,9 +54,12 @@ internal static partial class TranslationLanguages
         detector.AddAllLanguages();
         return detector;
     });
+    private static readonly SemaphoreSlim PassthroughGate = new(1, 1);
 
     internal static string? Detect(string text)
     {
+        text = text.Normalize(NormalizationForm.FormC);
+        if (TranslationPhraseGlossary.Find(text) is { } phrase) return phrase.Source;
         string? script = DetectUnambiguousScript(text);
         if (script != null) return script;
         if (!HasAtLeastLetters(text, 12)) return null;
@@ -68,16 +72,45 @@ internal static partial class TranslationLanguages
     // and passages with sentences in different languages still reach the model.
     internal static string? DetectForPassthrough(string text)
     {
+        text = text.Normalize(NormalizationForm.FormC);
         if (!HasAtLeastLetters(text, 40)) return null;
-        string? language = ConfidentLanguage(text);
-        if (language == null) return null;
-        foreach (string sentence in Regex.Split(text, @"[\r\n。！？]+|(?<=[.!?])\s+"))
+        return DetectForPassthroughCore(text, default);
+    }
+
+    internal static async ValueTask<string?> DetectForPassthroughAsync(string text, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        text = text.Normalize(NormalizationForm.FormC);
+        if (!HasAtLeastLetters(text, 40)) return null;
+        // Rapid selection changes share one CPU lane. Cancelled queued requests
+        // do not initialize profiles or start another full language analysis.
+        await PassthroughGate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
+            return await Task.Run(() => DetectForPassthroughCore(text, ct), ct).ConfigureAwait(false);
+        }
+        finally { PassthroughGate.Release(); }
+    }
+
+    private static string? DetectForPassthroughCore(string text, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        string? language = ConfidentLanguage(text);
+        ct.ThrowIfCancellationRequested();
+        if (language == null) return null;
+        foreach (string sentence in PassthroughSentences().Split(text))
+        {
+            ct.ThrowIfCancellationRequested();
+            // With no sentence separator, this is the exact text just analyzed.
+            if (sentence.Length == text.Length) continue;
             if (HasAtLeastLetters(sentence, 12) && ConfidentLanguage(sentence) != language)
                 return null;
         }
         return language;
     }
+
+    [GeneratedRegex(@"[\r\n。！？]+|(?<=[.!?])\s+")]
+    private static partial Regex PassthroughSentences();
 
     private static bool HasAtLeastLetters(string text, int minimum)
     {
@@ -103,7 +136,7 @@ internal static partial class TranslationLanguages
     // recognition to the translation model instead of blocking short selections.
     internal static string? DetectUnambiguousScript(string text)
     {
-        int totalLetters = 0, kana = 0, han = 0, ko = 0, th = 0, lo = 0, el = 0, hy = 0, ka = 0;
+        int totalLetters = 0, kana = 0, han = 0, ko = 0, th = 0, lo = 0, el = 0, hy = 0, ka = 0, vi = 0;
         foreach (char c in text)
         {
             if (!char.IsLetter(c)) continue;
@@ -116,6 +149,7 @@ internal static partial class TranslationLanguages
             else if (c is >= '\u0370' and <= '\u03ff') el++;
             else if (c is >= '\u0530' and <= '\u058f') hy++;
             else if (c is >= '\u10a0' and <= '\u10ff') ka++;
+            else if (IsUnambiguousVietnameseChar(c)) vi++;
         }
         if (totalLetters == 0) return null;
         // Han characters also occur in Japanese. Require at least one Kana character
@@ -128,7 +162,23 @@ internal static partial class TranslationLanguages
         if (IsDominantScript(el, totalLetters)) return "el";
         if (IsDominantScript(hy, totalLetters)) return "hy";
         if (IsDominantScript(ka, totalLetters)) return "ka";
+        if (vi > 0 && totalLetters < 24 && IsPureLatinScript(text)) return "vi";
         return null;
+    }
+
+    // Single diacritics such as ă, đ, ẹ and ọ also occur in other supported
+    // languages. Only use distinctive Vietnamese vowel/tone combinations as hints.
+    private static bool IsUnambiguousVietnameseChar(char c) =>
+        "ơưấầẩẫậắằẳẵặếềểễệốồổỗộớờởỡợứừửữự".Contains(char.ToLowerInvariant(c));
+
+    private static bool IsPureLatinScript(string text)
+    {
+        foreach (char c in text)
+        {
+            if (char.IsLetter(c) && c > '\u024F' && !(c is >= '\u1E00' and <= '\u1EFF'))
+                return false;
+        }
+        return true;
     }
 
     private static bool IsDominantScript(int scriptCount, int totalLetters) =>

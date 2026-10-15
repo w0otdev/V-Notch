@@ -8,18 +8,20 @@ internal static class TranslationModelPrompts
         // Do not let text containing model control tokens break out of the user turn.
         text = text.Replace("<|", "< |", StringComparison.Ordinal).Replace("<start_of_turn>", "< start_of_turn >", StringComparison.Ordinal)
             .Replace("<end_of_turn>", "< end_of_turn >", StringComparison.Ordinal).Replace("<bos>", "< bos >", StringComparison.Ordinal);
+        if (source == "auto")
+        {
+            string? detected = TranslationLanguages.Detect(text);
+            if (detected != null && detected != target) source = detected;
+        }
         string targetName = TranslationLanguages.EnglishName(target);
         string meaning = TranslationMeaningIntegrity.Instruction(text, source, enableHumanizer);
+        string glossary = QwenTranslationEngine.Glossary(source, target, enableHumanizer);
+        if (glossary.Length > 0) meaning += glossary + " ";
         if (model.PromptKind == TranslationPromptKind.Hunyuan)
         {
             if (!HunyuanLanguages.Contains(target) || (source != "auto" && !HunyuanLanguages.Contains(source)))
                 throw new TranslationException("translation.languageUnsupported");
             return $"<|startoftext|>Translate the following segment into {targetName}, without additional explanation. {meaning}\n\n{text}<|extra_0|>";
-        }
-        if (source == "auto")
-        {
-            string? detected = TranslationLanguages.Detect(text);
-            if (detected != null && detected != target) source = detected;
         }
         if (source == "auto")
             return $"<bos><start_of_turn>user\nYou are a professional multilingual translator. Identify the language of the following text, even if it is a single word, and translate it into {targetName} ({target}). Produce only the {targetName} translation, without language labels, explanations or commentary. {meaning}Please translate the following text into {targetName}:\n\n\n{text.Trim()}<end_of_turn>\n<start_of_turn>model\n";

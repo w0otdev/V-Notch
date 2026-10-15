@@ -158,7 +158,7 @@ public class MediaTimelineSimulatorTests
         _sim.RecoveredDuration = TimeSpan.FromMinutes(4);
         _sim.UpdateObservedPosition(TimeSpan.FromSeconds(100));
 
-        var info = CreateMediaInfo(position: TimeSpan.FromSeconds(100), duration: TimeSpan.Zero);
+        var info = CreateMediaInfo(position: TimeSpan.FromSeconds(100), duration: TimeSpan.FromMinutes(3));
         _sim.ApplySimulatedTimeline(info, atEndStuck: true);
 
         Assert.Equal(TimeSpan.FromMinutes(4), info.Duration);
@@ -229,6 +229,23 @@ public class MediaTimelineSimulatorTests
     }
 
     #endregion
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(7200, true)]
+    [InlineData(3456000, false)]
+    public void ApplySimulatedTimeline_LeavesLiveTimelineUntouched(double durationSeconds, bool indeterminate)
+    {
+        _sim.RecoveredDuration = TimeSpan.FromMinutes(3);
+        _sim.UpdateObservedPosition(TimeSpan.FromMinutes(1));
+        var info = CreateMediaInfo(TimeSpan.Zero, TimeSpan.FromSeconds(durationSeconds));
+        info.IsIndeterminate = indeterminate;
+        _sim.ApplySimulatedTimeline(info, atEndStuck: true);
+        Assert.Equal(TimeSpan.Zero, info.Position);
+        Assert.Equal(TimeSpan.FromSeconds(durationSeconds), info.Duration);
+        Assert.False(info.IsThrottled);
+        Assert.Equal(TimeSpan.Zero, _sim.RecoveredDuration);
+    }
 
     private static MediaInfo CreateMediaInfo(TimeSpan position, TimeSpan duration)
     {

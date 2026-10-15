@@ -13,6 +13,7 @@ internal readonly struct TimelineSolveInputs
     public bool IsInitialOrBigChange { get; init; }
     public bool IsNewTrack { get; init; }
     public bool IsBrowserTimelineTrack { get; init; }
+    public bool IsLiveTimeline { get; init; }
     public bool IsPlaying { get; init; }
     public double PlaybackRate { get; init; }
     public DateTimeOffset NowUtc { get; init; }
@@ -23,7 +24,7 @@ internal readonly struct TimelineSolveResult
     public TimeSpan Position { get; init; }
     public TimeSpan Duration { get; init; }
     public DateTimeOffset LastUpdatedUtc { get; init; }
-    public bool? IsIndeterminate { get; init; }
+    public bool IsIndeterminate { get; init; }
 }
 
 internal static class TimelinePositionSolver
@@ -32,18 +33,19 @@ internal static class TimelinePositionSolver
     {
         var duration = x.EndTime - x.StartTime;
         if (duration <= TimeSpan.Zero) duration = x.MaxSeekTime;
+        bool indeterminate = MediaTimelinePolicy.IsIndeterminate(duration, x.IsLiveTimeline);
+        if (!MediaTimelinePolicy.HasFiniteDuration(duration)) duration = TimeSpan.Zero;
 
         bool isNearlyEnd = duration.TotalSeconds > 0 &&
             (duration - x.Position).TotalMilliseconds < 800;
+        bool isBrowserLiveEdge = x.IsBrowserTimelineTrack && duration > TimeSpan.Zero &&
+            duration - x.Position <= TimeSpan.FromSeconds(5);
 
         TimeSpan chosenPosition;
         bool forceStartPosition = false;
-        bool? indeterminate = null;
-
-        if (x.IsNewTrack && isNearlyEnd)
+        if (!indeterminate && !x.IsBrowserTimelineTrack && x.IsNewTrack && isNearlyEnd)
         {
             chosenPosition = TimeSpan.Zero;
-            indeterminate = false;
             forceStartPosition = true;
         }
         else
@@ -51,7 +53,7 @@ internal static class TimelinePositionSolver
             chosenPosition = x.Position;
         }
 
-        if (x.IsBrowserTimelineTrack && x.IsNewTrack && x.IsPlaying)
+        if (!indeterminate && !isBrowserLiveEdge && x.IsBrowserTimelineTrack && x.IsNewTrack && x.IsPlaying)
         {
             TimeSpan timelineAge = x.NowUtc - x.LastUpdatedUtc;
             if (timelineAge < TimeSpan.Zero) timelineAge = TimeSpan.Zero;
@@ -74,7 +76,7 @@ internal static class TimelinePositionSolver
             ? x.NowUtc
             : rawTimelineUpdatedUtc;
 
-        if (!forceStartPosition && x.IsPlaying)
+        if (!indeterminate && !forceStartPosition && x.IsPlaying)
         {
             var nowUpdatedUtc = x.NowUtc;
             var timelineLatency = nowUpdatedUtc - rawTimelineUpdatedUtc;
@@ -108,7 +110,7 @@ internal static class TimelinePositionSolver
 
                 if (duration > TimeSpan.Zero)
                 {
-                    TimeSpan maxAllowed = TimeSpan.FromSeconds(duration.TotalSeconds * 0.95);
+                    TimeSpan maxAllowed = duration;
                     if (compensatedPosition > maxAllowed)
                         compensatedPosition = maxAllowed;
                 }
@@ -128,11 +130,6 @@ internal static class TimelinePositionSolver
         if (duration > TimeSpan.Zero && chosenPosition > duration)
         {
             chosenPosition = duration;
-        }
-
-        if (duration <= TimeSpan.Zero || duration.TotalDays > 30)
-        {
-            indeterminate = true;
         }
 
         return new TimelineSolveResult

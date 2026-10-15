@@ -470,6 +470,9 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
     public async Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default)
     {
+        if (!_artworkAllowed())
+            return null;
+
         try
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -503,10 +506,8 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         }
 
         string? apiKey = _apiKey();
-        bool dataApiAttempted = false;
         if (!string.IsNullOrEmpty(apiKey))
         {
-            dataApiAttempted = true;
             var apiResult = await TryGetVideoFromDataApiAsync(videoId, apiKey, ct);
             if (apiResult != null)
             {
@@ -524,7 +525,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         if (oembed == null)
             return null;
 
-        if (!string.IsNullOrEmpty(apiKey) && !dataApiAttempted)
+        if (!string.IsNullOrEmpty(apiKey))
         {
             oembed = await EnrichWithDurationAsync(oembed, apiKey, ct) ?? oembed;
         }
@@ -533,23 +534,37 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return oembed;
     }
 
-    public async Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default)
+    public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default)
+        => TryGetSoundCloudArtworkFromUrlAsync(soundCloudUrl, expectedTitle: "", expectedArtist: "", ct);
+
+    public async Task<string?> TryGetSoundCloudArtworkFromUrlAsync(
+        string soundCloudUrl,
+        string expectedTitle,
+        string expectedArtist = "",
+        CancellationToken ct = default)
     {
+        if (!_artworkAllowed())
+            return null;
+
         try
         {
-            if (string.IsNullOrWhiteSpace(soundCloudUrl))
+            var trackUrl = ExtractSoundCloudTrackUrl(soundCloudUrl);
+            if (string.IsNullOrEmpty(trackUrl))
                 return null;
 
-            if (!soundCloudUrl.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase))
+            var result = await TryGetSoundCloudOEmbedAsync(trackUrl, ct);
+            if (string.IsNullOrWhiteSpace(result.ThumbnailUrl))
                 return null;
 
-            var result = await TryGetSoundCloudOEmbedAsync(soundCloudUrl, ct);
-            if (!string.IsNullOrWhiteSpace(result.ThumbnailUrl))
+            if (!string.IsNullOrWhiteSpace(expectedTitle))
             {
-                string normalized = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl);
-                if (!IsLikelySoundCloudPlaceholderArtworkUrl(normalized))
-                    return normalized;
+                if (!IsSoundCloudOEmbedMatch(expectedTitle, expectedArtist, result.Title, result.Author, candidateScore: 3, strictMode: true))
+                    return null;
             }
+
+            string normalized = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl);
+            if (!IsLikelySoundCloudPlaceholderArtworkUrl(normalized))
+                return normalized;
         }
         catch (Exception ex)
         {
@@ -870,8 +885,9 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             string cleanedTitle = SanitizeSearchText(title);
             string cleanedArtist = SanitizeSearchText(artist);
             string query = cleanedTitle;
-            if (!string.IsNullOrWhiteSpace(artist) &&
-                MediaPlatformExtensions.ParsePlatform(artist) is not (MediaPlatform.SoundCloud or MediaPlatform.Browser))
+            if (!string.IsNullOrWhiteSpace(cleanedArtist) &&
+                MediaPlatformExtensions.ParsePlatform(artist) is not (MediaPlatform.SoundCloud or MediaPlatform.Browser) &&
+                !cleanedTitle.Contains(cleanedArtist, StringComparison.OrdinalIgnoreCase))
             {
                 query = $"{cleanedTitle} {cleanedArtist}".Trim();
             }
@@ -881,7 +897,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 return null;
             }
 
-            var combinedScores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var combinedScores = new Dictionary<string, (int Score, int FirstIndex)>(StringComparer.OrdinalIgnoreCase);
             string[] searchUrls =
             {
                 $"https://m.soundcloud.com/search/sounds?q={Uri.EscapeDataString(query)}",
@@ -895,6 +911,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             }
 
             var searchHtmls = await Task.WhenAll(searchTasks);
+            int nextIndex = 0;
             foreach (var html in searchHtmls)
             {
                 if (string.IsNullOrWhiteSpace(html))
@@ -905,16 +922,16 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 var found = ExtractSoundCloudTrackUrlsFromSearchHtml(html, title, artist);
                 foreach (var candidate in found)
                 {
-                    if (combinedScores.TryGetValue(candidate.Url, out int existing))
+                    if (combinedScores.TryGetValue(candidate.Url, out var existing))
                     {
-                        if (candidate.Score > existing)
+                        if (candidate.Score > existing.Score)
                         {
-                            combinedScores[candidate.Url] = candidate.Score;
+                            combinedScores[candidate.Url] = (candidate.Score, existing.FirstIndex);
                         }
                     }
                     else
                     {
-                        combinedScores[candidate.Url] = candidate.Score;
+                        combinedScores[candidate.Url] = (candidate.Score, nextIndex++);
                     }
                 }
             }
@@ -924,12 +941,16 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 return null;
             }
 
-            var candidates = new List<(string Url, int Score)>();
+            var candidates = new List<(string Url, int Score, int FirstIndex)>(combinedScores.Count);
             foreach (var item in combinedScores)
             {
-                candidates.Add((item.Key, item.Value));
+                candidates.Add((item.Key, item.Value.Score, item.Value.FirstIndex));
             }
-            candidates.Sort((a, b) => b.Score.CompareTo(a.Score));
+            candidates.Sort(static (a, b) =>
+            {
+                int cmp = b.Score.CompareTo(a.Score);
+                return cmp != 0 ? cmp : a.FirstIndex.CompareTo(b.FirstIndex);
+            });
 
             if (candidates.Count > 3)
             {

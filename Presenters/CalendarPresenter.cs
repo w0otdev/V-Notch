@@ -147,18 +147,29 @@ public sealed class CalendarPresenter : IDisposable
             _calendarDayNumbers[idx].Text = date.Day.ToString(culture);
         }
 
+        if (_refs.DayText != null)
+        {
+            _refs.DayText.Text = now.Day.ToString(culture);
+        }
+
         UpdateCalendarHighlight(animate: false, pulse: false);
         _refs.EventText.Text = Loc.Get("greeting.enjoyDay");
     }
 
     private void ApplyCalendarCenterVisualState(int centerIdx)
     {
+        var culture = Loc.GetCulture();
         var highlightedDate = _lastCalendarUpdate.AddDays(centerIdx - 5);
-        string newMonth = highlightedDate.ToString("MMM", Loc.GetCulture());
+        string newMonth = highlightedDate.ToString("MMM", culture);
 
         if (_refs.MonthText.Text != newMonth)
         {
             AnimateMonthTextChange(newMonth);
+        }
+
+        if (_refs.DayText != null)
+        {
+            _refs.DayText.Text = _lastCalendarUpdate.Day.ToString(culture);
         }
 
         for (int i = 0; i < CalendarScrollMath.TotalDays; i++)

@@ -47,13 +47,7 @@ internal static class MediaProgressHelpers
             return true;
         }
 
-        if (!string.IsNullOrWhiteSpace(info.SourceAppId) &&
-            (info.SourceAppId.Contains("chrome", StringComparison.OrdinalIgnoreCase) ||
-             info.SourceAppId.Contains("edge", StringComparison.OrdinalIgnoreCase) ||
-             info.SourceAppId.Contains("msedge", StringComparison.OrdinalIgnoreCase) ||
-             info.SourceAppId.Contains("firefox", StringComparison.OrdinalIgnoreCase) ||
-             info.SourceAppId.Contains("brave", StringComparison.OrdinalIgnoreCase) ||
-             info.SourceAppId.Contains("opera", StringComparison.OrdinalIgnoreCase)))
+        if (PlatformDetector.IsBrowserApp(info.SourceAppId))
         {
             return true;
         }

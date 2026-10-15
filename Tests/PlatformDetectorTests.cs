@@ -286,5 +286,20 @@ public class PlatformDetectorTests
         Assert.Equal(expected, MediaPlatformExtensions.ParsePlatform(input));
     }
 
+    [Theory]
+    [InlineData("Stream Midnight City by M83 | Listen online for free on SoundCloud - Google Chrome", "M83", "Midnight City")]
+    [InlineData("▶ Sub Focus - Solar System by Sub Focus | Free Listening on SoundCloud - Microsoft Edge", "Sub Focus", "Solar System")]
+    [InlineData("Lo-Fi Beats on SoundCloud - Brave", "SoundCloud", "Lo-Fi Beats")]
+    public void ExtractAndParseSoundCloudTitle_RealBrowserWindowFormats_ExtractsArtistAndTrack(
+        string windowTitle,
+        string expectedArtist,
+        string expectedTrack)
+    {
+        string extracted = PlatformDetector.ExtractTitleFromWindow(windowTitle, MediaPlatform.SoundCloud);
+        var (artist, track) = PlatformDetector.ParseSoundCloudTitle(extracted);
+        Assert.Equal(expectedArtist, artist);
+        Assert.Equal(expectedTrack, track);
+    }
+
     #endregion
 }

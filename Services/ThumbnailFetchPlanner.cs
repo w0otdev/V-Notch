@@ -42,12 +42,6 @@ internal static class ThumbnailFetchPlanner
     {
         bool isPotentialYouTube = x.PlatformIsYouTube || (x.PlatformIsBrowser && x.IsLikelyYouTube);
 
-        bool isBrowserApp = x.PlatformIsBrowser && x.HasSourceApp;
-        if (isBrowserApp && !isPotentialYouTube && !x.HasSoundCloudSessionOverride)
-        {
-            isPotentialYouTube = true;
-        }
-
         bool shouldProbeSoundCloudFromBrowser = x.PlatformIsBrowser &&
                                                 !x.IsLikelyYouTube &&
                                                 !x.BrowserHasYouTubeTabOpen &&

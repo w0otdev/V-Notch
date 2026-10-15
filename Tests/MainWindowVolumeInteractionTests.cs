@@ -15,6 +15,32 @@ public sealed class MainWindowVolumeInteractionTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Fact]
+    public void VolumeFillChangesWidthWithoutSquashingRoundedEnds() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create(new FakeMediaDetectionService());
+        var window = fixture.Window;
+        foreach (var (container, fill, level, radius) in new[]
+        {
+            ((FrameworkElement)window.VolumeBarContainer, window.VolumeBarFront, window.VolumeBarScale, 2d),
+            ((FrameworkElement)window.VolumeIndicatorContainer, window.VolumeIndicatorFill, window.VolumeIndicatorScale, 3d)
+        })
+        {
+            container.Visibility = Visibility.Visible;
+            container.Measure(new Size(300, 20));
+            container.Arrange(new Rect(0, 0, 300, 20));
+            foreach (double volume in new[] { 0d, .01, .1, .5, 1 })
+            {
+                level.ScaleX = volume;
+                System.Windows.Data.BindingOperations.GetMultiBindingExpression(fill, FrameworkElement.WidthProperty)!.UpdateTarget();
+                Assert.Equal(container.ActualWidth * volume, fill.Width, 5);
+                Assert.True(fill.RenderTransform.Value.IsIdentity);
+                Assert.Equal(new CornerRadius(radius), fill.CornerRadius);
+            }
+        }
+        ct.ThrowIfCancellationRequested();
+    });
+
     [Theory]
     [InlineData(120)]
     [InlineData(-120)]

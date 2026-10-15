@@ -10,13 +10,21 @@ internal sealed record TranslationResult(string Text, string SourceLanguage, str
 }
 internal enum TranslationStage { Waiting, CheckingModel, LoadingModel, Translating, FetchingRates }
 
+// Counts are request-local and valid only for the exact tokenizer instance that
+// produced them. Reloading/replacing the model requires a fresh count.
+internal readonly record struct TranslationEngineInput(string Text, int? TokenCount = null, object? Tokenizer = null);
+
 internal interface ILocalTranslationEngine : IDisposable
 {
     void Configure(TranslationOptions options) { }
     Task PrepareAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     Task<string> FitInputAsync(string text, CancellationToken cancellationToken) => Task.FromResult(text);
+    async Task<TranslationEngineInput> FitForTranslationAsync(string text, CancellationToken cancellationToken) =>
+        new(await FitInputAsync(text, cancellationToken).ConfigureAwait(false));
     TranslationStage Stage => TranslationStage.Translating;
     Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken);
+    Task<string> TranslateFittedAsync(TranslationEngineInput input, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) =>
+        TranslateAsync(input.Text, sourceLanguage, targetLanguage, cancellationToken);
     void ReleaseIdleResources();
 }
 

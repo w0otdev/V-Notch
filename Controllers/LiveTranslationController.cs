@@ -27,6 +27,7 @@ internal sealed class LiveTranslationController : IDisposable
     private string _text = "";
     private bool _disposed;
     private Task? _preparation;
+    private Task? _idleCleanup;
     private readonly CurrencyRateService _currencyRates;
     private readonly TranslationAppPolicy _appPolicy = new();
     private string? _sourceCurrencyOverride, _targetCurrencyOverride;
@@ -41,7 +42,7 @@ internal sealed class LiveTranslationController : IDisposable
         _store = store ?? TranslationModelStore.Shared;
         _service = new(engine ?? new QwenTranslationEngine(_store));
         _store.Changed += ModelChanged;
-        _idle = new UiScheduledTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => { if (_window?.IsPresentationAnimating != true) _service.ReleaseIdleResources(); }, dispatcher);
+        _idle = new UiScheduledTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => { if (_window?.IsPresentationAnimating != true) ScheduleIdleResourceRelease(); }, dispatcher);
         _idle.Stop();
     }
 
@@ -109,8 +110,25 @@ internal sealed class LiveTranslationController : IDisposable
         else
         {
             StopWatcher();
-            _service.ReleaseIdleResources();
+            ScheduleIdleResourceRelease();
         }
+    }
+
+    private void ScheduleIdleResourceRelease()
+    {
+        if (_disposed || _idleCleanup?.IsCompleted == false) return;
+        var service = _service;
+        // Cache pruning, option changes and native weight disposal can be costly.
+        // Coalesce timer/settings requests and keep them away from the dispatcher.
+        _idleCleanup = Task.Run(() =>
+        {
+            try { service.ReleaseIdleResources(); }
+            catch (ObjectDisposedException) { }
+            catch (Exception)
+            {
+                RuntimeLog.Error("TRANSLATION", "Idle cleanup failed; exception payload omitted for privacy.");
+            }
+        });
     }
 
     internal Task PrepareModelAsync()
@@ -304,6 +322,7 @@ internal sealed class LiveTranslationController : IDisposable
             // Snapshot UI state before dispatching. Inference overlaps the entrance;
             // only presentation waits so a fast cache hit cannot resize the opening popup.
             var service = _service;
+            var store = _store;
             string text = TranslationInput.Prepare(_text), source = window.SourceLanguage, target = window.TargetLanguage;
             bool inputTruncated = _inputWasTruncated || text.Length < _text.Length;
             window.SetInputTruncated(inputTruncated);
@@ -331,17 +350,21 @@ internal sealed class LiveTranslationController : IDisposable
                     finally { convertingCurrency = false; }
                 }
             }
+            // A cache hit needs neither language-profile initialization nor model work.
+            if (result == null && store.IsInstalled)
+                result = service.TryGetCachedResult(text, source, target, token);
             if (result == null)
-                result = LocalTranslationService.TrySameLanguage(text, source, target);
+                result = await LocalTranslationService.TrySameLanguageAsync(text, source, target, token);
             if (result == null)
             {
-                if (!_store.IsInstalled) throw new TranslationException("translation.modelMissing");
+                token.ThrowIfCancellationRequested();
+                if (!store.IsInstalled) throw new TranslationException("translation.modelMissing");
                 // Dismissal cancels this request, while the shared model preparation finishes.
                 Task preparation = PrepareModelAsync();
                 result = await Task.Run(async () =>
                 {
                     await preparation.WaitAsync(token).ConfigureAwait(false);
-                    return await service.TranslateAsync(text, source, target, token).ConfigureAwait(false);
+                    return await service.TranslateAfterLanguageCheckAsync(text, source, target, token).ConfigureAwait(false);
                 }, token).WaitAsync(token);
             }
             result = result with { InputTruncated = result.InputTruncated || inputTruncated };

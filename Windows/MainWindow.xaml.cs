@@ -2071,6 +2071,7 @@ public partial class MainWindow : Window
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
         MenuResetText.Text = Loc.Get("tray.reset");
         MenuSettingsText.Text = Loc.Get("tray.settings");
+        MenuInvisibleText.Text = Loc.Get(_settings.InvisibleMode ? "settings.privacy.invisible.disable" : "settings.privacy.invisible.enable");
         MenuRestartText.Text = Loc.Get("tray.restart");
         MenuExitText.Text = Loc.Get("tray.exit");
         MenuOpenText.Text = Loc.Get("tooltip.expand");
@@ -2689,24 +2690,129 @@ public partial class MainWindow : Window
 
     #region Menu Actions
 
+    private object? _trayMenuEntranceToken;
+
     private void TrayContextMenu_Opened(object sender, RoutedEventArgs e)
     {
         if (IsGreetingInteractionBlocked)
         {
-            if (sender is System.Windows.Controls.ContextMenu menu) menu.IsOpen = false;
+            if (sender is System.Windows.Controls.ContextMenu blockedMenu) blockedMenu.IsOpen = false;
             return;
         }
         _isTrayMenuOpen = true;
-        MenuInvisible.Header = Loc.Get(_settings.InvisibleMode ? "settings.privacy.invisible.disable" : "settings.privacy.invisible.enable");
+        MenuInvisibleText.Text = Loc.Get(_settings.InvisibleMode ? "settings.privacy.invisible.disable" : "settings.privacy.invisible.enable");
         MenuInvisible.IsChecked = _settings.InvisibleMode;
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");
+        MenuToggle.Icon = TryFindResource(_isNotchVisible ? "TrayHideNotchIconGeometry" : "TrayVisibleIconGeometry");
+
+        if (sender is System.Windows.Controls.ContextMenu menu)
+        {
+            if (menu.Parent is System.Windows.Controls.Primitives.Popup popup)
+            {
+                popup.PopupAnimation = System.Windows.Controls.Primitives.PopupAnimation.None;
+            }
+            menu.ApplyTemplate();
+            if (menu.Template?.FindName("MenuSurface", menu) is FrameworkElement surface)
+            {
+                var token = new object();
+                _trayMenuEntranceToken = token;
+                surface.BeginAnimation(OpacityProperty, null);
+                surface.Opacity = 0;
+                surface.RenderTransform = Transform.Identity;
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+                {
+                    if (!ReferenceEquals(_trayMenuEntranceToken, token) || !menu.IsOpen) return;
+                    AnimateTrayMenuEntrance(surface);
+                    if (menu.Parent is System.Windows.Controls.Primitives.Popup openPopup)
+                    {
+                        openPopup.PopupAnimation = !AnimationConfig.ReduceMotion
+                            ? System.Windows.Controls.Primitives.PopupAnimation.Fade
+                            : System.Windows.Controls.Primitives.PopupAnimation.None;
+                    }
+                }));
+            }
+        }
+    }
+
+    private static void AnimateTrayMenuEntrance(FrameworkElement surface)
+    {
+        surface.BeginAnimation(OpacityProperty, null);
+        surface.Opacity = 1;
+        surface.RenderTransform = Transform.Identity;
+
+        bool reduced = AnimationConfig.ReduceMotion;
+        int duration = reduced ? 80 : 200;
+        if (!reduced)
+        {
+            Point anchor = ResolveCursorAnchor(surface);
+            surface.RenderTransformOrigin = anchor;
+            var scale = new ScaleTransform(1, 1);
+            var slide = new TranslateTransform(0, 0);
+            surface.RenderTransform = new TransformGroup { Children = { scale, slide } };
+
+            double fromX = (anchor.X - 0.5) * 6;
+            double fromY = (anchor.Y - 0.5) * 8;
+            var ease = VNotch.Controls.TrayMotion.EaseOut;
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, VNotch.Controls.ClipboardTray.MenuAnimation(0.95, 1, duration, ease));
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, VNotch.Controls.ClipboardTray.MenuAnimation(0.95, 1, duration, ease));
+            slide.BeginAnimation(TranslateTransform.XProperty, VNotch.Controls.ClipboardTray.MenuAnimation(fromX, 0, duration, ease));
+            slide.BeginAnimation(TranslateTransform.YProperty, VNotch.Controls.ClipboardTray.MenuAnimation(fromY, 0, duration, ease));
+        }
+
+        surface.BeginAnimation(OpacityProperty, VNotch.Controls.ClipboardTray.MenuAnimation(0, 1, reduced ? 80 : 140, VNotch.Controls.TrayMotion.EaseOut), HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private static Point ResolveCursorAnchor(FrameworkElement surface)
+    {
+        if (surface.ActualWidth <= 0 || surface.ActualHeight <= 0 || PresentationSource.FromVisual(surface) == null)
+            return new Point(0.5, 1.0);
+        try
+        {
+            if (Win32Interop.GetCursorPos(out var pt))
+            {
+                Point local = surface.PointFromScreen(new Point(pt.X, pt.Y));
+                return new Point(
+                    Math.Clamp(local.X / surface.ActualWidth, 0, 1),
+                    Math.Clamp(local.Y / surface.ActualHeight, 0, 1));
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        return new Point(0.5, 1.0);
     }
 
     private void TrayContextMenu_Closed(object sender, RoutedEventArgs e)
     {
         _isTrayMenuOpen = false;
+        _trayMenuEntranceToken = null;
+        if (sender is System.Windows.Controls.ContextMenu menu)
+        {
+            if (menu.Template?.FindName("MenuSurface", menu) is FrameworkElement surface)
+            {
+                surface.BeginAnimation(OpacityProperty, null);
+                surface.Opacity = 1;
+                surface.RenderTransform = Transform.Identity;
+            }
+            if (menu.Parent is System.Windows.Controls.Primitives.Popup popup)
+            {
+                popup.PopupAnimation = System.Windows.Controls.Primitives.PopupAnimation.None;
+            }
+        }
         TriggerZOrderBurst(TimeSpan.FromMilliseconds(900));
         EnsureTopmost(force: true);
+    }
+
+    private void TrayMenuItem_Pressed(object sender, RoutedEventArgs e) => SetTrayMenuRowState(sender, 0.72, 0.97);
+    private void TrayMenuItem_Released(object sender, RoutedEventArgs e) => SetTrayMenuRowState(sender, 1.0, 1.0);
+
+    private static void SetTrayMenuRowState(object sender, double opacity, double scale)
+    {
+        if (sender is System.Windows.Controls.MenuItem item && item.Template?.FindName("MenuRow", item) is Border row)
+        {
+            VNotch.Controls.TrayMotion.SetOpacity(row, opacity);
+            VNotch.Controls.TrayMotion.SetScale(row, scale);
+        }
     }
 
     private void ToggleNotch_Click(object sender, RoutedEventArgs e)

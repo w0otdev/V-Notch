@@ -181,72 +181,160 @@
             <GradientStop Color="{x:Static svc:UiPalette.PrimaryColor}" Offset="0"/>
             <GradientStop Color="{x:Static svc:UiPalette.PrimaryColor}" Offset="1"/>
         </LinearGradientBrush>
+        <SolidColorBrush x:Key="TrayMenuDestructiveBrush" Color="#FF453A"/>
+        <SolidColorBrush x:Key="TrayMenuDestructiveHoverBrush" Color="#FF6961"/>
+
+        <!-- Unified 512x512 Solid Filled Icon Set matching exact menu semantics -->
+        <!-- Expand: 2 diagonal outward arrows (top-right & bottom-left) -->
+        <Geometry x:Key="TrayExpandIconGeometry">F1 M 320,64 L 448,64 L 448,192 L 398,142 L 314,226 L 286,198 L 370,114 Z M 192,448 L 64,448 L 64,320 L 114,370 L 198,286 L 226,314 L 142,398 Z M 96,64 L 208,64 L 208,104 L 104,104 L 104,208 L 64,208 L 64,96 C 64,78.3 78.3,64 96,64 Z M 416,448 L 304,448 L 304,408 L 408,408 L 408,304 L 448,304 L 448,416 C 448,433.7 433.7,448 416,448 Z</Geometry>
+        <!-- Hide Notch: Eye-Off (solid eye with diagonal slash) -->
+        <Geometry x:Key="TrayHideNotchIconGeometry">F0 M 72,44 L 468,440 L 440,468 L 44,72 Z M 256,112 C 364,112 450,185 495,251 C 499,258 499,266 495,273 C 469,311 430,350 380,377 L 323,320 C 331,301 336,279 336,256 C 336,211.8 300.2,176 256,176 C 233,176 211,181 192,189 L 146,143 C 180,123 217,112 256,112 Z M 74,175 L 180,281 C 189,308 214,329 243,335 L 325,402 C 303,409 280,412 256,412 C 148,412 62,339 17,273 C 13,266 13,258 17,251 C 32,229 51,201 74,175 Z</Geometry>
+        <!-- Show Notch: Eye (solid eye with pupil) -->
+        <Geometry x:Key="TrayVisibleIconGeometry">F0 M 255.66,112 C 147.8,112 61.4,185.6 16.4,251.4 C 11.8,258.2 11.8,266.8 16.4,273.6 C 61.4,339.4 147.8,412 255.66,412 C 363.5,412 449.9,339.4 494.9,273.6 C 499.5,266.8 499.5,258.2 494.9,251.4 C 449.9,185.6 363.5,112 255.66,112 Z M 256,336 C 211.8,336 176,300.2 176,256 C 176,211.8 211.8,176 256,176 C 300.2,176 336,211.8 336,256 C 336,300.2 300.2,336 256,336 Z M 256,208 C 229.5,208 208,229.5 208,256 C 208,282.5 229.5,304 256,304 C 282.5,304 304,282.5 304,256 C 304,229.5 282.5,208 256,208 Z</Geometry>
+        <!-- Reset position: Counter-clockwise undo/reset arrow -->
+        <Geometry x:Key="TrayResetIconGeometry">F1 M 224,64 L 80,176 L 224,288 L 224,212 C 316,212 384,264 384,344 C 384,384 366,420 336,448 C 402,424 448,362 448,288 C 448,186 356,140 224,140 Z</Geometry>
+        <!-- Notch settings: Bold 8-tooth solid cogwheel -->
+        <Geometry x:Key="TraySettingsIconGeometry">F0 M 404.2,194.6 L 466.0,218.8 L 466.0,293.2 L 404.2,317.4 L 431.1,378.5 L 378.5,431.1 L 317.4,404.2 L 293.2,466.0 L 218.8,466.0 L 194.6,404.2 L 133.5,431.1 L 80.9,378.5 L 107.8,317.4 L 46.0,293.2 L 46.0,218.8 L 107.8,194.6 L 80.9,133.5 L 133.5,80.9 L 194.6,107.8 L 218.8,46.0 L 293.2,46.0 L 317.4,107.8 L 378.5,80.9 L 431.1,133.5 Z M 256,184 C 216.2,184 184,216.2 184,256 C 184,295.8 216.2,328 256,328 C 295.8,328 328,295.8 328,256 C 328,216.2 295.8,184 256,184 Z</Geometry>
+        <!-- Invisible mode: Solid privacy shield with keyhole/eye emblem -->
+        <Geometry x:Key="TrayInvisibleIconGeometry">F0 M 463.1,112.37 C 373.68,96.33 336.71,84.45 256,48 C 175.29,84.45 138.32,96.33 48.9,112.37 C 32.7,115.28 22.4,130.6 24.1,147.0 C 39.8,298.8 119.5,413.2 243.9,461.8 C 251.7,464.8 260.3,464.8 268.1,461.8 C 392.5,413.2 472.2,298.8 487.9,147.0 C 489.6,130.6 479.3,115.28 463.1,112.37 Z M 256,184 C 282.5,184 304,205.5 304,232 C 304,250.2 293.8,266.0 278.8,274.1 L 292,344 L 220,344 L 233.2,274.1 C 218.2,266.0 208,250.2 208,232 C 208,205.5 229.5,184 256,184 Z</Geometry>
+        <!-- Restart app: Bold circular reload arrow -->
+        <Geometry x:Key="TrayRestartIconGeometry">F1 M 85.3,85.3 L 85.3,192 L 192,192 L 153.6,153.6 C 180.8,128.8 216.8,113.8 256,113.8 C 334.5,113.8 398.2,177.5 398.2,256 C 398.2,334.5 334.5,398.2 256,398.2 C 192.6,398.2 138.9,356.7 120.5,299.2 L 56.4,299.2 C 76.2,392.8 159.2,462.2 256,462.2 C 369.9,462.2 462.2,369.9 462.2,256 C 462.2,142.1 369.9,49.8 256,49.8 C 199.5,49.8 148.3,72.6 111.1,111.1 Z</Geometry>
+        <!-- Exit: Bold power symbol -->
+        <Geometry x:Key="TrayExitIconGeometry">F1 M 400,54.1 C 387.5,44.4 369.5,46.9 359.8,59.4 C 350.1,71.9 352.6,89.9 365.1,99.6 C 402.2,128.5 424,172.5 424,220 C 424,303.8 355.8,372 272,372 L 240,372 C 156.2,372 88,303.8 88,220 C 88,172.5 109.8,128.5 146.9,99.6 C 159.4,89.9 161.9,71.9 152.2,59.4 C 142.5,46.9 124.5,44.4 112,54.1 C 61.3,93.6 32,154.5 32,220 C 32,334.9 125.1,428 240,428 L 272,428 C 386.9,428 480,334.9 480,220 C 480,154.5 450.7,93.6 400,54.1 Z M 256,32 C 238.3,32 224,46.3 224,64 L 224,224 C 224,241.7 238.3,256 256,256 C 273.7,256 288,241.7 288,224 L 288,64 C 288,46.3 273.7,32 256,32 Z</Geometry>
+        <Geometry x:Key="TrayCheckIconGeometry">F1 M 216,388 C 205.5,388 195.5,383.5 188.6,375.6 L 92.6,265.6 C 79.5,250.6 81.1,227.8 96.1,214.7 C 111.1,201.6 133.9,203.2 147.0,218.2 L 214.5,295.5 L 363.2,102.2 C 375.3,86.4 398.0,83.5 413.8,95.6 C 429.6,107.7 432.5,130.4 420.4,146.2 L 244.4,374.2 C 237.8,382.8 227.6,387.8 216,388 Z</Geometry>
+
         <Style x:Key="TrayMenuItemText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-
-        <Style x:Key="TrayMenuIcon" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{x:Static svc:UiPalette.IconBrush}"/>
-            <Setter Property="FontSize" Value="15"/>
-            <Setter Property="Width" Value="22"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="TextAlignment" Value="Center"/>
-            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+            <Setter Property="Margin" Value="10,0,14,0"/>
         </Style>
 
         <Style x:Key="TrayContextMenuStyle" TargetType="ContextMenu">
-            <Setter Property="Width" Value="170"/>
-            <Setter Property="Background" Value="#1F1F1F"/>
-            <Setter Property="BorderBrush" Value="#3B3B3B"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="False"/>
+            <Setter Property="UseLayoutRounding" Value="False"/>
             <Setter Property="OverridesDefaultStyle" Value="True"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ContextMenu">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7"
-                                ClipToBounds="True"
-                                SnapsToDevicePixels="True">
-                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
-                        </Border>
+                        <Grid Margin="10,8,10,12" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                            <Border x:Name="MenuSurface"
+                                    MinWidth="216"
+                                    Background="#000000"
+                                    BorderBrush="#24FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="5"
+                                    UseLayoutRounding="False"
+                                    SnapsToDevicePixels="False">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="22" ShadowDepth="5" Direction="270" Color="Black" Opacity="0.48" RenderingBias="Performance"/>
+                                </Border.Effect>
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" UseLayoutRounding="True" SnapsToDevicePixels="True"/>
+                            </Border>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="TrayMenuItemStyle" TargetType="MenuItem">
-            <Setter Property="Height" Value="44"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
-            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="Padding" Value="9,6,9,6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="TrayMenuItem_Pressed"/>
+            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="TrayMenuItem_Released"/>
+            <EventSetter Event="MouseLeave" Handler="TrayMenuItem_Released"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="MenuItem">
-                        <Border x:Name="ItemBorder"
-                                Background="{TemplateBinding Background}"
-                                Padding="20,0,16,0"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter ContentSource="Header"
-                                              HorizontalAlignment="Stretch"
-                                              VerticalAlignment="Center"
-                                              RecognizesAccessKey="True"/>
-                        </Border>
+                        <Grid Margin="0,1" SnapsToDevicePixels="True">
+                            <Border x:Name="MenuRow"
+                                    CornerRadius="8"
+                                    Padding="{TemplateBinding Padding}"
+                                    RenderTransformOrigin="0.5,0.5"
+                                    ctrl:TrayMotion.Background="Transparent"
+                                    ctrl:TrayMotion.BorderBrush="Transparent"
+                                    BorderThickness="1"
+                                    SnapsToDevicePixels="True">
+                                <Grid x:Name="MenuContent" ctrl:TrayMotion.Opacity="0.72">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Viewbox x:Name="MenuIcon"
+                                             Width="14"
+                                             Height="14"
+                                             Stretch="Uniform"
+                                             RenderTransformOrigin="0.5,0.5"
+                                             VerticalAlignment="Center"
+                                             HorizontalAlignment="Center">
+                                        <Canvas Width="512" Height="512">
+                                            <Path Data="{Binding Icon, RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Fill="{TemplateBinding Foreground}"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <Border x:Name="CheckBadge"
+                                            Width="16"
+                                            Height="16"
+                                            CornerRadius="4"
+                                            Background="Transparent"
+                                            Visibility="Collapsed"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Center">
+                                        <Viewbox Width="13" Height="13" Stretch="Uniform">
+                                            <Canvas Width="512" Height="512">
+                                                <Path Data="{StaticResource TrayCheckIconGeometry}"
+                                                      Fill="{TemplateBinding Foreground}"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Border>
+                                    <ContentPresenter Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Center"
+                                                      RecognizesAccessKey="True"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#2B2B2B"/>
+                                <Setter TargetName="MenuRow" Property="ctrl:TrayMotion.Background" Value="#18FFFFFF"/>
+                                <Setter TargetName="MenuRow" Property="ctrl:TrayMotion.BorderBrush" Value="#0DFFFFFF"/>
+                                <Setter TargetName="MenuIcon" Property="ctrl:TrayMotion.Scale" Value="1.12"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="MenuContent" Property="ctrl:TrayMotion.Opacity" Value="1"/>
                             </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckBadge" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="MenuIcon" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="danger">
+                                <Setter Property="Foreground" Value="{StaticResource TrayMenuDestructiveBrush}"/>
+                            </DataTrigger>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="danger"/>
+                                    <Condition Binding="{Binding IsHighlighted, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                </MultiDataTrigger.Conditions>
+                                <Setter TargetName="MenuRow" Property="ctrl:TrayMotion.Background" Value="#18FF453A"/>
+                                <Setter TargetName="MenuRow" Property="ctrl:TrayMotion.BorderBrush" Value="#14FF453A"/>
+                                <Setter TargetName="MenuIcon" Property="ctrl:TrayMotion.Scale" Value="1.12"/>
+                                <Setter Property="Foreground" Value="{StaticResource TrayMenuDestructiveHoverBrush}"/>
+                            </MultiDataTrigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.55"/>
+                                <Setter Property="Opacity" Value="0.4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -255,13 +343,10 @@
         </Style>
 
         <Style x:Key="TraySeparatorStyle" TargetType="Separator">
-            <Setter Property="Height" Value="1"/>
-            <Setter Property="Margin" Value="0"/>
-            <Setter Property="Background" Value="#404040"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Separator">
-                        <Border Height="1" Background="{TemplateBinding Background}"/>
+                        <Border Height="1" Background="#12FFFFFF" Margin="9,5" SnapsToDevicePixels="True"/>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -279,51 +364,61 @@
                 <ContextMenu Style="{StaticResource TrayContextMenuStyle}"
                              Opened="TrayContextMenu_Opened"
                              Closed="TrayContextMenu_Closed">
-                    <MenuItem Style="{StaticResource TrayMenuItemStyle}" Click="OpenNotchForKeyboard_Click">
+                    <MenuItem Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TrayExpandIconGeometry}"
+                              Click="OpenNotchForKeyboard_Click">
                         <MenuItem.Header>
                             <TextBlock x:Name="MenuOpenText" Text="Expand" Style="{StaticResource TrayMenuItemText}"/>
                         </MenuItem.Header>
                     </MenuItem>
-                    <MenuItem x:Name="MenuToggle" Style="{StaticResource TrayMenuItemStyle}" Click="ToggleNotch_Click">
+                    <MenuItem x:Name="MenuToggle"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TrayVisibleIconGeometry}"
+                              Click="ToggleNotch_Click">
                         <MenuItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE8A7;" Style="{StaticResource TrayMenuIcon}" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="MenuToggleText" Text="Hide Notch" Style="{StaticResource TrayMenuItemText}"/>
-                            </StackPanel>
+                            <TextBlock x:Name="MenuToggleText" Text="Hide Notch" Style="{StaticResource TrayMenuItemText}"/>
                         </MenuItem.Header>
                     </MenuItem>
-                    <MenuItem Style="{StaticResource TrayMenuItemStyle}" Click="ResetPosition_Click">
+                    <MenuItem Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TrayResetIconGeometry}"
+                              Click="ResetPosition_Click">
                         <MenuItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE777;" Style="{StaticResource TrayMenuIcon}" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="MenuResetText" Text="Reset position" Style="{StaticResource TrayMenuItemText}"/>
-                            </StackPanel>
-                        </MenuItem.Header>
-                    </MenuItem>
-                    <Separator Style="{StaticResource TraySeparatorStyle}"/>
-                    <MenuItem Style="{StaticResource TrayMenuItemStyle}" Click="OpenSettings_Click">
-                        <MenuItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE713;" Style="{StaticResource TrayMenuIcon}" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="MenuSettingsText" Text="Notch settings" Style="{StaticResource TrayMenuItemText}"/>
-                            </StackPanel>
+                            <TextBlock x:Name="MenuResetText" Text="Reset position" Style="{StaticResource TrayMenuItemText}"/>
                         </MenuItem.Header>
                     </MenuItem>
                     <Separator Style="{StaticResource TraySeparatorStyle}"/>
-                    <MenuItem x:Name="MenuInvisible" Style="{StaticResource TrayMenuItemStyle}"
-                              Header="Invisible mode" IsCheckable="True" Click="ToggleInvisible_Click"/>
-                    <MenuItem x:Name="MenuRestart" Style="{StaticResource TrayMenuItemStyle}" Click="Restart_Click">
+                    <MenuItem Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TraySettingsIconGeometry}"
+                              Click="OpenSettings_Click">
                         <MenuItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE72C;" Style="{StaticResource TrayMenuIcon}" Margin="0,0,10,0"/>
-                                <TextBlock x:Name="MenuRestartText" Text="Restart app" Style="{StaticResource TrayMenuItemText}"/>
-                            </StackPanel>
+                            <TextBlock x:Name="MenuSettingsText" Text="Notch settings" Style="{StaticResource TrayMenuItemText}"/>
                         </MenuItem.Header>
                     </MenuItem>
                     <Separator Style="{StaticResource TraySeparatorStyle}"/>
-                    <MenuItem Style="{StaticResource TrayMenuItemStyle}" Click="Exit_Click">
+                    <MenuItem x:Name="MenuInvisible"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TrayInvisibleIconGeometry}"
+                              IsCheckable="True"
+                              Click="ToggleInvisible_Click">
                         <MenuItem.Header>
-                            <TextBlock x:Name="MenuExitText" Text="Exit" Style="{StaticResource TrayMenuItemText}" HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="MenuInvisibleText" Text="Invisible mode" Style="{StaticResource TrayMenuItemText}"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+                    <MenuItem x:Name="MenuRestart"
+                              Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TrayRestartIconGeometry}"
+                              Click="Restart_Click">
+                        <MenuItem.Header>
+                            <TextBlock x:Name="MenuRestartText" Text="Restart app" Style="{StaticResource TrayMenuItemText}"/>
+                        </MenuItem.Header>
+                    </MenuItem>
+                    <Separator Style="{StaticResource TraySeparatorStyle}"/>
+                    <MenuItem Style="{StaticResource TrayMenuItemStyle}"
+                              Icon="{StaticResource TrayExitIconGeometry}"
+                              Tag="danger"
+                              Click="Exit_Click">
+                        <MenuItem.Header>
+                            <TextBlock x:Name="MenuExitText" Text="Exit" Style="{StaticResource TrayMenuItemText}"/>
                         </MenuItem.Header>
                     </MenuItem>
                 </ContextMenu>
@@ -643,13 +738,22 @@
                                     Height="6"
                                     VerticalAlignment="Center">
                                 <Border x:Name="VolumeIndicatorFill"
-                                        HorizontalAlignment="Stretch"
+                                        HorizontalAlignment="Left"
                                         CornerRadius="3"
                                         Height="6"
                                         RenderTransformOrigin="0,0.5">
-                                    <Border.RenderTransform>
+                                    <Border.Resources>
+                                        <ctrl:VolumeFillWidthConverter x:Key="VolumeFillWidth"/>
+                                    </Border.Resources>
+                                    <Border.Tag>
                                         <ScaleTransform x:Name="VolumeIndicatorScale" ScaleX="0"/>
-                                    </Border.RenderTransform>
+                                    </Border.Tag>
+                                    <Border.Width>
+                                        <MultiBinding Converter="{StaticResource VolumeFillWidth}">
+                                            <Binding ElementName="VolumeIndicatorContainer" Path="ActualWidth"/>
+                                            <Binding RelativeSource="{RelativeSource Self}" Path="Tag.ScaleX"/>
+                                        </MultiBinding>
+                                    </Border.Width>
                                     <Border.Background>
                                         <LinearGradientBrush x:Name="VolumeIndicatorGradient" StartPoint="0,0" EndPoint="1,0">
                                             <GradientStop x:Name="VolumeIndicatorGradientStart" Color="White" Offset="0"/>
@@ -1741,7 +1845,7 @@
                                                                 Height="4"
                                                                 CornerRadius="2"
                                                                 VerticalAlignment="Center"
-                                                                HorizontalAlignment="Stretch"
+                                                                HorizontalAlignment="Left"
                                                                 RenderTransformOrigin="0,0.5">
                                                             <Border.Background>
                                                                 <LinearGradientBrush x:Name="VolumeBarGradient" StartPoint="0,0" EndPoint="1,0">
@@ -1749,9 +1853,18 @@
                                                                     <GradientStop x:Name="VolumeBarGradientEnd" Color="{x:Static svc:UiPalette.SecondaryColor}" Offset="1"/>
                                                                 </LinearGradientBrush>
                                                             </Border.Background>
-                                                            <Border.RenderTransform>
+                                                            <Border.Resources>
+                                                                <ctrl:VolumeFillWidthConverter x:Key="VolumeFillWidth"/>
+                                                            </Border.Resources>
+                                                            <Border.Tag>
                                                                 <ScaleTransform x:Name="VolumeBarScale" ScaleX="0.5"/>
-                                                            </Border.RenderTransform>
+                                                            </Border.Tag>
+                                                            <Border.Width>
+                                                                <MultiBinding Converter="{StaticResource VolumeFillWidth}">
+                                                                    <Binding ElementName="VolumeBarContainer" Path="ActualWidth"/>
+                                                                    <Binding RelativeSource="{RelativeSource Self}" Path="Tag.ScaleX"/>
+                                                                </MultiBinding>
+                                                            </Border.Width>
                                                         </Border>
                                                     </ctrl:AccessibleVolumePanel>
                                             </StackPanel>
@@ -1924,32 +2037,37 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock x:Name="MonthText"
-                                               Grid.Column="0"
-                                               Text="Dec"
-                                               Style="{StaticResource TitleText}"
-                                               FontSize="15"
-                                               VerticalAlignment="Center"
-                                               HorizontalAlignment="Left"
-                                               Margin="-1,0,5,0"
-                                               RenderTransformOrigin="0,0.5"
-                                               Panel.ZIndex="10"
-                                               TextOptions.TextRenderingMode="ClearType"
-                                               TextOptions.TextHintingMode="Animated">
-                                        <TextBlock.RenderTransform>
-                                            <TransformGroup>
-                                                <ScaleTransform x:Name="MonthTextScale" ScaleX="1" ScaleY="1"/>
-                                                <TranslateTransform x:Name="MonthTextTranslate" X="0" Y="0"/>
-                                            </TransformGroup>
-                                        </TextBlock.RenderTransform>
-                                    </TextBlock>
-                                    <TextBlock x:Name="DayText"
-                                               Grid.Column="0"
-                                               Text="14"
-                                               Style="{StaticResource TitleText}"
-                                               FontSize="18"
-                                               HorizontalAlignment="Center"
-                                               Visibility="Collapsed"/>
+                                    <StackPanel Grid.Column="0"
+                                                VerticalAlignment="Center"
+                                                HorizontalAlignment="Left"
+                                                Margin="-1,0,5,0"
+                                                Panel.ZIndex="10">
+                                        <TextBlock x:Name="MonthText"
+                                                   Text="Dec"
+                                                   Style="{StaticResource TitleText}"
+                                                   FontSize="15"
+                                                   HorizontalAlignment="Center"
+                                                   RenderTransformOrigin="0.5,0.5"
+                                                   TextOptions.TextRenderingMode="ClearType"
+                                                   TextOptions.TextHintingMode="Animated">
+                                            <TextBlock.RenderTransform>
+                                                <TransformGroup>
+                                                    <ScaleTransform x:Name="MonthTextScale" ScaleX="1" ScaleY="1"/>
+                                                    <TranslateTransform x:Name="MonthTextTranslate" X="0" Y="0"/>
+                                                </TransformGroup>
+                                            </TextBlock.RenderTransform>
+                                        </TextBlock>
+                                        <TextBlock x:Name="DayText"
+                                                   Text="14"
+                                                   Style="{StaticResource TitleText}"
+                                                   FontSize="16.5"
+                                                   Margin="0,2.5,0,0"
+                                                   Foreground="#99FFFFFF"
+                                                   HorizontalAlignment="Center"
+                                                   Visibility="Collapsed"
+                                                   TextOptions.TextRenderingMode="ClearType"
+                                                   TextOptions.TextHintingMode="Animated"/>
+                                    </StackPanel>
 
                                     <Grid x:Name="CalendarStripContainer" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left">
 

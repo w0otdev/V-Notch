@@ -15,15 +15,110 @@ public sealed class MediaThumbnailPipelineTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
-    [InlineData("background")]
-    [InlineData("foreground")]
-    [InlineData("cache")]
-    [InlineData("lookup")]
-    [InlineData("search")]
-    public void YouTubeDiscoveryValidatesTheTrackAndPublishesRecoveredMetadataAndArtwork(string discovery) => SharedStaTestRunner.RunAsync(async ct =>
+    [InlineData("SoundCloud")]
+    [InlineData("Browser")]
+    public void DelayedSessionArtworkReplacesCachedCoverWithoutAnotherTitleChange(string source) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        info.SourceAppId = "Helium";
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        var first = Bitmap(150, 150, detailed: true);
+        await ApplyArtwork(fixture.Service, info, first, true);
+        var corrected = Bitmap(151, 151, detailed: true);
+        await ApplyArtwork(fixture.Service, info, corrected, false);
+        Assert.Same(corrected, info.Thumbnail);
+        Assert.Same(corrected, fixture.Service.CachedThumbnail);
+        await ApplyArtwork(fixture.Service, info, Bitmap(151, 151, detailed: true), false);
+        Assert.Same(corrected, info.Thumbnail); // Repeated snapshots must not restart UI animations.
+    });
+
+    [Theory]
+    [InlineData("SoundCloud")]
+    [InlineData("Browser")]
+    public void NextTrackRejectsPreviousSessionCoverUntilNewArtworkArrives(string source) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        info.SourceAppId = "Helium";
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        await ApplyArtwork(fixture.Service, info, Bitmap(150, 150, detailed: true), true);
+        info.CurrentTrack = "Next track";
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        await ApplyArtwork(fixture.Service, info, Bitmap(150, 150, detailed: true), true);
+        Assert.Null(info.Thumbnail);
+        Assert.Null(fixture.Service.CachedThumbnail);
+        await ApplyArtwork(fixture.Service, info, Bitmap(150, 150, detailed: true), false);
+        Assert.Null(info.Thumbnail);
+        info.CurrentTrack = "Rapid next track";
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        await ApplyArtwork(fixture.Service, info, Bitmap(150, 150, detailed: true), true);
+        Assert.Null(info.Thumbnail);
+        var current = Bitmap(151, 151, detailed: true);
+        await ApplyArtwork(fixture.Service, info, current, false);
+        Assert.Same(current, info.Thumbnail);
+    });
+
+    [Fact]
+    public void SessionDecodeCompletingAfterNextCannotOverwriteCurrentArtwork() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var old = fixture.Track("SoundCloud");
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", old);
+        var pending = new TaskCompletionSource<BitmapSource?>();
+        var read = (Task)Invoke(fixture.Service, "ApplySessionArtworkAsync", old, true,
+            (Func<Task<BitmapSource?>>)(() => pending.Task))!;
+        var current = old.Clone();
+        current.CurrentTrack = "Next track";
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", current);
+        var cover = Bitmap(151, 151, detailed: true);
+        await ApplyArtwork(fixture.Service, current, cover, true);
+        pending.SetResult(Bitmap(150, 150, detailed: true));
+        await read;
+        Assert.Same(cover, fixture.Service.CachedThumbnail);
+        Assert.Null(old.Thumbnail);
+    });
+
+    private static Task ApplyArtwork(MediaDetectionService service, MediaInfo info, BitmapSource artwork, bool changed)
+        => (Task)Invoke(service, "ApplySessionArtworkAsync", info, changed,
+            (Func<Task<BitmapSource?>>)(() => Task.FromResult<BitmapSource?>(artwork)))!;
+
+    [Fact]
+    public void PendingSoundCloudDownloadCannotReplaceNewSessionArtwork() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("SoundCloud");
+        fixture.PublishIdentity(info);
+        fixture.Metadata.SoundCloudSearch = "https://fixture.invalid/fallback.jpg";
+        var download = new TaskCompletionSource<BitmapImage?>();
+        fixture.Artwork.Download = _ => download.Task;
+        var fetch = FetchSoundCloud(fixture.Service, info, ct);
+        Assert.Single(fixture.Artwork.Downloads);
+        var current = Bitmap(150, 150, detailed: true);
+        await ApplyArtwork(fixture.Service, info, current, false);
+        download.SetResult(Bitmap(500, 500));
+        await fetch;
+        Assert.Same(current, fixture.Service.CachedThumbnail);
+        Assert.Same(current, info.Thumbnail);
+        Assert.Empty(fixture.Updates);
+    });
+
+    [Theory]
+    [InlineData("background", false)]
+    [InlineData("foreground", false)]
+    [InlineData("cache", false)]
+    [InlineData("lookup", false)]
+    [InlineData("search", false)]
+    [InlineData("background", true)]
+    [InlineData("foreground", true)]
+    [InlineData("cache", true)]
+    [InlineData("lookup", true)]
+    [InlineData("search", true)]
+    public void YouTubeDiscoveryRecoversMetadataAndArtworkWithoutInventingLiveDuration(string discovery, bool live) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new Fixture();
         var info = fixture.Track("Browser");
+        info.Duration = live ? TimeSpan.Zero : TimeSpan.FromSeconds(120);
         fixture.PublishIdentity(info);
         var result = Result(info.CurrentTrack);
         fixture.Metadata.UrlResult = result;
@@ -38,7 +133,8 @@ public sealed class MediaThumbnailPipelineTests
         Assert.Equal("YouTube", info.MediaSource);
         Assert.True(info.IsYouTubeRunning);
         Assert.Equal(result.Author, info.CurrentArtist);
-        Assert.Equal(TimeSpan.FromSeconds(123), info.Duration);
+        Assert.Equal(live ? TimeSpan.Zero : TimeSpan.FromSeconds(123), info.Duration);
+        Assert.Equal(info.Duration, Field<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator").RecoveredDuration);
         Assert.Same(fixture.Artwork.Image, fixture.Service.CachedThumbnail);
         Assert.Same(fixture.Artwork.Image, info.Thumbnail);
         Assert.Equal("YouTube", fixture.Artwork.Crops.Single().Source);
@@ -91,10 +187,13 @@ public sealed class MediaThumbnailPipelineTests
     [InlineData("track")]
     [InlineData("artist")]
     [InlineData("session")]
+    [InlineData("timeline")]
+    [InlineData("source")]
     public void PendingYouTubeMetadataCannotOverwriteAChangedOrCancelledTrack(string invalidation) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new Fixture();
         var info = fixture.Track("Browser");
+        info.Duration = TimeSpan.FromSeconds(120);
         fixture.PublishIdentity(info);
         var pending = new TaskCompletionSource<YouTubeLookupResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Metadata.Lookup = (_, _, _) => pending.Task;
@@ -107,6 +206,18 @@ public sealed class MediaThumbnailPipelineTests
         if (invalidation == "track") Set(fixture.Service, "_lastPublishedTrackIdentity", "different track");
         if (invalidation == "artist") Set(fixture.Service, "_lastPublishedTrackIdentity", MediaHeuristics.BuildTrackIdentity(info.CurrentTrack, "Different artist"));
         if (invalidation == "session") Set(fixture.Service, "_lastPublishedSessionInstanceKey", "replacement session");
+        if (invalidation == "timeline")
+        {
+            var live = info.Clone();
+            live.Duration = TimeSpan.Zero;
+            Set(fixture.Service, "_lastPublishedInfo", live);
+        }
+        if (invalidation == "source")
+        {
+            var resolved = info.Clone();
+            resolved.MediaSource = "SoundCloud";
+            Set(fixture.Service, "_lastPublishedInfo", resolved);
+        }
         pending.SetResult(Result(info.CurrentTrack));
         await fetch;
         Assert.Null(info.YouTubeVideoId);
@@ -156,6 +267,127 @@ public sealed class MediaThumbnailPipelineTests
         Assert.Single(fixture.Updates);
         Assert.True(fixture.Updates.Single().IsThumbnailOnlyUpdate);
         Assert.Equal(0, Field<int>(fixture.Service, "_soundCloudFetchInFlight"));
+    });
+
+    [Theory]
+    [InlineData("SoundCloud")]
+    [InlineData("Browser")]
+    public void SoundCloudSessionArtworkIsKeptInsteadOfBeingRelabeledAsYouTube(string source) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        fixture.PublishIdentity(info);
+        Invoke(fixture.Service, "SetSessionSourceOverride", info, "SoundCloud");
+        var artwork = Bitmap(500, 500);
+        info.Thumbnail = artwork;
+        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
+        Assert.Same(artwork, info.Thumbnail);
+        Assert.Same(artwork, fixture.Service.CachedThumbnail);
+        Assert.Equal("SoundCloud", Field<string>(fixture.Service, "_cachedThumbnailSource"));
+        Assert.Equal("SoundCloud", fixture.Artwork.Crops.Single().Source);
+        Assert.Equal(0, fixture.Metadata.SoundCloudSearchCalls);
+        Assert.Equal(0, fixture.Metadata.TrackCalls);
+        Assert.Empty(fixture.Artwork.Downloads);
+    });
+
+    [Theory]
+    [InlineData("SoundCloud")]
+    [InlineData("Browser")]
+    public void SmallDetailedSessionArtworkIsPublishedWithoutWaitingForOnlineLookup(string source) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        info.SourceAppId = "Helium";
+        fixture.PublishIdentity(info);
+        var artwork = Bitmap(150, 150, detailed: true);
+        Assert.True(ThumbnailHeuristics.IsLikelyArtworkCandidate(artwork));
+        Assert.False(ThumbnailHeuristics.IsLikelyPlaceholderThumbnail(artwork));
+        Assert.Equal(ThumbnailHeuristics.SmtcThumbnailDecision.Accept,
+            ThumbnailHeuristics.DecideSmtcThumbnail(new ThumbnailHeuristics.SmtcThumbnailInputs
+            {
+                IsSoundCloudSource = source == "SoundCloud",
+                IsBrowserOrYouTubePlatform = source == "Browser",
+                IsBrowserSession = true,
+                TrackChanged = true,
+                LikelySoundCloudArtwork = true,
+                PixelWidth = 150,
+                PixelHeight = 150,
+            }));
+
+        info.Thumbnail = artwork;
+        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
+        Assert.Same(artwork, info.Thumbnail);
+        Assert.Same(artwork, fixture.Service.CachedThumbnail);
+        Assert.Equal(source, Field<string>(fixture.Service, "_cachedThumbnailSource"));
+        Assert.Equal(0, fixture.Metadata.SoundCloudSearchCalls);
+        Assert.Equal(0, fixture.Metadata.TrackCalls);
+        Assert.Equal(0, fixture.Metadata.SearchCalls);
+        Assert.Empty(fixture.Artwork.Downloads);
+    });
+
+    [Fact]
+    public void UnidentifiedHeliumPlaybackDoesNotBorrowYouTubeArtworkForASoundCloudTrack() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("Browser");
+        info.SourceAppId = "Helium";
+        info.CurrentTrack = "NO POLE ULTIMATE";
+        info.CurrentArtist = "NV So Lit";
+        info.Duration = TimeSpan.FromSeconds(323.524);
+        fixture.PublishIdentity(info);
+        fixture.Metadata.TrackResult = Result(info.CurrentTrack);
+        fixture.Metadata.SoundCloudSearch = "https://fixture.invalid/soundcloud-cover.jpg";
+        fixture.Artwork.Image = Bitmap(500, 500);
+
+        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
+        await WpfFrameWaiter.UntilAsync(() => fixture.Updates.Any(update => update.IsThumbnailOnlyUpdate), "SoundCloud artwork published", ct);
+
+        Assert.Equal(0, fixture.Metadata.TrackCalls);
+        Assert.Equal(0, fixture.Metadata.SearchCalls);
+        Assert.Equal("SoundCloud", info.MediaSource);
+        Assert.Equal("NV So Lit", info.CurrentArtist);
+        Assert.Equal("SoundCloud", Field<string>(fixture.Service, "_cachedThumbnailSource"));
+        Assert.Equal("https://fixture.invalid/soundcloud-cover.jpg", Assert.Single(fixture.Artwork.Downloads));
+    });
+
+    [Theory]
+    [InlineData("SoundCloud")]
+    [InlineData("Browser")]
+    public void ConfirmedSoundCloudArtworkReplacesACachedYouTubeFallback(string source) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        info.SourceAppId = "Helium";
+        fixture.PublishIdentity(info);
+        Invoke(fixture.Service, "SetSessionSourceOverride", info, "SoundCloud");
+        var wrongCover = Bitmap(640, 360);
+        info.Thumbnail = wrongCover;
+        fixture.Service.CachedThumbnail = wrongCover;
+        Set(fixture.Service, "_cachedThumbnailSource", "YouTube");
+        fixture.Metadata.SoundCloudSearch = "https://fixture.invalid/soundcloud-cover.jpg";
+        var correctCover = Bitmap(500, 500);
+        fixture.Artwork.Image = correctCover;
+
+        await FetchSoundCloud(fixture.Service, info, ct);
+
+        Assert.Same(correctCover, info.Thumbnail);
+        Assert.Same(correctCover, fixture.Service.CachedThumbnail);
+        Assert.Equal("SoundCloud", Field<string>(fixture.Service, "_cachedThumbnailSource"));
+        Assert.Single(fixture.Updates.Where(update => update.IsThumbnailOnlyUpdate));
+    });
+
+    [Fact]
+    public void SoundCloudResolutionDiscardsTheYouTubeFallbackBeforeReusingSessionArtwork() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("SoundCloud");
+        fixture.PublishIdentity(info);
+        fixture.Service.CachedThumbnail = Bitmap(640, 360);
+        Set(fixture.Service, "_cachedThumbnailSource", "YouTube");
+        await (Task)Invoke(fixture.Service, "ApplySessionThumbnailAsync", info, null, false)!;
+        Assert.Null(info.Thumbnail);
+        Assert.Null(fixture.Service.CachedThumbnail);
+        Assert.Null(Field<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator").RecoveredThumbnail);
     });
 
     [Theory]
@@ -263,6 +495,33 @@ public sealed class MediaThumbnailPipelineTests
     });
 
     [Fact]
+    public void TimelineModeChangesPublishWithoutPositionOrMetadataChanges() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var vod = fixture.Track("YouTube");
+        vod.Duration = TimeSpan.FromHours(2);
+        Set(fixture.Service, "_bgCts", new CancellationTokenSource());
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", vod, vod.GetSignature(), false, true)!;
+        Assert.Single(fixture.Updates);
+
+        var live = vod.Clone();
+        live.IsIndeterminate = true;
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", live, live.GetSignature(), false, false)!;
+        Assert.Equal(2, fixture.Updates.Count);
+        Assert.True(fixture.Updates.Last().IsTimelineIndeterminate);
+
+        live.Duration += TimeSpan.FromSeconds(1);
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", live, live.GetSignature(), false, false)!;
+        Assert.Equal(2, fixture.Updates.Count);
+
+        var replay = live.Clone();
+        replay.IsIndeterminate = false;
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", replay, replay.GetSignature(), false, false)!;
+        Assert.Equal(3, fixture.Updates.Count);
+        Assert.True(fixture.Updates.Last().HasTimeline);
+    });
+
+    [Fact]
     public void NativePlayerChangingArtistForTheSameTitleInvalidatesItsArtwork() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new Fixture();
@@ -282,10 +541,17 @@ public sealed class MediaThumbnailPipelineTests
     private static void Set(MediaDetectionService service, string name, object value) => typeof(MediaDetectionService).GetField(name, Private)!.SetValue(service, value);
     private static object? Invoke(MediaDetectionService service, string name, params object?[] args) => typeof(MediaDetectionService).GetMethod(name, Private)!.Invoke(service, args);
 
-    private static BitmapImage Bitmap(int width, int height)
+    private static BitmapImage Bitmap(int width, int height, bool detailed = false)
     {
         byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4) { pixels[i] = 180; pixels[i + 1] = 60; pixels[i + 2] = 30; pixels[i + 3] = 255; }
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            int x = i / 4 % width, y = i / 4 / width;
+            pixels[i] = detailed ? (byte)(x * 255 / width) : (byte)180;
+            pixels[i + 1] = detailed ? (byte)(y * 255 / height) : (byte)60;
+            pixels[i + 2] = detailed ? (byte)((x + y) % 256) : (byte)30;
+            pixels[i + 3] = 255;
+        }
         var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(source));

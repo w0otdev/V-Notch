@@ -131,7 +131,21 @@ internal static class MediaSourceClassifier
     }
 
     private static bool MatchesMetadata(string title, string artist, string album, string token)
-        => artist.Contains(token) || title.Contains(token) || album.Contains(token);
+    {
+        if (artist.Contains(token, StringComparison.Ordinal) || album.Contains(token, StringComparison.Ordinal))
+            return true;
+
+        if (string.Equals(token, SoundCloudToken, StringComparison.Ordinal))
+        {
+            return string.Equals(title, token, StringComparison.Ordinal) ||
+                   title.EndsWith("- soundcloud", StringComparison.Ordinal) ||
+                   title.EndsWith("– soundcloud", StringComparison.Ordinal) ||
+                   title.Contains("on soundcloud", StringComparison.Ordinal) ||
+                   title.Contains("| soundcloud", StringComparison.Ordinal);
+        }
+
+        return title.Contains(token, StringComparison.Ordinal);
+    }
 
     public static void DetectFromWindowTitles(
         MediaInfo info,
@@ -172,16 +186,14 @@ internal static class MediaSourceClassifier
     {
         if (winTitleLower.Contains(YouTubeToken) && !winTitleLower.StartsWith("youtube -") && winTitleLower != YouTubeToken)
         {
-            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-            info.IsYouTubeRunning = true;
+            SetPlatformRunning(info, MediaPlatform.YouTube);
             UpdateTrackTitleIfBetter(info, title, "YouTube");
             return true;
         }
 
         if (winTitleLower.Contains(TwitchToken) && !winTitleLower.StartsWith("twitch -") && winTitleLower != TwitchToken)
         {
-            info.MediaSource = MediaPlatform.Twitch.ToDisplayString();
-            info.IsTwitchRunning = true;
+            SetPlatformRunning(info, MediaPlatform.Twitch);
             UpdateTrackTitleIfBetter(info, title, "Twitch");
             return true;
         }
@@ -189,8 +201,7 @@ internal static class MediaSourceClassifier
         if ((winTitleLower.Contains(DiscordToken) || winTitleLower.Contains("vesktop")) &&
             !winTitleLower.StartsWith("discord -") && winTitleLower != DiscordToken && winTitleLower != "vesktop")
         {
-            info.MediaSource = MediaPlatform.Discord.ToDisplayString();
-            info.IsDiscordRunning = true;
+            SetPlatformRunning(info, MediaPlatform.Discord);
             UpdateTrackTitleIfBetter(info, title, "Discord");
             return true;
         }
@@ -267,8 +278,23 @@ internal static class MediaSourceClassifier
         return MediaPlatform.Unknown;
     }
 
-    private static void SetPlatformRunning(MediaInfo info, MediaPlatform platform)
+    internal static void SetPlatformRunning(MediaInfo info, MediaPlatform platform)
     {
+        info.IsSpotifyRunning = false;
+        info.IsYouTubeRunning = false;
+        info.IsDiscordRunning = false;
+        info.IsTwitchRunning = false;
+        info.IsAppleMusicRunning = false;
+        info.IsSoundCloudRunning = false;
+        info.IsTidalRunning = false;
+        info.IsDeezerRunning = false;
+        info.IsBandcampRunning = false;
+        info.IsNetflixRunning = false;
+        info.IsBilibiliRunning = false;
+        info.IsVimeoRunning = false;
+        info.IsInstagramRunning = false;
+        info.IsTwitterRunning = false;
+
         info.MediaSource = platform.ToDisplayString();
         switch (platform)
         {

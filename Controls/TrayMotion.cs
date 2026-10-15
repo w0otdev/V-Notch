@@ -81,8 +81,18 @@ public static class TrayMotion
         if (sender is not FrameworkElement element) return;
         QueuePresentationChange(element, ScalePendingProperty, () =>
         {
-            if (element.RenderTransform is not TransformGroup transforms ||
-                transforms.Children.OfType<ScaleTransform>().FirstOrDefault() is not { } scale) return;
+            if (element.RenderTransform is not TransformGroup transforms || transforms.IsFrozen)
+            {
+                transforms = element.RenderTransform is TransformGroup frozenGroup
+                    ? frozenGroup.Clone()
+                    : new TransformGroup { Children = { new ScaleTransform(1, 1) } };
+                element.RenderTransform = transforms;
+            }
+            if (transforms.Children.OfType<ScaleTransform>().FirstOrDefault() is not { } scale)
+            {
+                scale = new ScaleTransform(1, 1);
+                transforms.Children.Insert(0, scale);
+            }
             double target = AnimationConfig.ReduceMotion ? 1 : GetScale(element);
             double x = scale.ScaleX, y = scale.ScaleY;
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);

@@ -246,7 +246,9 @@ public sealed class MediaDisplayController
         if (ReferenceEquals(info.Thumbnail, _lastAnimatedThumbnail))
             return ThumbnailAction.None;
 
-        if (_thumbnailShownForCurrentTrack && !info.IsThumbnailOnlyUpdate)
+        // Browser media artwork can arrive in a later metadata snapshot for the same title.
+        if (_thumbnailShownForCurrentTrack && !info.IsThumbnailOnlyUpdate &&
+            info.Platform is not (MediaPlatform.SoundCloud or MediaPlatform.Browser))
             return ThumbnailAction.None;
 
         _lastAnimatedThumbnail = info.Thumbnail;

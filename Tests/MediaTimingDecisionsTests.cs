@@ -283,5 +283,20 @@ public class MediaTimingDecisionsTests
         Assert.True(MediaTimingDecisions.ShouldPreserveSoundCloud(CreateSoundCloudParams() with { HasSessionOverride = true, SessionOverride = "SoundCloud" }));
     }
 
+    [Fact]
+    public void SoundCloud_ParticipatesInLongHoldAndArtistStabilization()
+    {
+        var (holdSoundCloud, _, _) = MediaTimingDecisions.EvaluateEmptyMetadataHold(
+            currentTrack: "", isAnyMediaPlaying: true, currentSignature: "sig",
+            lastSource: "SoundCloud", emptyStart: Base.AddSeconds(-3), stableSignature: "sig", now: Base);
+        Assert.True(holdSoundCloud);
+
+        var (artist, stable) = MediaTimingDecisions.EvaluateArtistStabilization(
+            currentArtist: "SoundCloud", stableArtist: "Real Artist",
+            lastSourceConfirmedTime: Base.AddSeconds(-5), now: Base);
+        Assert.Equal("Real Artist", artist);
+        Assert.Equal("Real Artist", stable);
+    }
+
     #endregion
 }

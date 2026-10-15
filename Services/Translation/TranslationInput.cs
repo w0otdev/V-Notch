@@ -47,18 +47,26 @@ internal static class TranslationInput
         return text[..end];
     }
 
-    internal static string FitTokens(string text, Func<string, int> count, int limit)
+    internal static string FitTokens(string text, Func<string, int> count, int limit) =>
+        FitTokensWithCount(text, count, limit).Text;
+
+    internal static (string Text, int TokenCount) FitTokensWithCount(string text, Func<string, int> count, int limit)
     {
-        if (count(text) <= limit) return text;
+        int tokens = count(text);
+        if (tokens <= limit) return (text, tokens);
         var boundaries = StringInfo.ParseCombiningCharacters(text);
-        int low = 0, high = boundaries.Length;
+        int low = 0, high = boundaries.Length, lowTokens = 0;
         while (low + 1 < high)
         {
             int middle = (low + high) / 2;
-            if (count(text[..boundaries[middle]]) <= limit) low = middle;
+            int middleTokens = count(text[..boundaries[middle]]);
+            if (middleTokens <= limit) { low = middle; lowTokens = middleTokens; }
             else high = middle;
         }
         string prefix = text[..boundaries[low]];
-        return Prepare(prefix);
+        string prepared = Prepare(prefix);
+        // Sanitation can change a direct caller's text. Only carry the measured
+        // count when it still describes the exact string being returned.
+        return (prepared, prepared == prefix ? lowTokens : count(prepared));
     }
 }

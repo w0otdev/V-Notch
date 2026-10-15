@@ -50,6 +50,7 @@ public sealed class ClockWidgetViewRefs
     public UIElement? SystemMonitorWidgetContent { get; init; }
     public required UIElement CalendarStripContainer { get; init; }
     public UIElement? MonthText { get; init; }
+    public UIElement? DayText { get; init; }
     public UIElement? GreetingSection { get; init; }
     public TextBlock? EventText { get; init; }
     public required UIElement CalendarWidget { get; init; }
@@ -139,6 +140,8 @@ public sealed class ClockWidgetPresenter : IDisposable
 
         if (_refs.MonthText != null)
             _refs.MonthText.Visibility = (IsNoWidgetMode || useWeather || useSystemMonitor) ? Visibility.Collapsed : Visibility.Visible;
+        if (_refs.DayText != null)
+            _refs.DayText.Visibility = (useWordClock || useDigitalClock) ? Visibility.Visible : Visibility.Collapsed;
 
         if (_refs.EventText != null && _refs.GreetingSection is FrameworkElement greetingSection)
         {

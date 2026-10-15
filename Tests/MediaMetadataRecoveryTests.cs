@@ -153,11 +153,12 @@ public sealed class MediaMetadataRecoveryTests
     [InlineData("Song - YouTube", "Song", "YouTube")]
     [InlineData("Singer - Song - YouTube", "Song", "Singer")]
     [InlineData("Song - by Famous Fixture Artist - YouTube", "Song", "by Famous Fixture Artist")]
-    public void FrozenEmptyVideoTimelineRecoversTheNewTrackFromWindowMetadata(string title, string track, string artist)
+    public void FrozenFiniteVideoTimelineRecoversTheNewTrackFromWindowMetadata(string title, string track, string artist)
     {
         using var fixture = new Fixture();
         var info = fixture.Info();
         info.MediaSource = "YouTube";
+        info.Duration = TimeSpan.FromSeconds(200);
         Invoke(fixture.Service, "ApplyVideoTimelineRecovery", info, new List<string> { "YouTube", title });
         Assert.Equal(track, info.CurrentTrack);
         Assert.Equal(artist, info.CurrentArtist);
@@ -170,19 +171,20 @@ public sealed class MediaMetadataRecoveryTests
     [Theory]
     [InlineData(0)]
     [InlineData(100)]
-    public void FrozenEmptyVideoTimelineReusesRecoveredDurationForTheExistingTrack(int recoveredSeconds)
+    public void FrozenLiveTimelineDiscardsRecoveredDurationForTheExistingTrack(int recoveredSeconds)
     {
         using var fixture = new Fixture();
-        var info = fixture.Info();
+        var info = fixture.Info("Song");
         info.MediaSource = "YouTube";
         Set(fixture.Service, "_lastTrackName", "Song");
         Set(fixture.Service, "_lastMetadataChangeTime", DateTime.UtcNow.AddSeconds(-20));
         Get<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator").RecoveredDuration = TimeSpan.FromSeconds(recoveredSeconds);
         Invoke(fixture.Service, "ApplyVideoTimelineRecovery", info, new List<string> { "Song - YouTube" });
         Assert.Equal("Song", info.CurrentTrack);
-        Assert.Equal(TimeSpan.FromSeconds(recoveredSeconds), info.Duration);
-        Assert.InRange(info.Position.TotalSeconds, 19, 25);
-        Assert.True(info.IsThrottled);
+        Assert.Equal(TimeSpan.Zero, info.Duration);
+        Assert.Equal(TimeSpan.Zero, info.Position);
+        Assert.False(info.IsThrottled);
+        Assert.Equal(TimeSpan.Zero, Get<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator").RecoveredDuration);
     }
 
     [Fact]
@@ -191,6 +193,7 @@ public sealed class MediaMetadataRecoveryTests
         using var fixture = new Fixture();
         var info = fixture.Info("Song");
         info.MediaSource = "YouTube";
+        info.Duration = TimeSpan.FromSeconds(200);
         var simulator = Get<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator");
         Invoke(fixture.Service, "ApplyVideoTimelineRecovery", info, new List<string>());
         Assert.True(simulator.IsThrottled);

@@ -11,4 +11,7 @@ public interface IMediaMetadataLookupService
     Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default);
 
     Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default);
+
+    Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, string expectedTitle, string expectedArtist = "", CancellationToken ct = default)
+        => TryGetSoundCloudArtworkFromUrlAsync(soundCloudUrl, ct);
 }

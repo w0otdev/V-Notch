@@ -279,6 +279,78 @@ public sealed class MediaMetadataLookupServiceTests
         Assert.Null(await service.TrySearchYouTubeByTitleAsync("Test song", ct: cancelled.Token));
     }
 
+    [Fact]
+    public async Task SoundCloudUrlLookupRespectsOfflineGateAndRejectsMismatchedTrackOrNavigationUrl()
+    {
+        using var offlineHandler = new Handler(_ => throw new InvalidOperationException("Unexpected request"));
+        using var offlineClient = new HttpClient(offlineHandler);
+        var offlineService = Service(offlineClient, allowed: false);
+        Assert.Null(await offlineService.TryGetSoundCloudArtworkFromUrlAsync("https://soundcloud.com/artist/song"));
+        Assert.Empty(offlineHandler.Requests);
+
+        using var handler = new Handler(_ => Json(new
+        {
+            title = "Different Song by Different Artist",
+            author_name = "Different Artist",
+            thumbnail_url = "https://i1.sndcdn.com/artworks-valid-t500x500.jpg"
+        }));
+        using var client = new HttpClient(handler);
+        var service = Service(client, allowed: true);
+
+        Assert.Null(await service.TryGetSoundCloudArtworkFromUrlAsync("https://soundcloud.com/you/likes"));
+        Assert.Empty(handler.Requests);
+
+        Assert.Null(await service.TryGetSoundCloudArtworkFromUrlAsync(
+            "https://soundcloud.com/artist/song",
+            expectedTitle: "Expected Track",
+            expectedArtist: "Expected Artist"));
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("NO POLE ULTIMATE 2", "NV So Lit")]
+    [InlineData("NO POLE ULTIMATE", "Other uploader")]
+    [InlineData(null, null)]
+    public async Task SoundCloudBrowserUrlMustIdentifyThePlayingTrack(string? title, string? author)
+    {
+        using var handler = new Handler(_ => Json(new
+        {
+            title,
+            author_name = author,
+            thumbnail_url = "https://i1.sndcdn.com/artworks-wrong-large.jpg"
+        }));
+        using var client = new HttpClient(handler);
+        Assert.Null(await Service(client).TryGetSoundCloudArtworkFromUrlAsync(
+            "https://soundcloud.com/nv-so-lit/no-pole-ultimate-2", "NO POLE ULTIMATE", "NV So Lit"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SoundCloudSearchChoosesTheOriginalInsteadOfASimilarlyNamedVersion(bool strict)
+    {
+        const string html = "<a href='/nv-so-lit/no-pole-ultimate-2'>Sequel</a>" +
+            "<a href='/nv-so-lit/no-pole-ultimate-remix'>Remix</a>" +
+            "<a href='/nv-so-lit/no-pole-ultimate-sped-up'>Sped up</a>" +
+            "<a href='/nv-so-lit/no-pole-ultimate'>Original</a>";
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath != "/oembed") return Body(html);
+            string trackUrl = Uri.UnescapeDataString(uri.Query);
+            bool original = trackUrl.EndsWith("/no-pole-ultimate", StringComparison.Ordinal);
+            return Json(new
+            {
+                title = original ? "NO POLE ULTIMATE by NV So Lit" : "NO POLE ULTIMATE 2 by NV So Lit",
+                author_name = "NV So Lit",
+                thumbnail_url = original ? "https://i1.sndcdn.com/artworks-original-large.jpg" : "https://i1.sndcdn.com/artworks-wrong-large.jpg"
+            });
+        });
+        using var client = new HttpClient(handler);
+        Assert.Equal("https://i1.sndcdn.com/artworks-original-large.jpg",
+            await Service(client).TryGetSoundCloudArtworkUrlAsync("NO POLE ULTIMATE", "NV So Lit", strict));
+    }
+
     private static MediaMetadataLookupService Service(HttpClient client, string? apiKey = null, bool allowed = true) =>
         new(client, client, () => allowed, () => apiKey);
     private static string NewId() => Guid.NewGuid().ToString("N")[..11];

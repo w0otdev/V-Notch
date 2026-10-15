@@ -145,7 +145,7 @@ public class ShellViewModelProgressTests
     }
 
     [Fact]
-    public void RenderProgressBar_ZeroDuration_ShowsDashes()
+    public void RenderProgressBar_ZeroDuration_ShowsLive()
     {
         var info = new MediaInfo
         {
@@ -163,8 +163,8 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("--:--", _vm.CurrentTimeText);
-        Assert.Equal("--:--", _vm.RemainingTimeText);
+        Assert.Equal("", _vm.CurrentTimeText);
+        Assert.Equal("LIVE", _vm.RemainingTimeText);
         Assert.Equal(0.0, _vm.ProgressRatio, 3);
     }
 

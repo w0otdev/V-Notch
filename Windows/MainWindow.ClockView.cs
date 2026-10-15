@@ -34,6 +34,7 @@ public partial class MainWindow : IClockWidgetHost
             SystemMonitorWidgetContent = SystemMonitorWidgetContent,
             CalendarStripContainer = CalendarStripContainer,
             MonthText = MonthText,
+            DayText = DayText,
             GreetingSection = GreetingSection,
             EventText = EventText,
             CalendarWidget = CalendarWidget,

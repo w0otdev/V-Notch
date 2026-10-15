@@ -131,6 +131,38 @@ public class MediaDetectionServiceLifecycleTests
         finally { updateLock.Release(); }
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(7200, true)]
+    [InlineData(3456000, false)]
+    public void LiveTimelineRecovery_DoesNotSimulateOrReuseRecoveredDuration(double durationSeconds, bool indeterminate)
+    {
+        using var service = CreateTestService(null);
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var simulator = (MediaTimelineSimulator)typeof(MediaDetectionService).GetField("_timelineSimulator", flags)!.GetValue(service)!;
+        simulator.RecoveredDuration = TimeSpan.FromMinutes(3);
+        simulator.EnterThrottledMode();
+        var info = new MediaInfo
+        {
+            CurrentTrack = "Broadcast",
+            MediaSource = "YouTube",
+            IsPlaying = true,
+            Duration = TimeSpan.FromSeconds(durationSeconds),
+            IsIndeterminate = indeterminate,
+            Position = TimeSpan.Zero
+        };
+
+        typeof(MediaDetectionService).GetMethod("ApplyVideoTimelineRecovery", flags)!
+            .Invoke(service, new object?[] { info, new List<string>() });
+
+        Assert.Equal(TimeSpan.Zero, info.Position);
+        Assert.Equal(TimeSpan.FromSeconds(durationSeconds), info.Duration);
+        Assert.False(info.IsThrottled);
+        Assert.False(simulator.IsThrottled);
+        Assert.Equal(TimeSpan.Zero, simulator.RecoveredDuration);
+    }
+
     private static MediaDetectionService CreateTestService(
         Func<CancellationToken, Task<GlobalSystemMediaTransportControlsSessionManager?>>? factory,
         IWindowTitleScanner? scanner = null)

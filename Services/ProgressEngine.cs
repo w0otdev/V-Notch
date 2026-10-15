@@ -103,7 +103,27 @@ public class ProgressEngine
             }
 
             TimeSpan previousDuration = _duration;
+            bool timelineModeChanged = HasTimelineModeChanged(snapshot);
             UpdateSnapshotMetadata(snapshot, snapshotTsUtc);
+
+            if (timelineModeChanged)
+            {
+                // A VOD/live transition may keep its title, session and SMTC timestamp.
+                // Rebase before seek/pause stabilization can retain the previous timeline.
+                _durationJustChanged = true;
+                _lastSnapshotTimestampUtc = snapshotTsUtc;
+                _basePosition = ClampPosition(effectiveSnapshotPosition);
+                _baseTimeUtc = nowUtc;
+                _isPlaying = snapshot.IsPlaying;
+                _state = snapshot.IsPlaying ? ProgressState.Playing : ProgressState.Paused;
+                _seekDebounceEndUtc = DateTime.MinValue;
+                _seekPauseGraceUntilUtc = DateTime.MinValue;
+                _previousTrackRequestUntilUtc = DateTime.MinValue;
+                _pendingPauseConfirmation = false;
+                _pendingPauseStartedUtc = DateTime.MinValue;
+                _pendingPausePosition = TimeSpan.Zero;
+                return;
+            }
 
             if (HandleDurationChange(snapshot, previousDuration, effectiveSnapshotPosition, nowUtc))
             {
@@ -160,10 +180,12 @@ public class ProgressEngine
         }
 
         bool playStateChanged = snapshot.IsPlaying != _lastSnapshotIsPlaying;
+        bool timelineModeChanged = HasTimelineModeChanged(snapshot);
         bool stoppingActivePlayback = !snapshot.IsPlaying && (_isPlaying || _state == ProgressState.Seeking);
 
         if (_lastSnapshotTimestampUtc != DateTime.MinValue &&
             !playStateChanged &&
+            !timelineModeChanged &&
             !stoppingActivePlayback &&
             snapshotTsUtc < _lastSnapshotTimestampUtc - SnapshotOutOfOrderTolerance)
         {
@@ -173,7 +195,10 @@ public class ProgressEngine
 
         if (_lastSnapshotTimestampUtc != DateTime.MinValue &&
             !playStateChanged &&
+            !timelineModeChanged &&
             !stoppingActivePlayback &&
+            snapshot.Duration == _duration &&
+            snapshot.IsSeekEnabled == _isSeekEnabled &&
             snapshotTsUtc == _lastSnapshotTimestampUtc &&
             Math.Abs((snapshot.Position - _lastSnapshotPosition).TotalSeconds) < 0.01)
         {
@@ -186,7 +211,8 @@ public class ProgressEngine
 
     private bool IsAnomalousBackwardJump(ProgressSnapshot snapshot, TimeSpan effectiveSnapshotPosition, DateTime nowUtc)
     {
-        if (_baseTimeUtc == DateTime.MinValue || !_isPlaying || _duration <= TimeSpan.Zero)
+        if (HasTimelineModeChanged(snapshot) || _isIndeterminate ||
+            _baseTimeUtc == DateTime.MinValue || !_isPlaying || _duration <= TimeSpan.Zero)
         {
             return false;
         }
@@ -246,12 +272,8 @@ public class ProgressEngine
         _lastSnapshotPosition = snapshot.Position;
         _lastSnapshotIsPlaying = snapshot.IsPlaying;
 
-        if (snapshot.Duration.TotalSeconds > 0)
-        {
-            _duration = snapshot.Duration;
-        }
-
-        _isIndeterminate = snapshot.IsIndeterminate;
+        _duration = MediaTimelinePolicy.HasFiniteDuration(snapshot.Duration) ? snapshot.Duration : TimeSpan.Zero;
+        _isIndeterminate = MediaTimelinePolicy.IsIndeterminate(snapshot.Duration, snapshot.IsIndeterminate);
         _isSeekEnabled = snapshot.IsSeekEnabled;
         _isYouTube = snapshot.IsYouTube;
 
@@ -278,7 +300,7 @@ public class ProgressEngine
 
     private bool HandleDurationChange(ProgressSnapshot snapshot, TimeSpan previousDuration, TimeSpan effectiveSnapshotPosition, DateTime nowUtc)
     {
-        bool durationChanged = DidDurationChange(previousDuration, snapshot.Duration);
+        bool durationChanged = !_isIndeterminate && DidDurationChange(previousDuration, _duration);
         _durationJustChanged |= durationChanged;
 
         if (durationChanged && snapshot.IsPlaying)
@@ -313,7 +335,7 @@ public class ProgressEngine
         }
 
         TimeSpan pausedPos = ClampPosition(snapshot.Position);
-        if (ProcessPendingPauseConfirmation(ref pausedPos, nowUtc))
+        if (!_isIndeterminate && ProcessPendingPauseConfirmation(ref pausedPos, nowUtc))
         {
             return;
         }
@@ -594,7 +616,8 @@ public class ProgressEngine
     {
         TimeSpan effectivePosition = snapshot.Position;
 
-        if (!snapshot.IsPlaying || snapshotTsUtc == DateTime.MinValue || snapshotTsUtc > nowUtc.AddMilliseconds(250))
+        if (MediaTimelinePolicy.IsIndeterminate(snapshot.Duration, snapshot.IsIndeterminate) ||
+            !snapshot.IsPlaying || snapshotTsUtc == DateTime.MinValue || snapshotTsUtc > nowUtc.AddMilliseconds(250))
         {
             return effectivePosition;
         }
@@ -672,6 +695,15 @@ public class ProgressEngine
         }
     }
 
+    internal bool RequiresPositionUpdates
+    {
+        get
+        {
+            lock (_lock)
+                return !_isIndeterminate && (_state == ProgressState.Playing || _state == ProgressState.Seeking);
+        }
+    }
+
     public UiProgressFrame GetUiFrame()
     {
         lock (_lock)
@@ -698,7 +730,7 @@ public class ProgressEngine
             {
                 Position = pos,
                 Duration = _duration,
-                ShowIndeterminate = _isIndeterminate || (_duration.TotalSeconds <= 0 && pos.TotalSeconds > 0 && !_isSeekEnabled),
+                ShowIndeterminate = _isIndeterminate,
                 State = uiState,
                 DurationJustChanged = durationChanged
             };
@@ -707,7 +739,7 @@ public class ProgressEngine
 
     private TimeSpan PredictPosition(DateTime nowUtc)
     {
-        if (!_isPlaying || (_state != ProgressState.Playing && _state != ProgressState.Seeking))
+        if (_isIndeterminate || !_isPlaying || (_state != ProgressState.Playing && _state != ProgressState.Seeking))
         {
             return _basePosition;
         }
@@ -730,7 +762,7 @@ public class ProgressEngine
     {
         if (previous <= TimeSpan.Zero || current <= TimeSpan.Zero)
         {
-            return false;
+            return (previous > TimeSpan.Zero) != (current > TimeSpan.Zero);
         }
 
         double diffSec = Math.Abs((current - previous).TotalSeconds);
@@ -740,6 +772,10 @@ public class ProgressEngine
         double minMeaningfulDelta = Math.Max(absoluteThreshold, previous.TotalSeconds * percentThreshold);
         return diffSec >= minMeaningfulDelta;
     }
+
+    private bool HasTimelineModeChanged(ProgressSnapshot snapshot) =>
+        _baseTimeUtc != DateTime.MinValue &&
+        _isIndeterminate != MediaTimelinePolicy.IsIndeterminate(snapshot.Duration, snapshot.IsIndeterminate);
 
     private TimeSpan ClampPosition(TimeSpan pos)
     {

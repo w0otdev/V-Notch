@@ -23,7 +23,7 @@ internal static class ThumbnailHeuristics
 
         if (thumbnail.PixelWidth <= 320 || thumbnail.PixelHeight <= 320)
         {
-            return true;
+            return !IsLikelyArtworkCandidate(thumbnail);
         }
 
         return HasLowEntropyMonochromeProfile(thumbnail);
@@ -43,12 +43,17 @@ internal static class ThumbnailHeuristics
             return false;
         }
 
-        return thumbnail.PixelWidth >= 360 &&
-               thumbnail.PixelHeight >= 360 &&
-               !IsLikelyPlaceholderThumbnail(thumbnail);
+        // Browser media sessions can supply real covers at only 150x150.
+        // Inspect their content instead of discarding every small square image.
+        return thumbnail.PixelWidth >= 120 &&
+               thumbnail.PixelHeight >= 120 &&
+               !HasPlaceholderProfile(thumbnail, rejectSimpleColorIcons: thumbnail.PixelWidth <= 320 || thumbnail.PixelHeight <= 320);
     }
 
     public static bool HasLowEntropyMonochromeProfile(BitmapSource thumbnail)
+        => HasPlaceholderProfile(thumbnail, rejectSimpleColorIcons: false);
+
+    private static bool HasPlaceholderProfile(BitmapSource thumbnail, bool rejectSimpleColorIcons)
     {
         try
         {
@@ -79,6 +84,7 @@ internal static class ThumbnailHeuristics
                 formatted.CopyPixels(pixels, stride, 0);
 
                 Span<ulong> bins = stackalloc ulong[8];
+                ulong lumBins = 0;
                 double saturationSum = 0;
                 int nearGrayCount = 0;
                 int brightCount = 0;
@@ -99,6 +105,8 @@ internal static class ThumbnailHeuristics
 
                     int bin = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
                     bins[bin >> 6] |= 1UL << (bin & 63);
+                    int lum = (r * 77 + g * 150 + b * 29) >> 10;
+                    lumBins |= 1UL << (lum & 63);
                     saturationSum += max == 0 ? 0 : (double)delta / max;
                 }
 
@@ -108,14 +116,17 @@ internal static class ThumbnailHeuristics
                     uniqueBinCount += System.Numerics.BitOperations.PopCount(bins[i]);
                 }
 
+                int uniqueLumBins = System.Numerics.BitOperations.PopCount(lumBins);
                 double avgSaturation = saturationSum / pixelCount;
                 double grayRatio = (double)nearGrayCount / pixelCount;
                 double brightRatio = (double)brightCount / pixelCount;
 
-                return uniqueBinCount <= 18 &&
+                return (rejectSimpleColorIcons && uniqueBinCount <= 18) ||
+                       (uniqueBinCount <= 18 &&
+                       uniqueLumBins <= 12 &&
                        avgSaturation <= 0.08 &&
                        grayRatio >= 0.84 &&
-                       brightRatio >= 0.02;
+                       brightRatio >= 0.02);
             }
             finally
             {
@@ -176,7 +187,10 @@ internal static class ThumbnailHeuristics
 
     private static bool ShouldRejectSmtcThumbnail(in SmtcThumbnailInputs x, double aspect)
     {
-        if (x.IsSoundCloudSource && x.TrackChanged && !x.HasVerifiedSoundCloudThumb && !x.LikelySoundCloudArtwork)
+        if (x.IsSoundCloudSource &&
+            !x.HasVerifiedSoundCloudThumb &&
+            !x.LikelySoundCloudArtwork &&
+            (x.TrackChanged || (x.RecentTrackChange && x.CachedThumbnailIsNull)))
         {
             return true;
         }
@@ -194,17 +208,27 @@ internal static class ThumbnailHeuristics
 
     private static bool IsGenericOrPlaceholderIcon(in SmtcThumbnailInputs x, bool isSquare)
     {
+        if (x.LikelySoundCloudArtwork && !x.IsYouTubeLikeSource)
+            return false;
+
         if (!isSquare)
         {
             return false;
         }
 
-        bool isLikelySoundCloudPlaceholder = x.IsSoundCloudSource && (x.PixelWidth <= 320 || x.PixelHeight <= 320);
+        bool isLikelySoundCloudPlaceholder = x.IsSoundCloudSource &&
+                                             !x.HasVerifiedSoundCloudThumb &&
+                                             !x.LikelySoundCloudArtwork;
+        if (isLikelySoundCloudPlaceholder)
+        {
+            return true;
+        }
+
         bool isUnverifiedBrowserIcon = x.IsBrowserSession &&
                                        x.IsBrowserOrYouTubePlatform &&
                                        !x.HasVerifiedYouTubeThumb;
 
-        return (x.IsBrowserOrYouTubePlatform || isLikelySoundCloudPlaceholder) &&
+        return x.IsBrowserOrYouTubePlatform &&
                (x.PixelWidth <= 300 || isUnverifiedBrowserIcon);
     }
 }

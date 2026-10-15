@@ -18,6 +18,18 @@ internal sealed record TranslationOptions
     internal int TopK { get; init; } = 20;
     internal int TimeoutSeconds { get; init; } = 90;
     internal bool EnableHumanizer { get; init; } = true;
+    // Scheduling and hardware tuning do not change a completed translation.
+    // All other settings (including newly added ones) invalidate results by default.
+    internal bool CanReuseCachedResults(TranslationOptions previous) => this == previous || this with
+    {
+        ModelIdleMinutes = previous.ModelIdleMinutes,
+        GpuLayers = previous.GpuLayers,
+        Threads = previous.Threads,
+        BatchThreads = previous.BatchThreads,
+        BatchSize = previous.BatchSize,
+        TimeoutSeconds = previous.TimeoutSeconds
+    } == previous;
+
     internal static TranslationOptions From(NotchSettings settings) => new()
     {
         ModelIdleMinutes = settings.TranslationModelIdleMinutes,

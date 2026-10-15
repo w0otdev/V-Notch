@@ -32,6 +32,7 @@ internal static class MediaTimingDecisions
 {
     private static bool IsLongHoldSource(string lastSource)
         => lastSource == MediaPlatform.YouTube.ToDisplayString()
+        || lastSource == MediaPlatform.SoundCloud.ToDisplayString()
         || lastSource == MediaPlatform.Browser.ToDisplayString();
 
     public static (bool hold, DateTime emptyStart, string stableSignature) EvaluateEmptyMetadataHold(
@@ -108,6 +109,7 @@ internal static class MediaTimingDecisions
         double holdSeconds = 15.0)
     {
         bool isGeneric = currentArtist == MediaPlatform.YouTube.ToDisplayString()
+                      || currentArtist == MediaPlatform.SoundCloud.ToDisplayString()
                       || currentArtist == MediaPlatform.Browser.ToDisplayString();
 
         if (isGeneric &&

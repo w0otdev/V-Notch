@@ -125,7 +125,7 @@ public class TimelinePositionSolverTests
     }
 
     [Fact]
-    public void Playing_CompensationCappedAt95PercentOfDuration()
+    public void Playing_CompensationClampedToDuration()
     {
         var r = TimelinePositionSolver.Solve(Baseline with
         {
@@ -135,7 +135,7 @@ public class TimelinePositionSolverTests
             LastUpdatedUtc = Now - TimeSpan.FromSeconds(120),
         });
 
-        Assert.Equal(171.0, r.Position.TotalSeconds, 2);
+        Assert.Equal(180.0, r.Position.TotalSeconds, 2);
     }
 
     [Fact]
@@ -199,12 +199,33 @@ public class TimelinePositionSolverTests
         });
 
         Assert.Equal((bool?)true, r.IsIndeterminate);
+        Assert.Equal(TimeSpan.Zero, r.Duration);
     }
 
     [Fact]
-    public void NormalDuration_LeavesIndeterminateUntouched()
+    public void NormalDuration_ExplicitlyClearsIndeterminate()
     {
         var r = TimelinePositionSolver.Solve(Baseline);
-        Assert.Null(r.IsIndeterminate);
+        Assert.False(r.IsIndeterminate);
+    }
+
+    [Theory]
+    [InlineData(false, 0)]
+    [InlineData(true, 0)]
+    [InlineData(true, 2)]
+    public void BrowserAtLiveEdge_NeverRewindsForNewTrackOrLatency(bool isNewTrack, double secondsBehindLive)
+    {
+        var result = TimelinePositionSolver.Solve(Baseline with
+        {
+            IsBrowserTimelineTrack = true,
+            IsNewTrack = isNewTrack,
+            IsPlaying = true,
+            EndTime = TimeSpan.FromHours(2),
+            MaxSeekTime = TimeSpan.FromHours(2),
+            Position = TimeSpan.FromHours(2) - TimeSpan.FromSeconds(secondsBehindLive),
+            LastUpdatedUtc = Now.AddSeconds(-2)
+        });
+
+        Assert.Equal(TimeSpan.FromHours(2), result.Position);
     }
 }

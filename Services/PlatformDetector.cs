@@ -46,7 +46,9 @@ public static class PlatformDetector
 
     private static readonly string[] TitleSeparators =
     {
-        " - YouTube", " – YouTube", " - SoundCloud",
+        " - YouTube", " – YouTube",
+        " | Listen online for free on SoundCloud", " | Free Listening on SoundCloud", " | Stream on SoundCloud",
+        " on SoundCloud", " - SoundCloud", " – SoundCloud", " | SoundCloud",
         " / X", " • Instagram",
         " - Apple Music", " – Apple Music",
         " - Twitch", " – Twitch", " | Twitch", " • Twitch",
@@ -228,6 +230,52 @@ public static class PlatformDetector
         }
 
         return ("Spotify", title.Trim());
+    }
+    public static (string Artist, string Track) ParseSoundCloudTitle(string extractedTitle)
+    {
+        if (string.IsNullOrWhiteSpace(extractedTitle))
+            return ("SoundCloud", "SoundCloud");
+
+        string cleaned = extractedTitle.Trim();
+        if (cleaned.StartsWith("Stream ", StringComparison.OrdinalIgnoreCase) && cleaned.Length > 7)
+        {
+            cleaned = cleaned.Substring(7).Trim();
+        }
+
+        string? byArtist = null;
+        int byIdx = cleaned.LastIndexOf(" by ", StringComparison.OrdinalIgnoreCase);
+        if (byIdx > 0 && byIdx + 4 < cleaned.Length)
+        {
+            string candidateArtist = cleaned.Substring(byIdx + 4).Trim();
+            string candidateTrack = cleaned.Substring(0, byIdx).Trim();
+            if (!string.IsNullOrEmpty(candidateTrack) && !string.IsNullOrEmpty(candidateArtist))
+            {
+                byArtist = candidateArtist;
+                cleaned = candidateTrack;
+            }
+        }
+
+        string[] dashSeparators = { " - ", " – ", " — " };
+        foreach (var sep in dashSeparators)
+        {
+            int sepIdx = cleaned.IndexOf(sep, StringComparison.Ordinal);
+            if (sepIdx > 0 && sepIdx + sep.Length < cleaned.Length)
+            {
+                string dashArtist = cleaned.Substring(0, sepIdx).Trim();
+                string dashTrack = cleaned.Substring(sepIdx + sep.Length).Trim();
+                if (!string.IsNullOrEmpty(dashArtist) && !string.IsNullOrEmpty(dashTrack))
+                {
+                    return (dashArtist, dashTrack);
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(byArtist))
+        {
+            return (byArtist, cleaned);
+        }
+
+        return ("SoundCloud", cleaned);
     }
     public static string NormalizeForLooseMatch(string value)
     {

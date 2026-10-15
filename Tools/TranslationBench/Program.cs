@@ -40,6 +40,8 @@ if (args.Contains("--runtime-smoke"))
     return;
 }
 if (args.Contains("--quality-regressions")) { await TranslationQualityRegressions.RunAsync(); return; }
+if (args.Contains("--phrase-regressions")) { await TranslationPhraseRegressions.RunAsync(); return; }
+if (args.Contains("--cache-benchmark")) { await TranslationCacheBenchmark.RunAsync(); return; }
 
 string root = Path.GetFullPath(args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal)) ?? ".artifacts/translation-benchmark/model");
 NetworkPrivacy.Current.Apply(new NotchSettings());

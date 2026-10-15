@@ -247,6 +247,12 @@ public partial class MainWindow
             }
             else if (result.IsNewTrack)
             {
+                if (info.Platform is MediaPlatform.SoundCloud or MediaPlatform.Browser)
+                {
+                    // Keep the displayed cover only as the outgoing visual layer while
+                    // the player supplies new artwork. Never copy it into the new MediaInfo.
+                    CancelThumbnailSwitchAnimations();
+                }
                 if (ThumbnailImage.Source == null)
                 {
                     ThumbnailImage.Visibility = Visibility.Collapsed;

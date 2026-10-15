@@ -16,8 +16,24 @@ internal static class SoundCloudMatching
 
     private static readonly HashSet<string> ReservedTrackSlugs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "sets", "tracks", "likes", "reposts", "spotlight", "albums", "following", "followers"
+        "sets", "tracks", "likes", "reposts", "spotlight", "albums", "following", "followers",
+        "popular-tracks", "recommended", "comments", "related", "stats", "stations"
     };
+
+    public static bool IsValidTrackCandidate(string user, string slug)
+    {
+        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(slug))
+        {
+            return false;
+        }
+
+        if (user.Contains('.') || slug.Length < 2)
+        {
+            return false;
+        }
+
+        return !ReservedUsers.Contains(user) && !ReservedTrackSlugs.Contains(slug);
+    }
 
     public static string? ExtractTrackUrl(string rawText)
     {
@@ -28,7 +44,7 @@ internal static class SoundCloudMatching
 
         var match = Regex.Match(
             rawText,
-            @"https?://(?:www\.)?soundcloud\.com/(?<user>[^/\s?#]+)/(?<slug>[^/\s?#]+)",
+            @"https?://(?:(?:www|m)\.)?soundcloud\.com/(?<user>[^/\s?#]+)/(?<slug>[^/\s?#]+)(?:/?(?:[?#\s]|$))",
             RegexOptions.IgnoreCase);
 
         if (!match.Success)
@@ -36,7 +52,14 @@ internal static class SoundCloudMatching
             return null;
         }
 
-        return $"https://soundcloud.com/{match.Groups["user"].Value}/{match.Groups["slug"].Value}";
+        string user = match.Groups["user"].Value;
+        string slug = match.Groups["slug"].Value;
+        if (!IsValidTrackCandidate(user, slug))
+        {
+            return null;
+        }
+
+        return $"https://soundcloud.com/{user}/{slug}";
     }
 
     public static string SanitizeSearchText(string value)
@@ -47,7 +70,12 @@ internal static class SoundCloudMatching
         }
 
         string normalized = value.Replace('\u2013', '-').Replace('\u2014', '-').Trim();
-        normalized = normalized.Trim('[', ']', '(', ')', '"', '\'');
+        normalized = Regex.Replace(
+            normalized,
+            @"[\(\[]\s*(?:official\s+(?:audio|video|music\s+video|lyric\s+video)|prod\.?\s+by\s+[^\)\]]+|prod\.?\s+[^\)\]]+|free\s+(?:dl|download))\s*[\)\]]",
+            " ",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        normalized = Regex.Replace(normalized, @"[\[\]\(\)""']", " ");
         normalized = Regex.Replace(normalized, @"\s+", " ");
         return normalized.Trim();
     }
@@ -60,9 +88,10 @@ internal static class SoundCloudMatching
             return result;
         }
 
-        string normalizedTitle = PlatformDetector.NormalizeForLooseMatch(title.ToLowerInvariant());
+        string normalizedTitle = PlatformDetector.NormalizeForLooseMatch(SanitizeSearchText(title));
         string normalizedArtist = PlatformDetector.NormalizeForLooseMatch((artist ?? "").ToLowerInvariant());
-        var scoreMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var scoreMap = new Dictionary<string, (int Score, int FirstIndex)>(StringComparer.OrdinalIgnoreCase);
+        int orderIndex = 0;
 
         using var document = new HtmlParser().ParseDocument(html);
         var origin = new Uri("https://soundcloud.com/");
@@ -77,54 +106,49 @@ internal static class SoundCloudMatching
             var segments = uri.AbsolutePath.Trim('/').Split('/');
             if (segments.Length != 2) continue;
 
-            AddCandidate(scoreMap, segments[0], segments[1], normalizedTitle, normalizedArtist);
+            AddCandidate(scoreMap, segments[0], segments[1], normalizedTitle, normalizedArtist, orderIndex++);
         }
 
-        var sorted = new List<KeyValuePair<string, int>>(scoreMap);
-        sorted.Sort((a, b) => b.Value.CompareTo(a.Value));
+        var sorted = new List<KeyValuePair<string, (int Score, int FirstIndex)>>(scoreMap);
+        sorted.Sort(static (a, b) =>
+        {
+            int cmp = b.Value.Score.CompareTo(a.Value.Score);
+            return cmp != 0 ? cmp : a.Value.FirstIndex.CompareTo(b.Value.FirstIndex);
+        });
 
         foreach (var item in sorted)
         {
-            result.Add((item.Key, item.Value));
+            result.Add((item.Key, item.Value.Score));
         }
 
         return result;
     }
 
     private static void AddCandidate(
-        Dictionary<string, int> scoreMap,
+        Dictionary<string, (int Score, int FirstIndex)> scoreMap,
         string user,
         string slug,
         string normalizedTitle,
-        string normalizedArtist)
+        string normalizedArtist,
+        int orderIndex)
     {
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(slug))
-        {
-            return;
-        }
-
-        if (user.Contains('.') || slug.Length < 2)
-        {
-            return;
-        }
-
-        if (ReservedUsers.Contains(user) || ReservedTrackSlugs.Contains(slug))
+        if (!IsValidTrackCandidate(user, slug))
         {
             return;
         }
 
         string url = $"https://soundcloud.com/{user}/{slug}";
         int score = ScoreCandidate(user, slug, normalizedTitle, normalizedArtist);
-        if (scoreMap.TryGetValue(url, out int existing))
+        if (scoreMap.TryGetValue(url, out var existing))
         {
-            if (score > existing)
+            if (score > existing.Score)
             {
-                scoreMap[url] = score;
+                scoreMap[url] = (score, existing.FirstIndex);
             }
         }
         else
         {
-            scoreMap[url] = score;
+            scoreMap[url] = (score, orderIndex);
         }
     }
 
@@ -138,10 +162,18 @@ internal static class SoundCloudMatching
 
     private static int ScoreTitleMatch(string normalizedTitle, string normalizedSlug)
     {
-        if (string.IsNullOrEmpty(normalizedTitle)) return 0;
+        if (string.IsNullOrEmpty(normalizedTitle) || string.IsNullOrEmpty(normalizedSlug))
+        {
+            return 0;
+        }
 
-        if (normalizedSlug.Contains(normalizedTitle, StringComparison.Ordinal) ||
-            normalizedTitle.Contains(normalizedSlug, StringComparison.Ordinal))
+        if (normalizedSlug.Equals(normalizedTitle, StringComparison.Ordinal))
+            return 8;
+
+        if ((normalizedTitle.Length >= 3 && normalizedSlug.Contains(normalizedTitle, StringComparison.Ordinal)) ||
+            (normalizedSlug.Length >= 4 &&
+             (normalizedSlug.Contains(' ') || normalizedSlug.Length * 2 >= normalizedTitle.Length) &&
+             normalizedTitle.Contains(normalizedSlug, StringComparison.Ordinal)))
         {
             return 5;
         }
@@ -161,15 +193,14 @@ internal static class SoundCloudMatching
 
     private static int ScoreArtistMatch(string normalizedArtist, string normalizedUser)
     {
-        if (string.IsNullOrEmpty(normalizedArtist) ||
-            normalizedArtist == "soundcloud" ||
-            normalizedArtist == "browser")
+        if (!HasMeaningfulArtist(normalizedArtist) || string.IsNullOrEmpty(normalizedUser) || normalizedUser.Length < 2)
         {
             return 0;
         }
 
-        if (normalizedUser.Contains(normalizedArtist, StringComparison.Ordinal) ||
-            normalizedArtist.Contains(normalizedUser, StringComparison.Ordinal))
+        if (normalizedUser.Equals(normalizedArtist, StringComparison.Ordinal) ||
+            (normalizedArtist.Length >= 2 && normalizedUser.Contains(normalizedArtist, StringComparison.Ordinal)) ||
+            (normalizedUser.Length >= 3 && normalizedArtist.Contains(normalizedUser, StringComparison.Ordinal)))
         {
             return 3;
         }
@@ -179,77 +210,87 @@ internal static class SoundCloudMatching
 
     public static bool IsOEmbedMatch(string expectedTitle, string expectedArtist, string? candidateTitle, string? candidateAuthor, int candidateScore, bool strictMode = false)
     {
-        string normalizedExpectedTitle = PlatformDetector.NormalizeForLooseMatch(expectedTitle.ToLowerInvariant());
+        string normalizedExpectedTitle = PlatformDetector.NormalizeForLooseMatch(SanitizeSearchText(expectedTitle ?? ""));
         string normalizedExpectedArtist = PlatformDetector.NormalizeForLooseMatch((expectedArtist ?? "").ToLowerInvariant());
-        string normalizedCandidateTitle = PlatformDetector.NormalizeForLooseMatch((candidateTitle ?? "").ToLowerInvariant());
+        string normalizedCandidateTitle = PlatformDetector.NormalizeForLooseMatch(SanitizeSearchText(candidateTitle ?? ""));
         string normalizedCandidateAuthor = PlatformDetector.NormalizeForLooseMatch((candidateAuthor ?? "").ToLowerInvariant());
-        int titleOverlap = CountTokenOverlap(normalizedExpectedTitle, normalizedCandidateTitle);
 
-        bool titleMatches = CheckTitleMatch(normalizedExpectedTitle, normalizedCandidateTitle);
-        bool artistMatches = CheckArtistMatch(normalizedExpectedArtist, normalizedCandidateAuthor);
-
-        if (titleMatches && (artistMatches || titleOverlap >= 1))
+        if (string.IsNullOrEmpty(normalizedExpectedTitle) || string.IsNullOrEmpty(normalizedCandidateTitle))
         {
-            return true;
+            return false;
         }
 
-        if (strictMode)
+        string strippedCandidateTitle = StripTrailingByAuthor(normalizedCandidateTitle, normalizedCandidateAuthor);
+        string coreExpectedTitle = ExtractCoreTitle(normalizedExpectedTitle, normalizedExpectedArtist);
+        string coreCandidateTitle = ExtractCoreTitle(strippedCandidateTitle, normalizedCandidateAuthor);
+
+        // Shared words and title prefixes cannot identify a particular upload/version.
+        bool titleMatches = CheckTitleMatch(normalizedExpectedTitle, strippedCandidateTitle) ||
+                            CheckTitleMatch(coreExpectedTitle, coreCandidateTitle);
+        if (!titleMatches)
+            return false;
+
+        if (HasMeaningfulArtist(normalizedExpectedArtist))
+            return CheckPositiveArtistMatch(normalizedExpectedArtist, normalizedCandidateAuthor, normalizedCandidateTitle);
+
+        return !strictMode || candidateScore >= 3;
+    }
+
+    private static bool HasMeaningfulArtist(string normalizedArtist)
+        => !string.IsNullOrEmpty(normalizedArtist) &&
+           normalizedArtist != "soundcloud" &&
+           normalizedArtist != "browser" &&
+           normalizedArtist != "unknown";
+
+    private static string StripTrailingByAuthor(string normalizedCandidateTitle, string normalizedCandidateAuthor)
+    {
+        if (string.IsNullOrEmpty(normalizedCandidateTitle) || string.IsNullOrEmpty(normalizedCandidateAuthor))
         {
-            return titleOverlap >= 2 && (artistMatches || candidateScore >= 2);
+            return normalizedCandidateTitle;
         }
 
-        if (artistMatches && (titleOverlap >= 1 || candidateScore >= 2))
+        string suffix = " by " + normalizedCandidateAuthor;
+        if (normalizedCandidateTitle.EndsWith(suffix, StringComparison.Ordinal) &&
+            normalizedCandidateTitle.Length > suffix.Length)
         {
-            return true;
+            return normalizedCandidateTitle[..^suffix.Length].TrimEnd();
         }
 
-        return candidateScore >= 3 && titleOverlap >= 1;
+        return normalizedCandidateTitle;
+    }
+
+    private static string ExtractCoreTitle(string normalizedTitle, string normalizedArtist)
+    {
+        if (HasMeaningfulArtist(normalizedArtist) &&
+            normalizedTitle.StartsWith(normalizedArtist + " ", StringComparison.Ordinal) &&
+            normalizedTitle.Length > normalizedArtist.Length + 1)
+        {
+            return normalizedTitle[(normalizedArtist.Length + 1)..].TrimStart();
+        }
+
+        return normalizedTitle;
     }
 
     private static bool CheckTitleMatch(string expectedTitle, string candidateTitle)
     {
-        return !string.IsNullOrEmpty(expectedTitle) &&
-               !string.IsNullOrEmpty(candidateTitle) &&
-               (candidateTitle.Contains(expectedTitle, StringComparison.Ordinal) ||
-                expectedTitle.Contains(candidateTitle, StringComparison.Ordinal));
-    }
-
-    private static bool CheckArtistMatch(string expectedArtist, string candidateAuthor)
-    {
-        return string.IsNullOrEmpty(expectedArtist) ||
-               expectedArtist == "soundcloud" ||
-               expectedArtist == "browser" ||
-               (!string.IsNullOrEmpty(candidateAuthor) &&
-                (candidateAuthor.Contains(expectedArtist, StringComparison.Ordinal) ||
-                 expectedArtist.Contains(candidateAuthor, StringComparison.Ordinal)));
-    }
-
-    public static int CountTokenOverlap(string left, string right)
-    {
-        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        if (string.IsNullOrEmpty(expectedTitle) || string.IsNullOrEmpty(candidateTitle))
         {
-            return 0;
+            return false;
         }
 
-        var rightTokens = new HashSet<string>(
-            right.Split(' ', StringSplitOptions.RemoveEmptyEntries),
-            StringComparer.Ordinal);
+        return expectedTitle.Equals(candidateTitle, StringComparison.Ordinal);
+    }
 
-        int overlap = 0;
-        foreach (var token in left.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+    private static bool CheckPositiveArtistMatch(string expectedArtist, string candidateAuthor, string candidateTitle)
+    {
+        if (!string.IsNullOrEmpty(candidateAuthor))
         {
-            if (token.Length < 2)
-            {
-                continue;
-            }
-
-            if (rightTokens.Contains(token))
-            {
-                overlap++;
-            }
+            return candidateAuthor.Equals(expectedArtist, StringComparison.Ordinal);
         }
 
-        return overlap;
+        return expectedArtist.Length >= 3 &&
+               (candidateTitle.StartsWith(expectedArtist + " ", StringComparison.Ordinal) ||
+                candidateTitle.EndsWith(" by " + expectedArtist, StringComparison.Ordinal));
     }
 
     public static string NormalizeArtworkUrl(string url)

@@ -1,5 +1,13 @@
 # Translation development checks
 
+Run phrase-meaning regressions against the already installed TranslateGemma 4B model:
+
+```powershell
+dotnet .artifacts/translation-bench/VNotch.TranslationBench.dll --phrase-regressions
+```
+
+This checks the `YÊU XA` screenshot failure (auto/manual source, casing, punctuation and decomposed Unicode), equivalent compounds from several source languages, and several target languages. It reports each actual output and sets a nonzero exit code on a mismatch; it does not download a model. These samples check the distance qualifier, not overall translation quality. `TranslationPhraseTests` separately checks shared meaning instructions across every selectable specialist language pair and both humanizer settings.
+
 This Windows-only console runner references the production translation service and includes earlier ONNX candidates for comparison. `Research/` and its Tokenizers.DotNet dependencies are excluded from the production application. Do not redistribute research model folders as app payload.
 
 Build into a separate directory when V-Notch is running:

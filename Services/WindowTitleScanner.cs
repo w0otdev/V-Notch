@@ -625,6 +625,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
             var element = AutomationElement.FromHandle(hwnd);
             if (element == null) return null;
 
+            string? fallbackAddressBarUrl = null;
             AutomationElement? addressBar = processName.Contains("firefox", StringComparison.OrdinalIgnoreCase)
                 ? FindBrowserChromeElements(element, ControlType.Edit).FirstOrDefault(edit => edit.Current.AutomationId == "urlbar-input")
                 : FindChromiumAddressBar(element);
@@ -639,12 +640,20 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                     url = HttpsPrefix + url;
 
                 if (!string.IsNullOrWhiteSpace(url))
-                    return url;
+                {
+                    if (IsMediaUrl(url))
+                        return url;
+
+                    fallbackAddressBarUrl = url;
+                }
             }
 
             var tabUrl = TryFindMediaUrlInTabs(element);
             if (!string.IsNullOrEmpty(tabUrl))
                 return tabUrl;
+
+            if (!string.IsNullOrWhiteSpace(fallbackAddressBarUrl))
+                return fallbackAddressBarUrl;
         }
         catch (Exception)
         {

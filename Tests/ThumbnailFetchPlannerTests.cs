@@ -35,7 +35,7 @@ public class ThumbnailFetchPlannerTests
     }
 
     [Fact]
-    public void Classify_BrowserApp_DefaultsToYouTube_WhenNoSoundCloudOverride()
+    public void Classify_UnidentifiedBrowser_DoesNotAssumeYouTube()
     {
         var plan = ThumbnailFetchPlanner.ClassifySources(new ThumbnailSourceInputs
         {
@@ -47,7 +47,7 @@ public class ThumbnailFetchPlannerTests
             ThumbnailIsNullOrPlaceholder = true,
         });
 
-        Assert.True(plan.IsPotentialYouTube);
+        Assert.False(plan.IsPotentialYouTube);
         Assert.True(plan.IsPotentialSoundCloud);
     }
 

@@ -42,6 +42,13 @@ public class MediaTimelineSimulator
 
     public void ApplySimulatedTimeline(MediaInfo info, bool atEndStuck)
     {
+        if (!info.HasTimeline)
+        {
+            Reset();
+            info.IsThrottled = false;
+            return;
+        }
+
         var nowUtc = DateTime.UtcNow;
         EnsureSimulationBase(info, nowUtc);
 
@@ -76,13 +83,9 @@ public class MediaTimelineSimulator
     {
         if (atEndStuck)
         {
-            info.Duration = RecoveredDuration > TimeSpan.Zero ? RecoveredDuration : TimeSpan.Zero;
+            if (MediaTimelinePolicy.HasFiniteDuration(RecoveredDuration))
+                info.Duration = RecoveredDuration;
         }
-        else if (info.Duration <= TimeSpan.Zero && RecoveredDuration > TimeSpan.Zero)
-        {
-            info.Duration = RecoveredDuration;
-        }
-
         if (info.Thumbnail == null && RecoveredThumbnail != null)
             info.Thumbnail = RecoveredThumbnail;
     }
