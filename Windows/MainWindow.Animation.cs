@@ -460,8 +460,6 @@ public partial class MainWindow
         ExpandedContent.Width = _expandedWidth - ExpandedContentHorizontalInset;
         ExpandedContent.Height = _expandedHeight - ExpandedContentVerticalInset;
         PrepareExpandedContentLayoutForReveal();
-
-        AnimateStatusBarReveal(true);
     }
 
     private (double X, double Y)? EnsureCachedThumbnailExpandTarget()
@@ -783,30 +781,6 @@ public partial class MainWindow
         }
     }
 
-    private void ReopenLastViewIfConfigured()
-    {
-        if (!_settings.ReopenLastViewOnExpand || _isSecondaryView || _isTimerView || _isAudioView || _isCameraView) return;
-
-        switch (_lastExpandedViewBeforeCollapse)
-        {
-            case LastExpandedView.Secondary:
-                SwitchToSecondaryView();
-                break;
-            case LastExpandedView.Timer:
-                SwitchToTimerView();
-                break;
-            case LastExpandedView.Audio:
-                SwitchToAudioView();
-                break;
-            case LastExpandedView.Camera when !_settings.HideCamera:
-                NavigateToNotchView(VNotch.Models.NotchView.Camera);
-                break;
-            case LastExpandedView.Primary:
-            default:
-                break;
-        }
-    }
-
     private void OnExpandCompleted(int generation, bool suppressCompactThumbnailMotion, VNotch.Models.NotchView effectiveTarget = VNotch.Models.NotchView.Media)
     {
         if (generation != _viewTransitionGeneration || generation != _transitionCoordinator.ActiveTransitionId) return;
@@ -873,9 +847,10 @@ public partial class MainWindow
 
         if (_focusNotchAfterExpand) FocusNotchForKeyboard();
 
+        RestoreExpandedContentOpacity();
+
         if (effectiveTarget == VNotch.Models.NotchView.Media)
         {
-            RestoreExpandedContentOpacity();
             UpdateProgressTimerState();
             UpdateCalendarInfo();
             ShowMediaBackground();
@@ -916,7 +891,7 @@ public partial class MainWindow
 
         if (effectiveTarget != VNotch.Models.NotchView.Media)
         {
-            ResetAnimationThumbnailOverlay();
+            HandoffAnimationThumbnailToExpanded();
             FinalizeCompactThumbnailStateAfterExpand(suppressCompactThumbnailMotion);
         }
         else if (_isThumbnailExpandAnimating)
@@ -936,11 +911,6 @@ public partial class MainWindow
 
         CollapsedContent.Visibility = Visibility.Collapsed;
         MusicCompactContent.Visibility = Visibility.Collapsed;
-
-        if (effectiveTarget == VNotch.Models.NotchView.Media)
-        {
-            ReopenLastViewIfConfigured();
-        }
     }
 
     private void ExpandNotch(long? transitionId = null, VNotch.Models.NotchView? targetView = null,
@@ -1088,6 +1058,8 @@ public partial class MainWindow
                 RestoreExpandedWindowSize();
             SetupExpandedContentBeforeAnimation();
         }
+
+        AnimateStatusBarReveal(true);
 
         NotchBorder.IsHitTestVisible = false;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;

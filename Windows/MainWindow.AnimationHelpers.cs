@@ -728,6 +728,13 @@ public partial class MainWindow
         SettingsRotate.BeginAnimation(RotateTransform.AngleProperty, null);
 
         bool showBatterySection = show && _settings.ShowBatteryIndicator;
+        var activeTargetView = _navigationVisualTarget ?? (_isCameraView ? VNotch.Models.NotchView.Camera :
+            _isAudioView ? VNotch.Models.NotchView.AudioMixer :
+            _isTimerView ? VNotch.Models.NotchView.Timer :
+            _isSecondaryView ? VNotch.Models.NotchView.Secondary : VNotch.Models.NotchView.Media);
+        bool showNavIconsBg = activeTargetView is VNotch.Models.NotchView.Secondary
+            or VNotch.Models.NotchView.Timer
+            or VNotch.Models.NotchView.AudioMixer;
         double iconTargetY = _settings.EnableDynamicIslandMode ? 5 : 0;
 
         if (show)
@@ -736,8 +743,9 @@ public partial class MainWindow
             BatterySection.IsHitTestVisible = showBatterySection;
             NavIconsPanel.Visibility = Visibility.Visible;
             UpdateNavIconsActiveState();
-            if (_isSecondaryView)
-                NavIconsBackground.Visibility = Visibility.Visible;
+            NavIconsBackground.Visibility = showNavIconsBg ? Visibility.Visible : Visibility.Collapsed;
+            if (!showNavIconsBg)
+                NavIconsBackground.Opacity = 0;
             SettingsButton.Visibility = Visibility.Visible;
             SettingsScale.ScaleX = 0.86;
             SettingsScale.ScaleY = 0.86;
@@ -867,7 +875,7 @@ public partial class MainWindow
         NavIconsPanel.BeginAnimation(OpacityProperty, navOpacityAnim);
         NavIconsTranslate.BeginAnimation(TranslateTransform.YProperty, navTranslateAnim);
 
-        if (_isSecondaryView)
+        if (showNavIconsBg)
         {
             var navBgOpacityAnim = new DoubleAnimation
             {
