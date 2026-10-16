@@ -90,4 +90,44 @@ public sealed class TrayMotionTests
             window.Close();
         }
     });
+
+    [Fact]
+    public void CardsStaggerLeftToRightWithSpringyBottomJumpAndLockContentShakesOnWrongPin() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool prev = VNotch.Services.AnimationConfig.ReduceMotion;
+        VNotch.Services.AnimationConfig.SetReduceMotion(false);
+        using var tray = new ClipboardTray();
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var cards = (System.Collections.ObjectModel.ObservableCollection<VNotch.ViewModels.ClipboardCardViewModel>)typeof(ClipboardTray).GetField("_cards", flags)!.GetValue(tray)!;
+        cards.Add(new VNotch.ViewModels.ClipboardCardViewModel(new VNotch.Models.ClipboardEntry { Title = "File 0", Kind = VNotch.Models.ClipboardKind.File }));
+        cards.Add(new VNotch.ViewModels.ClipboardCardViewModel(new VNotch.Models.ClipboardEntry { Title = "File 1", Kind = VNotch.Models.ClipboardKind.File }));
+
+        var window = new BackgroundWindow { Content = tray, Width = 800, Height = 400 };
+        try
+        {
+            window.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+            var list = (ListBox)tray.FindName("Cards");
+            var first = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+            var second = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(1);
+
+            tray.BeginEntrance();
+            Assert.IsType<TranslateTransform>(first.RenderTransform);
+            Assert.IsType<TranslateTransform>(second.RenderTransform);
+            Assert.True(((TranslateTransform)first.RenderTransform).HasAnimatedProperties);
+            Assert.True(((TranslateTransform)second.RenderTransform).HasAnimatedProperties);
+
+            var lockContent = (FrameworkElement)tray.FindName("LockContent");
+            Assert.NotNull(lockContent);
+            tray.ShakeLockContent();
+            var shakeTransform = Assert.IsType<TranslateTransform>(lockContent.RenderTransform);
+            Assert.True(shakeTransform.HasAnimatedProperties);
+        }
+        finally
+        {
+            window.Close();
+            VNotch.Services.AnimationConfig.SetReduceMotion(prev);
+        }
+    });
 }

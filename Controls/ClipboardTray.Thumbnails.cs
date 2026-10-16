@@ -44,8 +44,8 @@ public partial class ClipboardTray
     {
         var timer = new UiScheduledTimer(DispatcherPriority.Background)
         {
-            // Last stagger: 60ms + 7 * 35ms + 360ms.
-            Interval = TimeSpan.FromMilliseconds(665)
+            // Last stagger: 60ms + 7 * 40ms + 400ms.
+            Interval = TimeSpan.FromMilliseconds(740)
         };
         timer.Tick += (_, _) =>
         {

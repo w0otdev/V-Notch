@@ -26,6 +26,7 @@ public partial class ClipboardTray
     private int _motionVersion;
     private bool _trayLeaving;
     private int _entranceStaggerVersion;
+    private int _entranceBaseDelay = 60;
     private readonly HashSet<ListBoxItem> _entranceAnimatedContainers = [];
     private readonly Dictionary<FrameworkElement, object> _dismissingLayers = [];
     private bool _trayDropBorderVisible = true;
@@ -119,9 +120,17 @@ public partial class ClipboardTray
             StaggerEntranceCards();
 
             int version = _motionVersion;
+            if (_entranceAnimatedContainers.Count == 0 && _cards.Count > 0)
+            {
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+                {
+                    if (!_disposed && !_trayLeaving && _entranceStaggerVersion == version)
+                        StaggerEntranceCards();
+                }));
+            }
             _ = SafeAsync(async () =>
             {
-                await Task.Delay(500);
+                await Task.Delay(800);
                 if (_entranceStaggerVersion == version)
                 {
                     _entranceStaggerVersion = 0;
@@ -475,19 +484,65 @@ public partial class ClipboardTray
         target.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
-    private void StaggerEntranceCards()
+    private static readonly BackEase CardJumpSpring = CreateCardJumpSpring();
+    private static BackEase CreateCardJumpSpring()
     {
-        // Animate cards that are already realized in the virtualizing panel.
+        var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.28 };
+        ease.Freeze();
+        return ease;
+    }
+
+    private static void AnimateCardJumpEntrance(FrameworkElement element, int delay)
+    {
+        element.BeginAnimation(OpacityProperty, null);
+        element.Opacity = 1;
+        var translate = new TranslateTransform(0, 0);
+        element.RenderTransform = translate;
+        int fadeDuration = AnimationConfig.ReduceMotion ? 80 : 280;
+        int jumpDuration = AnimationConfig.ReduceMotion ? 80 : 400;
+        int actualDelay = AnimationConfig.ReduceMotion ? 0 : delay;
+        var fade = CreateLayerAnimation(0, 1, actualDelay, fadeDuration);
+        element.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
+        if (AnimationConfig.ReduceMotion) return;
+
+        var jump = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
+        jump.KeyFrames.Add(new DiscreteDoubleKeyFrame(18, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        if (actualDelay > 0)
+            jump.KeyFrames.Add(new DiscreteDoubleKeyFrame(18, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(actualDelay))));
+        jump.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(actualDelay + jumpDuration)), CardJumpSpring));
+        Timeline.SetDesiredFrameRate(jump, AnimationConfig.TargetFps);
+        translate.BeginAnimation(TranslateTransform.YProperty, jump, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void StaggerEntranceCards(int baseDelay = 60)
+    {
+        _entranceBaseDelay = baseDelay;
+        // Animate cards that are already realized in the virtualizing panel from left to right.
         // Cards loaded later during this entrance will be caught by CardContainer_Loaded.
-        int visualIndex = 0;
-        foreach (var item in _selectionContainers.OrderBy(item => Cards.ItemContainerGenerator.IndexFromContainer(item)))
+        var candidates = new HashSet<ListBoxItem>(_selectionContainers.Where(item => item.IsLoaded || item.IsVisible));
+        int count = Math.Min(_cards.Count, 16);
+        for (int i = 0; i < count; i++)
         {
-            if (!item.IsLoaded) continue;
+            if (Cards.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem generated)
+                candidates.Add(generated);
+        }
+
+        foreach (var element in _realizedCardElements)
+            RefreshCardViewportVisibility(element, true);
+
+        int visualIndex = 0;
+        foreach (var item in candidates
+            .OrderBy(item =>
+            {
+                int idx = Cards.ItemContainerGenerator.IndexFromContainer(item);
+                return idx >= 0 ? idx : (item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card ? _cards.IndexOf(card) : int.MaxValue);
+            }))
+        {
             if (_entranceAnimatedContainers.Add(item))
             {
                 ResetCardMotion(item);
-                int delay = Math.Min(visualIndex, 7) * 35 + 60;
-                AnimateLayer(item, true, delay, true, 360, 10);
+                int delay = Math.Min(visualIndex, 7) * 40 + baseDelay;
+                AnimateCardJumpEntrance(item, delay);
                 visualIndex++;
             }
         }
@@ -500,12 +555,15 @@ public partial class ClipboardTray
         ResetCardMotion(item);
         if (_entranceStaggerVersion == _motionVersion && _entranceStaggerVersion > 0)
         {
-            // Card appeared during an active view entrance — apply staggered cascade.
+            // Card appeared during an active view entrance — apply staggered left-to-right spring jump.
             if (_entranceAnimatedContainers.Add(item))
             {
-                int visualIndex = Math.Max(0, _entranceAnimatedContainers.Count - 1);
-                int delay = Math.Min(visualIndex, 7) * 35 + 60;
-                AnimateLayer(item, true, delay, true, 360, 10);
+                int itemIndex = Cards.ItemContainerGenerator.IndexFromContainer(item);
+                if (itemIndex < 0 && item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card)
+                    itemIndex = _cards.IndexOf(card);
+                int visualIndex = itemIndex >= 0 ? itemIndex : Math.Max(0, _entranceAnimatedContainers.Count - 1);
+                int delay = Math.Min(visualIndex, 7) * 40 + _entranceBaseDelay;
+                AnimateCardJumpEntrance(item, delay);
             }
         }
         else if (item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card && _arrivingCards.Remove(card.Entry.Id))
@@ -539,21 +597,34 @@ public partial class ClipboardTray
     {
         if (!_animateResults || _trayLeaving) return;
         _animateResults = false;
-        // Swap while hidden, then reveal the whole row. Never show new containers
-        // for a frame before resetting their opacity in a deferred callback.
+        if (!IsVisible) return;
+        // Swap while hidden, then reveal cards sequentially from left to right with a springy jump.
         Cards.BeginAnimation(OpacityProperty, null);
         Cards.Opacity = 1;
-        var translate = new TranslateTransform();
-        Cards.RenderTransform = translate;
+        Cards.RenderTransform = Transform.Identity;
         if (AnimationConfig.ReduceMotion) return;
-        var duration = TimeSpan.FromMilliseconds(MotionEntrance);
-        var ease = TrayEase;
-        var fade = new DoubleAnimation(0, 1, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        var slide = new DoubleAnimation(14 * _resultsDirection, 0, duration) { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(slide, AnimationConfig.TargetFps);
-        Cards.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
-        translate.BeginAnimation(TranslateTransform.XProperty, slide, HandoffBehavior.SnapshotAndReplace);
+
+        int version = ++_motionVersion;
+        _entranceStaggerVersion = version;
+        _entranceAnimatedContainers.Clear();
+        StaggerEntranceCards(baseDelay: 0);
+        if (_entranceAnimatedContainers.Count == 0 && _cards.Count > 0)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+            {
+                if (!_disposed && !_trayLeaving && _entranceStaggerVersion == version)
+                    StaggerEntranceCards(baseDelay: 0);
+            }));
+        }
+        _ = SafeAsync(async () =>
+        {
+            await Task.Delay(750);
+            if (_entranceStaggerVersion == version)
+            {
+                _entranceStaggerVersion = 0;
+                _entranceAnimatedContainers.Clear();
+            }
+        });
     }
 
     private static void ResetCardMotion(FrameworkElement element)

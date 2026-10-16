@@ -69,4 +69,27 @@ public partial class ClipboardTray
         Timeline.SetDesiredFrameRate(blink, AnimationConfig.TargetFps);
         PinCaret.BeginAnimation(OpacityProperty, blink);
     }
+
+    internal void ShakeLockContent()
+    {
+        if (_disposed || LockContent == null) return;
+        if (LockContent.RenderTransform is not TranslateTransform translate || translate.IsFrozen)
+        {
+            translate = new TranslateTransform();
+            LockContent.RenderTransform = translate;
+        }
+        translate.BeginAnimation(TranslateTransform.XProperty, null);
+        translate.X = 0;
+        if (AnimationConfig.ReduceMotion) return;
+
+        var shake = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
+        shake.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        shake.KeyFrames.Add(new EasingDoubleKeyFrame(-7, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(55)), TrayEase));
+        shake.KeyFrames.Add(new EasingDoubleKeyFrame(6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(115)), TrayEase));
+        shake.KeyFrames.Add(new EasingDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(175)), TrayEase));
+        shake.KeyFrames.Add(new EasingDoubleKeyFrame(2.5, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(230)), TrayEase));
+        shake.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(290)), TrayEase));
+        Timeline.SetDesiredFrameRate(shake, AnimationConfig.TargetFps);
+        translate.BeginAnimation(TranslateTransform.XProperty, shake, HandoffBehavior.SnapshotAndReplace);
+    }
 }

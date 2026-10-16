@@ -21,6 +21,7 @@ public partial class MainWindow
         if (_firstOpenUiPrepared || _cleanedUp) return;
         _firstOpenUiPrepared = true;
         PrepareExpandedContentForFirstOpen();
+        PrepareSecondaryContentForFirstOpen();
         // Pay the one-time XAML/template/native-window cost before the startup
         // entrance begins, while the notch is still waiting for its first layout.
         try
@@ -33,6 +34,29 @@ public partial class MainWindow
         {
             DiscardPreparedSettingsWindow();
             RuntimeLog.Warn("FIRST-OPEN", $"Settings preparation skipped: {ex.GetType().Name}");
+        }
+    }
+
+    private void PrepareSecondaryContentForFirstOpen()
+    {
+        if (SecondaryContent == null) return;
+        var visibility = SecondaryContent.Visibility;
+        double opacity = SecondaryContent.Opacity;
+        double targetWidth = Math.Max(0, ClipboardTrayWidth - SecondaryContent.Margin.Left - SecondaryContent.Margin.Right);
+        double targetHeight = Math.Max(0, ClipboardTrayHeight - SecondaryContent.Margin.Top - SecondaryContent.Margin.Bottom);
+        try
+        {
+            SecondaryContent.Opacity = 0;
+            SecondaryContent.Visibility = Visibility.Visible;
+            SecondaryContent.Width = targetWidth;
+            SecondaryContent.Height = targetHeight;
+            SecondaryContent.Measure(new Size(targetWidth, targetHeight));
+            SecondaryContent.Arrange(new Rect(0, 0, targetWidth, targetHeight));
+        }
+        finally
+        {
+            SecondaryContent.Visibility = visibility;
+            SecondaryContent.Opacity = opacity;
         }
     }
 

@@ -107,3 +107,7 @@ awesome-codex-skills/
 
 # WPF temporary projects left behind by interrupted builds
 /*_wpftmp.csproj
+GEMINI.md
+[Bb]in-test/
+[Bb]in_test/
+.artifacts/

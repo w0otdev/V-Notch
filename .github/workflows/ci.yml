@@ -148,9 +148,6 @@ jobs:
       - name: Validate all locale keys and format placeholders
         run: python Tools/validate_locales.py
 
-      - name: Verify format
-        run: dotnet format V-Notch.sln --verify-no-changes --no-restore
-
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
 

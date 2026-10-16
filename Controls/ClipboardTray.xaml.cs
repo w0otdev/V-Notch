@@ -221,7 +221,7 @@ public partial class ClipboardTray : UserControl, IDisposable
     {
         if (_disposed) return;
         _queryDirty = true;
-        if (IsVisible) QueueRefresh();
+        if (IsVisible || _cards.Count == 0) QueueRefresh();
     }));
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
@@ -258,8 +258,8 @@ public partial class ClipboardTray : UserControl, IDisposable
     }
     private async Task RefreshAsync()
     {
-        if (_controller == null || _disposed || !IsVisible) return;
-        if (IsEntranceWorkDeferred)
+        if (_controller == null || _disposed) return;
+        if (IsVisible && IsEntranceWorkDeferred)
         {
             _queryDirty = true;
             return;
@@ -293,6 +293,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             await AnimateCollectionChangesAsync(entries, cancellation);
             if (version != _refreshVersion || cancellation.IsCancellationRequested || _disposed || _trayLeaving) return;
             _categoryCounts = counts;
+            bool wasEmpty = _cards.Count == 0;
             if (_animateResults) FindScrollViewer(Cards)?.ScrollToHorizontalOffset(0);
             if (!entries.SequenceEqual(_cards.Select(card => card.Entry)))
             {
@@ -300,6 +301,8 @@ public partial class ClipboardTray : UserControl, IDisposable
                 ReconcilePreparedCards(entries, masking);
                 AnimateCardPositions(positions);
             }
+            if (wasEmpty && _cards.Count > 0 && IsVisible && !_trayLeaving)
+                _animateResults = true;
             // Publish the new collection before revealing it. A private/public
             // category transition must never make the previous results visible.
             Cards.Visibility = Visibility.Visible;
@@ -563,6 +566,8 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (!ClipboardPasscode.IsValid(pin))
         {
             LockHint.Text = Loc.Get("clipboard.sixDigits");
+            ShakeLockContent();
+            PasscodeBox.Focus();
             return;
         }
         bool create = !_controller.Store.HasPersonalPasscode;
@@ -576,6 +581,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (create && !ClipboardPasscode.Matches(_newPin!, pin))
         {
             LockHint.Text = Loc.Get("clipboard.confirmRetry");
+            ShakeLockContent();
             PasscodeBox.Focus();
             return;
         }
@@ -590,6 +596,8 @@ public partial class ClipboardTray : UserControl, IDisposable
                 LockHint.Text = result.Status == ClipboardUnlockStatus.RateLimited
                     ? Loc.Get("clipboard.pinRetryAfter", Math.Max(1, (int)Math.Ceiling((result.RetryAfterUtc - DateTime.UtcNow).TotalSeconds)))
                     : Loc.Get("clipboard.wrongPin");
+                ShakeLockContent();
+                PasscodeBox.Focus();
                 return;
             }
             if (_disposed || !IsLoaded || !IsVisible || _category != "Personal" || version != _refreshVersion)

@@ -4,10 +4,9 @@ param(
     [switch]$Clean
 )
 
-# Set execution policy for the current process scope to Bypass to prevent script execution block
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-
 $ErrorActionPreference = "Continue"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Suppress background console window popups from Git / tools
 $env:GIT_TERMINAL_PROMPT = "0"
@@ -17,15 +16,90 @@ $env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\
 # --- Configuration ---------------------------------------------------------
 $repoRoot    = Split-Path $PSScriptRoot -Parent
 $processName = "V-Notch"
+$csprojPath  = Join-Path $repoRoot "V-Notch.csproj"
 $objPath     = Join-Path $repoRoot "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
 $binPath     = Join-Path $repoRoot "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
 $exePath     = Join-Path $binPath "V-Notch.exe"
 
+$version = "dev"
+if (Test-Path $csprojPath) {
+    try {
+        [xml]$projXml = Get-Content -LiteralPath $csprojPath -Raw
+        $parsedVer = $projXml.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+        if ($parsedVer) { $version = "v$parsedVer" }
+    } catch { }
+}
+
+# --- Runtime Unicode Glyphs (7-bit ASCII source safe for PS 5.1 & PS 7) ----
+$gTopLeft     = [char]0x256D # ╭
+$gBotLeft     = [char]0x2570 # ╰
+$gVert        = [char]0x2502 # │
+$gBranch      = [char]0x251C # ├
+$gHoriz       = [char]0x2500 # ─
+$gDiamond     = [char]0x25C6 # ◆
+$gDot         = [char]0x25CF # ●
+$gCheck       = [char]0x2714 # ✔
+$gCross       = [char]0x2716 # ✖
+$gWarn        = [char]0x25B2 # ▲
+$gArrow       = [char]0x25B8 # ▸
+
+$lineRule     = ([string]$gHoriz) * 56
+
+function Write-TreeHeader {
+    $modeText  = if ($Clean) { "Full Rebuild (-Clean)" } else { "Fast Incremental" }
+    $modeColor = if ($Clean) { "Yellow" } else { "Green" }
+
+    Write-Host ""
+    Write-Host "  $gTopLeft$lineRule" -ForegroundColor DarkCyan
+    Write-Host "  $gVert  " -ForegroundColor DarkCyan -NoNewline
+    Write-Host "$gDiamond V-NOTCH DEV RUNNER " -ForegroundColor Cyan -NoNewline
+    Write-Host $version -ForegroundColor DarkGray -NoNewline
+    Write-Host "  $gVert  " -ForegroundColor DarkGray -NoNewline
+    Write-Host $modeText -ForegroundColor $modeColor
+    Write-Host "  $gVert" -ForegroundColor DarkCyan
+}
+
+function Write-TreeStep {
+    param(
+        [string]$StepTag,
+        [string]$Title
+    )
+    Write-Host "  $gBranch$gHoriz " -ForegroundColor DarkCyan -NoNewline
+    Write-Host "[$StepTag] " -ForegroundColor Cyan -NoNewline
+    Write-Host $Title -ForegroundColor White
+}
+
+function Write-TreeItem {
+    param(
+        [string]$Message,
+        [ValidateSet("Info", "Success", "Warn", "Error")]
+        [string]$State = "Info"
+    )
+    switch ($State) {
+        "Info"    { $sym = $gArrow; $sCol = "DarkCyan"; $tCol = "Gray" }
+        "Success" { $sym = $gCheck; $sCol = "Green";    $tCol = "Gray" }
+        "Warn"    { $sym = $gWarn;  $sCol = "Yellow";   $tCol = "Yellow" }
+        "Error"   { $sym = $gCross; $sCol = "Red";      $tCol = "Red" }
+    }
+    Write-Host "  $gVert     " -ForegroundColor DarkCyan -NoNewline
+    Write-Host "$sym " -ForegroundColor $sCol -NoNewline
+    Write-Host $Message -ForegroundColor $tCol
+}
+
+function Write-TreeSpacer {
+    Write-Host "  $gVert" -ForegroundColor DarkCyan
+}
+
+$totalSteps = if ($Clean) { 4 } else { 3 }
+$stepIndex  = 0
+function Next-StepTag {
+    $script:stepIndex++
+    return "$($script:stepIndex)/$totalSteps"
+}
+
+Write-TreeHeader
+
 # --- 1. Stop old instances and WAIT for them to actually exit ---------------
-# taskkill / Stop-Process return as soon as the signal is sent, but the OS needs
-# a few hundred ms to release the file handles. If the build runs before the
-# handles are released, the BAML/exe can be written in a half state -> animations
-# break on app boot.
 function Wait-VNotchExit {
     param([int]$TimeoutMs = 7000)
     $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
@@ -37,23 +111,25 @@ function Wait-VNotchExit {
     return $false
 }
 
-Write-Host "`n>>> Stopping old V-Notch instances..." -ForegroundColor Cyan
-$running = Get-Process -Name $processName -ErrorAction SilentlyContinue
-if ($running) {
+Write-TreeStep (Next-StepTag) "Process Check"
+$running = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
+if ($running.Count -gt 0) {
+    $pids = ($running | Select-Object -ExpandProperty Id) -join ", "
+    Write-TreeItem "Stopping $($running.Count) running instance(s) (PID: $pids)..." -State Info
     $running | Stop-Process -Force -ErrorAction SilentlyContinue
 
     if (-not (Wait-VNotchExit -TimeoutMs 7000)) {
-        Write-Host "[!] Process still alive after 7s - aborting." -ForegroundColor Red
+        Write-TreeItem "Process still alive after 7s - aborting." -State Error
+        Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
         exit 1
     }
-    # Settling pause - Windows often keeps file handles for ~200ms after the process dies.
     Start-Sleep -Milliseconds 250
+    Write-TreeItem "Terminated cleanly." -State Success
+} else {
+    Write-TreeItem "No active V-Notch process." -State Success
 }
 
 # --- 2. (Only with -Clean) Hard-delete obj/bin to force a full rebuild -------
-# Deleting obj/bin on every build forces dotnet to recompile EVERYTHING + restore,
-# which is very slow. dotnet's incremental build handles XAML/BAML changes fine in
-# the common case, so we only wipe when the user explicitly asks (-Clean).
 function Remove-Folder-Hard {
     param([string]$Path, [int]$Retries = 4)
     if (-not (Test-Path $Path)) { return $true }
@@ -63,7 +139,7 @@ function Remove-Folder-Hard {
             return $true
         } catch {
             if ($i -eq ($Retries - 1)) {
-                Write-Host "[!] Could not delete $Path : $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-TreeItem "Could not delete $Path : $($_.Exception.Message)" -State Warn
                 return $false
             }
             Start-Sleep -Milliseconds 400
@@ -73,35 +149,58 @@ function Remove-Folder-Hard {
 }
 
 if ($Clean) {
-    Write-Host ">>> -Clean: Wiping obj/bin to force a full rebuild (avoid stale BAML)..." -ForegroundColor Cyan
+    Write-TreeSpacer
+    Write-TreeStep (Next-StepTag) "Clean Cache"
     $objClean = Remove-Folder-Hard $objPath
     $binClean = Remove-Folder-Hard $binPath
 
-    if (-not ($objClean -and $binClean)) {
-        Write-Host "[!] Build may not be clean - animations could still break." -ForegroundColor Yellow
+    if ($objClean -and $binClean) {
+        Write-TreeItem "Cleared obj & bin directories (fresh BAML)." -State Success
+    } else {
+        Write-TreeItem "Partial cleanup - some files were locked." -State Warn
     }
 }
 
 # --- 3. Build ---------------------------------------------------------------
-# Incremental when not -Clean -> much faster since only changed files recompile.
-# `--no-restore` is used when obj already exists (restore cache present) to skip the
-# slow restore step; if obj is missing (first run / after -Clean) we restore normally.
-Write-Host ">>> Building$(if ($Clean) { ' (full rebuild)' } else { ' (incremental)' })..." -ForegroundColor Cyan
-
-$buildArgs = @("build", (Join-Path $repoRoot "V-Notch.csproj"), "-nologo", "-tl")
+Write-TreeSpacer
 $restoreReady = Test-Path (Join-Path $repoRoot "obj\project.assets.json")
-if (-not $Clean -and $restoreReady) {
+$useNoRestore = (-not $Clean -and $restoreReady)
+$buildModeTag = if ($Clean) { "Full Rebuild" } elseif ($useNoRestore) { "Incremental --no-restore" } else { "Incremental + Restore" }
+
+Write-TreeStep (Next-StepTag) "Compile ($buildModeTag)"
+
+$buildArgs = @("build", $csprojPath, "-nologo", "-v:q", "-clp:NoSummary")
+if ($useNoRestore) {
     $buildArgs += "--no-restore"
 }
 
-dotnet @buildArgs
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "`n[!] Build failed." -ForegroundColor Red
-    exit $LASTEXITCODE
+$buildSw = [System.Diagnostics.Stopwatch]::StartNew()
+$buildOutput = & dotnet @buildArgs 2>&1
+$buildExitCode = $LASTEXITCODE
+$buildSw.Stop()
+
+$diagnosticLines = @($buildOutput | ForEach-Object { "$_" } | Where-Object { $_.Trim().Length -gt 0 })
+
+if ($buildExitCode -ne 0) {
+    Write-TreeItem ("Build failed in {0:N2}s (exit code {1}):" -f $buildSw.Elapsed.TotalSeconds, $buildExitCode) -State Error
+    foreach ($line in $diagnosticLines) {
+        $lineColor = if ($line -match "error\s+[A-Z]+\d+") { "Red" } elseif ($line -match "warning\s+[A-Z]+\d+") { "Yellow" } else { "Gray" }
+        Write-Host "  $gVert       $line" -ForegroundColor $lineColor
+    }
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
+    exit $buildExitCode
 }
 
+foreach ($line in $diagnosticLines) {
+    if ($line -match "warning\s+[A-Z]+\d+") {
+        Write-TreeItem $line.Trim() -State Warn
+    }
+}
+Write-TreeItem ("Built V-Notch.dll in {0:N2}s." -f $buildSw.Elapsed.TotalSeconds) -State Success
+
 # --- 4. Launch --------------------------------------------------------------
-Add-Type -TypeDefinition @"
+if (-not ("VNotchDesktopLauncher" -as [type])) {
+    Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -158,14 +257,15 @@ public static class VNotchDesktopLauncher
 
     public static int StartOnDefaultDesktop(string exePath, string workingDir)
     {
-        var si = new STARTUPINFO();
-        si.cb = Marshal.SizeOf<STARTUPINFO>();
+        STARTUPINFO si = new STARTUPINFO();
+        si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
         si.lpDesktop = @"WinSta0\Default";
         si.dwFlags = 0x00000001; // STARTF_USESHOWWINDOW
         si.wShowWindow = 1;     // SW_SHOWNORMAL
 
+        PROCESS_INFORMATION pi;
         string cmdLine = "\"" + exePath + "\"";
-        if (!CreateProcessW(exePath, cmdLine, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, workingDir, ref si, out var pi))
+        if (!CreateProcessW(exePath, cmdLine, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, workingDir, ref si, out pi))
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
@@ -175,12 +275,15 @@ public static class VNotchDesktopLauncher
         return (int)pi.dwProcessId;
     }
 }
-"@ -ErrorAction SilentlyContinue
+'@ -ErrorAction SilentlyContinue
+}
 
-Write-Host ">>> Launching V-Notch (press Ctrl+C to stop)..." -ForegroundColor Green
+Write-TreeSpacer
+Write-TreeStep (Next-StepTag) "Launch Application"
+$sessionSw = [System.Diagnostics.Stopwatch]::StartNew()
 try {
     if (Test-Path $exePath) {
-        Write-Host ">>> Launching: $exePath" -ForegroundColor Gray
+        $relExe = $exePath.Substring($repoRoot.Length + 1)
         $workDir = Split-Path $exePath -Parent
         try {
             $procId = [VNotchDesktopLauncher]::StartOnDefaultDesktop($exePath, $workDir)
@@ -190,13 +293,28 @@ try {
             $psi.WorkingDirectory = $workDir
             $procId = ([System.Diagnostics.Process]::Start($psi)).Id
         }
+        Write-TreeItem "Binary  : $relExe" -State Info
+        Write-TreeItem "Process : PID $procId (WinSta0\Default)" -State Success
+        Write-TreeSpacer
+        Write-Host "  $gBotLeft$lineRule" -ForegroundColor DarkCyan
+        Write-Host "     " -NoNewline
+        Write-Host "$gDot LIVE " -ForegroundColor Green -NoNewline
+        Write-Host "V-Notch is running. Press " -ForegroundColor Gray -NoNewline
+        Write-Host "Ctrl+C" -ForegroundColor Yellow -NoNewline
+        Write-Host " to stop." -ForegroundColor Gray
+        Write-Host ""
         Wait-Process -Id $procId
     } else {
-        Write-Host ">>> Exe not found, running via dotnet run --no-build..." -ForegroundColor Yellow
-        dotnet run --project (Join-Path $repoRoot "V-Notch.csproj") --no-build
+        Write-TreeItem "Executable missing, running via 'dotnet run --no-build'..." -State Warn
+        Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
+        dotnet run --project $csprojPath --no-build
     }
 }
 finally {
-    Write-Host "`n>>> Cleaning up task..." -ForegroundColor Yellow
+    $sessionSw.Stop()
     Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host "     " -NoNewline
+    Write-Host "$gCheck STOPPED " -ForegroundColor DarkGray -NoNewline
+    Write-Host ("Session ended cleanly ({0:mm\:ss})." -f $sessionSw.Elapsed) -ForegroundColor DarkGray
+    Write-Host ""
 }
