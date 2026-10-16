@@ -20,13 +20,55 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path $PSScriptRoot -Parent
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
+$repoRoot = Split-Path $scriptDir -Parent
+
 # Capture the conditional output as an array: a single string splats into
 # individual characters when passed to a native command such as dotnet.
 $restoreArguments = @(if ($LockedRestore) { '-p:RestoreLockedMode=true' })
 if ($RequireAuthenticode -and -not $CertificateThumbprint) {
     throw 'A trusted certificate thumbprint is required for a public release.'
 }
+
+# Runtime Unicode Box-Drawing & Status Glyphs (7-bit ASCII source safe for PS 5.1 & PS 7)
+$gTopLeft = [char]0x256D
+$gBotLeft = [char]0x2570
+$gVert    = [char]0x2502
+$gBranch  = [char]0x251C
+$gHoriz   = [char]0x2500
+$gDiamond = [char]0x25C6
+$gCheck   = [char]0x2714
+$gCross   = [char]0x2716
+$gWarn    = [char]0x25B2
+$gArrow   = [char]0x25B8
+$lineRule = ([string]$gHoriz) * 56
+
+function Write-TreeStep([string]$Tag, [string]$Title) {
+    Write-Host "  $gBranch$gHoriz " -ForegroundColor DarkCyan -NoNewline
+    Write-Host "[$Tag] " -ForegroundColor Cyan -NoNewline
+    Write-Host $Title -ForegroundColor White
+}
+
+function Write-TreeItem([string]$Message, [string]$State = "Info") {
+    switch ($State) {
+        "Info"    { $sym = $gArrow; $sCol = "DarkCyan"; $tCol = "Gray" }
+        "Success" { $sym = $gCheck; $sCol = "Green";    $tCol = "Gray" }
+        "Warn"    { $sym = $gWarn;  $sCol = "Yellow";   $tCol = "Yellow" }
+        "Error"   { $sym = $gCross; $sCol = "Red";      $tCol = "Red" }
+    }
+    Write-Host "  $gVert     " -ForegroundColor DarkCyan -NoNewline
+    Write-Host "$sym " -ForegroundColor $sCol -NoNewline
+    Write-Host $Message -ForegroundColor $tCol
+}
+
+function Write-TreeSpacer {
+    Write-Host "  $gVert" -ForegroundColor DarkCyan
+}
+
+$totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 
 Push-Location $repoRoot
 try {
@@ -63,39 +105,49 @@ $versionArguments = @(
     "-p:PackageManifestVersion=$installerVersion"
 )
 
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "V-Notch Installer Build Script" -ForegroundColor Cyan
-if ($SelfContained) {
-    Write-Host "Mode: Self-contained (.NET runtime bundled)" -ForegroundColor Cyan
-} else {
-    Write-Host "Mode: Framework-dependent (needs .NET 8 Runtime)" -ForegroundColor Cyan
-}
-Write-Host "========================================" -ForegroundColor Cyan
+$modeText  = if ($SelfContained) { "Self-Contained (win-x64)" } else { "Framework-Dependent (.NET 8)" }
+$modeColor = if ($SelfContained) { "Magenta" } else { "Green" }
+
 Write-Host ""
+Write-Host "  $gTopLeft$lineRule" -ForegroundColor DarkCyan
+Write-Host "  $gVert  " -ForegroundColor DarkCyan -NoNewline
+Write-Host "$gDiamond V-NOTCH INSTALLER BUILDER " -ForegroundColor Cyan -NoNewline
+Write-Host "v$ReleaseVersion" -ForegroundColor DarkGray -NoNewline
+Write-Host "  $gVert  " -ForegroundColor DarkGray -NoNewline
+Write-Host $modeText -ForegroundColor $modeColor
+Write-Host "  $gVert" -ForegroundColor DarkCyan
 
 $publishDir = "release"
 
 # Step 1: Clean previous publish
-Write-Host "[1/3] Cleaning previous publish..." -ForegroundColor Yellow
+Write-TreeStep "1/4" "Prepare Release Directory"
 if (Test-Path $publishDir) {
     $resolvedPublish = (Resolve-Path -LiteralPath $publishDir).Path
     $expectedPublish = [IO.Path]::GetFullPath((Join-Path $repoRoot 'release'))
     if ($resolvedPublish -ne $expectedPublish) { throw 'Publish cleanup must stay inside this repository release directory.' }
     Remove-Item -LiteralPath $resolvedPublish -Recurse -Force
-    Write-Host "      Cleaned $publishDir" -ForegroundColor Green
+    Write-TreeItem "Cleaned previous '$publishDir' directory." -State "Success"
+} else {
+    Write-TreeItem "No previous '$publishDir' directory found." -State "Info"
 }
 
 # Step 2: Publish to release folder. `dotnet publish` already builds the app.
-Write-Host "[2/3] Publishing to $publishDir..." -ForegroundColor Yellow
+Write-TreeSpacer
+Write-TreeStep "2/4" "Publish V-Notch & Uninstaller"
+$pubSw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($SelfContained) {
     # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
-    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments @versionArguments
+    $pubOut = & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments 2>&1
 } else {
     # Framework-dependent single file - requires .NET 8 runtime.
-    dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments @versionArguments
+    $pubOut = & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments 2>&1
 }
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "      Publish failed!" -ForegroundColor Red
+    foreach ($l in @($pubOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
+        Write-TreeItem $l.Trim() -State "Error"
+    }
+    Write-TreeItem "Application publish failed!" -State "Error"
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
     exit 1
 }
 
@@ -106,39 +158,46 @@ if ($exeVersion -ne $installerVersion -or $publishedVersion.ProductVersion -cne 
 }
 $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
 Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
-Write-Host "      Published successfully (v$exeVersion, SHA256: $appExeHash)" -ForegroundColor Green
+Write-TreeItem ("Published V-Notch.exe (v$exeVersion) in {0:N1}s." -f $pubSw.Elapsed.TotalSeconds) -State "Success"
 
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.
-Write-Host "[2b/3] Publishing uninstaller..." -ForegroundColor Yellow
-dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -o $publishDir @restoreArguments @versionArguments
+$uninstOut = & dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "      Uninstaller publish failed!" -ForegroundColor Red
+    foreach ($l in @($uninstOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
+        Write-TreeItem $l.Trim() -State "Error"
+    }
+    Write-TreeItem "Uninstaller publish failed!" -State "Error"
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
     exit 1
 }
-Write-Host "      Uninstaller published (uninstall.exe)" -ForegroundColor Green
+Write-TreeItem "Published standalone uninstaller (uninstall.exe)." -State "Success"
 
-./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir
+$modelCheckOut = & ./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir 2>&1
+Write-TreeItem "Verified bundled ONNX model provenance & license." -State "Success"
+
 if ($CertificateThumbprint) {
-    & (Join-Path $PSScriptRoot 'Sign-ReleaseBinary.ps1') -Path "$publishDir\V-Notch.exe", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
+    & (Join-Path $scriptDir 'Sign-ReleaseBinary.ps1') -Path "$publishDir\V-Notch.exe", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
     Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+    Write-TreeItem "Signed V-Notch.exe and uninstall.exe (thumbprint)." -State "Success"
 }
 
 if ($CertificatePath -and -not $CertificateThumbprint) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-    if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign binaries." -ForegroundColor Red; exit 1 }
-    Write-Host "      Signing V-Notch.exe and uninstall.exe..." -ForegroundColor Yellow
+    if (-not $signtool) { Write-TreeItem "signtool.exe not found; cannot sign binaries." -State "Error"; exit 1 }
+    Write-TreeItem "Signing V-Notch.exe and uninstall.exe..." -State "Info"
     & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "$publishDir\V-Notch.exe" "$publishDir\uninstall.exe"
-    if ($LASTEXITCODE -ne 0) { Write-Host "      Authenticode signing of binaries failed!" -ForegroundColor Red; exit 1 }
-    Write-Host "      V-Notch.exe and uninstall.exe signed successfully" -ForegroundColor Green
+    if ($LASTEXITCODE -ne 0) { Write-TreeItem "Authenticode signing of binaries failed!" -State "Error"; exit 1 }
+    Write-TreeItem "V-Notch.exe and uninstall.exe signed successfully." -State "Success"
 
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
     Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
 }
 
 # Step 3: Build NSIS installer
-Write-Host "[3/3] Building NSIS installer..." -ForegroundColor Yellow
+Write-TreeSpacer
+Write-TreeStep "3/4" "Package NSIS Installer"
 
 # Accept the verified portable compiler from CI, retaining installed NSIS for developers.
 if (-not $NsisPath) {
@@ -148,40 +207,49 @@ if (-not $NsisPath) {
     }
 }
 
-if (-not (Test-Path $nsisPath)) {
-    Write-Host "      NSIS not found! Please install NSIS from https://nsis.sourceforge.io/" -ForegroundColor Red
-    Write-Host "      Release files are ready in '$publishDir'" -ForegroundColor Yellow
+if (-not (Test-Path $NsisPath)) {
+    Write-TreeItem "NSIS not found! Install NSIS from https://nsis.sourceforge.io/" -State "Error"
+    Write-TreeItem "Release files are ready in '$publishDir'." -State "Warn"
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
     exit 1
 }
 
-# Create installers directory if it doesn't exist
 if (-not (Test-Path "installers")) {
     New-Item -ItemType Directory -Path "installers" | Out-Null
 }
 
 # Read the UTF-8 source explicitly; ANSI decoding turns the copyright sign into mojibake.
 if ($SelfContained) {
-    # Tell NSIS to skip the .NET runtime check/install (runtime is bundled).
-    & $nsisPath "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi"
+    $nsisOut = & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" 2>&1
 } else {
-    & $nsisPath "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi"
+    $nsisOut = & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" 2>&1
 }
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "      NSIS build failed!" -ForegroundColor Red
+    foreach ($l in @($nsisOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
+        Write-TreeItem $l.Trim() -State "Error"
+    }
+    Write-TreeItem "NSIS build failed!" -State "Error"
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
     exit 1
 }
+Write-TreeItem "Built installers\V-Notch-Setup.exe." -State "Success"
 
-# Authenticode is optional. The release workflow separately signs update manifests
-# using the free ECDSA key; the updater always requires those manifests.
+# Step 4: Signing & Checksums
+Write-TreeSpacer
+Write-TreeStep "4/4" "Signatures & SHA-256 Checksums"
+
 if ($CertificateThumbprint) {
-    & (Join-Path $PSScriptRoot 'Sign-ReleaseBinary.ps1') -Path 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
+    & (Join-Path $scriptDir 'Sign-ReleaseBinary.ps1') -Path 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
+    Write-TreeItem "Installer Authenticode signature applied (thumbprint)." -State "Success"
 } elseif ($CertificatePath) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-    if (-not $signtool) { Write-Host "      signtool.exe not found; cannot sign installer." -ForegroundColor Red; exit 1 }
+    if (-not $signtool) { Write-TreeItem "signtool.exe not found; cannot sign installer." -State "Error"; exit 1 }
     & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "installers\V-Notch-Setup.exe"
-    if ($LASTEXITCODE -ne 0) { Write-Host "      Authenticode signing failed!" -ForegroundColor Red; exit 1 }
-    Write-Host "      Installer Authenticode signature applied" -ForegroundColor Green
-} else { Write-Host "      No Authenticode certificate (optional). Release manifests must be signed separately." -ForegroundColor Yellow }
+    if ($LASTEXITCODE -ne 0) { Write-TreeItem "Authenticode signing failed!" -State "Error"; exit 1 }
+    Write-TreeItem "Installer Authenticode signature applied." -State "Success"
+} else {
+    Write-TreeItem "No Authenticode certificate (optional)." -State "Info"
+}
 
 $checksum = $null
 $retryCount = 0
@@ -194,16 +262,15 @@ while ($null -eq $checksum -and $retryCount -lt 10) {
     }
 }
 if ($null -eq $checksum) {
-    Write-Host "      Failed to calculate SHA-256 due to file lock!" -ForegroundColor Red
+    Write-TreeItem "Failed to calculate SHA-256 due to file lock!" -State "Error"
     exit 1
 }
 
 Set-Content -Path "installers\V-Notch-Setup.exe.sha256" -Value "$checksum  V-Notch-Setup.exe" -NoNewline
 $exeShaName = if ($SelfContained) { "V-Notch-SelfContained.exe.sha256" } else { "V-Notch.exe.sha256" }
 Set-Content -Path "installers\$exeShaName" -Value "$appExeHash  V-Notch.exe" -NoNewline
-Write-Host "      SHA-256 checksums created (installer and application binary)" -ForegroundColor Green
+Write-TreeItem "SHA-256: $checksum" -State "Success"
 
-# Step 4: Automatically sign update manifest if ECDSA release key is available
 $privateKeyCandidates = @(
     $env:VNOTCH_UPDATE_SIGNING_KEY_PEM_PATH,
     (Join-Path $repoRoot "..\VNotchReleaseKeys\update-2026-09-private.pem")
@@ -211,8 +278,7 @@ $privateKeyCandidates = @(
 $foundKey = $privateKeyCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
-    Write-Host "      Signing update manifest..." -ForegroundColor Yellow
-    $signScript = Join-Path $PSScriptRoot "Sign-UpdateManifest.ps1"
+    $signScript = Join-Path $scriptDir "Sign-UpdateManifest.ps1"
     $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
     $keyArg = if ($foundKey) { "-PrivateKeyPath '$foundKey'" } else { "" }
     try {
@@ -222,24 +288,24 @@ if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
                 Version = $projectVersion
             }
             if ($foundKey) { $signParams["PrivateKeyPath"] = $foundKey }
-            & $signScript @signParams
+            & $signScript @signParams | Out-Null
         } elseif ($pwshCmd) {
-            & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$projectVersion' $keyArg"
+            & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$projectVersion' $keyArg" | Out-Null
         } else {
-            Write-Host "      PowerShell 7 (pwsh) not found; skipping update manifest signing." -ForegroundColor Yellow
+            Write-TreeItem "PowerShell 7 (pwsh) not found; skipping update manifest signing." -State "Warn"
         }
-        Write-Host "      Update manifest and signature created successfully" -ForegroundColor Green
+        Write-TreeItem "Signed ECDSA update manifest." -State "Success"
     } catch {
-        Write-Host "      Warning: Could not sign update manifest: $_" -ForegroundColor Yellow
+        Write-TreeItem "Could not sign update manifest: $_" -State "Warn"
     }
 }
 
-Write-Host "      Installer created successfully" -ForegroundColor Green
+$totalSw.Stop()
+Write-TreeSpacer
+Write-Host "  $gBotLeft$lineRule" -ForegroundColor DarkCyan
+Write-Host "     $gCheck BUILD COMPLETE " -ForegroundColor Green -NoNewline
+Write-Host ("v$exeVersion -> installers\V-Notch-Setup.exe ({0:N1}s)" -f $totalSw.Elapsed.TotalSeconds) -ForegroundColor Gray
 Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Build Complete! (v$exeVersion)" -ForegroundColor Green
-Write-Host "Installer: installers\V-Notch-Setup.exe" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
 
 } finally {
     Pop-Location
