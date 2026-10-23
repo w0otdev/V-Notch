@@ -19,7 +19,8 @@ internal static partial class ClipboardDropReader
 
     internal static HttpClient CreateClient(HttpMessageHandler? transport = null, NetworkPrivacy? privacy = null) =>
         new(new NetworkPrivacy.PrivacyHandler(privacy ?? NetworkPrivacy.Current, NetworkFeature.Artwork,
-            transport ?? new HttpClientHandler())) { Timeout = TimeSpan.FromSeconds(20) };
+            transport ?? new HttpClientHandler()))
+        { Timeout = TimeSpan.FromSeconds(20) };
 
     internal static bool Supports(IDataObject data)
     {

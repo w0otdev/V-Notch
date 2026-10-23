@@ -4,8 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using VNotch.ViewModels;
 using VNotch.Services.Clipboard;
+using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 

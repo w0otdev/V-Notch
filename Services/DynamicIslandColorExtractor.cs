@@ -23,11 +23,11 @@ internal static class DynamicIslandColorExtractor
         var weights = new float[width * height];
         float centerX = width / 2f, centerY = height / 2f;
         for (int y = 0; y < height; y++)
-        for (int x = 0; x < width; x++)
-        {
-            float dx = (x - centerX) / centerX, dy = (y - centerY) / centerY;
-            weights[y * width + x] = 1.0f + MathF.Max(0, 1.0f - MathF.Sqrt(dx * dx + dy * dy)) * 0.5f;
-        }
+            for (int x = 0; x < width; x++)
+            {
+                float dx = (x - centerX) / centerX, dy = (y - centerY) / centerY;
+                weights[y * width + x] = 1.0f + MathF.Max(0, 1.0f - MathF.Sqrt(dx * dx + dy * dy)) * 0.5f;
+            }
         return weights;
     }
 
