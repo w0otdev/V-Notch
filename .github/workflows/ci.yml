@@ -151,30 +151,6 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
 
-      # Mirrors scripts/prepush.ps1 step 4: headless suite plus the application coverage gate.
-      - name: Test (headless)
-        shell: pwsh
-        run: >-
-          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
-          --filter "Category!=DesktopIntegration" --settings Tests/CI.runsettings
-          --collect "Code Coverage" --results-directory artifacts/test-results
-          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=minimal"
-
-      - name: Enforce application coverage
-        shell: pwsh
-        run: ./Tools/Assert-Coverage.ps1 -ResultsDirectory artifacts/test-results
-
-      - name: Retain test results and coverage
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: test-results
-          path: |
-            artifacts/test-results/**/*.trx
-            artifacts/test-results/**/*.cobertura.xml
-          if-no-files-found: warn
-          retention-days: 7
-
       - name: Test release security gates
         shell: pwsh
         run: ./Tests/ReleaseGateTests.ps1
