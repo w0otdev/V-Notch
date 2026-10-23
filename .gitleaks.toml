@@ -23,6 +23,14 @@ regexes = ['^LEGACY-KEY-12345$']
 [[allowlists]]
 description = "Exact built-in YouTube client identifier, one service only"
 condition = "AND"
-paths = ['(^|[\\/])Services[\\/]YouTubeSubtitleService\.cs$']
+paths = ['(^|[\\/])Services[\\/]YouTubeSubtitleService\.cs$', '(^|[\\/])Assets[\\/]MediaProtocols\.json$']
 regexTarget = "secret"
 regexes = ['^(?:AIza)SyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8$']
+
+# This exact public Spotify Web Player TOTP version-61 seed is not a tenant key.
+[[allowlists]]
+description = "Exact built-in Spotify Web Player TOTP seed in MediaProtocols.json"
+condition = "AND"
+paths = ['(^|[\\/])Assets[\\/]MediaProtocols\.json$']
+regexTarget = "secret"
+regexes = ['^Mzc2MTM2Mzg3NTM4NDU5ODkzODgzMzEyMzEwOTExOTkyODQ3MTEyNDQ4ODk0NDEwMjEwNTExMjk3MTA4$']

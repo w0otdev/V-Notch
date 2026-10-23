@@ -353,7 +353,8 @@ internal sealed class YouTubeSubtitleService : IDisposable
                 string url = $"https://www.youtube.com/youtubei/v1/player?key={Uri.EscapeDataString(apiKey)}";
                 string jsonBody = JsonSerializer.Serialize(new
                 {
-                    context = new { client = new { clientName = "ANDROID", clientVersion } }, videoId
+                    context = new { client = new { clientName = "ANDROID", clientVersion } },
+                    videoId
                 });
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, url)

@@ -83,21 +83,21 @@ public sealed class InteractionSoundTests
     public void ShortClicksHaveConsistentLevelAndLimitedPeaks()
     {
         foreach (var cue in Enum.GetValues<InteractionCue>())
-        for (int variant = 0; variant < InteractionSoundPlayer.VariantCount; variant++)
-        {
-            byte[] wave = InteractionSoundPlayer.CreateWave(cue, variant);
-            double energy = 0;
-            int peak = 0, count = (wave.Length - 44) / 2;
-            for (int offset = 44; offset < wave.Length; offset += 2)
+            for (int variant = 0; variant < InteractionSoundPlayer.VariantCount; variant++)
             {
-                int sample = BitConverter.ToInt16(wave, offset);
-                peak = Math.Max(peak, Math.Abs(sample));
-                energy += (double)sample * sample;
+                byte[] wave = InteractionSoundPlayer.CreateWave(cue, variant);
+                double energy = 0;
+                int peak = 0, count = (wave.Length - 44) / 2;
+                for (int offset = 44; offset < wave.Length; offset += 2)
+                {
+                    int sample = BitConverter.ToInt16(wave, offset);
+                    peak = Math.Max(peak, Math.Abs(sample));
+                    energy += (double)sample * sample;
+                }
+                double rmsDb = 20 * Math.Log10(Math.Sqrt(energy / count) / 32768);
+                Assert.True(rmsDb >= -33 && rmsDb <= -26, $"{cue}/{variant}: RMS {rmsDb:F1} dBFS");
+                Assert.InRange(peak, 1, 6554);
             }
-            double rmsDb = 20 * Math.Log10(Math.Sqrt(energy / count) / 32768);
-            Assert.True(rmsDb >= -33 && rmsDb <= -26, $"{cue}/{variant}: RMS {rmsDb:F1} dBFS");
-            Assert.InRange(peak, 1, 6554);
-        }
     }
 
     [Fact]
