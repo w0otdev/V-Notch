@@ -22,7 +22,27 @@ internal static class Program
         Color[] samples = Enumerable.Range(0, 256).Select(i => Color.FromRgb((byte)i, (byte)(i * 37), (byte)(i * 79))).ToArray();
         Measure("text-contrast", 100_000, () => contrast(samples[colorIndex++ & 255], Colors.Black, 7));
         Measure("baseline-text-contrast", 100_000, () => VNotch.BenchmarkBaseline.DynamicIslandColorExtractor.EnsureTextOnDarkBackground(samples[colorIndex++ & 255], Colors.Black, 7));
-        bool sameColors = samples.All(c => contrast(c, Colors.Black, 7) == VNotch.BenchmarkBaseline.DynamicIslandColorExtractor.EnsureTextOnDarkBackground(c, Colors.Black, 7));
+        bool historicalColorsMatch = samples.All(c => contrast(c, Colors.Black, 7) == VNotch.BenchmarkBaseline.DynamicIslandColorExtractor.EnsureTextOnDarkBackground(c, Colors.Black, 7));
+        var toHsl = colors.GetMethod("ToHsl")!.CreateDelegate<Func<Color, (double H, double S, double L)>>();
+        var fromHsl = colors.GetMethod("HslToColor")!.CreateDelegate<Func<double, double, double, Color>>();
+        var luminance = colors.GetMethod("GetRelativeLuminance")!.CreateDelegate<Func<Color, double>>();
+        var ratio = colors.GetMethod("GetContrastRatio")!.CreateDelegate<Func<Color, Color, double>>();
+        Color ReferenceContrast(Color color)
+        {
+            var hsl = toHsl(color);
+            var best = color;
+            if (luminance(best) < .18 || hsl.L < .40)
+                best = fromHsl(hsl.H, Math.Max(.18, hsl.S), Math.Clamp(Math.Max(hsl.L, .60), .55, .65));
+            if (ratio(best, Colors.Black) >= 7 && luminance(best) >= .18) return best;
+            for (int step = 0; step <= 100; step++)
+            {
+                double lightness = hsl.L + (1 - hsl.L) * (step / 100.0);
+                var candidate = fromHsl(hsl.H, Math.Max(.18, hsl.S), Math.Clamp(lightness, .55, .72));
+                if (ratio(candidate, Colors.Black) >= 7 && luminance(candidate) >= .18) return candidate;
+            }
+            return Colors.White;
+        }
+        bool sameColors = samples.All(c => contrast(c, Colors.Black, 7) == ReferenceContrast(c));
 
         var blur = typeof(FastBlurService).GetMethod("BoxBlurVertical", BindingFlags.NonPublic | BindingFlags.Static)!
             .CreateDelegate<Action<byte[], byte[], int, int, int>>();
@@ -65,9 +85,13 @@ internal static class Program
         var lastScan = typeof(WindowTitleScanner).GetField("_lastWindowEnumTime", BindingFlags.NonPublic | BindingFlags.Instance)!;
         Measure("desktop-window-scan", 150, () => { lastScan.SetValue(scanner, DateTime.MinValue); scanner.GetAllWindowTitles(false); });
 
-        string json = JsonSerializer.Serialize(new { Timestamp = DateTimeOffset.Now, Runtime = Environment.Version.ToString(), CPUs = Environment.ProcessorCount, SameContrastOutput = sameColors, SameBlurOutput = sameBlur, Results }, new JsonSerializerOptions { WriteIndented = true });
+        string json = JsonSerializer.Serialize(new { Timestamp = DateTimeOffset.Now, Runtime = Environment.Version.ToString(), CPUs = Environment.ProcessorCount,
+            SameContrastOutput = sameColors, MatchesHistoricalContrastOutput = historicalColorsMatch,
+            ContrastOracle = "Linear scan using corrected HSL channel clamping; historical baseline is retained for timing and reported separately",
+            SameBlurOutput = sameBlur, Results }, new JsonSerializerOptions { WriteIndented = true });
         Console.WriteLine(json);
         if (args.Length > 0) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[0]))!); File.WriteAllText(args[0], json); }
+        if (!sameColors || !sameBlur) throw new InvalidOperationException("Production output differs from the correctness reference; see the saved report.");
     }
 
     private static void Measure(string name, int iterations, Action action)

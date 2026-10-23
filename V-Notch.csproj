@@ -11,6 +11,9 @@
     <!-- Audit snapshots are not application source, XAML pages, or resources. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*</DefaultItemExcludes>
 
+    <!-- Opt out of CET shadow-stack enforcement. Added with the LiquidGlass D3D interop
+         work (490e198); the app loads native GPU/audio/LLM libraries and hooks that are
+         not verified as CET compatible. Re-enable only after testing those paths. -->
     <CETCompat>false</CETCompat>
 
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -49,23 +52,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="TestYtSubs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="ComputeSharp.D2D1" Version="3.2.0" />
-    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
     <PackageReference Include="LanguageDetection.Ai" Version="1.1.0" />
     <PackageReference Include="LLamaSharp" Version="0.27.0" />
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
     <PackageReference Include="LLamaSharp.Backend.Vulkan.Windows" Version="0.27.0" />
     <PackageReference Include="Markdig" Version="0.41.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.17.1" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Data.OleDb" Version="8.0.1" />
+    <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
     <PackageReference Include="Vortice.Direct2D1" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D9" Version="3.8.3" />
@@ -86,19 +86,22 @@
     <InternalsVisibleTo Include="VNotch.Benchmarks" />
     <InternalsVisibleTo Include="VNotch.TranslationBench" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
+    <EmbeddedResource Include="Assets\MediaProtocols.json" LogicalName="VNotch.MediaProtocols.json" />
     <EmbeddedResource Include="docs\TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />
     <EmbeddedResource Include="docs\TERMS_OF_SERVICE_VI.md" LogicalName="VNotch.TERMS_OF_SERVICE_VI.md" />
     <EmbeddedResource Include="Locales\*.json" LogicalName="VNotch.Locales.%(FileName).json" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="docs\TERMS_OF_SERVICE.md" CopyToOutputDirectory="PreserveNewest" Link="TERMS_OF_SERVICE.md" />
-    <None Include="docs\TERMS_OF_SERVICE_VI.md" CopyToOutputDirectory="PreserveNewest" Link="TERMS_OF_SERVICE_VI.md" />
+    <!-- The tray loads this icon from disk; it differs from the WPF logo resource. -->
+    <None Update="Services\icons\logo.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Link="logo.ico" />
     <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="docs\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
+    <None Update="docs\licenses\Hardcodet.NotifyIcon.Wpf-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\Hardcodet.NotifyIcon.Wpf-MIT.txt" />
+    <None Update="Assets\MediaProtocols.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Update="Introduction\**\*" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <None Update="Assets\Translation\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <None Include="Locales\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Assets\SPL_CLICK_SFX.m4a" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <Target Name="KeepTranslationNativeLibrariesBesideExecutable" BeforeTargets="AssignTargetPaths">
     <ItemGroup>
@@ -114,10 +117,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Fonts\SF-Pro-Display-Bold.otf" />
-    <Resource Include="Fonts\SF-Pro-Display-Semibold.otf" />
-    <Resource Include="Fonts\SF-Pro-Display-Medium.otf" />
-    <Resource Include="Fonts\SF-Pro-Display-Regular.otf" />
+    <None Remove="Fonts\SF-Pro-Display-*.otf" />
+    <Content Include="Fonts\SF-Pro-Display-*.otf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Resource Include="Fonts\segmdl2.ttf" />
     <Resource Include="Services\icons\browser.svg" />
     <Resource Include="Services\icons\discord.svg" />
@@ -127,10 +128,6 @@
     <Resource Include="Services\icons\twitter.svg" />
     <Resource Include="Services\icons\youtube.svg" />
     <Resource Include="logo.ico" />
-    <None Include="Services\icons\logo.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>logo.ico</Link>
-    </None>
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\TrayIcons\*.png" />
     <Resource Include="Assets\QR.PNG" />
@@ -154,20 +151,39 @@
     <Resource Include="Assets\Flags\flag_pl.png" />
     <Resource Include="Assets\Flags\flag_nl.png" />
     <Resource Include="Assets\Flags\flag_id.png" />
-    <None Include="Shaders\LiquidGlassRefraction.ps">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
-  <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Inputs="Shaders\LiquidGlassRefraction.hlsl" Outputs="Shaders\LiquidGlassRefraction.ps">
-    <ItemGroup>
-      <_FxcCandidate Include="$(WindowsSdkDir)bin\**\x64\fxc.exe" />
-      <_FxcCandidate Include="C:\Program Files (x86)\Windows Kits\10\bin\**\x64\fxc.exe" />
+  <!-- Recompiles the committed LiquidGlass pixel shader only when the HLSL source is newer
+       than the .ps output (Inputs/Outputs). Override the compiler with -p:FxcPath=...,
+       or skip the step with -p:SkipShaderCompile=true. A failed compile keeps the committed
+       .ps and emits a warning, which -warnaserror turns into a build failure. -->
+  <PropertyGroup>
+    <_LiquidGlassShaderSource>$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl</_LiquidGlassShaderSource>
+    <_LiquidGlassShaderOutput>$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.ps</_LiquidGlassShaderOutput>
+    <_WindowsKitsRoot Condition="'$(_WindowsKitsRoot)' == '' And '$(WindowsSdkDir)' != ''">$(WindowsSdkDir)</_WindowsKitsRoot>
+    <_WindowsKitsRoot Condition="'$(_WindowsKitsRoot)' == '' And '$(MSBuildProgramFiles32)' != ''">$(MSBuildProgramFiles32)\Windows Kits\10\</_WindowsKitsRoot>
+  </PropertyGroup>
+  <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Condition="'$(SkipShaderCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="$(_LiquidGlassShaderSource)" Outputs="$(_LiquidGlassShaderOutput)">
+    <ItemGroup Condition="'$(FxcPath)' == ''">
+      <!-- Versioned SDK folders enumerate in name order, so the last match is the newest SDK. -->
+      <_FxcCandidate Include="$(WindowsSdkVerBinPath)x64\fxc.exe" Condition="'$(WindowsSdkVerBinPath)' != '' And Exists('$(WindowsSdkVerBinPath)x64\fxc.exe')" />
+      <_FxcCandidate Include="$(_WindowsKitsRoot)bin\10.*\x64\fxc.exe" Condition="'@(_FxcCandidate)' == '' And '$(_WindowsKitsRoot)' != ''" />
     </ItemGroup>
-    <PropertyGroup>
+    <PropertyGroup Condition="'$(FxcPath)' == ''">
       <FxcPath Condition="'@(_FxcCandidate)' != ''">%(_FxcCandidate.FullPath)</FxcPath>
     </PropertyGroup>
-    <Exec Condition="'$(FxcPath)' != '' And Exists('$(FxcPath)')" Command="&quot;$(FxcPath)&quot; /nologo /T ps_3_0 /E main /Fo &quot;Shaders\LiquidGlassRefraction.ps&quot; &quot;Shaders\LiquidGlassRefraction.hlsl&quot;" ContinueOnError="true" />
-    <Exec Condition="('$(FxcPath)' == '' Or !Exists('$(FxcPath)'))" Command="dotnet run --project &quot;tools\ShaderCompiler\ShaderCompiler.csproj&quot;" ContinueOnError="true" />
+    <PropertyGroup>
+      <_ShaderCompileExitCode>0</_ShaderCompileExitCode>
+      <_UseFxc Condition="'$(FxcPath)' != '' And Exists('$(FxcPath)')">true</_UseFxc>
+    </PropertyGroup>
+
+    <Exec Condition="'$(_UseFxc)' == 'true'" Command="&quot;$(FxcPath)&quot; /nologo /T ps_3_0 /E main /Fo &quot;$(_LiquidGlassShaderOutput)&quot; &quot;$(_LiquidGlassShaderSource)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_ShaderCompileExitCode" />
+    </Exec>
+    <Message Condition="'$(_UseFxc)' != 'true'" Importance="high" Text="fxc.exe not found (set FxcPath to override). Falling back to Tools\ShaderCompiler." />
+    <Exec Condition="'$(_UseFxc)' != 'true'" Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)Tools\ShaderCompiler\ShaderCompiler.csproj&quot; -- &quot;$(_LiquidGlassShaderSource)&quot; &quot;$(_LiquidGlassShaderOutput)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_ShaderCompileExitCode" />
+    </Exec>
+    <Warning Condition="'$(_ShaderCompileExitCode)' != '0'" Code="VNOTCH001" Text="LiquidGlass shader compile failed with exit code $(_ShaderCompileExitCode). The committed Shaders\LiquidGlassRefraction.ps was kept and may be stale." />
   </Target>
 
   <Target Name="SetPackageManifestVersion" BeforeTargets="Build">

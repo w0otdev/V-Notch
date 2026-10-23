@@ -39,7 +39,7 @@ public sealed class MorphingSettingsTitle : MorphingSettingsIcon
         ToolTip = Text;
         if (string.IsNullOrEmpty(Text) || ActualWidth <= 0) return;
         var typeface = new Typeface(new FontFamily(
-            "pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI"),
+            VNotch.Services.AppFonts.Location + "#SF Pro Display, Nirmala UI, Segoe UI"),
             FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
         var text = new FormattedText(Text, Loc.GetCulture(), FlowDirection,
             typeface, 28, VNotch.Services.UiPalette.PrimaryBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip)

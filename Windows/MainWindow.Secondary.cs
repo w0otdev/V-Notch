@@ -10,8 +10,34 @@ namespace VNotch;
 public partial class MainWindow
 {
     private ClipboardHotkeyController? _clipboardHotkey;
+    internal string? ClipboardHotkeyRegistrationError => _clipboardHotkey?.RegistrationError;
     private void DisposeClipboardHotkey() => _clipboardHotkey?.Dispose();
     private ClipboardHistoryController? _clipboardHistory;
+    private VNotch.Controls.ClipboardTray? _clipboardTrayView;
+    internal VNotch.Controls.ClipboardTray ClipboardTrayView
+    {
+        get
+        {
+            if (_clipboardTrayView != null) return _clipboardTrayView;
+            ObjectDisposedException.ThrowIf(_cleanedUp, this);
+            var view = new VNotch.Controls.ClipboardTray { Name = nameof(ClipboardTrayView) };
+            _clipboardTrayView = view;
+            view.SetBinding(VNotch.Controls.ClipboardTray.NavigationWidthProperty,
+                new System.Windows.Data.Binding(nameof(ActualWidth)) { Source = NavTabsStackPanel });
+            view.IsVisibleChanged += (_, _) => ApplyGlassContentShadow(IsLiquidGlassEnabled);
+            ClipboardTrayHost.Content = view;
+            RegisterName(nameof(ClipboardTrayView), view);
+            LocalizedPresentation.Apply(view);
+            AnimationPrimitives.ApplyFpsToTree(view);
+            if (_clipboardHistory != null) view.Attach(_clipboardHistory);
+            if (ClipboardTrayHost.IsVisible)
+            {
+                ClipboardTrayHost.ApplyTemplate();
+                ClipboardTrayHost.UpdateLayout();
+            }
+            return view;
+        }
+    }
     private bool _localSecondaryView;
     private bool _isSecondaryView { get => _localSecondaryView; set => _localSecondaryView = value; }
     private bool _isCameraView;
@@ -36,7 +62,7 @@ public partial class MainWindow
         _clipboardHistory = new ClipboardHistoryController(Dispatcher, store);
         _clipboardHistory.ApplySettings(_settings);
         _clipboardHistory.DropImported += PlayClipboardDropFeedback;
-        ClipboardTrayView.Attach(_clipboardHistory);
+        _clipboardTrayView?.Attach(_clipboardHistory);
         _clipboardHotkey = new ClipboardHotkeyController(this, () =>
         {
             if (_cleanedUp || _isGreetingActive || _isAnimating) return;

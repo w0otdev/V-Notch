@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Clipboard;
 using Xunit;
 
@@ -42,7 +43,10 @@ public sealed class ClipboardBrowserDropTests
             await stream.WriteAsync(png, timeout.Token);
         }, timeout.Token);
         var address = new Uri($"http://127.0.0.1:{((System.Net.IPEndPoint)listener.LocalEndpoint).Port}/image");
-        var capture = await ClipboardDropReader.ResolveAsync(new(new ClipboardCapture(), address), timeout.Token);
+        var privacy = new NetworkPrivacy();
+        privacy.Apply(new NotchSettings { EnableLocalOnlyMode = false, EnableOnlineArtworkLookup = true });
+        using var client = ClipboardDropReader.CreateClient(privacy: privacy);
+        var capture = await ClipboardDropReader.ResolveAsync(new(new ClipboardCapture(), address), timeout.Token, client);
         await serve;
         Assert.Equal(ClipboardKind.Image, ClipboardClassifier.Detect(capture));
         Assert.NotEmpty(capture.ImagePng!);

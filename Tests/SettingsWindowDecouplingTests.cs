@@ -106,6 +106,38 @@ public class SettingsWindowDecouplingTests
     }
 
     [Fact]
+    public void InteractionSoundToggleLoadsAndParticipatesInPreviewAndCancel()
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            EnsureApplicationResources();
+            var initial = new NotchSettings { EnableInteractionSounds = false, InteractionSoundVolume = .35 };
+            var window = new SettingsWindow(initial, new FakeSettingsAppService());
+            try
+            {
+                Assert.False(window.InteractionSoundsCheck.IsChecked);
+                Assert.Equal(35, window.InteractionSoundVolumeSlider.Value);
+                Assert.False(window.InteractionSoundVolumeSlider.IsEnabled);
+                window.InteractionSoundsCheck.IsChecked = true;
+                Assert.True(window.InteractionSoundVolumeSlider.IsEnabled);
+                window.InteractionSoundVolumeSlider.Value = 70;
+                var snapshot = window.ReadSettingsFromUi();
+                Assert.True(snapshot.EnableInteractionSounds);
+                Assert.Equal(.7, snapshot.InteractionSoundVolume);
+                Assert.False(initial.EnableInteractionSounds);
+                NotchSettings? received = null;
+                window.SettingsChanged += (_, settings) => received = settings;
+                window.ApplyPreview(snapshot);
+                Assert.True(received!.EnableInteractionSounds);
+                typeof(SettingsWindow).GetMethod("RevertLivePreviewIfNeeded", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                Assert.False(received!.EnableInteractionSounds);
+                Assert.Equal(.35, received.InteractionSoundVolume);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
     public void SettingsWindow_ApplyPreview_WhenValuesUnchanged_DoesNotFireSettingsChanged()
     {
         SharedStaTestRunner.Run(() =>

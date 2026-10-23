@@ -42,7 +42,7 @@ internal sealed class TranslationModelStore
         TimeSpan? networkTimeout = null, NetworkPrivacy? privacy = null)
     {
         Profile = profile ?? TranslationModelProfile.QwenInstruct;
-        Root = Path.GetFullPath(root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "translation-models", Profile.Id));
+        Root = Path.GetFullPath(root ?? Path.Combine(AppPaths.LocalAppDataRoot, "translation-models", Profile.Id));
         _client = client ?? Client;
         _networkTimeout = networkTimeout ?? TimeSpan.FromSeconds(45);
         _privacy = privacy ?? NetworkPrivacy.Current;

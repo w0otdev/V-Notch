@@ -14,7 +14,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly object _surfaceSync = new();
-    private readonly D3DImage _image = new();
+    private readonly ID3DFrameTarget _image;
 
     private IDirect3D9Ex? _direct3D;
     private IDirect3DDevice9Ex? _device;
@@ -58,17 +58,20 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private LiquidGlassController.GpuGeometry _uploadTag;
     private LiquidGlassController.GpuGeometry _presentedTag;
 
-    public ImageSource ImageSource => _image;
+    public ImageSource ImageSource => _image.ImageSource;
 
     public event Action<LiquidGlassController.GpuGeometry>? FramePresented;
     public event Action<Exception>? Failed;
+    public event Action? RefreshRequested;
 
     public D3DImageFramePresenter(
         Dispatcher dispatcher,
         IntPtr windowHandle,
         int surfaceWidth,
-        int surfaceHeight)
+        int surfaceHeight,
+        ID3DFrameTarget? frameTarget = null)
     {
+        _image = frameTarget ?? new D3DFrameTarget();
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         if (!_dispatcher.CheckAccess())
             throw new InvalidOperationException("The D3DImage presenter must be created on its UI dispatcher.");
@@ -182,7 +185,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
                         // scheduling/tag intact until WPF consumes them.
                         return true;
                     }
-                    // Geometry changes/periodic refresh still submit a frame; only
+                    // Geometry changes/explicit recovery still submit a frame; only
                     // expand to full height when no specific dirty rows were detected.
                     if (dirtyRows.IsEmpty && forcePresent) dirtyRows = new GlassDirtyRows(0, height);
                     _pendingDirtyRows = _pendingDirtyRows.Union(dirtyRows);
@@ -317,7 +320,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
         }
     }
 
-    private void PresentPendingFrame()
+    internal void PresentPendingFrame()
     {
         if (_disposed || _failed)
             return;
@@ -500,6 +503,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
             }
             if (shouldSchedule)
                 SchedulePresent();
+            RefreshRequested?.Invoke();
         }
         catch (Exception ex)
         {
@@ -507,7 +511,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
         }
     }
 
-    private void AttachBackBuffer()
+    internal void AttachBackBuffer()
     {
         if (_attachedSurface == null || !_image.IsFrontBufferAvailable)
             return;

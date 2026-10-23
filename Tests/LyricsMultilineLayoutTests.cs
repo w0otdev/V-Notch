@@ -23,7 +23,7 @@ public sealed class LyricsMultilineLayoutTests
         {
             XNamespace ui = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
             XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-            var source = XDocument.Load(SourcePath());
+            var source = LoadSource();
             var lyrics = source.Descendants(ui + "Border").Single(e => (string?)e.Attribute(x + "Name") == "LyricsWidget");
             var calendar = source.Descendants(ui + "Border").Single(e => (string?)e.Attribute(x + "Name") == "CalendarWidget");
             var greeting = source.Descendants(ui + "Grid").Single(e => (string?)e.Attribute(x + "Name") == "GreetingSection");
@@ -75,7 +75,7 @@ public sealed class LyricsMultilineLayoutTests
         {
             XNamespace ui = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
             XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-            var source = XDocument.Load(SourcePath());
+            var source = LoadSource();
             var widgetXaml = source.Descendants(ui + "Border").Single(e => (string?)e.Attribute(x + "Name") == "LyricsWidget");
             var host = new Grid { VerticalAlignment = VerticalAlignment.Center };
             host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -120,7 +120,7 @@ public sealed class LyricsMultilineLayoutTests
     {
         SharedStaTestRunner.Run(() =>
         {
-            var source = XDocument.Load(SourcePath());
+            var source = LoadSource();
             XNamespace ui = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
             XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
             var resources = source.Descendants(ui + "Window.Resources").Single();
@@ -174,6 +174,15 @@ public sealed class LyricsMultilineLayoutTests
                     }
                 }
         });
+    }
+
+    private static XDocument LoadSource()
+    {
+        var document = XDocument.Load(SourcePath());
+        // Standalone fragments need an explicit assembly for application-local markup.
+        foreach (var font in document.Descendants(XName.Get("AppFont", "clr-namespace:VNotch.Services")).ToArray())
+            font.Name = XName.Get("AppFont", "clr-namespace:VNotch.Services;assembly=V-Notch");
+        return document;
     }
 
     private static string SourcePath([CallerFilePath] string file = "") =>

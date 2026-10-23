@@ -290,45 +290,48 @@ public partial class SpotlightWindow : Window
         }
     }
 
-    [System.Runtime.InteropServices.DllImport("winmm.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-    private static extern int mciSendString(string command, System.Text.StringBuilder? returnString, int returnLength, IntPtr hwndCallback);
-
-    private bool _sfxMciOpened;
-    private string? _sfxMciPath;
-    private MediaPlayer? _sfxFallbackPlayer;
-    private Uri? _sfxFallbackLoadedUri;
+    private byte[]? _sfxPcmBytes;
+    private NAudio.Wave.WaveFormat? _sfxWaveFormat;
+    private NAudio.Wave.WaveOutEvent? _sfxWaveOut;
+    private NAudio.Wave.RawSourceWaveStream? _sfxWaveStream;
     private bool _sfxCleanupHooked;
+    private long _lastSpotlightSfxTick;
+
+    private void DisposeSpotlightSfxOutput()
+    {
+        try
+        {
+            _sfxWaveOut?.Stop();
+            _sfxWaveOut?.Dispose();
+        }
+        catch { }
+        finally
+        {
+            _sfxWaveOut = null;
+            _sfxWaveStream?.Dispose();
+            _sfxWaveStream = null;
+        }
+    }
 
     private void EnsureSfxCleanupHooked()
     {
         if (_sfxCleanupHooked) return;
         _sfxCleanupHooked = true;
-        Closed += (_, _) =>
-        {
-            try
-            {
-                if (_sfxMciOpened)
-                {
-                    mciSendString("close sfx_click", null, 0, IntPtr.Zero);
-                    _sfxMciOpened = false;
-                }
-                _sfxFallbackPlayer?.Close();
-                _sfxFallbackPlayer = null;
-                _sfxFallbackLoadedUri = null;
-            }
-            catch { }
-        };
+        Closed += (_, _) => DisposeSpotlightSfxOutput();
     }
 
     private void PlaySpotlightClickSfx()
     {
-        if (SuppressForegroundActivationForTests) return;
+        if (SuppressForegroundActivationForTests || !_settings.EnableInteractionSounds || _settings.InteractionSoundVolume <= 0) return;
+        long now = Environment.TickCount64;
+        if (now - _lastSpotlightSfxTick < 220) return;
+        _lastSpotlightSfxTick = now;
         try
         {
             EnsureSfxCleanupHooked();
-            if (_spotlightClickUri == null)
+            if (_sfxPcmBytes == null)
             {
-                string findSfx(string folder)
+                static string FindSfx(string folder)
                 {
                     string m4a = System.IO.Path.Combine(folder, "Assets", "SPL_CLICK_SFX.m4a");
                     if (System.IO.File.Exists(m4a)) return m4a;
@@ -336,51 +339,54 @@ public partial class SpotlightWindow : Window
                     return System.IO.File.Exists(mp3) ? mp3 : m4a;
                 }
 
-                string sfxPath = findSfx(AppDomain.CurrentDomain.BaseDirectory);
-                if (!System.IO.File.Exists(sfxPath))
+                string? dir = AppDomain.CurrentDomain.BaseDirectory;
+                for (int depth = 0; depth < 6 && !string.IsNullOrEmpty(dir); depth++)
                 {
-                    string devFolder = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", ".."));
-                    sfxPath = findSfx(devFolder);
+                    string candidate = FindSfx(dir);
+                    if (System.IO.File.Exists(candidate))
+                    {
+                        _spotlightClickUri = new Uri(candidate, UriKind.Absolute);
+                        break;
+                    }
+                    dir = System.IO.Directory.GetParent(dir)?.FullName;
                 }
 
-                if (System.IO.File.Exists(sfxPath))
+                if (_spotlightClickUri != null)
                 {
-                    _spotlightClickUri = new Uri(sfxPath, UriKind.Absolute);
+                    using var reader = new NAudio.Wave.MediaFoundationReader(_spotlightClickUri.LocalPath);
+                    _sfxWaveFormat = reader.WaveFormat;
+                    using var ms = new System.IO.MemoryStream();
+                    var buffer = new byte[16384];
+                    int read;
+                    while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+                        ms.Write(buffer, 0, read);
+                    byte[] rawPcm = ms.ToArray();
+                    double lpL1 = 0, lpL2 = 0, lpR1 = 0, lpR2 = 0;
+                    for (int offset = 0; offset + 3 < rawPcm.Length; offset += 4)
+                    {
+                        short l = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset, 2));
+                        short r = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2));
+                        lpL1 += .22 * (l - lpL1); lpL2 += .22 * (lpL1 - lpL2);
+                        lpR1 += .22 * (r - lpR1); lpR2 += .22 * (lpR1 - lpR2);
+                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset, 2), (short)Math.Round(lpL2 * .42));
+                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2), (short)Math.Round(lpR2 * .42));
+                    }
+                    _sfxPcmBytes = rawPcm;
                 }
             }
 
-            if (_spotlightClickUri != null)
+            if (_sfxPcmBytes is { Length: > 0 } pcm && _sfxWaveFormat != null)
             {
-                string localPath = _spotlightClickUri.LocalPath;
-                if (!_sfxMciOpened || _sfxMciPath != localPath)
+                DisposeSpotlightSfxOutput();
+                _sfxWaveStream = new NAudio.Wave.RawSourceWaveStream(
+                    new System.IO.MemoryStream(pcm, writable: false), _sfxWaveFormat);
+                var gain = new NAudio.Wave.VolumeWaveProvider16(_sfxWaveStream)
                 {
-                    mciSendString("close sfx_click", null, 0, IntPtr.Zero);
-                    int openRes = mciSendString($"open \"{localPath}\" alias sfx_click", null, 0, IntPtr.Zero);
-                    if (openRes == 0)
-                    {
-                        _sfxMciOpened = true;
-                        _sfxMciPath = localPath;
-                    }
-                }
-
-                if (_sfxMciOpened)
-                {
-                    mciSendString("play sfx_click from 0", null, 0, IntPtr.Zero);
-                }
-                else
-                {
-                    _sfxFallbackPlayer ??= new MediaPlayer();
-                    if (_sfxFallbackLoadedUri != _spotlightClickUri)
-                    {
-                        _sfxFallbackPlayer.Open(_spotlightClickUri);
-                        _sfxFallbackLoadedUri = _spotlightClickUri;
-                    }
-                    else
-                    {
-                        _sfxFallbackPlayer.Position = TimeSpan.Zero;
-                    }
-                    _sfxFallbackPlayer.Play();
-                }
+                    Volume = (float)Math.Clamp(_settings.InteractionSoundVolume, 0.0, 1.0)
+                };
+                _sfxWaveOut = new NAudio.Wave.WaveOutEvent { DesiredLatency = 50, NumberOfBuffers = 2 };
+                _sfxWaveOut.Init(gain);
+                _sfxWaveOut.Play();
             }
         }
         catch
@@ -529,6 +535,7 @@ public partial class SpotlightWindow : Window
     internal void HideSpotlight()
     {
         if (!IsSpotlightOpen || _isClosing) return;
+        PlaySpotlightClickSfx();
         SaveAiHistory();
         StopAiActivity();
         _lastDismissedQuery = SearchBox.Text;
@@ -1006,6 +1013,10 @@ public partial class SpotlightWindow : Window
                 ShowLaunchFailure(selected);
             }
         }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-LAUNCH", ex, "Launch failed");
+        }
         finally
         {
             if (launchGeneration == _launchGeneration) _launchInFlight = false;
@@ -1049,6 +1060,10 @@ public partial class SpotlightWindow : Window
                 ShowLaunchFailure(selected);
             }
         }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-LAUNCH", ex, "Elevated launch failed");
+        }
         finally
         {
             if (launchGeneration == _launchGeneration) _launchInFlight = false;
@@ -1075,6 +1090,10 @@ public partial class SpotlightWindow : Window
             if (!CanCompleteLaunch(launchGeneration, sessionGeneration)) return;
             if (revealed) HideSpotlight();
             else ShowLaunchFailure(selected);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-LAUNCH", ex, "Reveal in Explorer failed");
         }
         finally
         {

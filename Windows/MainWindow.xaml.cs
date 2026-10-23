@@ -238,7 +238,6 @@ public partial class MainWindow : Window
         MusicCompactContent.Loaded += (_, _) => MusicCompactContent.LayoutUpdated += CacheCompactThumbnailRestOffset;
         MusicCompactContent.Unloaded += (_, _) => MusicCompactContent.LayoutUpdated -= CacheCompactThumbnailRestOffset;
         System.Windows.Input.InputManager.Current.PreProcessInput += BlockGreetingInput;
-        ClipboardTrayView.IsVisibleChanged += (_, _) => ApplyGlassContentShadow(IsLiquidGlassEnabled);
         _glassMaterialPresenter = new(GlassMaterialClipHost,
             GlassBackdropHost, GlassTintOverlay, GlassGrainOverlay,
             GlassDepthRimBorder, GlassCoolRimBorder, GlassWarmRimBorder,
@@ -375,7 +374,7 @@ public partial class MainWindow : Window
         _updateCheckTimer.Tick += UpdateCheckTimer_Tick;
 
         Func<bool> isTopmostSuspended = () => _isTrayMenuOpen || _isUpdateTooltipOpen ||
-            (ClipboardTrayView?.IsContextMenuOpen ?? false) || DateTime.UtcNow < _suspendTopmostUntilUtc;
+            (_clipboardTrayView?.IsContextMenuOpen ?? false) || DateTime.UtcNow < _suspendTopmostUntilUtc;
         _zOrderManager = new ZOrderManager(
             getHwnd: () => _hwnd,
             isEffectivelyVisible: () => IsEffectivelyNotchVisible,
@@ -583,13 +582,12 @@ public partial class MainWindow : Window
             if (_cleanedUp) return;
             _viewModel.Initialize();
             StartCoreModules();
-            PrewarmAudioSnapshot();
         }), DispatcherPriority.ApplicationIdle);
     }
 
     private void HandleAppDeactivated()
     {
-        if (_clipboardHistory?.IsDragging == true || ClipboardTrayView.IsContextMenuOpen) return;
+        if (_clipboardHistory?.IsDragging == true || _clipboardTrayView?.IsContextMenuOpen == true) return;
 
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
@@ -608,7 +606,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
-        if (_clipboardHistory?.IsDragging == true || ClipboardTrayView.IsContextMenuOpen) return;
+        if (_clipboardHistory?.IsDragging == true || _clipboardTrayView?.IsContextMenuOpen == true) return;
 
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
                 _spotlightMorphSessionActive,
@@ -695,7 +693,7 @@ public partial class MainWindow : Window
 
         InputMonitorService.MouseActionTriggered -= GlobalMouseHook_MouseLeftButtonDown;
 
-        ClipboardTrayView.Dispose();
+        _clipboardTrayView?.Dispose();
         _clipboardShutdown = _clipboardHistory?.DisposeAsync().AsTask() ?? Task.CompletedTask;
         _clipboardShutdown.SafeFireAndForget("CLIPBOARD-SHUTDOWN");
         DisposeClipboardHotkey();
@@ -729,6 +727,9 @@ public partial class MainWindow : Window
         _startupHoldTimer?.Stop();
         _startupHoldTimer = null;
         _desktopDemotionDelayTimer?.Stop();
+        _fullscreenRecheckTimer?.Stop();
+        // No-op when the debug FPS overlay never subscribed.
+        CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
         DetachDesktopTransparentFrameHandler();
         DisposeIdleAutoHide();
         _fullscreenController?.Dispose();
@@ -814,7 +815,7 @@ public partial class MainWindow : Window
         _navigationVisualTarget = args.TargetView == VNotch.Models.NotchView.Compact ? null : args.TargetView;
         UpdateNavIconsActiveState();
         if (args.FromView == VNotch.Models.NotchView.Secondary && args.TargetView != VNotch.Models.NotchView.Secondary)
-            ClipboardTrayView.BeginExit();
+            _clipboardTrayView?.BeginExit();
         if (args.TargetView != VNotch.Models.NotchView.Secondary &&
             _clipboardHistory?.Store.IsPersonalUnlocked == true)
             _ = _clipboardHistory.LockPersonalAsync();
@@ -1097,6 +1098,7 @@ public partial class MainWindow : Window
             _fullscreenRecheckTimer.Tick += (s, e) =>
             {
                 _fullscreenRecheckTimer.Stop();
+                if (_cleanedUp) return;
                 UpdateFullscreenAutoHideState(force: true);
             };
         }
@@ -1635,6 +1637,7 @@ public partial class MainWindow : Window
 
     private void ApplySettings(NotchSettings? oldSettings, bool animatePulse = false)
     {
+        InteractionSounds.Configure(_settings.EnableInteractionSounds, _settings.InteractionSoundVolume);
         if (oldSettings == null || oldSettings.EnablePrivacyIndicators != _settings.EnablePrivacyIndicators)
             ApplyPrivacyIndicatorSettings();
         _mediaService.KeepPinnedOnTrackChange = _settings.KeepMediaPinnedOnTrackChange;
@@ -2059,7 +2062,7 @@ public partial class MainWindow : Window
 
     private void RefreshNotchLocalization()
     {
-        ClipboardTrayView.ApplyLocalization();
+        _clipboardTrayView?.ApplyLocalization();
         LocalizedPresentation.Apply(this);
         RefreshAccessibleNames();
         EventText.Text = Loc.Get("greeting.enjoyDay");
@@ -2311,6 +2314,11 @@ public partial class MainWindow : Window
     {
 
         _hoverThumbnailDelayTimer.Stop();
+        if (_isMusicCompactMode && _isCompactThumbnailHovered && !_isGestureActive)
+        {
+            _compactThumbnailHoverLeaveTimer.Stop();
+            _compactThumbnailHoverLeaveTimer.Start();
+        }
         if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
         if (_settings.DisableMouseLeaveAutoClose)
@@ -2359,6 +2367,10 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             _hoverThumbnailDelayTimer.Stop();
+            if (_isCompactThumbnailHovered && !_isGestureActive && !IsCursorInsideCompactThumbnailExitZone())
+            {
+                SetCompactThumbnailHover(false);
+            }
             if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
             if (_settings.DisableMouseLeaveAutoClose) return;
             if (_isExpanded && !_isAnimating && !_isSecondaryView)

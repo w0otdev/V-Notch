@@ -11,6 +11,13 @@ public class NotchSettings
 
     public int SettingsVersion { get; set; } = 0;
     public bool InvisibleMode { get; set; }
+    public bool EnableInteractionSounds { get; set; } = true;
+    private double _interactionSoundVolume = .55;
+    public double InteractionSoundVolume
+    {
+        get => _interactionSoundVolume;
+        set => _interactionSoundVolume = double.IsFinite(value) ? Math.Clamp(value, 0, 1) : .55;
+    }
 
     public string LastRunVersion { get; set; } = "";
 

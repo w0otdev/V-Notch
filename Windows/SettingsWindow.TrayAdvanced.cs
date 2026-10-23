@@ -10,8 +10,7 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
-    private static readonly string SeenTraySettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "seen-tray-settings.txt");
+    private static readonly string SeenTraySettingsPath = Path.Combine(AppPaths.LocalAppDataRoot, "seen-tray-settings.txt");
     private readonly HashSet<string> _seenTraySettings = new(StringComparer.Ordinal);
 
     private void LoadTrayAdvanced(NotchSettings settings)

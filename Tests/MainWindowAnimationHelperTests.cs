@@ -29,7 +29,10 @@ public sealed class MainWindowAnimationHelperTests
         for (int i = 0; i < 2; i++)
         {
             Invoke(fixture.Window, method, incoming, outgoing);
-            await Task.Delay(600, ct);
+            Assert.True(outgoing.HasAnimatedProperties);
+            await WpfFrameWaiter.UntilAsync(() => !outgoing.HasAnimatedProperties && !incoming.HasAnimatedProperties
+                && !outgoing.RenderTransform.HasAnimatedProperties && !incoming.RenderTransform.HasAnimatedProperties,
+                "skip arrow animation completes and clears its clocks", ct);
             await WpfFrameWaiter.NextAsync(ct);
             Assert.Equal(1, outgoing.Opacity);
             Assert.Equal(0, incoming.Opacity);
@@ -38,8 +41,9 @@ public sealed class MainWindowAnimationHelperTests
             Assert.False(outgoing.HasAnimatedProperties);
         }
         Invoke(fixture.Window, method);
-        await Task.Delay(600, ct);
-        Assert.Equal(1, next ? fixture.Window.MediaPlayback.NextArrow1.Opacity : fixture.Window.MediaPlayback.PrevArrow2.Opacity);
+        var arrow = next ? fixture.Window.MediaPlayback.NextArrow1 : fixture.Window.MediaPlayback.PrevArrow2;
+        await WpfFrameWaiter.UntilAsync(() => !arrow.HasAnimatedProperties, "media playback skip arrow animation completes", ct);
+        Assert.Equal(1, arrow.Opacity);
     });
 
     [Theory]

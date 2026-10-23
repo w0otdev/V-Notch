@@ -7,7 +7,7 @@ namespace VNotch.ViewModels;
 
 public sealed partial class ClipboardCardViewModel : ObservableObject
 {
-    private static readonly FontFamily SharedContentFont = new("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI");
+    private static readonly FontFamily SharedContentFont = new(VNotch.Services.AppFonts.Location + "#SF Pro Display, Segoe UI");
     private static readonly Brush SharedCardBrush = CreateSurfaceBrush();
     private Brush? _cardBrush;
     private bool? _isMasked;

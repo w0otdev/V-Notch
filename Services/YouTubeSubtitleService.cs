@@ -28,7 +28,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
         Timeout = TimeSpan.FromSeconds(8)
     };
 
-    private static readonly string DefaultInnertubeApiKey = Encoding.UTF8.GetString(Convert.FromBase64String("QUl6YVN5QU9fRkoyU2xxVThRNFNURUhMR0NpbHdfWTlfMTFxY1c4"));
+    private static string DefaultInnertubeApiKey => MediaProtocolConfiguration.Current.YouTubeInnertubeApiKey;
     private string _innertubeApiKey = DefaultInnertubeApiKey;
     private readonly HttpClient _httpClient;
     private readonly YoutubeClient _youtube;
@@ -97,19 +97,46 @@ internal sealed class YouTubeSubtitleService : IDisposable
         if (string.IsNullOrWhiteSpace(videoId)) return null;
 
         FetchRequest request;
-        int myGeneration;
+        Task<List<LyricLine>?>? inFlight = null;
+        int myGeneration = 0;
         lock (_fetchLock)
         {
             if (_disposed) return null;
             if (IsCachedResultValid(videoId, force)) return _lastFetchedSubtitles;
 
-            _request?.Cancel();
-            request = new FetchRequest();
-            _request = request;
-            myGeneration = ++_fetchGeneration;
-            _lastFetchKey = videoId;
-            _lastFetchedSubtitles = null;
+            // Join a running fetch for the same video instead of cancelling and restarting it.
+            if (!force && _request is { } running && videoId == _lastFetchKey && !running.Source.IsCancellationRequested)
+            {
+                request = running;
+                inFlight = running.Completion.Task;
+            }
+            else
+            {
+                _request?.Cancel();
+                request = new FetchRequest();
+                _request = request;
+                myGeneration = ++_fetchGeneration;
+                _lastFetchKey = videoId;
+                _lastFetchedSubtitles = null;
+            }
         }
+
+        if (inFlight != null) return await inFlight.ConfigureAwait(false);
+
+        List<LyricLine>? result = null;
+        try
+        {
+            result = await FetchForRequestAsync(videoId, request, myGeneration).ConfigureAwait(false);
+            return result;
+        }
+        finally
+        {
+            request.Completion.TrySetResult(result);
+        }
+    }
+
+    private async Task<List<LyricLine>?> FetchForRequestAsync(string videoId, FetchRequest request, int myGeneration)
+    {
         var token = request.Source.Token;
 
         try
@@ -117,7 +144,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
             RuntimeLog.Log(LogCategory, $"Fetching captions for videoId={videoId}");
 
             // 1. Primary: Direct Innertube Android player API (fast, unthrottled, no poToken required)
-            var innertubeLines = await FetchViaInnertubeAsync(videoId, token);
+            var innertubeLines = await FetchViaInnertubeAsync(videoId, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             if (!IsCurrentFetch(myGeneration)) return null;
             if (innertubeLines is { Count: > 0 })
@@ -126,7 +153,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
             }
 
             // 2. Secondary fallback: YoutubeExplode ClosedCaptions manifest (without calling GetVideoAsync)
-            var explodeLines = await (_fallback?.Invoke(videoId, token) ?? FetchViaYoutubeExplodeAsync(videoId, token));
+            var explodeLines = await (_fallback?.Invoke(videoId, token) ?? FetchViaYoutubeExplodeAsync(videoId, token)).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             if (!IsCurrentFetch(myGeneration)) return null;
             if (explodeLines is { Count: > 0 })
@@ -194,6 +221,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
     {
         public CancellationTokenSource Source { get; } = new();
         public Task Cancellation { get; private set; } = Task.CompletedTask;
+        public TaskCompletionSource<List<LyricLine>?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Cancel()
         {
@@ -301,17 +329,17 @@ internal sealed class YouTubeSubtitleService : IDisposable
 
     private async Task<List<YouTubeCaptionTrack>?> GetInnertubeCaptionTracksAsync(string videoId, CancellationToken token)
     {
-        var tracks = await QueryInnertubePlayerAsync(videoId, _innertubeApiKey, token);
+        var tracks = await QueryInnertubePlayerAsync(videoId, Volatile.Read(ref _innertubeApiKey), token);
         if (tracks != null && tracks.Count > 0) return tracks;
 
         // If first attempt returned nothing or failed, refresh API key from watch page and re-query
         string? newKey = await RefreshApiKeyAsync(videoId, token);
         if (!string.IsNullOrEmpty(newKey))
         {
-            _innertubeApiKey = newKey;
+            Interlocked.Exchange(ref _innertubeApiKey, newKey);
         }
 
-        tracks = await QueryInnertubePlayerAsync(videoId, _innertubeApiKey, token);
+        tracks = await QueryInnertubePlayerAsync(videoId, Volatile.Read(ref _innertubeApiKey), token);
         return tracks;
     }
 
@@ -321,14 +349,18 @@ internal sealed class YouTubeSubtitleService : IDisposable
         {
             try
             {
-                string url = $"https://www.youtube.com/youtubei/v1/player?key={apiKey}";
-                string jsonBody = $"{{\"context\":{{\"client\":{{\"clientName\":\"ANDROID\",\"clientVersion\":\"20.10.38\"}}}},\"videoId\":\"{videoId}\"}}";
+                string clientVersion = MediaProtocolConfiguration.Current.YouTubeAndroidClientVersion;
+                string url = $"https://www.youtube.com/youtubei/v1/player?key={Uri.EscapeDataString(apiKey)}";
+                string jsonBody = JsonSerializer.Serialize(new
+                {
+                    context = new { client = new { clientName = "ANDROID", clientVersion } }, videoId
+                });
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, url)
                 {
                     Content = new StringContent(jsonBody, Encoding.UTF8, "application/json")
                 };
-                req.Headers.TryAddWithoutValidation("User-Agent", "com.google.android.youtube/20.10.38 (Linux; U; Android 14)");
+                req.Headers.TryAddWithoutValidation("User-Agent", $"com.google.android.youtube/{clientVersion} (Linux; U; Android 14)");
 
                 using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
                 if (!resp.IsSuccessStatusCode)

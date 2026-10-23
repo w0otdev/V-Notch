@@ -323,6 +323,12 @@ public sealed class SmartThumbnailCropService : IDisposable
             return cached.Detections;
         }
 
+        if (source is CroppedBitmap crop && TryGetCachedCropDetections(crop, out var croppedDetections))
+        {
+            AddInferenceCacheEntryLocked(fingerprint, croppedDetections);
+            return croppedDetections;
+        }
+
         EnsureSessionLoadedLocked();
         MarkSessionUsed();
 
@@ -380,6 +386,38 @@ public sealed class SmartThumbnailCropService : IDisposable
         }
         _cachedSession = session;
         System.Diagnostics.Debug.WriteLine("[SmartCrop] Model loaded (cached session).");
+    }
+
+    private bool TryGetCachedCropDetections(CroppedBitmap crop, out Detection[] detections)
+    {
+        var original = crop.Source;
+        var key = _fingerprintCache.GetValue(original,
+            static bitmap => new FingerprintHolder(ArtworkFingerprint.Create(bitmap))).Value;
+        Detection[] sourceDetections;
+        if (_inferenceCache.TryGetValue(key, out var cached))
+            sourceDetections = cached.Detections;
+        else if (original is CroppedBitmap parent && TryGetCachedCropDetections(parent, out var inherited))
+            sourceDetections = inherited;
+        else
+        {
+            detections = Array.Empty<Detection>();
+            return false;
+        }
+
+        var rect = crop.SourceRect;
+        if (rect.IsEmpty) rect = new Int32Rect(0, 0, original.PixelWidth, original.PixelHeight);
+        var mapped = new List<Detection>(sourceDetections.Length);
+        foreach (var detection in sourceDetections)
+        {
+            var translated = detection;
+            translated.X1 = Math.Clamp(detection.X1 - rect.X, 0, rect.Width);
+            translated.X2 = Math.Clamp(detection.X2 - rect.X, 0, rect.Width);
+            translated.Y1 = Math.Clamp(detection.Y1 - rect.Y, 0, rect.Height);
+            translated.Y2 = Math.Clamp(detection.Y2 - rect.Y, 0, rect.Height);
+            if (translated.X2 > translated.X1 && translated.Y2 > translated.Y1) mapped.Add(translated);
+        }
+        detections = mapped.ToArray();
+        return true;
     }
 
     private void AddInferenceCacheEntryLocked(ArtworkFingerprint fingerprint, Detection[] detections)

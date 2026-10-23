@@ -88,8 +88,7 @@ public partial class SettingsWindow : Window
     private const string LocKeyAnimationFps = "settings.animationFps";
 
     private NotchSettings _settings;
-    private NotchSettings _originalSettings;
-    private NotchSettings _appliedSettings;
+    private readonly SettingsEditSession _editSession;
     private readonly ISettingsApplicationService _settingsAppService;
     private readonly SettingsUpdatePresenter _updatePresenter;
     private bool _isLoadingSettings = true;
@@ -107,8 +106,12 @@ public partial class SettingsWindow : Window
         ISettingsApplicationService settingsAppService,
         bool isSpotlightHotkeyRegistered = true,
         IUpdateService? updateService = null,
-        bool prepareForFirstShow = false)
+        bool prepareForFirstShow = false,
+        Func<string?>? clipboardHotkeyError = null,
+        Func<bool>? invisibleHotkeyRegistered = null)
     {
+        _clipboardHotkeyError = clipboardHotkeyError;
+        _invisibleHotkeyRegistered = invisibleHotkeyRegistered;
         _firstShowState = prepareForFirstShow ? FirstShowState.StandbyPrewarm : FirstShowState.ReadyForRealShow;
         IsVisibleChanged += OnFirstShowVisibilityChanged;
         var firstOpenProbe = System.Diagnostics.Stopwatch.StartNew();
@@ -120,8 +123,7 @@ public partial class SettingsWindow : Window
         firstOpenProbe.Restart();
 
         _settings = settings.Clone();
-        _originalSettings = settings.Clone();
-        _appliedSettings = settings.Clone();
+        _editSession = new SettingsEditSession(settings);
         _settingsAppService = settingsAppService ?? throw new ArgumentNullException(nameof(settingsAppService));
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
         _lastAppliedFps = settings.AnimationFps;
@@ -143,8 +145,8 @@ public partial class SettingsWindow : Window
         {
             SubscribeDisplaySettingsChanged();
         }
-        _appliedSettings = ReadSettingsFromUi();
-        _settings = _appliedSettings.Clone();
+        _editSession.Preview(ReadSettingsFromUi());
+        _settings = _editSession.Applied;
         FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings snapshot {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
         firstOpenProbe.Restart();
         SourceInitialized += (_, _) =>
@@ -166,8 +168,11 @@ public partial class SettingsWindow : Window
         ISettingsService settingsService,
         bool isSpotlightHotkeyRegistered = true,
         IUpdateService? updateService = null,
-        bool prepareForFirstShow = false)
-        : this(settings, new SettingsApplicationService(settingsService), isSpotlightHotkeyRegistered, updateService, prepareForFirstShow)
+        bool prepareForFirstShow = false,
+        Func<string?>? clipboardHotkeyError = null,
+        Func<bool>? invisibleHotkeyRegistered = null)
+        : this(settings, new SettingsApplicationService(settingsService), isSpotlightHotkeyRegistered, updateService,
+            prepareForFirstShow, clipboardHotkeyError, invisibleHotkeyRegistered)
     {
     }
 
@@ -260,6 +265,9 @@ public partial class SettingsWindow : Window
         SpotifyCanvasBrightnessSlider.Value = _settings.SpotifyCanvasBrightness * 100;
         AnimationFpsSlider.Value = _settings.AnimationFps;
         AutoAnimationFpsCheck.IsChecked = _settings.AutoAnimationFps;
+        InteractionSoundsCheck.IsChecked = _settings.EnableInteractionSounds;
+        InteractionSoundVolumeSlider.Value = _settings.InteractionSoundVolume * 100;
+        UpdateInteractionSoundControls();
         AnimationFpsSlider.IsEnabled = !_settings.AutoAnimationFps;
         EnableBlurEffectsCheck.IsChecked = _settings.EnableBlurEffects;
         MediaArtBackgroundCheck.IsChecked = _settings.ShowMediaArtBackground;
@@ -317,7 +325,7 @@ public partial class SettingsWindow : Window
         HideCameraCheck.Content = Loc.Get("settings.hideCamera");
         HideCameraHint.Text = Loc.Get("settings.hideCamera.hint");
         ClipboardHotkeyLabel.Text = Loc.Get("settings.clipboardHotkey");
-        ClipboardHotkeyHint.Text = ClipboardHotkeyController.RegistrationError ?? Loc.Get("settings.clipboardHotkey.hint");
+        ClipboardHotkeyHint.Text = _clipboardHotkeyError?.Invoke() ?? Loc.Get("settings.clipboardHotkey.hint");
         HideCameraCheck.IsChecked = _settings.HideCamera;
         ClipboardHotkeyBox.Text = _settings.ClipboardHotkey;
         LoadTrayAdvanced(_settings);
@@ -469,7 +477,7 @@ public partial class SettingsWindow : Window
         HideCameraCheck.Content = Loc.Get("settings.hideCamera");
         HideCameraHint.Text = Loc.Get("settings.hideCamera.hint");
         ClipboardHotkeyLabel.Text = Loc.Get("settings.clipboardHotkey");
-        ClipboardHotkeyHint.Text = ClipboardHotkeyController.RegistrationError ?? Loc.Get("settings.clipboardHotkey.hint");
+        ClipboardHotkeyHint.Text = _clipboardHotkeyError?.Invoke() ?? Loc.Get("settings.clipboardHotkey.hint");
         LocalizedPresentation.Apply(this);
         ApplySupplementalLocalization();
         string appVersion = GetAppVersion();
@@ -649,6 +657,10 @@ public partial class SettingsWindow : Window
         HelloGreetingHint.Text = Loc.Get("settings.helloGreeting.hint");
         AutoStartCheck.Content = Loc.Get("settings.autoStart");
         AutoStartHint.Text = Loc.Get("settings.autoStart.hint");
+        InteractionSoundsCheck.Content = Loc.Get("settings.interactionSounds");
+        InteractionSoundsHint.Text = Loc.Get("settings.interactionSounds.hint");
+        InteractionSoundVolumeSlider.Label = Loc.Get("settings.interactionSoundVolume");
+        InteractionSoundVolumeSlider.Description = Loc.Get("settings.interactionSoundVolume.hint");
         StayBehindWindowsCheck.Content = Loc.Get("settings.stayBehindWindows");
         StayBehindWindowsHint.Text = Loc.Get("settings.stayBehindWindows.hint");
         HideOnExclusiveFullscreenCheck.Content = Loc.Get("settings.hideExclusiveFs");

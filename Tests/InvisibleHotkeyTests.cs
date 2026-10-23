@@ -44,7 +44,7 @@ public sealed class InvisibleHotkeyTests
         {
             // The combination is occupied either by this test or another application.
             using var controller = new InvisibleHotkeyController(window, () => Assert.Fail("Unexpected hotkey dispatch"));
-            Assert.False(InvisibleHotkeyController.IsRegistered);
+            Assert.False(controller.IsRegistered);
             controller.Dispose();
             controller.Dispose();
         }

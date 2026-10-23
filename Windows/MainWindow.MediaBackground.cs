@@ -23,6 +23,7 @@ public partial class MainWindow
     private int _mediaBackgroundAnimationVersion = 0;
     private int _mediaBackgroundRecoveryVersion = 0;
     private DateTime _lastMediaBackgroundFadeStartUtc = DateTime.MinValue;
+    private BitmapSource? _lastBackgroundThumbnail;
 
     private void UpdateMediaBackground(MediaInfo? info, bool forceRefresh = false)
     {
@@ -69,7 +70,14 @@ public partial class MainWindow
             return;
         }
 
-        if (!suppressBackdrop)
+        if (!forceRefresh && dominantColor == _lastDominantColor && !isNewTrack &&
+            ReferenceEquals(info.Thumbnail, _lastBackgroundThumbnail) &&
+            (suppressBackdrop || !_isExpanded || MediaBackground.Opacity > 0.49)) return;
+
+        _lastDominantColor = dominantColor;
+        _lastBackgroundThumbnail = info.Thumbnail;
+
+        if (!suppressBackdrop && _isExpanded)
             UpdateBlurredBackgroundAsync(info.Thumbnail, allowInterimThumbnail: forceRefresh || isNewTrack).SafeFireAndForget("MEDIA-BG-BLUR");
         else
             HideMediaBackgroundOverlay();
@@ -84,14 +92,6 @@ public partial class MainWindow
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(dimOverlayAnim, VNotch.Services.AnimationConfig.TargetFps);
         BrightnessDimOverlay.BeginAnimation(OpacityProperty, dimOverlayAnim);
         BrightnessDimOverlay2.BeginAnimation(OpacityProperty, dimOverlayAnim);
-
-        if (!forceRefresh && dominantColor == _lastDominantColor && !isNewTrack
-            && (suppressBackdrop || MediaBackground.Opacity > 0.49))
-        {
-            return;
-        }
-
-        _lastDominantColor = dominantColor;
 
         var liftedSub = LiftDarkColor(subColor);
         var vibrantTargetColor = Color.FromRgb(liftedSub.R, liftedSub.G, liftedSub.B);
@@ -537,7 +537,7 @@ public partial class MainWindow
     {
         try
         {
-            if (!_settings.EnableBlurEffects)
+            if (!_isExpanded || IsLiquidGlassEnabled || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects)
             {
                 return;
             }
@@ -612,13 +612,14 @@ public partial class MainWindow
 
     private async Task ProcessBlurRequestAsync(BlurRequest req)
     {
+        if (!CanProcessBlurRequest(req)) return;
         RuntimeLog.Log(BlurCrossfadeLogTag, $"START taskVer={req.Version} thumb={req.Thumbnail.PixelWidth}x{req.Thumbnail.PixelHeight} subjectBlur={_settings.EnableSubjectBlur}");
 
         BitmapSource? blurredImage = null;
 
         if (_settings.EnableSubjectBlur)
         {
-            if (req.Version != _blurTaskVersion)
+            if (!CanProcessBlurRequest(req))
             {
                 RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale before inference) taskVer={req.Version} current={_blurTaskVersion}");
                 return;
@@ -634,7 +635,7 @@ public partial class MainWindow
                 RuntimeLog.Error("MEDIA-BG-SUBJECT", ex.ToString());
             }
 
-            if (req.Version != _blurTaskVersion)
+            if (!CanProcessBlurRequest(req))
             {
                 RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after subject / before blur) taskVer={req.Version} current={_blurTaskVersion}");
                 return;
@@ -646,7 +647,7 @@ public partial class MainWindow
         }
         else
         {
-            if (req.Version != _blurTaskVersion)
+            if (!CanProcessBlurRequest(req))
             {
                 RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale before blur) taskVer={req.Version} current={_blurTaskVersion}");
                 return;
@@ -655,7 +656,7 @@ public partial class MainWindow
             blurredImage = await FastBlurService.GetBlurredImageAsync(req.Thumbnail);
         }
 
-        if (req.Version != _blurTaskVersion)
+        if (!CanProcessBlurRequest(req))
         {
             RuntimeLog.Log(BlurCrossfadeLogTag, $"DISCARDED (stale after blur) taskVer={req.Version} current={_blurTaskVersion}");
             return;
@@ -677,6 +678,16 @@ public partial class MainWindow
 
         RuntimeLog.Log(BlurCrossfadeLogTag, $"SCHEDULE-DISSOLVE taskVer={req.Version}");
         ScheduleBlurredBackgroundDissolve(blurredImage);
+    }
+
+    private bool CanProcessBlurRequest(BlurRequest req)
+    {
+        if (req.Version != _blurTaskVersion) return false;
+        if (_isExpanded && !_cleanedUp && !IsLiquidGlassEnabled &&
+            _settings.ShowMediaArtBackground && _settings.EnableBlurEffects) return true;
+        // Allow the same artwork to be requested again on the next expansion.
+        _lastBlurThumbnailRef = null;
+        return false;
     }
 
     private void ApplyBlurredBackgroundImmediate(BitmapSource blurred)

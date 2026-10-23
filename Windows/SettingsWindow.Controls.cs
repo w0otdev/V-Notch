@@ -23,6 +23,41 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
+    private readonly Func<string?>? _clipboardHotkeyError;
+    private readonly Func<bool>? _invisibleHotkeyRegistered;
+    private void InteractionSounds_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        UpdateInteractionSoundControls();
+        InteractionSounds.Configure(InteractionSoundsCheck.IsChecked == true, InteractionSoundVolumeSlider.Value / 100);
+        PushLivePreview();
+    }
+
+    private void UpdateInteractionSoundControls()
+    {
+        if (InteractionSoundVolumeSlider == null) return;
+        bool enabled = InteractionSoundsCheck.IsChecked == true;
+        InteractionSoundVolumeSlider.IsEnabled = enabled;
+        InteractionSoundVolumeSlider.Opacity = enabled ? 1 : .4;
+    }
+
+    private void InteractionSoundVolume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_isLoadingSettings || InteractionSoundsCheck == null) return;
+        InteractionSounds.Configure(InteractionSoundsCheck.IsChecked == true, e.NewValue / 100);
+        PushLivePreview();
+    }
+
+    private void InteractionSoundVolume_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left) InteractionSounds.Preview();
+    }
+
+    private void InteractionSoundVolume_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown)
+            InteractionSounds.Preview();
+    }
     private void ClipboardSetting_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings || _isSyncingCameraVisibility) return;
@@ -41,7 +76,7 @@ public partial class SettingsWindow
             return;
         }
         ApplyPreview(ReadSettingsFromUi());
-        ClipboardHotkeyHint.Text = ClipboardHotkeyController.RegistrationError ?? Loc.Get("settings.clipboardHotkey.hint");
+        ClipboardHotkeyHint.Text = _clipboardHotkeyError?.Invoke() ?? Loc.Get("settings.clipboardHotkey.hint");
     }
 
     #region Slider Value Changed Handlers
@@ -314,7 +349,7 @@ public partial class SettingsWindow
             _settings.Language = lang;
             Loc.SetLanguage(lang);
             _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-LANG");
-            _originalSettings = _settings.Clone();
+            _editSession.Commit(_settings);
             AnimateLocalizationChange();
             SettingsChanged?.Invoke(this, _settings);
         }
@@ -460,7 +495,7 @@ public partial class SettingsWindow
             _settings.ProcessPriority = ProcessPriorityPolicy.Normalize(tag);
             ProcessPriorityPolicy.Apply(tag);
 
-            if (!string.Equals(_settings.ProcessPriority, _originalSettings.ProcessPriority, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(_settings.ProcessPriority, _editSession.Baseline.ProcessPriority, StringComparison.OrdinalIgnoreCase))
             {
                 ShowRestartBanner();
             }
@@ -475,7 +510,7 @@ public partial class SettingsWindow
             _settings.GpuPreference = val;
             ApplyGpuPreference(val);
 
-            if (_settings.GpuPreference != _originalSettings.GpuPreference)
+            if (_settings.GpuPreference != _editSession.Baseline.GpuPreference)
             {
                 ShowRestartBanner();
             }
@@ -542,11 +577,11 @@ public partial class SettingsWindow
                 var (imported, _) = await _settingsAppService.ImportAsync(dialog.FileName, _settings);
 
                 _settings = imported.Clone();
-                _originalSettings = imported.Clone();
+                _editSession.Reset(imported);
 
                 LoadSettings();
-                _appliedSettings = ReadSettingsFromUi();
-                _settings = _appliedSettings.Clone();
+                _editSession.Preview(ReadSettingsFromUi());
+                _settings = _editSession.Applied;
                 SettingsChanged?.Invoke(this, _settings);
 
                 if (BackupStatusText != null)

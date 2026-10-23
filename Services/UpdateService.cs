@@ -17,7 +17,7 @@ public class UpdateService : IUpdateService, IDisposable
     private const string UserAgent = "V-Notch-Updater";
     internal const string SetupName = "V-Notch-Setup.exe";
     internal const string SelfContainedSetupName = "V-Notch-Setup-SelfContained.exe";
-    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromHours(1);
     private readonly HttpClient _httpClient;
     private readonly UpdateSecurityPolicy _securityPolicy;
     private readonly Func<string, (bool IsValid, string Reason)> _signatureValidator;
@@ -28,12 +28,16 @@ public class UpdateService : IUpdateService, IDisposable
     private string? _latestReleaseEtag;
     private UpdateInfo? _cachedLatestRelease;
     private DateTime _lastCheckUtc = DateTime.MinValue;
+    private DateTime _retryAfterUtc = DateTime.MinValue;
+    private readonly string? _cachePath;
     private bool _cachedIncludesPrereleases;
     private volatile bool _disposed;
 
     private readonly bool _ownsHttpClient;
 
-    public UpdateService() : this(CreateHttpClient(), UpdateSecurityPolicy.FromEnvironment()) { _ownsHttpClient = true; }
+    public UpdateService() : this(CreateHttpClient(), UpdateSecurityPolicy.FromEnvironment(),
+        cachePath: Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "V-Notch", "update-cache.json"))
+    { _ownsHttpClient = true; }
 
     public void Dispose()
     {
@@ -44,10 +48,11 @@ public class UpdateService : IUpdateService, IDisposable
 
     internal UpdateService(HttpClient httpClient, UpdateSecurityPolicy securityPolicy,
         Func<string, (bool IsValid, string Reason)>? signatureValidator = null,
-        string? manifestPublicKey = null)
+        string? manifestPublicKey = null, string? cachePath = null)
     {
         _httpClient = httpClient;
         _securityPolicy = securityPolicy;
+        _cachePath = cachePath;
         _manifestPublicKey = manifestPublicKey ?? SignedUpdateManifest.ReadPinnedPublicKey();
         _signatureValidator = signatureValidator ?? (path =>
         {
@@ -56,6 +61,7 @@ public class UpdateService : IUpdateService, IDisposable
         });
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
+        LoadCheckCache();
     }
 
     public string CurrentVersion => GetAppVersion();
@@ -80,9 +86,9 @@ public class UpdateService : IUpdateService, IDisposable
             }
             var now = DateTime.UtcNow;
             var currentCached = Volatile.Read(ref _cachedLatestRelease);
-            if (currentCached != null && now - _lastCheckUtc < MinRefreshInterval)
+            if (now < _retryAfterUtc || now - _lastCheckUtc < MinRefreshInterval)
             {
-                result = Clone(currentCached);
+                result = currentCached != null ? Clone(currentCached) : null;
                 return result;
             }
             using var request = new HttpRequestMessage(HttpMethod.Get, includePrereleases
@@ -93,7 +99,21 @@ public class UpdateService : IUpdateService, IDisposable
             if (response.StatusCode == HttpStatusCode.NotModified && currentCached != null)
             {
                 _lastCheckUtc = now;
+                await SaveCheckCacheAsync().ConfigureAwait(false);
                 result = Clone(currentCached);
+                return result;
+            }
+            if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.Forbidden)
+            {
+                var retryAt = response.Headers.RetryAfter?.Date?.UtcDateTime ??
+                    now + (response.Headers.RetryAfter?.Delta ?? TimeSpan.FromHours(1));
+                if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) &&
+                    long.TryParse(resets.FirstOrDefault(), out long epoch) && epoch is > 0 and < 253402300800)
+                    retryAt = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
+                _retryAfterUtc = now + TimeSpan.FromSeconds(Math.Clamp((retryAt - now).TotalSeconds, 60, 86400));
+                await SaveCheckCacheAsync().ConfigureAwait(false);
+                RuntimeLog.Warn(LogCategory, $"Update API rate limited; next check after {_retryAfterUtc:O}");
+                result = currentCached != null ? Clone(currentCached) : null;
                 return result;
             }
             response.EnsureSuccessStatusCode();
@@ -126,6 +146,7 @@ public class UpdateService : IUpdateService, IDisposable
             _lastCheckUtc = now;
             _latestReleaseEtag = info != null && !includePrereleases ? response.Headers.ETag?.ToString() : null;
             Volatile.Write(ref _cachedLatestRelease, info);
+            await SaveCheckCacheAsync().ConfigureAwait(false);
             result = info != null ? Clone(info) : null;
             return result;
         }
@@ -142,6 +163,46 @@ public class UpdateService : IUpdateService, IDisposable
             try { UpdateCheckCompleted?.Invoke(this, result != null ? Clone(result) : null); }
             catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "UpdateCheckCompleted handler threw"); }
         }
+    }
+
+    private sealed record CheckCache(DateTime LastCheckUtc, DateTime RetryAfterUtc,
+        string? Etag, bool IncludesPrereleases, UpdateInfo? Release);
+
+    private void LoadCheckCache()
+    {
+        if (_cachePath == null) return;
+        try
+        {
+            if (!File.Exists(_cachePath) || new FileInfo(_cachePath).Length > MaxReleaseResponseBytes) return;
+            var cache = JsonSerializer.Deserialize<CheckCache>(File.ReadAllText(_cachePath));
+            var now = DateTime.UtcNow;
+            if (cache == null || cache.LastCheckUtc > now || cache.RetryAfterUtc > now.AddDays(1)) return;
+            _lastCheckUtc = cache.LastCheckUtc;
+            _retryAfterUtc = cache.RetryAfterUtc;
+            _cachedIncludesPrereleases = cache.IncludesPrereleases;
+            _cachedLatestRelease = cache.Release != null && IsApprovedUpdate(cache.Release) &&
+                TryParseReleaseVersion(cache.Release.Version, out _, out _) ? cache.Release : null;
+            _latestReleaseEtag = _cachedLatestRelease != null ? cache.Etag : null;
+            if (_cachedLatestRelease != null)
+                _cachedLatestRelease.IsNewerVersion = CompareVersions(_cachedLatestRelease.Version, CurrentVersion) > 0;
+        }
+        catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Update cache ignored: {ex.Message}"); }
+    }
+
+    private async Task SaveCheckCacheAsync()
+    {
+        if (_cachePath == null) return;
+        string temp = _cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_cachePath))!);
+            var cache = new CheckCache(_lastCheckUtc, _retryAfterUtc, _latestReleaseEtag,
+                _cachedIncludesPrereleases, _cachedLatestRelease);
+            await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(cache)).ConfigureAwait(false);
+            File.Move(temp, _cachePath, overwrite: true);
+        }
+        catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Update cache was not saved: {ex.Message}"); }
+        finally { try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } }
     }
 
     private UpdateInfo? SelectLatestRelease(JsonElement releases, UpdateInfo? latest)

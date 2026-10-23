@@ -250,10 +250,12 @@ public sealed class LiquidGlassController : IDisposable
     private GpuGeometry _lastPresentedGpuGeometry;
     private bool _hasPresentedGpuGeometry;
     private D3DImageFramePresenter? _d3dPresenter;
+    private GlassCaptureImage? _gpuCaptureImage;
+    public bool CropGpuPresentationToCapture { get; set; }
     private int _gpuFailureSignaled;
 
     // Unchanged-frame suppression. Re-presenting an identical backdrop is a pure
-    private const int UnchangedRepresentIntervalMs = 500;
+    private volatile bool _idle;
     internal Action? OnGpuFrameUploaded { get; set; }
     private readonly GlassFrameHistory _frameHistory = new();
     private long _lastPresentTicks;
@@ -326,6 +328,7 @@ public sealed class LiquidGlassController : IDisposable
                 _maxRegionW + GpuSamplingMarginLimit * 2,
                 _maxRegionH + GpuSamplingMarginLimit * 2);
             _d3dPresenter.FramePresented += OnD3DFramePresented;
+            _d3dPresenter.RefreshRequested += ForceRefresh;
             _d3dPresenter.Failed += OnD3DPresenterFailed;
             if (_isActive) _d3dPresenter.BeginSession(Volatile.Read(ref _renderGeneration));
         }
@@ -367,9 +370,11 @@ public sealed class LiquidGlassController : IDisposable
 
         _d3dPresenter = null;
         presenter.FramePresented -= OnD3DFramePresented;
+        presenter.RefreshRequested -= ForceRefresh;
         presenter.Failed -= OnD3DPresenterFailed;
-        if (ReferenceEquals(_host.Source, presenter.ImageSource))
+        if (ReferenceEquals(_host.Source, presenter.ImageSource) || ReferenceEquals(_host.Source, _gpuCaptureImage?.Image))
             _host.Source = null;
+        _gpuCaptureImage = null;
         presenter.Dispose();
         ResetGpuGeometryTracking();
     }
@@ -408,10 +413,17 @@ public sealed class LiquidGlassController : IDisposable
 
         // Geometry is applied before the initialized source becomes visible so
         var presenter = _d3dPresenter;
-        if (_gpuMode && presenter != null &&
-            !ReferenceEquals(_host.Source, presenter.ImageSource))
+        if (_gpuMode && presenter != null)
         {
-            _host.Source = presenter.ImageSource;
+            ImageSource source = presenter.ImageSource;
+            if (CropGpuPresentationToCapture)
+            {
+                if (_gpuCaptureImage == null || !ReferenceEquals(_gpuCaptureImage.Source, source))
+                    _gpuCaptureImage = new GlassCaptureImage(source, SurfaceWidth, SurfaceHeight);
+                _gpuCaptureImage.SetCaptureSize((int)geom.SrcW, (int)geom.SrcH);
+                source = _gpuCaptureImage.Image;
+            }
+            if (!ReferenceEquals(_host.Source, source)) _host.Source = source;
         }
     }
 
@@ -448,9 +460,7 @@ public sealed class LiquidGlassController : IDisposable
             {
                 try
                 {
-                    IntPtr h = _getHwnd();
-                    _mag = MagnifierCaptureSource.AcquireShared(h);
-                    _magReady = _mag.IsReady;
+                    AcquireMagnifier();
                 }
                 catch (Exception magEx)
                 {
@@ -525,7 +535,24 @@ public sealed class LiquidGlassController : IDisposable
 
     public bool IsActive => _isActive;
 
-    public void SetAnimating(bool animating) => _animating = animating;
+    public void SetAnimating(bool animating)
+    {
+        if (_animating == animating) return;
+        _animating = animating;
+        ForceRefresh();
+    }
+
+    public void SetIdle(bool idle)
+    {
+        if (_idle == idle) return;
+        _idle = idle;
+        ForceRefresh();
+    }
+
+    internal static double ChooseFrameIntervalMs(double activeIntervalMs, bool idle, bool animating,
+        bool hasFrame, long unchangedMilliseconds) =>
+        idle && !animating && hasFrame && unchangedMilliseconds >= 250
+            ? Math.Max(100, activeIntervalMs) : activeIntervalMs;
 
     public void SetPresentationPaused(bool paused)
     {
@@ -616,10 +643,7 @@ public sealed class LiquidGlassController : IDisposable
         {
             try
             {
-                IntPtr h = _getHwnd();
-                _mag = MagnifierCaptureSource.AcquireShared(h);
-                _mag.RegisterExcludeHwndProvider(_getHwnd);
-                _magReady = _mag.IsReady;
+                AcquireMagnifier();
                 RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier Hardware Capture acquired: ready={_magReady}");
             }
             catch (Exception ex)
@@ -655,6 +679,18 @@ public sealed class LiquidGlassController : IDisposable
         if (!_gpuMode) return;
         try { _d3dPresenter?.PrepareResources(); }
         catch (Exception ex) { OnD3DPresenterFailed(ex); }
+    }
+
+    /// <summary>
+    /// Acquires the shared magnifier source and registers this window as excluded
+    /// from capture. Every acquire path must go through here so Stop() can pair
+    /// the release with UnregisterExcludeHwndProvider. Callers handle exceptions.
+    /// </summary>
+    private void AcquireMagnifier()
+    {
+        _mag = MagnifierCaptureSource.AcquireShared(_getHwnd());
+        _mag.RegisterExcludeHwndProvider(_getHwnd);
+        _magReady = _mag.IsReady;
     }
 
     public void Dispose()
@@ -811,6 +847,8 @@ public sealed class LiquidGlassController : IDisposable
         double frameStart = clock.Elapsed.TotalMilliseconds;
         RefreshDisplayCadence();
         double frameIntervalMs = ChooseLockedFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
+        frameIntervalMs = ChooseFrameIntervalMs(frameIntervalMs, _idle, _animating,
+            _hasUploadedGpuFrame || _hasPresentedCpuFrame, Environment.TickCount64 - _lastPresentTicks);
         // Preserve headroom when capture/processing cannot sustain the requested
         // cadence. Recover gradually once work becomes cheap again.
         frameIntervalMs = Math.Max(frameIntervalMs, Math.Min(100, _frameWorkMs * 1.25));
@@ -969,9 +1007,7 @@ public sealed class LiquidGlassController : IDisposable
                 {
                     if (!_isActive || _exactBitBltCapture || _mag != null ||
                         generation != Volatile.Read(ref _renderGeneration)) return;
-                    _mag = MagnifierCaptureSource.AcquireShared(_getHwnd());
-                    _mag.RegisterExcludeHwndProvider(_getHwnd);
-                    _magReady = _mag.IsReady;
+                    AcquireMagnifier();
                 }
                 catch (Exception ex)
                 {
@@ -1043,7 +1079,9 @@ public sealed class LiquidGlassController : IDisposable
 
     private double AdvanceFrameDeadline(double nextFrameAtMs, double frameIntervalMs, double nowMs)
     {
-        nextFrameAtMs += frameIntervalMs;
+        // A wake during an idle wait must not leave a future idle deadline in
+        // front of the first animation frames.
+        nextFrameAtMs = ComputeNextFrameDeadline(nextFrameAtMs, frameIntervalMs, nowMs);
         if (nextFrameAtMs <= nowMs)
         {
             // Discard timing debt and yield instead of running continuously when
@@ -1058,6 +1096,9 @@ public sealed class LiquidGlassController : IDisposable
         }
         return nextFrameAtMs;
     }
+
+    internal static double ComputeNextFrameDeadline(double previousDeadlineMs, double intervalMs, double nowMs) =>
+        Math.Min(previousDeadlineMs + intervalMs, nowMs + intervalMs);
 
     private CaptureRegion? _cachedRegion;
     private double _lastRegionFetchMs = double.NegativeInfinity;
@@ -1680,7 +1721,7 @@ public sealed class LiquidGlassController : IDisposable
         {
             margin = CaptureFullSurface
                 ? GpuSamplingMarginLimit
-                : Math.Clamp(requiredMargin + 96, 64, GpuSamplingMarginLimit);
+                : Math.Clamp(requiredMargin + 32, 32, GpuSamplingMarginLimit);
         }
 
         int srcW = (gpuMode && CaptureFullSurface) ? SurfaceWidth : bufW + margin * 2;
@@ -1903,8 +1944,7 @@ public sealed class LiquidGlassController : IDisposable
             };
         }
         bool forcePresent = !_hasUploadedGpuFrame || _forceRefreshNeeded ||
-            !uploadedGeometry.Equals(geom) ||
-            nowTicks - _lastPresentTicks >= UnchangedRepresentIntervalMs;
+            !uploadedGeometry.Equals(geom);
 
         if (PresentRawGpu(dims.SrcW, dims.SrcH, geom, generation, forcePresent))
         {
@@ -1927,7 +1967,7 @@ public sealed class LiquidGlassController : IDisposable
             Math.Abs(_presentSubY - _lastPresentedSubY) < 0.001 &&
             Math.Abs(p.Saturation - _lastPresentedSaturation) < 0.001 &&
             Math.Abs(p.Brightness - _lastPresentedBrightness) < 0.001;
-        if (cpuUnchanged && cpuNowTicks - _lastPresentTicks < UnchangedRepresentIntervalMs)
+        if (cpuUnchanged)
             return false;
 
         byte[]? blurredSource = blurSigma > 0
@@ -1937,7 +1977,7 @@ public sealed class LiquidGlassController : IDisposable
 
         _hasPresentedCpuFrame = true;
         _forceRefreshNeeded = false;
-        _frameHistory.Commit(_dibBits, srcW, srcH);
+        _frameHistory.CommitCheckedFrame();
         _lastPresentedSubX = _presentSubX;
         _lastPresentedSubY = _presentSubY;
         _lastPresentedSaturation = p.Saturation;

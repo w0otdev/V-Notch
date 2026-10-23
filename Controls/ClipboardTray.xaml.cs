@@ -195,6 +195,8 @@ public partial class ClipboardTray : UserControl, IDisposable
         CloseDetailButton.Content = Loc.Get("clipboard.close");
         CopyDetailButton.Content = Loc.Get("clipboard.copy");
         ClearSearchButton.ToolTip = Loc.Get("settings.search.clear");
+        EmptyTrayButton.ToolTip = Loc.Get("clipboard.emptyTray");
+        System.Windows.Automation.AutomationProperties.SetName(EmptyTrayButton, Loc.Get("clipboard.emptyTray"));
         System.Windows.Automation.AutomationProperties.SetName(ClearSearchButton, Loc.Get("settings.search.clear"));
         ConfirmDeleteButton.Content = Loc.Get("clipboard.delete");
         CancelDeleteButton.Content = Loc.Get("clipboard.cancel");
@@ -210,7 +212,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         UpdatePinStep();
         ShowApproval();
         if (_detailLocalizationKey != null) DetailText.Text = Loc.Get(_detailLocalizationKey);
-        if (_deleteConfirmationOpen) DeleteConfirmationText.Text = Loc.Get("clipboard.deleteConfirm", _deleteConfirmationCount);
+        if (_deleteConfirmationOpen) UpdateDeleteConfirmationText();
         RefreshVisibleCardAges();
         foreach (var category in _categoryItems) category.ApplyLocalization();
         foreach (var card in _cards) card.ApplyLocalization();
@@ -443,7 +445,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         EndSelection();
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         Cards.SelectedItems.Clear();
-        _selectionAnchor = null;
+        _selection.Reset();
         _resultsDirection = Array.IndexOf(Categories, category) >= Array.IndexOf(Categories, _category) ? 1 : -1;
         _category = category;
         _animateResults = true;
@@ -512,7 +514,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         ApprovalPanel.Visibility = Visibility.Collapsed;
         ResolveDeleteConfirmation(false, immediately: true);
         ClearStatus(immediately: true);
-        _selectionAnchor = null;
+        _selection.Reset();
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         foreach (var card in _cards) card.IsMenuOpen = false;
         ++_refreshVersion;
@@ -803,7 +805,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         e.Handled = true;
         bool copy = _copyOnRelease;
         _copyOnRelease = false;
-        if (copy && Keyboard.Modifiers == ModifierKeys.None && !_selectionModified) await SafeAsync(() => CopyAsync(card));
+        if (copy && Keyboard.Modifiers == ModifierKeys.None && !_selection.Modified) await SafeAsync(() => CopyAsync(card));
     }
     private async void DustOverlay_DissolveRequested(object sender, RoutedEventArgs e)
     {

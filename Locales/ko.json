@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "효과음 음량",
+  "settings.interactionSoundVolume.hint": "상호작용 소리만 조절합니다. 놓으면 미리 듣고, 0%는 음소거됩니다.",
+  "settings.interactionSounds": "상호작용 소리",
+  "settings.interactionSounds.hint": "버튼, 스위치 및 항목 선택 시 부드러운 소리를 재생합니다.",
   "settings.privacy.invisible.enable": "숨김 모드 켜기",
   "settings.privacy.invisible.disable": "숨김 모드 끄기",
   "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I로 전환합니다. 숨김 모드를 끄면 시스템 트레이 아이콘이 다시 나타납니다.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "1/2단계: 6자리 PIN 만들기",
   "clipboard.confirmStep": "2/2단계: PIN 확인",
   "clipboard.confirmRetry": "2/2단계: PIN이 일치하지 않습니다. 다시 확인하세요.",
+  "clipboard.emptyTray": "트레이 비우기",
+  "clipboard.emptyTrayConfirm": "모든 카테고리에서 클립보드 항목 {0}개를 영구적으로 삭제할까요? 고정된 항목, 비공개 항목 및 보관된 항목은 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
   "clipboard.deleteConfirm": "항목 {0}개를 영구 삭제할까요? 이 작업은 취소할 수 없습니다.",
   "clipboard.source": "클립보드",
   "clipboard.image": "이미지",

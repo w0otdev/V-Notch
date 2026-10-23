@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Volume van geluidseffecten",
+  "settings.interactionSoundVolume.hint": "Pas alleen interactiegeluiden aan. Laat los om te luisteren; 0% is stil.",
+  "settings.interactionSounds": "Interactiegeluiden",
+  "settings.interactionSounds.hint": "Zachte geluiden voor knoppen, schakelaars en selecties.",
   "settings.privacy.invisible.enable": "Onzichtbare modus inschakelen",
   "settings.privacy.invisible.disable": "Onzichtbare modus uitschakelen",
   "settings.privacy.invisible.shortcut": "Schakel om met Ctrl + Alt + Shift + I. Als je de onzichtbare modus uitschakelt, verschijnt het systeemvakpictogram weer.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Stap 1/2: Maak een PIN van zes cijfers",
   "clipboard.confirmStep": "Stap 2/2: Bevestig de PIN",
   "clipboard.confirmRetry": "Stap 2/2: PIN-codes komen niet overeen. Bevestig opnieuw.",
+  "clipboard.emptyTray": "Lade legen",
+  "clipboard.emptyTrayConfirm": "{0} klemborditems uit alle categorieën permanent verwijderen? Vastgepinde, privé- en gearchiveerde items blijven behouden. Dit kan niet ongedaan worden gemaakt.",
   "clipboard.deleteConfirm": "{0} items definitief verwijderen? Dit kan niet ongedaan worden gemaakt.",
   "clipboard.source": "Klembord",
   "clipboard.image": "Afbeelding",

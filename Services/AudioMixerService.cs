@@ -40,14 +40,16 @@ public sealed class AudioMixerService : IDisposable
     {
         public MMDeviceEnumerator Enumerator { get; }
         public MMDevice Device { get; }
+        public AudioSessionControl Session { get; }
         public SimpleAudioVolume SimpleVolume { get; }
         public uint ProcessId { get; }
         public DateTime CachedAtUtc { get; set; }
 
-        public CachedSessionVolume(MMDeviceEnumerator enumerator, MMDevice device, SimpleAudioVolume sv, uint processId)
+        public CachedSessionVolume(MMDeviceEnumerator enumerator, MMDevice device, AudioSessionControl session, SimpleAudioVolume sv, uint processId)
         {
             Enumerator = enumerator;
             Device = device;
+            Session = session;
             SimpleVolume = sv;
             ProcessId = processId;
             CachedAtUtc = DateTime.UtcNow;
@@ -56,6 +58,7 @@ public sealed class AudioMixerService : IDisposable
         public void Dispose()
         {
             try { SimpleVolume.Dispose(); } catch { }
+            try { Session.Dispose(); } catch { }
             try { Device.Dispose(); } catch { }
             try { Enumerator.Dispose(); } catch { }
         }
@@ -203,7 +206,7 @@ public sealed class AudioMixerService : IDisposable
 
                 for (int i = 0; i < sessions.Count; i++)
                 {
-                    var session = sessions[i];
+                    using var session = sessions[i];
                     if (session == null) continue;
 
                     try
@@ -403,6 +406,7 @@ public sealed class AudioMixerService : IDisposable
                     {
                         var session = sessions[i];
                         if (session == null) continue;
+                        bool keepSession = false;
                         try
                         {
                             bool match = processId == 0
@@ -411,18 +415,32 @@ public sealed class AudioMixerService : IDisposable
                             if (!match) continue;
 
                             var sv = session.SimpleAudioVolume;
-                            sv.Volume = target;
-                            if (target > 0.001f && sv.Mute) sv.Mute = false;
+                            try
+                            {
+                                sv.Volume = target;
+                                if (target > 0.001f && sv.Mute) sv.Mute = false;
+                            }
+                            catch
+                            {
+                                sv.Dispose();
+                                throw;
+                            }
 
                             InvalidateSetCacheLocked();
-                            _setCache = new CachedSessionVolume(enumerator!, device!, sv, processId);
+                            _setCache = new CachedSessionVolume(enumerator!, device!, session, sv, processId);
                             enumerator = null;
                             device = null;
+                            // Keep and dispose the session together with its volume interface.
+                            keepSession = true;
                             return true;
                         }
                         catch (Exception)
                         {
                             // Session volume interface disconnected
+                        }
+                        finally
+                        {
+                            if (!keepSession) session.Dispose();
                         }
                     }
                 }
@@ -462,7 +480,7 @@ public sealed class AudioMixerService : IDisposable
 
             for (int i = 0; i < sessions.Count; i++)
             {
-                var session = sessions[i];
+                using var session = sessions[i];
                 if (session == null) continue;
                 try
                 {

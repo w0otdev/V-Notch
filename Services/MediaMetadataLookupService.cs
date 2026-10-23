@@ -105,7 +105,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 : $"{title} {artist}";
 
             string? apiKey = _apiKey();
-            if (!string.IsNullOrEmpty(apiKey) && !IsQuotaCooldownActive())
+            if (!string.IsNullOrEmpty(apiKey) && !QuotaCooldown.IsActive(apiKey))
             {
                 var apiResult = await TrySearchViaDataApiAsync(query, title, apiKey, ct);
                 if (apiResult != null)
@@ -145,7 +145,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             {
                 string body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
                 if (LooksLikeQuotaExceeded(body))
-                    TripQuotaCooldown();
+                    QuotaCooldown.Trip(apiKey);
                 return null;
             }
 
@@ -210,7 +210,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 #pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TrySearchViaPipedAsync(string query, string originalTitle, CancellationToken ct)
     {
-        string[] pipedInstances = { "pipedapi.kavin.rocks", "pipedapi.adminforge.de", "pipedapi.in.projectsegfault.com" };
+        var pipedInstances = MediaProtocolConfiguration.Current.PipedInstances;
 
         foreach (var instance in pipedInstances)
         {
@@ -287,7 +287,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             }
         }
 
-        string[] invidiousInstances = { "vid.puffyan.us", "invidious.fdn.fr", "invidious.nerdvpn.de" };
+        var invidiousInstances = MediaProtocolConfiguration.Current.InvidiousInstances;
 
         foreach (var instance in invidiousInstances)
         {
@@ -498,20 +498,20 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         if (string.IsNullOrWhiteSpace(videoId))
             return null;
 
-        if (TryGetCachedVideo(videoId, out var cached) && cached != null)
+        string? apiKey = _apiKey();
+        if (TryGetCachedVideo(videoId, apiKey, out var cached) && cached != null)
         {
             RuntimeLog.Log(YouTubeApiLogTag,
                 $"cache-hit videoId={videoId} source={cached.Source} duration={cached.Duration} thumb={(string.IsNullOrEmpty(cached.ThumbnailUrl) ? "(none)" : "data-api")}");
             return cached;
         }
 
-        string? apiKey = _apiKey();
         if (!string.IsNullOrEmpty(apiKey))
         {
             var apiResult = await TryGetVideoFromDataApiAsync(videoId, apiKey, ct);
             if (apiResult != null)
             {
-                CacheVideo(videoId, apiResult);
+                CacheVideo(videoId, apiResult, apiKey);
                 return apiResult;
             }
             RuntimeLog.Log(YouTubeApiLogTag, $"data-api-miss videoId={videoId} -> falling back to oEmbed");
@@ -530,7 +530,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             oembed = await EnrichWithDurationAsync(oembed, apiKey, ct) ?? oembed;
         }
 
-        CacheVideo(videoId, oembed);
+        CacheVideo(videoId, oembed, apiKey);
         return oembed;
     }
 
@@ -611,7 +611,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 #pragma warning disable S3776
     private async Task<YouTubeLookupResult?> TryGetVideoFromDataApiAsync(string videoId, string apiKey, CancellationToken ct)
     {
-        if (IsQuotaCooldownActive())
+        if (QuotaCooldown.IsActive(apiKey))
             return null;
 
         try
@@ -629,7 +629,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             {
                 if (LooksLikeQuotaExceeded(json))
                 {
-                    TripQuotaCooldown();
+                    QuotaCooldown.Trip(apiKey);
                     RuntimeLog.Log(YouTubeApiLogTag, "quotaExceeded — Data API disabled until tomorrow, falling back to oEmbed.");
                 }
                 else
@@ -697,27 +697,21 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private static bool LooksLikeQuotaExceeded(string body)
         => YouTubeMetadataParsing.LooksLikeQuotaExceeded(body);
 
-    private static long _quotaCooldownUntilTicks;
-
-    private static bool IsQuotaCooldownActive()
-        => Volatile.Read(ref _quotaCooldownUntilTicks) > DateTime.UtcNow.Ticks;
-
-    private static void TripQuotaCooldown()
-    {
-        var resumeAt = DateTime.UtcNow.Date.AddDays(1).AddHours(8);
-        Volatile.Write(ref _quotaCooldownUntilTicks, resumeAt.Ticks);
-    }
+    private static readonly YouTubeQuotaCooldown QuotaCooldown = new();
 
     private static readonly object _videoCacheLock = new();
     private static readonly Dictionary<string, (YouTubeLookupResult Result, DateTime ExpiresUtc)> _videoCache = new(StringComparer.Ordinal);
     private static readonly TimeSpan _videoCacheTtl = TimeSpan.FromHours(6);
     private const int VideoCacheMaxEntries = 256;
 
-    private static bool TryGetCachedVideo(string videoId, out YouTubeLookupResult? result)
+    private static string VideoCacheKey(string videoId, string? apiKey) => videoId + ":" +
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(apiKey?.Trim() ?? "")));
+
+    private static bool TryGetCachedVideo(string videoId, string? apiKey, out YouTubeLookupResult? result)
     {
         lock (_videoCacheLock)
         {
-            if (_videoCache.TryGetValue(videoId, out var entry) && entry.ExpiresUtc > DateTime.UtcNow)
+            if (_videoCache.TryGetValue(VideoCacheKey(videoId, apiKey), out var entry) && entry.ExpiresUtc > DateTime.UtcNow)
             {
                 result = entry.Result;
                 return true;
@@ -727,7 +721,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
         return false;
     }
 
-    private static void CacheVideo(string videoId, YouTubeLookupResult result)
+    private static void CacheVideo(string videoId, YouTubeLookupResult result, string? apiKey = null)
     {
         if (string.IsNullOrEmpty(videoId)) return;
         lock (_videoCacheLock)
@@ -743,12 +737,13 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                         _videoCache.Remove(key);
                 }
             }
-            _videoCache[videoId] = (result, DateTime.UtcNow.Add(_videoCacheTtl));
+            _videoCache[VideoCacheKey(videoId, apiKey)] = (result, DateTime.UtcNow.Add(_videoCacheTtl));
         }
     }
 
     private async Task<YouTubeLookupResult?> EnrichWithDurationAsync(YouTubeLookupResult result, string apiKey, CancellationToken ct)
     {
+        if (QuotaCooldown.IsActive(apiKey)) return result;
         try
         {
             if (string.IsNullOrEmpty(result.Id))
@@ -761,8 +756,12 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
             using var request = CreateYouTubeApiRequest(url, apiKey);
             using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
-            response.EnsureSuccessStatusCode();
             string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (LooksLikeQuotaExceeded(json)) QuotaCooldown.Trip(apiKey);
+                return result;
+            }
             if (string.IsNullOrWhiteSpace(json))
                 return result;
 
@@ -803,15 +802,58 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private static TimeSpan ParseIso8601Duration(string iso)
         => YouTubeMetadataParsing.ParseIso8601Duration(iso);
 
+    private static readonly object ApiKeyCacheGate = new();
+    private static string? _apiKeyCachePath;
+    private static DateTime _apiKeyCacheStampUtc;
+    private static string? _cachedApiKey;
+
     private static string? GetYouTubeApiKey()
     {
+        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return GetCachedYouTubeApiKey(Path.Combine(appDataPath, "V-Notch", "settings.json"));
+    }
+
+    // Settings are saved with an atomic replace, so the write time changes whenever the
+    // key or its toggle can change. Re-read and decrypt only then, not on every lookup.
+    internal static string? GetCachedYouTubeApiKey(string settingsPath)
+    {
+        DateTime stampUtc;
         try
         {
-            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
+            stampUtc = File.Exists(settingsPath) ? File.GetLastWriteTimeUtc(settingsPath) : DateTime.MinValue;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("YOUTUBE-API-KEY", $"Failed to stat settings: {ex.Message}");
+            return null;
+        }
 
+        lock (ApiKeyCacheGate)
+        {
+            if (_apiKeyCachePath == settingsPath && _apiKeyCacheStampUtc == stampUtc)
+                return _cachedApiKey;
+        }
+
+        // Read errors are not cached so a transient failure does not hide the key.
+        if (!TryReadYouTubeApiKey(settingsPath, out var key))
+            return null;
+
+        lock (ApiKeyCacheGate)
+        {
+            _apiKeyCachePath = settingsPath;
+            _apiKeyCacheStampUtc = stampUtc;
+            _cachedApiKey = key;
+        }
+        return key;
+    }
+
+    private static bool TryReadYouTubeApiKey(string settingsPath, out string? key)
+    {
+        key = null;
+        try
+        {
             if (!File.Exists(settingsPath))
-                return null;
+                return true;
 
             string json = File.ReadAllText(settingsPath);
             using var doc = JsonDocument.Parse(json);
@@ -821,43 +863,32 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 enabledEl.GetBoolean() &&
                 root.TryGetProperty("YouTubeApiKey", out var keyEl))
             {
-                string? key = DataProtection.Unprotect(keyEl.GetString())?.Trim();
-                if (!string.IsNullOrEmpty(key) && key.Length > 10)
-                    return key;
+                string? candidate = DataProtection.Unprotect(keyEl.GetString())?.Trim();
+                if (!string.IsNullOrEmpty(candidate) && candidate.Length > 10)
+                    key = candidate;
             }
+            return true;
         }
         catch (Exception ex)
         {
             RuntimeLog.Warn("YOUTUBE-API-KEY", $"Failed to read API key from settings: {ex.Message}");
+            return false;
         }
-
-        return null;
     }
 
     public static bool IsOnlineArtworkAllowed()
     {
         try
         {
-            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
-            if (!File.Exists(settingsPath)) return true;
-
-            string json = File.ReadAllText(settingsPath);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty(nameof(NotchSettings.EnableLocalOnlyMode), out var localOnly) && localOnly.GetBoolean())
-                return false;
-
-            if (root.TryGetProperty(nameof(NotchSettings.EnableOnlineArtworkLookup), out var onlineArt) && !onlineArt.GetBoolean())
-                return false;
+            // The policy tracks the live settings (local-only mode and the artwork toggle)
+            // and denies until startup has loaded them.
+            return NetworkPrivacy.Current.IsAllowed(NetworkFeature.Artwork);
         }
-        catch
+        catch (Exception ex)
         {
-            // Settings read error, fallback to allowed
+            RuntimeLog.Warn("ARTWORK-PRIVACY", $"Privacy check failed, denying: {ex.Message}");
+            return false;
         }
-
-        return true;
     }
 
 #pragma warning disable S3776

@@ -35,7 +35,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 
     public ClipboardHistoryStore(string? root = null)
     {
-        _root = root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "V-Notch", "Clipboard");
+        _root = root ?? Path.Combine(AppPaths.LocalAppDataRoot, "Clipboard");
         _root = Path.GetFullPath(_root);
         _vault = new ClipboardVault(_root);
         _availableSpace = () => new DriveInfo(Path.GetPathRoot(_root)!).AvailableFreeSpace;
@@ -656,6 +656,32 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         return true;
     });
 
+    /// <summary>Deletes only the confirmed items, rechecking protection in the serialized work queue.</summary>
+    public Task EmptyTrayAsync(IReadOnlyCollection<Guid> ids)
+    {
+        var confirmedIds = ids.ToArray();
+        return Run(() =>
+        {
+            bool changed = false;
+            try
+            {
+                foreach (var id in confirmedIds)
+                {
+                    if (!_entries.TryGetValue(id, out var entry) || entry.IsPinned || entry.IsPersonal || entry.IsArchived) continue;
+                    Directory.Delete(EntryDirectory(entry), true);
+                    RemoveEntry(id);
+                    changed = true;
+                }
+                return true;
+            }
+            finally
+            {
+                // Refresh even if a later item could not be removed.
+                if (changed) Changed?.Invoke();
+            }
+        });
+    }
+
     public Task PruneAsync(DateTime nowUtc) => Run(() => { PruneCore(nowUtc); DeleteExportsCore(); Changed?.Invoke(); return true; });
     private void PruneCore(DateTime nowUtc)
     {
@@ -1045,9 +1071,23 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         return hr is 32 or 33; // ERROR_SHARING_VIOLATION or ERROR_LOCK_VIOLATION
     }
 
-    // UI owners use DisposeAsync to drain queued work. Synchronous disposal starts
-    // the same cleanup without preventing those owners' dispatcher from pumping.
-    public void Dispose() => DisposeAsync().AsTask().SafeFireAndForget("CLIPBOARD-STORE-DISPOSE");
+    // UI owners use DisposeAsync to drain queued work. Synchronous disposal waits a
+    // bounded time for the same cleanup so queued writes are not lost on exit. Queued
+    // work runs on TaskScheduler.Default and never needs the UI dispatcher.
+    public void Dispose()
+    {
+        try
+        {
+            if (!DisposeAsync().AsTask().Wait(DisposeDrainTimeout))
+                RuntimeLog.Log("CLIPBOARD-STORE-DISPOSE", $"Pending work did not finish within {DisposeDrainTimeout.TotalSeconds:0}s");
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("CLIPBOARD-STORE-DISPOSE", ex, "Cleanup failed while draining");
+        }
+    }
+
+    private static readonly TimeSpan DisposeDrainTimeout = TimeSpan.FromSeconds(3);
 
     public ValueTask DisposeAsync()
     {

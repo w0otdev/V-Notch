@@ -36,12 +36,13 @@ public sealed class ClipboardTrayMenuRegressionTests
         {
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            await Task.Delay(600);
             var list = (ListBox)tray.FindName("Cards");
-            var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(card);
+            ListBoxItem? realized = null;
+            await WpfFrameWaiter.UntilAsync(() =>
+                (realized = list.ItemContainerGenerator.ContainerFromItem(card) as ListBoxItem) is { ActualWidth: > 0, ActualHeight: > 0 }
+                && Descendants(realized).OfType<Button>().Any(b => Equals(b.Tag, "more")), "card container realized");
+            var item = realized!;
             var button = Descendants(item).OfType<Button>().Single(b => Equals(b.Tag, "more"));
-            var origin = button.TranslatePoint(new Point(), item);
-            var allowed = new Rect(origin.X - 8, origin.Y - 8, button.ActualWidth + 16, button.ActualHeight + 16);
             byte[] Render()
             {
                 var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(item.ActualWidth), (int)Math.Ceiling(item.ActualHeight), 96, 96, PixelFormats.Pbgra32);
@@ -50,10 +51,12 @@ public sealed class ClipboardTrayMenuRegressionTests
                 bitmap.CopyPixels(pixels, bitmap.PixelWidth * 4, 0);
                 return pixels;
             }
-            var before = Render();
+            var before = await RenderWhenStillAsync(Render, "card settles before opening the menu");
+            var origin = button.TranslatePoint(new Point(), item);
+            var allowed = new Rect(origin.X - 8, origin.Y - 8, button.ActualWidth + 16, button.ActualHeight + 16);
             card.IsMenuOpen = true;
-            await Task.Delay(300);
-            var after = Render();
+            await WpfFrameWaiter.UntilAsync(() => TestWait.Near(90, Angle(button)), "more icon rotation lands");
+            var after = await RenderWhenStillAsync(Render, "card settles after opening the menu");
             int width = (int)Math.Ceiling(item.ActualWidth);
             for (int i = 0; i < before.Length; i += 4)
             {
@@ -82,17 +85,22 @@ public sealed class ClipboardTrayMenuRegressionTests
         {
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            await Task.Delay(300);
             var list = (ListBox)tray.FindName("Cards");
-            var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(card);
-            var buttons = Descendants(container).OfType<Button>().Where(button => button.Tag is "pin" or "more").ToArray();
+            Button[] buttons = [];
+            await WpfFrameWaiter.UntilAsync(() =>
+            {
+                if (list.ItemContainerGenerator.ContainerFromItem(card) is not ListBoxItem realized) return false;
+                buttons = Descendants(realized).OfType<Button>().Where(button => button.Tag is "pin" or "more").ToArray();
+                return buttons.Length == 2 && buttons.All(button => button.Template?.FindName("RootGrid", button) is Grid);
+            }, "card action buttons realized");
             Assert.Equal(2, buttons.Length);
             Assert.All(buttons, button => Assert.Equal(0, Angle(button), 3));
 
             foreach (bool open in new[] { true, false, true, false })
             {
                 card.IsMenuOpen = open;
-                await Task.Delay(300);
+                await TestWait.UntilStableAsync(() => buttons.All(button =>
+                    TestWait.Near(open && Equals(button.Tag, "more") ? 90 : 0, Angle(button))), $"action icons settle with menu open={open}");
                 for (int index = 0; index < buttons.Length; index++)
                     Assert.Equal(open && Equals(buttons[index].Tag, "more") ? 90 : 0, Angle(buttons[index]), 3);
             }
@@ -130,7 +138,7 @@ public sealed class ClipboardTrayMenuRegressionTests
             Assert.False(menu.StaysOpen);
             Assert.NotEmpty(menu.Items);
             button.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
-            await Task.Delay(300);
+            await TestWait.HoldsForAsync(() => Assert.True(menu.IsOpen), TimeSpan.FromMilliseconds(300), "menu stays open after pointer leaves");
             Assert.True(menu.IsOpen);
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert.False(menu.IsOpen);
@@ -167,8 +175,14 @@ public sealed class ClipboardTrayMenuRegressionTests
             foreach (bool fresh in new[] { true, false })
             {
                 typeof(ClipboardTray).GetMethod("AnimateMenuSurface", Private)!.Invoke(null, [surface, target, fresh, submenu]);
-                await Task.Delay(300);
-                var bounds = surface.TransformToAncestor(host).TransformBounds(new Rect(surface.RenderSize));
+                Rect Bounds() => surface.TransformToAncestor(host).TransformBounds(new Rect(surface.RenderSize));
+                await TestWait.UntilStableAsync(() =>
+                {
+                    var settled = Bounds();
+                    return TestWait.Near(surface.ActualWidth, settled.Width) && TestWait.Near(surface.ActualHeight, settled.Height)
+                        && TestWait.Near(1, surface.Opacity);
+                }, $"menu surface settles (fresh={fresh})");
+                var bounds = Bounds();
                 Assert.Equal(surface.ActualWidth, bounds.Width, 3);
                 Assert.Equal(surface.ActualHeight, bounds.Height, 3);
                 Assert.Equal(1, surface.Opacity, 3);
@@ -255,7 +269,8 @@ public sealed class ClipboardTrayMenuRegressionTests
             cancel.Invoke(tray, [surface]);
             queue.Invoke(tray, [surface, null, open, true, false]);
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            await Task.Delay(300);
+            await TestWait.UntilStableAsync(() => TestWait.Near(1, surface.RenderTransform.Value.M11) && TestWait.Near(1, surface.Opacity),
+                "re-queued menu entrance settles");
             Assert.Equal(1, surface.RenderTransform.Value.M11, 3);
             Assert.Equal(1, surface.Opacity, 3);
             var pending = (System.Collections.IDictionary)typeof(ClipboardTray).GetField("_pendingMenuEntrances", Private)!.GetValue(tray)!;
@@ -287,19 +302,41 @@ public sealed class ClipboardTrayMenuRegressionTests
             await Dispatcher.Yield(DispatcherPriority.Render);
             Assert.True(content.HasAnimatedProperties);
             Assert.True(((SolidColorBrush)row.Background).HasAnimatedProperties);
-            await Task.Delay(50);
+            await WpfFrameWaiter.UntilAsync(() => content.Opacity >= idleOpacity + 0.01, "highlight starts brightening");
             Assert.InRange(content.Opacity, idleOpacity + 0.01, 1.0);
             highlighted.SetValue(item, false);
-            await Task.Delay(30);
+            // Rapid toggle: let the un-highlight render for a couple of frames (~30 ms) mid-flight.
+            await WpfFrameWaiter.NextAsync();
+            await WpfFrameWaiter.NextAsync();
             highlighted.SetValue(item, true);
-            await Task.Delay(220);
+            await TestWait.UntilStableAsync(() => TestWait.Near(1, content.Opacity), "highlight settles at full opacity");
             Assert.Equal(1, content.Opacity, 3);
             highlighted.SetValue(item, false);
-            await Task.Delay(220);
+            await TestWait.UntilStableAsync(() => TestWait.Near(idleOpacity, content.Opacity), "highlight returns to idle opacity");
             Assert.Equal(idleOpacity, content.Opacity, 3);
         }
         finally { window.Close(); AnimationConfig.SetReduceMotion(previousReducedMotion); }
     });
+
+    // Returns a rendering once it has been pixel-identical for longer than any tray motion
+    // clock (TrayMotion runs 140-180 ms), so comparisons see settled state, not a fixed sleep.
+    private static async Task<byte[]> RenderWhenStillAsync(Func<byte[]> render, string description)
+    {
+        byte[]? last = null;
+        var still = System.Diagnostics.Stopwatch.StartNew();
+        await WpfFrameWaiter.UntilAsync(() =>
+        {
+            var current = render();
+            if (last == null || !current.AsSpan().SequenceEqual(last))
+            {
+                last = current;
+                still.Restart();
+                return false;
+            }
+            return still.ElapsedMilliseconds >= 250;
+        }, description);
+        return last!;
+    }
 
     private static void SetInputDevice(InputDevice inputDevice)
     {

@@ -1,6 +1,7 @@
 // Frozen clock rendering baseline before retained hand drawings.
 using System;
 using System.Globalization;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -9,15 +10,17 @@ namespace VNotch.Benchmarks;
 
 public class BaselineAnalogClock : FrameworkElement
 {
-    private static readonly Brush HandBrush = CreateFrozenBrush(0xC8, 0xC8, 0xC8);
-    private static readonly Brush MajorTickBrush = CreateFrozenBrush(0xC8, 0xC8, 0xC8);
+    // Match the current palette so this benchmark isolates the drawing strategy.
+    private static readonly Brush HandBrush = (Brush)typeof(VNotch.Controls.AnalogClock)
+        .GetField("HandBrush", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+    private static readonly Brush MajorTickBrush = HandBrush;
     private static readonly Brush MinorTickBrush = CreateFrozenBrush(0x6E, 0x6E, 0x73);
     private static readonly Brush AccentBrush = CreateFrozenBrush(0xE0, 0x23, 0x1F);
     private static readonly Brush HubHoleBrush = CreateFrozenBrush(0x0A, 0x0A, 0x0A);
     private static readonly Pen MinorTickPen = CreateFrozenPen(MinorTickBrush, 1.0);
     private static readonly Pen MajorRulerPen = CreateFrozenPen(MajorTickBrush, 1.4);
     private static readonly Typeface DateTypeface = new(
-        new FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display"),
+        new FontFamily(VNotch.Services.AppFonts.Location + "#SF Pro Display"),
         FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     private readonly DispatcherTimer _timer;

@@ -37,7 +37,8 @@ internal static class Program
                 {
                     time = time.AddHours(3).AddMilliseconds(127);
                     Draw(oldVisual, baseline, time);
-                    if (frame == 0 || update(time)) Draw(newVisual, current, time);
+                    bool drawingChanged = update(time);
+                    if (drawingChanged || frame == 0) Draw(newVisual, current, time);
                     byte[] before = Pixels(oldVisual, size, dpi), after = Pixels(newVisual, size, dpi);
                     if (!before.AsSpan().SequenceEqual(after))
                         throw new Exception($"Pixel mismatch: dpi={dpi} size={size} date={date} frame={frame}");

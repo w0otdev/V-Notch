@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Głośność efektów",
+  "settings.interactionSoundVolume.hint": "Zmienia tylko dźwięki interakcji. Puść, aby odsłuchać; 0% wycisza dźwięk.",
+  "settings.interactionSounds": "Dźwięki interakcji",
+  "settings.interactionSounds.hint": "Delikatne dźwięki przycisków, przełączników i wyboru opcji.",
   "settings.privacy.invisible.enable": "Włącz tryb niewidoczny",
   "settings.privacy.invisible.disable": "Wyłącz tryb niewidoczny",
   "settings.privacy.invisible.shortcut": "Przełączaj za pomocą Ctrl + Alt + Shift + I. Wyłączenie trybu niewidocznego przywraca ikonę w zasobniku systemowym.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Krok 1/2: Utwórz sześciocyfrowy PIN",
   "clipboard.confirmStep": "Krok 2/2: Potwierdź PIN",
   "clipboard.confirmRetry": "Krok 2/2: Kody PIN są różne. Potwierdź ponownie.",
+  "clipboard.emptyTray": "Opróżnij zasobnik",
+  "clipboard.emptyTrayConfirm": "Trwale usunąć {0} elementów schowka ze wszystkich kategorii? Przypięte, prywatne i zarchiwizowane elementy zostaną zachowane. Tej operacji nie można cofnąć.",
   "clipboard.deleteConfirm": "Trwale usunąć {0} elementów? Nie można tego cofnąć.",
   "clipboard.source": "Schowek",
   "clipboard.image": "Obraz",

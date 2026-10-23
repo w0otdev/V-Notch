@@ -7,7 +7,8 @@ namespace VNotch;
 public partial class MainWindow
 {
     private InvisibleHotkeyController? _invisibleHotkey;
-    private bool _savingInvisibleMode;
+    internal bool IsInvisibleHotkeyRegistered => _invisibleHotkey?.IsRegistered == true;
+    private InvisibleModeController? _invisibleModeController;
 
     private void UpdateInvisibleTrayVisibility()
     {
@@ -26,22 +27,25 @@ public partial class MainWindow
 
     private void ToggleInvisibleMode() => ToggleInvisibleModeAsync().SafeFireAndForget("INVISIBLE-TOGGLE");
 
-    private async Task ToggleInvisibleModeAsync()
+    private Task ToggleInvisibleModeAsync()
     {
-        if (_cleanedUp || _savingInvisibleMode) return;
-        _savingInvisibleMode = true;
-        try
+        if (_cleanedUp) return Task.CompletedTask;
+        _invisibleModeController ??= new InvisibleModeController(
+            () => _settings,
+            ApplyInvisibleMode,
+            snapshot => _settingsService.SaveAsync(snapshot),
+            ToggleInvisibleInSettingsAsync);
+        return _invisibleModeController.ToggleAsync();
+    }
+
+    private async Task<bool> ToggleInvisibleInSettingsAsync()
+    {
+        var settingsWindow = OwnedWindows.OfType<SettingsWindow>().FirstOrDefault();
+        if (settingsWindow != null)
         {
-            var settingsWindow = OwnedWindows.OfType<SettingsWindow>().FirstOrDefault();
-            if (settingsWindow != null)
-            {
-                await settingsWindow.ToggleInvisibleFromShortcutAsync();
-                return;
-            }
-            _settings.InvisibleMode = !_settings.InvisibleMode;
-            ApplyInvisibleMode();
-            await _settingsService.SaveAsync(_settings.Clone());
+            await settingsWindow.ToggleInvisibleFromShortcutAsync();
+            return true;
         }
-        finally { _savingInvisibleMode = false; }
+        return false;
     }
 }

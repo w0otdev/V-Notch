@@ -1,10 +1,12 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "V-Notch", "V-Notch.csproj", "{74A74E6B-C38C-B165-9438-97EF506EBAF0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VNotch.Tests", "Tests\VNotch.Tests.csproj", "{F711319F-95AC-4767-A447-E9CDA8B65468}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Uninstall", "Uninstall\Uninstall.csproj", "{7E2E3525-F89C-4806-BB39-9B8A39509429}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,6 +22,10 @@ Global
 		{F711319F-95AC-4767-A447-E9CDA8B65468}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F711319F-95AC-4767-A447-E9CDA8B65468}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F711319F-95AC-4767-A447-E9CDA8B65468}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

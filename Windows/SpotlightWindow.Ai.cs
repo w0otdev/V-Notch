@@ -188,7 +188,7 @@ public partial class SpotlightWindow
     private System.Windows.Controls.RichTextBox CreateMarkdownView(string text)
     {
         var font = (System.Windows.Media.FontFamily?)TryFindResource("SFProDisplay")
-            ?? new System.Windows.Media.FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Segoe UI, Arial");
+            ?? new System.Windows.Media.FontFamily(VNotch.Services.AppFonts.Location + "#SF Pro Display, Segoe UI, Arial");
         return new System.Windows.Controls.RichTextBox
         {
             Document = VNotch.Controls.AiMarkdown.Render(text, font),

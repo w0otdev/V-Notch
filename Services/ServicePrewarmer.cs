@@ -2,7 +2,6 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Models;
-using VNotch.Modules;
 using VNotch.Services.Spotlight;
 
 namespace VNotch.Services;
@@ -11,20 +10,11 @@ internal static class ServicePrewarmer
 {
     private const string LogCategory = "PREWARM";
 
-    public static void Prewarm(IServiceProvider provider)
+    public static Task Prewarm(IServiceProvider provider)
     {
         if (provider == null) throw new ArgumentNullException(nameof(provider));
 
-        try
-        {
-            ResolveAll(provider);
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(LogCategory, ex, "Service resolution failed");
-        }
-
-        Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
@@ -49,34 +39,6 @@ internal static class ServicePrewarmer
         });
     }
 
-    private static void ResolveAll(IServiceProvider provider)
-    {
-        SafeResolve<ISettingsService>(provider);
-        SafeResolve<IDispatcherService>(provider);
-        SafeResolve<IMediaMetadataLookupService>(provider);
-        SafeResolve<IMediaArtworkService>(provider);
-        SafeResolve<IColorExtractionService>(provider);
-        SafeResolve<IWindowTitleScanner>(provider);
-        SafeResolve<IMediaDetectionService>(provider);
-        SafeResolve<IVolumeService>(provider);
-        SafeResolve<IBatteryService>(provider);
-        SafeResolve<IUpdateService>(provider);
-        SafeResolve<IWeatherService>(provider);
-        SafeResolve<SpotlightSearchService>(provider);
-
-        SafeResolve<BluetoothMonitorService>(provider);
-        SafeResolve<PrivacyIndicatorService>(provider);
-        SafeResolve<AudioMixerService>(provider);
-
-        SafeResolve<BatteryModule>(provider);
-        SafeResolve<CalendarModule>(provider);
-        SafeResolve<BluetoothModule>(provider);
-        SafeResolve<PrivacyIndicatorModule>(provider);
-        SafeResolve<WeatherModule>(provider);
-        SafeResolve<SystemMonitorModule>(provider);
-        SafeResolve<IModuleLifecycleManager>(provider);
-    }
-
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
         var settings = WarmupSettings(provider);
@@ -84,8 +46,6 @@ internal static class ServicePrewarmer
         WarmupBattery(provider);
         WarmupVolume(provider);
         WarmupWindowTitleScanner(provider);
-        WarmupBluetooth(provider);
-        WarmupAudioMixer(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
     }
@@ -178,45 +138,4 @@ internal static class ServicePrewarmer
         }
     }
 
-    private static void WarmupBluetooth(IServiceProvider provider)
-    {
-        try
-        {
-            provider.GetService<BluetoothMonitorService>()?.Start();
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(LogCategory, ex, "Bluetooth watcher warmup failed");
-        }
-    }
-
-    private static void WarmupAudioMixer(IServiceProvider provider)
-    {
-        try
-        {
-            var mixer = provider.GetService<AudioMixerService>();
-            if (mixer != null)
-            {
-                // Prewarm NAudio enumerator and COM endpoints
-                _ = mixer.GetOutputDevices();
-                _ = mixer.GetSessions(includeIcons: false);
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(LogCategory, ex, "Audio mixer warmup failed");
-        }
-    }
-
-    private static void SafeResolve<T>(IServiceProvider provider) where T : class
-    {
-        try
-        {
-            _ = provider.GetService<T>();
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(LogCategory, ex, $"Resolve<{typeof(T).Name}> failed");
-        }
-    }
 }

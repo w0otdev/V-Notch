@@ -11,7 +11,7 @@ namespace VNotch.Controls;
 
 internal static partial class AiMarkdown
 {
-    private static readonly Uri FontsBaseUri = new("pack://application:,,,/V-Notch;component/Fonts/");
+    private static readonly Uri FontsBaseUri = VNotch.Services.AppFonts.BaseUri;
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras().Build();
     private static readonly FontFamily FallbackBodyFont = new(FontsBaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
     private static readonly FontFamily CodeBlockFont = new("Consolas, SF Mono, Menlo, monospace");

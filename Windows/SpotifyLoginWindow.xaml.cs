@@ -132,8 +132,7 @@ public partial class SpotifyLoginWindow : Window
         try
         {
             _userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "V-Notch",
+                AppPaths.LocalAppDataRoot,
                 "SpotifyWebView2",
                 Guid.NewGuid().ToString("N"));
             _profileCleanupLease = AppFileCleanupService.Protect(_userDataFolder);

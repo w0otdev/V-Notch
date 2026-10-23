@@ -1,0 +1,82 @@
+name: Desktop integration
+
+'on':
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 03:17 UTC.
+    - cron: '17 3 * * 1'
+
+concurrency:
+  group: desktop-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-integration:
+    name: Desktop integration tests
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+    steps:
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # actions/setup-dotnet@v4.3.1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            packages.lock.json
+            Tests/packages.lock.json
+            Uninstall/packages.lock.json
+
+      - name: Restore
+        run: dotnet restore V-Notch.sln --locked-mode
+
+      - name: Build
+        run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
+
+      # Desktop.runsettings filters Category=DesktopIntegration and sets
+      # VNOTCH_RUN_DESKTOP_TESTS=1. DesktopTestMode also requires a non-interactive
+      # session, so tests skip themselves where that guard does not hold.
+      - name: Test (desktop integration)
+        shell: pwsh
+        run: >-
+          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
+          --settings Tests/Desktop.runsettings --results-directory artifacts/desktop-test-results
+          --logger "trx;LogFileName=desktop-integration.trx" --logger "console;verbosity=normal"
+
+      - name: Report skipped tests
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem -LiteralPath artifacts/desktop-test-results -Recurse -Filter *.trx -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $trx) { Write-Host '::error::No TRX file was produced.'; exit 1 }
+          [xml]$doc = Get-Content -LiteralPath $trx.FullName -Raw
+          $counters = $doc.TestRun.ResultSummary.Counters
+          $total = [int]$counters.total
+          $executed = [int]$counters.executed
+          $passed = [int]$counters.passed
+          $failed = [int]$counters.failed
+          $skipped = [int]$counters.notExecuted
+          $summary = "Desktop integration: total $total, executed $executed, passed $passed, failed $failed, skipped $skipped"
+          Write-Host $summary
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary
+          if ($total -gt 0 -and $skipped -eq $total) {
+            Write-Host '::warning title=Desktop tests skipped::Every desktop integration test was skipped. The runner session is interactive, so DesktopTestMode stayed disabled.'
+          }
+
+      - name: Retain desktop test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-test-results
+          path: artifacts/desktop-test-results/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14

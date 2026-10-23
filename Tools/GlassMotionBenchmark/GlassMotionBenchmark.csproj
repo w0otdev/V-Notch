@@ -7,6 +7,7 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
     <Compile Include="../../Controllers/GlassFrameHistory.cs" Link="GlassFrameHistory.cs" />
     <Compile Include="../../Controllers/GlassFrameFingerprint.cs" Link="GlassFrameFingerprint.cs" />
   </ItemGroup>

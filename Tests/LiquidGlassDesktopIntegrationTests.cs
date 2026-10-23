@@ -83,7 +83,12 @@ public sealed class LiquidGlassDesktopIntegrationTests
 
                 var controller = Assert.IsType<LiquidGlassController>(controllerField.GetValue(host));
                 var effect = Assert.IsType<LiquidGlassRefractionEffect>(host.GlassBackdropImage.Effect);
-                var source = Assert.IsType<D3DImage>(host.GlassBackdropImage.Source);
+                var presentation = Assert.IsType<DrawingImage>(host.GlassBackdropImage.Source);
+                var drawing = Assert.IsType<DrawingGroup>(presentation.Drawing);
+                var source = Assert.IsType<D3DImage>(Assert.IsType<ImageDrawing>(Assert.Single(drawing.Children)).ImageSource);
+                var captureBounds = Assert.IsType<RectangleGeometry>(drawing.ClipGeometry).Rect;
+                Assert.Equal(effect.SrcW, captureBounds.Width);
+                Assert.Equal(effect.SrcH, captureBounds.Height);
                 var screenPoint = host.NotchBorder.PointToScreen(new Point(
                     host.NotchBorder.ActualWidth * 0.5,
                     host.NotchBorder.ActualHeight * 0.5));

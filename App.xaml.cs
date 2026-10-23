@@ -91,17 +91,23 @@ public partial class App : Application
     {
         try
         {
-            CrashReporter.Initialize();
             RegisterExceptionHandlers();
+
+            bool specialStartup = IsSetupOrUninstall(e.Args) ||
+                e.Args.Contains("--test-integrity") || e.Args.Contains("--test-hash");
+            if (!specialStartup && !EnsureSingleInstance(e)) return;
 
             System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
 
+            AppPaths.MigrateLegacyLocalData();
+            _ = MediaProtocolConfiguration.Current;
             var services = new ServiceCollection();
             ServiceConfigurator.ConfigureServices(services);
             SetServices(services.BuildServiceProvider());
             var earlySettings = Services.GetRequiredService<ISettingsService>();
             var loadedSettings = earlySettings.Load();
             NetworkPrivacy.Current.Apply(loadedSettings);
+            WindowTitleScanner.UpdateInspectionAllowed(loadedSettings.EnableBrowserUrlInspection);
             WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
             LocalizedPresentation.Initialize();
             Loc.SetLanguage(loadedSettings.Language);
@@ -133,21 +139,19 @@ public partial class App : Application
             }
 
             ApplyProcessPriority(loadedSettings.ProcessPriority);
-
-            if (!EnsureSingleInstance(e))
-            {
-                return;
-            }
-
-            await RuntimeLog.InitializeNewSessionAsync("vnotch-debug.log");
-            RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
-            Services.GetRequiredService<AppFileCleanupService>().Start();
-
-            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
-            ServicePrewarmer.Prewarm(Services);
+            InteractionSounds.Initialize(loadedSettings.EnableInteractionSounds, loadedSettings.InteractionSoundVolume);
 
             var mainWindow = Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
+
+            // Let WPF present the shell before optional disk work and service warmup.
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            if (IsShutdownRequested || Dispatcher.HasShutdownStarted) return;
+            await RuntimeLog.InitializeNewSessionAsync("vnotch-debug.log");
+            RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
+            Services.GetRequiredService<AppFileCleanupService>().Start();
+            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
+            ServicePrewarmer.Prewarm(Services).SafeFireAndForget("PREWARM");
 
             _ = AppIntegrityService.StartBackgroundCheckAsync();
 
@@ -399,6 +403,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        InteractionSounds.Shutdown();
         try
         {
             if (!_servicesDisposed && Services is IDisposable disposable)

@@ -64,7 +64,7 @@ public partial class SettingsWindow
             controls.Check.Content = Loc.Get(key);
             controls.Hint.Text = Loc.Get(key + ".hint");
             if (name == "invisible")
-                controls.Hint.Text += " " + Loc.Get(VNotch.Controllers.InvisibleHotkeyController.IsRegistered
+                controls.Hint.Text += " " + Loc.Get(_invisibleHotkeyRegistered?.Invoke() == true
                     ? "settings.privacy.invisible.shortcut" : "settings.privacy.invisible.shortcutUnavailable");
         }
     }
@@ -77,7 +77,9 @@ public partial class SettingsWindow
         _livePreviewDebounce?.Stop();
         ApplyPreview(ReadSettingsFromUi());
         // Persist only this external command; keep other unsaved edits cancellable.
-        _originalSettings.InvisibleMode = enabled;
-        await _settingsAppService.ApplyAsync(_originalSettings.Clone());
+        var baseline = _editSession.Baseline;
+        baseline.InvisibleMode = enabled;
+        await _settingsAppService.ApplyAsync(baseline);
+        _editSession.CommitInvisibleMode(enabled);
     }
 }

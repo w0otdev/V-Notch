@@ -1,9 +1,10 @@
-<UserControl x:Class="VNotch.Controls.WeatherWidget"
+<UserControl xmlns:fonts="clr-namespace:VNotch.Services"
+        x:Class="VNotch.Controls.WeatherWidget"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:svc="clr-namespace:VNotch.Services">
     <UserControl.Resources>
-        <FontFamily x:Key="WeatherSystemFont">pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI</FontFamily>
+        <fonts:AppFont x:Key="WeatherSystemFont" Fallbacks="Nirmala UI, Segoe UI" />
     </UserControl.Resources>
     <Grid>
     <!-- Weather Skeleton Loading View -->

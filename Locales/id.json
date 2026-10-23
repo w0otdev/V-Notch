@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Volume efek suara",
+  "settings.interactionSoundVolume.hint": "Hanya mengatur suara interaksi. Lepaskan untuk mendengar pratinjau; 0% senyap.",
+  "settings.interactionSounds": "Suara interaksi",
+  "settings.interactionSounds.hint": "Suara lembut untuk tombol, sakelar, dan pilihan.",
   "settings.privacy.invisible.enable": "Aktifkan mode tak terlihat",
   "settings.privacy.invisible.disable": "Nonaktifkan mode tak terlihat",
   "settings.privacy.invisible.shortcut": "Tekan Ctrl + Alt + Shift + I untuk mengaktifkan atau menonaktifkan. Menonaktifkan mode ini akan menampilkan kembali ikon baki sistem.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Langkah 1/2: Buat PIN enam digit",
   "clipboard.confirmStep": "Langkah 2/2: Konfirmasi PIN",
   "clipboard.confirmRetry": "Langkah 2/2: PIN tidak cocok. Konfirmasi lagi.",
+  "clipboard.emptyTray": "Kosongkan baki",
+  "clipboard.emptyTrayConfirm": "Hapus permanen {0} item papan klip dari semua kategori? Item yang disematkan, pribadi, dan diarsipkan akan disimpan. Tindakan ini tidak dapat dibatalkan.",
   "clipboard.deleteConfirm": "Hapus {0} item secara permanen? Tindakan ini tidak dapat dibatalkan.",
   "clipboard.source": "Papan klip",
   "clipboard.image": "Gambar",

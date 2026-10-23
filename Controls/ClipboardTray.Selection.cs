@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using VNotch.ViewModels;
+using VNotch.Services.Clipboard;
 
 namespace VNotch.Controls;
 
@@ -42,11 +43,8 @@ public partial class ClipboardTray
     }
     private Point? _selectionStart;
     private Point? _pendingLassoStart;
-    private readonly HashSet<ClipboardCardViewModel> _selectionSeed = [];
-    private bool _selectionModified;
-    private ClipboardCardViewModel? _selectionAnchor;
+    private readonly ClipboardSelectionModel<ClipboardCardViewModel> _selection = new();
     private readonly HashSet<ListBoxItem> _selectionContainers = [];
-    private readonly HashSet<ClipboardCardViewModel> _selectionTargets = [];
     private Point _selectionPointer;
     private bool _selectionBoundsDirty;
     private bool _selectionUpdatePending;
@@ -119,10 +117,9 @@ public partial class ClipboardTray
         StopCardsScrollFrames();
         _selectionStartOffset = FindScrollViewer(Cards)?.HorizontalOffset ?? 0;
         _selectionFrameTime = Stopwatch.GetTimestamp();
-        _selectionSeed.Clear();
-        if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0)
-            foreach (ClipboardCardViewModel card in Cards.SelectedItems) _selectionSeed.Add(card);
-        else Cards.ApplySelection(Array.Empty<ClipboardCardViewModel>());
+        bool extend = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
+        _selection.BeginLasso(Cards.SelectedItems.Cast<ClipboardCardViewModel>(), extend);
+        if (!extend) Cards.ApplySelection(Array.Empty<ClipboardCardViewModel>());
         _selectionPointer = start;
         _selectionHasMoved = false;
         _selectionBoundsDirty = true;
@@ -214,8 +211,7 @@ public partial class ClipboardTray
         bool swept = rectangle.Width >= SystemParameters.MinimumHorizontalDragDistance ||
             rectangle.Height >= SystemParameters.MinimumVerticalDragDistance;
         Rect row = CardsViewport.TransformToAncestor(SelectionSurface).TransformBounds(new Rect(CardsViewport.RenderSize));
-        _selectionTargets.Clear();
-        _selectionTargets.UnionWith(_selectionSeed);
+        _selection.ResetLassoTargets();
         // Cards use a uniform horizontal slot. Infer content geometry from a
         // realized container so recycled/offscreen cards stay selected, and can
         // be deselected again when the user shrinks the lasso back across them.
@@ -236,7 +232,7 @@ public partial class ClipboardTray
                 // with the card highlights even when the pointer never enters a card.
                 if (rectangle.Bottom < origin.Y || rectangle.Top > origin.Y + container.ActualHeight)
                     rectangle.Union(new Rect(rectangle.Left, origin.Y, rectangle.Width, container.ActualHeight));
-                for (int i = first; i <= last; i++) _selectionTargets.Add(_cards[i]);
+                _selection.IncludeRange(_cards, first, last);
             }
             break;
         }
@@ -248,8 +244,8 @@ public partial class ClipboardTray
         SelectionRectangle.Width = visible.IsEmpty ? 0 : visible.Width;
         SelectionRectangle.Height = visible.IsEmpty ? 0 : visible.Height;
         SelectionRectangle.Visibility = swept ? Visibility.Visible : Visibility.Collapsed;
-        if (!_selectionTargets.SetEquals(Cards.SelectedItems.Cast<ClipboardCardViewModel>()))
-            Cards.ApplySelection(_selectionTargets);
+        if (!_selection.Targets.SetEquals(Cards.SelectedItems.Cast<ClipboardCardViewModel>()))
+            Cards.ApplySelection(_selection.Targets);
     }
 
     private void RegisterSelectionContainer(ListBoxItem container)
@@ -289,8 +285,7 @@ public partial class ClipboardTray
         CompositionTarget.Rendering -= Selection_Rendering;
         _selectionUpdatePending = false;
         _selectionHasMoved = false;
-        _selectionTargets.Clear();
-        _selectionSeed.Clear();
+        _selection.EndLasso();
         SelectionRectangle.Visibility = Visibility.Collapsed;
         SelectionSurface.ClearValue(CursorProperty);
         if (Mouse.Captured == SelectionSurface) Mouse.Capture(null);
@@ -298,21 +293,9 @@ public partial class ClipboardTray
 
     private void SelectCard(ClipboardCardViewModel card)
     {
-        _selectionModified = Keyboard.Modifiers != ModifierKeys.None || Cards.SelectedItems.Count > 1;
-        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0 && _selectionAnchor != null)
-        {
-            int start = _cards.IndexOf(_selectionAnchor), end = _cards.IndexOf(card);
-            if (start >= 0 && end >= 0)
-                for (int i = Math.Min(start, end); i <= Math.Max(start, end); i++)
-                    if (!Cards.SelectedItems.Contains(_cards[i])) Cards.SelectedItems.Add(_cards[i]);
-        }
-        else if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
-        {
-            if (Cards.SelectedItems.Contains(card)) Cards.SelectedItems.Remove(card);
-            else Cards.SelectedItems.Add(card);
-        }
-        else if (!Cards.SelectedItems.Contains(card)) { Cards.SelectedItems.Clear(); Cards.SelectedItems.Add(card); }
-        _selectionAnchor = card;
+        var modifiers = Keyboard.Modifiers;
+        Cards.ApplySelection(_selection.Select(_cards, Cards.SelectedItems.Cast<ClipboardCardViewModel>(), card,
+            (modifiers & ModifierKeys.Control) != 0, (modifiers & ModifierKeys.Shift) != 0, modifiers != ModifierKeys.None));
         Cards.Focus();
     }
 

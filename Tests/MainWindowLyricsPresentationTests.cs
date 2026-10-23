@@ -14,6 +14,68 @@ public sealed class MainWindowLyricsPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public void ClipboardVisualTreeIsCreatedOnlyOnFirstUseAndSurvivesLocalization()
+        => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Assert.Null(Field<object?>(window, "_clipboardTrayView"));
+        Invoke(window, "RefreshNotchLocalization");
+        Assert.Null(Field<object?>(window, "_clipboardTrayView"));
+        var tray = window.ClipboardTrayView;
+        Assert.Same(tray, window.ClipboardTrayView);
+        Assert.Same(tray, window.ClipboardTrayHost.Content);
+        Assert.Same(tray, window.FindName("ClipboardTrayView"));
+    });
+
+    [Fact]
+    public void CollapsedTrackUpdatesDoNotQueueBlurInferenceLyricsOrSubtitles() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableLocalOnlyMode = false;
+        settings.EnableSpotifyLyrics = settings.EnableOnlineLyrics = settings.EnableYouTubeSubtitles = true;
+        settings.EnableBlurEffects = settings.ShowMediaArtBackground = settings.EnableSubjectBlur = true;
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(8, 8, 96, 96,
+            System.Windows.Media.PixelFormats.Bgra32, null, new byte[8 * 8 * 4], 8 * 4);
+        bitmap.Freeze();
+        var info = new MediaInfo { CurrentTrack = "Track", CurrentArtist = "Artist", MediaSource = "Spotify", Thumbnail = bitmap, IsAnyMediaPlaying = true };
+        for (int i = 0; i < 5; i++)
+        {
+            Invoke(window, "UpdateMediaBackground", info, false);
+            ((Task)Invoke(window, "FetchLyricsForTrack", info)!).GetAwaiter().GetResult();
+            info.MediaSource = "YouTube";
+            info.YouTubeVideoId = "dQw4w9WgXcQ";
+            ((Task)Invoke(window, "FetchSubtitlesForTrack", info, false)!).GetAwaiter().GetResult();
+        }
+        Assert.Null(Field<object?>(window, "_pendingBlurRequest"));
+        Assert.False(Field<bool>(window, "_isBlurWorkerRunning"));
+        Assert.Equal(0, Field<int>(window, "_blurTaskVersion"));
+        Assert.Equal("", Field<string>(window, "_lyricsTrackKey"));
+        Assert.Null(Field<string?>(window, "_subtitleRequestKey"));
+        Assert.False((bool)typeof(MainWindow).GetProperty("IsSpotifyCanvasSurfaceVisible", Private)!.GetValue(window)!);
+    });
+
+    [Fact]
+    public void NegativeSubtitleResultDoesNotRestartOnRepeatedMediaEvents() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableLocalOnlyMode = false;
+        settings.EnableYouTubeSubtitles = true;
+        Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
+            NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "subtitle negative cache test");
+        Set(window, "_subtitleRequestKey", "yt:dQw4w9WgXcQ");
+        var info = new MediaInfo { CurrentTrack = "Track", MediaSource = "YouTube", YouTubeVideoId = "dQw4w9WgXcQ" };
+        for (int i = 0; i < 5; i++)
+            ((Task)Invoke(window, "FetchSubtitlesForTrack", info, false)!).GetAwaiter().GetResult();
+        Assert.Equal("", Field<string>(window, "_lyricsTrackKey"));
+        Assert.Equal(0, Field<int>(window, "_subtitleFetchFailureCount"));
+    });
+
+    [Fact]
     public void InactiveLyricsClearAStaleBackdropWhenWidgetReturns() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();

@@ -25,14 +25,15 @@ public sealed class MainWindowMediaControlTests
         var prefix = inline ? "Inline" : "";
         Invoke(window, prefix + "PlayPauseButton_Click", window, ClickArgs());
         await WpfFrameWaiter.UntilAsync(() => media.PlayPauseCount == 1, "play/pause command", ct);
-        await Task.Delay(300, ct);
+        ExpireThrottles(window);
         Invoke(window, prefix + "NextButton_Click", window, ClickArgs());
         await WpfFrameWaiter.UntilAsync(() => media.NextTrackCount == 1, "next track command", ct);
-        await Task.Delay(300, ct);
+        ExpireThrottles(window);
         Invoke(window, prefix + "PrevButton_Click", window, ClickArgs());
         await WpfFrameWaiter.UntilAsync(() => media.PreviousTrackCount == 1, "previous track command", ct);
-        await Task.Delay(300, ct);
+        ExpireThrottles(window);
         Invoke(window, prefix + "PlayPauseButton_Click", window, ClickArgs());
+        await WpfFrameWaiter.UntilAsync(() => media.PlayPauseCount == 2, "second play/pause command", ct);
         Assert.Equal(2, media.PlayPauseCount);
         Assert.Equal(1, media.NextTrackCount);
         Assert.Equal(1, media.PreviousTrackCount);
@@ -47,8 +48,7 @@ public sealed class MainWindowMediaControlTests
         await (Task)Invoke(window, "TogglePlayPauseInstantAsync")!;
         await (Task)Invoke(window, "TogglePlayPauseInstantAsync")!;
         Assert.Equal(1, media.PlayPauseCount);
-        await Task.Delay(300, ct);
-        typeof(MainWindow).GetField("_lastMediaActionTime", Private)!.SetValue(window, DateTime.UtcNow.AddSeconds(-1));
+        ExpireThrottles(window);
         await (Task)Invoke(window, "TogglePlayPauseInstantAsync")!;
         Assert.Equal(2, media.PlayPauseCount);
         ct.ThrowIfCancellationRequested();
@@ -90,4 +90,11 @@ public sealed class MainWindowMediaControlTests
     private static object? Invoke(MainWindow window, string method, params object?[] arguments) =>
         typeof(MainWindow).GetMethod(method, Private)!.Invoke(window, arguments);
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
+    // Both MainWindow (250 ms) and MediaViewModel (200 ms) throttle transport commands by
+    // wall clock. Backdating them is deterministic; sleeping past the window was flaky on slow agents.
+    private static void ExpireThrottles(MainWindow window)
+    {
+        typeof(MainWindow).GetField("_lastMediaActionTime", Private)!.SetValue(window, DateTime.UtcNow.AddSeconds(-5));
+        TestWait.ExpireMediaThrottle(((VNotch.ViewModels.ShellViewModel)window.DataContext).Media);
+    }
 }

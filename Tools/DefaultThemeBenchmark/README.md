@@ -15,7 +15,7 @@ dotnet run --project Tools/DefaultThemeBenchmark -c Release -- artifacts/default
 dotnet test Tests/VNotch.Tests.csproj -c Release --filter "FullyQualifiedName~AnalogClock|FullyQualifiedName~LiquidGlassSpotlightTests"
 ```
 
-Run performance measurements without tests/builds running concurrently. BaselineAnalogClock.cs freezes the prior implementation; only its type/namespace and deterministic-time entry point are changed, and the shared brush is replaced with the identical frozen #C8C8C8 brush.
+Run performance measurements without tests/builds running concurrently. BaselineAnalogClock.cs preserves the prior drawing strategy, uses the current PrimaryBrush palette and deployment font, and exposes a deterministic-time entry point. This isolates drawing strategy from palette/font changes. The initial validation frame always calls UpdateFrame before rendering.
 
 ## Method and scope
 

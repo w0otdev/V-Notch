@@ -17,6 +17,11 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     private readonly string _settingsPath;
     private readonly string _appFolder;
     private readonly Action<string> _apiKeySaveWarning;
+    private readonly object _loadLock = new();
+    private readonly object _cacheLock = new();
+    private NotchSettings? _cachedSettings;
+    private (long Length, DateTime WrittenUtc)? _cachedStamp;
+    private static readonly JsonSerializerOptions SaveJsonOptions = new() { WriteIndented = true };
 
     private sealed record SaveOperation(NotchSettings Snapshot, bool KeepExistingBackup, TaskCompletionSource Tcs);
 
@@ -65,8 +70,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
     public SettingsService()
     {
-        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        _appFolder = Path.Combine(appDataPath, "V-Notch");
+        _appFolder = AppPaths.RoamingAppDataRoot;
 
         if (!Directory.Exists(_appFolder))
         {
@@ -101,6 +105,50 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     {
         ThrowIfDisposed();
 
+        lock (_loadLock)
+        {
+            var stamp = GetSettingsStamp();
+            lock (_cacheLock)
+            {
+                if (stamp != null && stamp == _cachedStamp && _cachedSettings != null)
+                    return _cachedSettings.Clone();
+            }
+
+            var settings = LoadFromDisk(out bool cacheable);
+            // A migration/save may have replaced the file while loading. Its save
+            // transaction already publishes the matching cache snapshot.
+            if (cacheable && stamp != null && stamp == GetSettingsStamp())
+                CacheSettings(settings, stamp);
+            return settings;
+        }
+    }
+
+    private (long Length, DateTime WrittenUtc)? GetSettingsStamp()
+    {
+        try
+        {
+            var file = new FileInfo(_settingsPath);
+            return file.Exists ? (file.Length, file.LastWriteTimeUtc) : null;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    private void CacheSettings(NotchSettings settings, (long Length, DateTime WrittenUtc)? stamp)
+    {
+        lock (_cacheLock)
+        {
+            _cachedSettings = settings.Clone();
+            _cachedStamp = stamp;
+        }
+    }
+
+    private NotchSettings LoadFromDisk(out bool cacheable)
+    {
+        cacheable = false;
+        WindowTitleScanner.InvalidateInspectionAllowed();
+        PruneSettingsBackups();
+
         if (!File.Exists(_settingsPath))
         {
 
@@ -118,7 +166,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         {
 
             RuntimeLog.Log(LogCategoryLoad, $"Failed to read {_settingsPath}: {ex}");
-            return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
+            return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableBrowserUrlInspection = false };
         }
 
         try
@@ -137,6 +185,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             }
 
             WindowTitleScanner.UpdateInspectionAllowed(settings.EnableBrowserUrlInspection);
+            cacheable = true;
             return settings;
         }
         catch (JsonException ex)
@@ -146,7 +195,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
                 LogCategoryLoad,
                 $"Corrupt settings file detected. Backed up to '{backupPath}'. Falling back to defaults. Error: {ex.Message}");
 
-            var defaults = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
+            var defaults = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableBrowserUrlInspection = false };
             Save(defaults);
             return defaults;
         }
@@ -155,13 +204,13 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             // A legacy key could not be protected. Do not touch the existing file.
             RuntimeLog.Error(LogCategoryLoad, "DPAPI encryption failed; legacy settings were left unchanged.");
             _apiKeySaveWarning("Your API key was not saved because Windows DPAPI could not encrypt it. Your existing settings file was left unchanged.");
-            return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
+            return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableBrowserUrlInspection = false };
         }
         catch (Exception ex)
         {
 
             RuntimeLog.Log(LogCategoryLoad, $"Unexpected error while loading settings: {ex}");
-            return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
+            return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableBrowserUrlInspection = false };
         }
     }
 
@@ -226,11 +275,24 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
     private void Dispose(bool disposing)
     {
-        if (disposing)
+        if (!disposing) return;
+
+        // Wait for queued saves to reach disk so they are not lost on exit. The worker
+        // runs on the thread pool and never needs the UI dispatcher, so blocking here
+        // cannot deadlock; the timeout bounds shutdown if the disk stalls.
+        try
         {
-            DisposeAsync().AsTask().SafeFireAndForget("SETTINGS-DISPOSE");
+            if (!DisposeAsync().AsTask().Wait(DisposeDrainTimeout))
+                RuntimeLog.Log("SETTINGS-DISPOSE", $"Pending saves did not finish within {DisposeDrainTimeout.TotalSeconds:0}s");
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SETTINGS-DISPOSE", ex, "Save worker failed while draining");
         }
     }
+
+    private static readonly TimeSpan DisposeDrainTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan SaveMutexTimeout = TimeSpan.FromSeconds(5);
 
     private void ThrowIfDisposed()
     {
@@ -242,8 +304,16 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     {
         // Serialize the replace and backup transaction across service instances/processes.
         using var mutex = new Mutex(false, _mutexName);
-        try { mutex.WaitOne(); }
-        catch (AbandonedMutexException) { /* The previous writer exited; this thread owns the mutex. */ }
+        bool acquired;
+        try { acquired = mutex.WaitOne(SaveMutexTimeout); }
+        catch (AbandonedMutexException) { acquired = true; /* The previous writer exited; this thread owns the mutex. */ }
+
+        if (!acquired)
+        {
+            RuntimeLog.Error(LogCategorySave, $"Timed out after {SaveMutexTimeout.TotalSeconds:0}s waiting for the settings lock; save skipped.");
+            return;
+        }
+
         try { ExecuteSaveCore(settings, keepExistingBackup); }
         finally { mutex.ReleaseMutex(); }
     }
@@ -256,8 +326,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
         {
             settings.SettingsVersion = SettingsMigrator.CurrentVersion;
 
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            var json = JsonSerializer.Serialize(settings, options);
+            var json = JsonSerializer.Serialize(settings, SaveJsonOptions);
 
             File.WriteAllText(tempPath, json);
 
@@ -275,6 +344,7 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             }
 
             WindowTitleScanner.UpdateInspectionAllowed(settings.EnableBrowserUrlInspection);
+            CacheSettings(settings, GetSettingsStamp());
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
@@ -396,7 +466,19 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
             File.WriteAllText(Path.Combine(_appFolder, $"settings.bak-{timestamp}.json"), current);
 
-            existing = Directory.GetFiles(_appFolder, "settings.bak-*.json");
+            PruneSettingsBackups();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log(LogCategorySave, $"Settings backup skipped: {ex.Message}");
+        }
+    }
+
+    private void PruneSettingsBackups()
+    {
+        try
+        {
+            var existing = Directory.GetFiles(_appFolder, "settings.bak-*.json");
             if (existing.Length > MaxSettingsBackups)
             {
                 Array.Sort(existing, StringComparer.OrdinalIgnoreCase);

@@ -157,6 +157,7 @@ public partial class MainWindow
 
         if (result.IsNewTrack)
         {
+            ClearLyrics();
             if (isSpotify)
             {
                 FetchLyricsForTrack(info).SafeFireAndForget("LYRICS");
@@ -164,10 +165,6 @@ public partial class MainWindow
             else if (isYouTube)
             {
                 FetchSubtitlesForTrack(info).SafeFireAndForget("SUBTITLES");
-            }
-            else
-            {
-                ClearLyrics();
             }
         }
         else

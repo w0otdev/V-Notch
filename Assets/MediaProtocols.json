@@ -1,0 +1,19 @@
+{
+  "SchemaVersion": 1,
+  "SpotifyTotpVersion": "61",
+  "SpotifyTotpSecretBase64": "Mzc2MTM2Mzg3NTM4NDU5ODkzODgzMzEyMzEwOTExOTkyODQ3MTEyNDQ4ODk0NDEwMjEwNTExMjk3MTA4",
+  "SpotifyFindTracksHash": "903df2a65d8121e27d73a2be03c01e88ebe6021bb6d4eb82a389e35d87e51d27",
+  "SpotifyCanvasHash": "575138ab27cd5c1b3e54da54d0a7cc8d85485402de26340c2145f0f6bb5e7a9f",
+  "YouTubeInnertubeApiKey": "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+  "PipedInstances": [
+    "pipedapi.kavin.rocks",
+    "pipedapi.adminforge.de",
+    "pipedapi.in.projectsegfault.com"
+  ],
+  "InvidiousInstances": [
+    "vid.puffyan.us",
+    "invidious.fdn.fr",
+    "invidious.nerdvpn.de"
+  ],
+  "YouTubeAndroidClientVersion": "20.10.38"
+}

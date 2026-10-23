@@ -35,7 +35,7 @@ foreach (var (w, h) in new[] { (515, 280), (960, 304), (1120, 1020), (1520, 1370
                 if (motion && newSame) newMisses++;
                 if (!motion && (!oldSame || !newSame)) throw new Exception("Static frame mismatch");
                 previous = next;
-                if (!newSame) history.Commit(pixels, w, h);
+                if (!newSame) history.CommitCheckedFrame();
             }
             if (newMisses != 0) throw new Exception("Exact detector missed a changed frame");
             Action old = () =>
@@ -48,7 +48,7 @@ foreach (var (w, h) in new[] { (515, 280), (960, 304), (1120, 1020), (1520, 1370
             Action current = () =>
             {
                 if (motion) Marshal.WriteByte(pixels, offset, value ^= 255);
-                if (!history.IsUnchanged(pixels, w, h)) { history.Commit(pixels, w, h); sink++; }
+                if (!history.IsUnchanged(pixels, w, h)) { history.CommitCheckedFrame(); sink++; }
             };
             var warmup = Stopwatch.StartNew();
             while (warmup.ElapsedMilliseconds < 1000) { old(); current(); }
@@ -60,7 +60,7 @@ foreach (var (w, h) in new[] { (515, 280), (960, 304), (1120, 1020), (1520, 1370
                 else { after[round] = Measure(current); before[round] = Measure(old); }
             }
             Array.Sort(before); Array.Sort(after);
-            Console.WriteLine($"{w}x{h} | {scenario} | {before[3]:F3} | {after[3]:F3} | {oldMisses} | {newMisses} | {initial.Length / 1048576.0:F2} | {allocated / 3500.0:F2}");
+            Console.WriteLine($"{w}x{h} | {scenario} | {before[3]:F3} | {after[3]:F3} | {oldMisses} | {newMisses} | {history.RetainedPixelBytes / 1048576.0:F2} | {allocated / 3500.0:F2}");
             double Measure(Action operation)
             {
                 long bytes = GC.GetAllocatedBytesForCurrentThread();

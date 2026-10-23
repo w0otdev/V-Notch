@@ -83,6 +83,18 @@ while ($taskClock.Elapsed.TotalSeconds - $taskMeasurementStart -lt $DurationSeco
     }
 }
 
+function Get-MetricSummary([double[]]$Values) {
+    if ($null -eq $Values -or $Values.Count -eq 0) { return $null }
+    $taskSorted = @($Values | Sort-Object)
+    [pscustomobject]@{
+        Mean = ($Values | Measure-Object -Average).Average
+        P95 = $taskSorted[[Math]::Max(0, [Math]::Ceiling(0.95 * $taskSorted.Count) - 1)]
+        Max = $taskSorted[-1]
+    }
+}
+
+$taskGpuGroups = @($taskSamples | ForEach-Object { $_.GpuEngineSamples } |
+    Where-Object { $_.Status -eq 0 } | Group-Object Instance)
 $taskReport = [pscustomobject]@{
     ProcessId = $AppProcessId
     ProcessName = $taskProcessName
@@ -95,11 +107,25 @@ $taskReport = [pscustomobject]@{
     GpuCounterStatus = $taskGpuStatus
     ExitReason = $taskExitReason
     Scope = 'External process CPU/private bytes/working set and optional per-engine GPU counters; no FPS, managed heap, or display frame tracing'
+    Summary = [pscustomobject]@{
+        SampleCount = $taskSamples.Count
+        CpuPercentOfMachine = Get-MetricSummary @($taskSamples | ForEach-Object { $_.CpuPercentOfMachine })
+        CpuPercentOfOneCore = Get-MetricSummary @($taskSamples | ForEach-Object { $_.CpuPercentOfOneCore })
+        WorkingSetBytes = Get-MetricSummary @($taskSamples | ForEach-Object { $_.WorkingSetBytes })
+        PrivateBytes = Get-MetricSummary @($taskSamples | ForEach-Object { $_.PrivateBytes })
+        GpuEngines = @($taskGpuGroups | ForEach-Object {
+            [pscustomobject]@{
+                Instance = $_.Name
+                UtilizationPercent = Get-MetricSummary @($_.Group | ForEach-Object { $_.UtilizationPercent })
+            }
+        })
+    }
     Samples = @($taskSamples.ToArray())
 }
 $taskOutputAbsolute = [IO.Path]::GetFullPath($OutputPath)
 $taskOutputDirectory = [IO.Path]::GetDirectoryName($taskOutputAbsolute)
 [IO.Directory]::CreateDirectory($taskOutputDirectory) | Out-Null
-$taskReport | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $taskOutputAbsolute -Encoding UTF8
+$taskJson = $taskReport | ConvertTo-Json -Depth 8
+[IO.File]::WriteAllText($taskOutputAbsolute, $taskJson, [Text.UTF8Encoding]::new($false))
 Write-Host "Saved $($taskSamples.Count) samples to $taskOutputAbsolute. GPU counters: $taskGpuStatus"
 $taskProcess.Dispose()

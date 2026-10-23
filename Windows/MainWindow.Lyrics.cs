@@ -75,6 +75,7 @@ public partial class MainWindow
     private string _lastKnownYouTubeVideoId = "";
 
     private bool IsSpotifyCanvasSurfaceVisible =>
+        _isExpanded &&
         _isLyricsActive &&
         !_isSecondaryView &&
         !_isTimerView &&
@@ -83,9 +84,13 @@ public partial class MainWindow
 
     private enum SyncedTextSource { None, SpotifyLyrics, YouTubeSubtitles }
     private SyncedTextSource _syncedTextSource = SyncedTextSource.None;
+    private string? _subtitleRequestKey;
+    private bool CanFetchSyncedText => _isExpanded && !_cleanedUp &&
+        !_isTimerView && !_isAudioView && !_isSecondaryView && !_isCameraView;
 
     private async Task FetchLyricsForTrack(MediaInfo info)
     {
+        if (!CanFetchSyncedText) return;
         _subtitleSearchController.Invalidate();
         if (!_settings.EnableSpotifyLyrics || !_settings.EnableOnlineLyrics || _settings.EnableLocalOnlyMode)
         {
@@ -202,6 +207,7 @@ public partial class MainWindow
 
     private async Task FetchSubtitlesForTrack(MediaInfo info, bool force = false)
     {
+        if (!CanFetchSyncedText) return;
         if (!_settings.EnableYouTubeSubtitles || _settings.EnableLocalOnlyMode)
         {
             HideLyricsWidget();
@@ -221,6 +227,10 @@ public partial class MainWindow
         }
 
         string trackKey = !string.IsNullOrEmpty(videoId) ? $"yt:{videoId}" : $"yt-lrc:{info.CurrentTrack}|{info.CurrentArtist}";
+        // MediaChanged can repeat without a track change, including after a
+        // negative result. Retry only for new metadata or an explicit user retry.
+        if (!force && trackKey == _subtitleRequestKey) return;
+        _subtitleRequestKey = trackKey;
 
         if (trackKey != _lyricsTrackKey)
         {
@@ -260,6 +270,7 @@ public partial class MainWindow
                 info.YouTubeVideoId = id;
                 trackKey = $"yt:{id}";
                 _lyricsTrackKey = trackKey;
+                _subtitleRequestKey = trackKey;
                 if (_isLyricsActive || _isExpanded)
                     ShowLyricsSearchState(isYouTube: true);
             },
@@ -1242,11 +1253,17 @@ public partial class MainWindow
 
     internal void CheckAndRetryYouTubeSubtitlesOnExpand()
     {
+        if (!CanFetchSyncedText) return;
+        if (_currentMediaInfo?.Platform == MediaPlatform.Spotify)
+        {
+            FetchLyricsForTrack(_currentMediaInfo).SafeFireAndForget("LYRICS-EXPAND");
+            return;
+        }
         if (!_settings.EnableYouTubeSubtitles || _settings.EnableLocalOnlyMode) return;
         if (_currentMediaInfo == null || !IsCurrentTrackYouTube(_currentMediaInfo)) return;
         if (_currentLyrics != null && _currentLyrics.Count > 0) return;
 
-        FetchSubtitlesForTrack(_currentMediaInfo, force: true).SafeFireAndForget("SUBTITLES-EXPAND-RETRY");
+        FetchSubtitlesForTrack(_currentMediaInfo).SafeFireAndForget("SUBTITLES-EXPAND");
     }
 
     private static bool IsCurrentTrackYouTube(MediaInfo info)
@@ -1260,7 +1277,11 @@ public partial class MainWindow
 
     private void ClearLyrics()
     {
+        ++_lyricsFetchGeneration;
+        _subtitleRequestKey = null;
         _lyricsTrackKey = "";
+        _currentLyrics = null;
+        _currentLyricIndex = -1;
         _subtitleFetchFailureCount = 0;
         _lastSubtitleFetchFailureTime = DateTime.MinValue;
         _syncedTextSource = SyncedTextSource.None;

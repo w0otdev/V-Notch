@@ -143,6 +143,31 @@ public class MediaArtworkServiceTests : IDisposable
         Assert.Equal(768, bitmap.PixelHeight); // 1600x1200 scaled to 1024 width -> 768 height
     }
 
+    [Theory]
+    [InlineData(1024, 8192, 128, 1024)]
+    [InlineData(800, 7500, 109, 1024)]
+    [InlineData(8192, 1024, 1024, 128)]
+    [InlineData(800, 900, 800, 900)]
+    public async Task DownloadImageAsync_BoundsLongestDecodedEdge(int width, int height, int expectedWidth, int expectedHeight)
+    {
+        byte[] bytes = CreateTestPngBytes(width, height);
+        var handler = new MockHttpMessageHandler
+        {
+            Handler = _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) }
+        };
+        using var client = new HttpClient(handler);
+        using var service = new MediaArtworkService(client);
+
+        var image = await service.DownloadImageAsync("https://example.com/portrait.png");
+
+        Assert.NotNull(image);
+        Assert.True(image.IsFrozen);
+        Assert.InRange(image.PixelWidth, 1, 1024);
+        Assert.InRange(image.PixelHeight, 1, 1024);
+        Assert.Equal(expectedWidth, image.PixelWidth);
+        Assert.Equal(expectedHeight, image.PixelHeight);
+    }
+
     [Fact]
     public async Task DownloadImageAsync_InvalidImageBytes_ReturnsNullSafely()
     {

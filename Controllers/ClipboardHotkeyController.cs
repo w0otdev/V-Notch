@@ -12,7 +12,8 @@ internal sealed class ClipboardHotkeyController : IDisposable
     private readonly Action _toggle;
     private HwndSource? _source;
     private string _gesture = "";
-    internal static string? RegistrationError { get; private set; }
+    private bool _disposed;
+    internal string? RegistrationError { get; private set; }
 
     /// <summary>
     /// Hotkey combinations permanently reserved by Windows shell that RegisterHotKey will silently
@@ -39,12 +40,14 @@ internal sealed class ClipboardHotkeyController : IDisposable
     private void SourceInitialized(object? sender, EventArgs e) { Attach(); Apply(_gesture); }
     private void Attach()
     {
+        if (_disposed) return;
         IntPtr handle = new WindowInteropHelper(_host).Handle;
         if (handle == IntPtr.Zero || _source != null) return;
         _source = HwndSource.FromHwnd(handle); _source?.AddHook(WndProc);
     }
     internal void Apply(string gesture)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         _gesture = gesture;
         if (_source == null) return;
         Win32Interop.UnregisterHotKey(_source.Handle, HotkeyId);
@@ -80,12 +83,19 @@ internal sealed class ClipboardHotkeyController : IDisposable
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (message == Win32Interop.WM_HOTKEY && wParam.ToInt64() == HotkeyId)
-        { handled = true; _host.Dispatcher.BeginInvoke(_toggle); }
+        {
+            handled = true;
+            _host.Dispatcher.BeginInvoke(new Action(() => { if (!_disposed) _toggle(); }));
+        }
         return IntPtr.Zero;
     }
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _host.SourceInitialized -= SourceInitialized;
-        if (_source != null) { Win32Interop.UnregisterHotKey(_source.Handle, HotkeyId); _source.RemoveHook(WndProc); _source = null; }
+        if (_source is { IsDisposed: false }) { Win32Interop.UnregisterHotKey(_source.Handle, HotkeyId); _source.RemoveHook(WndProc); }
+        _source = null;
+        RegistrationError = null;
     }
 }

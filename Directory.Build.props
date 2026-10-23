@@ -1,0 +1,13 @@
+<Project>
+  <!-- Shared settings for the product projects (app, tests, uninstaller).
+       Tools/** holds benchmarks and probes that are built on demand, so they keep
+       their own warning policy. -->
+  <PropertyGroup>
+    <_VNotchRelativeProjectDir>$([MSBuild]::MakeRelative('$(MSBuildThisFileDirectory)', '$(MSBuildProjectDirectory)'))</_VNotchRelativeProjectDir>
+    <_VNotchIsToolProject Condition="$(_VNotchRelativeProjectDir.ToLowerInvariant().StartsWith('tools'))">true</_VNotchIsToolProject>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(_VNotchIsToolProject)' != 'true' And '$(TreatWarningsAsErrors)' == ''">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

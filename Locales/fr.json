@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Volume des effets",
+  "settings.interactionSoundVolume.hint": "Règle uniquement les sons des interactions. Relâchez pour écouter ; 0% coupe le son.",
+  "settings.interactionSounds": "Sons des interactions",
+  "settings.interactionSounds.hint": "Sons discrets pour les boutons, les interrupteurs et les sélections.",
   "settings.privacy.invisible.enable": "Activer le mode invisible",
   "settings.privacy.invisible.disable": "Désactiver le mode invisible",
   "settings.privacy.invisible.shortcut": "Basculez avec Ctrl + Alt + Shift + I. Désactiver le mode invisible rétablit l’icône dans la zone de notification.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Étape 1/2 : Créez un PIN à six chiffres",
   "clipboard.confirmStep": "Étape 2/2 : Confirmez le PIN",
   "clipboard.confirmRetry": "Étape 2/2 : Les PIN diffèrent. Confirmez à nouveau.",
+  "clipboard.emptyTray": "Vider le bac",
+  "clipboard.emptyTrayConfirm": "Supprimer définitivement {0} éléments du presse-papiers de toutes les catégories ? Les éléments épinglés, privés et archivés seront conservés. Cette action est irréversible.",
   "clipboard.deleteConfirm": "Supprimer définitivement {0} éléments ? Cette action est irréversible.",
   "clipboard.source": "Presse-papiers",
   "clipboard.image": "Image",

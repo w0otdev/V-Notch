@@ -53,6 +53,9 @@ public partial class SettingsWindow
             SpotifyCanvasBrightnessSlider.Value = defaults.SpotifyCanvasBrightness * 100;
             AnimationFpsSlider.Value = defaults.AnimationFps;
             AutoAnimationFpsCheck.IsChecked = defaults.AutoAnimationFps;
+            InteractionSoundsCheck.IsChecked = defaults.EnableInteractionSounds;
+            InteractionSoundVolumeSlider.Value = defaults.InteractionSoundVolume * 100;
+            UpdateInteractionSoundControls();
             EnableBlurEffectsCheck.IsChecked = defaults.EnableBlurEffects;
             MediaArtBackgroundCheck.IsChecked = defaults.ShowMediaArtBackground;
             _settings.NotchStyle = defaults.NotchStyle;
@@ -153,7 +156,9 @@ public partial class SettingsWindow
     }
     private void RevertLivePreviewIfNeeded()
     {
-        SettingsChanged?.Invoke(this, _originalSettings.Clone());
+        var baseline = _editSession.Revert();
+        InteractionSounds.Configure(baseline.EnableInteractionSounds, baseline.InteractionSoundVolume);
+        SettingsChanged?.Invoke(this, baseline);
     }
 
 #pragma warning disable S1075 // External community, project and donation URLs
@@ -555,6 +560,8 @@ public partial class SettingsWindow
         snapshot.SpotifyCanvasBrightness = SpotifyCanvasBrightnessSlider.Value / 100.0;
         snapshot.AnimationFps = (int)Math.Round(AnimationFpsSlider.Value);
         snapshot.AutoAnimationFps = AutoAnimationFpsCheck.IsChecked == true;
+        snapshot.EnableInteractionSounds = InteractionSoundsCheck.IsChecked == true;
+        snapshot.InteractionSoundVolume = InteractionSoundVolumeSlider.Value / 100;
         snapshot.EnableBlurEffects = EnableBlurEffectsCheck.IsChecked ?? true;
         snapshot.ShowMediaArtBackground = MediaArtBackgroundCheck.IsChecked ?? true;
         ReadLiquidGlassUi(snapshot);
@@ -639,29 +646,30 @@ public partial class SettingsWindow
 
     internal bool ApplyPreview(NotchSettings snapshot)
     {
-        if (_lastAppliedFps != snapshot.AnimationFps || _appliedSettings.AutoAnimationFps != snapshot.AutoAnimationFps)
+        var appliedSettings = _editSession.Applied;
+        InteractionSounds.Configure(snapshot.EnableInteractionSounds, snapshot.InteractionSoundVolume);
+        if (_lastAppliedFps != snapshot.AnimationFps || appliedSettings.AutoAnimationFps != snapshot.AutoAnimationFps)
         {
             _lastAppliedFps = snapshot.AnimationFps;
             VNotch.Services.AnimationConfig.Configure(snapshot.AnimationFps, snapshot.AutoAnimationFps);
             AnimationPrimitives.ApplyFpsToTree(this);
         }
 
-        if (_appliedSettings.EnableBrowserUrlInspection != snapshot.EnableBrowserUrlInspection)
+        if (appliedSettings.EnableBrowserUrlInspection != snapshot.EnableBrowserUrlInspection)
         {
             VNotch.Services.WindowTitleScanner.UpdateInspectionAllowed(snapshot.EnableBrowserUrlInspection);
         }
 
-        if (IsLiquidGlassConfigChanged(_appliedSettings, snapshot))
+        if (IsLiquidGlassConfigChanged(appliedSettings, snapshot))
         {
             ApplyLiquidGlassSkin();
         }
 
-        bool hasChanges = !_appliedSettings.ValueEquals(snapshot);
+        bool hasChanges = _editSession.Preview(snapshot);
         _settings = snapshot.Clone();
 
         if (hasChanges)
         {
-            _appliedSettings = snapshot.Clone();
             SettingsChanged?.Invoke(this, _settings);
         }
 
@@ -684,8 +692,8 @@ public partial class SettingsWindow
 
     internal async Task SaveAsync(NotchSettings snapshot, CancellationToken ct = default)
     {
-        _originalSettings = snapshot.Clone();
         await _settingsAppService.ApplyAsync(snapshot, ct);
+        _editSession.Commit(snapshot);
     }
 
     private void Save(NotchSettings snapshot)

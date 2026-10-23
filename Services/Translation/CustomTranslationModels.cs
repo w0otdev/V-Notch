@@ -11,8 +11,7 @@ namespace VNotch.Services.Translation;
 // App-owned hardlinks avoid duplicate storage; removal never deletes the original path.
 internal sealed class CustomTranslationModels
 {
-    internal static CustomTranslationModels Shared { get; } = new(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "translation-models"));
+    internal static CustomTranslationModels Shared { get; } = new(Path.Combine(AppPaths.LocalAppDataRoot, "translation-models"));
     private readonly string _root;
     private readonly object _sync = new();
     private readonly Func<string, string, bool> _tryCreateLink;

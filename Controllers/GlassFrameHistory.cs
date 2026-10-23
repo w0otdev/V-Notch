@@ -1,34 +1,50 @@
 using System;
+using System.IO.Hashing;
 
 namespace VNotch.Controllers;
 
-// Worker snapshot of last pixels; vectorized span equality checks every byte,
-// catching subtle motions between sample positions.
+// Worker-owned full-frame fingerprint. Every byte participates, including motion
+// between the old sampled rows. Retain the digest instead of a second bitmap.
 internal sealed class GlassFrameHistory
 {
-    private byte[] _pixels = Array.Empty<byte>();
-    private int _width, _height;
+    private UInt128 _committedHash, _checkedHash;
+    private int _width, _height, _checkedWidth, _checkedHeight;
+    private bool _hasFrame, _hasCheckedFrame;
+    internal int RetainedPixelBytes => 0;
 
     internal void Clear()
     {
-        _pixels = Array.Empty<byte>();
-        _width = _height = 0;
+        _hasFrame = _hasCheckedFrame = false;
     }
 
     internal unsafe bool IsUnchanged(IntPtr pixels, int width, int height)
     {
-        if (pixels == IntPtr.Zero || width <= 0 || height <= 0 ||
-            width != _width || height != _height) return false;
-        int length = checked(width * height * 4);
-        return new ReadOnlySpan<byte>((void*)pixels, length).SequenceEqual(_pixels.AsSpan(0, length));
+        _hasCheckedFrame = pixels != IntPtr.Zero && width > 0 && height > 0;
+        if (!_hasCheckedFrame) return false;
+        _checkedHash = ComputeHash(new ReadOnlySpan<byte>((void*)pixels, checked(width * height * 4)));
+        _checkedWidth = width;
+        _checkedHeight = height;
+        return _hasFrame && width == _width && height == _height && _checkedHash == _committedHash;
     }
 
-    internal unsafe void Commit(IntPtr pixels, int width, int height)
+    internal void Commit(IntPtr pixels, int width, int height)
     {
-        int length = checked(width * height * 4);
-        if (_pixels.Length < length) _pixels = new byte[length];
-        new ReadOnlySpan<byte>((void*)pixels, length).CopyTo(_pixels);
-        _width = width;
-        _height = height;
+        IsUnchanged(pixels, width, height);
+        CommitCheckedFrame();
     }
+
+    // Capture is stable between comparison and rendering on this worker.
+    internal void CommitCheckedFrame()
+    {
+        if (!_hasCheckedFrame) return;
+        _committedHash = _checkedHash;
+        _width = _checkedWidth;
+        _height = _checkedHeight;
+        _hasFrame = true;
+        _hasCheckedFrame = false;
+    }
+
+    // The runtime implementation uses SIMD where available. Hash the entire frame
+    // once, with a 128-bit digest, and commit that checked digest after rendering.
+    internal static UInt128 ComputeHash(ReadOnlySpan<byte> data) => XxHash128.HashToUInt128(data);
 }

@@ -19,7 +19,7 @@ public sealed class MediaPlaybackViewTests
         try
         {
             host.Show();
-            await Task.Delay(50, ct);
+            await WpfFrameWaiter.UntilAsync(() => view.IsLoaded && view.ActualWidth > 0, "media view loaded and laid out", ct);
             view.CurrentTimeText.Text = "1:00";
             view.AnimateTrackChangeRewindToZero(0.5, TimeSpan.FromMinutes(2));
             Assert.True(view.ProgressBarScale.HasAnimatedProperties);
@@ -27,7 +27,15 @@ public sealed class MediaPlaybackViewTests
             Assert.False(view.ProgressBarScale.HasAnimatedProperties);
             Assert.Equal(0, view.DisplayRatio);
             view.Visibility = Visibility.Visible;
-            await Task.Delay(500, ct);
+            // A cancelled rewind must not resume once the view is visible again. Observe several
+            // rendered frames across the original rewind window (the 500 ms rewind clock would have
+            // re-attached by then) instead of sleeping blindly.
+            var observed = System.Diagnostics.Stopwatch.StartNew();
+            await WpfFrameWaiter.UntilAsync(() =>
+            {
+                Assert.False(view.ProgressBarScale.HasAnimatedProperties);
+                return observed.ElapsedMilliseconds >= 500;
+            }, "rewind window passes without the animation resuming", ct);
             Assert.False(view.ProgressBarScale.HasAnimatedProperties);
         }
         finally { host.Close(); }
@@ -42,17 +50,20 @@ public sealed class MediaPlaybackViewTests
         using var view = new MediaPlaybackView();
         view.Attach(viewModel, media);
         view.PlayPauseButton.InvokeAction();
-        Assert.Equal(1, media.PlayPauseCount);
+        await TestWait.UntilAsync(() => media.PlayPauseCount == 1, "play/pause command", ct);
         Assert.Equal(Loc.Get("media.play"), AutomationProperties.GetName(view.PlayPauseButton));
-        await Task.Delay(300, ct);
+        // MediaViewModel throttles transport commands for 200 ms; expire it rather than sleeping.
+        TestWait.ExpireMediaThrottle(viewModel);
         view.NextButton.InvokeAction();
-        Assert.Equal(1, media.NextTrackCount);
-        await Task.Delay(300, ct);
+        await TestWait.UntilAsync(() => media.NextTrackCount == 1, "next track command", ct);
+        TestWait.ExpireMediaThrottle(viewModel);
         view.PrevButton.InvokeAction();
-        Assert.Equal(1, media.PreviousTrackCount);
+        await TestWait.UntilAsync(() => media.PreviousTrackCount == 1, "previous track command", ct);
         view.Dispose();
-        await Task.Delay(300, ct);
+        // With the throttle expired, only the disposed guard can reject this click.
+        TestWait.ExpireMediaThrottle(viewModel);
         view.PlayPauseButton.InvokeAction();
+        await TestWait.DrainDispatcherAsync();
         Assert.Equal(1, media.PlayPauseCount);
     });
 }

@@ -26,20 +26,15 @@ internal sealed class SpotlightController : ISpotlightController
     private Window? _host;
     private HwndSource? _source;
     private IntPtr _hwnd;
-    private IntPtr _keyboardHook;
-#pragma warning disable IDE0052 // Keep delegate reference alive to prevent GC collection during native low-level keyboard hook
-    private LowLevelKeyboardProc? _keyboardProc;
-#pragma warning restore IDE0052
+    private DedicatedKeyboardHook? _keyboardHook;
+    private readonly SpotlightKeyboardState _keyboardState = new();
     private bool _nativeRegistered;
-    private bool _fallbackSpaceDown;
-    private bool _escapeDown;
-    private uint _lastFallbackSpaceEventTime;
     private NotchSettings? _settings;
     private bool _disposed;
     private bool _preparationQueued;
     private int _hostGeneration;
 
-    public bool IsHotkeyRegistered => _nativeRegistered || _keyboardHook != IntPtr.Zero;
+    public bool IsHotkeyRegistered => _nativeRegistered || _keyboardHook?.IsInstalled == true;
 
     public SpotlightController(Func<SpotlightWindow> windowFactory)
     {
@@ -146,23 +141,40 @@ internal sealed class SpotlightController : ISpotlightController
 
     private bool EnsureKeyboardHook()
     {
-        if (_keyboardHook != IntPtr.Zero) return true;
-        _keyboardProc = KeyboardHookProc;
-        _keyboardHook = SetWindowsHookEx(
-            WH_KEYBOARD_LL,
-            _keyboardProc,
-            GetModuleHandle(null),
-            0);
-        if (_keyboardHook != IntPtr.Zero) return true;
-
-        _keyboardProc = null;
+        _keyboardState.Configure(true, !_nativeRegistered, _window?.IsSpotlightOpen == true);
+        if (_keyboardHook?.IsInstalled == true) return true;
+        _keyboardHook?.Dispose();
+        var dispatcher = _host?.Dispatcher;
+        if (dispatcher == null) return false;
+        int generation = _hostGeneration;
+        _keyboardHook = new DedicatedKeyboardHook((key, message) =>
+        {
+            var action = _keyboardState.Process(key, message);
+            if (action is SpotlightKeyboardAction.Toggle or SpotlightKeyboardAction.Escape)
+            {
+                dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, (Action)(() =>
+                {
+                    if (_disposed || generation != _hostGeneration) return;
+                    if (action == SpotlightKeyboardAction.Toggle) ToggleSpotlight();
+                    else if (_window?.IsSpotlightOpen == true) _window.HandleGlobalEscape();
+                }));
+            }
+            return action != SpotlightKeyboardAction.None;
+        });
+        if (_keyboardHook.IsInstalled) return true;
         RuntimeLog.Warn(LogTag,
-            $"Could not install keyboard hook (Win32={Marshal.GetLastWin32Error()})");
+            $"Could not install keyboard hook (Win32={_keyboardHook.InstallationError})");
+        _keyboardHook.Dispose();
+        _keyboardHook = null;
         return false;
     }
 
     private void UpdateKeyboardHook()
     {
+        // Publish open/closed transitions even while retaining a fallback hook.
+        // A missing key-up must not poison Escape in the next Spotlight session.
+        _keyboardState.Configure(!_disposed && _settings?.EnableSpotlight == true && _hwnd != IntPtr.Zero,
+            !_nativeRegistered, _window?.IsSpotlightOpen == true);
         if (_disposed || _settings?.EnableSpotlight != true || _hwnd == IntPtr.Zero)
         {
             RemoveKeyboardHook();
@@ -189,73 +201,9 @@ internal sealed class SpotlightController : ISpotlightController
 
     private void RemoveKeyboardHook()
     {
-        if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
-        _keyboardHook = IntPtr.Zero;
-        _keyboardProc = null;
-        _escapeDown = false;
-    }
-
-    private bool TryHandleEscapeHook(KBDLLHOOKSTRUCT key, int message)
-    {
-        if (!IsEscapeKey(key.vkCode))
-            return false;
-
-        if (_escapeDown && message is WM_KEYUP or WM_SYSKEYUP)
-        {
-            _escapeDown = false;
-            return true;
-        }
-
-        if (_window?.IsSpotlightOpen == true && message is WM_KEYDOWN or WM_SYSKEYDOWN)
-        {
-            if (!_escapeDown)
-            {
-                _escapeDown = true;
-                _source?.Dispatcher.BeginInvoke(_window.HandleGlobalEscape);
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool TryHandleFallbackHotkey(KBDLLHOOKSTRUCT key, int message)
-    {
-        if (_fallbackSpaceDown && key.vkCode == VK_SPACE && message is WM_KEYUP or WM_SYSKEYUP)
-        {
-            _fallbackSpaceDown = false;
-            return true;
-        }
-
-        if (!_nativeRegistered && IsAltSpaceKey(key.vkCode, key.flags) && message is WM_KEYDOWN or WM_SYSKEYDOWN)
-        {
-            if (ShouldDispatchFallbackToggle(
-                    _fallbackSpaceDown,
-                    _lastFallbackSpaceEventTime,
-                    key.time))
-            {
-                _fallbackSpaceDown = true;
-                _source?.Dispatcher.BeginInvoke(ToggleSpotlight);
-            }
-            _lastFallbackSpaceEventTime = key.time;
-            return true;
-        }
-
-        return false;
-    }
-
-    private IntPtr KeyboardHookProc(int nCode, IntPtr wParam, IntPtr lParam)
-    {
-        if (nCode >= 0)
-        {
-            var key = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-            int message = wParam.ToInt32();
-
-            if (TryHandleEscapeHook(key, message) || TryHandleFallbackHotkey(key, message))
-                return new IntPtr(1);
-        }
-
-        return CallNextHookEx(_keyboardHook, nCode, wParam, lParam);
+        _keyboardState.Configure(false, false, false);
+        _keyboardHook?.Dispose();
+        _keyboardHook = null;
     }
 
     internal void ToggleSpotlight()
@@ -304,9 +252,6 @@ internal sealed class SpotlightController : ISpotlightController
         if (_nativeRegistered) UnregisterHotKey(_hwnd, HotkeyId);
         _nativeRegistered = false;
         RemoveKeyboardHook();
-        _fallbackSpaceDown = false;
-        _escapeDown = false;
-        _lastFallbackSpaceEventTime = 0;
     }
 
     private void Host_Closed(object? sender, EventArgs e) => DetachHost();

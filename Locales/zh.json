@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "音效音量",
+  "settings.interactionSoundVolume.hint": "仅调整交互音效。松开滑块试听；0% 为静音。",
+  "settings.interactionSounds": "交互音效",
+  "settings.interactionSounds.hint": "点击按钮、切换开关和选择项目时播放轻柔的音效。",
   "settings.privacy.invisible.enable": "开启隐身模式",
   "settings.privacy.invisible.disable": "关闭隐身模式",
   "settings.privacy.invisible.shortcut": "按 Ctrl + Alt + Shift + I 切换。关闭隐身模式后，系统托盘图标会重新显示。",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "第 1/2 步：创建六位 PIN",
   "clipboard.confirmStep": "第 2/2 步：确认 PIN",
   "clipboard.confirmRetry": "第 2/2 步：PIN 不匹配，请重新确认。",
+  "clipboard.emptyTray": "清空托盘",
+  "clipboard.emptyTrayConfirm": "永久删除所有分类中的 {0} 个剪贴板项目？已置顶、私密和已归档的项目将被保留。此操作无法撤销。",
   "clipboard.deleteConfirm": "永久删除 {0} 个项目？此操作无法撤销。",
   "clipboard.source": "剪贴板",
   "clipboard.image": "图片",

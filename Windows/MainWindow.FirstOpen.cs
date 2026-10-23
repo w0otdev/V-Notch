@@ -13,7 +13,9 @@ public partial class MainWindow
 
     private SettingsWindow CreateSettingsWindow(bool prepareForFirstShow = false) => new(
         _settings, _settingsService, _spotlightController.IsHotkeyRegistered,
-        _updateService, prepareForFirstShow)
+        _updateService, prepareForFirstShow,
+        clipboardHotkeyError: () => ClipboardHotkeyRegistrationError,
+        invisibleHotkeyRegistered: () => IsInvisibleHotkeyRegistered)
     { Owner = this };
 
     private void PrepareFirstOpenUi()

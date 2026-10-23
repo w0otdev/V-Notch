@@ -28,16 +28,44 @@ internal sealed class SpotlightChatStore
     private readonly string _path;
     private readonly object _gate = new();
     private bool _canSave = true;
-    internal SpotlightChatStore(string? path = null) => _path = path ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "spotlight-chats.enc");
+    internal SpotlightChatStore(string? path = null) => _path = path ?? Path.Combine(AppPaths.LocalAppDataRoot, "spotlight-chats.enc");
 
     internal List<SpotlightSavedChat> Load()
     {
         lock (_gate)
         {
-            if (!File.Exists(_path)) return new();
-            try { return JsonSerializer.Deserialize<List<SpotlightSavedChat>>(DataProtection.Unprotect(File.ReadAllText(_path))) ?? new(); }
-            catch { _canSave = false; RuntimeLog.Warn("SPOTLIGHT-CHAT", "Saved chats could not be opened; preserving the original file."); return new(); }
+            if (!File.Exists(_path)) { _canSave = true; return new(); }
+            try
+            {
+                var chats = JsonSerializer.Deserialize<List<SpotlightSavedChat>>(DataProtection.Unprotect(File.ReadAllText(_path)))
+                    ?? throw new JsonException("Chat history must contain a list.");
+                if (chats.Any(chat => chat == null || chat.Messages == null || chat.Messages.Any(message => message == null)))
+                    throw new JsonException("Invalid chat history.");
+                _canSave = true;
+                return chats;
+            }
+            catch (Exception ex) when (ex is JsonException or System.Security.Cryptography.CryptographicException)
+            {
+                // Keep the original encrypted bytes for recovery before allowing a new history.
+                try
+                {
+                    File.Move(_path, _path + "." + Guid.NewGuid().ToString("N") + ".corrupt");
+                    _canSave = true;
+                    RuntimeLog.Warn("SPOTLIGHT-CHAT", "Unreadable saved chats were quarantined; a new history can be saved.");
+                }
+                catch (Exception moveError) when (moveError is IOException or UnauthorizedAccessException)
+                {
+                    _canSave = false;
+                    RuntimeLog.Warn("SPOTLIGHT-CHAT", "Saved chats could not be quarantined; preserving the original file.");
+                }
+                return new();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _canSave = false;
+                RuntimeLog.Warn("SPOTLIGHT-CHAT", "Saved chats could not be read; preserving the original file until a retry succeeds.");
+                return new();
+            }
         }
     }
     internal bool Save(List<SpotlightSavedChat> chats)

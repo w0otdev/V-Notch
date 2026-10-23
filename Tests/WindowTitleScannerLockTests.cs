@@ -11,7 +11,7 @@ public sealed class WindowTitleScannerLockTests
     [Fact]
     public void TryGetBrowserUrl_ReturnsImmediately_AndDoesNotBlockOtherCallers()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         using var workerStarted = new ManualResetEventSlim(false);
         using var workerRelease = new ManualResetEventSlim(false);
 
@@ -54,7 +54,7 @@ public sealed class WindowTitleScannerLockTests
     [Fact]
     public void InvalidateUrlCaches_DiscardsStaleInFlightScan()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         using var firstScanStarted = new ManualResetEventSlim(false);
         using var firstScanRelease = new ManualResetEventSlim(false);
         using var firstScanCompleted = new ManualResetEventSlim(false);
@@ -96,7 +96,7 @@ public sealed class WindowTitleScannerLockTests
     [Fact]
     public void RapidInvocations_DoNotSpawnUnboundedWorkers()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         using var workerBlocked = new ManualResetEventSlim(false);
 
         int executionCount = 0;
@@ -124,7 +124,7 @@ public sealed class WindowTitleScannerLockTests
     [Fact]
     public void IsSpotifyWebPlayerOpen_ExtractsOutsideLockAndCaches()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         using var workerDone = new ManualResetEventSlim(false);
 
         scanner.SpotifyWebPlayerDetector = () =>

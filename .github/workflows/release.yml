@@ -124,11 +124,18 @@ jobs:
           RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
           WINDOWS_VERSION: ${{ needs.verify-validation.outputs.windows_version }}
           INFORMATIONAL_VERSION: ${{ needs.verify-validation.outputs.informational_version }}
+          IS_PRERELEASE: ${{ needs.verify-validation.outputs.prerelease }}
         run: |
           $ErrorActionPreference = 'Stop'
           $rawThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT
           $cleanThumbprint = if ($rawThumbprint) { ($rawThumbprint -replace '\s','' -replace '[^\da-fA-F]','') } else { '' }
           $hasCert = [bool]($env:VNOTCH_CODE_SIGNING_PFX_BASE64 -and $cleanThumbprint -match '^[a-fA-F0-9]{40}$')
+          $isPrerelease = $env:IS_PRERELEASE -eq 'true'
+          if (-not $hasCert -and -not $isPrerelease) {
+            # Stable releases reach every user through auto-update, so they must be signed.
+            Write-Host '::error title=Code signing required::Stable release requires VNOTCH_CODE_SIGNING_PFX_BASE64 and a 40-character VNOTCH_CODE_SIGNING_THUMBPRINT. Unsigned installers are only allowed for prerelease tags.'
+            exit 1
+          }
 
           $certificateFile = Join-Path $env:RUNNER_TEMP 'vnotch-signing.pfx'
           $imported = @()
@@ -148,7 +155,7 @@ jobs:
               $buildArguments.CertificateThumbprint = $cleanThumbprint
               $buildArguments.RequireAuthenticode = $true
             } else {
-              Write-Host "No Authenticode code-signing certificate configured (optional). Building unsigned installer." -ForegroundColor Yellow
+              Write-Host "No Authenticode certificate configured. Building an unsigned prerelease installer." -ForegroundColor Yellow
             }
 
             ./scripts/b.ps1 @buildArguments

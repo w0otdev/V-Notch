@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "SFX-Lautstärke",
+  "settings.interactionSoundVolume.hint": "Nur Interaktionsklänge anpassen. Loslassen zum Probehören; 0% ist stumm.",
+  "settings.interactionSounds": "Interaktionsklänge",
+  "settings.interactionSounds.hint": "Dezente Klänge für Schaltflächen, Schalter und Auswahlen.",
   "settings.privacy.invisible.enable": "Unsichtbaren Modus aktivieren",
   "settings.privacy.invisible.disable": "Unsichtbaren Modus deaktivieren",
   "settings.privacy.invisible.shortcut": "Mit Ctrl + Alt + Shift + I umschalten. Beim Deaktivieren erscheint das Symbol im Infobereich wieder.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Schritt 1/2: Sechsstellige PIN erstellen",
   "clipboard.confirmStep": "Schritt 2/2: PIN bestätigen",
   "clipboard.confirmRetry": "Schritt 2/2: PINs stimmen nicht überein. Erneut bestätigen.",
+  "clipboard.emptyTray": "Ablage leeren",
+  "clipboard.emptyTrayConfirm": "{0} Zwischenablageeinträge aus allen Kategorien dauerhaft löschen? Angeheftete, private und archivierte Einträge bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
   "clipboard.deleteConfirm": "{0} Einträge der Zwischenablage dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.",
   "clipboard.source": "Zwischenablage",
   "clipboard.image": "Bild",

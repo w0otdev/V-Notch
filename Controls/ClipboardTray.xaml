@@ -585,7 +585,11 @@
      </Grid>
     </Border>
 
-   <Border x:Name="ToolbarSurface" Grid.Column="2" Visibility="Collapsed" Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="17" Height="34" Padding="3,0">
+   <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+    <Button x:Name="EmptyTrayButton" Style="{StaticResource HeaderIconButton}" Click="EmptyTray_Click" VerticalAlignment="Center">
+     <local:TrayIcon Kind="Delete" Width="13.5" Height="13.5" Foreground="{StaticResource TrayDestructive}"/>
+    </Button>
+   <Border x:Name="ToolbarSurface" Visibility="Collapsed" Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="17" Height="34" Padding="3,0">
     <StackPanel Orientation="Horizontal">
      <Button x:Name="KeyboardButton" Style="{StaticResource HeaderIconButton}" Click="Keyboard_Click">
       <local:TrayIcon Kind="Keyboard" Width="13.5" Height="13.5"/>
@@ -598,6 +602,7 @@
      </Button>
     </StackPanel>
    </Border>
+   </StackPanel>
   </Grid>
 
   <!-- Row 1: Apple Segmented Pill Track (Plush Rounded Capsule) -->

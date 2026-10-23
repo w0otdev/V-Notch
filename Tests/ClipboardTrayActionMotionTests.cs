@@ -29,11 +29,12 @@ public sealed class ClipboardTrayActionMotionTests
         var button = Descendants(container).OfType<Button>().Single(button => Equals(button.Tag, tag));
         var surface = (Border)button.Template.FindName("Surface", button);
         SetMouseOver(button, true);
-        await Task.Delay(250);
+        await WaitForHoverScaleAsync(button, "hover scale settles");
         double restingOpacity = surface.Opacity;
         SetPressed(button, true);
         Assert.Equal(restingOpacity, surface.Opacity, 3);
-        await Task.Delay(100);
+        // Hold the press for ~100 ms and verify the contents never flash on any frame.
+        await TestWait.HoldsForAsync(() => Assert.Equal(restingOpacity, surface.Opacity, 3), TimeSpan.FromMilliseconds(100), "press holds without flashing");
         SetPressed(button, false);
         Assert.Equal(restingOpacity, surface.Opacity, 3);
     });
@@ -47,23 +48,25 @@ public sealed class ClipboardTrayActionMotionTests
     {
         var button = Descendants(container).OfType<Button>().Single(button => Equals(button.Tag, tag));
         SetMouseOver(button, true);
-        await Task.Delay(250);
         var scale = (ScaleTransform)button.Template.FindName("HoverScale", button);
         double hoveredScale = reducedMotion ? 1 : 1.15;
+        await TestWait.UntilStableAsync(() => TestWait.Near(hoveredScale, scale.ScaleX), "hover scale settles");
         Assert.Equal(hoveredScale, scale.ScaleX, 3);
         for (int press = 0; press < 3; press++)
         {
             SetPressed(button, true);
-            await Task.Delay(90);
+            // Release mid-flight: wait until the press squish is visibly under way.
+            if (reducedMotion) { await WpfFrameWaiter.NextAsync(); await WpfFrameWaiter.NextAsync(); }
+            else await WpfFrameWaiter.UntilAsync(() => scale.ScaleX < hoveredScale - 0.01, "press squish under way");
             double pressedScale = scale.ScaleX;
             SetPressed(button, false);
             Assert.InRange(Math.Abs(scale.ScaleX - pressedScale), 0, 0.001);
-            await Task.Delay(300);
+            await TestWait.UntilStableAsync(() => TestWait.Near(hoveredScale, scale.ScaleX) && TestWait.Near(hoveredScale, scale.ScaleY), "release returns to hover scale");
             Assert.Equal(hoveredScale, scale.ScaleX, 3);
             Assert.Equal(hoveredScale, scale.ScaleY, 3);
         }
         SetMouseOver(button, false);
-        await Task.Delay(250);
+        await TestWait.UntilStableAsync(() => TestWait.Near(1, scale.ScaleX), "hover exit restores unit scale");
         Assert.Equal(1, scale.ScaleX, 3);
     }, reducedMotion);
 
@@ -72,7 +75,7 @@ public sealed class ClipboardTrayActionMotionTests
     {
         var actions = Descendants(container).OfType<Border>().Single(border => border.Name == "CardActions");
         SetMouseOver(container, true);
-        await Task.Delay(250);
+        await TestWait.UntilStableAsync(() => actions.Opacity > 0.999, "action pill fades in on hover");
         Assert.True(actions.Opacity > 0.999, $"Initial pill opacity={actions.Opacity}, target={TrayMotion.GetOpacity(actions)}, hover={container.IsMouseOver}, pinned={card.Entry.IsPinned}");
         for (int action = 0; action < 3; action++)
         {
@@ -115,7 +118,7 @@ public sealed class ClipboardTrayActionMotionTests
             var actions = Descendants(container).OfType<Border>().Single(border => border.Name == "CardActions");
             var more = Descendants(container).OfType<Button>().Single(button => Equals(button.Tag, "more"));
             SetMouseOver(container, true);
-            await Task.Delay(250);
+            await TestWait.UntilStableAsync(() => TestWait.Near(1, actions.Opacity), "action pill fades in on hover");
 
             more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             menu = Descendants(container).OfType<Border>().Single(border => border.Width == 210).ContextMenu;
@@ -146,12 +149,15 @@ public sealed class ClipboardTrayActionMotionTests
         var button = Descendants(container).OfType<Button>().Single(button => Equals(button.Tag, "pin"));
         var scale = (ScaleTransform)button.Template.FindName("HoverScale", button);
         SetMouseOver(button, true);
-        await Task.Delay(250);
+        await WaitForHoverScaleAsync(button, "hover scale settles");
         SetPressed(button, true);
-        await Task.Delay(35);
+        // Interrupt the press mid-flight (~35 ms in): wait until the squish is visibly under way.
+        await WpfFrameWaiter.UntilAsync(() => scale.ScaleX < 1.14, "press squish under way");
         SetMouseOver(button, false);
         SetPressed(button, false);
-        await Task.Delay(35);
+        // Return during the release (~35 ms, two frames) so hover retargets an in-flight clock.
+        await WpfFrameWaiter.NextAsync();
+        await WpfFrameWaiter.NextAsync();
         SetMouseOver(button, true);
         for (int frame = 0; frame < 12; frame++)
         {
@@ -176,13 +182,38 @@ public sealed class ClipboardTrayActionMotionTests
             {
                 window.Show();
                 await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-                await Task.Delay(300);
                 var list = (ListBox)tray.FindName("Cards");
-                var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(card);
+                var container = await WaitForCardAsync(list, card);
                 await action(tray, card, container);
             }
             finally { window.Close(); AnimationConfig.SetReduceMotion(previousReducedMotion); }
         });
+
+    // Realized container whose action buttons have templates and whose pinned action pill has settled.
+    private static async Task<ListBoxItem> WaitForCardAsync(ListBox list, ClipboardCardViewModel card)
+    {
+        ListBoxItem? container = null;
+        await WpfFrameWaiter.UntilAsync(() =>
+            (container = list.ItemContainerGenerator.ContainerFromItem(card) as ListBoxItem) is { ActualWidth: > 0 }
+            && Descendants(container).OfType<Button>().Count(button => button.Tag is "pin" or "more") == 2
+            && Descendants(container).OfType<Border>().Any(border => border.Name == "CardActions"), "card container realized");
+        var actions = Descendants(container!).OfType<Border>().Single(border => border.Name == "CardActions");
+        await TestWait.UntilStableAsync(() => TestWait.Near(TrayMotion.GetOpacity(actions), actions.Opacity), "action pill settles");
+        return container!;
+    }
+
+    // Hover scale lands on the template's TrayMotion target (1 under reduced motion).
+    private static Task WaitForHoverScaleAsync(Button button, string description)
+    {
+        var root = (FrameworkElement)button.Template.FindName("RootGrid", button);
+        var scale = (ScaleTransform)button.Template.FindName("HoverScale", button);
+        return TestWait.UntilStableAsync(() =>
+        {
+            // TrayMotion snaps to 1 under reduced motion; otherwise wait for the hover target (1.15).
+            double target = AnimationConfig.ReduceMotion ? 1 : TrayMotion.GetScale(root);
+            return (AnimationConfig.ReduceMotion || target > 1) && TestWait.Near(target, scale.ScaleX);
+        }, description);
+    }
 
     private static void SetPressed(Button button, bool value)
         => typeof(Button).GetProperty(nameof(Button.IsPressed))!.SetValue(button, value);

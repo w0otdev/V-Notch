@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "効果音の音量",
+  "settings.interactionSoundVolume.hint": "操作音のみを調整します。離すと試聴できます。0%で消音します。",
+  "settings.interactionSounds": "操作音",
+  "settings.interactionSounds.hint": "ボタン、スイッチ、項目の選択時に控えめな音を鳴らします。",
   "settings.privacy.invisible.enable": "非表示モードをオンにする",
   "settings.privacy.invisible.disable": "非表示モードをオフにする",
   "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I で切り替えます。非表示モードをオフにすると、システムトレイのアイコンが再表示されます。",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "ステップ 1/2：6 桁の PIN を作成",
   "clipboard.confirmStep": "ステップ 2/2：PIN を確認",
   "clipboard.confirmRetry": "ステップ 2/2：PIN が一致しません。もう一度確認してください。",
+  "clipboard.emptyTray": "トレイを空にする",
+  "clipboard.emptyTrayConfirm": "すべてのカテゴリからクリップボードの項目 {0} 件を完全に削除しますか？ピン留め、プライベート、アーカイブ済みの項目は保持されます。この操作は元に戻せません。",
   "clipboard.deleteConfirm": "{0} 件のアイテムを完全に削除しますか？この操作は取り消せません。",
   "clipboard.source": "クリップボード",
   "clipboard.image": "画像",

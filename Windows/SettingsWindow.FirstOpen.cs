@@ -73,12 +73,11 @@ public partial class SettingsWindow
     {
         Dispatcher.VerifyAccess();
         _settings = settings.Clone();
-        _originalSettings = settings.Clone();
-        _appliedSettings = settings.Clone();
+        _editSession.Reset(settings);
         _isSpotlightHotkeyRegistered = isHotkeyRegistered;
         LoadSettings();
-        _appliedSettings = ReadSettingsFromUi();
-        _settings = _appliedSettings.Clone();
+        _editSession.Preview(ReadSettingsFromUi());
+        _settings = _editSession.Applied;
     }
 
     private void OnFirstShowVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)

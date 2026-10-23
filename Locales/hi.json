@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "ध्वनि प्रभावों की आवाज़",
+  "settings.interactionSoundVolume.hint": "केवल इंटरैक्शन की आवाज़ बदलें। सुनने के लिए स्लाइडर छोड़ें; 0% पर मौन रहेगा।",
+  "settings.interactionSounds": "इंटरैक्शन ध्वनियाँ",
+  "settings.interactionSounds.hint": "बटन, स्विच और चयन के लिए हल्की ध्वनियाँ बजाएँ।",
   "settings.privacy.invisible.enable": "अदृश्य मोड चालू करें",
   "settings.privacy.invisible.disable": "अदृश्य मोड बंद करें",
   "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I से चालू या बंद करें। अदृश्य मोड बंद करने पर सिस्टम ट्रे का आइकन फिर दिखाई देगा।",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "चरण 1/2: छह अंकों का पिन बनाएँ",
   "clipboard.confirmStep": "चरण 2/2: पिन की पुष्टि करें",
   "clipboard.confirmRetry": "चरण 2/2: पिन मेल नहीं खाते। फिर से पुष्टि करें।",
+  "clipboard.emptyTray": "ट्रे खाली करें",
+  "clipboard.emptyTrayConfirm": "सभी श्रेणियों से {0} क्लिपबोर्ड आइटम स्थायी रूप से हटाएँ? पिन किए गए, निजी और संग्रहीत आइटम रखे जाएँगे। इसे पूर्ववत नहीं किया जा सकता।",
   "clipboard.deleteConfirm": "{0} आइटम स्थायी रूप से हटाएँ? इसे पूर्ववत नहीं किया जा सकता।",
   "clipboard.source": "क्लिपबोर्ड",
   "clipboard.image": "चित्र",

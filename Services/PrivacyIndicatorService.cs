@@ -426,13 +426,18 @@ public sealed class PrivacyIndicatorService : IDisposable
 
         void Apply()
         {
+            bool changed;
+            PrivacyIndicatorState next;
             lock (_lifecycleLock)
             {
                 if (_disposed || !_started || generation != _micFlowGeneration)
                     return;
 
-                PublishState(microphoneInUse, evidence);
+                changed = TryUpdateState(microphoneInUse, evidence, out next);
             }
+
+            // Raise outside _lifecycleLock so subscribers cannot deadlock against lifecycle calls.
+            if (changed) StateChanged?.Invoke(this, next);
         }
 
         if (_dispatcher.CheckAccess())
@@ -472,7 +477,13 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     private void PublishState(bool microphoneInUse, MicrophoneFlowEvidence evidence)
     {
-        var next = new PrivacyIndicatorState(
+        if (TryUpdateState(microphoneInUse, evidence, out var next))
+            StateChanged?.Invoke(this, next);
+    }
+
+    private bool TryUpdateState(bool microphoneInUse, MicrophoneFlowEvidence evidence, out PrivacyIndicatorState next)
+    {
+        next = new PrivacyIndicatorState(
             MicrophoneInUse: microphoneInUse,
             CameraInUse: _cameraInUse,
             ScreenRecordingActive: _screenRecordingActive,
@@ -485,7 +496,7 @@ public sealed class PrivacyIndicatorService : IDisposable
             LocationConsumers = _locationConsumers
         };
 
-        if (next.Equals(CurrentState)) return;
+        if (next.Equals(CurrentState)) return false;
 
         bool microphoneChanged = next.MicrophoneInUse != CurrentState.MicrophoneInUse;
         CurrentState = next;
@@ -495,7 +506,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                 $"visible={microphoneInUse} session={evidence.HasActiveSession} " +
                 $"peak={evidence.PeakLevel:F4} consumers=[{string.Join(", ", _microphoneCandidateNames)}]");
         }
-        StateChanged?.Invoke(this, next);
+        return true;
     }
 
     private void AdaptInterval()

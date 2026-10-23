@@ -10,7 +10,8 @@ internal sealed class InvisibleHotkeyController : IDisposable
     private readonly Window _host;
     private readonly Action _toggle;
     private HwndSource? _source;
-    internal static bool IsRegistered { get; private set; }
+    private bool _disposed;
+    internal bool IsRegistered { get; private set; }
 
     internal InvisibleHotkeyController(Window host, Action toggle)
     {
@@ -24,6 +25,7 @@ internal sealed class InvisibleHotkeyController : IDisposable
 
     private void Attach()
     {
+        if (_disposed) return;
         var hwnd = new WindowInteropHelper(_host).Handle;
         if (hwnd == IntPtr.Zero || _source != null) return;
         _source = HwndSource.FromHwnd(hwnd);
@@ -46,6 +48,8 @@ internal sealed class InvisibleHotkeyController : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _host.SourceInitialized -= OnSourceInitialized;
         if (_source is { IsDisposed: false })
         {

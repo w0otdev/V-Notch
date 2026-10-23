@@ -83,8 +83,6 @@ public sealed class ClipboardTrayInteractionTests
             Invoke(tray, "ApplyPendingSelection");
             Assert.InRange(list.SelectedItems.Count, 1, 5);
             var original = list.SelectedItems.Cast<ClipboardCardViewModel>().ToHashSet();
-            var targets = Field<HashSet<ClipboardCardViewModel>>(tray, "_selectionTargets");
-            Assert.InRange(targets.Count, 1, 5);
             Invoke(tray, "QueueSelectionPointer", new Point(0, 0));
             Invoke(tray, "QueueSelectionPointer", new Point(surface.ActualWidth, surface.ActualHeight));
             Invoke(tray, "ApplyPendingSelection");

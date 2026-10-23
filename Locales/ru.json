@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Громкость эффектов",
+  "settings.interactionSoundVolume.hint": "Настраивает только звуки взаимодействия. Отпустите для прослушивания; 0% — без звука.",
+  "settings.interactionSounds": "Звуки взаимодействия",
+  "settings.interactionSounds.hint": "Тихие звуки кнопок, переключателей и выбора пунктов.",
   "settings.privacy.invisible.enable": "Включить невидимый режим",
   "settings.privacy.invisible.disable": "Выключить невидимый режим",
   "settings.privacy.invisible.shortcut": "Переключайте режим сочетанием Ctrl + Alt + Shift + I. При выключении невидимого режима значок в системном трее появится снова.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Шаг 1/2: Создайте PIN из шести цифр",
   "clipboard.confirmStep": "Шаг 2/2: Подтвердите PIN",
   "clipboard.confirmRetry": "Шаг 2/2: PIN-коды не совпадают. Повторите подтверждение.",
+  "clipboard.emptyTray": "Очистить лоток",
+  "clipboard.emptyTrayConfirm": "Безвозвратно удалить {0} элементов буфера обмена из всех категорий? Закреплённые, личные и архивные элементы будут сохранены. Это действие нельзя отменить.",
   "clipboard.deleteConfirm": "Навсегда удалить {0} записей буфера обмена? Это действие нельзя отменить.",
   "clipboard.source": "Буфер обмена",
   "clipboard.image": "Изображение",

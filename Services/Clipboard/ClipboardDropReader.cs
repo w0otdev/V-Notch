@@ -15,7 +15,11 @@ internal static partial class ClipboardDropReader
         internal ClipboardKind Kind => ImageUrl != null ? ClipboardKind.Image : ClipboardClassifier.Detect(Capture);
     }
     private const int MaxImageBytes = 20 * 1024 * 1024;
-    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private static readonly HttpClient Client = CreateClient();
+
+    internal static HttpClient CreateClient(HttpMessageHandler? transport = null, NetworkPrivacy? privacy = null) =>
+        new(new NetworkPrivacy.PrivacyHandler(privacy ?? NetworkPrivacy.Current, NetworkFeature.Artwork,
+            transport ?? new HttpClientHandler())) { Timeout = TimeSpan.FromSeconds(20) };
 
     internal static bool Supports(IDataObject data)
     {
@@ -80,7 +84,8 @@ internal static partial class ClipboardDropReader
         return string.IsNullOrWhiteSpace(text) ? null : new(capture with { Text = text });
     }
 
-    internal static async Task<ClipboardCapture> ResolveAsync(Payload payload, CancellationToken cancellation = default)
+    internal static async Task<ClipboardCapture> ResolveAsync(Payload payload, CancellationToken cancellation = default,
+        HttpClient? client = null)
     {
         if (payload.ImageUrl is not { } uri) return payload.Capture;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -98,7 +103,8 @@ internal static partial class ClipboardDropReader
         }
         else
         {
-            using var response = await Client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellation);
+            if (uri.Scheme is not ("http" or "https")) throw new InvalidDataException("Unsupported image URL.");
+            using var response = await (client ?? Client).GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellation);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > MaxImageBytes) throw new InvalidDataException("Image is too large.");
             await using var input = await response.Content.ReadAsStreamAsync(cancellation);

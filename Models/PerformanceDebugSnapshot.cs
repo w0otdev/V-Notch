@@ -9,7 +9,7 @@ public enum PerformanceHealthLevel
     Critical
 }
 
-public sealed record DiagnosticLogEntry(
+public readonly record struct DiagnosticLogEntry(
     DateTime Timestamp,
     PerformanceHealthLevel Severity,
     string Category,

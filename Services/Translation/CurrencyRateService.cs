@@ -26,7 +26,7 @@ internal sealed class CurrencyRateService
     {
         _client = client ?? Client; _privacy = privacy ?? NetworkPrivacy.Current;
         _now = now ?? (() => DateTimeOffset.Now);
-        _root = root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "currency-rates");
+        _root = root ?? Path.Combine(AppPaths.LocalAppDataRoot, "currency-rates");
     }
 
     internal async Task<CurrencyConversion> ConvertAsync(SelectedPrice price, string target, CancellationToken ct)

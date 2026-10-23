@@ -18,7 +18,13 @@ if ($manifest.sha256 -ne $expectedHash -or
     $models[0].Length -ne 3659407) { throw 'Model checksum or length does not match the reviewed upstream asset.' }
 $license = Get-Content -LiteralPath (Join-Path $modelDir 'YOLOX-LICENSE.txt') -Raw
 $licenseBytes = [Text.Encoding]::UTF8.GetBytes($license.Replace("`r`n", "`n").Trim())
-$licenseHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($licenseBytes)).ToLowerInvariant()
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try {
+    $hashBytes = $sha256.ComputeHash($licenseBytes)
+} finally {
+    $sha256.Dispose()
+}
+$licenseHash = ([BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
 if ($licenseHash -ne '7994a4e6c6c7d75ff4a521812be618e7faa46ef4db0c445bdea100091d3dae44') {
     throw 'The complete upstream YOLOX license and copyright notice must accompany the model.'
 }

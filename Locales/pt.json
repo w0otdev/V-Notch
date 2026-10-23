@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Volume dos efeitos",
+  "settings.interactionSoundVolume.hint": "Ajusta apenas os sons de interação. Solte para ouvir; 0% silencia.",
+  "settings.interactionSounds": "Sons de interação",
+  "settings.interactionSounds.hint": "Sons suaves para botões, interruptores e seleções.",
   "settings.privacy.invisible.enable": "Ativar modo invisível",
   "settings.privacy.invisible.disable": "Desativar modo invisível",
   "settings.privacy.invisible.shortcut": "Alterne com Ctrl + Alt + Shift + I. Desativar o modo invisível restaura o ícone na bandeja do sistema.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Etapa 1/2: Crie um PIN de seis dígitos",
   "clipboard.confirmStep": "Etapa 2/2: Confirme o PIN",
   "clipboard.confirmRetry": "Etapa 2/2: Os PINs não coincidem. Confirme novamente.",
+  "clipboard.emptyTray": "Esvaziar bandeja",
+  "clipboard.emptyTrayConfirm": "Excluir permanentemente {0} itens da área de transferência de todas as categorias? Os itens fixados, privados e arquivados serão mantidos. Esta ação não pode ser desfeita.",
   "clipboard.deleteConfirm": "Excluir permanentemente {0} itens? Esta ação não pode ser desfeita.",
   "clipboard.source": "Área de transferência",
   "clipboard.image": "Imagem",

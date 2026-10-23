@@ -8,7 +8,7 @@ namespace VNotch.Tests;
 public sealed class ServicePrewarmerTests
 {
     [Fact]
-    public void MissingContainerIsRejectedBeforeSchedulingBackgroundWork() => Assert.Throws<ArgumentNullException>(() => ServicePrewarmer.Prewarm(null!));
+    public void MissingContainerIsRejectedBeforeSchedulingBackgroundWork() => Assert.Throws<ArgumentNullException>(() => { _ = ServicePrewarmer.Prewarm(null!); });
 
     [Theory]
     [InlineData(false)]
@@ -16,13 +16,13 @@ public sealed class ServicePrewarmerTests
     public async Task MissingAndFailedServicesDoNotPreventRemainingWarmups(bool throws)
     {
         var provider = new RecordingProvider(throws);
-        ServicePrewarmer.Prewarm(provider);
-        Assert.True(provider.Requests.Count >= 20);
-        await WaitForBackgroundWarmups(provider);
-        Assert.Equal(1, provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)));
+        var warmup = ServicePrewarmer.Prewarm(provider);
+        Assert.Empty(provider.Requests);
+        await warmup;
+        Assert.DoesNotContain(typeof(PrivacyIndicatorService), provider.Requests);
         Assert.Contains(typeof(IBatteryService), provider.Requests);
         Assert.Contains(typeof(IWindowTitleScanner), provider.Requests);
-        Assert.Contains(typeof(AudioMixerService), provider.Requests);
+        Assert.DoesNotContain(typeof(AudioMixerService), provider.Requests);
     }
 
     [Theory]
@@ -39,11 +39,10 @@ public sealed class ServicePrewarmerTests
             [typeof(IBatteryService)] = new FakeBatteryService(),
             [typeof(IVolumeService)] = new FakeVolumeService()
         });
-        ServicePrewarmer.Prewarm(provider);
-        await WaitForBackgroundWarmups(provider);
+        await ServicePrewarmer.Prewarm(provider);
         Assert.Equal(enabled, artwork.SmartCropEnabled);
         Assert.Null(settings.LastSaved);
-        Assert.Equal(enabled ? 2 : 1, provider.Requests.Count(type => type == typeof(VNotch.Services.Spotlight.SpotlightSearchService)));
+        Assert.Equal(enabled ? 1 : 0, provider.Requests.Count(type => type == typeof(VNotch.Services.Spotlight.SpotlightSearchService)));
     }
 
     [Theory]
@@ -60,16 +59,9 @@ public sealed class ServicePrewarmerTests
             [typeof(ISettingsService)] = new FakeSettingsService(new() { EnablePrivacyIndicators = enabled, EnableSpotlight = false }),
             [typeof(PrivacyIndicatorService)] = privacy
         });
-        ServicePrewarmer.Prewarm(provider);
-        await WaitForBackgroundWarmups(provider);
+        await ServicePrewarmer.Prewarm(provider);
         Assert.Equal(0, Volatile.Read(ref scans));
-        Assert.Equal(1, provider.Requests.Count(type => type == typeof(PrivacyIndicatorService)));
-    }
-
-    private static async Task WaitForBackgroundWarmups(RecordingProvider provider)
-    {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        while (provider.Requests.Count(type => type == typeof(AudioMixerService)) < 2) await Task.Delay(10, timeout.Token);
+        Assert.DoesNotContain(typeof(PrivacyIndicatorService), provider.Requests);
     }
 
     private sealed class RecordingProvider(bool throws, Dictionary<Type, object>? registrations = null) : IServiceProvider

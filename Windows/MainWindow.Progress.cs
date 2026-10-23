@@ -83,7 +83,7 @@ public partial class MainWindow
     private void HandleOutsideClick(OutsideClickSnapshot click)
     {
         var pt = click.Point;
-        if (_clipboardHistory?.IsDragging == true || ClipboardTrayView.IsContextMenuOpen || ClipboardTrayView.ContainsMenuPoint(new Point(pt.x, pt.y))) return;
+        if (_clipboardHistory?.IsDragging == true || _clipboardTrayView?.IsContextMenuOpen == true || _clipboardTrayView?.ContainsMenuPoint(new Point(pt.x, pt.y)) == true) return;
         // Clicks inside Spotlight window must not collapse MainWindow's hidden
         // state while Spotlight temporarily owns the notch surface.
         if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;

@@ -17,7 +17,7 @@ public class BaselineAnalogClock : FrameworkElement
     private static readonly Pen MinorTickPen = CreateFrozenPen(MinorTickBrush, 1.0);
     private static readonly Pen MajorRulerPen = CreateFrozenPen(MajorTickBrush, 1.4);
     private static readonly Typeface DateTypeface = new(
-        new FontFamily("pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display"),
+        new FontFamily(VNotch.Services.AppFonts.Location + "#SF Pro Display"),
         FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
 
     private readonly DispatcherTimer _timer;

@@ -17,6 +17,7 @@ public sealed class AppFileCleanupTests : IDisposable
     {
         string roaming = Path.Combine(_root, "roaming"), local = Path.Combine(_root, "local"), temp = Path.Combine(_root, "temp");
         string model = Path.Combine(local, "VNotch", "translation-models", TranslationModelCatalog.All[0].Id);
+        string canonicalModel = Path.Combine(local, "V-Notch", "translation-models", TranslationModelCatalog.All[0].Id);
         string asset = TranslationModelCatalog.All[0].Assets[0].Name;
         string[] junk =
         [
@@ -28,7 +29,9 @@ public sealed class AppFileCleanupTests : IDisposable
             Create(Path.Combine(roaming, "V-Notch", $"spotlight-usage.json.{Guid.NewGuid():N}.tmp")),
             Create(Path.Combine(roaming, "V-Notch", "spotlight-usage.preferences.json.tmp")),
             Create(Path.Combine(local, "VNotch", "spotlight-chats.enc.tmp")),
+            Create(Path.Combine(local, "V-Notch", "spotlight-chats.enc.tmp")),
             Create(Path.Combine(model, asset + ".install.part")),
+            Create(Path.Combine(canonicalModel, asset + ".install.part")),
         ];
         string[] preserved =
         [
@@ -44,9 +47,14 @@ public sealed class AppFileCleanupTests : IDisposable
             Create(Path.Combine(local, "V-Notch", "Clipboard", "personal", "saved.enc")),
             Create(Path.Combine(local, "V-Notch", "Clipboard", "staging", Guid.NewGuid().ToString("N") + ".previous", "recovery.bin")),
             Create(Path.Combine(local, "VNotch", "spotlight-chats.enc")),
+            Create(Path.Combine(local, "V-Notch", "spotlight-chats.enc")),
+            Create(Path.Combine(local, "V-Notch", "spotlight-chats.enc.recovery.corrupt")),
+            Create(Path.Combine(local, "V-Notch", "legacy-migration-conflicts", "spotlight-chats.enc")),
             Create(Path.Combine(model, asset)),
             Create(Path.Combine(model, asset + ".part")),
             Create(Path.Combine(model, "verified.txt")),
+            Create(Path.Combine(canonicalModel, asset)),
+            Create(Path.Combine(canonicalModel, asset + ".part")),
         ];
         AgeTree(_root, _now.AddDays(-10));
 

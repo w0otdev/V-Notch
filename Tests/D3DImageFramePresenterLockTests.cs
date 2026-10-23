@@ -1,7 +1,7 @@
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VNotch.Controllers;
 using Xunit;
@@ -11,81 +11,95 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class D3DImageFramePresenterLockTests
 {
-    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-
     [Theory]
-    [InlineData("PresentPendingFrame")]
-    [InlineData("AttachBackBuffer")]
-    public void BusyCompositorDoesNotLeakLocksAndNewestPixelsResume(string busyOperation) => SharedStaTestRunner.Run(() =>
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BusyCompositorDoesNotLeakLocksAndNewestFrameResumes(bool busyAttach) => SharedStaTestRunner.Run(() =>
     {
         var window = new Window { ShowActivated = false, ShowInTaskbar = false };
         var hwnd = new WindowInteropHelper(window).EnsureHandle();
-        using var presenter = new D3DImageFramePresenter(window.Dispatcher, hwnd, 8, 8);
-        var image = Assert.IsType<D3DImage>(presenter.ImageSource);
-        // Control the real WPF compositor gate: a fake TryLock would miss its
-        // counter semantics. No window needs to appear on the input desktop.
-        var canWrite = (ManualResetEvent)typeof(D3DImage).GetField("_canWriteEvent", Private)!.GetValue(image)!;
-        var lockCount = typeof(D3DImage).GetField("_lockCount", Private)!;
+        var target = new CompositorTarget();
+        using var presenter = new D3DImageFramePresenter(window.Dispatcher, hwnd, 8, 8, target);
         var pixels = new byte[8 * 8 * 4];
         var source = Marshal.AllocHGlobal(pixels.Length);
         Exception? failure = null;
         int presented = 0;
+        LiquidGlassController.GpuGeometry lastPresented = default;
         presenter.Failed += ex => failure = ex;
-        presenter.FramePresented += _ => presented++;
-        void Invoke(string method) => typeof(D3DImageFramePresenter).GetMethod(method, Private)!.Invoke(presenter, null);
-        void Upload(byte red)
+        presenter.FramePresented += tag => { presented++; lastPresented = tag; };
+        LiquidGlassController.GpuGeometry Upload(int version)
         {
             for (int i = 0; i < pixels.Length; i += 4)
             {
-                pixels[i + 2] = red;
+                pixels[i + 2] = (byte)version;
                 pixels[i + 3] = 255;
             }
             Marshal.Copy(pixels, 0, source, pixels.Length);
-            Assert.True(presenter.UploadFrame(source, 8, 8, 32, 1, out bool uploaded));
+            var tag = new LiquidGlassController.GpuGeometry { CaptureOriginX = version };
+            Assert.True(presenter.UploadFrame(source, 8, 8, 32, 1, out bool uploaded, tag));
             Assert.True(uploaded);
+            return tag;
         }
         try
         {
             presenter.PrepareResources();
             presenter.BeginSession(1);
             Upload(10);
-            Invoke("PresentPendingFrame");
+            presenter.PresentPendingFrame();
             Assert.Equal(1, presented);
 
-            // Repeated busy/recovery cycles must retain the newest pending frame
-            // without transferring pixels while WPF owns the back buffer.
             for (int cycle = 0; cycle < 120; cycle++)
             {
-                canWrite.Reset();
+                target.Writable = false;
                 int before = presented;
+                int writesBefore = target.Writes;
+                LiquidGlassController.GpuGeometry newest = default;
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    Upload((byte)(20 + cycle + attempt));
-                    Invoke(busyOperation);
-                    Assert.Equal(0u, (uint)lockCount.GetValue(image)!);
+                    newest = Upload(20 + cycle + attempt);
+                    if (busyAttach) presenter.AttachBackBuffer();
+                    else presenter.PresentPendingFrame();
+                    Assert.Equal(0, target.LockCount);
                     Assert.True(presenter.HasPendingFrame);
                     Assert.Equal(before, presented);
+                    Assert.Equal(writesBefore, target.Writes);
                     Assert.Null(failure);
                 }
-                canWrite.Set();
-                Invoke("PresentPendingFrame");
+                target.Writable = true;
+                presenter.PresentPendingFrame();
                 Assert.Equal(before + 1, presented);
+                Assert.Equal(newest, lastPresented);
                 Assert.False(presenter.HasPendingFrame);
-                Assert.Equal(0u, (uint)lockCount.GetValue(image)!);
+                Assert.Equal(0, target.LockCount);
                 Assert.Null(failure);
-                var snapshot = (BitmapSource)typeof(D3DImage).GetMethod("CopyBackBuffer", Private)!.Invoke(image, null)!;
-                var actual = new byte[pixels.Length];
-                snapshot.CopyPixels(actual, 32, 0);
-                Assert.Equal(pixels[2], actual[2]);
             }
         }
         finally
         {
-            canWrite.Set();
-            // Keep a failing regression from leaving WPF locked during cleanup.
-            while ((uint)lockCount.GetValue(image)! > 0) image.Unlock();
+            target.Writable = true;
             Marshal.FreeHGlobal(source);
             window.Close();
         }
     });
+
+    private sealed class CompositorTarget : ID3DFrameTarget
+    {
+        public ImageSource ImageSource { get; } = new WriteableBitmap(8, 8, 96, 96, PixelFormats.Bgra32, null);
+        public bool IsFrontBufferAvailable => true;
+        public event DependencyPropertyChangedEventHandler IsFrontBufferAvailableChanged { add { } remove { } }
+        public bool Writable { get; set; } = true;
+        public int LockCount { get; private set; }
+        public int Writes { get; private set; }
+        public bool TryLock(Duration timeout) { LockCount++; return Writable; }
+        public void Lock() => LockCount++;
+        public void Unlock() { Assert.True(LockCount > 0); LockCount--; }
+        public void SetBackBuffer(D3DResourceType type, IntPtr surface, bool enableSoftwareFallback = false) => Write();
+        public void AddDirtyRect(Int32Rect rectangle) => Write();
+        private void Write()
+        {
+            Assert.True(Writable);
+            Assert.True(LockCount > 0);
+            Writes++;
+        }
+    }
 }

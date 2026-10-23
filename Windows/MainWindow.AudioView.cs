@@ -540,5 +540,4 @@ public partial class MainWindow
         AudioScrollViewer.BeginAnimation(HeightProperty, scrollAnim, HandoffBehavior.SnapshotAndReplace);
     }
 
-    private void PrewarmAudioSnapshot() => AudioContent.Prewarm();
 }

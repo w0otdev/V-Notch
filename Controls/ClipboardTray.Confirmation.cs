@@ -11,17 +11,38 @@ public partial class ClipboardTray
 {
     private TaskCompletionSource<bool>? _deleteDecision;
     private int _deleteConfirmationCount;
+    private bool _emptyTrayConfirmation;
 
-    private async Task ConfirmDeleteAsync(ClipboardCardViewModel[] cards)
+    private async void EmptyTray_Click(object sender, RoutedEventArgs e) => await SafeAsync(ConfirmEmptyTrayAsync);
+
+    private Task ConfirmEmptyTrayAsync()
     {
-        if (_controller == null || cards.Length == 0 || _deleteConfirmationOpen) return;
+        var ids = _controller?.Store.Snapshot()
+            .Where(entry => !entry.IsPinned && !entry.IsPersonal && !entry.IsArchived)
+            .Select(entry => entry.Id).ToArray() ?? [];
+        return ConfirmDeletionAsync(ids, emptyTray: true);
+    }
+
+    private Task ConfirmDeleteAsync(ClipboardCardViewModel[] cards)
+        => ConfirmDeletionAsync(cards.Select(card => card.Entry.Id).ToArray(), emptyTray: false);
+
+    private void UpdateDeleteConfirmationText()
+    {
+        DeleteConfirmationText.Text = Loc.Get(_emptyTrayConfirmation ? "clipboard.emptyTrayConfirm" : "clipboard.deleteConfirm", _deleteConfirmationCount);
+        ConfirmDeleteButton.Content = Loc.Get(_emptyTrayConfirmation ? "clipboard.emptyTray" : "clipboard.delete");
+    }
+
+    private async Task ConfirmDeletionAsync(Guid[] ids, bool emptyTray)
+    {
+        if (_controller == null || ids.Length == 0 || _deleteConfirmationOpen || _disposed) return;
         _deleteConfirmationOpen = true;
         bool confirmed;
         try
         {
             _deleteDecision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _deleteConfirmationCount = cards.Length;
-            DeleteConfirmationText.Text = Loc.Get("clipboard.deleteConfirm", _deleteConfirmationCount);
+            _deleteConfirmationCount = ids.Length;
+            _emptyTrayConfirmation = emptyTray;
+            UpdateDeleteConfirmationText();
             TrayContentGrid.IsHitTestVisible = false;
             TrayMotion.SetBlurRadius(TrayContentGrid, 12.0);
             ShowTransientLayer(DeleteConfirmationPanel);
@@ -44,10 +65,15 @@ public partial class ClipboardTray
         TrayContentGrid.IsHitTestVisible = false;
         try
         {
-            foreach (var card in cards)
+            if (emptyTray)
+            {
+                await _controller.Store.EmptyTrayAsync(ids);
+                return;
+            }
+            foreach (var id in ids)
             {
                 if (_disposed) return;
-                if (_controller.Store.GetEntry(card.Entry.Id) != null) await _controller.Store.DeleteAsync(card.Entry.Id);
+                if (_controller.Store.GetEntry(id) != null) await _controller.Store.DeleteAsync(id);
             }
         }
         finally

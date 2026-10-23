@@ -35,6 +35,8 @@ TestResults/
 BenchmarkDotNet.Artifacts/
 /Tools/*Benchmark/Results/
 /Tools/*Benchmark/results.json
+/Tools/*/results.txt
+/Tools/TranslationBench/Results/
 /results.json
 # Local benchmark/stress measurements (keep the runners and source baselines)
 /Tools/ReportBenchmark/Measurements/

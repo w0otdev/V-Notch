@@ -16,6 +16,20 @@ internal static class DynamicIslandColorExtractor
 
     private const string LogTag = "COLOR-PICK";
     private static readonly Palette DefaultPalette = new(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
+    private static readonly float[] DefaultSpatialWeights = BuildSpatialWeights(36, 36);
+
+    private static float[] BuildSpatialWeights(int width, int height)
+    {
+        var weights = new float[width * height];
+        float centerX = width / 2f, centerY = height / 2f;
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+        {
+            float dx = (x - centerX) / centerX, dy = (y - centerY) / centerY;
+            weights[y * width + x] = 1.0f + MathF.Max(0, 1.0f - MathF.Sqrt(dx * dx + dy * dy)) * 0.5f;
+        }
+        return weights;
+    }
 
     // Palette remains an immutable value result. Weak-table entries require a reference
     // type; allocating that entry on a cache miss avoids allocating on every palette read.
@@ -103,13 +117,13 @@ internal static class DynamicIslandColorExtractor
         if (result.IsMonotone || result.Primary == default)
         {
             RuntimeLog.Debug(LogTag,
-                () => $"FALLBACK: IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
+                $"FALLBACK: IsMonotone={result.IsMonotone} Primary={result.Primary} (R={result.Primary.R},G={result.Primary.G},B={result.Primary.B})");
             palette = DefaultPalette;
         }
         else
         {
             RuntimeLog.Debug(LogTag,
-                () => $"OK: Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
+                $"OK: Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
             var main = result.Primary;
             var darkUiBackground = Colors.Black;
             var sub = EnsureTextOnDarkBackground(main, darkUiBackground, 4.5);
@@ -355,7 +369,7 @@ internal static class DynamicIslandColorExtractor
                 Span<float> bucketPeakV = stackalloc float[NUM_BUCKETS];
                 bucketPeakV.Clear();
 
-                float centerX = width / 2f, centerY = height / 2f;
+                var spatialWeights = width == 36 && height == 36 ? DefaultSpatialWeights : BuildSpatialWeights(width, height);
                 int totalColorPixels = 0;
                 int totalPixels = 0;
 
@@ -382,10 +396,7 @@ internal static class DynamicIslandColorExtractor
                         int bucket = (int)(h * NUM_BUCKETS) % NUM_BUCKETS;
                         if (bucket < 0) bucket += NUM_BUCKETS;
 
-                        float dx = (x - centerX) / centerX;
-                        float dy = (y - centerY) / centerY;
-                        float dist = MathF.Sqrt(dx * dx + dy * dy);
-                        float zoneWeight = 1.0f + MathF.Max(0, 1.0f - dist) * 0.5f;
+                        float zoneWeight = spatialWeights[y * width + x];
 
                         bucketSatSum[bucket] += s * zoneWeight;
                         bucketValSum[bucket] += v * zoneWeight;

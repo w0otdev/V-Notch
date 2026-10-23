@@ -103,6 +103,8 @@ public sealed class MagnifierCaptureSource : IDisposable
     private static readonly object _sharedSync = new();
     private static MagnifierCaptureSource? _sharedInstance;
     private static int _sharedRefCount;
+    // Replaced instances that earlier holders may still reference; disposed once no holder remains.
+    private static readonly List<MagnifierCaptureSource> _retiredInstances = new();
 
     public static MagnifierCaptureSource AcquireShared(IntPtr excludeHwnd)
     {
@@ -110,14 +112,7 @@ public sealed class MagnifierCaptureSource : IDisposable
         {
             if (_sharedInstance == null || !_sharedInstance._running || !_sharedInstance.IsReady)
             {
-                try
-                {
-                    _sharedInstance?.Dispose();
-                }
-                catch (Exception)
-                {
-                    // Ignore errors when replacing an unready shared instance.
-                }
+                RetireOrDisposeSharedInstance();
                 _sharedInstance = new MagnifierCaptureSource();
                 _sharedInstance.Initialize(excludeHwnd);
             }
@@ -132,6 +127,45 @@ public sealed class MagnifierCaptureSource : IDisposable
         }
     }
 
+    // Caller must hold _sharedSync.
+    private static void RetireOrDisposeSharedInstance()
+    {
+        MagnifierCaptureSource? old = _sharedInstance;
+        _sharedInstance = null;
+        if (old == null) return;
+
+        if (_sharedRefCount == 0)
+        {
+            DisposeQuietly(old);
+            return;
+        }
+
+        // Other holders still use this instance: stop its pump thread but keep its
+        // event handles alive so their CaptureInto calls fail softly instead of throwing.
+        old.StopPumpThread();
+        _retiredInstances.Add(old);
+    }
+
+    // Caller must hold _sharedSync.
+    private static void DisposeRetiredInstances()
+    {
+        foreach (var retired in _retiredInstances)
+            DisposeQuietly(retired);
+        _retiredInstances.Clear();
+    }
+
+    private static void DisposeQuietly(MagnifierCaptureSource source)
+    {
+        try
+        {
+            source.Dispose();
+        }
+        catch (Exception)
+        {
+            // Ignore errors when disposing a replaced or shut down shared instance.
+        }
+    }
+
     public static void ReleaseShared(IntPtr excludeHwnd)
     {
         lock (_sharedSync)
@@ -141,7 +175,10 @@ public sealed class MagnifierCaptureSource : IDisposable
                 _sharedInstance.RemoveExcludeHwnd(excludeHwnd);
             }
             _sharedRefCount = Math.Max(0, _sharedRefCount - 1);
-            if (_sharedRefCount == 0 && _sharedInstance != null)
+            if (_sharedRefCount != 0) return;
+
+            DisposeRetiredInstances();
+            if (_sharedInstance != null)
             {
                 _sharedInstance._captureEnabled = false;
                 _sharedInstance._request.Set();
@@ -153,14 +190,9 @@ public sealed class MagnifierCaptureSource : IDisposable
     {
         lock (_sharedSync)
         {
-            try
-            {
-                _sharedInstance?.Dispose();
-            }
-            catch (Exception)
-            {
-                // Ignore errors during shared shutdown.
-            }
+            if (_sharedInstance != null)
+                DisposeQuietly(_sharedInstance);
+            DisposeRetiredInstances();
             _sharedInstance = null;
             _sharedRefCount = 0;
         }
@@ -778,23 +810,51 @@ public sealed class MagnifierCaptureSource : IDisposable
         }
     }
 
-    public void Dispose()
+    // Signals the pump thread to exit and waits briefly. Returns true when the thread is gone,
+    // in which case native callback delegates are no longer reachable and can be released.
+    private bool StopPumpThread()
     {
         _running = false;
         IsReady = false;
-        _request.Set();
-        _frameReceivedEvent.Set();
         try
         {
-            _thread?.Join(500);
+            _request.Set();
+            _frameReceivedEvent.Set();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed; nothing left to signal.
+        }
+
+        bool exited = true;
+        try
+        {
+            exited = _thread?.Join(500) ?? true;
         }
         catch (Exception)
         {
-            // Thread join timeout during dispose is safely ignored.
+            // Thread join errors during dispose are safely ignored.
+            exited = false;
         }
+
+        if (!exited) return false;
+
         _thread = null;
         _callback = null;
         _wndProc = null;
+        return true;
+    }
+
+    public void Dispose()
+    {
+        if (!StopPumpThread())
+        {
+            // The pump thread may still call into ScalingCallback or wait on the events.
+            // Keep delegates and handles alive (intentional leak) rather than crash natively.
+            RuntimeLog.Log(LogTag, "Magnifier pump thread did not exit within 500ms; leaking delegates and events.");
+            return;
+        }
+
         try
         {
             _initDone.Dispose();

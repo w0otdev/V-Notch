@@ -101,16 +101,14 @@ public partial class TimerViewModel : ObservableObject
             {
                 if (mins >= 0 && secs >= 0 && secs < 60)
                 {
-                    result = new TimeSpan(0, mins, secs);
-                    return result > TimeSpan.Zero;
+                    return TryFromSeconds((double)mins * 60 + secs, out result);
                 }
             }
             else if (parts.Length == 3 && int.TryParse(parts[0], out int hrs) && int.TryParse(parts[1], out int m) && int.TryParse(parts[2], out int sec))
             {
                 if (hrs >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60)
                 {
-                    result = new TimeSpan(hrs, m, sec);
-                    return result > TimeSpan.Zero;
+                    return TryFromSeconds((double)hrs * 3600 + (double)m * 60 + sec, out result);
                 }
             }
 
@@ -123,12 +121,7 @@ public partial class TimerViewModel : ObservableObject
 
         if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double num))
         {
-            if (num > 0)
-            {
-                result = TimeSpan.FromMinutes(num);
-                return true;
-            }
-            return false;
+            return TryFromSeconds(num * 60, out result);
         }
 
         try
@@ -149,16 +142,30 @@ public partial class TimerViewModel : ObservableObject
                         case 'd': totalSeconds += val * 86400; break;
                     }
                 }
-                if (totalSeconds > 0)
-                {
-                    result = TimeSpan.FromSeconds(totalSeconds);
-                    return true;
-                }
+                return TryFromSeconds(totalSeconds, out result);
             }
         }
         catch { }
 
         return false;
+    }
+
+    // Rejects NaN, infinities, non-positive values and anything TimeSpan cannot represent.
+    private static bool TryFromSeconds(double totalSeconds, out TimeSpan result)
+    {
+        result = TimeSpan.Zero;
+        if (!double.IsFinite(totalSeconds) || totalSeconds <= 0) return false;
+        if (totalSeconds >= TimeSpan.MaxValue.TotalSeconds) return false;
+        try
+        {
+            result = TimeSpan.FromSeconds(totalSeconds);
+        }
+        catch (OverflowException)
+        {
+            result = TimeSpan.Zero;
+            return false;
+        }
+        return result > TimeSpan.Zero;
     }
 
     private static string Format(TimeSpan value)

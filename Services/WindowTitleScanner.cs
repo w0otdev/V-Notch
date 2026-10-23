@@ -1,4 +1,3 @@
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Automation;
@@ -142,83 +141,45 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     private bool _cachedSpotifyWebPlayerOpen;
     private DateTime _lastSpotifyWebPlayerTime = DateTime.MinValue;
 
-    private static volatile int _cachedInspectionAllowed = -1;
-    private static FileSystemWatcher? _settingsWatcher;
-    private static readonly object _inspectionLock = new();
+    // SettingsService and the settings UI publish consent after a successful load
+    // or a user change. Merely using this type never creates files or watcher handles.
+    private static int _inspectionAllowed;
+    private static int _inspectionVersion;
+    private readonly Func<bool>? _browserInspectionAllowed;
+    private int _observedInspectionVersion = -1;
 
-    static WindowTitleScanner()
-    {
-        try
-        {
-            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string dir = Path.Combine(appDataPath, "V-Notch");
-            _settingsWatcher = CreateSettingsWatcher(dir, InvalidateInspectionAllowed);
-        }
-        catch
-        {
-            // Ignore file watcher initialization issues
-        }
-    }
+    public WindowTitleScanner() { }
+
+    internal WindowTitleScanner(Func<bool> browserInspectionAllowed) =>
+        _browserInspectionAllowed = browserInspectionAllowed ?? throw new ArgumentNullException(nameof(browserInspectionAllowed));
+
+    private bool InspectionAllowed => _browserInspectionAllowed?.Invoke() ?? IsBrowserUrlInspectionAllowed();
 
     public static void UpdateInspectionAllowed(bool allowed)
     {
-        _cachedInspectionAllowed = allowed ? 1 : 0;
-    }
-
-    internal static FileSystemWatcher CreateSettingsWatcher(string directory, Action invalidate)
-    {
-        Directory.CreateDirectory(directory);
-        var watcher = new FileSystemWatcher(directory, "settings.json")
-        {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size
-        };
-        watcher.Changed += (_, _) => invalidate();
-        watcher.Created += (_, _) => invalidate();
-        watcher.Deleted += (_, _) => invalidate();
-        watcher.Renamed += (_, _) => invalidate();
-        watcher.Error += (_, _) => invalidate();
-        watcher.EnableRaisingEvents = true;
-        return watcher;
+        if (Interlocked.Exchange(ref _inspectionAllowed, allowed ? 1 : 0) != (allowed ? 1 : 0))
+            Interlocked.Increment(ref _inspectionVersion);
     }
 
     public static void InvalidateInspectionAllowed()
     {
-        _cachedInspectionAllowed = -1;
+        UpdateInspectionAllowed(false);
     }
 
-    public static bool IsBrowserUrlInspectionAllowed()
+    public static bool IsBrowserUrlInspectionAllowed() => Volatile.Read(ref _inspectionAllowed) == 1;
+
+    private bool CanInspectBrowser()
     {
-        int cached = _cachedInspectionAllowed;
-        if (cached != -1)
-            return cached == 1;
-
-        lock (_inspectionLock)
+        int version = _browserInspectionAllowed == null ? Volatile.Read(ref _inspectionVersion) : 0;
+        bool allowed = InspectionAllowed;
+        lock (_cacheLock)
         {
-            if (_cachedInspectionAllowed != -1)
-                return _cachedInspectionAllowed == 1;
-
-            bool allowed = true;
-            try
+            if (_observedInspectionVersion != version || !allowed)
             {
-                var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string settingsPath = Path.Combine(appDataPath, "V-Notch", "settings.json");
-                if (File.Exists(settingsPath))
-                {
-                    string json = File.ReadAllText(settingsPath);
-                    using var doc = System.Text.Json.JsonDocument.Parse(json);
-                    var root = doc.RootElement;
-
-                    if (root.TryGetProperty(nameof(Models.NotchSettings.EnableBrowserUrlInspection), out var urlInspection) && !urlInspection.GetBoolean())
-                        allowed = false;
-                }
+                InvalidateUrlCaches();
+                _observedInspectionVersion = version;
             }
-            catch (Exception)
-            {
-                // Settings file may be missing, locked, or malformed; default to inspection allowed
-            }
-
-            _cachedInspectionAllowed = allowed ? 1 : 0;
-            return allowed;
+            return allowed && !_disposed;
         }
     }
 
@@ -276,7 +237,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     public string? TryGetBrowserUrl()
     {
-        if (!IsBrowserUrlInspectionAllowed())
+        if (!CanInspectBrowser())
             return null;
 
         lock (_cacheLock)
@@ -305,7 +266,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     public string? TryGetMediaUrlFromAnyBrowser()
     {
-        if (!IsBrowserUrlInspectionAllowed())
+        if (!CanInspectBrowser())
             return null;
 
         lock (_cacheLock)
@@ -394,6 +355,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     public bool IsSpotifyWebPlayerOpen()
     {
+        if (!CanInspectBrowser()) return false;
         lock (_cacheLock)
         {
             if (_disposed) return false;
@@ -493,7 +455,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                             string? url = null;
                             try
                             {
-                                url = BrowserUrlExtractor();
+                                if (InspectionAllowed) url = BrowserUrlExtractor();
                             }
                             catch (Exception ex)
                             {
@@ -506,7 +468,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                                 {
                                     _browserUrlScanActive = false;
                                 }
-                                if (_generation == capturedGen)
+                                if (_generation == capturedGen && InspectionAllowed)
                                 {
                                     _cachedBrowserUrl = url;
                                     _lastBrowserUrlTime = DateTime.UtcNow;
@@ -520,7 +482,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                             string? url = null;
                             try
                             {
-                                url = AnyBrowserMediaUrlExtractor();
+                                if (InspectionAllowed) url = AnyBrowserMediaUrlExtractor();
                             }
                             catch (Exception ex)
                             {
@@ -533,7 +495,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                                 {
                                     _anyBrowserScanActive = false;
                                 }
-                                if (_generation == capturedGen)
+                                if (_generation == capturedGen && InspectionAllowed)
                                 {
                                     _cachedAnyBrowserMediaUrl = url;
                                     _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
@@ -547,7 +509,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                             bool isSpotify = false;
                             try
                             {
-                                isSpotify = SpotifyWebPlayerDetector();
+                                if (InspectionAllowed) isSpotify = SpotifyWebPlayerDetector();
                             }
                             catch (Exception ex)
                             {
@@ -560,7 +522,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
                                 {
                                     _spotifyScanActive = false;
                                 }
-                                if (_generation == capturedGen)
+                                if (_generation == capturedGen && InspectionAllowed)
                                 {
                                     _cachedSpotifyWebPlayerOpen = isSpotify;
                                     _lastSpotifyWebPlayerTime = DateTime.UtcNow;

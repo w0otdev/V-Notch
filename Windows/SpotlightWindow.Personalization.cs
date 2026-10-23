@@ -39,34 +39,48 @@ public partial class SpotlightWindow
 
     private async void TogglePinnedApplication(SpotlightSearchItem item)
     {
-        var preferences = _viewModel.Preferences;
-        bool pinned = !preferences.IsPinned(item.Target);
-        if (!preferences.SetApp(item, pinned, preferences.GetAlias(item.Target)))
+        try
         {
-            ShowSpotlightMessage(Loc.Get("spotlight.pinLimit"));
-            return;
-        }
+            var preferences = _viewModel.Preferences;
+            bool pinned = !preferences.IsPinned(item.Target);
+            if (!preferences.SetApp(item, pinned, preferences.GetAlias(item.Target)))
+            {
+                ShowSpotlightMessage(Loc.Get("spotlight.pinLimit"));
+                return;
+            }
 
-        // Keep the current row alive while the shared media pin animates. In
-        // particular, unpinning an empty-query result must not remove it first.
-        _viewModel.CancelPendingSearch();
-        foreach (var result in _viewModel.Results.Where(result =>
-            string.Equals(result.Target, item.Target, StringComparison.OrdinalIgnoreCase)))
-            result.IsPinned = pinned;
-        item.IsPinned = pinned;
-        long version = ++_pinFeedbackVersion;
-        int session = _animationGeneration;
-        string query = SearchBox.Text;
-        if (!AnimationConfig.ReduceMotion) await Task.Delay(pinned ? 240 : 160);
-        if (version != _pinFeedbackVersion || session != _animationGeneration || query != SearchBox.Text) return;
-        RefreshPersonalizedResults();
+            // Keep the current row alive while the shared media pin animates. In
+            // particular, unpinning an empty-query result must not remove it first.
+            _viewModel.CancelPendingSearch();
+            foreach (var result in _viewModel.Results.Where(result =>
+                string.Equals(result.Target, item.Target, StringComparison.OrdinalIgnoreCase)))
+                result.IsPinned = pinned;
+            item.IsPinned = pinned;
+            long version = ++_pinFeedbackVersion;
+            int session = _animationGeneration;
+            string query = SearchBox.Text;
+            if (!AnimationConfig.ReduceMotion) await Task.Delay(pinned ? 240 : 160);
+            if (version != _pinFeedbackVersion || session != _animationGeneration || query != SearchBox.Text) return;
+            RefreshPersonalizedResults();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-PIN", ex, "Toggling pinned application failed");
+        }
     }
 
     private async void RefreshPersonalizedResults()
     {
-        if (!IsSpotlightOpen || _isClosing) return;
-        await _viewModel.SearchAsync(SearchBox.Text);
-        if (IsSpotlightOpen && !_isClosing) RefreshStatus();
+        try
+        {
+            if (!IsSpotlightOpen || _isClosing) return;
+            await _viewModel.SearchAsync(SearchBox.Text);
+            if (IsSpotlightOpen && !_isClosing) RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SPOTLIGHT-SEARCH", ex, "Refreshing personalized results failed");
+        }
     }
 
     private void SearchBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)

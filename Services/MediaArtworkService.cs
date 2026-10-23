@@ -23,7 +23,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
     private const string ArtworkLogTag = "ARTWORK";
     private const string CropPathLogTag = "CROP-PATH";
     private const long MaxArtworkDownloadSizeBytes = 8 * 1024 * 1024; // 8 MiB
-    private const int MaxDecodePixelWidth = 1024;
+    private const int MaxDecodePixelDimension = 1024;
 
     private static readonly HttpClient _httpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private readonly HttpClient _client;
@@ -346,9 +346,13 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 var image = new BitmapImage();
                 image.BeginInit();
                 image.CacheOption = BitmapCacheOption.OnLoad;
-                if (originalWidth > MaxDecodePixelWidth)
+                if (originalWidth >= originalHeight && originalWidth > MaxDecodePixelDimension)
                 {
-                    image.DecodePixelWidth = MaxDecodePixelWidth;
+                    image.DecodePixelWidth = MaxDecodePixelDimension;
+                }
+                else if (originalHeight > MaxDecodePixelDimension)
+                {
+                    image.DecodePixelHeight = MaxDecodePixelDimension;
                 }
                 image.StreamSource = stream;
                 image.EndInit();

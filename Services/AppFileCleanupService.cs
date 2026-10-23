@@ -93,12 +93,15 @@ public sealed class AppFileCleanupService : IDisposable, IAsyncDisposable
             new(Path.Combine(roaming, "V-Notch"), false,
                 name => IsAtomicTemporary(name, "settings.json") || IsAtomicTemporary(name, "spotlight-usage.json") ||
                         name == "spotlight-usage.preferences.json.tmp", day),
-            new(Path.Combine(local, "VNotch"), false, name => name == "spotlight-chats.enc.tmp", day),
         };
-        foreach (var profile in TranslationModelCatalog.All)
+        foreach (string appRoot in new[] { Path.Combine(local, AppPaths.DirectoryName), Path.Combine(local, AppPaths.LegacyDirectoryName) })
         {
-            var names = profile.Assets.Select(asset => asset.Name + ".install.part").ToHashSet(StringComparer.OrdinalIgnoreCase);
-            policies.Add(new(Path.Combine(local, "VNotch", "translation-models", profile.Id), false, names.Contains, day));
+            policies.Add(new(appRoot, false, name => name == "spotlight-chats.enc.tmp", day));
+            foreach (var profile in TranslationModelCatalog.All)
+            {
+                var names = profile.Assets.Select(asset => asset.Name + ".install.part").ToHashSet(StringComparer.OrdinalIgnoreCase);
+                policies.Add(new(Path.Combine(appRoot, "translation-models", profile.Id), false, names.Contains, day));
+            }
         }
         // Resumable .part downloads, installed models, saved chats, clipboard history and
         // settings/backups are user data. They are deliberately absent from these policies.

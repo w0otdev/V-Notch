@@ -273,7 +273,7 @@ namespace VNotch.Controls
                 (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused))
             {
                 if (feedbackChanged || !copiedFeedbackSettled)
-                    InvalidateVisual();
+                    RefreshDrawingFrame();
                 if (_state != VisualizerState.Playing)
                 {
                     StopRendering();
@@ -284,7 +284,7 @@ namespace VNotch.Controls
 
             if (!isSettled || !drawSettled || opacityChanged || feedbackChanged)
             {
-                if (feedbackChanged || NeedsDrawingUpdate()) InvalidateVisual();
+                if (feedbackChanged || NeedsDrawingUpdate()) RefreshDrawingFrame();
             }
         }
 
@@ -334,15 +334,13 @@ namespace VNotch.Controls
             }
         }
 
-        private void DrawPlaybackMorph(DrawingContext context, double width, double height,
+        private void UpdatePlaybackMorph(double width, double height,
             double startX, double barWidth, double spacing)
         {
             double size = Math.Min(width, height);
-            var brush = GetPlaybackMorphBrush();
             // Rasterize all slices together so shared edges do not get
             // antialiased separately and leave translucent seams.
-            var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
-            using (var path = geometry.Open())
+            using (var path = _morphGeometry!.Open())
             {
                 for (int i = 0; i < BarCount; i++)
                 {
@@ -383,8 +381,6 @@ namespace VNotch.Controls
                     path.LineTo(Corner(3), isStroked: false, isSmoothJoin: false);
                 }
             }
-            geometry.Freeze();
-            context.DrawGeometry(brush, null, geometry);
         }
 
 #pragma warning disable S3776 // Cognitive complexity is inherent to the multi-state audio reactivity animation loop
@@ -878,6 +874,37 @@ namespace VNotch.Controls
         private double _renderedWidth, _renderedHeight, _renderedOpacity;
         private DpiScale _renderedDpi;
         private Color _renderedBaseColor;
+        private DrawingGroup? _frameDrawing;
+        private DrawingGroup? _barsDrawing;
+        private DrawingGroup? _morphDrawing;
+        private StreamGeometry? _morphGeometry;
+        private readonly RectangleGeometry[] _barGeometries = new RectangleGeometry[BarCount];
+        private readonly Dictionary<Rect, object> _boxedBarBounds = new();
+        private (double Width, double Height, double DpiX, double DpiY) _barBoundsLayout;
+        private Brush? _retainedBarBrush, _retainedMorphBrush;
+
+        private void EnsureFrameDrawing()
+        {
+            if (_frameDrawing != null) return;
+            _frameDrawing = new DrawingGroup();
+            _barsDrawing = new DrawingGroup();
+            _morphDrawing = new DrawingGroup();
+            _morphGeometry = new StreamGeometry { FillRule = FillRule.Nonzero };
+            for (int i = 0; i < BarCount; i++)
+            {
+                _barGeometries[i] = new RectangleGeometry();
+                _barsDrawing.Children.Add(new GeometryDrawing(null, null, _barGeometries[i]));
+            }
+            _morphDrawing.Children.Add(new GeometryDrawing(null, null, _morphGeometry));
+            _frameDrawing.Children.Add(_morphDrawing);
+            _frameDrawing.Children.Add(_barsDrawing);
+        }
+
+        private void RefreshDrawingFrame()
+        {
+            if (_frameDrawing == null) InvalidateVisual();
+            else UpdateDrawingFrame();
+        }
 
         // The bars are snapped to device pixels. Their smoothed amplitudes can
         // advance several frames before a drawn edge moves by even one pixel.
@@ -901,11 +928,22 @@ namespace VNotch.Controls
 
         internal void RenderFrame(DrawingContext drawingContext)
         {
+            UpdateDrawingFrame();
+            drawingContext.DrawDrawing(_frameDrawing);
+        }
+
+        internal bool UpdateDrawingFrame()
+        {
+            EnsureFrameDrawing();
             _hasRenderedBars = false;
             double width = ActualWidth;
             double height = ActualHeight;
 
-            if (width < 1 || height < 1 || ActiveBrush == null) return;
+            if (width < 1 || height < 1 || ActiveBrush == null)
+            {
+                _frameDrawing!.Opacity = 0;
+                return false;
+            }
 
             DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
 
@@ -917,42 +955,56 @@ namespace VNotch.Controls
 
             double snappedW = Math.Max(1.0, Math.Round(barWidth * dpi.DpiScaleX) / dpi.DpiScaleX);
 
-            drawingContext.PushOpacity(_currentOpacity + (1 - _currentOpacity) * _iconMix);
+            _frameDrawing!.Opacity = _currentOpacity + (1 - _currentOpacity) * _iconMix;
 
             // Blend the final short section into rounded bars. Switching from
             // sharp polygons to rounded, per-bar gradients in one frame pops.
             double morphOpacity = Math.Clamp(_iconMix / 0.18, 0, 1);
             morphOpacity = morphOpacity * morphOpacity * (3 - 2 * morphOpacity);
+            _morphDrawing!.Opacity = morphOpacity;
+            _barsDrawing!.Opacity = 1 - morphOpacity;
             if (morphOpacity > 0)
             {
-                drawingContext.PushOpacity(morphOpacity);
-                DrawPlaybackMorph(drawingContext, width, height, startX, barWidth, spacing);
-                drawingContext.Pop();
+                var morphBrush = GetPlaybackMorphBrush();
+                if (!ReferenceEquals(_retainedMorphBrush, morphBrush))
+                    ((GeometryDrawing)_morphDrawing.Children[0]).Brush = _retainedMorphBrush = morphBrush;
+                UpdatePlaybackMorph(width, height, startX, barWidth, spacing);
             }
             if (morphOpacity >= 1)
-            {
-                drawingContext.Pop();
-                return;
-            }
-            drawingContext.PushOpacity(1 - morphOpacity);
+                return true;
             var gradientBrush = GetBarGradientBrush();
+            bool brushChanged = !ReferenceEquals(_retainedBarBrush, gradientBrush);
+            _retainedBarBrush = gradientBrush;
+            var layout = (width, height, dpi.DpiScaleX, dpi.DpiScaleY);
+            if (_barBoundsLayout != layout)
+            {
+                _barBoundsLayout = layout;
+                _boxedBarBounds.Clear();
+            }
 
             double radius = snappedW * CornerRadiusRatio;
             for (int i = 0; i < BarCount; i++)
             {
                 Rect bounds = GetBarBounds(i, height, startX, barWidth, spacing);
                 _renderedBarBounds[i] = bounds;
-                drawingContext.DrawRoundedRectangle(gradientBrush, null,
-                    bounds, radius, radius);
+                var geometry = _barGeometries[i];
+                if (geometry.Rect != bounds)
+                {
+                    if (!_boxedBarBounds.TryGetValue(bounds, out var boxedBounds))
+                        _boxedBarBounds.Add(bounds, boxedBounds = bounds);
+                    geometry.SetValue(RectangleGeometry.RectProperty, boxedBounds);
+                }
+                if (geometry.RadiusX != radius) geometry.RadiusX = radius;
+                if (geometry.RadiusY != radius) geometry.RadiusY = radius;
+                if (brushChanged) ((GeometryDrawing)_barsDrawing.Children[i]).Brush = gradientBrush;
             }
-            drawingContext.Pop();
-            drawingContext.Pop();
             _hasRenderedBars = morphOpacity == 0;
             _renderedWidth = width;
             _renderedHeight = height;
             _renderedOpacity = _currentOpacity;
             _renderedDpi = dpi;
             _renderedBaseColor = _cachedGradientBaseColor;
+            return true;
         }
 
         private Rect GetBarBounds(int index, double height, double startX, double barWidth, double spacing)

@@ -47,7 +47,7 @@ internal sealed class FfmpegRecordingProbe
 
     internal static string? ReadCommandLine(int processId)
     {
-        object? locator = null, services = null, process = null;
+        object? locator = null, services = null, process = null, properties = null, commandLine = null;
         try
         {
             var type = Type.GetTypeFromProgID("WbemScripting.SWbemLocator");
@@ -55,14 +55,25 @@ internal sealed class FfmpegRecordingProbe
             locator = Activator.CreateInstance(type);
             services = ((dynamic)locator!).ConnectServer(".", @"root\cimv2");
             process = ((dynamic)services).Get($"Win32_Process.Handle='{processId}'");
-            return (string?)((dynamic)process).CommandLine;
+            properties = ((dynamic)process).Properties_;
+            commandLine = ((dynamic)properties).Item("CommandLine");
+            return (string?)((dynamic)commandLine).Value;
         }
         finally
         {
-            if (process != null) Marshal.FinalReleaseComObject(process);
-            if (services != null) Marshal.FinalReleaseComObject(services);
-            if (locator != null) Marshal.FinalReleaseComObject(locator);
+            ReleaseComObject(commandLine);
+            ReleaseComObject(properties);
+            ReleaseComObject(process);
+            ReleaseComObject(services);
+            ReleaseComObject(locator);
         }
+    }
+
+    private static void ReleaseComObject(object? value)
+    {
+        if (value == null || !Marshal.IsComObject(value)) return;
+        try { Marshal.FinalReleaseComObject(value); }
+        catch (InvalidComObjectException) { /* Already disconnected during process exit. */ }
     }
 
     internal static bool IsScreenCaptureCommand(string? command)

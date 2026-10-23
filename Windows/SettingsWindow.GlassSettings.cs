@@ -349,8 +349,7 @@ public partial class SettingsWindow
 
             // The user's tuned values live in their own persistent slot. If it's
             _settings.LiquidGlassCustom ??= c.Clone();
-            if (_originalSettings != null) _originalSettings.LiquidGlassCustom ??= _settings.LiquidGlassCustom.Clone();
-            if (_appliedSettings != null) _appliedSettings.LiquidGlassCustom ??= _settings.LiquidGlassCustom.Clone();
+            _editSession.EnsureCustomGlass(_settings.LiquidGlassCustom);
             _customGlassSnapshot = _settings.LiquidGlassCustom.Clone();
 
             string preset = string.IsNullOrWhiteSpace(_settings.LiquidGlassPreset) ? GlassPresetCustom : _settings.LiquidGlassPreset;

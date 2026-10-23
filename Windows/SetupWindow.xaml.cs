@@ -34,12 +34,12 @@ internal static class SetupFonts
         }
 
 #pragma warning disable S1075 // Pack URI scheme is required to access WPF embedded assembly resources
-        var baseUri = new Uri("pack://application:,,,/V-Notch;component/Fonts/");
+        var baseUri = VNotch.Services.AppFonts.BaseUri;
 #pragma warning restore S1075
         return new FontFamily(baseUri, "./#SF Pro Display, Nirmala UI, Segoe UI");
     });
 
-    public const string SfProDisplay = "pack://application:,,,/V-Notch;component/Fonts/#SF Pro Display, Nirmala UI, Segoe UI";
+    public static string SfProDisplay => VNotch.Services.AppFonts.Location + "#SF Pro Display, Nirmala UI, Segoe UI";
     public static FontFamily SFProDisplayFont => _sfProDisplayFont.Value;
 }
 

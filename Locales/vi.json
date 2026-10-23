@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Âm lượng SFX",
+  "settings.interactionSoundVolume.hint": "Chỉ chỉnh âm thanh tương tác. Thả thanh trượt để nghe thử; 0% là tắt tiếng.",
+  "settings.interactionSounds": "Âm thanh tương tác",
+  "settings.interactionSounds.hint": "Phát âm thanh nhẹ khi bấm nút, bật/tắt công tắc và chọn mục.",
   "settings.privacy.invisible.enable": "Bật chế độ Invisible",
   "settings.privacy.invisible.disable": "Tắt chế độ Invisible",
   "settings.privacy.invisible.shortcut": "Bật/tắt bằng Ctrl + Alt + Shift + I. Tắt Invisible sẽ hiện lại biểu tượng khay hệ thống.",
@@ -992,6 +996,8 @@
   "clipboard.createStep": "Bước 1/2: Tạo mã PIN gồm 6 chữ số",
   "clipboard.confirmStep": "Bước 2/2: Xác nhận mã PIN",
   "clipboard.confirmRetry": "Bước 2/2: Mã PIN không khớp. Vui lòng thử lại.",
+  "clipboard.emptyTray": "Dọn khay",
+  "clipboard.emptyTrayConfirm": "Xóa vĩnh viễn {0} mục trong khay nhớ tạm ở mọi danh mục? Các mục đã ghim, Riêng tư và lưu trữ sẽ được giữ lại. Không thể hoàn tác.",
   "clipboard.deleteConfirm": "Xóa vĩnh viễn {0} mục khỏi khay nhớ tạm? Thao tác này không thể hoàn tác.",
   "clipboard.source": "Bộ nhớ tạm",
   "clipboard.image": "Hình ảnh",

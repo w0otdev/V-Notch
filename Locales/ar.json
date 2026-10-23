@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "مستوى صوت المؤثرات",
+  "settings.interactionSoundVolume.hint": "ضبط أصوات التفاعل فقط. حرّر شريط التمرير للمعاينة؛ 0% يعني كتم الصوت.",
+  "settings.interactionSounds": "أصوات التفاعل",
+  "settings.interactionSounds.hint": "تشغيل أصوات هادئة للأزرار والمفاتيح والاختيارات.",
   "settings.privacy.invisible.enable": "تفعيل الوضع غير المرئي",
   "settings.privacy.invisible.disable": "إيقاف الوضع غير المرئي",
   "settings.privacy.invisible.shortcut": "يمكنك التبديل باستخدام Ctrl + Alt + Shift + I. يؤدي إيقاف الوضع غير المرئي إلى إظهار أيقونة علبة النظام مجددًا.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "الخطوة 1/2: أنشئ رمزًا من ستة أرقام",
   "clipboard.confirmStep": "الخطوة 2/2: أكد الرمز",
   "clipboard.confirmRetry": "الخطوة 2/2: الرمزان غير متطابقين. أعد التأكيد.",
+  "clipboard.emptyTray": "إفراغ الحافظة",
+  "clipboard.emptyTrayConfirm": "هل تريد حذف {0} عنصر من الحافظة نهائيًا من جميع الفئات؟ سيتم الاحتفاظ بالعناصر المثبتة والخاصة والمؤرشفة. لا يمكن التراجع عن هذا الإجراء.",
   "clipboard.deleteConfirm": "هل تريد حذف {0} من العناصر نهائيًا؟ لا يمكن التراجع عن هذا الإجراء.",
   "clipboard.source": "الحافظة",
   "clipboard.image": "صورة",

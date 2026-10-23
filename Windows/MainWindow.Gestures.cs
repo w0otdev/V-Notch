@@ -250,9 +250,18 @@ public partial class MainWindow
         if (!NotchWrapper.IsMouseOver)
         {
             AnimateNotchHover(false);
-            if (_isMusicCompactMode && _isCompactThumbnailHovered)
+        }
+
+        if (_isMusicCompactMode && _isCompactThumbnailHovered)
+        {
+            if (!IsCursorInsideCompactThumbnailExitZone())
             {
                 SetCompactThumbnailHover(false);
+            }
+            else if (!CompactThumbnailBorder.IsMouseOver)
+            {
+                _compactThumbnailHoverLeaveTimer.Stop();
+                _compactThumbnailHoverLeaveTimer.Start();
             }
         }
     }

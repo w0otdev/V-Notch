@@ -2,10 +2,10 @@ namespace VNotch.Services;
 
 internal static class SpotifyWebPlayerProtocol
 {
-    internal const string TotpVersion = "61";
+    private static readonly byte[] Secret = MediaProtocolConfiguration.Current.CreateSpotifyTotpSecret();
+    internal static string TotpVersion => MediaProtocolConfiguration.Current.SpotifyTotpVersion;
 
-    // Fixed protocol bytes, decoded from the version 61 configuration.
-    internal static ReadOnlySpan<byte> TotpSecret => "376136387538459893883312310911992847112448894410210511297108"u8;
+    internal static ReadOnlySpan<byte> TotpSecret => Secret;
 
-    internal static byte[] CreateTotpSecret() => TotpSecret.ToArray();
+    internal static byte[] CreateTotpSecret() => Secret.ToArray();
 }

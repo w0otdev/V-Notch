@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -108,8 +109,10 @@ internal static class Program
                 }
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
+            // Unreadable settings only lose the saved language; fall back to the OS culture.
+            Debug.WriteLine($"[Uninstall] Could not read language from settings: {ex.Message}");
         }
 
         Loc.SetLanguage(language);
@@ -130,32 +133,56 @@ internal static class Program
         return InstallDirectoryCleanup.ValidateDirectory(AppContext.BaseDirectory);
     }
 
+    private const int ProcessExitTimeoutMs = 8000;
+
     private static void StopRunningInstances()
     {
         var currentId = Environment.ProcessId;
-        bool killedAny = false;
+        var stillRunning = new List<int>();
 
         foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppExeName)))
         {
-            try
+            using (process)
             {
                 if (process.Id == currentId)
                 {
                     continue;
                 }
 
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(8000);
-                killedAny = true;
-            }
-            catch
-            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // The process exited between enumeration and Kill.
+                    continue;
+                }
+                catch (Win32Exception ex)
+                {
+                    // Access denied or the process is already terminating; the wait below decides.
+                    Debug.WriteLine($"[Uninstall] Could not kill process {process.Id}: {ex.Message}");
+                }
+
+                try
+                {
+                    // File handles can outlive the process briefly; the delete helpers retry for that.
+                    if (!process.WaitForExit(ProcessExitTimeoutMs))
+                    {
+                        stillRunning.Add(process.Id);
+                    }
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+                {
+                    Debug.WriteLine($"[Uninstall] Could not wait for process {process.Id}: {ex.Message}");
+                }
             }
         }
 
-        if (killedAny)
+        if (stillRunning.Count > 0)
         {
-            System.Threading.Thread.Sleep(1200);
+            throw new InvalidOperationException(
+                $"{AppExeName} is still running (PID {string.Join(", ", stillRunning)}).");
         }
     }
 
@@ -217,6 +244,10 @@ internal static class Program
             AppName);
         DeleteDirectoryIfExists(localAppDataFolder);
 
+        // Builds before the app-data migration stored chats/models under this name.
+        DeleteDirectoryIfExists(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch"));
+
         // Leftover update installer in the temp folder.
         DeleteFileIfExists(Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe"));
     }
@@ -236,19 +267,46 @@ internal static class Program
         InstallDirectoryCleanup.Schedule(installDirectory);
     }
 
+    private const int DeleteAttempts = 5;
+    private const int DeleteRetryDelayMs = 250;
+
     private static void DeleteFileIfExists(string path)
     {
-        if (File.Exists(path))
+        RetryDelete(() =>
         {
-            File.Delete(path);
-        }
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }, path);
     }
 
     private static void DeleteDirectoryIfExists(string path)
     {
-        if (Directory.Exists(path))
+        RetryDelete(() =>
         {
-            Directory.Delete(path, recursive: true);
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }, path);
+    }
+
+    // A just-killed V-Notch can hold file handles for a moment after exit.
+    private static void RetryDelete(Action delete, string path)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                delete();
+                return;
+            }
+            catch (Exception ex) when (attempt < DeleteAttempts && ex is (IOException or UnauthorizedAccessException))
+            {
+                Debug.WriteLine($"[Uninstall] Delete attempt {attempt} failed for '{path}': {ex.Message}");
+                System.Threading.Thread.Sleep(DeleteRetryDelayMs * attempt);
+            }
         }
     }
 

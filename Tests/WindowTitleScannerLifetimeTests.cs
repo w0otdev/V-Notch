@@ -7,24 +7,58 @@ namespace VNotch.Tests;
 public sealed class WindowTitleScannerLifetimeTests
 {
     [Fact]
-    public async Task SettingsWatcherCreatesANewDirectoryAndSeesTheFirstSettingsFile()
+    public void BrowserInspectionRequiresExplicitPermissionAndRevocationStopsAllAutomation()
     {
-        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "VNotchWatcher-" + Guid.NewGuid().ToString("N"));
-        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool allowed = false;
+        using var scanner = new WindowTitleScanner(() => allowed);
+        int calls = 0;
+        scanner.BrowserUrlExtractor = () => { Interlocked.Increment(ref calls); return "https://example.com"; };
+        scanner.AnyBrowserMediaUrlExtractor = () => { Interlocked.Increment(ref calls); return "https://youtube.com/watch?v=example"; };
+        scanner.SpotifyWebPlayerDetector = () => { Interlocked.Increment(ref calls); return true; };
+        Assert.Null(scanner.TryGetBrowserUrl());
+        Assert.Null(scanner.TryGetMediaUrlFromAnyBrowser());
+        Assert.False(scanner.IsSpotifyWebPlayerOpen());
+        Assert.False(scanner.IsWorkerStarted);
+        Assert.Equal(0, calls);
+
+        allowed = true;
+        Assert.True(SpinWait.SpinUntil(() => scanner.TryGetBrowserUrl() != null, TimeSpan.FromSeconds(2)));
+        allowed = false;
+        Assert.Null(scanner.TryGetBrowserUrl());
+        Assert.Null(scanner.TryGetMediaUrlFromAnyBrowser());
+        Assert.False(scanner.IsSpotifyWebPlayerOpen());
+    }
+
+    [Fact]
+    public void RevokingPermissionDiscardsAnInFlightAutomationResult()
+    {
+        bool allowed = true;
+        using var scanner = new WindowTitleScanner(() => Volatile.Read(ref allowed));
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        scanner.BrowserUrlExtractor = () =>
+        {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(5));
+            return "https://private.example";
+        };
+        Assert.Null(scanner.TryGetBrowserUrl());
         try
         {
-            Assert.False(System.IO.Directory.Exists(directory));
-            using var watcher = WindowTitleScanner.CreateSettingsWatcher(directory, () => changed.TrySetResult());
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(directory, "settings.json"), "{}");
-            await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+            Volatile.Write(ref allowed, false);
+            Assert.Null(scanner.TryGetBrowserUrl());
         }
-        finally { if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, recursive: true); }
+        finally { release.Set(); }
+        scanner.Dispose();
+        Assert.True(SpinWait.SpinUntil(() => !scanner.IsWorkerAlive, TimeSpan.FromSeconds(2)));
+        Assert.Null(scanner.TryGetBrowserUrl());
     }
 
     [Fact]
     public void CallerMutationsCannotChangeTheCachedWindowTitles()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         var first = scanner.GetAllWindowTitles(isThrottled: true);
         var expected = first.ToArray();
         first.Clear();
@@ -35,7 +69,7 @@ public sealed class WindowTitleScannerLifetimeTests
     [Fact]
     public void TitleOnlyPollingDoesNotStartTheAutomationWorker()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         _ = scanner.GetAllWindowTitles(isThrottled: false);
         scanner.InvalidateUrlCaches();
         Assert.False(scanner.IsWorkerStarted);
@@ -50,7 +84,7 @@ public sealed class WindowTitleScannerLifetimeTests
     [Fact]
     public void DisposalDoesNotWaitForAnInFlightAutomationCallAndWorkerExitsAfterItReturns()
     {
-        using var scanner = new WindowTitleScanner();
+        using var scanner = new WindowTitleScanner(() => true);
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         scanner.SpotifyWebPlayerDetector = () =>

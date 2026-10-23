@@ -17,11 +17,14 @@ public sealed class SystemMonitorSamplingTests
         module.StatsUpdated += (_, info) => samples.Add(info);
         module.Start();
         Assert.True(module.IsRunning);
-        await Task.Delay(200, ct);
+        // Deliberate wall-clock gap: the module only computes CPU (>= 50 ms) and network
+        // (> 100 ms) deltas once enough Stopwatch time has passed since the previous sample.
+        // Measure the gap with the same clock rather than trusting Task.Delay granularity.
+        await WaitForSamplingIntervalAsync(ct);
         module.Tick();
         typeof(SystemMonitorModule).GetMethod("OnNetworkTopologyChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(module, new object?[] { null, EventArgs.Empty });
-        await Task.Delay(200, ct);
+        await WaitForSamplingIntervalAsync(ct);
         module.Tick();
         Assert.True(samples.Count >= 3);
         Assert.All(samples, sample =>
@@ -46,6 +49,12 @@ public sealed class SystemMonitorSamplingTests
         module.Start();
         Assert.Equal(count + 1, samples.Count);
     });
+
+    private static Task WaitForSamplingIntervalAsync(CancellationToken ct)
+    {
+        var gap = System.Diagnostics.Stopwatch.StartNew();
+        return TestWait.UntilAsync(() => gap.ElapsedMilliseconds >= 200, "system monitor sampling interval", ct);
+    }
 
     [Theory]
     [InlineData(16)]

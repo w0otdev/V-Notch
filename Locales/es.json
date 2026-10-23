@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Volumen de efectos",
+  "settings.interactionSoundVolume.hint": "Solo ajusta los sonidos de interacción. Suelta para escuchar; 0% silencia.",
+  "settings.interactionSounds": "Sonidos de interacción",
+  "settings.interactionSounds.hint": "Sonidos suaves para botones, interruptores y selecciones.",
   "settings.privacy.invisible.enable": "Activar modo invisible",
   "settings.privacy.invisible.disable": "Desactivar modo invisible",
   "settings.privacy.invisible.shortcut": "Alterna con Ctrl + Alt + Shift + I. Al desactivar el modo invisible, vuelve a aparecer el icono de la bandeja del sistema.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Paso 1/2: Crea un PIN de seis dígitos",
   "clipboard.confirmStep": "Paso 2/2: Confirma el PIN",
   "clipboard.confirmRetry": "Paso 2/2: Los PIN no coinciden. Confírmalo de nuevo.",
+  "clipboard.emptyTray": "Vaciar bandeja",
+  "clipboard.emptyTrayConfirm": "¿Eliminar permanentemente {0} elementos del portapapeles de todas las categorías? Se conservarán los elementos fijados, privados y archivados. Esta acción no se puede deshacer.",
   "clipboard.deleteConfirm": "¿Eliminar permanentemente {0} elementos? No se puede deshacer.",
   "clipboard.source": "Portapapeles",
   "clipboard.image": "Imagen",

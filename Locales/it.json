@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Volume effetti",
+  "settings.interactionSoundVolume.hint": "Regola solo i suoni delle interazioni. Rilascia per ascoltare; 0% disattiva il suono.",
+  "settings.interactionSounds": "Suoni delle interazioni",
+  "settings.interactionSounds.hint": "Suoni delicati per pulsanti, interruttori e selezioni.",
   "settings.privacy.invisible.enable": "Attiva modalità invisibile",
   "settings.privacy.invisible.disable": "Disattiva modalità invisibile",
   "settings.privacy.invisible.shortcut": "Attiva o disattiva con Ctrl + Alt + Shift + I. Disattivando la modalità invisibile, l’icona nell’area di notifica riappare.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Passaggio 1/2: Crea un PIN di sei cifre",
   "clipboard.confirmStep": "Passaggio 2/2: Conferma il PIN",
   "clipboard.confirmRetry": "Passaggio 2/2: I PIN non corrispondono. Conferma di nuovo.",
+  "clipboard.emptyTray": "Svuota vassoio",
+  "clipboard.emptyTrayConfirm": "Eliminare definitivamente {0} elementi degli appunti da tutte le categorie? Gli elementi fissati, privati e archiviati verranno conservati. Questa azione non può essere annullata.",
   "clipboard.deleteConfirm": "Eliminare definitivamente {0} elementi? Non è possibile annullare.",
   "clipboard.source": "Appunti",
   "clipboard.image": "Immagine",

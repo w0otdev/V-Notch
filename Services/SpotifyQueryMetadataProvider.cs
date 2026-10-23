@@ -29,8 +29,8 @@ internal sealed class SpotifyQueryMetadataProvider : IDisposable
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     // Content-addressed bundle URLs are immutable. Retain only their two hashes.
     private readonly Dictionary<Uri, SpotifyScriptMetadataReader.QueryHashes> _scripts = new();
-    private volatile string _findTracksHash = "903df2a65d8121e27d73a2be03c01e88ebe6021bb6d4eb82a389e35d87e51d27";
-    private volatile string _canvasHash = "575138ab27cd5c1b3e54da54d0a7cc8d85485402de26340c2145f0f6bb5e7a9f";
+    private volatile string _findTracksHash = MediaProtocolConfiguration.Current.SpotifyFindTracksHash;
+    private volatile string _canvasHash = MediaProtocolConfiguration.Current.SpotifyCanvasHash;
 
     internal SpotifyQueryMetadataProvider(HttpClient http) => _http = http;
     internal string FindTracksHash => _findTracksHash;

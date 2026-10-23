@@ -47,8 +47,8 @@
       },
       "Hardcodet.NotifyIcon.Wpf": {
         "type": "Transitive",
-        "resolved": "1.1.0",
-        "contentHash": "FFEkdRSidMrbMfQVwhCzq6KtSyR1qQojqtiUrkCyjnOOuMf7W3TNQkzFnBBxYxFe7uLk5mz7M38wFh1qdWyfvg=="
+        "resolved": "2.0.1",
+        "contentHash": "dtxmeZXzV2GzSm91aZ3hqzgoeVoARSkDPVCYfhVUNyyKBWYxMgNC0EcLiSYxD4Uc4alq/2qb3SmV8DgAENLRLQ=="
       },
       "JsonExtensions": {
         "type": "Transitive",
@@ -135,18 +135,19 @@
       },
       "Microsoft.ML.OnnxRuntime": {
         "type": "Transitive",
-        "resolved": "1.17.1",
-        "contentHash": "fkC8yYW2WH17hp94PrbG4Zz7XP49K2FyjdmEvUZ+jY0U2l5UzRzj6h01quRCEeUHAlbzCpBwViFJfv6y64buCA==",
+        "resolved": "1.31.0",
+        "contentHash": "7v58S0xqY1ZmLui5BnK3FQEWagRhmhkR/9yLrxF5rQGppGfcMaw7W0a2wgT1SWnT6ug0dmr1B2I4VWhlY/yvng==",
         "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.17.1"
+          "Microsoft.ML.OnnxRuntime.Managed": "1.31.0"
         }
       },
       "Microsoft.ML.OnnxRuntime.Managed": {
         "type": "Transitive",
-        "resolved": "1.17.1",
-        "contentHash": "eQWP47/pXr6aXsoZTLYNdj7DGOL5oosnYyM+0xzhjLo0qCTS4+rVzj6Y2RrET07tMaImlYD2vTRq6so+MzHL1g==",
+        "resolved": "1.31.0",
+        "contentHash": "o9nvEiddLLlAMOHN0XZ/06Oal0W6S7iWiSb8lzQAwfQKNOZtX4C8he5/I7Mc/DlSprNfovAW6kCkwX2BAE0JHw==",
         "dependencies": {
-          "System.Memory": "4.5.5"
+          "System.Memory": "4.5.5",
+          "System.Numerics.Tensors": "9.0.0"
         }
       },
       "Microsoft.NETCore.Platforms": {
@@ -423,14 +424,14 @@
           "AngleSharp": "[1.8.2, )",
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "ComputeSharp.D2D1": "[3.2.0, )",
-          "Hardcodet.NotifyIcon.Wpf": "[1.1.0, )",
+          "Hardcodet.NotifyIcon.Wpf": "[2.0.1, )",
           "LLamaSharp": "[0.27.0, )",
           "LLamaSharp.Backend.Cpu": "[0.27.0, )",
           "LLamaSharp.Backend.Vulkan.Windows": "[0.27.0, )",
           "LanguageDetection.Ai": "[1.1.0, )",
           "Markdig": "[0.41.3, )",
           "Microsoft.Extensions.DependencyInjection": "[8.0.1, )",
-          "Microsoft.ML.OnnxRuntime": "[1.17.1, )",
+          "Microsoft.ML.OnnxRuntime": "[1.31.0, )",
           "Microsoft.Web.WebView2": "[1.0.4078.44, )",
           "NAudio": "[2.2.1, )",
           "System.Data.OleDb": "[8.0.1, )",
@@ -451,10 +452,10 @@
       },
       "Microsoft.ML.OnnxRuntime": {
         "type": "Transitive",
-        "resolved": "1.17.1",
-        "contentHash": "fkC8yYW2WH17hp94PrbG4Zz7XP49K2FyjdmEvUZ+jY0U2l5UzRzj6h01quRCEeUHAlbzCpBwViFJfv6y64buCA==",
+        "resolved": "1.31.0",
+        "contentHash": "7v58S0xqY1ZmLui5BnK3FQEWagRhmhkR/9yLrxF5rQGppGfcMaw7W0a2wgT1SWnT6ug0dmr1B2I4VWhlY/yvng==",
         "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.17.1"
+          "Microsoft.ML.OnnxRuntime.Managed": "1.31.0"
         }
       },
       "Microsoft.Web.WebView2": {

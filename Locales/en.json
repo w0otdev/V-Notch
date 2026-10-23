@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "SFX volume",
+  "settings.interactionSoundVolume.hint": "Adjust interaction sounds only. Release to preview; 0% is silent.",
+  "settings.interactionSounds": "Interaction sounds",
+  "settings.interactionSounds.hint": "Play soft sounds for buttons, switches and selections.",
   "settings.privacy.invisible.enable": "Enable Invisible mode",
   "settings.privacy.invisible.disable": "Disable Invisible mode",
   "settings.privacy.invisible.shortcut": "Toggle with Ctrl + Alt + Shift + I. Turning Invisible off restores the system tray icon.",
@@ -995,6 +999,8 @@
   "clipboard.createStep": "Step 1/2: Create a six-digit PIN",
   "clipboard.confirmStep": "Step 2/2: Confirm your PIN",
   "clipboard.confirmRetry": "Step 2/2: PINs do not match. Try confirming again.",
+  "clipboard.emptyTray": "Empty tray",
+  "clipboard.emptyTrayConfirm": "Permanently delete {0} clipboard items from all categories? Pinned, Private, and archived items will be kept. This cannot be undone.",
   "clipboard.deleteConfirm": "Permanently delete {0} clipboard items? This cannot be undone.",
   "clipboard.source": "Clipboard",
   "clipboard.image": "Image",

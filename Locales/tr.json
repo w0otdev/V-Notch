@@ -1,4 +1,8 @@
 {
+  "settings.interactionSoundVolume": "Ses efekti düzeyi",
+  "settings.interactionSoundVolume.hint": "Yalnızca etkileşim seslerini ayarlar. Önizleme için bırakın; %0 sessizdir.",
+  "settings.interactionSounds": "Etkileşim sesleri",
+  "settings.interactionSounds.hint": "Düğmeler, anahtarlar ve seçimler için hafif sesler.",
   "settings.privacy.invisible.enable": "Görünmez modu aç",
   "settings.privacy.invisible.disable": "Görünmez modu kapat",
   "settings.privacy.invisible.shortcut": "Ctrl + Alt + Shift + I ile açıp kapatın. Görünmez modu kapatmak sistem tepsisi simgesini geri getirir.",
@@ -991,6 +995,8 @@
   "clipboard.createStep": "Adım 1/2: Altı haneli PIN oluşturun",
   "clipboard.confirmStep": "Adım 2/2: PIN kodunu doğrulayın",
   "clipboard.confirmRetry": "Adım 2/2: PIN kodları eşleşmiyor. Tekrar doğrulayın.",
+  "clipboard.emptyTray": "Tepsiyi boşalt",
+  "clipboard.emptyTrayConfirm": "Tüm kategorilerden {0} pano öğesi kalıcı olarak silinsin mi? Sabitlenmiş, özel ve arşivlenmiş öğeler korunacaktır. Bu işlem geri alınamaz.",
   "clipboard.deleteConfirm": "{0} öğe kalıcı olarak silinsin mi? Bu işlem geri alınamaz.",
   "clipboard.source": "Pano",
   "clipboard.image": "Resim",
