@@ -3,44 +3,46 @@ using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 
-public void EscapeRecoversAcrossClosingAndReopeningWhenKeyUpIsMissing()
-{
-    var state = new SpotlightKeyboardState();
-    var escape = new Win32Interop.KBDLLHOOKSTRUCT { vkCode = 0x1B };
-    state.Configure(true, true, true);
-    Assert.Equal(SpotlightKeyboardAction.Escape, state.Process(escape, Win32Interop.WM_KEYDOWN));
-    Assert.Equal(SpotlightKeyboardAction.Suppress, state.Process(escape, Win32Interop.WM_KEYDOWN));
-    state.Configure(true, true, false);
-    // The hook sees no intervening key-up or other keyboard event.
-    state.Configure(true, true, true);
-    Assert.Equal(SpotlightKeyboardAction.Escape, state.Process(escape, Win32Interop.WM_KEYDOWN));
-    state.Configure(true, true, false);
-    Assert.Equal(SpotlightKeyboardAction.None, state.Process(escape, Win32Interop.WM_KEYUP));
-}
-
-public void FallbackDoesNotRepeatWhenOpeningAndDisablingStopsSuppression()
-{
-    var state = new SpotlightKeyboardState();
-    var space = new Win32Interop.KBDLLHOOKSTRUCT
-    {
-        vkCode = Win32Interop.VK_SPACE,
-        flags = Win32Interop.LLKHF_ALTDOWN,
-        time = 1000
-    };
-    state.Configure(true, true, false);
-    Assert.Equal(SpotlightKeyboardAction.Toggle, state.Process(space, Win32Interop.WM_SYSKEYDOWN));
-    state.Configure(true, true, true);
-    space.time = 1100;
-    Assert.Equal(SpotlightKeyboardAction.Suppress, state.Process(space, Win32Interop.WM_SYSKEYDOWN));
-    state.Configure(false, false, false);
-    Assert.Equal(SpotlightKeyboardAction.None, state.Process(space, Win32Interop.WM_SYSKEYUP));
-}
-
 namespace VNotch.Tests;
 
 [Collection("Localization")]
 public sealed class SpotlightControllerTests
 {
+    [Fact]
+    public void EscapeRecoversAcrossClosingAndReopeningWhenKeyUpIsMissing()
+    {
+        var state = new SpotlightKeyboardState();
+        var escape = new Win32Interop.KBDLLHOOKSTRUCT { vkCode = 0x1B };
+        state.Configure(true, true, true);
+        Assert.Equal(SpotlightKeyboardAction.Escape, state.Process(escape, Win32Interop.WM_KEYDOWN));
+        Assert.Equal(SpotlightKeyboardAction.Suppress, state.Process(escape, Win32Interop.WM_KEYDOWN));
+        state.Configure(true, true, false);
+        // The hook sees no intervening key-up or other keyboard event.
+        state.Configure(true, true, true);
+        Assert.Equal(SpotlightKeyboardAction.Escape, state.Process(escape, Win32Interop.WM_KEYDOWN));
+        state.Configure(true, true, false);
+        Assert.Equal(SpotlightKeyboardAction.None, state.Process(escape, Win32Interop.WM_KEYUP));
+    }
+
+    [Fact]
+    public void FallbackDoesNotRepeatWhenOpeningAndDisablingStopsSuppression()
+    {
+        var state = new SpotlightKeyboardState();
+        var space = new Win32Interop.KBDLLHOOKSTRUCT
+        {
+            vkCode = Win32Interop.VK_SPACE,
+            flags = Win32Interop.LLKHF_ALTDOWN,
+            time = 1000
+        };
+        state.Configure(true, true, false);
+        Assert.Equal(SpotlightKeyboardAction.Toggle, state.Process(space, Win32Interop.WM_SYSKEYDOWN));
+        state.Configure(true, true, true);
+        space.time = 1100;
+        Assert.Equal(SpotlightKeyboardAction.Suppress, state.Process(space, Win32Interop.WM_SYSKEYDOWN));
+        state.Configure(false, false, false);
+        Assert.Equal(SpotlightKeyboardAction.None, state.Process(space, Win32Interop.WM_SYSKEYUP));
+    }
+
     [Fact]
     public void ClosingHostLeavesControllerAvailableForAnotherHost() => SharedStaTestRunner.Run(() =>
     {
