@@ -157,7 +157,7 @@ internal sealed class InteractionSoundPlayer : IDisposable
                 {
                     // 1. CLICK: Deep, muted PBT keycap thock (165 Hz sub + slow-pitched k2 body, zero k1 snap)
                     int start = (int)(rate * .0006);
-                    int end = (int)(rate * .0142);
+                    int end = (int)(rate * .0136);
                     for (int i = start; i < end; i++)
                     {
                         double dt = (double)(i - start) / rate;
@@ -343,7 +343,7 @@ internal sealed class InteractionSoundPlayer : IDisposable
 
         double lp1 = 0, lp2 = 0, lp3 = 0, lp4 = 0;
         double c = cut * (1 + (variant - 2.5) * .012);
-        int clickEnd = cue == InteractionCue.Click ? (int)(rate * .015) : samples;
+        int clickEnd = cue == InteractionCue.Click ? (int)(rate * .014) : samples;
         for (int i = 0; i < samples; i++)
         {
             if (i == 0 || i == samples - 1 || i >= clickEnd)
