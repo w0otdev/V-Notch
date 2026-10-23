@@ -362,14 +362,24 @@ public partial class SpotlightWindow : Window
                         ms.Write(buffer, 0, read);
                     byte[] rawPcm = ms.ToArray();
                     double lpL1 = 0, lpL2 = 0, lpR1 = 0, lpR2 = 0;
+                    int maxPostLp = 1;
                     for (int offset = 0; offset + 3 < rawPcm.Length; offset += 4)
                     {
                         short l = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset, 2));
                         short r = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2));
-                        lpL1 += .22 * (l - lpL1); lpL2 += .22 * (lpL1 - lpL2);
-                        lpR1 += .22 * (r - lpR1); lpR2 += .22 * (lpR1 - lpR2);
-                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset, 2), (short)Math.Round(lpL2 * .42));
-                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2), (short)Math.Round(lpR2 * .42));
+                        lpL1 += .26 * (l - lpL1); lpL2 += .26 * (lpL1 - lpL2);
+                        lpR1 += .26 * (r - lpR1); lpR2 += .26 * (lpR1 - lpR2);
+                        int sl = (int)Math.Round(lpL2);
+                        int sr = (int)Math.Round(lpR2);
+                        maxPostLp = Math.Max(maxPostLp, Math.Max(Math.Abs(sl), Math.Abs(sr)));
+                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset, 2), (short)Math.Clamp(sl, short.MinValue, short.MaxValue));
+                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2), (short)Math.Clamp(sr, short.MinValue, short.MaxValue));
+                    }
+                    double normScale = Math.Min(2.8, 22000.0 / maxPostLp);
+                    for (int offset = 0; offset + 1 < rawPcm.Length; offset += 2)
+                    {
+                        short s = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset, 2));
+                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset, 2), (short)Math.Clamp(Math.Round(s * normScale), -28000, 28000));
                     }
                     _sfxPcmBytes = rawPcm;
                 }
@@ -382,7 +392,7 @@ public partial class SpotlightWindow : Window
                     new System.IO.MemoryStream(pcm, writable: false), _sfxWaveFormat);
                 var gain = new NAudio.Wave.VolumeWaveProvider16(_sfxWaveStream)
                 {
-                    Volume = (float)Math.Clamp(_settings.InteractionSoundVolume, 0.0, 1.0)
+                    Volume = (float)Math.Clamp(_settings.InteractionSoundVolume * 1.35, 0.0, 1.0)
                 };
                 _sfxWaveOut = new NAudio.Wave.WaveOutEvent { DesiredLatency = 50, NumberOfBuffers = 2 };
                 _sfxWaveOut.Init(gain);
