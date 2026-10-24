@@ -381,7 +381,9 @@ public partial class SpotlightWindow
         {
             HideAiThinking();
             progressTimer.Stop();
+            progressTimer.Dispose();
             revealTimer.Stop();
+            revealTimer.Dispose();
             RevealText(finish: true);
             if (ReferenceEquals(_aiRequest, cts) && liveView != null)
                 liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText);

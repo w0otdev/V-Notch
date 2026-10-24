@@ -1,109 +1,144 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services;
 
-internal static class MediaHeuristics
+internal static partial class MediaHeuristics
 {
-    public static string BuildTrackIdentity(string track, string artist)
-    {
-        return $"{track.Trim().ToLowerInvariant()}|{artist.Trim().ToLowerInvariant()}";
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_build_track_identity(
+        char* trackPtr, int trackLen, char* artistPtr, int artistLen, char* outBuf, int outCap, out int outLen);
 
-    public static string BuildSourceOverrideKey(string sessionInstanceKey, string sourceAppId)
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_build_source_override_key(
+        char* sessionKeyPtr, int sessionKeyLen, char* appIdPtr, int appIdLen, char* outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_is_track_compatible_with_window_title(
+        char* trackPtr, int trackLen, char* titlePtr, int titleLen, out byte outCompatible);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_is_ignored_source_app(
+        char* appIdPtr, int appIdLen, out byte outIgnored);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_is_likely_soundcloud_placeholder_url(
+        char* urlPtr, int urlLen, out byte outIsPlaceholder);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_normalize_track_for_comparison(
+        char* textPtr, int textLen, char* outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_extract_core_track_name(
+        char* trackPtr, int trackLen, char* outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_heuristics_spotify_title_contains_track(
+        char* titlePtr, int titleLen, char* trackPtr, int trackLen, out byte outContains);
+
+    public static unsafe string BuildTrackIdentity(string track, string artist)
     {
-        if (!string.IsNullOrWhiteSpace(sessionInstanceKey))
+        string t = track ?? string.Empty;
+        string a = artist ?? string.Empty;
+        int cap = t.Length + a.Length + 8;
+        char[] buf = new char[cap];
+        fixed (char* pT = t)
+        fixed (char* pA = a)
+        fixed (char* pOut = buf)
         {
-            return sessionInstanceKey;
+            _ = vn_media_heuristics_build_track_identity(pT, t.Length, pA, a.Length, pOut, cap, out int len);
+            return len > 0 ? new string(buf, 0, len) : "|";
         }
-
-        return PlatformDetector.IsBrowserApp(sourceAppId) ? string.Empty : sourceAppId ?? string.Empty;
     }
 
-    public static bool IsTrackCompatibleWithWindowTitle(string track, string windowTitle)
+    public static unsafe string BuildSourceOverrideKey(string sessionInstanceKey, string sourceAppId)
+    {
+        string k = sessionInstanceKey ?? string.Empty;
+        string a = sourceAppId ?? string.Empty;
+        int cap = Math.Max(16, Math.Max(k.Length, a.Length) + 8);
+        char[] buf = new char[cap];
+        fixed (char* pK = k)
+        fixed (char* pA = a)
+        fixed (char* pOut = buf)
+        {
+            _ = vn_media_heuristics_build_source_override_key(pK, k.Length, pA, a.Length, pOut, cap, out int len);
+            return len > 0 ? new string(buf, 0, len) : string.Empty;
+        }
+    }
+
+    public static unsafe bool IsTrackCompatibleWithWindowTitle(string track, string windowTitle)
     {
         if (string.IsNullOrWhiteSpace(track) || string.IsNullOrWhiteSpace(windowTitle))
             return false;
 
-        string normalizedTrack = PlatformDetector.NormalizeForLooseMatch(track);
-        string normalizedWindowTitle = PlatformDetector.NormalizeForLooseMatch(windowTitle);
-        return !string.IsNullOrEmpty(normalizedTrack) &&
-               normalizedWindowTitle.Contains(normalizedTrack, StringComparison.Ordinal);
+        fixed (char* pT = track)
+        fixed (char* pW = windowTitle)
+        {
+            _ = vn_media_heuristics_is_track_compatible_with_window_title(pT, track.Length, pW, windowTitle.Length, out byte comp);
+            return comp != 0;
+        }
     }
 
-    public static bool IsIgnoredSourceApp(string sourceAppId)
+    public static unsafe bool IsIgnoredSourceApp(string sourceAppId)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return false;
 
-        if (sourceAppId.Contains("V-Notch", StringComparison.OrdinalIgnoreCase) ||
-            sourceAppId.Contains("vnotch", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        fixed (char* pA = sourceAppId)
+        {
+            _ = vn_media_heuristics_is_ignored_source_app(pA, sourceAppId.Length, out byte ign);
+            return ign != 0;
+        }
     }
 
-    public static bool IsLikelySoundCloudPlaceholderArtworkUrl(string? url)
+    public static unsafe bool IsLikelySoundCloudPlaceholderArtworkUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url))
-        {
             return true;
+
+        fixed (char* pU = url)
+        {
+            _ = vn_media_heuristics_is_likely_soundcloud_placeholder_url(pU, url.Length, out byte ph);
+            return ph != 0;
         }
-
-        string normalized = url.Replace("\\u0026", "&").Replace("\\/", "/").ToLowerInvariant();
-        return normalized.Contains("default_avatar", StringComparison.Ordinal) ||
-               normalized.Contains("/images/default_", StringComparison.Ordinal) ||
-               normalized.Contains("default-soundcloud", StringComparison.Ordinal) ||
-               normalized.Contains("/avatars-", StringComparison.Ordinal);
     }
 
-    public static string NormalizeTrackForComparison(string text)
+    public static unsafe string NormalizeTrackForComparison(string text)
     {
-        var result = text
-            .Replace(" (", " - ", StringComparison.Ordinal)
-            .Replace("(", " - ", StringComparison.Ordinal)
-            .Replace(")", "", StringComparison.Ordinal)
-            .Replace(" [", " - ", StringComparison.Ordinal)
-            .Replace("[", " - ", StringComparison.Ordinal)
-            .Replace("]", "", StringComparison.Ordinal);
-        return result.Trim();
+        string s = text ?? string.Empty;
+        int cap = Math.Max(32, s.Length * 3 + 8);
+        char[] buf = new char[cap];
+        fixed (char* pIn = s)
+        fixed (char* pOut = buf)
+        {
+            _ = vn_media_heuristics_normalize_track_for_comparison(pIn, s.Length, pOut, cap, out int len);
+            return len > 0 ? new string(buf, 0, len) : string.Empty;
+        }
     }
 
-    public static string ExtractCoreTrackName(string track)
+    public static unsafe string ExtractCoreTrackName(string track)
     {
-        int parenIdx = track.IndexOf('(');
-        int bracketIdx = track.IndexOf('[');
-        int cutIdx = -1;
-
-        if (parenIdx > 0 && bracketIdx > 0)
-            cutIdx = Math.Min(parenIdx, bracketIdx);
-        else if (parenIdx > 0)
-            cutIdx = parenIdx;
-        else if (bracketIdx > 0)
-            cutIdx = bracketIdx;
-
-        if (cutIdx > 0)
-            return track.Substring(0, cutIdx).Trim();
-
-        return track;
+        string s = track ?? string.Empty;
+        int cap = Math.Max(16, s.Length + 8);
+        char[] buf = new char[cap];
+        fixed (char* pIn = s)
+        fixed (char* pOut = buf)
+        {
+            _ = vn_media_heuristics_extract_core_track_name(pIn, s.Length, pOut, cap, out int len);
+            return len > 0 ? new string(buf, 0, len) : string.Empty;
+        }
     }
 
-    public static bool SpotifyTitleContainsTrack(string spotifyWindowTitle, string smtcTrack)
+    public static unsafe bool SpotifyTitleContainsTrack(string spotifyWindowTitle, string smtcTrack)
     {
         if (string.IsNullOrEmpty(spotifyWindowTitle) || string.IsNullOrEmpty(smtcTrack))
             return false;
 
-        if (spotifyWindowTitle.Contains(smtcTrack, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        string normalizedTrack = NormalizeTrackForComparison(smtcTrack);
-        string normalizedTitle = NormalizeTrackForComparison(spotifyWindowTitle);
-
-        if (normalizedTitle.Contains(normalizedTrack, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        string coreTrack = ExtractCoreTrackName(smtcTrack);
-        if (!string.IsNullOrEmpty(coreTrack) && coreTrack.Length >= 3 &&
-            spotifyWindowTitle.Contains(coreTrack, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        fixed (char* pW = spotifyWindowTitle)
+        fixed (char* pT = smtcTrack)
+        {
+            _ = vn_media_heuristics_spotify_title_contains_track(pW, spotifyWindowTitle.Length, pT, smtcTrack.Length, out byte c);
+            return c != 0;
+        }
     }
 }

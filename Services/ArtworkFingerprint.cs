@@ -1,17 +1,26 @@
 using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace VNotch.Services;
 
-internal readonly record struct ArtworkFingerprint(ulong ContentHash, int PixelWidth, int PixelHeight)
+internal readonly partial record struct ArtworkFingerprint(ulong ContentHash, int PixelWidth, int PixelHeight)
 {
     private const int SampleEdge = 64;
-    private const ulong FnvOffsetBasis = 14695981039346656037UL;
-    private const ulong FnvPrime = 1099511628211UL;
 
-    public static ArtworkFingerprint Create(BitmapSource source)
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_artwork_fingerprint_compute(
+        byte* pixels,
+        int byteCount,
+        int sourceWidth,
+        int sourceHeight,
+        int sampledWidth,
+        int sampledHeight,
+        out ulong outHash);
+
+    public static unsafe ArtworkFingerprint Create(BitmapSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -42,39 +51,16 @@ internal readonly record struct ArtworkFingerprint(ulong ContentHash, int PixelW
         try
         {
             sampled.CopyPixels(pixels, stride, 0);
-
-            ulong hash = FnvOffsetBasis;
-            MixInt(ref hash, sourceWidth);
-            MixInt(ref hash, sourceHeight);
-            MixInt(ref hash, sampled.PixelWidth);
-            MixInt(ref hash, sampled.PixelHeight);
-
-            for (int i = 0; i < byteCount; i++)
+            fixed (byte* p = pixels)
             {
-                hash ^= pixels[i];
-                hash *= FnvPrime;
+                _ = vn_artwork_fingerprint_compute(
+                    p, byteCount, sourceWidth, sourceHeight, sampled.PixelWidth, sampled.PixelHeight, out ulong hash);
+                return new ArtworkFingerprint(hash, sourceWidth, sourceHeight);
             }
-
-            return new ArtworkFingerprint(hash, sourceWidth, sourceHeight);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(pixels);
-        }
-    }
-
-    private static void MixInt(ref ulong hash, int value)
-    {
-        unchecked
-        {
-            hash ^= (byte)value;
-            hash *= FnvPrime;
-            hash ^= (byte)(value >> 8);
-            hash *= FnvPrime;
-            hash ^= (byte)(value >> 16);
-            hash *= FnvPrime;
-            hash ^= (byte)(value >> 24);
-            hash *= FnvPrime;
         }
     }
 }

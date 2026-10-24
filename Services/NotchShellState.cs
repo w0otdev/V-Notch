@@ -1,9 +1,15 @@
 using System;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public sealed class NotchShellState
+public sealed partial class NotchShellState
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_notchshell_is_effectively_visible(
+        byte isNotchVisible, byte isHiddenByFullscreen, byte isHiddenByIdle,
+        out byte outVisible);
+
     public IntPtr Hwnd { get; set; }
 
     public bool IsNotchVisible { get; set; } = true;
@@ -29,5 +35,9 @@ public sealed class NotchShellState
     public bool HasFixedBounds { get; set; }
 
     public bool IsEffectivelyNotchVisible =>
-        IsNotchVisible && !IsHiddenByFullscreen && !IsHiddenByIdle;
+        vn_notchshell_is_effectively_visible(
+            IsNotchVisible ? (byte)1 : (byte)0,
+            IsHiddenByFullscreen ? (byte)1 : (byte)0,
+            IsHiddenByIdle ? (byte)1 : (byte)0,
+            out byte vis) == 0 && vis != 0;
 }

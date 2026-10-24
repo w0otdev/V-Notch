@@ -172,6 +172,7 @@ public partial class SettingsWindow
     private void ProjectScrollV_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/Scroll-V");
     private void ReportBug_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new");
     private void RequestFeature_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new?labels=enhancement&template=feature_request.md");
+    private void Discussion_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/discussions");
 #pragma warning restore S1075
     private void ClearCache_Click(object sender, RoutedEventArgs e)
 

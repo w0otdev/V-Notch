@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 
 namespace VNotch.Services;
 
-internal sealed class FfmpegRecordingProbe
+internal sealed partial class FfmpegRecordingProbe
 {
     private readonly Dictionary<(int Id, long Start), bool> _cache = new();
 
@@ -33,7 +31,6 @@ internal sealed class FfmpegRecordingProbe
                 catch (Exception ex) when (ex is COMException or InvalidOperationException or
                     System.ComponentModel.Win32Exception or UnauthorizedAccessException)
                 {
-                    // An inaccessible process is unknown, never positive evidence.
                 }
             }
         }
@@ -73,53 +70,20 @@ internal sealed class FfmpegRecordingProbe
     {
         if (value == null || !Marshal.IsComObject(value)) return;
         try { Marshal.FinalReleaseComObject(value); }
-        catch (InvalidComObjectException) { /* Already disconnected during process exit. */ }
+        catch (InvalidComObjectException) { }
     }
 
-    internal static bool IsScreenCaptureCommand(string? command)
+    internal static unsafe bool IsScreenCaptureCommand(string? command)
     {
         if (string.IsNullOrWhiteSpace(command)) return false;
-        IntPtr argv = CommandLineToArgvW(command, out int count);
-        if (argv == IntPtr.Zero) return false;
-        try
+        fixed (char* ptr = command)
         {
-            var args = new string[count];
-            for (int i = 0; i < count; i++) args[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i * IntPtr.Size)) ?? "";
-            string? format = null;
-            bool capture = false;
-            for (int i = 1; i < args.Length; i++)
-            {
-                string arg = args[i];
-                if (arg is "-h" or "-help" or "-version" or "-list_devices" or "-list_options") return false;
-                if (i + 1 >= args.Length) continue;
-                string value = args[i + 1];
-                if ((arg is "-frames:v" or "-vframes") && value == "1") return false;
-                if (arg == "-f") { format = value; i++; }
-                else if (arg == "-i")
-                {
-                    capture |= format == "gdigrab" && (value == "desktop" || value.StartsWith("title=", StringComparison.Ordinal) || value.StartsWith("hwnd=", StringComparison.Ordinal));
-                    capture |= format == "dshow" && value.StartsWith("video=screen-capture-recorder", StringComparison.OrdinalIgnoreCase);
-                    capture |= format == "lavfi" && HasDesktopFilter(value);
-                    format = null;
-                    i++;
-                }
-                else if (arg is "-filter_complex" or "-lavfi")
-                {
-                    capture |= HasDesktopFilter(value);
-                    i++;
-                }
-            }
-            return capture;
+            vn_ffmpeg_is_screen_capture_command(ptr, command.Length, out byte capture);
+            return capture != 0;
         }
-        finally { LocalFree(argv); }
     }
 
-    private static bool HasDesktopFilter(string value)
-        => Regex.IsMatch(value, @"(?:^|[;,\]])\s*(?:ddagrab|gfxcapture)(?:\s*[=,;\[]|\s*$)",
-            RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr CommandLineToArgvW(string command, out int count);
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr LocalFree(IntPtr memory);
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_ffmpeg_is_screen_capture_command(
+        char* cmd_ptr, int cmd_len, out byte out_is_capture);
 }

@@ -6,10 +6,9 @@ using System.Windows.Threading;
 
 namespace VNotch.Services;
 
-public class HoverDetectionService : IDisposable
+public partial class HoverDetectionService : IDisposable
 {
     private const int OutsideWindowIntervalMs = 125;
-    private const int TopEdgeRevealThickness = 3;
 
     private readonly UiScheduledTimer _pollTimer;
     private readonly UiScheduledTimer _hoverDelayTimer;
@@ -34,6 +33,18 @@ public class HoverDetectionService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_hover_is_in_top_edge_reveal_zone(
+        double notchLeft, double notchTop, double notchWidth, double notchHeight,
+        int hoverZoneMargin, double px, double py,
+        out byte outInZone);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_hover_get_distance_to_notch(
+        double notchLeft, double notchTop, double notchWidth, double notchHeight,
+        double px, double py,
+        out double outDist);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT
@@ -127,14 +138,12 @@ public class HoverDetectionService : IDisposable
 
         if (isInZone)
         {
-
             _pendingLeave = false;
 
             if (!_isHovering)
             {
                 if (!_pendingEnter)
                 {
-
                     _pendingEnter = true;
                     _hoverEnterTime = now;
                     _hoverDelayTimer.Interval = _enterDelay;
@@ -159,14 +168,12 @@ public class HoverDetectionService : IDisposable
         }
         else
         {
-
             _pendingEnter = false;
 
             if (_isHovering)
             {
                 if (!_pendingLeave)
                 {
-
                     _pendingLeave = true;
                     _hoverLeaveTime = now;
                     _hoverDelayTimer.Interval = _leaveDelay;
@@ -201,13 +208,9 @@ public class HoverDetectionService : IDisposable
     public bool IsPointInTopEdgeRevealZone(Point point)
     {
         if (_notchBounds.IsEmpty || _notchBounds.Width <= 0) return false;
-
-        double left = _notchBounds.Left - _hoverZoneMargin;
-        double right = _notchBounds.Right + _hoverZoneMargin;
-        double bottom = _notchBounds.Top + TopEdgeRevealThickness;
-
-        return point.X >= left && point.X <= right
-            && point.Y >= _notchBounds.Top && point.Y <= bottom;
+        return vn_hover_is_in_top_edge_reveal_zone(
+            _notchBounds.Left, _notchBounds.Top, _notchBounds.Width, _notchBounds.Height,
+            _hoverZoneMargin, point.X, point.Y, out byte inZone) == 0 && inZone != 0;
     }
 
     public bool IsPointInHoverZone(Point point)
@@ -217,14 +220,10 @@ public class HoverDetectionService : IDisposable
 
     public double GetDistanceToNotch(Point point)
     {
-        var center = new Point(
-            _notchBounds.Left + _notchBounds.Width / 2,
-            _notchBounds.Top + _notchBounds.Height / 2
-        );
-
-        double dx = point.X - center.X;
-        double dy = point.Y - center.Y;
-        return Math.Sqrt(dx * dx + dy * dy);
+        vn_hover_get_distance_to_notch(
+            _notchBounds.Left, _notchBounds.Top, _notchBounds.Width, _notchBounds.Height,
+            point.X, point.Y, out double dist);
+        return dist;
     }
 
     public void ResetHoverState()

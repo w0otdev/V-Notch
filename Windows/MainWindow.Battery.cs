@@ -201,6 +201,7 @@ public partial class MainWindow
         dismissTimer.Tick += (s, e) =>
         {
             dismissTimer.Stop();
+            dismissTimer.Dispose();
             if (!ReferenceEquals(_chargingNotificationDismissTimer, dismissTimer) ||
                 dismissToken != _chargingGlanceToken)
             {
@@ -274,6 +275,7 @@ public partial class MainWindow
         var timer = _chargingNotificationDismissTimer;
         _chargingNotificationDismissTimer = null;
         timer?.Stop();
+        timer?.Dispose();
     }
 
     private void PlayChargingBounce()

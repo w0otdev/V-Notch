@@ -1,5 +1,4 @@
-using System.Globalization;
-using System.Text;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
@@ -10,27 +9,29 @@ public enum YouTubeLookupSource
     DataApi = 2,
 }
 
-public sealed class YouTubeLookupResult
+public sealed partial class YouTubeLookupResult
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_youtube_title_matches(
+        char* titlePtr, int titleLen, char* otherPtr, int otherLen, out byte outMatches);
+
     public string? Id { get; init; }
     public string? Author { get; init; }
     public string? Title { get; init; }
     public TimeSpan Duration { get; init; }
-
     public string? ThumbnailUrl { get; init; }
-
     public YouTubeLookupSource Source { get; init; } = YouTubeLookupSource.Unknown;
 
-    public bool TitleMatches(string otherTitle)
+    public unsafe bool TitleMatches(string otherTitle)
     {
         if (string.IsNullOrEmpty(Title) || string.IsNullOrEmpty(otherTitle))
-        {
             return false;
-        }
 
-        string t1 = PlatformDetector.NormalizeForLooseMatch(Title);
-        string t2 = PlatformDetector.NormalizeForLooseMatch(otherTitle);
-        if (t1.Length == 0 || t2.Length == 0) return false;
-        return t1.Contains(t2, StringComparison.Ordinal) || t2.Contains(t1, StringComparison.Ordinal);
+        fixed (char* pT1 = Title)
+        fixed (char* pT2 = otherTitle)
+        {
+            _ = vn_youtube_title_matches(pT1, Title.Length, pT2, otherTitle.Length, out byte matches);
+            return matches != 0;
+        }
     }
 }

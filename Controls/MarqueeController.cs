@@ -9,7 +9,7 @@ using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch.Controls;
 
-internal sealed class MarqueeController
+internal sealed class MarqueeController : IDisposable
 {
     #region Dependencies
 
@@ -65,6 +65,15 @@ internal sealed class MarqueeController
         _title.B.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
         _artist.A.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
         _artist.B.Marquee.BeginAnimation(TranslateTransform.XProperty, null);
+    }
+
+    public void Dispose()
+    {
+        Stop();
+        _titleMorphTimer.Tick -= TitleMorphTimer_Tick;
+        _titleMorphTimer.Dispose();
+        _artistMorphTimer.Tick -= ArtistMorphTimer_Tick;
+        _artistMorphTimer.Dispose();
     }
     public void RefreshMediaMarquee()
     {

@@ -1,175 +1,64 @@
-using System.Globalization;
-using System.Text;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-internal static class SettingsSearchMatcher
+internal static partial class SettingsSearchMatcher
 {
-    public static string Normalize(string? input)
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_settings_search_normalize(
+        char* inputPtr, int inputLen, char* outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_settings_search_get_normalized_score(
+        char* normSourcePtr, int normSourceLen, char* normQueryPtr, int normQueryLen, byte allowFuzzy, out int outScore);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_settings_search_is_match(
+        char* sourcePtr, int sourceLen, char* queryPtr, int queryLen, out byte outIsMatch);
+
+    public static unsafe string Normalize(string? input)
     {
         if (string.IsNullOrWhiteSpace(input)) return string.Empty;
 
-        string decomposed = input.Normalize(NormalizationForm.FormKD);
-        var result = new StringBuilder(decomposed.Length);
-        bool previousWasSeparator = true;
-
-        foreach (char character in decomposed)
+        int cap = Math.Max(32, input.Length * 4 + 8);
+        char[] buf = new char[cap];
+        fixed (char* pIn = input)
+        fixed (char* pOut = buf)
         {
-            UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(character);
-            if (category is UnicodeCategory.NonSpacingMark
-                or UnicodeCategory.SpacingCombiningMark
-                or UnicodeCategory.EnclosingMark)
-            {
-                continue;
-            }
-
-            char normalizedCharacter = character switch
-            {
-                'đ' or 'Đ' => 'd',
-                _ => char.ToLowerInvariant(character)
-            };
-
-            if (char.IsLetterOrDigit(normalizedCharacter))
-            {
-                result.Append(normalizedCharacter);
-                previousWasSeparator = false;
-            }
-            else if (!previousWasSeparator)
-            {
-                result.Append(' ');
-                previousWasSeparator = true;
-            }
+            _ = vn_settings_search_normalize(pIn, input.Length, pOut, cap, out int outLen);
+            return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
         }
-
-        if (result.Length > 0 && result[^1] == ' ')
-        {
-            result.Length--;
-        }
-
-        return result.ToString();
     }
 
-    public static bool IsMatch(string sourceText, string query) =>
-        IsNormalizedMatch(Normalize(sourceText), Normalize(query));
+    public static unsafe bool IsMatch(string sourceText, string query)
+    {
+        string s = sourceText ?? string.Empty;
+        string q = query ?? string.Empty;
+        fixed (char* pS = s)
+        fixed (char* pQ = q)
+        {
+            _ = vn_settings_search_is_match(pS, s.Length, pQ, q.Length, out byte isMatch);
+            return isMatch != 0;
+        }
+    }
 
     public static bool IsNormalizedMatch(string normalizedSource, string normalizedQuery) =>
         GetNormalizedMatchScore(normalizedSource, normalizedQuery) > 0;
 
-    // Zero means unrelated. Exact words rank above prefixes, then minor typos.
-    public static int GetNormalizedMatchScore(string normalizedSource, string normalizedQuery, bool allowFuzzy = true)
+    public static unsafe int GetNormalizedMatchScore(string normalizedSource, string normalizedQuery, bool allowFuzzy = true)
     {
-        if (normalizedSource.Length == 0 || normalizedQuery.Length == 0)
-        {
+        if (string.IsNullOrEmpty(normalizedSource) || string.IsNullOrEmpty(normalizedQuery))
             return 0;
-        }
 
-        string[] sourceWords = normalizedSource.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        string[] queryWords = normalizedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Distinct(StringComparer.Ordinal).ToArray();
-        if (queryWords.Length == 0) return 0;
-
-        int weakestMatch = 3;
-        int exactMatches = 0;
-        int fuzzyMatches = 0;
-        foreach (string queryWord in queryWords)
+        fixed (char* pS = normalizedSource)
+        fixed (char* pQ = normalizedQuery)
         {
-            int quality = GetWordMatchQuality(sourceWords, queryWord, allowFuzzy);
-            // Never let several approximate words turn an unrelated query into a result.
-            if (quality == 0 || (quality == 1 && ++fuzzyMatches > 1)) return 0;
-            if (quality == 3) exactMatches++;
-            weakestMatch = Math.Min(weakestMatch, quality);
+            _ = vn_settings_search_get_normalized_score(
+                pS, normalizedSource.Length,
+                pQ, normalizedQuery.Length,
+                allowFuzzy ? (byte)1 : (byte)0,
+                out int score);
+            return score;
         }
-
-        return weakestMatch * 100 + 50 * exactMatches / queryWords.Length;
-    }
-
-    private static int GetWordMatchQuality(string[] sourceWords, string queryWord, bool allowFuzzy)
-    {
-        int bestQuality = 0;
-        foreach (string sourceWord in sourceWords)
-        {
-            if (sourceWord == queryWord) return 3;
-
-            // These scripts commonly omit spaces between words; preserve literal search.
-            if (queryWord.All(IsUnsegmentedScriptCharacter)
-                && sourceWord.Contains(queryWord, StringComparison.Ordinal))
-            {
-                bestQuality = Math.Max(bestQuality, 2);
-                continue;
-            }
-
-            // Short keywords (e.g. "on" or "ai") must be whole words.
-            if (queryWord.Length >= 3 && sourceWord.StartsWith(queryWord, StringComparison.Ordinal))
-            {
-                bestQuality = Math.Max(bestQuality, 2);
-                continue;
-            }
-
-            if (allowFuzzy && bestQuality == 0
-                && queryWord.Length >= 5 && sourceWord.Length >= 5
-                && queryWord[0] == sourceWord[0]
-                && Math.Abs(queryWord.Length - sourceWord.Length) <= 1
-                && (CalculateLevenshteinDistance(queryWord, sourceWord) == 1 || IsSingleTransposition(queryWord, sourceWord)))
-            {
-                bestQuality = 1;
-            }
-        }
-
-        return bestQuality;
-    }
-
-    private static bool IsSingleTransposition(string a, string b)
-    {
-        if (a.Length != b.Length) return false;
-        int firstDiff = -1, secondDiff = -1;
-        for (int i = 0; i < a.Length; i++)
-        {
-            if (a[i] != b[i])
-            {
-                if (firstDiff == -1) firstDiff = i;
-                else if (secondDiff == -1) secondDiff = i;
-                else return false;
-            }
-        }
-        return firstDiff != -1 && secondDiff == firstDiff + 1 &&
-               a[firstDiff] == b[secondDiff] && a[secondDiff] == b[firstDiff];
-    }
-
-    private static bool IsUnsegmentedScriptCharacter(char character) => character is
-        >= '\u3040' and <= '\u30ff' // Japanese
-        or >= '\u3400' and <= '\u9fff' // Han
-        or >= '\u1100' and <= '\u11ff' // Decomposed Hangul (FormKD)
-        or >= '\u0e00' and <= '\u0eff' // Thai and Lao
-        or >= '\u1000' and <= '\u109f' // Myanmar
-        or >= '\u1780' and <= '\u17ff'; // Khmer
-
-    private static int CalculateLevenshteinDistance(string source, string target)
-    {
-        if (source.Length == 0) return target.Length;
-        if (target.Length == 0) return source.Length;
-
-        int[] previousRow = new int[target.Length + 1];
-        int[] currentRow = new int[target.Length + 1];
-
-        for (int column = 0; column < previousRow.Length; column++)
-        {
-            previousRow[column] = column;
-        }
-
-        for (int row = 0; row < source.Length; row++)
-        {
-            currentRow[0] = row + 1;
-            for (int column = 0; column < target.Length; column++)
-            {
-                int substitutionCost = source[row] == target[column] ? 0 : 1;
-                currentRow[column + 1] = Math.Min(
-                    Math.Min(currentRow[column] + 1, previousRow[column + 1] + 1),
-                    previousRow[column] + substitutionCost);
-            }
-
-            (previousRow, currentRow) = (currentRow, previousRow);
-        }
-
-        return previousRow[target.Length];
     }
 }

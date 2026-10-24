@@ -422,13 +422,16 @@ public partial class ClipboardTray : UserControl, IDisposable
         string key = "clipboard.category." + name.ToLowerInvariant();
         return Loc.Get(key);
     }
+    private const int MaxCachedBrushes = 256;
     private static readonly ConcurrentDictionary<string, Brush> CachedBrushes = new(StringComparer.Ordinal);
-    private static Brush Brush(string value) => CachedBrushes.GetOrAdd(value, static color =>
+    private static Brush Brush(string value)
     {
-        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        if (CachedBrushes.TryGetValue(value, out var existing)) return existing;
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(value));
         brush.Freeze();
+        if (CachedBrushes.Count < MaxCachedBrushes) CachedBrushes.TryAdd(value, brush);
         return brush;
-    });
+    }
     private void SelectCategory(string category)
     {
         _pendingSelectAll = null;
@@ -1434,6 +1437,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         CancelThumbnailLoads();
         CancelCardPositionAnimation();
         _realizedCardElements.Clear();
+        _completedContentLoads.Clear();
         _arrivingCards.Clear();
         _searchTimer.Stop();
         _searchTimer.Dispose();
@@ -1466,6 +1470,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         CancelCardPositionAnimation();
         CancelThumbnailLoads();
         _realizedCardElements.Clear();
+        _completedContentLoads.Clear();
         _arrivingCards.Clear();
         _searchTimer.Stop();
         _queryDirty = true;

@@ -1,24 +1,25 @@
+using System;
 using System.Buffers;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace VNotch.Services;
 
-internal static class SpotifyScriptMetadataReader
+internal static partial class SpotifyScriptMetadataReader
 {
     private const int BlockSize = 8192;
     private const int OverlapSize = 1024;
     internal static readonly Regex FindTracksPattern = CreatePattern("findTracks");
     internal static readonly Regex CanvasPattern = CreatePattern("canvas");
 
-    // Four bounded whitespace runs keep every possible match below OverlapSize.
     private static Regex CreatePattern(string operation) => new(
         "[\"']" + operation + "[\"']\\s{0,128},\\s{0,128}[\"']query[\"']\\s{0,128},\\s{0,128}[\"'](?<hash>[a-f0-9]{64})[\"']",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
-    // Only ASCII query metadata is relevant. Latin-1 keeps a one-to-one mapping
-    // between bytes and characters without decoding or retaining the JS bundle.
     internal static async Task<string?> ReadHashAsync(
         Stream stream, Regex pattern, int maxBytes, CancellationToken token)
     {
@@ -49,7 +50,6 @@ internal static class SpotifyScriptMetadataReader
                     .ConfigureAwait(false);
                 if (read == 0)
                     return new QueryHashes(firstHash, secondHash);
-                // Compare before adding to avoid overflow for int.MaxValue limits.
                 if (read > maxBytes - totalRead)
                     return null;
                 totalRead += read;
@@ -75,14 +75,38 @@ internal static class SpotifyScriptMetadataReader
 
     internal sealed record QueryHashes(string? FindTracksHash, string? CanvasHash);
 
-    private static string? FindHash(char[] window, int length, Regex pattern)
+    private static unsafe string? FindHash(char[] window, int length, Regex pattern)
     {
+        string? op = ReferenceEquals(pattern, FindTracksPattern)
+            ? "findTracks"
+            : ReferenceEquals(pattern, CanvasPattern)
+                ? "canvas"
+                : null;
+
+        if (op != null)
+        {
+            Span<char> hashBuf = stackalloc char[64];
+            byte found;
+            fixed (char* pWin = window)
+            fixed (char* pOp = op)
+            fixed (char* pHash = hashBuf)
+            {
+                vn_spotify_script_find_hash(pWin, length, pOp, op.Length, pHash, out found);
+            }
+            return found != 0 ? new string(hashBuf) : null;
+        }
+
         var characters = window.AsSpan(0, length);
         foreach (var match in pattern.EnumerateMatches(characters))
         {
-            // Allocate only the small matched expression, never the whole window.
             return pattern.Match(characters.Slice(match.Index, match.Length).ToString()).Groups["hash"].Value;
         }
         return null;
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_spotify_script_find_hash(
+        char* window_ptr, int window_len,
+        char* op_ptr, int op_len,
+        char* out_hash64, out byte out_found);
 }

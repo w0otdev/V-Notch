@@ -698,6 +698,8 @@ public sealed class LiquidGlassController : IDisposable
         Stop(retainGpuResources: false);
         if (Interlocked.Exchange(ref _disposed, 1) == 0 && _worker == null)
         {
+            ReleaseRenderTimerPeriod();
+            DisposeWaitableTimer();
             try { _idleWakeEvent.Dispose(); }
             catch { /* best-effort handle cleanup */ }
         }

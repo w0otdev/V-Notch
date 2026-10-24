@@ -95,14 +95,24 @@ public sealed class TranslationWrittenNumberTests
     [InlineData("Nhiệt độ −12,5 đến +20,5 độ.", "Temperatures from -12.5 to +20.5 degrees.")]
     [InlineData("共有12人，费用80元，持续3天。", "There are twelve people, costing eighty yuan, over three days.")]
     [InlineData("Có １２ người và ٣ ngày.", "There are 12 people and 3 days.")]
+    [InlineData("Có 12 người và 3 ngày.", "There are １２ people and ٣ days.")]
+    [InlineData("Giá ١٢٫٥.", "Price 12.5.")]
     public async Task NumericRepresentationsAcrossLanguagesAreReviewable(string source, string output)
     {
         using var engine = new Engine(output);
         using var service = new LocalTranslationService(engine);
-        var result = await service.TranslateAsync(source, "vi", "en", default);
-        Assert.Equal(output, result.Text);
-        Assert.False(result.LiteralsPreserved);
+        for (int i = 0; i < 2; i++)
+        {
+            var result = await service.TranslateAsync(source, "vi", "en", default);
+            Assert.Equal(output, result.Text);
+            Assert.False(result.LiteralsPreserved);
+        }
+        Assert.Equal(2, engine.Calls);
     }
+
+    [Fact]
+    public void UnchangedUnicodeNumeralsRemainVerifiable() =>
+        Assert.True(TranslationTextIntegrity.Verify("Có １２ người và ٣ ngày.", "There are １２ people and ٣ days."));
 
     [Fact]
     public void NumericInputStillProtectsLinksAndIdentifiers()

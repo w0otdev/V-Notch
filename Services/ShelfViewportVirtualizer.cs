@@ -1,4 +1,4 @@
-using System;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
@@ -7,8 +7,25 @@ internal readonly record struct ShelfViewportRange(int StartIndex, int EndIndexE
     public static ShelfViewportRange Empty => new(0, 0);
 }
 
-internal static class ShelfViewportVirtualizer
+internal static partial class ShelfViewportVirtualizer
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnShelfViewportRange
+    {
+        public int StartIndex;
+        public int EndIndexExclusive;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_shelf_viewport_calculate(
+        int itemCount,
+        int rowCount,
+        double cellWidth,
+        double horizontalOffset,
+        double viewportWidth,
+        int overscanColumns,
+        out VnShelfViewportRange outRange);
+
     public static ShelfViewportRange Calculate(
         int itemCount,
         int rowCount,
@@ -17,24 +34,14 @@ internal static class ShelfViewportVirtualizer
         double viewportWidth,
         int overscanColumns = 1)
     {
-        if (itemCount <= 0 || rowCount <= 0 || cellWidth <= 0 || !double.IsFinite(cellWidth))
-            return ShelfViewportRange.Empty;
-
-        int columnCount = (itemCount + rowCount - 1) / rowCount;
-        double safeOffset = double.IsFinite(horizontalOffset) ? Math.Max(0, horizontalOffset) : 0;
-        double safeViewport = double.IsFinite(viewportWidth) && viewportWidth > 0
-            ? viewportWidth
-            : cellWidth * 4;
-        int overscan = Math.Max(0, overscanColumns);
-
-        int firstVisibleColumn = (int)Math.Floor(safeOffset / cellWidth);
-        int endVisibleColumnExclusive = (int)Math.Ceiling((safeOffset + safeViewport) / cellWidth);
-
-        int startColumn = Math.Clamp(firstVisibleColumn - overscan, 0, columnCount - 1);
-        int endColumnExclusive = Math.Clamp(endVisibleColumnExclusive + overscan, startColumn + 1, columnCount);
-
-        return new ShelfViewportRange(
-            startColumn * rowCount,
-            Math.Min(itemCount, endColumnExclusive * rowCount));
+        _ = vn_shelf_viewport_calculate(
+            itemCount,
+            rowCount,
+            cellWidth,
+            horizontalOffset,
+            viewportWidth,
+            overscanColumns,
+            out VnShelfViewportRange range);
+        return new ShelfViewportRange(range.StartIndex, range.EndIndexExclusive);
     }
 }

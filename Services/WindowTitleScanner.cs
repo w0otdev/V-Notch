@@ -17,9 +17,8 @@ public interface IWindowTitleScanner
     void InvalidateUrlCaches();
 }
 
-public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
+public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposable
 {
-    private const string HttpPrefix = "http://";
     private const string HttpsPrefix = "https://";
     private const string SpotifyWebPlayerHost = "open.spotify.com";
 
@@ -37,21 +36,30 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
-    private static readonly string[] _platformKeywords =
-    {
-        "spotify", "youtube", "soundcloud", "instagram", "twitter", " / x", "apple music", "apple", "music",
-        "twitch", "discord", "vesktop", "netflix", "tidal", "deezer", "bandcamp", "bilibili", "哔哩哔哩", "vimeo", "crunchyroll", "prime video", "disney",
-        "picture in picture", "picture-in-picture", "hình trong hình", "hinh trong hinh", "bild-in-bild", "image dans l'image",
-        "pantalla en pantalla", "cuadro en cuadro", "画中画", "畫中畫", "子母画面", "子母畫面", "ピクチャー イン ピクチャー", "ピクチャーインピクチャー",
-        "картинка в картинке", "imagem na imagem", "imagem sobre imagem", "finestra mobile", "gambar dalam gambar", "resim içinde resim", "화면 속 화면", "pip"
-    };
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_matches_platform_title(
+        ReadOnlySpan<ushort> title, int titleLen, out byte outMatches);
 
-    private static readonly string[] _browserProcessNames =
-    {
-        "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "zen",
-        "arc", "coccoc", "sidekick", "thorium", "waterfox", "floorp", "librewolf",
-        "chromium", "whale", "yandex", "wavebox", "helium", "supermium", "browser"
-    };
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_is_browser_process(
+        ReadOnlySpan<ushort> procName, int procLen, out byte outIsBrowser);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_is_address_bar_value(
+        ReadOnlySpan<ushort> val, int valLen, out byte outIsAddr);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_looks_like_url(
+        ReadOnlySpan<ushort> str, int strLen, out byte outLooksLike);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_normalize_url(
+        ReadOnlySpan<ushort> str, int strLen,
+        Span<ushort> outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_is_media_url(
+        ReadOnlySpan<ushort> url, int urlLen, out byte outIsMedia);
 
     private readonly object _cacheLock = new();
     // All title enumerations are serialized by _cacheLock.
@@ -118,12 +126,7 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     internal static bool MatchesPlatformTitle(ReadOnlySpan<char> title)
     {
-        foreach (string keyword in _platformKeywords)
-        {
-            if (title.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
+        return vn_wtscanner_matches_platform_title(MemoryMarshal.Cast<char, ushort>(title), title.Length, out byte matches) == 0 && matches != 0;
     }
 
     [DllImport("user32.dll")]
@@ -577,8 +580,11 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         return pid > 0 ? ProcessNameResolver.TryGetName((uint)pid)?.ToLowerInvariant() : null;
     }
 
-    private static bool IsBrowserProcess(string processName) =>
-        _browserProcessNames.Any(name => processName.Contains(name, StringComparison.Ordinal));
+    private static bool IsBrowserProcess(string processName)
+    {
+        ReadOnlySpan<char> sp = processName != null ? processName.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_wtscanner_is_browser_process(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte isBrowser) == 0 && isBrowser != 0;
+    }
 
     private static string? ExtractUrlFromWindowHandle(IntPtr hwnd, string processName)
     {
@@ -652,14 +658,11 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
         return null;
     }
 
-    private static bool IsAddressBarValue(string val) =>
-        val.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-        val.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
-        val.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
-        val.StartsWith(HttpPrefix, StringComparison.OrdinalIgnoreCase) ||
-        val.StartsWith(HttpsPrefix, StringComparison.OrdinalIgnoreCase) ||
-        val.Contains(".com/", StringComparison.OrdinalIgnoreCase) ||
-        val.Contains(".org/", StringComparison.OrdinalIgnoreCase);
+    private static bool IsAddressBarValue(string val)
+    {
+        ReadOnlySpan<char> sp = val != null ? val.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_wtscanner_is_address_bar_value(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte isAddr) == 0 && isAddr != 0;
+    }
 
     private static string? TryFindMediaUrlInTabs(AutomationElement root)
     {
@@ -783,53 +786,29 @@ public sealed class WindowTitleScanner : IWindowTitleScanner, IDisposable
 
     private static bool LooksLikeUrl(string s)
     {
-        if (string.IsNullOrWhiteSpace(s)) return false;
-        return s.StartsWith(HttpPrefix, StringComparison.OrdinalIgnoreCase) ||
-               s.StartsWith(HttpsPrefix, StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("youtube.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("twitch.tv/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("discord.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains(SpotifyWebPlayerHost + "/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("music.apple.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("tidal.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("deezer.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("bandcamp.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("netflix.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("bilibili.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("vimeo.com/", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("crunchyroll.com/", StringComparison.OrdinalIgnoreCase);
+        ReadOnlySpan<char> sp = s != null ? s.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_wtscanner_looks_like_url(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte looksLike) == 0 && looksLike != 0;
     }
 
     private static string NormalizeUrl(string s)
     {
-        s = s.Trim();
-        if (!s.StartsWith("http", StringComparison.OrdinalIgnoreCase) && s.Contains('.'))
+        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(s != null ? s.AsSpan() : ReadOnlySpan<char>.Empty);
+        Span<char> buf = stackalloc char[512];
+        int rc = vn_wtscanner_normalize_url(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
+        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
+        if (rc == -2 && outLen > 0)
         {
-            s = HttpsPrefix + s;
+            char[] arr = new char[outLen];
+            if (vn_wtscanner_normalize_url(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
+                return new string(arr, 0, actual);
         }
-        return s;
+        return s ?? string.Empty;
     }
 
     private static bool IsMediaUrl(string url)
     {
-        return url.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("music.youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("twitch.tv/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("discord.com/channels/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("discord.com/app", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("soundcloud.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains(SpotifyWebPlayerHost + "/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("music.apple.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("listen.tidal.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("deezer.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("bandcamp.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("netflix.com/watch", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("bilibili.com/video", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("vimeo.com/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("crunchyroll.com/watch", StringComparison.OrdinalIgnoreCase);
+        ReadOnlySpan<char> sp = url != null ? url.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_wtscanner_is_media_url(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte isMedia) == 0 && isMedia != 0;
     }
 
     private static bool DetectSpotifyWebPlayer()

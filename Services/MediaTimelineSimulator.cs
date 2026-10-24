@@ -1,10 +1,26 @@
+using System.Runtime.InteropServices;
 using System.Windows.Media.Imaging;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-public class MediaTimelineSimulator
+public partial class MediaTimelineSimulator
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_timelinesim_is_at_end_stuck(
+        double progress, long nowUtcTicks, long lastMetadataChangeTicks, long thresholdTicks,
+        out byte outStuck);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_timelinesim_compute_position_ticks(
+        long simBasePositionTicks,
+        long simBaseWallUtcTicks,
+        long nowUtcTicks,
+        double playbackRate,
+        long durationTicks,
+        byte atEndStuck,
+        out long outSimTicks);
+
     private DateTime _simBaseWallTimeUtc = DateTime.MinValue;
     private TimeSpan _simBasePosition = TimeSpan.Zero;
     private double _simBasePlaybackRate = 1.0;
@@ -37,7 +53,7 @@ public class MediaTimelineSimulator
 
     public static bool IsAtEndStuck(double progress, DateTime lastMetadataChangeTime, TimeSpan threshold)
     {
-        return progress > 0.98 && (DateTime.UtcNow - lastMetadataChangeTime) > threshold;
+        return vn_timelinesim_is_at_end_stuck(progress, DateTime.UtcNow.Ticks, lastMetadataChangeTime.Ticks, threshold.Ticks, out byte stuck) == 0 && stuck != 0;
     }
 
     public void ApplySimulatedTimeline(MediaInfo info, bool atEndStuck)
@@ -52,13 +68,16 @@ public class MediaTimelineSimulator
         var nowUtc = DateTime.UtcNow;
         EnsureSimulationBase(info, nowUtc);
 
-        var elapsed = nowUtc - _simBaseWallTimeUtc;
-        var sim = _simBasePosition + TimeSpan.FromSeconds(elapsed.TotalSeconds * _simBasePlaybackRate);
+        vn_timelinesim_compute_position_ticks(
+            _simBasePosition.Ticks,
+            _simBaseWallTimeUtc.Ticks,
+            nowUtc.Ticks,
+            _simBasePlaybackRate,
+            info.Duration.Ticks,
+            atEndStuck ? (byte)1 : (byte)0,
+            out long simTicks);
 
-        if (!atEndStuck && info.Duration > TimeSpan.Zero && sim > info.Duration)
-            sim = info.Duration;
-
-        info.Position = sim;
+        info.Position = TimeSpan.FromTicks(simTicks);
         info.IsThrottled = true;
         _isThrottled = true;
 

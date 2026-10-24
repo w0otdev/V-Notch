@@ -1,13 +1,12 @@
+using System;
 using System.Buffers;
-using System.IO;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-internal static class ProcessNameResolver
+internal static partial class ProcessNameResolver
 {
-    private const uint QueryLimitedInformation = 0x1000;
-    private const int InsufficientBuffer = 122;
+    private const int ErrBufferTooSmall = -2;
 
     internal static string? TryGetName(uint processId)
     {
@@ -15,53 +14,56 @@ internal static class ProcessNameResolver
         return name.Length == 0 ? null : name;
     }
 
-    internal static (string Name, string Executable) TryGetNameAndExecutable(uint processId)
+    internal static unsafe (string Name, string Executable) TryGetNameAndExecutable(uint processId)
     {
         if (processId == 0) return ("", "");
-        IntPtr process = OpenProcess(QueryLimitedInformation, false, processId);
-        if (process == IntPtr.Zero) return ("", "");
 
-        char[]? rented = null;
+        Span<char> nameStack = stackalloc char[260];
+        Span<char> execStack = stackalloc char[1024];
+        int nameLen, execLen;
+        int rc;
+        fixed (char* pName = nameStack)
+        fixed (char* pExec = execStack)
+        {
+            rc = vn_process_resolver_get_name_and_exec(
+                processId,
+                pName, nameStack.Length, out nameLen,
+                pExec, execStack.Length, out execLen);
+        }
+
+        if (rc == 0)
+        {
+            if (nameLen == 0 && execLen == 0) return ("", "");
+            return (new string(nameStack[..nameLen]), new string(execStack[..execLen]));
+        }
+
+        if (rc != ErrBufferTooSmall || execLen <= 0) return ("", "");
+
+        char[] rentedName = ArrayPool<char>.Shared.Rent(Math.Max(1, nameLen));
+        char[] rentedExec = ArrayPool<char>.Shared.Rent(Math.Max(1, execLen));
         try
         {
-            Span<char> path = stackalloc char[1024];
-            if (TryReadPath(process, path, out int length))
+            fixed (char* pName = rentedName)
+            fixed (char* pExec = rentedExec)
             {
-                ReadOnlySpan<char> slice = path[..length];
-                return (Path.GetFileNameWithoutExtension(slice).ToString(), slice.ToString());
+                rc = vn_process_resolver_get_name_and_exec(
+                    processId,
+                    pName, rentedName.Length, out nameLen,
+                    pExec, rentedExec.Length, out execLen);
             }
-            if (Marshal.GetLastPInvokeError() != InsufficientBuffer) return ("", "");
-
-            rented = ArrayPool<char>.Shared.Rent(32768);
-            if (!TryReadPath(process, rented.AsSpan(0, 32768), out length)) return ("", "");
-            ReadOnlySpan<char> rentedSlice = rented.AsSpan(0, length);
-            return (Path.GetFileNameWithoutExtension(rentedSlice).ToString(), rentedSlice.ToString());
+            if (rc != 0 || (nameLen == 0 && execLen == 0)) return ("", "");
+            return (new string(rentedName, 0, nameLen), new string(rentedExec, 0, execLen));
         }
         finally
         {
-            if (rented != null) ArrayPool<char>.Shared.Return(rented);
-            CloseHandle(process);
+            ArrayPool<char>.Shared.Return(rentedName);
+            ArrayPool<char>.Shared.Return(rentedExec);
         }
     }
 
-    private static unsafe bool TryReadPath(IntPtr process, Span<char> path, out int length)
-    {
-        uint size = (uint)path.Length;
-        bool success;
-        fixed (char* buffer = path)
-            success = QueryFullProcessImageName(process, 0, buffer, ref size);
-        length = success ? (int)size : 0;
-        return success;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
-
-    [DllImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern unsafe bool QueryFullProcessImageName(IntPtr process, uint flags, char* path, ref uint size);
-
-    [DllImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_process_resolver_get_name_and_exec(
+        uint process_id,
+        char* name_buf, int name_cap, out int out_name_len,
+        char* exec_buf, int exec_cap, out int out_exec_len);
 }

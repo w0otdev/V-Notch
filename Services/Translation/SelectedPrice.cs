@@ -1,56 +1,86 @@
+using System;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace VNotch.Services.Translation;
 
 internal sealed record SelectedPrice(decimal Amount, string Currency, bool AssumedCurrency = false);
 
-internal static class TranslationCurrencies
+internal static partial class TranslationCurrencies
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
     internal static readonly string[] Codes = "AED ARS AUD BDT BGN BHD BRL CAD CHF CLP CNY COP CZK DKK EGP EUR GBP HKD HUF IDR ILS INR ISK JPY KRW KWD LAK LKR MAD MMK MXN MYR NOK NPR NZD PEN PHP PKR PLN QAR RON RSD RUB SAR SEK SGD THB TRY TWD UAH USD UZS VND ZAR".Split(' ');
-    internal static bool Supported(string? code) => code != null && Array.IndexOf(Codes, code) >= 0;
-    internal static string Normalize(string? code) => Supported(code) ? code! : "auto";
-    internal static string? ForLanguage(string language) => language switch
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_currency_supported(
+        ReadOnlySpan<char> codePtr,
+        int codeLen,
+        out byte outSupported);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_currency_decimal_places(
+        ReadOnlySpan<char> currencyPtr,
+        int currencyLen,
+        out int outPlaces);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_currency_for_language(
+        ReadOnlySpan<char> langPtr,
+        int langLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_currency_resolve_token(
+        ReadOnlySpan<char> tokenPtr,
+        int tokenLen,
+        ReadOnlySpan<char> sourcePtr,
+        int sourceLen,
+        ReadOnlySpan<char> localDollarPtr,
+        int localDollarLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_currency_normalize_amount(
+        ReadOnlySpan<char> valuePtr,
+        int valueLen,
+        ReadOnlySpan<char> currencyPtr,
+        int currencyLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen,
+        out byte outValid);
+
+    internal static bool Supported(string? code)
     {
-        "vi" => "VND",
-        "en" => "USD",
-        "ja" => "JPY",
-        "zh" => "CNY",
-        "ko" => "KRW",
-        "de" or "fr" or "es" or "it" or "nl" or "el" or "fi" or "et" or "lv" or "lt" or "ga" or "sk" or "sl" or "ca" => "EUR",
-        "pt" => "BRL",
-        "ar" => "SAR",
-        "ru" or "ba" => "RUB",
-        "bn" => "BDT",
-        "hi" or "gu" or "kn" or "ml" or "mr" or "or" or "pa" or "ta" => "INR",
-        "th" => "THB",
-        "id" or "jv" or "su" => "IDR",
-        "ms" => "MYR",
-        "tr" => "TRY",
-        "pl" => "PLN",
-        "cs" => "CZK",
-        "da" => "DKK",
-        "no" => "NOK",
-        "sv" => "SEK",
-        "hu" => "HUF",
-        "ro" => "RON",
-        "uk" => "UAH",
-        "he" or "yi" => "ILS",
-        "ur" or "sd" => "PKR",
-        "ne" => "NPR",
-        "my" => "MMK",
-        "lo" => "LAK",
-        "si" => "LKR",
-        "tl" or "ceb" or "ilo" => "PHP",
-        "af" or "zu" or "xh" or "ns" => "ZAR",
-        "is" => "ISK",
-        "sr" => "RSD",
-        "uz" => "UZS",
-        "cy" or "gd" => "GBP",
-        _ => null
-    };
-    internal static int DecimalPlaces(string currency) => currency switch
-    { "VND" or "JPY" or "KRW" or "CLP" => 0, "KWD" or "BHD" => 3, _ => 2 };
+        if (string.IsNullOrEmpty(code)) return false;
+        ReadOnlySpan<char> span = code.AsSpan();
+        vn_currency_supported(span, span.Length, out byte supported);
+        return supported != 0;
+    }
+
+    internal static string Normalize(string? code) => Supported(code) ? code! : "auto";
+
+    internal static string? ForLanguage(string language)
+    {
+        if (string.IsNullOrEmpty(language)) return null;
+        ReadOnlySpan<char> span = language.AsSpan();
+        Span<char> buf = stackalloc char[8];
+        vn_currency_for_language(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : null;
+    }
+
+    internal static int DecimalPlaces(string currency)
+    {
+        ReadOnlySpan<char> span = (currency ?? string.Empty).AsSpan();
+        vn_currency_decimal_places(span, span.Length, out int places);
+        return places;
+    }
 
     // Anchor the entire selection: never rewrite a price embedded in a sentence,
     // a range, a date, or an expression with several amounts.
@@ -91,7 +121,6 @@ internal static class TranslationCurrencies
         if (qualifiedSymbol) currency = explicitCurrency;
         if (!qualifiedSymbol && prefix.Length > 0 && suffix.Length > 0 && Resolve(suffix, sourceLanguage) != currency) return false;
         bool overridden = Supported(currencyOverride);
-        // An unresolved bare symbol can still be converted after the user chooses its currency.
         if (currency == null && !(prefix is "$" or "¥" or "￥" || suffix is "$" or "¥" or "￥")) return false;
         if (overridden) currency = currencyOverride;
         if (currency == null) return false;
@@ -103,28 +132,16 @@ internal static class TranslationCurrencies
     internal static bool HasUnresolvedSymbol(string text, string sourceLanguage) =>
         !TryParse(text, sourceLanguage, out _) && TryParse(text, sourceLanguage, out _, "USD");
 
-    private static string? Resolve(string token, string source) => token.Trim().ToUpperInvariant() switch
+    private static string? Resolve(string token, string source)
     {
-        "$" => LocalDollar(),
-        "US$" or "DOLLAR" or "DOLLARS" or "BUCK" or "BUCKS" or "ĐÔ" or "ĐÔ LA" => "USD",
-        "CA$" => "CAD",
-        "AU$" => "AUD",
-        "NZ$" => "NZD",
-        "HK$" => "HKD",
-        "S$" => "SGD",
-        "R$" => "BRL",
-        "€" or "EURO" or "EUROS" => "EUR",
-        "£" or "POUND" or "POUNDS" => "GBP",
-        "₫" or "Đ" or "ĐỒNG" or "DONG" => "VND",
-        "₩" or "WON" => "KRW",
-        "₹" or "RUPEE" or "RUPEES" => "INR",
-        "฿" or "BAHT" => "THB",
-        "₽" or "RUBLE" or "RUBLES" => "RUB",
-        "CN¥" or "YUAN" or "RMB" => "CNY",
-        "JP¥" or "YEN" => "JPY",
-        "¥" or "￥" => source == "zh" ? "CNY" : source == "ja" ? "JPY" : null,
-        var code => Supported(code) ? code : null
-    };
+        ReadOnlySpan<char> t = (token ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> s = (source ?? string.Empty).AsSpan();
+        string? localDollar = t.Trim().SequenceEqual("$".AsSpan()) ? LocalDollar() : null;
+        ReadOnlySpan<char> ld = (localDollar ?? string.Empty).AsSpan();
+        Span<char> buf = stackalloc char[8];
+        vn_currency_resolve_token(t, t.Length, s, s.Length, ld, ld.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : null;
+    }
 
     private static string? LocalDollar()
     {
@@ -140,35 +157,12 @@ internal static class TranslationCurrencies
     private static bool TryAmount(string value, string currency, out decimal amount)
     {
         amount = 0;
-        value = value.Replace('\u00a0', ' ').Replace('\u202f', ' ');
-        int dot = value.LastIndexOf('.'), comma = value.LastIndexOf(',');
-        char? decimalMark = null;
-        if (dot >= 0 && comma >= 0) decimalMark = dot > comma ? '.' : ',';
-        else if (Math.Max(dot, comma) is int separator && separator >= 0)
-        {
-            int decimals = value.Length - separator - 1;
-            // A single separator followed by 3 digits is ambiguous for 3-decimal currencies.
-            if (decimals == 3 && DecimalPlaces(currency) == 3) return false;
-            if (decimals is 1 or 2) decimalMark = value[separator];
-        }
-        string integer = value, fraction = "";
-        if (decimalMark is char mark)
-        {
-            int split = value.LastIndexOf(mark);
-            integer = value[..split]; fraction = value[(split + 1)..];
-            if (fraction.Length > DecimalPlaces(currency) || !fraction.All(char.IsAsciiDigit) || integer.Contains(mark)) return false;
-        }
-        // Validate grouping before stripping it; "1,2,3" must never become 123.
-        var separators = integer.Where(c => !char.IsAsciiDigit(c)).Distinct().ToArray();
-        if (separators.Length > 1) return false;
-        if (separators.Length == 1)
-        {
-            if (separators[0] is not ('.' or ',' or ' ' or '\'')) return false;
-            var groups = integer.Split(separators[0]);
-            if (groups[0].Length is < 1 or > 3 || groups.Skip(1).Any(g => g.Length != 3) || groups.Any(g => !g.All(char.IsAsciiDigit))) return false;
-            integer = string.Concat(groups);
-        }
-        return decimal.TryParse(integer + (fraction.Length > 0 ? "." + fraction : ""), NumberStyles.AllowDecimalPoint,
+        ReadOnlySpan<char> v = (value ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> c = (currency ?? string.Empty).AsSpan();
+        Span<char> buf = stackalloc char[140];
+        vn_currency_normalize_amount(v, v.Length, c, c.Length, buf, buf.Length, out int len, out byte valid);
+        if (valid == 0 || len <= 0) return false;
+        return decimal.TryParse(buf[..len], NumberStyles.AllowDecimalPoint,
             CultureInfo.InvariantCulture, out amount) && amount <= 1_000_000_000_000_000m;
     }
 }

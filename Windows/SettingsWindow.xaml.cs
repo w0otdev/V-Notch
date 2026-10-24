@@ -416,6 +416,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(ViewChangelogButton, "tooltip.viewChangelog");
         TooltipHelper.SetLocalizedTooltip(ReportBugButton, "tooltip.reportBug");
         TooltipHelper.SetLocalizedTooltip(RequestFeatureButton, "tooltip.requestFeature");
+        TooltipHelper.SetLocalizedTooltip(DiscussionButton, "tooltip.discussions");
         TooltipHelper.SetLocalizedTooltip(ClearCacheButton, "tooltip.clearCache");
         TooltipHelper.SetLocalizedTooltip(ToggleKeyVisibilityButton, "tooltip.showHideKey");
         TooltipHelper.SetLocalizedTooltip(CloseSettingsButton, "tooltip.close");
@@ -629,6 +630,8 @@ public partial class SettingsWindow : Window
         ReportBugHint.Text = Loc.Get("settings.reportBug.hint");
         RequestFeatureLabel.Text = Loc.Get("settings.requestFeature");
         RequestFeatureHint.Text = Loc.Get("settings.requestFeature.hint");
+        DiscussionLabel.Text = Loc.Get("settings.discussions");
+        DiscussionHint.Text = Loc.Get("settings.discussions.hint");
         ClearCacheLabel.Text = Loc.Get("settings.clearCache");
         ClearCacheHint.Text = Loc.Get("settings.clearCache.hint");
 
@@ -1073,6 +1076,7 @@ public partial class SettingsWindow : Window
         if (button.Tag is UiScheduledTimer existingTimer)
         {
             existingTimer.Stop();
+            existingTimer.Dispose();
             button.Tag = null;
         }
 
@@ -1096,6 +1100,7 @@ public partial class SettingsWindow : Window
                 timer.Tick += (_, _) =>
                 {
                     timer.Stop();
+                    timer.Dispose();
                     button.Tag = null;
 
                     var revertFadeOut = new DoubleAnimation(button.Opacity, 0.0, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease };

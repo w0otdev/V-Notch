@@ -1,26 +1,36 @@
+using System;
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services.Translation;
 
 // Tracks the outer JSON object across chunks without reparsing every string brace.
-internal sealed class TranslationJsonBoundary
+internal sealed partial class TranslationJsonBoundary
 {
-    private bool _quoted, _escaped, _started;
-    private int _depth;
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnJsonBoundaryState
+    {
+        public byte Quoted;
+        public byte Escaped;
+        public byte Started;
+        public int Depth;
+    }
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_json_boundary_append(
+        ref VnJsonBoundaryState state,
+        ReadOnlySpan<char> chunkPtr,
+        int chunkLen,
+        out byte outCompleted);
+
+    private VnJsonBoundaryState _state;
 
     internal bool Append(string chunk)
     {
-        foreach (char c in chunk)
-        {
-            if (_quoted)
-            {
-                if (_escaped) _escaped = false;
-                else if (c == '\\') _escaped = true;
-                else if (c == '"') _quoted = false;
-                continue;
-            }
-            if (c == '"') _quoted = true;
-            else if (c == '{') { _started = true; _depth++; }
-            else if (c == '}' && _started && --_depth == 0) return true;
-        }
-        return false;
+        if (string.IsNullOrEmpty(chunk)) return false;
+        ReadOnlySpan<char> span = chunk.AsSpan();
+        vn_json_boundary_append(ref _state, span, span.Length, out byte completed);
+        return completed != 0;
     }
 }

@@ -1,13 +1,18 @@
+using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 
 namespace VNotch.Services.Translation;
 
-// Translate complete passages and reject changes to protected content.
-internal static class TranslationStructuredText
+internal static partial class TranslationStructuredText
 {
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UsePipeTables().UseEmphasisExtras().UseTaskLists().UsePreciseSourceLocation().Build();
@@ -19,15 +24,14 @@ internal static class TranslationStructuredText
 
     internal static bool IsEmoji(string element) => ContainsEmoji(element.AsSpan());
 
-    private static bool ContainsEmoji(ReadOnlySpan<char> element)
+    private static unsafe bool ContainsEmoji(ReadOnlySpan<char> element)
     {
-        foreach (var rune in element.EnumerateRunes())
-            if (rune.Value is >= 0x1F000 and <= 0x1FAFF or >= 0x2600 and <= 0x27BF or
-                >= 0x2190 and <= 0x21FF or >= 0x2300 and <= 0x23FF or
-                >= 0x2B00 and <= 0x2BFF or 0x25AA or 0x25AB or 0x25B6 or 0x25C0 or
-                0xFE0F or 0x20E3 or 0x00A9 or 0x00AE or 0x203C or 0x2049 or 0x2122 or 0x2139)
-                return true;
-        return false;
+        if (element.IsEmpty) return false;
+        fixed (char* ptr = element)
+        {
+            vn_translation_structured_contains_emoji(ptr, element.Length, out byte contains);
+            return contains != 0;
+        }
     }
 
     internal static bool IsOnlyIcons(string text) => ContainsOnlyIcons(text, allowWhitespace: true);
@@ -47,8 +51,6 @@ internal static class TranslationStructuredText
         return any;
     }
 
-    // Social clipboard exports often wrap a Unicode emoji in a link to its
-    // image asset. The asset URL is presentation, not a destination in the post.
     internal static string NormalizeSocialIcons(string text) => NormalizeSocialIcons(text, null);
 
     private static string NormalizeSocialIcons(string text, MarkdownDocument? document)
@@ -81,7 +83,6 @@ internal static class TranslationStructuredText
         ct.ThrowIfCancellationRequested();
         var sourceSignature = SourceSignature(text);
         if (sourceSignature == null) return text;
-        // Keep sentences together so the model can disambiguate verbs and reorder words.
         string translated = await translate(text, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         if (!sourceSignature.SequenceEqual(Signature(translated)))
@@ -91,8 +92,6 @@ internal static class TranslationStructuredText
 
     private static string[]? SourceSignature(string text)
     {
-        // Keep the syntax tree inside this synchronous scope instead of retaining
-        // it during model inference. Only the protected-content signature survives.
         var document = Markdown.Parse(text, Pipeline);
         bool hasProse = document.Descendants<LiteralInline>().Any(l =>
             l.Parent is not LinkInline { IsAutoLink: true } &&
@@ -103,8 +102,6 @@ internal static class TranslationStructuredText
     private static string[] Signature(string text, MarkdownDocument? document = null)
     {
         string normalized = NormalizeSocialIcons(text, document);
-        // Social-icon replacement changes source offsets and can affect Markdown
-        // parsing, so only reuse the original tree when its text is unchanged.
         if (normalized != text) document = null;
         text = normalized;
         var parts = new List<string>();
@@ -115,12 +112,8 @@ internal static class TranslationStructuredText
                 CodeInline code => "code:" + code.Content,
                 CodeBlock code => "block:" + code.Lines.ToString(),
                 LinkInline link => "link:" + link.IsImage + ":" + link.Url + ":" + link.Title,
-                // '*' and '_' are equivalent CommonMark delimiters. Preserve the
-                // rendered emphasis level, not the model's choice of source syntax.
                 EmphasisInline emphasis => "emphasis:" + emphasis.DelimiterCount,
                 HeadingBlock heading => "heading:" + heading.Level,
-                // Clipboard exporters escape list markers and encode spaces. Models
-                // may render these as real lists or literal spaces without changing facts.
                 ListBlock or ListItemBlock or HtmlEntityInline => null,
                 ParagraphBlock or LiteralInline or ContainerInline or LineBreakInline => null,
                 _ => node.GetType().Name
@@ -140,4 +133,8 @@ internal static class TranslationStructuredText
         parts.Sort(StringComparer.Ordinal);
         return parts.ToArray();
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_translation_structured_contains_emoji(
+        char* elem_ptr, int elem_len, out byte out_contains);
 }

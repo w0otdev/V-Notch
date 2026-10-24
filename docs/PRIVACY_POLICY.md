@@ -1,10 +1,10 @@
 # Privacy Policy — V-Notch
 
-**Effective date:** October 9, 2026
+**Effective date:** October 24, 2026
 
-**Previous published version:** October 2, 2026
+**Previous published version:** October 9, 2026
 
-**Scope:** Current source tree as of October 9, 2026; feature availability depends on the installed build.
+**Scope:** Current source tree as of October 24, 2026; feature availability depends on the installed build.
 
 **Developer:** rainaku  
 **Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -72,6 +72,8 @@ To identify *where* media is playing (e.g. distinguishing a YouTube tab from a S
 - **Window title scanning** — It enumerates the titles of visible top-level windows and keeps only those containing one of a fixed set of platform keywords: `spotify`, `youtube`, `soundcloud`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. The broader streaming and social-platform keywords exist to support detecting video/audio playback inside those sites' tabs or desktop clients — they are matched against the window title text only, not page content. Window titles may be briefly inspected; handling of matching titles and diagnostic logging is explained below and in §5.4.
 - **Browser URL reading** — For supported browsers (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, Zen, Arc, Thorium, Floorp, Waterfox, and other Chromium/Gecko browsers), it uses the Windows UI Automation accessibility API to read the address bar and, if needed, open tabs, in order to find a media URL. Only URLs that look like media links are used.
 
+Browser URL inspection is blocked until loaded settings grant permission. The scanner reads that permission from memory, without rereading or watching the settings file. Disabling **Browser URL Inspection** prevents cached URLs or earlier in-flight results from being returned. An accessibility call already executing may finish, but no new inspection starts while permission is disabled. This toggle controls browser accessibility inspection; window-title scanning remains separate.
+
 This inspection happens entirely on your device. The titles and URLs are used transiently to drive media detection and artwork lookup, are cached only briefly in memory and local source cache, and may appear in a local diagnostic log when enabled (see §5.4); the application is not designed to upload raw window titles or full browser URLs. (A derived value — the track title/artist — may be sent for artwork lookup as described in Section 4.)
 
 ### 3.3 Spotlight Search & Launcher (`Alt + Space`)
@@ -115,6 +117,8 @@ V-Notch watches for Bluetooth connect/disconnect events using the Windows device
 ### 3.10 Clipboard History, Change Indicator & Peek
 
 V-Notch registers a Windows clipboard format listener for the "Copied" badge, preview and persistent Clipboard history. While capture is active (text, image and file capture are enabled by default), it reads supported clipboard content and saves local copies: plain text, HTML/RTF, images and the contents of copied files/folders, together with timestamps and source application name/executable path. History remains available after restarting the app. Items can also be imported by drag and drop.
+
+Dropping an image represented by an HTTP(S) URL can download it from the image host, which receives the requested URL, your IP address and ordinary connection metadata. These explicit imports use the same network permission as online artwork lookup: Strict Local-Only Mode or disabling online artwork lookup blocks the request, and withdrawing permission cancels ongoing response reads. Downloads have a 20 MiB limit, including when the server does not declare a size. Embedded image data is processed locally.
 
 Before reading content for history, V-Notch skips clipboard items carrying `ExcludeClipboardContentFromMonitorProcessing` or `Clipboard Viewer Ignore`, or a `CanIncludeInClipboardHistory` DWORD of zero. Unreadable history markers are also skipped. These safeguards depend on the source app providing the markers; they cannot identify every password or sensitive copy. Clipboard history does not automatically upload its contents. Content you paste into an online AI message and submit is sent as described in §4.8.
 
@@ -193,7 +197,7 @@ Canvas and its network/sign-in permission are **off by default**. Before enablin
 
 When you choose **Connect Spotify**, V-Notch opens Spotify's own sign-in page in a temporary Microsoft Edge WebView2 profile. After sign-in, it reads only Spotify's `sp_dc` session cookie, clears the temporary browser profile, and stores the cookie encrypted with Windows DPAPI for the current Windows user. It is never sent to a V-Notch server or any analytics server.
 
-While Canvas is enabled, the session is sent to Spotify (`open.spotify.com`) to obtain a short-lived access token. V-Notch sends the current track title and artist with that token to Spotify's catalog service (`api-partner.spotify.com`) to resolve the Spotify track ID. If that lookup is unavailable, it sends the title, artist, and duration to Musixmatch (`apic-desktop.musixmatch.com`) as a fallback. It then requests Canvas metadata from Spotify (`spclient.wg.spotify.com`), and streams the video from Spotify's `*.scdn.co` content delivery network. Public Spotify web-player assets (`open.spotify.com`, `open.spotifycdn.com`) may be fetched to keep the catalog query compatible; those refresh requests contain no session or track metadata. The rotating token secret used by Spotify's web player is downloaded from the public `xyloflake/spot-secrets-go` GitHub repository; no user data is sent with that request.
+While Canvas is enabled, the session is sent to Spotify (`open.spotify.com`) to obtain a short-lived access token. V-Notch sends the current track title and artist with that token to Spotify's catalog service (`api-partner.spotify.com`) to resolve the Spotify track ID. If that lookup is unavailable, it sends the title, artist, and duration to Musixmatch (`apic-desktop.musixmatch.com`) as a fallback. It then requests Canvas metadata from Spotify (`spclient.wg.spotify.com`), and streams the video from Spotify's `*.scdn.co` content delivery network. Public Spotify web-player assets (`open.spotify.com`, `open.spotifycdn.com`) may be fetched to keep the catalog query compatible; those refresh requests contain no session or track metadata. Token-generation compatibility values and initial query hashes ship locally in `Assets/MediaProtocols.json`, with embedded defaults. They are maintained through application updates without requiring users to edit configuration; the app does not contact a separate secret/configuration server. Automatic query-hash discovery from Spotify's public web-player assets remains available.
 
 You can disconnect Spotify at any time in Settings. This removes the stored session from V-Notch. If authentication fails or no Canvas exists, V-Notch uses the normal lyrics background.
 
@@ -240,6 +244,10 @@ The usage display holds provider-reported data in memory: latest-request token c
 
 All persistent data created by V-Notch lives exclusively on your local device.
 
+The canonical local data root is `%LOCALAPPDATA%\V-Notch\`. At startup, the app attempts to move older `%LOCALAPPDATA%\VNotch\` data into that root before opening its stores. Existing destination files are preserved; conflicting legacy data is retained under `legacy-migration-conflicts` in the canonical root. Files that cannot be moved remain in the legacy root for a later retry. Recovery copies have no automatic expiry.
+
+Periodic temporary-file cleanup preserves saved chat history, quarantined `.corrupt` history, migration conflicts, settings/backups, installed translation models and resumable model downloads. Clipboard history has its separate retention rules (§5.7). The uninstaller attempts to remove both local roots and the roaming data folder; locked files or failed removal may leave data behind, so check these locations when deleting all local data.
+
 ### 5.1 Settings (`%APPDATA%\V-Notch\settings.json`)
 
 Stores your preferences: notch size and position, visual style and Liquid Glass options, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. These credentials, including optional AI provider keys (§5.6), are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and are protected for the Windows user by DPAPI, subject to the security of that account and operating system. If DPAPI is unavailable, these sensitive values are not saved.
@@ -260,7 +268,7 @@ Located in the application's program folder, this log records technical applicat
 
 If present, the smart-crop model file (`yolo11n.onnx`) is stored locally alongside the app and is used purely for on-device image analysis.
 
-To remove application-managed local data, close V-Notch, disconnect Spotify within Settings where available, and remove `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\`, the separate AI history store in §5.6, and the installation directory. Also check Windows temporary files, WebView/browser caches, backups, and any files submitted to GitHub; removal of these is not guaranteed by deleting the app directory. Deleting these folders permanently discards preferences and saved history.
+To remove application-managed local data, disconnect Spotify within Settings where available, close V-Notch, and remove `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, any remaining legacy `%LOCALAPPDATA%\VNotch\`, and the installation directory. The local roots include Clipboard history, AI history/recovery copies and translation models. Also check Windows temporary files, WebView/browser caches, backups, and any files submitted to GitHub; removal of these is not guaranteed by deleting the app directory. Deleting these folders permanently discards preferences and saved history.
 
 ---
 
@@ -268,9 +276,9 @@ To remove application-managed local data, close V-Notch, disconnect Spotify with
 
 AI provider keys are stored in `%APPDATA%\V-Notch\settings.json` using Windows DPAPI for the current Windows user. They are excluded from settings exports, and importing settings does not replace your local AI keys. Settings also store provider/model choices, default Spotlight mode, and reveal speed. Rolling settings backups may retain older encrypted keys; removing a key from current settings does not revoke it or erase those backups. Revoke a compromised or unwanted key in the provider's dashboard.
 
-AI history is stored separately at `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. The encrypted file contains saved conversations, provider/model identifiers, drafts, timestamps, message contents, incomplete-response markers, and any saved Gemini response metadata. An encrypted temporary file may exist during saving. Windows DPAPI encrypts the history for the current Windows user; if existing history cannot be decrypted, the app preserves it instead of overwriting it. No automatic age-based expiry is configured.
+AI history is stored separately at `%LOCALAPPDATA%\V-Notch\spotlight-chats.enc`. The encrypted file contains saved conversations, provider/model identifiers, drafts, timestamps, message contents, incomplete-response markers, and any saved Gemini response metadata. An encrypted temporary file may exist during saving. Windows DPAPI encrypts the history for the current Windows user. If history cannot be decrypted or its content is invalid, the app attempts to rename the original encrypted file to `spotlight-chats.enc.<id>.corrupt`, then allows new history to be saved. If reading or quarantine fails, it preserves the original and blocks saving until a successful retry. Saved history and quarantined files have no automatic age-based expiry.
 
-Deleting a conversation rewrites local history when saving succeeds. Starting a new chat does not delete previous chats, and clearing Spotlight launch history does not clear AI conversations. Local deletion is not secure erasure and does not remove operating-system backups or provider-held records. After closing the app, you can remove the history file and any associated temporary copy to clear that local store. Include this separate directory when reviewing local data under §11.
+Deleting a conversation rewrites local history when saving succeeds. Starting a new chat does not delete previous chats, and clearing Spotlight launch history does not clear AI conversations. Deleting a conversation does not remove quarantined or migration-conflict copies. Local deletion is not secure erasure and does not remove operating-system backups or provider-held records. After closing the app, you can remove the history file, associated temporary/quarantined files and legacy recovery copies to clear that local store. Include both local roots when reviewing local data under §11.
 
 DPAPI protects data at rest, not against software running as you or a compromised account/device. Keys and chat contents must be available in memory while used. This is not end-to-end encryption against the AI provider. AI diagnostic messages are designed to record provider/status/error type rather than prompts or raw provider error bodies; credential redaction is a safeguard, not a guarantee that every diagnostic file is free of sensitive information.
 
@@ -348,7 +356,7 @@ V-Notch is a general-purpose desktop utility, not directed specifically to child
 
 ## 11. Privacy Rights and Requests
 
-Depending on your jurisdiction and the developer's actual role, applicable law may grant rights to notice, access, rectification, erasure, objection, withdrawal of consent, portability, complaint, and other protections. This policy does not waive these rights or imply that local storage automatically fulfills them. You can use Settings to disable features and delete available local history/log files. To inspect/delete remaining application-managed files, close the app, disconnect Spotify, and review `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\`, the AI history store in §5.6, the installation directory and relevant Windows temporary storage. Take care not to disclose private data in public Issues; use a private contact channel if provided on the repository. For information held by independent services, review their privacy notices and contact them as applicable. We will review requests concerning information under our control in accordance with applicable law; identity verification may be necessary if justified.
+Depending on your jurisdiction and the developer's actual role, applicable law may grant rights to notice, access, rectification, erasure, objection, withdrawal of consent, portability, complaint, and other protections. This policy does not waive these rights or imply that local storage automatically fulfills them. You can use Settings to disable features and delete available local history/log files. To inspect/delete remaining application-managed files, disconnect Spotify, close the app, and review `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, any remaining legacy `%LOCALAPPDATA%\VNotch\`, the installation directory and relevant Windows temporary storage. Include quarantined chat history and migration-conflict copies (§5). Take care not to disclose private data in public Issues; use a private contact channel if provided on the repository. For information held by independent services, review their privacy notices and contact them as applicable. We will review requests concerning information under our control in accordance with applicable law; identity verification may be necessary if justified.
 
 ---
 
@@ -378,7 +386,7 @@ Live translation and its Auto option are off by default. When enabled and a mode
 
 Language detection and translation run locally using the separately installed model selected in Settings. Source text and results are not sent to an AI API, written to diagnostic logs, or saved as translation history. By default, up to 128 completed results are cached in memory for 30 minutes, and model resources are released after five idle minutes. Advanced settings can change these limits, disable caching, or keep the model loaded. Switching models clears the translation cache. Dismissing the popup clears its text. OS paging, crash dumps and unrelated applications' storage are outside this feature's control.
 
-The model is not included in the installer. **Download model** makes an explicit HTTPS request to Hugging Face and its file delivery domains; those providers receive IP addresses and ordinary request metadata, never selected text. The model repository revision, byte size and SHA-256 are pinned. Local-only mode blocks downloads; offline file import remains available. Files, including resumable partial downloads, live at `%LOCALAPPDATA%\VNotch\translation-models\<model-id>\`. **Remove model** deletes the known model and partial files.
+The model is not included in the installer. **Download model** makes an explicit HTTPS request to Hugging Face and its file delivery domains; those providers receive IP addresses and ordinary request metadata, never selected text. The model repository revision, byte size and SHA-256 are pinned. Local-only mode blocks downloads; offline file import remains available. Files, including resumable partial downloads, live at `%LOCALAPPDATA%\V-Notch\translation-models\<model-id>\`. **Remove model** deletes the known model and partial files.
 
 **Copy** writes the requested translation to the Windows clipboard with exclusion markers for clipboard monitoring, history and cloud upload. V-Notch Clipboard history honors these markers. Other clipboard clients may still read or retain the text if they ignore the markers. Language preferences and enable/Auto choices are saved with the ordinary application settings.
 

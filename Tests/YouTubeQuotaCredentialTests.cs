@@ -97,6 +97,7 @@ public sealed class YouTubeQuotaCredentialTests
     public async Task LateQuotaResponseForOldKeyDoesNotSuppressReplacementCredential()
     {
         string oldKey = NewKey(), replacementKey = NewKey(), currentKey = oldKey;
+        string videoId = NewVideoId();
         var oldRequestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var oldResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var keyHandler = new Handler(async (request, token) =>
@@ -113,19 +114,23 @@ public sealed class YouTubeQuotaCredentialTests
         using var fallbackClient = new HttpClient(fallbackHandler);
         var service = new MediaMetadataLookupService(fallbackClient, keyClient, () => true, () => Volatile.Read(ref currentKey));
 
-        var oldLookup = service.TryGetYouTubeVideoIdWithInfoAsync(NewVideoId());
+        var oldLookup = service.TryGetYouTubeVideoIdWithInfoAsync(videoId);
         await oldRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Interlocked.Exchange(ref currentKey, replacementKey);
-        var beforeOldResponse = await service.TryGetYouTubeVideoIdWithInfoAsync(NewVideoId());
+        var beforeOldResponse = await service.TryGetYouTubeVideoIdWithInfoAsync(videoId);
         oldResponse.TrySetResult(QuotaExceeded());
         var oldResult = await oldLookup;
+        var cachedAfterOldResponse = await service.TryGetYouTubeVideoIdWithInfoAsync(videoId);
         var afterOldResponse = await service.TryGetYouTubeVideoIdWithInfoAsync(NewVideoId());
 
         Assert.NotNull(oldResult);
         Assert.Equal(YouTubeLookupSource.OEmbed, oldResult.Source);
         Assert.NotNull(beforeOldResponse);
+        Assert.NotNull(cachedAfterOldResponse);
         Assert.NotNull(afterOldResponse);
         Assert.Equal(YouTubeLookupSource.DataApi, beforeOldResponse.Source);
+        Assert.Same(beforeOldResponse, cachedAfterOldResponse);
+        Assert.Equal("Replacement song", cachedAfterOldResponse.Title);
         Assert.Equal(YouTubeLookupSource.DataApi, afterOldResponse.Source);
         Assert.Equal(TimeSpan.FromMinutes(2), afterOldResponse.Duration);
         Assert.Equal(1, keyHandler.Requests.Count(request => request.Key == oldKey));

@@ -114,6 +114,7 @@ public partial class MainWindow
         revertTimer.Tick += (s, e) =>
         {
             revertTimer.Stop();
+            revertTimer.Dispose();
             if (!ReferenceEquals(_clipboardRevertTimer, revertTimer) ||
                 revertToken != _clipboardPeekToken)
             {
@@ -194,6 +195,7 @@ public partial class MainWindow
         var timer = _clipboardRevertTimer;
         _clipboardRevertTimer = null;
         timer?.Stop();
+        timer?.Dispose();
     }
 
     #endregion

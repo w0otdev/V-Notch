@@ -132,6 +132,37 @@ public sealed class LiquidGlassSpotlightTests
     }
 
     [Fact]
+    public void ControllerCreatesAFreshSpotlightWindowAfterItsHostCloses()
+    {
+        RunSta(() =>
+        {
+            var settings = new NotchSettings { EnableSpotlight = true, NotchStyle = "default" };
+            using var first = new SpotlightWindowFixture(settings);
+            using var second = new SpotlightWindowFixture(settings);
+            int creations = 0;
+            using var controller = new SpotlightController(() => ++creations == 1 ? first.Window : second.Window);
+            var firstHost = new BackgroundWindow { Width = 100, Height = 100 };
+            var secondHost = new BackgroundWindow { Width = 100, Height = 100 };
+            try
+            {
+                controller.Initialize(firstHost, settings);
+                controller.ToggleSpotlight();
+                Assert.Equal(1, creations);
+                firstHost.Close();
+                controller.Initialize(secondHost, settings);
+                controller.ToggleSpotlight();
+                Assert.Equal(2, creations);
+                Assert.Same(secondHost, second.Window.Owner);
+            }
+            finally
+            {
+                firstHost.Close();
+                secondHost.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void LiquidGlass_SpotlightController_PropagatesSettingsToWindow()
     {
         RunSta(() =>

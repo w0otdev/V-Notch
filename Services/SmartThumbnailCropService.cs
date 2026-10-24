@@ -14,21 +14,12 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace VNotch.Services;
 
-public sealed class SmartThumbnailCropService : IDisposable
+public sealed partial class SmartThumbnailCropService : IDisposable
 {
     private const string LogCategory = "SMART-CROP";
     private readonly object _lock = new();
 
     private const int ModelInputSize = 416;
-
-    private const float ConfidenceThreshold = 0.35f;
-    private const float PersonConfidenceThreshold = 0.10f;
-    private const float NmsThreshold = 0.50f;
-    private const float MinAreaRatio = 0.02f;
-    private const float MinPersonAreaRatio = 0.005f;
-
-    private const float SubjectMarginRatio = 0.15f;
-    private const float MinCropRatio = 0.45f;
 
     private readonly Dictionary<(ArtworkFingerprint Artwork, int Size, bool ObjectDetection), Int32Rect> _cropCache = new();
     private readonly Queue<(ArtworkFingerprint Artwork, int Size, bool ObjectDetection)> _cropCacheOrder = new();
@@ -47,15 +38,83 @@ public sealed class SmartThumbnailCropService : IDisposable
     private DateTime _lastUsedUtc;
     private System.Threading.Timer? _idleTimer;
 
-    private static readonly HashSet<int> _personClasses = new() { 0 };
-
-    private static float GetClassPriority(int classId) => classId switch
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSubjectBounds
     {
-        0 => 5.0f,
-        >= 14 and <= 23 => 2.5f,
-        39 or (>= 41 and <= 79) => 2.0f,
-        _ => 1.0f
-    };
+        public float CenterX;
+        public float CenterY;
+        public float Width;
+        public float Height;
+        public float Confidence;
+        public int ClassId;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnCropRect
+    {
+        public int X;
+        public int Y;
+        public int Width;
+        public int Height;
+
+        public readonly Int32Rect ToRect() => new(X, Y, Width, Height);
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_fill_tensor_from_bgra32(
+        ReadOnlySpan<byte> pixels, int scaledW, int scaledH, int stride,
+        Span<float> tensorBuffer);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_apply_nms(
+        ReadOnlySpan<Detection> inDetections, int inCount,
+        Span<Detection> outDetections, int outCap, out int outCount);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_parse_yolox_and_nms(
+        ReadOnlySpan<float> buffer, int imgWidth, int imgHeight, float scale,
+        Span<Detection> outDetections, int outCap,
+        out int outRawCount, out int outNmsCount);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_find_best_subject_bounds(
+        ReadOnlySpan<Detection> detections, int count,
+        int imgWidth, int imgHeight,
+        out VnSubjectBounds outBounds, out byte outFound);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_get_portrait_crop_rect(
+        in Detection face, int width, int height,
+        out VnCropRect outRect);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_get_single_person_crop_rect(
+        in Detection person, int imgWidth, int imgHeight, int targetSize,
+        out VnCropRect outRect);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_get_group_person_crop_rect(
+        ReadOnlySpan<Detection> persons, int count,
+        int imgWidth, int imgHeight, int targetSize,
+        out VnCropRect outRect);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_get_best_object_crop_rect(
+        ReadOnlySpan<Detection> objects, int count,
+        int imgWidth, int imgHeight, int targetSize,
+        out VnCropRect outRect);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_compute_saliency_crop_rect(
+        ReadOnlySpan<byte> pixels, int w, int h, int stride,
+        int imgWidth, int imgHeight, int targetSize,
+        out VnCropRect outRect);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_try_detect_text_crop_rect(
+        ReadOnlySpan<byte> pixels, int w, int h, int stride,
+        int imgWidth, int imgHeight, int cropSize,
+        out VnCropRect outRect, out byte outFound);
 
     public bool TryInitialize()
     {
@@ -130,11 +189,11 @@ public sealed class SmartThumbnailCropService : IDisposable
                 var detections = GetOrRunInferenceLocked(source, imgWidth, imgHeight);
                 if (detections.Length == 0) return null;
 
-                float imgArea = imgWidth * imgHeight;
-                var best = FindBestDetection(detections, imgArea, imgWidth, imgHeight);
-                if (best is not Detection b) return null;
-
-                return CreateSubjectBounds(b, imgWidth, imgHeight);
+                if (vn_smartcrop_find_best_subject_bounds(detections, detections.Length, imgWidth, imgHeight, out var bounds, out byte found) == 0 && found != 0)
+                {
+                    return new SubjectBounds(bounds.CenterX, bounds.CenterY, bounds.Width, bounds.Height, bounds.Confidence, bounds.ClassId);
+                }
+                return null;
             }
             catch (Exception ex)
             {
@@ -146,42 +205,6 @@ public sealed class SmartThumbnailCropService : IDisposable
         }
     }
 
-    private static Detection? FindBestDetection(Detection[] detections, float imgArea, int imgWidth, int imgHeight)
-    {
-        Detection? best = null;
-        float bestScore = float.MinValue;
-
-        foreach (var d in detections)
-        {
-            float area = (d.X2 - d.X1) * (d.Y2 - d.Y1);
-            if (area <= 0) continue;
-            float areaShare = area / imgArea;
-            float score = d.Confidence * GetClassPriority(d.ClassId) * MathF.Sqrt(areaShare) * GetCenterWeight(d, imgWidth, imgHeight);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                best = d;
-            }
-        }
-
-        return best;
-    }
-
-    private static SubjectBounds CreateSubjectBounds(Detection b, int imgWidth, int imgHeight)
-    {
-        float cx = (b.X1 + b.X2) / 2f / imgWidth;
-        float cy = (b.Y1 + b.Y2) / 2f / imgHeight;
-        float w = (b.X2 - b.X1) / imgWidth;
-        float h = (b.Y2 - b.Y1) / imgHeight;
-
-        if (_personClasses.Contains(b.ClassId))
-        {
-            cy = (b.Y1 + (b.Y2 - b.Y1) * 0.12f) / imgHeight;
-        }
-
-        return new SubjectBounds(cx, cy, w, h, b.Confidence, b.ClassId);
-    }
-
     public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize) =>
         GetCpuCropRect(source, targetSquareSize, useObjectDetection: false);
 
@@ -191,7 +214,6 @@ public sealed class SmartThumbnailCropService : IDisposable
         int width = source.PixelWidth;
         int height = source.PixelHeight;
         if (width < 64 || height < 64 || Math.Abs(width - height) < 10) return null;
-        // Tiny thumbnails do not benefit from neural inference or face analysis.
         useObjectDetection &= targetSquareSize > 96;
         lock (_lock)
         {
@@ -214,6 +236,7 @@ public sealed class SmartThumbnailCropService : IDisposable
             return rect;
         }
     }
+
     /// <summary>Runs CPU inference off the caller's dispatcher and awaits optional WinRT face framing.</summary>
     public async Task<Int32Rect?> GetSmartCropRectAsync(BitmapSource source, int targetSquareSize,
         bool useObjectDetection = false, CancellationToken cancellationToken = default)
@@ -240,17 +263,16 @@ public sealed class SmartThumbnailCropService : IDisposable
                 var fingerprint = _fingerprintCache.GetValue(bitmap,
                     static value => new FingerprintHolder(ArtworkFingerprint.Create(value))).Value;
                 if (!_inferenceCache.TryGetValue(fingerprint, out var cached)) return fallback;
-                persons = cached.Detections.Where(d => _personClasses.Contains(d.ClassId)).ToArray();
+                persons = cached.Detections.Where(static d => d.ClassId == 0).ToArray();
             }
             if (persons.Length == 0) return fallback;
-            float bestConfidence = persons.Max(p => p.Confidence);
+            float bestConfidence = persons.Max(static p => p.Confidence);
             persons = persons.Where(p => p.Confidence >= bestConfidence * 0.5f).ToArray();
             if (persons.Length != 1) return fallback;
             return await TryGetPortraitCropAsync(bitmap, persons[0], width, height, cancellationToken)
                 .ConfigureAwait(false) ?? fallback;
         }, cancellationToken).ConfigureAwait(false);
     }
-
 
     private Int32Rect? ComputeSmartCropRectCore(BitmapSource source, int targetSquareSize)
     {
@@ -465,25 +487,7 @@ public sealed class SmartThumbnailCropService : IDisposable
                 scaled.CopyPixels(pixels, stride, 0);
             }
 
-            int planeSize = ModelInputSize * ModelInputSize;
-            // Megvii's deployment model expects unnormalized BGR with top-left letterboxing.
-            tensorBuffer.AsSpan(0, 3 * planeSize).Fill(114f);
-
-            for (int y = 0; y < scaledH && y < ModelInputSize; y++)
-            {
-                int rowOffset = y * stride;
-                int tensorRowBase = y * ModelInputSize;
-
-                for (int x = 0; x < scaledW && x < ModelInputSize; x++)
-                {
-                    int pixelIdx = rowOffset + x * 4;
-                    int tensorIdx = tensorRowBase + x;
-
-                    tensorBuffer[tensorIdx] = pixels[pixelIdx];
-                    tensorBuffer[planeSize + tensorIdx] = pixels[pixelIdx + 1];
-                    tensorBuffer[2 * planeSize + tensorIdx] = pixels[pixelIdx + 2];
-                }
-            }
+            vn_smartcrop_fill_tensor_from_bgra32(pixels.AsSpan(0, scaledH * stride), scaledW, scaledH, stride, tensorBuffer);
         }
         finally
         {
@@ -501,157 +505,77 @@ public sealed class SmartThumbnailCropService : IDisposable
         if (imgWidth <= 0 || imgHeight <= 0 || !float.IsFinite(scale) || scale <= 0)
             throw new ArgumentOutOfRangeException(nameof(scale));
 
-        var detections = new List<Detection>(32);
-        ReadOnlySpan<float> buffer = output is DenseTensor<float> dense
-            ? dense.Buffer.Span
-            : ReadOnlySpan<float>.Empty;
-        bool useSpan = buffer.Length == 3549 * 85;
-        int prediction = 0;
-        foreach (int stride in new[] { 8, 16, 32 })
+        const int totalElements = 3549 * 85;
+        float[]? rented = null;
+        try
         {
-            int gridSize = ModelInputSize / stride;
-            for (int y = 0; y < gridSize; y++)
+            ReadOnlySpan<float> buffer;
+            if (output is DenseTensor<float> dense && dense.Buffer.Span.Length == totalElements)
             {
-                for (int x = 0; x < gridSize; x++, prediction++)
+                buffer = dense.Buffer.Span;
+            }
+            else
+            {
+                rented = ArrayPool<float>.Shared.Rent(totalElements);
+                int idx = 0;
+                for (int i = 0; i < 3549; i++)
                 {
-                    var context = new PredictionContext(imgWidth, imgHeight, scale, x, y, stride);
-                    if (TryExtractPrediction(output, buffer, useSpan, in context, prediction, out var detection))
-                        detections.Add(detection);
+                    for (int c = 0; c < 85; c++)
+                    {
+                        rented[idx++] = output[0, i, c];
+                    }
+                }
+                buffer = rented.AsSpan(0, totalElements);
+            }
+
+            Span<Detection> stackBuf = stackalloc Detection[128];
+            int rc = vn_smartcrop_parse_yolox_and_nms(buffer, imgWidth, imgHeight, scale, stackBuf, stackBuf.Length, out int rawCount, out int nmsCount);
+            VNotch.Services.RuntimeLog.Log(LogCategory,
+                $"ParseYolox: raw={rawCount} predictions scanned=3549 classes=80");
+
+            if (rc == 0)
+            {
+                var list = new List<Detection>(nmsCount);
+                for (int i = 0; i < nmsCount; i++) list.Add(stackBuf[i]);
+                return list;
+            }
+            if (rc == -2 && nmsCount > 0)
+            {
+                var arr = new Detection[nmsCount];
+                if (vn_smartcrop_parse_yolox_and_nms(buffer, imgWidth, imgHeight, scale, arr, arr.Length, out _, out int actualCount) == 0)
+                {
+                    var list = new List<Detection>(actualCount);
+                    for (int i = 0; i < actualCount; i++) list.Add(arr[i]);
+                    return list;
                 }
             }
+            return new List<Detection>();
         }
-
-        VNotch.Services.RuntimeLog.Log(LogCategory,
-            $"ParseYolox: raw={detections.Count} predictions scanned={prediction} classes=80");
-
-        return detections.Count > 1 ? ApplyNms(detections) : detections;
-    }
-
-    private static bool TryExtractPrediction(
-        Tensor<float> output,
-        ReadOnlySpan<float> buffer,
-        bool useSpan,
-        in PredictionContext ctx,
-        int i,
-        out Detection detection)
-    {
-        detection = default;
-        const int channels = 85;
-        int offset = i * channels;
-        float objectness = useSpan ? buffer[offset + 4] : output[0, i, 4];
-        if (!float.IsFinite(objectness) || objectness < PersonConfidenceThreshold || objectness > 1)
-            return false;
-        float maxScore = 0f;
-        int maxClassId = -1;
-
-        for (int c = 5; c < channels; c++)
+        finally
         {
-            float score = useSpan ? buffer[offset + c] : output[0, i, c];
-            if (float.IsFinite(score) && score > maxScore && score <= 1)
-            {
-                maxScore = score;
-                maxClassId = c - 5;
-            }
+            if (rented != null)
+                ArrayPool<float>.Shared.Return(rented);
         }
-
-        if (maxClassId < 0) return false;
-
-        bool isPerson = _personClasses.Contains(maxClassId);
-        maxScore *= objectness;
-        float threshold = isPerson ? PersonConfidenceThreshold : ConfidenceThreshold;
-        if (maxScore < threshold) return false;
-
-        float cx = ((useSpan ? buffer[offset] : output[0, i, 0]) + ctx.GridX) * ctx.Stride;
-        float cy = ((useSpan ? buffer[offset + 1] : output[0, i, 1]) + ctx.GridY) * ctx.Stride;
-        float w = MathF.Exp(useSpan ? buffer[offset + 2] : output[0, i, 2]) * ctx.Stride;
-        float h = MathF.Exp(useSpan ? buffer[offset + 3] : output[0, i, 3]) * ctx.Stride;
-        if (!float.IsFinite(cx) || !float.IsFinite(cy) || !float.IsFinite(w) || !float.IsFinite(h))
-            return false;
-
-        float x1 = Math.Clamp((cx - w / 2f) / ctx.Scale, 0, ctx.ImgWidth);
-        float y1 = Math.Clamp((cy - h / 2f) / ctx.Scale, 0, ctx.ImgHeight);
-        float x2 = Math.Clamp((cx + w / 2f) / ctx.Scale, 0, ctx.ImgWidth);
-        float y2 = Math.Clamp((cy + h / 2f) / ctx.Scale, 0, ctx.ImgHeight);
-
-        float bboxArea = (x2 - x1) * (y2 - y1);
-        float areaRatio = bboxArea / ((float)ctx.ImgWidth * ctx.ImgHeight);
-        float minRatio = isPerson ? MinPersonAreaRatio : MinAreaRatio;
-
-        if (areaRatio < minRatio || x2 - x1 < 5 || y2 - y1 < 5) return false;
-
-        detection = new Detection
-        {
-            X1 = x1,
-            Y1 = y1,
-            X2 = x2,
-            Y2 = y2,
-            Confidence = maxScore,
-            ClassId = maxClassId
-        };
-        return true;
     }
 
     internal static List<Detection> ApplyNms(List<Detection> detections)
     {
-        var sorted = detections.OrderByDescending(d => d.Confidence).ToList();
-        var result = new List<Detection>(sorted.Count);
-
-        Span<bool> suppressed = sorted.Count <= 1024 ? stackalloc bool[sorted.Count] : new bool[sorted.Count];
-        suppressed.Clear();
-        for (int i = 0; i < sorted.Count; i++)
+        if (detections.Count == 0) return new List<Detection>();
+        ReadOnlySpan<Detection> inSpan = CollectionsMarshal.AsSpan(detections);
+        Span<Detection> outSpan = detections.Count <= 256 ? stackalloc Detection[detections.Count] : new Detection[detections.Count];
+        if (vn_smartcrop_apply_nms(inSpan, inSpan.Length, outSpan, outSpan.Length, out int outCount) == 0)
         {
-            if (suppressed[i]) continue;
-            result.Add(sorted[i]);
-
-            for (int j = i + 1; j < sorted.Count; j++)
-            {
-                if (suppressed[j]) continue;
-                if (sorted[i].ClassId == sorted[j].ClassId && IoU(sorted[i], sorted[j]) > NmsThreshold)
-                    suppressed[j] = true;
-            }
+            var result = new List<Detection>(outCount);
+            for (int i = 0; i < outCount; i++) result.Add(outSpan[i]);
+            return result;
         }
-
-        return result;
+        return new List<Detection>();
     }
 
-    private static float IoU(Detection a, Detection b)
+    private static Int32Rect? TryDetectTextCropRect(BitmapSource source, int imgWidth, int imgHeight, int cropSize)
     {
-        float interX1 = Math.Max(a.X1, b.X1);
-        float interY1 = Math.Max(a.Y1, b.Y1);
-        float interX2 = Math.Min(a.X2, b.X2);
-        float interY2 = Math.Min(a.Y2, b.Y2);
-
-        float interArea = Math.Max(0, interX2 - interX1) * Math.Max(0, interY2 - interY1);
-        float areaA = (a.X2 - a.X1) * (a.Y2 - a.Y1);
-        float areaB = (b.X2 - b.X1) * (b.Y2 - b.Y1);
-
-        return interArea / (areaA + areaB - interArea + 1e-6f);
-    }
-
-    private static float GetCenterWeight(Detection d, int imgWidth, int imgHeight)
-    {
-        float objCenterX = (d.X1 + d.X2) / 2f;
-        float objCenterY = (d.Y1 + d.Y2) / 2f;
-        float imgCenterX = imgWidth / 2f;
-        float imgCenterY = imgHeight / 2f;
-
-        float dx = (objCenterX - imgCenterX) / imgCenterX;
-        float dy = (objCenterY - imgCenterY) / imgCenterY;
-        float dist = MathF.Sqrt(dx * dx + dy * dy) / MathF.Sqrt(2f);
-
-        return 1.0f - dist * 0.5f;
-    }
-
-    private static List<TextRegion> DetectTextRegions(BitmapSource source, int imgWidth, int imgHeight)
-    {
-        var regions = new List<TextRegion>();
-
         try
         {
-            const int gridSize = 8;
-            int cellW = imgWidth / gridSize;
-            int cellH = imgHeight / gridSize;
-
             const int analysisSize = 128;
             double scaleX = (double)analysisSize / imgWidth;
             double scaleY = (double)analysisSize / imgHeight;
@@ -660,7 +584,7 @@ public sealed class SmartThumbnailCropService : IDisposable
 
             int w = scaled.PixelWidth;
             int h = scaled.PixelHeight;
-            if (w < 8 || h < 8) return regions;
+            if (w < 8 || h < 8) return null;
 
             int stride = w * 4;
             byte[] pixels = ArrayPool<byte>.Shared.Rent(h * stride);
@@ -675,34 +599,11 @@ public sealed class SmartThumbnailCropService : IDisposable
                 }
                 scaledSource.CopyPixels(pixels, stride, 0);
 
-                var imgBuffer = new ImageBuffer(pixels, stride, w, h);
-                int aCellW = w / gridSize;
-                int aCellH = h / gridSize;
-
-                for (int gy = 0; gy < gridSize; gy++)
+                if (vn_smartcrop_try_detect_text_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, cropSize, out var rect, out byte found) == 0 && found != 0)
                 {
-                    for (int gx = 0; gx < gridSize; gx++)
-                    {
-                        var cell = new CellBounds(gx * aCellW, gy * aCellH, Math.Min(gx * aCellW + aCellW, w - 1), Math.Min(gy * aCellH + aCellH, h - 1));
-
-                        double edgeRatio = CalculateCellEdgeRatio(in imgBuffer, in cell);
-                        if (edgeRatio > 0.30)
-                        {
-                            float regionHeight = cellH;
-                            float fontFactor = MathF.Sqrt(regionHeight);
-
-                            regions.Add(new TextRegion
-                            {
-                                X1 = gx * cellW,
-                                Y1 = gy * cellH,
-                                X2 = (gx + 1) * cellW,
-                                Y2 = (gy + 1) * cellH,
-                                EdgeDensity = (float)edgeRatio,
-                                FontFactor = fontFactor
-                            });
-                        }
-                    }
+                    return rect.ToRect();
                 }
+                return null;
             }
             finally
             {
@@ -712,37 +613,8 @@ public sealed class SmartThumbnailCropService : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[SmartCrop] Text detection failed: {ex.Message}");
+            return null;
         }
-
-        return regions;
-    }
-
-    private static double CalculateCellEdgeRatio(in ImageBuffer img, in CellBounds cell)
-    {
-        double edgeCount = 0;
-        int pixelCount = 0;
-
-        for (int y = cell.StartY; y < cell.EndY; y++)
-        {
-            for (int x = cell.StartX; x < cell.EndX; x++)
-            {
-                int i = y * img.Stride + x * 4;
-                int iRight = i + 4;
-                int iBelow = (y + 1) * img.Stride + x * 4;
-
-                if (x + 1 >= img.Width || y + 1 >= img.Height) continue;
-
-                double lum = 0.299 * img.Pixels[i + 2] + 0.587 * img.Pixels[i + 1] + 0.114 * img.Pixels[i];
-                double lumR = 0.299 * img.Pixels[iRight + 2] + 0.587 * img.Pixels[iRight + 1] + 0.114 * img.Pixels[iRight];
-                double lumB = 0.299 * img.Pixels[iBelow + 2] + 0.587 * img.Pixels[iBelow + 1] + 0.114 * img.Pixels[iBelow];
-
-                double grad = Math.Abs(lum - lumR) + Math.Abs(lum - lumB);
-                if (grad > 40) edgeCount++;
-                pixelCount++;
-            }
-        }
-
-        return pixelCount > 0 ? edgeCount / pixelCount : 0;
     }
 
     private Int32Rect GetHybridCropRect(IReadOnlyList<Detection> detections, BitmapSource source, int imgWidth, int imgHeight, int targetSize)
@@ -755,7 +627,7 @@ public sealed class SmartThumbnailCropService : IDisposable
 
         foreach (var d in detections)
         {
-            if (_personClasses.Contains(d.ClassId))
+            if (d.ClassId == 0)
                 persons.Add(d);
             else
                 objects.Add(d);
@@ -766,59 +638,36 @@ public sealed class SmartThumbnailCropService : IDisposable
 
         if (persons.Count >= 1)
         {
-            // Weak background detections must not widen a confident portrait.
-            float bestConfidence = persons.Max(p => p.Confidence);
+            float bestConfidence = persons.Max(static p => p.Confidence);
             persons.RemoveAll(p => p.Confidence < bestConfidence * 0.5f);
             VNotch.Services.RuntimeLog.Log(LogCategory,
-                $"person path: {persons.Count} person(s) → centered crop");
+                $"person path: {persons.Count} person(s) -> centered crop");
             return GetPersonCropRect(persons, imgWidth, imgHeight, targetSize);
         }
 
         if (objects.Count > 0)
         {
-            var bestObj = objects
-                .Select(d => new
-                {
-                    Detection = d,
-                    Score = d.Confidence * GetCenterWeight(d, imgWidth, imgHeight) * GetClassPriority(d.ClassId)
-                })
-                .OrderByDescending(x => x.Score)
-                .First()
-                .Detection;
-
-            float objCenterX = (bestObj.X1 + bestObj.X2) / 2f;
-            float objCenterY = (bestObj.Y1 + bestObj.Y2) / 2f;
-            float objWidth = bestObj.X2 - bestObj.X1;
-            float objHeight = bestObj.Y2 - bestObj.Y1;
-
-            int objCrop = ComputeAdaptiveCropSize(objWidth, objHeight, imgWidth, imgHeight, targetSize);
-            var objRect = BuildCropRect(objCenterX, objCenterY, imgWidth, imgHeight, objCrop);
-
-            VNotch.Services.RuntimeLog.Log(LogCategory,
-                $"object path: classId={bestObj.ClassId} center=({objCenterX:F0},{objCenterY:F0}) size=({objWidth:F0}x{objHeight:F0}) rect=({objRect.X},{objRect.Y},{objRect.Width})");
-
-            return objRect;
+            vn_smartcrop_get_best_object_crop_rect(CollectionsMarshal.AsSpan(objects), objects.Count, imgWidth, imgHeight, targetSize, out var objRect);
+            return objRect.ToRect();
         }
 
-        var textRegions = DetectTextRegions(source, imgWidth, imgHeight);
-        if (textRegions.Count >= 2)
+        var textRect = TryDetectTextCropRect(source, imgWidth, imgHeight, cropSize);
+        if (textRect.HasValue)
         {
-            VNotch.Services.RuntimeLog.Log(LogCategory,
-                $"text path: textRegions={textRegions.Count} → centered text crop");
-            return GetTextFirstCropRect(textRegions, imgWidth, imgHeight, cropSize);
+            VNotch.Services.RuntimeLog.Log(LogCategory, "text path -> centered text crop");
+            return textRect.Value;
         }
 
         VNotch.Services.RuntimeLog.Log(LogCategory, "no person/object/text -> saliency fallback");
         var saliencyRect = GetSaliencyCropRect(source, imgWidth, imgHeight, targetSize);
         if (saliencyRect.HasValue)
         {
-            VNotch.Services.RuntimeLog.Log(LogCategory,
-                $"saliency rect=({saliencyRect.Value.X},{saliencyRect.Value.Y},{saliencyRect.Value.Width}x{saliencyRect.Value.Height})");
             return saliencyRect.Value;
         }
 
-        VNotch.Services.RuntimeLog.Log(LogCategory, "saliency null -> exact center");
-        return BuildCropRect(imgWidth / 2f, imgHeight / 2f, imgWidth, imgHeight, cropSize);
+        int cropX = Math.Max(0, Math.Min((imgWidth - cropSize) / 2, imgWidth - cropSize));
+        int cropY = Math.Max(0, Math.Min((imgHeight - cropSize) / 2, imgHeight - cropSize));
+        return new Int32Rect(cropX, cropY, cropSize, cropSize);
     }
 
     private static Int32Rect GetPersonCropRect(List<Detection> persons, int imgWidth, int imgHeight, int targetSize)
@@ -879,118 +728,28 @@ public sealed class SmartThumbnailCropService : IDisposable
         }
     }
 
-
     internal static Int32Rect GetPortraitCropRect(Detection face, int width, int height)
     {
-        float faceHeight = face.Y2 - face.Y1;
-        float faceWidth = face.X2 - face.X1;
-        int side = (int)MathF.Ceiling(Math.Clamp(Math.Max(faceHeight * 2.15f, faceWidth * 3f),
-            Math.Min(width, height) * MinCropRatio, Math.Min(width, height)));
-        // Reserve space above the face for hair, and below for shoulders/upper torso.
-        float top = face.Y1 - faceHeight * 0.45f;
-        return BuildCropRect((face.X1 + face.X2) / 2, top + side / 2f, width, height, side);
+        vn_smartcrop_get_portrait_crop_rect(in face, width, height, out var rect);
+        return rect.ToRect();
     }
 
     internal static Int32Rect GetSinglePersonCropRect(Detection p, int imgWidth, int imgHeight, int targetSize)
     {
-        float personWidth = p.X2 - p.X1;
-        float personHeight = p.Y2 - p.Y1;
-
-        float personCenterX = (p.X1 + p.X2) / 2f;
-        float personCenterY = (p.Y1 + p.Y2) / 2f;
-
-        int cropSize = ComputeAdaptiveCropSize(personWidth, personHeight, imgWidth, imgHeight, targetSize);
-        if (personHeight > cropSize)
-            personCenterY = p.Y1 - cropSize * 0.08f + cropSize / 2f;
-        var crop = BuildCropRect(personCenterX, personCenterY, imgWidth, imgHeight, cropSize);
-
-        VNotch.Services.RuntimeLog.Log(LogCategory,
-            $"single person: bbox=({p.X1:F0},{p.Y1:F0})-({p.X2:F0},{p.Y2:F0}) center=({personCenterX:F0},{personCenterY:F0}) cropSize={cropSize} rect=({crop.X},{crop.Y},{crop.Width})");
-
-        return crop;
+        vn_smartcrop_get_single_person_crop_rect(in p, imgWidth, imgHeight, targetSize, out var rect);
+        return rect.ToRect();
     }
 
     private static Int32Rect GetGroupPersonCropRect(List<Detection> persons, int imgWidth, int imgHeight, int targetSize)
     {
-        float minX = float.MaxValue, minY = float.MaxValue;
-        float maxX = float.MinValue, maxY = float.MinValue;
-
-        foreach (var p in persons)
-        {
-            if (p.X1 < minX) minX = p.X1;
-            if (p.Y1 < minY) minY = p.Y1;
-            if (p.X2 > maxX) maxX = p.X2;
-            if (p.Y2 > maxY) maxY = p.Y2;
-        }
-
-        float groupW = maxX - minX;
-        float groupH = maxY - minY;
-
-        float groupCenterX = (minX + maxX) / 2f;
-        float groupCenterY = (minY + maxY) / 2f;
-
-        int cropSize = ComputeAdaptiveCropSize(groupW, groupH, imgWidth, imgHeight, targetSize);
-        var crop = BuildCropRect(groupCenterX, groupCenterY, imgWidth, imgHeight, cropSize);
-
-        VNotch.Services.RuntimeLog.Log(LogCategory,
-            $"group ({persons.Count} persons): union=({minX:F0},{minY:F0})-({maxX:F0},{maxY:F0}) center=({groupCenterX:F0},{groupCenterY:F0}) cropSize={cropSize} rect=({crop.X},{crop.Y},{crop.Width})");
-
-        return crop;
-    }
-
-    private static Int32Rect GetTextFirstCropRect(List<TextRegion> textRegions, int imgWidth, int imgHeight, int cropSize)
-    {
-        float minX = float.MaxValue, maxX = float.MinValue;
-        float minY = float.MaxValue, maxY = float.MinValue;
-
-        foreach (var t in textRegions)
-        {
-            if (t.X1 < minX) minX = t.X1;
-            if (t.X2 > maxX) maxX = t.X2;
-            if (t.Y1 < minY) minY = t.Y1;
-            if (t.Y2 > maxY) maxY = t.Y2;
-        }
-
-        float textCenterX = (minX + maxX) / 2f;
-        float textCenterY = (minY + maxY) / 2f;
-
-        return BuildCropRect(textCenterX, textCenterY, imgWidth, imgHeight, cropSize);
-    }
-
-    private static int ComputeAdaptiveCropSize(float subjectW, float subjectH, int imgWidth, int imgHeight, int targetSize)
-    {
-        int maxCrop = Math.Min(imgWidth, imgHeight);
-
-        float subjectExtent = Math.Max(subjectW, subjectH);
-        float desired = subjectExtent * (1f + 2f * SubjectMarginRatio);
-
-        float minCrop = maxCrop * MinCropRatio;
-        float size = Math.Clamp(desired, minCrop, maxCrop);
-
-        if (targetSize > 0)
-            size = Math.Max(size, Math.Min(targetSize, maxCrop));
-
-        return (int)MathF.Round(size);
-    }
-
-    private static Int32Rect BuildCropRect(float centerX, float centerY, int imgWidth, int imgHeight, int cropSize)
-    {
-        int cropX = (int)(centerX - cropSize / 2f);
-        int cropY = (int)(centerY - cropSize / 2f);
-
-        cropX = Math.Max(0, Math.Min(cropX, imgWidth - cropSize));
-        cropY = Math.Max(0, Math.Min(cropY, imgHeight - cropSize));
-
-        return new Int32Rect(cropX, cropY, cropSize, cropSize);
+        vn_smartcrop_get_group_person_crop_rect(CollectionsMarshal.AsSpan(persons), persons.Count, imgWidth, imgHeight, targetSize, out var rect);
+        return rect.ToRect();
     }
 
     private static Int32Rect? GetSaliencyCropRect(BitmapSource source, int imgWidth, int imgHeight, int targetSize)
     {
         try
         {
-            int maxCropSize = Math.Min(imgWidth, imgHeight);
-            int cropSize = Math.Min(targetSize, maxCropSize);
-
             const int analysisSize = 64;
             double scaleX = (double)analysisSize / imgWidth;
             double scaleY = (double)analysisSize / imgHeight;
@@ -1014,24 +773,11 @@ public sealed class SmartThumbnailCropService : IDisposable
                 }
                 scaledSource.CopyPixels(pixels, stride, 0);
 
-                var imgBuffer = new ImageBuffer(pixels, stride, w, h);
-                const int gridSize = 8;
-                int cellW = w / gridSize;
-                int cellH = h / gridSize;
-                float[,] saliencyMap = new float[gridSize, gridSize];
-
-                for (int gy = 0; gy < gridSize; gy++)
+                if (vn_smartcrop_compute_saliency_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, targetSize, out var rect) == 0)
                 {
-                    for (int gx = 0; gx < gridSize; gx++)
-                    {
-                        var cell = new CellBounds(gx * cellW, gy * cellH, Math.Min(gx * cellW + cellW, w - 1), Math.Min(gy * cellH + cellH, h - 1));
-
-                        saliencyMap[gy, gx] = ComputeCellSaliency(in imgBuffer, in cell, gx, gy, gridSize);
-                    }
+                    return rect.ToRect();
                 }
-
-                var (saliencyCenterX, saliencyCenterY) = FindBestSaliencyCenter(saliencyMap, gridSize, imgWidth, imgHeight);
-                return BuildCropRect(saliencyCenterX, saliencyCenterY, imgWidth, imgHeight, cropSize);
+                return null;
             }
             finally
             {
@@ -1043,84 +789,6 @@ public sealed class SmartThumbnailCropService : IDisposable
             System.Diagnostics.Debug.WriteLine($"[SmartCrop] Saliency analysis failed: {ex.Message}");
             return null;
         }
-    }
-
-    private static float ComputeCellSaliency(in ImageBuffer img, in CellBounds cell, int gx, int gy, int gridSize)
-    {
-        double totalContrast = 0;
-        double totalBrightness = 0;
-        double totalSat = 0;
-        int pixelCount = 0;
-
-        for (int y = cell.StartY; y < cell.EndY; y++)
-        {
-            for (int x = cell.StartX; x < cell.EndX; x++)
-            {
-                int i = y * img.Stride + x * 4;
-                if (x + 1 >= img.Width || y + 1 >= img.Height) continue;
-
-                int iRight = i + 4;
-                int iBelow = (y + 1) * img.Stride + x * 4;
-
-                double lum = 0.299 * img.Pixels[i + 2] + 0.587 * img.Pixels[i + 1] + 0.114 * img.Pixels[i];
-                double lumR = 0.299 * img.Pixels[iRight + 2] + 0.587 * img.Pixels[iRight + 1] + 0.114 * img.Pixels[iRight];
-                double lumB = 0.299 * img.Pixels[iBelow + 2] + 0.587 * img.Pixels[iBelow + 1] + 0.114 * img.Pixels[iBelow];
-
-                totalContrast += Math.Abs(lum - lumR) + Math.Abs(lum - lumB);
-                totalBrightness += lum;
-
-                double r = img.Pixels[i + 2] / 255.0;
-                double g = img.Pixels[i + 1] / 255.0;
-                double b = img.Pixels[i] / 255.0;
-                double maxC = Math.Max(r, Math.Max(g, b));
-                double minC = Math.Min(r, Math.Min(g, b));
-                totalSat += maxC > 0 ? (maxC - minC) / maxC : 0;
-
-                pixelCount++;
-            }
-        }
-
-        if (pixelCount == 0) return 0f;
-
-        double avgContrast = totalContrast / pixelCount;
-        double avgBrightness = totalBrightness / pixelCount;
-        double avgSat = totalSat / pixelCount;
-
-        double brightnessPenalty = (avgBrightness < 20 || avgBrightness > 240) ? 0.3 : 1.0;
-        double contrastFactor = avgContrast < 40 ? avgContrast / 40.0 : 1.0 - (avgContrast - 40) / 120.0;
-        contrastFactor = Math.Clamp(contrastFactor, 0.1, 1.0);
-
-        float cx = (gx + 0.5f) / gridSize;
-        float cy = (gy + 0.5f) / gridSize;
-        float centerDist = MathF.Sqrt((cx - 0.5f) * (cx - 0.5f) + (cy - 0.5f) * (cy - 0.5f));
-        float centerBias = MathF.Max(0.1f, 1.0f - centerDist * 1.6f);
-
-        return (float)((avgSat * 60.0 + contrastFactor * 20.0) * brightnessPenalty * centerBias);
-    }
-
-    private static (float CenterX, float CenterY) FindBestSaliencyCenter(float[,] saliencyMap, int gridSize, int imgWidth, int imgHeight)
-    {
-        float bestScore = -1;
-        int bestGx = gridSize / 2, bestGy = gridSize / 2;
-
-        for (int gy = 0; gy < gridSize - 1; gy++)
-        {
-            for (int gx = 0; gx < gridSize - 1; gx++)
-            {
-                float blockScore = saliencyMap[gy, gx] + saliencyMap[gy, gx + 1]
-                                 + saliencyMap[gy + 1, gx] + saliencyMap[gy + 1, gx + 1];
-                if (blockScore > bestScore)
-                {
-                    bestScore = blockScore;
-                    bestGx = gx;
-                    bestGy = gy;
-                }
-            }
-        }
-
-        float saliencyCenterX = (bestGx + 1.0f) / gridSize * imgWidth;
-        float saliencyCenterY = (bestGy + 1.0f) / gridSize * imgHeight;
-        return (saliencyCenterX, saliencyCenterY);
     }
 
     private static string GetModelPath()
@@ -1162,31 +830,13 @@ public sealed class SmartThumbnailCropService : IDisposable
         public long LastAccess { get; set; }
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct Detection
     {
         public float X1, Y1, X2, Y2;
         public float Confidence;
         public int ClassId;
     }
-
-    private struct TextRegion
-    {
-        public float X1, Y1, X2, Y2;
-        public float EdgeDensity;
-        public float FontFactor;
-    }
-
-    private readonly record struct PredictionContext(
-        int ImgWidth,
-        int ImgHeight,
-        float Scale,
-        int GridX,
-        int GridY,
-        int Stride);
-
-    private readonly record struct CellBounds(int StartX, int StartY, int EndX, int EndY);
-
-    private readonly record struct ImageBuffer(byte[] Pixels, int Stride, int Width, int Height);
 }
 
 public readonly record struct SubjectBounds(
@@ -1196,4 +846,3 @@ public readonly record struct SubjectBounds(
     float Height,
     float Confidence,
     int ClassId);
-

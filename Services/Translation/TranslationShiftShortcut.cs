@@ -68,50 +68,38 @@ internal sealed class TranslationShiftShortcut : IDisposable
     }
 }
 
-internal sealed class ShiftTapDetector
+internal sealed partial class ShiftTapDetector
 {
-    private uint _heldKey, _downTime, _lastTap;
-    private bool _hasTap, _secondTap;
-    private bool _waitingForQuiet;
-    private uint _lastShiftEvent;
-    private uint _lastOtherEvent;
-    private bool _hasOtherEvent;
-    private IntPtr _window;
-    internal void Reset() { ResetTaps(); _waitingForQuiet = _hasOtherEvent = false; }
-    private void ResetTaps() { _heldKey = 0; _hasTap = _secondTap = false; _window = IntPtr.Zero; }
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnShiftTapState
+    {
+        public uint HeldKey;
+        public uint DownTime;
+        public uint LastTap;
+        public uint LastShiftEvent;
+        public uint LastOtherEvent;
+        public IntPtr Window;
+        public byte HasTap;
+        public byte SecondTap;
+        public byte WaitingForQuiet;
+        public byte HasOtherEvent;
+    }
+
+    private VnShiftTapState _state;
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transshift_reset(ref VnShiftTapState state);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transshift_process(
+        ref VnShiftTapState state,
+        uint key, byte down, uint time, IntPtr window, byte blocked,
+        out byte outTriggered);
+
+    internal void Reset() => vn_transshift_reset(ref _state);
 
     internal bool Process(uint key, bool down, uint time, IntPtr window, bool blocked = false)
     {
-        bool shift = key is 0x10 or 0xA0 or 0xA1;
-        if (shift)
-        {
-            // One shortcut per burst, even if focus changes while the popup opens.
-            // Every repeat extends the quiet period; a fixed cooldown would keep
-            // reopening the popup during a long stream of Shift taps.
-            bool quiet = unchecked(time - _lastShiftEvent) > 500;
-            _lastShiftEvent = time;
-            if (_waitingForQuiet && !quiet) { ResetTaps(); return false; }
-            if (quiet) _waitingForQuiet = false;
-        }
-        if (blocked || window == IntPtr.Zero) { ResetTaps(); return false; }
-        if (!shift) { _lastOtherEvent = time; _hasOtherEvent = true; ResetTaps(); return false; }
-        if (_window != window) { ResetTaps(); _window = window; }
-        if (down)
-        {
-            if (!_hasTap && _hasOtherEvent && unchecked(time - _lastOtherEvent) < 150) { ResetTaps(); return false; }
-            if (_heldKey == key) return false; // OS key repeat is not another tap.
-            if (_heldKey != 0) { ResetTaps(); return false; } // simultaneous left/right Shift
-            _secondTap = _hasTap && unchecked(time - _lastTap) <= 500;
-            _heldKey = key; _downTime = time;
-            return false;
-        }
-        if (_heldKey != key) { ResetTaps(); return false; }
-        _heldKey = 0;
-        if (unchecked(time - _downTime) > 300) { _hasTap = false; return false; }
-        bool triggered = _secondTap;
-        _hasTap = !triggered;
-        _lastTap = time;
-        if (triggered) _waitingForQuiet = true;
-        return triggered;
+        return vn_transshift_process(ref _state, key, down ? (byte)1 : (byte)0, time, window, blocked ? (byte)1 : (byte)0, out byte triggered) == 0 && triggered != 0;
     }
 }

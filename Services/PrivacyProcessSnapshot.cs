@@ -5,7 +5,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
-internal sealed class PrivacyProcessSnapshot : IDisposable
+internal sealed partial class PrivacyProcessSnapshot : IDisposable
 {
     private ProcessEntry[]? _entries;
     internal int Count { get; private set; }
@@ -23,12 +23,15 @@ internal sealed class PrivacyProcessSnapshot : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool Process32Next(SafeFileHandle snapshot, ref ProcessEntry entry);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_privproc_matches_exe_name(
+        char* entryExeFile,
+        ReadOnlySpan<ushort> exeName, int exeNameLen,
+        out byte outMatches);
+
     internal static unsafe PrivacyProcessSnapshot Capture()
     {
         var processes = new PrivacyProcessSnapshot();
-        // Enumerate process IDs and executable names once, without opening process
-        // handles or allocating a string/list for every process. Full paths are
-        // queried only for candidates; native entries live in a rented buffer.
         using var snapshot = CreateToolhelp32Snapshot(0x00000002, 0); // TH32CS_SNAPPROCESS
         if (snapshot.IsInvalid) return processes;
         ProcessEntry entry = default;
@@ -69,9 +72,7 @@ internal sealed class PrivacyProcessSnapshot : IDisposable
         if ((uint)index >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(index));
         fixed (char* name = _entries![index].ExecutableFile)
         {
-            int length = 0;
-            while (length < 260 && name[length] != '\0') length++;
-            return new ReadOnlySpan<char>(name, length).Equals(executableName, StringComparison.OrdinalIgnoreCase);
+            return vn_privproc_matches_exe_name(name, MemoryMarshal.Cast<char, ushort>(executableName), executableName.Length, out byte matches) == 0 && matches != 0;
         }
     }
 

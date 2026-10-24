@@ -287,6 +287,9 @@ public class PlatformDetectorTests
     }
 
     [Theory]
+    [InlineData("Song - by Artist - SoundCloud", "by Artist", "Song")]
+    [InlineData("Song – by Artist - SoundCloud", "by Artist", "Song")]
+    [InlineData("Song — By Artist - SoundCloud", "By Artist", "Song")]
     [InlineData("Stream Midnight City by M83 | Listen online for free on SoundCloud - Google Chrome", "M83", "Midnight City")]
     [InlineData("▶ Sub Focus - Solar System by Sub Focus | Free Listening on SoundCloud - Microsoft Edge", "Sub Focus", "Solar System")]
     [InlineData("Lo-Fi Beats on SoundCloud - Brave", "SoundCloud", "Lo-Fi Beats")]

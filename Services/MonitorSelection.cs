@@ -1,10 +1,12 @@
+using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-internal static class MonitorSelection
+internal static partial class MonitorSelection
 {
     internal sealed record Choice(string Id, string Name, int Index, Screen? Screen)
     {
@@ -42,32 +44,33 @@ internal static class MonitorSelection
     public static double GetScale(Screen screen)
     {
         var bounds = screen.Bounds;
-        var monitor = Win32Interop.MonitorFromPoint(new Win32Interop.POINT
-        { X = bounds.Left + bounds.Width / 2, Y = bounds.Top + bounds.Height / 2 }, 2);
-        return monitor != IntPtr.Zero && Win32Interop.GetDpiForMonitor(monitor, 0, out uint dpi, out _) == 0 && dpi > 0
-            ? dpi / 96.0 : 1.0;
+        vn_monitor_get_scale(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2, out double scale);
+        return scale;
     }
 
     private static string GetId(Screen screen)
     {
-        var device = new DisplayDevice { Size = Marshal.SizeOf<DisplayDevice>() };
-        // Monitor interface identity survives changes to the display enumeration order.
-        return EnumDisplayDevices(screen.DeviceName, 0, ref device, 1) && !string.IsNullOrEmpty(device.Id)
-            ? device.Id : screen.DeviceName;
+        string devName = screen.DeviceName ?? string.Empty;
+        Span<char> buf = stackalloc char[256];
+        unsafe
+        {
+            fixed (char* pDev = devName)
+            fixed (char* pBuf = buf)
+            {
+                int rc = vn_monitor_get_device_id(pDev, devName.Length, pBuf, buf.Length, out int outLen);
+                if (rc == 0 && outLen > 0)
+                    return new string(buf[..outLen]);
+            }
+        }
+        return devName;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct DisplayDevice
-    {
-        public int Size;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Name;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Description;
-        public uint Flags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Id;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string Key;
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_monitor_get_scale(
+        int center_x, int center_y, out double out_scale);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumDisplayDevices(string device, uint index, ref DisplayDevice display, uint flags);
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_monitor_get_device_id(
+        char* dev_name_ptr, int dev_name_len,
+        char* out_buf, int out_cap, out int out_len);
 }

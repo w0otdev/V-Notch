@@ -1,13 +1,50 @@
+using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using static VNotch.Services.SpotifyJson;
 
 namespace VNotch.Services;
 
-internal static class SpotifyTrackMatcher
+internal static partial class SpotifyTrackMatcher
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_normalize_for_match(
+        ReadOnlySpan<char> valPtr,
+        int valLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_match_normalized_score(
+        ReadOnlySpan<char> candPtr,
+        int candLen,
+        ReadOnlySpan<char> expPtr,
+        int expLen,
+        int exact,
+        int contains,
+        out int outScore);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_extract_track_id(
+        ReadOnlySpan<char> valPtr,
+        int valLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen,
+        out byte outFound);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_spotify_calculate_duration_score_delta(
+        long candTicks,
+        long expTicks,
+        out int outDelta);
+
     internal static string? ParsePathfinderTrackId(
         string json,
         string expectedTrack,
@@ -209,14 +246,8 @@ internal static class SpotifyTrackMatcher
 
     private static int CalculateDurationScoreDelta(TimeSpan candidateDuration, TimeSpan expectedDuration)
     {
-        double delta = Math.Abs((candidateDuration - expectedDuration).TotalSeconds);
-        if (delta <= 4)
-            return 12;
-        if (delta <= 12)
-            return 5;
-        if (delta > 45)
-            return -15;
-        return 0;
+        vn_spotify_calculate_duration_score_delta(candidateDuration.Ticks, expectedDuration.Ticks, out int delta);
+        return delta;
     }
 
     private static void CollectTrackCandidates(JsonElement element, List<TrackCandidate> candidates, int depth)
@@ -262,8 +293,9 @@ internal static class SpotifyTrackMatcher
                  })
         {
             string? value = GetDirectString(element, propertyName);
-            if (IsSpotifyId(value))
-                return value;
+            string? parsed = ExtractTrackId(value);
+            if (parsed != null && parsed.Length == value?.Length)
+                return parsed;
         }
 
         return null;
@@ -274,30 +306,11 @@ internal static class SpotifyTrackMatcher
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        const string uriPrefix = "spotify:track:";
-        int uriIndex = value.IndexOf(uriPrefix, StringComparison.OrdinalIgnoreCase);
-        if (uriIndex >= 0)
-        {
-            string possibleId = value[(uriIndex + uriPrefix.Length)..].Split('?', '/', '&')[0];
-            if (IsSpotifyId(possibleId))
-                return possibleId;
-        }
-
-        const string pathPrefix = "/track/";
-        int pathIndex = value.IndexOf(pathPrefix, StringComparison.OrdinalIgnoreCase);
-        if (pathIndex >= 0)
-        {
-            string possibleId = value[(pathIndex + pathPrefix.Length)..].Split('?', '/', '&')[0];
-            if (IsSpotifyId(possibleId))
-                return possibleId;
-        }
-
-        return IsSpotifyId(value) ? value : null;
+        ReadOnlySpan<char> span = value.AsSpan();
+        Span<char> buf = stackalloc char[32];
+        vn_spotify_extract_track_id(span, span.Length, buf, buf.Length, out int len, out byte found);
+        return found != 0 && len > 0 ? new string(buf[..len]) : null;
     }
-
-    private static bool IsSpotifyId(string? value) =>
-        value is { Length: 22 } && value.All(ch =>
-            ch is >= '0' and <= '9' or >= 'A' and <= 'Z' or >= 'a' and <= 'z');
 
     private static string? GetArtistName(JsonElement element)
     {
@@ -373,7 +386,6 @@ internal static class SpotifyTrackMatcher
                double.TryParse(property.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
-    // Expected values are normalized once by the parsing entry points.
     private static int MatchScore(string? candidate, string normalizedExpected, int exact, int contains)
         => MatchNormalizedScore(NormalizeForMatch(candidate), normalizedExpected, exact, contains);
 
@@ -381,30 +393,16 @@ internal static class SpotifyTrackMatcher
     {
         if (normalizedCandidate.Length == 0 || normalizedExpected.Length == 0)
             return 0;
-        if (normalizedCandidate.SequenceEqual(normalizedExpected))
-            return exact;
-        if (ContainsWholePhrase(normalizedCandidate, normalizedExpected) ||
-            ContainsWholePhrase(normalizedExpected, normalizedCandidate))
-            return contains;
-        return 0;
-    }
 
-    private static bool ContainsWholePhrase(ReadOnlySpan<char> text, ReadOnlySpan<char> phrase)
-    {
-        // Very short titles/artists require an exact match, even at a word boundary.
-        if (phrase.Length < 3) return false;
-        int start = 0;
-        while (start <= text.Length - phrase.Length)
-        {
-            int relativeIndex = text[start..].IndexOf(phrase, StringComparison.Ordinal);
-            if (relativeIndex < 0) return false;
-            int index = start + relativeIndex;
-            int end = index + phrase.Length;
-            if ((index == 0 || text[index - 1] == ' ') && (end == text.Length || text[end] == ' '))
-                return true;
-            start = index + 1;
-        }
-        return false;
+        vn_spotify_match_normalized_score(
+            normalizedCandidate,
+            normalizedCandidate.Length,
+            normalizedExpected,
+            normalizedExpected.Length,
+            exact,
+            contains,
+            out int score);
+        return score;
     }
 
     internal static string NormalizeForMatch(string? value)
@@ -412,27 +410,11 @@ internal static class SpotifyTrackMatcher
         if (string.IsNullOrWhiteSpace(value))
             return "";
 
-        string decomposed = value.Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(decomposed.Length);
-        bool pendingSpace = false;
-        foreach (char ch in decomposed)
-        {
-            UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(ch);
-            if (category == UnicodeCategory.NonSpacingMark)
-                continue;
-            if (char.IsLetterOrDigit(ch))
-            {
-                if (pendingSpace && builder.Length > 0)
-                    builder.Append(' ');
-                builder.Append(char.ToLowerInvariant(ch));
-                pendingSpace = false;
-            }
-            else
-            {
-                pendingSpace = true;
-            }
-        }
-        return builder.ToString();
+        ReadOnlySpan<char> span = value.AsSpan();
+        int cap = span.Length * 2 + 16;
+        Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
+        vn_spotify_normalize_for_match(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : "";
     }
 
     private sealed record TrackCandidate(string Id, string Title, string Artist, TimeSpan Duration);

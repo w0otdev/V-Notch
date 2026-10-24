@@ -865,6 +865,27 @@ public sealed class PrivacyIndicatorService : IDisposable
         }
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)> _packageFamilyByPidCache = new();
+        private const int MaxPackageFamilyPidCacheEntries = 256;
+
+        private static void CachePackageFamilyForPid(uint processId, string family, long expireTicks, long now)
+        {
+            if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries &&
+                !_packageFamilyByPidCache.ContainsKey(processId))
+            {
+                foreach (var kvp in _packageFamilyByPidCache)
+                {
+                    if (now >= kvp.Value.ExpireTicks)
+                    {
+                        _packageFamilyByPidCache.TryRemove(kvp.Key, out _);
+                    }
+                }
+                if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries)
+                {
+                    _packageFamilyByPidCache.Clear();
+                }
+            }
+            _packageFamilyByPidCache[processId] = (family, expireTicks);
+        }
 
         private bool IsPackageFamilyRunning(string packageFamily)
         {
@@ -895,7 +916,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                 handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
                 if (handle == IntPtr.Zero)
                 {
-                    _packageFamilyByPidCache[processId] = (string.Empty, now + 15000);
+                    CachePackageFamilyForPid(processId, string.Empty, now + 15000, now);
                     return false;
                 }
 
@@ -907,7 +928,7 @@ public sealed class PrivacyIndicatorService : IDisposable
                     if (result == 0 && chars > 1)
                     {
                         string family = new string(buffer, 0, (int)chars - 1);
-                        _packageFamilyByPidCache[processId] = (family, now + 60000);
+                        CachePackageFamilyForPid(processId, family, now + 60000, now);
                         return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
                     }
                     if (result == ErrorInsufficientBuffer && chars > 128 && chars <= 1024)
@@ -916,13 +937,13 @@ public sealed class PrivacyIndicatorService : IDisposable
                         if (GetPackageFamilyName(handle, ref chars, (IntPtr)bigBuffer) == 0 && chars > 1)
                         {
                             string family = new string(bigBuffer, 0, (int)chars - 1);
-                            _packageFamilyByPidCache[processId] = (family, now + 60000);
+                            CachePackageFamilyForPid(processId, family, now + 60000, now);
                             return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
                         }
                     }
                 }
 
-                _packageFamilyByPidCache[processId] = (string.Empty, now + 30000);
+                CachePackageFamilyForPid(processId, string.Empty, now + 30000, now);
                 return false;
             }
             catch

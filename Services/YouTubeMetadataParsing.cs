@@ -1,11 +1,17 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace VNotch.Services;
 
-internal static class YouTubeMetadataParsing
+internal static partial class YouTubeMetadataParsing
 {
     private static readonly string[] ThumbnailPreference = { "maxres", "standard", "high", "medium", "default" };
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_youtube_looks_like_quota_exceeded(char* bodyPtr, int bodyLen, out byte outExceeded);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_youtube_parse_iso8601_duration_ticks(char* isoPtr, int isoLen, out long outTicks);
 
     public static string? PickBestThumbnail(JsonElement thumbnails)
     {
@@ -22,31 +28,27 @@ internal static class YouTubeMetadataParsing
         return null;
     }
 
-    public static bool LooksLikeQuotaExceeded(string body)
+    public static unsafe bool LooksLikeQuotaExceeded(string body)
     {
         if (string.IsNullOrWhiteSpace(body))
             return false;
-        return body.Contains("quotaExceeded", StringComparison.Ordinal) ||
-               body.Contains("dailyLimitExceeded", StringComparison.Ordinal) ||
-               body.Contains("rateLimitExceeded", StringComparison.Ordinal);
+
+        fixed (char* ptr = body)
+        {
+            _ = vn_youtube_looks_like_quota_exceeded(ptr, body.Length, out byte ex);
+            return ex != 0;
+        }
     }
 
-    public static TimeSpan ParseIso8601Duration(string iso)
+    public static unsafe TimeSpan ParseIso8601Duration(string iso)
     {
-        try
-        {
-            var match = Regex.Match(iso, @"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?");
-            if (!match.Success) return TimeSpan.Zero;
-
-            int hours = match.Groups[1].Success ? int.Parse(match.Groups[1].Value) : 0;
-            int minutes = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 0;
-            int seconds = match.Groups[3].Success ? int.Parse(match.Groups[3].Value) : 0;
-
-            return new TimeSpan(hours, minutes, seconds);
-        }
-        catch
-        {
+        if (string.IsNullOrEmpty(iso))
             return TimeSpan.Zero;
+
+        fixed (char* ptr = iso)
+        {
+            _ = vn_youtube_parse_iso8601_duration_ticks(ptr, iso.Length, out long ticks);
+            return TimeSpan.FromTicks(ticks);
         }
     }
 }

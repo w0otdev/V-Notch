@@ -80,7 +80,6 @@
   "translation.advanced.TopPPercent": "Top P (percent) [1–100]",
   "translation.advanced.TopK": "Top K [1–100]",
   "translation.advanced.TimeoutSeconds": "Request timeout (seconds) [15–600]",
-
   "translation.title": "Live translation",
   "settings.badge.experimental": "EXPERIMENTAL",
   "settings.updates.prerelease": "Receive pre-release updates (beta testing)",
@@ -161,8 +160,6 @@
   "translation.downloadFailed": "The model could not be installed. Check your connection, disk space, and file access, then retry.",
   "translation.modelInvalid": "Model files do not match the verified version. Download again or import the matching files.",
   "translation.qualityHint": "The offline model recognizes the source language, including short selections. Choose a source manually when a word has meanings in multiple languages. Check names, dates, technical terms, and ambiguous sentences.",
-
-
   "nav.media": "Media",
   "nav.timer": "Timer",
   "nav.audio": "Audio mixer",
@@ -172,7 +169,6 @@
   "timer.decrease": "Decrease duration",
   "timer.restart": "Restart timer",
   "timer.dismiss": "Dismiss timer",
-
   "greeting.hello": "Hello",
   "media.previous": "Previous track",
   "media.next": "Next track",
@@ -496,6 +492,8 @@
   "settings.reportBug.hint": "Report a bug on GitHub.",
   "settings.requestFeature": "Request a feature",
   "settings.requestFeature.hint": "Suggest a feature on GitHub.",
+  "settings.discussions": "Discussions",
+  "settings.discussions.hint": "Join community discussions and ask questions on GitHub.",
   "settings.reset": "Reset to defaults",
   "settings.reset.confirm": "Reset all settings to defaults? This cannot be undone.",
   "settings.reset.title": "Reset Settings",
@@ -846,6 +844,7 @@
   "tooltip.reopenLastView": "Restore the last view when expanding",
   "tooltip.reportBug": "Report a bug on GitHub",
   "tooltip.requestFeature": "Request a feature on GitHub",
+  "tooltip.discussions": "Open GitHub Discussions",
   "tooltip.resetSettings": "Reset all settings to their defaults",
   "tooltip.saveSettings": "Save changes and close Settings",
   "tooltip.selectAll": "Select all",

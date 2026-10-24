@@ -1,10 +1,34 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public sealed class MediaSessionState
+public sealed partial class MediaSessionState
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnTimelineAdvanceState
+    {
+        public long LastTimelinePositionTicks;
+        public long LastTimelineSampleUtcTicks;
+        public long LastPositionAdvanceUtcTicks;
+        public byte HasTimelinePosition;
+        public byte HasTimelineSample;
+        public byte HasPositionAdvance;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediasess_record_timeline_position(
+        ref VnTimelineAdvanceState state,
+        long positionTicks, long nowUtcTicks,
+        out int outResult);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediasess_is_recently_advancing(
+        in VnTimelineAdvanceState state,
+        long nowUtcTicks, long windowTicks,
+        out byte outAdvancing);
+
     private readonly Dictionary<string, SessionEntry> _sessions = new();
     private readonly Dictionary<string, string> _sourceOverrides = new();
 
@@ -72,45 +96,36 @@ public sealed class MediaSessionState
         Stalled
     }
 
-    private static readonly TimeSpan MinAdvanceSampleInterval = TimeSpan.FromMilliseconds(350);
-
     public TimelineAdvanceResult RecordTimelinePosition(string sessionKey, TimeSpan position, DateTime nowUtc)
     {
         var entry = GetOrCreate(sessionKey);
-
-        if (!entry.LastTimelineSampleUtc.HasValue || !entry.LastTimelinePosition.HasValue)
+        var state = new VnTimelineAdvanceState
         {
-            entry.LastTimelinePosition = position;
-            entry.LastTimelineSampleUtc = nowUtc;
-            return TimelineAdvanceResult.Indeterminate;
-        }
+            LastTimelinePositionTicks = entry.LastTimelinePosition?.Ticks ?? 0,
+            LastTimelineSampleUtcTicks = entry.LastTimelineSampleUtc?.Ticks ?? 0,
+            LastPositionAdvanceUtcTicks = entry.LastPositionAdvanceUtc?.Ticks ?? 0,
+            HasTimelinePosition = entry.LastTimelinePosition.HasValue ? (byte)1 : (byte)0,
+            HasTimelineSample = entry.LastTimelineSampleUtc.HasValue ? (byte)1 : (byte)0,
+            HasPositionAdvance = entry.LastPositionAdvanceUtc.HasValue ? (byte)1 : (byte)0
+        };
 
-        var elapsed = nowUtc - entry.LastTimelineSampleUtc.Value;
-        if (elapsed < MinAdvanceSampleInterval)
-        {
-            return TimelineAdvanceResult.Indeterminate;
-        }
-
-        var delta = position - entry.LastTimelinePosition.Value;
-
-        entry.LastTimelinePosition = position;
-        entry.LastTimelineSampleUtc = nowUtc;
-
-        if (delta >= TimeSpan.FromTicks((long)(elapsed.Ticks * 0.4)))
-        {
-            entry.LastPositionAdvanceUtc = nowUtc;
-            return TimelineAdvanceResult.Advanced;
-        }
-
-        return TimelineAdvanceResult.Stalled;
+        vn_mediasess_record_timeline_position(ref state, position.Ticks, nowUtc.Ticks, out int res);
+        entry.LastTimelinePosition = state.HasTimelinePosition != 0 ? new TimeSpan(state.LastTimelinePositionTicks) : null;
+        entry.LastTimelineSampleUtc = state.HasTimelineSample != 0 ? new DateTime(state.LastTimelineSampleUtcTicks, DateTimeKind.Utc) : null;
+        entry.LastPositionAdvanceUtc = state.HasPositionAdvance != 0 ? new DateTime(state.LastPositionAdvanceUtcTicks, DateTimeKind.Utc) : null;
+        return (TimelineAdvanceResult)res;
     }
 
     public bool IsRecentlyAdvancing(string sessionKey, DateTime nowUtc, TimeSpan window)
     {
         if (_sessions.TryGetValue(sessionKey, out var entry) && entry.LastPositionAdvanceUtc.HasValue)
         {
-            var age = nowUtc - entry.LastPositionAdvanceUtc.Value;
-            return age >= TimeSpan.Zero && age <= window;
+            var state = new VnTimelineAdvanceState
+            {
+                LastPositionAdvanceUtcTicks = entry.LastPositionAdvanceUtc.Value.Ticks,
+                HasPositionAdvance = 1
+            };
+            return vn_mediasess_is_recently_advancing(in state, nowUtc.Ticks, window.Ticks, out byte adv) == 0 && adv != 0;
         }
         return false;
     }

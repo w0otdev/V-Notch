@@ -44,6 +44,37 @@ public sealed class SpotlightControllerTests
     }
 
     [Fact]
+    public void ClosingHostDropsQueuedNativeHotkeyBeforeAnotherHostAttaches() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        int creations = 0;
+        using var controller = new SpotlightController(() =>
+        {
+            creations++;
+            throw new InvalidOperationException("The old host must not activate Spotlight");
+        });
+        var firstHost = new BackgroundWindow();
+        var secondHost = new BackgroundWindow();
+        try
+        {
+            controller.Initialize(firstHost, new NotchSettings { EnableSpotlight = true });
+            object[] message = [IntPtr.Zero, Win32Interop.WM_HOTKEY, new IntPtr(0x564E), IntPtr.Zero, false];
+            typeof(SpotlightController).GetMethod("WndProc",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(controller, message);
+            Assert.True((bool)message[4]);
+            firstHost.Close();
+            controller.Initialize(secondHost, new NotchSettings { EnableSpotlight = true });
+            // Drain input callbacks while idle window preparation is still queued.
+            await secondHost.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Input);
+            Assert.Equal(0, creations);
+        }
+        finally
+        {
+            firstHost.Close();
+            secondHost.Close();
+        }
+    });
+
+    [Fact]
     public void ClosingHostLeavesControllerAvailableForAnotherHost() => SharedStaTestRunner.Run(() =>
     {
         using var controller = new SpotlightController(() => throw new InvalidOperationException("Spotlight is disabled"));

@@ -1,13 +1,40 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services.Translation;
 
-internal static class TranslationModelPrompts
+internal static partial class TranslationModelPrompts
 {
-    private static readonly HashSet<string> HunyuanLanguages = "zh en fr pt es ja tr ru ar ko th it de vi ms id tl hi pl cs nl km my fa gu ur te mr he bn ta uk bo kk mn ug yue".Split(' ').ToHashSet();
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transprompts_is_hunyuan_supported(
+        ReadOnlySpan<ushort> source, int sourceLen,
+        ReadOnlySpan<ushort> target, int targetLen,
+        out byte outSupported);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transprompts_sanitize_control_tokens(
+        ReadOnlySpan<ushort> text, int textLen,
+        Span<ushort> outBuf, int outCap, out int outLen);
+
+    private static string Sanitize(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(text.AsSpan());
+        Span<char> buf = stackalloc char[512];
+        int rc = vn_transprompts_sanitize_control_tokens(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
+        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
+        if (rc == -2 && outLen > 0)
+        {
+            char[] arr = new char[outLen];
+            if (vn_transprompts_sanitize_control_tokens(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
+                return new string(arr, 0, actual);
+        }
+        return text;
+    }
+
     internal static string Build(TranslationModelProfile model, string text, string source, string target, bool enableHumanizer = true)
     {
         // Do not let text containing model control tokens break out of the user turn.
-        text = text.Replace("<|", "< |", StringComparison.Ordinal).Replace("<start_of_turn>", "< start_of_turn >", StringComparison.Ordinal)
-            .Replace("<end_of_turn>", "< end_of_turn >", StringComparison.Ordinal).Replace("<bos>", "< bos >", StringComparison.Ordinal);
+        text = Sanitize(text);
         if (source == "auto")
         {
             string? detected = TranslationLanguages.Detect(text);
@@ -19,7 +46,9 @@ internal static class TranslationModelPrompts
         if (glossary.Length > 0) meaning += glossary + " ";
         if (model.PromptKind == TranslationPromptKind.Hunyuan)
         {
-            if (!HunyuanLanguages.Contains(target) || (source != "auto" && !HunyuanLanguages.Contains(source)))
+            ReadOnlySpan<ushort> srcSpan = MemoryMarshal.Cast<char, ushort>(source != null ? source.AsSpan() : ReadOnlySpan<char>.Empty);
+            ReadOnlySpan<ushort> tgtSpan = MemoryMarshal.Cast<char, ushort>(target != null ? target.AsSpan() : ReadOnlySpan<char>.Empty);
+            if (vn_transprompts_is_hunyuan_supported(srcSpan, srcSpan.Length, tgtSpan, tgtSpan.Length, out byte supported) != 0 || supported == 0)
                 throw new TranslationException("translation.languageUnsupported");
             return $"<|startoftext|>Translate the following segment into {targetName}, without additional explanation. {meaning}\n\n{text}<|extra_0|>";
         }

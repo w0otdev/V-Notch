@@ -121,6 +121,8 @@ public partial class SettingsWindow
     {
         CompositionTarget.Rendering -= SmoothScroll_Tick;
         _isScrollAnimating = false;
+        _livePreviewDebounce?.Dispose();
+        _searchDebounce?.Dispose();
         _updatePresenter.Dispose();
         _monitorChoicesClosed = true;
         UnsubscribeDisplaySettingsChanged();

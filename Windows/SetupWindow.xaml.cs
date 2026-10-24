@@ -939,6 +939,7 @@ public partial class SetupWindow : Window
         followUpTimer.Tick += (_, _) =>
         {
             followUpTimer.Stop();
+            followUpTimer.Dispose();
             BringToFront();
         };
         followUpTimer.Start();

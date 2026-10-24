@@ -1,5 +1,5 @@
 using System;
-using VNotch.Models;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
@@ -28,12 +28,38 @@ public readonly record struct SoundCloudPreserveParams(
     string SessionOverride,
     double FreshnessSeconds = 3.0);
 
-internal static class MediaTimingDecisions
+internal static partial class MediaTimingDecisions
 {
-    private static bool IsLongHoldSource(string lastSource)
-        => lastSource == MediaPlatform.YouTube.ToDisplayString()
-        || lastSource == MediaPlatform.SoundCloud.ToDisplayString()
-        || lastSource == MediaPlatform.Browser.ToDisplayString();
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_timing_is_long_hold_source(
+        char* srcPtr, int srcLen, out byte outLongHold);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_media_timing_should_preserve_soundcloud(
+        char* mediaSourcePtr, int mediaSourceLen,
+        char* curTrackPtr, int curTrackLen,
+        char* curArtistPtr, int curArtistLen,
+        char* sourceAppIdPtr, int sourceAppIdLen,
+        char* sessionKeyPtr, int sessionKeyLen,
+        char* lastSourcePtr, int lastSourceLen,
+        char* lastSessionKeyPtr, int lastSessionKeyLen,
+        long lastMetaChangeTicks,
+        long nowTicks,
+        byte hasSessionOverride,
+        char* sessionOverridePtr, int sessionOverrideLen,
+        double freshnessSeconds,
+        out byte outPreserve);
+
+    private static unsafe bool IsLongHoldSource(string lastSource)
+    {
+        if (string.IsNullOrEmpty(lastSource))
+            return false;
+        fixed (char* ptr = lastSource)
+        {
+            _ = vn_media_timing_is_long_hold_source(ptr, lastSource.Length, out byte lh);
+            return lh != 0;
+        }
+    }
 
     public static (bool hold, DateTime emptyStart, string stableSignature) EvaluateEmptyMetadataHold(
         string currentTrack,
@@ -108,9 +134,7 @@ internal static class MediaTimingDecisions
         DateTime now,
         double holdSeconds = 15.0)
     {
-        bool isGeneric = currentArtist == MediaPlatform.YouTube.ToDisplayString()
-                      || currentArtist == MediaPlatform.SoundCloud.ToDisplayString()
-                      || currentArtist == MediaPlatform.Browser.ToDisplayString();
+        bool isGeneric = IsLongHoldSource(currentArtist);
 
         if (isGeneric &&
             !string.IsNullOrEmpty(stableArtist) &&
@@ -127,36 +151,41 @@ internal static class MediaTimingDecisions
         return (currentArtist, stableArtist);
     }
 
-    public static bool ShouldPreserveSoundCloud(SoundCloudPreserveParams p)
+    public static unsafe bool ShouldPreserveSoundCloud(SoundCloudPreserveParams p)
     {
-        if (!string.Equals(p.MediaSource, MediaPlatform.Browser.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
-            return false;
+        string ms = p.MediaSource ?? string.Empty;
+        string ct = p.CurrentTrack ?? string.Empty;
+        string ca = p.CurrentArtist ?? string.Empty;
+        string app = p.SourceAppId ?? string.Empty;
+        string sk = p.SessionInstanceKey ?? string.Empty;
+        string ls = p.LastSource ?? string.Empty;
+        string lsk = p.LastPublishedSessionInstanceKey ?? string.Empty;
+        string so = p.SessionOverride ?? string.Empty;
 
-        if (!string.Equals(p.LastSource, MediaPlatform.SoundCloud.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (string.IsNullOrWhiteSpace(p.CurrentTrack) ||
-            string.IsNullOrWhiteSpace(p.SourceAppId) ||
-            !PlatformDetector.IsBrowserApp(p.SourceAppId) ||
-            string.IsNullOrWhiteSpace(p.SessionInstanceKey))
-            return false;
-
-        if (!string.Equals(p.LastPublishedSessionInstanceKey, p.SessionInstanceKey, StringComparison.Ordinal))
-            return false;
-
-        if ((p.Now - p.LastMetadataChangeTime).TotalSeconds > p.FreshnessSeconds)
-            return false;
-
-        bool hasYouTubeHint = p.CurrentTrack.Contains("youtube", StringComparison.OrdinalIgnoreCase) ||
-                              p.CurrentArtist.Contains("youtube", StringComparison.OrdinalIgnoreCase);
-        if (hasYouTubeHint)
-            return false;
-
-        if (p.HasSessionOverride &&
-            !string.IsNullOrEmpty(p.SessionOverride) &&
-            !string.Equals(p.SessionOverride, MediaPlatform.SoundCloud.ToDisplayString(), StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        return true;
+        fixed (char* pMs = ms)
+        fixed (char* pCt = ct)
+        fixed (char* pCa = ca)
+        fixed (char* pApp = app)
+        fixed (char* pSk = sk)
+        fixed (char* pLs = ls)
+        fixed (char* pLsk = lsk)
+        fixed (char* pSo = so)
+        {
+            _ = vn_media_timing_should_preserve_soundcloud(
+                pMs, ms.Length,
+                pCt, ct.Length,
+                pCa, ca.Length,
+                pApp, app.Length,
+                pSk, sk.Length,
+                pLs, ls.Length,
+                pLsk, lsk.Length,
+                p.LastMetadataChangeTime.Ticks,
+                p.Now.Ticks,
+                p.HasSessionOverride ? (byte)1 : (byte)0,
+                pSo, so.Length,
+                p.FreshnessSeconds,
+                out byte preserve);
+            return preserve != 0;
+        }
     }
 }

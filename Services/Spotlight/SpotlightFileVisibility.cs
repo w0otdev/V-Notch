@@ -1,14 +1,42 @@
+using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.IO;
-using VNotch.Controllers;
+using System.Linq;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
 // Only applies to filesystem discovery. Start Menu apps and explicit pins
 // remain available even when their installation lives in one of these roots.
-internal static class SpotlightFileVisibility
+internal static partial class SpotlightFileVisibility
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_visibility_is_explicit_path(
+        ReadOnlySpan<char> queryPtr, int queryLen,
+        out byte outResult);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_visibility_should_search(
+        ReadOnlySpan<char> queryPtr, int queryLen,
+        out byte outResult);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_visibility_is_file_name_query(
+        ReadOnlySpan<char> queryPtr, int queryLen,
+        out byte outResult);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_visibility_should_include(
+        ReadOnlySpan<char> targetPtr, int targetLen,
+        ReadOnlySpan<char> queryPtr, int queryLen,
+        byte isFolder,
+        byte isUnderHiddenRoot,
+        out byte outResult);
+
     internal static IReadOnlyList<string> HiddenRoots { get; } = Array.AsReadOnly(new[]
     {
         Environment.GetFolderPath(Environment.SpecialFolder.Windows),
@@ -41,43 +69,59 @@ internal static class SpotlightFileVisibility
     private static readonly string WindowsExclusionScope = string.Concat(HiddenRoots.Select(root =>
         " AND NOT SCOPE='file:" + root.Replace('\\', '/').Replace("'", "''") + "/'"));
 
-    internal static bool IsExplicitPath(string query) =>
-        Path.IsPathFullyQualified(query.Trim().Trim('"'));
+    internal static bool IsExplicitPath(string query)
+    {
+        ReadOnlySpan<char> q = (query ?? string.Empty).AsSpan();
+        vn_spotlight_visibility_is_explicit_path(q, q.Length, out byte res);
+        return res != 0;
+    }
 
-    internal static bool ShouldSearch(string query) =>
-        query.Trim().Length >= 2 || IsExplicitPath(query);
+    internal static bool ShouldSearch(string query)
+    {
+        ReadOnlySpan<char> q = (query ?? string.Empty).AsSpan();
+        vn_spotlight_visibility_should_search(q, q.Length, out byte res);
+        return res != 0;
+    }
 
     internal static bool IsFileNameQuery(string query)
     {
-        string name = query.Trim().Trim('"');
-        return name.Length > 2 && !name.Contains('\\') && !name.Contains('/')
-            && name.IndexOfAny(['*', '?', ':', '<', '>', '|']) < 0
-            && Path.GetFileNameWithoutExtension(name).Length > 0
-            && Path.GetExtension(name).Length > 1;
+        ReadOnlySpan<char> q = (query ?? string.Empty).AsSpan();
+        vn_spotlight_visibility_is_file_name_query(q, q.Length, out byte res);
+        return res != 0;
     }
 
     internal static bool ShouldInclude(SpotlightSearchItem item, string query)
     {
-        if (LocalPathPolicy.IsUncPath(item.Target)) return false;
-        string path = item.Target.Replace('/', '\\');
-        if (IsExplicitPath(query))
-            return path.StartsWith(query.Trim().Trim('"').Replace('/', '\\'), StringComparison.OrdinalIgnoreCase);
-        if (IsFileNameQuery(query) && string.Equals(Path.GetFileName(path), query.Trim().Trim('"'),
-            StringComparison.OrdinalIgnoreCase)) return true;
+        string rawTarget = item.Target ?? string.Empty;
+        string normalizedPath = rawTarget.Replace('/', '\\');
+        bool underHiddenRoot = false;
+        for (int i = 0; i < HiddenRoots.Count; i++)
+        {
+            string root = HiddenRoots[i];
+            if (normalizedPath.Equals(root, StringComparison.OrdinalIgnoreCase) ||
+                (normalizedPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) &&
+                 normalizedPath.Length > root.Length &&
+                 normalizedPath[root.Length] == '\\'))
+            {
+                underHiddenRoot = true;
+                break;
+            }
+        }
 
-        if (HiddenRoots.Any(root => path.Equals(root, StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase))) return false;
-        string[] segments = path.Split('\\', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Any(HiddenDirectories.Contains)) return false;
-        return item.Kind == SpotlightResultKind.Folder
-            || !HiddenExtensions.Contains(Path.GetExtension(path));
+        ReadOnlySpan<char> t = rawTarget.AsSpan();
+        ReadOnlySpan<char> q = (query ?? string.Empty).AsSpan();
+        vn_spotlight_visibility_should_include(
+            t, t.Length,
+            q, q.Length,
+            item.Kind == SpotlightResultKind.Folder ? (byte)1 : (byte)0,
+            underHiddenRoot ? (byte)1 : (byte)0,
+            out byte res);
+        return res != 0;
     }
 
     internal static string BuildEverythingQuery(string query)
     {
         if (IsExplicitPath(query) || IsFileNameQuery(query)) return query;
-        // Apply the scope before Everything's result cap, so system files
-        // cannot crowd personal documents out of the returned page.
         return "<" + query + ">" + EverythingExclusionSuffix;
     }
 

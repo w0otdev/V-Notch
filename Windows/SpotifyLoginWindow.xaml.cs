@@ -252,6 +252,8 @@ public partial class SpotifyLoginWindow : Window
         try
         {
             _cookieTimer.Stop();
+            _cookieTimer.Tick -= CookieTimer_Tick;
+            _cookieTimer.Dispose();
             if (SpotifyWebView.CoreWebView2 != null)
             {
                 SpotifyWebView.CoreWebView2.NavigationCompleted -= CoreWebView2_NavigationCompleted;

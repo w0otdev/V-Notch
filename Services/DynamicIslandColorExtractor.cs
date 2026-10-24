@@ -1,7 +1,6 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -9,30 +8,14 @@ using System.Windows.Media.Imaging;
 
 namespace VNotch.Services;
 
-internal static class DynamicIslandColorExtractor
+internal static partial class DynamicIslandColorExtractor
 {
     public readonly record struct Palette(Color Main, Color Sub);
     public readonly record struct PaletteColor(Color Color, int Population, double Score);
 
     private const string LogTag = "COLOR-PICK";
     private static readonly Palette DefaultPalette = new(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));
-    private static readonly float[] DefaultSpatialWeights = BuildSpatialWeights(36, 36);
 
-    private static float[] BuildSpatialWeights(int width, int height)
-    {
-        var weights = new float[width * height];
-        float centerX = width / 2f, centerY = height / 2f;
-        for (int y = 0; y < height; y++)
-            for (int x = 0; x < width; x++)
-            {
-                float dx = (x - centerX) / centerX, dy = (y - centerY) / centerY;
-                weights[y * width + x] = 1.0f + MathF.Max(0, 1.0f - MathF.Sqrt(dx * dx + dy * dy)) * 0.5f;
-            }
-        return weights;
-    }
-
-    // Palette remains an immutable value result. Weak-table entries require a reference
-    // type; allocating that entry on a cache miss avoids allocating on every palette read.
     private sealed class BoxedPalette
     {
         public readonly Palette Palette;
@@ -58,7 +41,6 @@ internal static class DynamicIslandColorExtractor
         if (_paletteCache.TryGetValue(bitmap, out var cachedBox))
             return Task.FromResult(cachedBox.Palette);
 
-        // IsFrozen itself verifies thread access on an unfrozen Freezable.
         if (!bitmap.CheckAccess())
             return PreloadOnOwnerAsync(bitmap);
 
@@ -71,7 +53,6 @@ internal static class DynamicIslandColorExtractor
     {
         try
         {
-            // Another thread may freeze the source after CheckAccess, detaching its dispatcher.
             var dispatcher = bitmap.Dispatcher;
             if (dispatcher == null)
                 return await Task.Run(() => GetDynamicIslandPalette(bitmap)).ConfigureAwait(false);
@@ -96,7 +77,6 @@ internal static class DynamicIslandColorExtractor
         }
         catch (InvalidOperationException)
         {
-            // Non-freezable sources can still be analyzed on their owning thread.
         }
         return bitmap.IsFrozen;
     }
@@ -108,7 +88,6 @@ internal static class DynamicIslandColorExtractor
 
         if (_paletteCache.TryGetValue(bitmap, out var cachedBox))
             return cachedBox.Palette;
-        // Do not cache a temporary fallback for an inaccessible mutable source.
         if (!bitmap.CheckAccess())
             return DefaultPalette;
 
@@ -156,21 +135,15 @@ internal static class DynamicIslandColorExtractor
 
     internal static Int32Rect? GetClampedCropRect(Rect bounds, int pixelWidth, int pixelHeight)
     {
-        if (pixelWidth <= 0 || pixelHeight <= 0 || bounds.IsEmpty ||
-            !double.IsFinite(bounds.Left) || !double.IsFinite(bounds.Top) ||
-            !double.IsFinite(bounds.Right) || !double.IsFinite(bounds.Bottom))
+        if (bounds.IsEmpty)
             return null;
 
-        bounds.Intersect(new Rect(0, 0, pixelWidth, pixelHeight));
-        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
-            return null;
+        vn_dicolor_get_clamped_crop_rect(
+            bounds.Left, bounds.Top, bounds.Right, bounds.Bottom, 0,
+            pixelWidth, pixelHeight,
+            out int x, out int y, out int w, out int h, out byte valid);
 
-        // Clamp the rounded edges before casting so SourceRect stays inside the bitmap.
-        int left = (int)Math.Clamp(Math.Floor(bounds.Left), 0, pixelWidth - 1);
-        int top = (int)Math.Clamp(Math.Floor(bounds.Top), 0, pixelHeight - 1);
-        int right = (int)Math.Clamp(Math.Ceiling(bounds.Right), left + 1, pixelWidth);
-        int bottom = (int)Math.Clamp(Math.Ceiling(bounds.Bottom), top + 1, pixelHeight);
-        return new Int32Rect(left, top, right - left, bottom - top);
+        return valid != 0 ? new Int32Rect(x, y, w, h) : null;
     }
 
     public static Color GetDominantColor(BitmapSource bitmap)
@@ -182,66 +155,26 @@ internal static class DynamicIslandColorExtractor
 
     public static Color EnsureBrightColor(Color c)
     {
-        double luminance = (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
-        if (luminance < 0.5)
-        {
-            const double factor = 0.7;
-            byte r = (byte)(c.R + (255 - c.R) * factor);
-            byte g = (byte)(c.G + (255 - c.G) * factor);
-            byte b = (byte)(c.B + (255 - c.B) * factor);
-            return Color.FromRgb(r, g, b);
-        }
-        return c;
+        vn_dicolor_ensure_bright(c.R, c.G, c.B, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     public static Color GetVibrantColor(Color c)
     {
-        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
-        double max = Math.Max(r, Math.Max(g, b));
-        double min = Math.Min(r, Math.Min(g, b));
-        double h = 0, s = 0, l = (max + min) / 2.0;
-        double d = max - min;
-        if (d > 0)
-        {
-            s = l > 0.5 ? d / (2.0 - max - min) : d / (max + min);
-            if (Math.Abs(max - r) < 0.0001) h = ((g - b) / d + (g < b ? 6 : 0)) / 6.0;
-            else if (Math.Abs(max - g) < 0.0001) h = ((b - r) / d + 2) / 6.0;
-            else h = ((r - g) / d + 4) / 6.0;
-            s = Math.Min(s, 0.90);
-        }
-
-        if (s < 0.16)
-        {
-            byte gray = (byte)Math.Clamp(0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B, 0, 255);
-            byte lifted = (byte)Math.Clamp(gray + (255 - gray) * 0.18, 0, 255);
-            return Color.FromRgb(lifted, lifted, lifted);
-        }
-
-        l = Math.Max(l, 0.65);
-        l = Math.Min(l, 0.85);
-        return HslToColor(h, s, l);
+        vn_dicolor_get_vibrant(c.R, c.G, c.B, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     public static double GetAdaptiveBlurOpacity(double luminance, double brightnessBoost = 1.0)
     {
-        brightnessBoost = Math.Clamp(brightnessBoost, 0.5, 2.5);
-        double baseOpacity;
-        if (luminance <= 0.72)
-            baseOpacity = 0.55 + (brightnessBoost - 0.5) * (0.45 / 2.0);
-        else
-        {
-            double t = Math.Clamp((luminance - 0.72) / 0.28, 0.0, 1.0);
-            double fullBase = 0.55 + (brightnessBoost - 0.5) * (0.45 / 2.0);
-            baseOpacity = fullBase - t * 0.10;
-        }
-        return Math.Clamp(baseOpacity, 0.0, 1.0);
+        vn_dicolor_get_adaptive_blur_opacity(luminance, brightnessBoost, out double opacity);
+        return opacity;
     }
 
     public static double GetAdaptiveBlurImageOpacity(double luminance)
     {
-        if (luminance <= 0.70) return 0.90;
-        double t = Math.Clamp((luminance - 0.70) / 0.30, 0.0, 1.0);
-        return 0.90 - t * 0.15;
+        vn_dicolor_get_adaptive_blur_image_opacity(luminance, out double opacity);
+        return opacity;
     }
 
     public static double GetBrightnessDimOverlay(BitmapSource bitmap)
@@ -267,41 +200,14 @@ internal static class DynamicIslandColorExtractor
             try
             {
                 scaled.CopyPixels(pixels, stride, 0);
-
-                double totalLuminance = 0;
-                int brightPixelCount = 0;
-                int pixelCount = actualW * actualH;
-
-                for (int i = 0; i < bufLen; i += 4)
+                double result;
+                unsafe
                 {
-                    double r = pixels[i + 2] / 255.0;
-                    double g = pixels[i + 1] / 255.0;
-                    double b = pixels[i] / 255.0;
-
-                    double lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                    totalLuminance += lum;
-
-                    if (lum > 0.75) brightPixelCount++;
+                    fixed (byte* p = pixels)
+                    {
+                        vn_dicolor_compute_brightness_dim(p, bufLen, actualW * actualH, out result);
+                    }
                 }
-
-                double avgLuminance = totalLuminance / pixelCount;
-                double brightRatio = (double)brightPixelCount / pixelCount;
-
-                double lumContrib = avgLuminance > 0.55
-                    ? Math.Clamp((avgLuminance - 0.55) / 0.45, 0.0, 1.0) * 0.45
-                    : 0;
-
-                double ratioContrib = brightRatio > 0.40
-                    ? Math.Clamp((brightRatio - 0.40) / 0.50, 0.0, 1.0) * 0.40
-                    : 0;
-
-                double combined = Math.Max(lumContrib, ratioContrib);
-                if (avgLuminance > 0.55 && brightRatio > 0.40)
-                {
-                    combined += Math.Min(lumContrib, ratioContrib) * 0.3;
-                }
-
-                double result = Math.Clamp(combined, 0.0, 0.65);
                 _dimCache.AddOrUpdate(bitmap, new BoxedDim(result));
                 return result;
             }
@@ -318,13 +224,12 @@ internal static class DynamicIslandColorExtractor
 
     #endregion
 
-    #region Advanced palette extraction (Weighted Hue Buckets + Zone Weighting)
+    #region Advanced palette extraction
 
     public readonly record struct PaletteResult(
         Color Primary, Color Secondary, Color Accent,
         bool IsMonotone, bool IsFlatBg, Color TextOnPrimary);
 
-#pragma warning disable S3776 // Advanced palette extraction computes multi-bucket HSV distributions and spatial zone weighting
     private static PaletteResult ExtractAdvancedPalette(BitmapSource bitmap, int analysisSize = 36)
     {
         if (bitmap == null)
@@ -334,8 +239,6 @@ internal static class DynamicIslandColorExtractor
         {
             var formattedBitmap = ArtworkAnalysisSource.GetBgra32(bitmap);
 
-            // Analyze a thumbnail, independent of the original artwork size. Hue buckets
-            // keep saturated colors from averaging into gray; center weighting favors the subject.
             double scaleX = (double)analysisSize / formattedBitmap.PixelWidth;
             double scaleY = (double)analysisSize / formattedBitmap.PixelHeight;
             var small = new TransformedBitmap(formattedBitmap, new ScaleTransform(scaleX, scaleY));
@@ -353,137 +256,25 @@ internal static class DynamicIslandColorExtractor
             {
                 small.CopyPixels(pixels, stride, 0);
 
-                const int NUM_BUCKETS = 36;
-                Span<float> bucketSatSum = stackalloc float[NUM_BUCKETS];
-                bucketSatSum.Clear();
-                Span<float> bucketValSum = stackalloc float[NUM_BUCKETS];
-                bucketValSum.Clear();
-                Span<float> bucketWeight = stackalloc float[NUM_BUCKETS];
-                bucketWeight.Clear();
-                Span<int> bucketCount = stackalloc int[NUM_BUCKETS];
-                bucketCount.Clear();
-                Span<float> bucketPeakS = stackalloc float[NUM_BUCKETS];
-                bucketPeakS.Clear();
-                Span<float> bucketPeakH = stackalloc float[NUM_BUCKETS];
-                bucketPeakH.Clear();
-                Span<float> bucketPeakV = stackalloc float[NUM_BUCKETS];
-                bucketPeakV.Clear();
-
-                var spatialWeights = width == 36 && height == 36 ? DefaultSpatialWeights : BuildSpatialWeights(width, height);
-                int totalColorPixels = 0;
-                int totalPixels = 0;
-
-                for (int y = 0; y < height; y++)
+                VnPaletteResult nRes;
+                unsafe
                 {
-                    for (int x = 0; x < width; x++)
+                    fixed (byte* p = pixels)
                     {
-                        int i = y * stride + x * 4;
-                        byte a = pixels[i + 3];
-                        if (a < 80) continue;
-
-                        float rf = pixels[i + 2] / 255f;
-                        float gf = pixels[i + 1] / 255f;
-                        float bf = pixels[i] / 255f;
-
-                        var (h, s, v) = RgbToHsv(rf, gf, bf);
-                        totalPixels++;
-
-                        if (v < 0.06f) continue;
-                        if (s < 0.12f) continue;
-
-                        totalColorPixels++;
-
-                        int bucket = (int)(h * NUM_BUCKETS) % NUM_BUCKETS;
-                        if (bucket < 0) bucket += NUM_BUCKETS;
-
-                        float zoneWeight = spatialWeights[y * width + x];
-
-                        bucketSatSum[bucket] += s * zoneWeight;
-                        bucketValSum[bucket] += v * zoneWeight;
-                        bucketWeight[bucket] += zoneWeight;
-                        bucketCount[bucket]++;
-
-                        float vibrancy = s * MathF.Max(v, 0.3f);
-                        if (vibrancy > bucketPeakS[bucket])
-                        {
-                            bucketPeakS[bucket] = vibrancy;
-                            bucketPeakH[bucket] = h;
-                            bucketPeakV[bucket] = Math.Max(v, 0.4f);
-                        }
+                        vn_dicolor_extract_advanced_palette(p, width, height, stride, out nRes);
                     }
                 }
 
-                bool isMonotone = totalPixels > 0 && (float)totalColorPixels / totalPixels < 0.08f;
-                if (isMonotone)
+                if (nRes.IsMonotone != 0)
                     return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
 
-                float bestScore = -1, secondScore = -1;
-                int bestBucket = -1, secondBucket = -1;
+                Color primary = Color.FromArgb(nRes.PrimaryA, nRes.PrimaryR, nRes.PrimaryG, nRes.PrimaryB);
+                Color secondary = nRes.SecondaryA != 0
+                    ? Color.FromArgb(nRes.SecondaryA, nRes.SecondaryR, nRes.SecondaryG, nRes.SecondaryB)
+                    : default;
+                Color textOnPrimary = Color.FromArgb(nRes.TextA, nRes.TextR, nRes.TextG, nRes.TextB);
 
-                for (int i = 0; i < NUM_BUCKETS; i++)
-                {
-                    if (bucketCount[i] == 0) continue;
-
-                    float area = (float)bucketCount[i] / Math.Max(totalColorPixels, 1);
-                    float avgSat = bucketSatSum[i] / bucketWeight[i];
-                    float avgVal = bucketValSum[i] / bucketWeight[i];
-
-                    float score = MathF.Pow(area, 0.3f) * avgSat * avgVal;
-
-                    if (score > bestScore)
-                    {
-                        if (bestBucket >= 0)
-                        {
-                            int hueDist = Math.Min(Math.Abs(i - bestBucket), NUM_BUCKETS - Math.Abs(i - bestBucket));
-                            if (hueDist >= 4 && bestScore > secondScore)
-                            {
-                                secondScore = bestScore;
-                                secondBucket = bestBucket;
-                            }
-                        }
-                        bestScore = score;
-                        bestBucket = i;
-                    }
-                    else if (score > secondScore)
-                    {
-                        int hueDist = Math.Min(Math.Abs(i - bestBucket), NUM_BUCKETS - Math.Abs(i - bestBucket));
-                        if (hueDist >= 4)
-                        {
-                            secondScore = score;
-                            secondBucket = i;
-                        }
-                    }
-                }
-
-                Color primary = Color.FromRgb(30, 30, 30);
-                if (bestBucket >= 0)
-                {
-                    float pH = bucketPeakH[bestBucket];
-                    float pS = Math.Min(bucketPeakS[bestBucket] / Math.Max(bucketPeakV[bestBucket], 0.3f), 1.0f);
-                    float pV = bucketPeakV[bestBucket];
-                    pV = Math.Max(pV, 0.45f);
-                    pS = Math.Max(pS, 0.50f);
-                    primary = HsvToColor(pH, pS, pV);
-                }
-
-                Color secondary = default;
-                if (secondBucket >= 0)
-                {
-                    float pH = bucketPeakH[secondBucket];
-                    float pS = Math.Min(bucketPeakS[secondBucket] / Math.Max(bucketPeakV[secondBucket], 0.3f), 1.0f);
-                    float pV = bucketPeakV[secondBucket];
-                    pV = Math.Max(pV, 0.45f);
-                    pS = Math.Max(pS, 0.50f);
-                    secondary = HsvToColor(pH, pS, pV);
-                }
-
-                bool isFlatBg = bestScore > 0 && secondScore > 0 &&
-                                (bestScore / (bestScore + secondScore)) > 0.85f;
-
-                double primaryLum = GetRelativeLuminance(primary);
-                Color textOnPrimary = primaryLum > 0.4 ? Colors.Black : Colors.White;
-
-                return new PaletteResult(primary, secondary, secondary, false, isFlatBg, textOnPrimary);
+                return new PaletteResult(primary, secondary, secondary, false, nRes.IsFlatBg != 0, textOnPrimary);
             }
             finally
             {
@@ -495,220 +286,143 @@ internal static class DynamicIslandColorExtractor
             return new PaletteResult(Color.FromRgb(30, 30, 30), default, default, true, false, Colors.White);
         }
     }
-#pragma warning restore S3776
 
     #endregion
 
     #region HSV / HSL / contrast helpers
 
-    private static (float H, float S, float V) RgbToHsv(float r, float g, float b)
-    {
-        float max = Math.Max(r, Math.Max(g, b));
-        float min = Math.Min(r, Math.Min(g, b));
-        float d = max - min;
-        float h = 0, s = max > 0 ? d / max : 0, v = max;
-
-        if (d > 0.001f)
-        {
-            if (Math.Abs(max - r) < 0.0001f) h = (g - b) / d + (g < b ? 6 : 0);
-            else if (Math.Abs(max - g) < 0.0001f) h = (b - r) / d + 2;
-            else h = (r - g) / d + 4;
-            h /= 6f;
-        }
-
-        return (h, s, v);
-    }
-
-    private static Color HsvToColor(float h, float s, float v)
-    {
-        float r, g, b;
-        int hi = (int)(h * 6f) % 6;
-        float f = h * 6f - hi;
-        float p = v * (1f - s);
-        float q = v * (1f - f * s);
-        float t = v * (1f - (1f - f) * s);
-
-        switch (hi)
-        {
-            case 0: r = v; g = t; b = p; break;
-            case 1: r = q; g = v; b = p; break;
-            case 2: r = p; g = v; b = t; break;
-            case 3: r = p; g = q; b = v; break;
-            case 4: r = t; g = p; b = v; break;
-            default: r = v; g = p; b = q; break;
-        }
-
-        return Color.FromRgb(
-            (byte)Math.Clamp(r * 255f, 0, 255),
-            (byte)Math.Clamp(g * 255f, 0, 255),
-            (byte)Math.Clamp(b * 255f, 0, 255));
-    }
-
     public static (double H, double S, double L) ToHsl(Color c)
     {
-        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
-        double max = Math.Max(r, Math.Max(g, b));
-        double min = Math.Min(r, Math.Min(g, b));
-        double h = 0, s = 0, l = (max + min) / 2.0;
-        double d = max - min;
-        if (d > 0.0001)
-        {
-            s = l > 0.5 ? d / (2.0 - max - min) : d / (max + min);
-            if (Math.Abs(max - r) < 0.0001) h = ((g - b) / d + (g < b ? 6 : 0)) / 6.0;
-            else if (Math.Abs(max - g) < 0.0001) h = ((b - r) / d + 2) / 6.0;
-            else h = ((r - g) / d + 4) / 6.0;
-        }
+        vn_dicolor_to_hsl(c.R, c.G, c.B, out double h, out double s, out double l);
         return (h, s, l);
     }
 
     public static Color HslToColor(double h, double s, double l)
     {
-        double r, g, b;
-        if (s == 0) { r = g = b = l; }
-        else
-        {
-            // Stable endpoints keep saturated channels monotone: l + s - l * s
-            // can round just below 1 for s == 1 and truncate a 255 channel to 254.
-            double q = l < 0.5 ? l * (1 + s) : l + (1 - l) * s;
-            double p = l < 0.5 ? l * (1 - s) : l - (1 - l) * s;
-            r = HueToRgb(p, q, h + 1.0 / 3.0);
-            g = HueToRgb(p, q, h);
-            b = HueToRgb(p, q, h - 1.0 / 3.0);
-        }
-        return Color.FromRgb(
-            (byte)Math.Clamp(r * 255, 0, 255),
-            (byte)Math.Clamp(g * 255, 0, 255),
-            (byte)Math.Clamp(b * 255, 0, 255));
+        vn_dicolor_hsl_to_color(h, s, l, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
-    private static double HueToRgb(double p, double q, double t)
+    public static double GetRelativeLuminance(Color c)
     {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
-        if (t <= 1.0 / 2.0) return q;
-        if (t < 2.0 / 3.0) return q - (q - p) * (6.0 * t - 3.0);
-        return p;
+        vn_dicolor_get_relative_luminance(c.R, c.G, c.B, out double lum);
+        return lum;
     }
-
-    private static readonly double[] LinearChannel = CreateLinearChannelTable();
-
-    private static double[] CreateLinearChannelTable()
-    {
-        var table = new double[256];
-        for (int v = 0; v < table.Length; v++)
-        {
-            double x = v / 255.0;
-            table[v] = x <= 0.03928 ? x / 12.92 : Math.Pow((x + 0.055) / 1.055, 2.4);
-        }
-        return table;
-    }
-
-    public static double GetRelativeLuminance(Color c) =>
-        0.2126 * LinearChannel[c.R] + 0.7152 * LinearChannel[c.G] + 0.0722 * LinearChannel[c.B];
 
     public static double GetContrastRatio(Color a, Color b)
     {
-        double l1 = GetRelativeLuminance(a);
-        double l2 = GetRelativeLuminance(b);
-        if (l1 < l2) (l1, l2) = (l2, l1);
-        return (l1 + 0.05) / (l2 + 0.05);
+        vn_dicolor_get_contrast_ratio(a.R, a.G, a.B, b.R, b.G, b.B, out double ratio);
+        return ratio;
     }
 
     public static double ColorDistance(Color a, Color b)
     {
-        int dr = a.R - b.R, dg = a.G - b.G, db = a.B - b.B;
-        return Math.Sqrt(dr * dr + dg * dg + db * db);
+        vn_dicolor_color_distance(a.R, a.G, a.B, b.R, b.G, b.B, out double dist);
+        return dist;
     }
 
     public static Color EnsureTextOnDarkBackground(Color color, Color background, double minRatio)
     {
-        var hsl = ToHsl(color);
-        Color best = color;
-
-        if (GetRelativeLuminance(best) < 0.18 || hsl.L < 0.40)
-            best = HslToColor(hsl.H, Math.Max(0.18, hsl.S), Math.Clamp(Math.Max(hsl.L, 0.60), 0.55, 0.65));
-
-        if (GetContrastRatio(best, background) >= minRatio && GetRelativeLuminance(best) >= 0.18)
-            return best;
-
-        // Search the original discrete lightness steps without changing palette granularity.
-        double backgroundLuminance = GetRelativeLuminance(background);
-        double saturation = Math.Max(0.18, hsl.S);
-        if (backgroundLuminance > 0.18)
-        {
-            // Contrast falls and then rises as luminance crosses the background.
-            // Check the first allowed luminance for a solution on the darker side.
-            int low = 0, high = 101;
-            while (low < high)
-            {
-                int step = low + (high - low) / 2;
-                var candidate = ContrastCandidate(hsl.H, saturation, hsl.L, true, 0.55, 0.72, step);
-                if (GetRelativeLuminance(candidate) >= 0.18)
-                    high = step;
-                else
-                    low = step + 1;
-            }
-            if (low > 100) return Colors.White;
-            var firstAllowed = ContrastCandidate(hsl.H, saturation, hsl.L, true, 0.55, 0.72, low);
-            if (GetContrastRatio(firstAllowed, background) >= minRatio)
-                return firstAllowed;
-        }
-
-        int first = FindContrastStep(hsl.H, saturation, hsl.L, true, 0.55, 0.72,
-            backgroundLuminance, minRatio, minimumLuminance: 0.18);
-        return first <= 100
-            ? ContrastCandidate(hsl.H, saturation, hsl.L, true, 0.55, 0.72, first)
-            : Colors.White;
+        vn_dicolor_ensure_text_on_dark_bg(
+            color.R, color.G, color.B,
+            background.R, background.G, background.B,
+            minRatio,
+            out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     public static Color EnsureContrast(Color sub, Color main, double minRatio)
     {
-        if (GetContrastRatio(sub, main) >= minRatio) return sub;
-        var hsl = ToHsl(sub);
-        double backgroundLuminance = GetRelativeLuminance(main);
-        bool lighten = backgroundLuminance < 0.45;
-        double saturation = Math.Max(0.18, hsl.S);
-        var initial = ContrastCandidate(hsl.H, saturation, hsl.L, lighten, 0, 1, 0);
-        if (GetContrastRatio(initial, main) >= minRatio) return initial;
-
-        int first = FindContrastStep(hsl.H, saturation, hsl.L, lighten, 0, 1,
-            backgroundLuminance, minRatio);
-        if (first <= 100)
-            return ContrastCandidate(hsl.H, saturation, hsl.L, lighten, 0, 1, first);
-
-        return GetContrastRatio(Colors.White, main) >= GetContrastRatio(Colors.Black, main)
-            ? Colors.White : Colors.Black;
-    }
-
-    private static Color ContrastCandidate(double hue, double saturation, double lightness,
-        bool lighten, double lowerLightness, double upperLightness, int step)
-    {
-        double t = step / 100.0;
-        double l = lighten ? lightness + (1.0 - lightness) * t : lightness * (1.0 - t);
-        return HslToColor(hue, saturation, Math.Clamp(l, lowerLightness, upperLightness));
-    }
-
-    private static int FindContrastStep(double hue, double saturation, double lightness,
-        bool lighten, double lowerLightness, double upperLightness, double backgroundLuminance,
-        double minRatio, double minimumLuminance = 0)
-    {
-        int low = 0, high = 101;
-        while (low < high)
-        {
-            int step = low + (high - low) / 2;
-            double luminance = GetRelativeLuminance(ContrastCandidate(
-                hue, saturation, lightness, lighten, lowerLightness, upperLightness, step));
-            bool meetsContrast = lighten
-                ? luminance >= backgroundLuminance && (luminance + 0.05) / (backgroundLuminance + 0.05) >= minRatio
-                : luminance <= backgroundLuminance && (backgroundLuminance + 0.05) / (luminance + 0.05) >= minRatio;
-            if (luminance >= minimumLuminance && meetsContrast)
-                high = step;
-            else
-                low = step + 1;
-        }
-        return low;
+        vn_dicolor_ensure_contrast(
+            sub.R, sub.G, sub.B,
+            main.R, main.G, main.B,
+            minRatio,
+            out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     #endregion
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnPaletteResult
+    {
+        public byte PrimaryR;
+        public byte PrimaryG;
+        public byte PrimaryB;
+        public byte PrimaryA;
+        public byte SecondaryR;
+        public byte SecondaryG;
+        public byte SecondaryB;
+        public byte SecondaryA;
+        public byte AccentR;
+        public byte AccentG;
+        public byte AccentB;
+        public byte AccentA;
+        public byte IsMonotone;
+        public byte IsFlatBg;
+        public byte TextR;
+        public byte TextG;
+        public byte TextB;
+        public byte TextA;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_get_clamped_crop_rect(
+        double left, double top, double right, double bottom, byte is_empty,
+        int pixel_width, int pixel_height,
+        out int out_x, out int out_y, out int out_w, out int out_h, out byte out_valid);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_ensure_bright(
+        byte r, byte g, byte b, out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_get_vibrant(
+        byte r, byte g, byte b, out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_get_adaptive_blur_opacity(
+        double luminance, double brightness_boost, out double out_opacity);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_get_adaptive_blur_image_opacity(
+        double luminance, out double out_opacity);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_dicolor_compute_brightness_dim(
+        byte* pixels, int buf_len, int pixel_count, out double out_dim);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_dicolor_extract_advanced_palette(
+        byte* pixels, int width, int height, int stride, out VnPaletteResult out_res);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_to_hsl(
+        byte r, byte g, byte b, out double out_h, out double out_s, out double out_l);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_hsl_to_color(
+        double h, double s, double l, out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_get_relative_luminance(
+        byte r, byte g, byte b, out double out_lum);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_get_contrast_ratio(
+        byte r1, byte g1, byte b1, byte r2, byte g2, byte b2, out double out_ratio);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_color_distance(
+        byte r1, byte g1, byte b1, byte r2, byte g2, byte b2, out double out_dist);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_ensure_text_on_dark_bg(
+        byte cr, byte cg, byte cb, byte br, byte bg, byte bb, double min_ratio,
+        out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_dicolor_ensure_contrast(
+        byte sr, byte sg, byte sb, byte mr, byte mg, byte mb, double min_ratio,
+        out byte out_r, out byte out_g, out byte out_b);
 }

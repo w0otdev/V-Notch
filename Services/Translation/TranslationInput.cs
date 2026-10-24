@@ -1,11 +1,29 @@
+using System;
 using System.Globalization;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace VNotch.Services.Translation;
 
-internal static class TranslationInput
+internal static partial class TranslationInput
 {
+    private const string NativeDll = "VNotch.Native.dll";
     internal const int MaxCharacters = 2000;
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_input_sanitize(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_input_is_keyboard_mash(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        out byte outResult);
 
     internal static string Prepare(string text)
     {
@@ -21,14 +39,18 @@ internal static class TranslationInput
     {
         if (string.IsNullOrEmpty(text)) return "";
         if (text.IndexOfAny(['\0', '\uFFFC']) < 0) return text;
-        return string.Concat(text.Where(c => c is not ('\0' or '\uFFFC')));
+        ReadOnlySpan<char> span = text.AsSpan();
+        int cap = span.Length;
+        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
+        vn_translation_input_sanitize(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : "";
     }
 
     private static bool IsKeyboardMash(string text)
     {
-        if (text.Length < 7 || text.Length > 10) return false;
-        // Reject whole keyboard walks, without rejecting words such as QWERTY.
-        return text.ToLowerInvariant() is "qwertyuiop" or "asdfghjkl" or "zxcvbnm" or "poiuytrewq" or "lkjhgfdsa" or "mnbvcxz";
+        ReadOnlySpan<char> span = text.AsSpan();
+        vn_translation_input_is_keyboard_mash(span, span.Length, out byte res);
+        return res != 0;
     }
 
     // Keep surrogate pairs, combining marks and emoji sequences together.
@@ -65,8 +87,6 @@ internal static class TranslationInput
         }
         string prefix = text[..boundaries[low]];
         string prepared = Prepare(prefix);
-        // Sanitation can change a direct caller's text. Only carry the measured
-        // count when it still describes the exact string being returned.
         return (prepared, prepared == prefix ? lowTokens : count(prepared));
     }
 }

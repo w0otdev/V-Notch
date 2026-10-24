@@ -469,6 +469,7 @@ public partial class MainWindow
         recoveryTimer.Tick += (s, e) =>
         {
             recoveryTimer.Stop();
+            recoveryTimer.Dispose();
             EnsureMediaBackgroundVisible(recoveryVersion);
         };
 

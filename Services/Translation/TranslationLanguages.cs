@@ -1,7 +1,13 @@
+using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using LanguageDetection;
 
 namespace VNotch.Services.Translation;
@@ -67,9 +73,6 @@ internal static partial class TranslationLanguages
         return FromDetectorCode(code);
     }
 
-    // Passing through text skips the model entirely, so require stronger evidence
-    // than the optional language hints used in prompts. Short/uncertain selections
-    // and passages with sentences in different languages still reach the model.
     internal static string? DetectForPassthrough(string text)
     {
         text = text.Normalize(NormalizationForm.FormC);
@@ -82,8 +85,6 @@ internal static partial class TranslationLanguages
         ct.ThrowIfCancellationRequested();
         text = text.Normalize(NormalizationForm.FormC);
         if (!HasAtLeastLetters(text, 40)) return null;
-        // Rapid selection changes share one CPU lane. Cancelled queued requests
-        // do not initialize profiles or start another full language analysis.
         await PassthroughGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -101,7 +102,6 @@ internal static partial class TranslationLanguages
         foreach (string sentence in PassthroughSentences().Split(text))
         {
             ct.ThrowIfCancellationRequested();
-            // With no sentence separator, this is the exact text just analyzed.
             if (sentence.Length == text.Length) continue;
             if (HasAtLeastLetters(sentence, 12) && ConfidentLanguage(sentence) != language)
                 return null;
@@ -112,15 +112,14 @@ internal static partial class TranslationLanguages
     [GeneratedRegex(@"[\r\n。！？]+|(?<=[.!?])\s+")]
     private static partial Regex PassthroughSentences();
 
-    private static bool HasAtLeastLetters(string text, int minimum)
+    private static unsafe bool HasAtLeastLetters(string text, int minimum)
     {
-        int count = 0;
-        foreach (char c in text)
+        if (string.IsNullOrEmpty(text)) return minimum <= 0;
+        fixed (char* ptr = text)
         {
-            if (char.IsLetter(c) && ++count >= minimum)
-                return true;
+            vn_translation_lang_has_at_least_letters(ptr, text.Length, minimum, out byte has);
+            return has != 0;
         }
-        return false;
     }
 
     private static string? ConfidentLanguage(string text)
@@ -132,55 +131,24 @@ internal static partial class TranslationLanguages
     private static string? FromDetectorCode(string? code) =>
         code != null && DetectorCodeToSupported.TryGetValue(code, out string? supported) ? supported : null;
 
-    // This classifier supplies optional integrity hints. When uncertain, leave
-    // recognition to the translation model instead of blocking short selections.
-    internal static string? DetectUnambiguousScript(string text)
+    internal static unsafe string? DetectUnambiguousScript(string text)
     {
-        int totalLetters = 0, kana = 0, han = 0, ko = 0, th = 0, lo = 0, el = 0, hy = 0, ka = 0, vi = 0;
-        foreach (char c in text)
+        if (string.IsNullOrEmpty(text)) return null;
+        Span<char> buf = stackalloc char[8];
+        fixed (char* ptr = text)
+        fixed (char* pOut = buf)
         {
-            if (!char.IsLetter(c)) continue;
-            totalLetters++;
-            if (c is >= '\u3040' and <= '\u30ff') kana++;
-            else if (c is >= '\u4e00' and <= '\u9fff' or >= '\u3400' and <= '\u4dbf') han++;
-            else if (c is >= '\uac00' and <= '\ud7af') ko++;
-            else if (c is >= '\u0e00' and <= '\u0e7f') th++;
-            else if (c is >= '\u0e80' and <= '\u0eff') lo++;
-            else if (c is >= '\u0370' and <= '\u03ff') el++;
-            else if (c is >= '\u0530' and <= '\u058f') hy++;
-            else if (c is >= '\u10a0' and <= '\u10ff') ka++;
-            else if (IsUnambiguousVietnameseChar(c)) vi++;
+            int rc = vn_translation_lang_detect_unambiguous_script(ptr, text.Length, pOut, buf.Length, out int len);
+            return rc == 0 && len > 0 ? new string(buf[..len]) : null;
         }
-        if (totalLetters == 0) return null;
-        // Han characters also occur in Japanese. Require at least one Kana character
-        // and a majority of Japanese (Kana + Han) characters.
-        int ja = kana > 0 ? kana + han : 0;
-        if (IsDominantScript(ja, totalLetters)) return "ja";
-        if (IsDominantScript(ko, totalLetters)) return "ko";
-        if (IsDominantScript(th, totalLetters)) return "th";
-        if (IsDominantScript(lo, totalLetters)) return "lo";
-        if (IsDominantScript(el, totalLetters)) return "el";
-        if (IsDominantScript(hy, totalLetters)) return "hy";
-        if (IsDominantScript(ka, totalLetters)) return "ka";
-        if (vi > 0 && totalLetters < 24 && IsPureLatinScript(text)) return "vi";
-        return null;
     }
 
-    // Single diacritics such as ă, đ, ẹ and ọ also occur in other supported
-    // languages. Only use distinctive Vietnamese vowel/tone combinations as hints.
-    private static bool IsUnambiguousVietnameseChar(char c) =>
-        "ơưấầẩẫậắằẳẵặếềểễệốồổỗộớờởỡợứừửữự".Contains(char.ToLowerInvariant(c));
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_translation_lang_has_at_least_letters(
+        char* text_ptr, int text_len, int minimum, out byte out_has);
 
-    private static bool IsPureLatinScript(string text)
-    {
-        foreach (char c in text)
-        {
-            if (char.IsLetter(c) && c > '\u024F' && !(c is >= '\u1E00' and <= '\u1EFF'))
-                return false;
-        }
-        return true;
-    }
-
-    private static bool IsDominantScript(int scriptCount, int totalLetters) =>
-        scriptCount > 0 && ((totalLetters < 12 && scriptCount == totalLetters) || scriptCount * 2 >= totalLetters);
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_translation_lang_detect_unambiguous_script(
+        char* text_ptr, int text_len,
+        char* out_buf, int out_cap, out int out_len);
 }

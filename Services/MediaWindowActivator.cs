@@ -11,13 +11,10 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
 
-internal static class MediaWindowActivator
+internal static partial class MediaWindowActivator
 {
     private const string LogTag = "MEDIA-ACTIVATOR";
-    private const string YouTubeToken = "youtube";
     private const string SpotifyToken = "spotify";
-    private const string SoundCloudToken = "soundcloud";
-    private const string BrowserToken = "browser";
 
     private const string MsEdgeProcess = "msedge";
     private const string ChromeProcess = "chrome";
@@ -51,6 +48,53 @@ internal static class MediaWindowActivator
         MsEdgeProcess, ChromeProcess, FirefoxProcess, BraveProcess, OperaProcess,
         VivaldiProcess, "zen", "arc", ThoriumProcess
     };
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_is_browser_process(
+        ReadOnlySpan<ushort> procName, int procLen, out byte outIsBrowser);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_is_chromium_window(
+        IntPtr hwnd, out byte outIsChromium);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_try_activate_window(
+        IntPtr hwnd, out byte outActivated);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_normalize_title(
+        ReadOnlySpan<ushort> val, int valLen,
+        Span<ushort> outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_normalize_media_title(
+        ReadOnlySpan<ushort> val, int valLen,
+        ReadOnlySpan<ushort> src, int srcLen,
+        Span<ushort> outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_score_tab_item(
+        ReadOnlySpan<ushort> tabTitle, int tabTitleLen,
+        ReadOnlySpan<ushort> tabHelp, int tabHelpLen,
+        ReadOnlySpan<ushort> track, int trackLen,
+        ReadOnlySpan<ushort> artist, int artistLen,
+        ReadOnlySpan<ushort> ytTitle, int ytTitleLen,
+        ReadOnlySpan<ushort> ytVideoId, int ytVideoIdLen,
+        ReadOnlySpan<ushort> mediaSrc, int mediaSrcLen,
+        int platform,
+        out int outScore);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_score_window(
+        ReadOnlySpan<ushort> title, int titleLen,
+        ReadOnlySpan<ushort> procName, int procLen,
+        ReadOnlySpan<ushort> track, int trackLen,
+        ReadOnlySpan<ushort> artist, int artistLen,
+        ReadOnlySpan<ushort> mediaSrc, int mediaSrcLen,
+        int platform,
+        byte isVideoSource,
+        byte isPipTitle,
+        out int outScore);
 
     public static bool TryActivateForMedia(MediaInfo info)
     {
@@ -131,9 +175,7 @@ internal static class MediaWindowActivator
 
     private static bool IsChromiumWindow(IntPtr hwnd)
     {
-        var className = new StringBuilder(256);
-        return GetClassName(hwnd, className, className.Capacity) > 0 &&
-            className.ToString().StartsWith("Chrome_WidgetWin_", StringComparison.Ordinal);
+        return vn_mediaactivator_is_chromium_window(hwnd, out byte isChrom) == 0 && isChrom != 0;
     }
 
     private static bool IsMediaBrowserWindow(IntPtr hwnd, string sourceAppId)
@@ -146,8 +188,6 @@ internal static class MediaWindowActivator
             string processName = process.ProcessName;
             if (!IsBrowserProcess(processName) && !IsChromiumWindow(hwnd)) return false;
 
-            // Match the session owner, including Chromium forks with custom executable
-            // names. Window class alone also matches Electron, so it is insufficient.
             if (Regex.IsMatch(sourceAppId, @"(?:^|[\\/.!_\-])" + Regex.Escape(processName) +
                 @"(?:$|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 return true;
@@ -182,8 +222,6 @@ internal static class MediaWindowActivator
         string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
         if (track.Length < 3) return false;
 
-        // Restrict navigation to the browser owning the media session, and require
-        // the actual track title. A platform-only match can select another tab.
         IntPtr targetWindow = IntPtr.Zero;
         AutomationElement? targetTab = null;
         bool ambiguous = false;
@@ -226,15 +264,11 @@ internal static class MediaWindowActivator
             var window = AutomationElement.FromHandle(targetWindow);
             if (IsChromiumWindow(targetWindow))
             {
-                // Chromium handles APPCOMMAND_BROWSER_BACK regardless of UI language
-                // or toolbar layout. Address the matched window instead of emitting
-                // a global shortcut that could navigate a different application.
                 const uint wmAppCommand = 0x0319;
                 const int browserBackward = 1;
                 return SendMessageTimeout(targetWindow, wmAppCommand, targetWindow,
                     new IntPtr(browserBackward << 16), 0x0002, 500, out _) != IntPtr.Zero;
             }
-            // Search browser toolbars only; a web page may also contain Back buttons.
             var toolbars = WindowTitleScanner.FindBrowserChromeElements(window, ControlType.ToolBar);
             foreach (AutomationElement toolbar in toolbars)
             {
@@ -436,66 +470,25 @@ internal static class MediaWindowActivator
 
     private static int ScoreTabItem(string tabTitle, string tabHelp, MediaInfo info)
     {
-        if (string.IsNullOrWhiteSpace(tabTitle) && string.IsNullOrWhiteSpace(tabHelp))
-            return 0;
+        ReadOnlySpan<ushort> tTitle = MemoryMarshal.Cast<char, ushort>(tabTitle != null ? tabTitle.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> tHelp = MemoryMarshal.Cast<char, ushort>(tabHelp != null ? tabHelp.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> track = MemoryMarshal.Cast<char, ushort>(info.CurrentTrack != null ? info.CurrentTrack.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> artist = MemoryMarshal.Cast<char, ushort>(info.CurrentArtist != null ? info.CurrentArtist.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> ytTitle = MemoryMarshal.Cast<char, ushort>(info.YouTubeTitle != null ? info.YouTubeTitle.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> ytVid = MemoryMarshal.Cast<char, ushort>(info.YouTubeVideoId != null ? info.YouTubeVideoId.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> mSrc = MemoryMarshal.Cast<char, ushort>(info.MediaSource != null ? info.MediaSource.AsSpan() : ReadOnlySpan<char>.Empty);
 
-        int score = 0;
-        string titleLower = NormalizeTitle(tabTitle);
-        string helpLower = tabHelp.ToLowerInvariant();
-
-        string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
-        string artist = NormalizeTitle(info.CurrentArtist);
-        string youtubeTitle = NormalizeMediaTitle(info.YouTubeTitle, info.MediaSource);
-        string videoId = info.YouTubeVideoId?.Trim().ToLowerInvariant() ?? string.Empty;
-
-        if (!string.IsNullOrEmpty(videoId) && (helpLower.Contains(videoId) || titleLower.Contains(videoId)))
-        {
-            score += 200;
-        }
-
-        if (!string.IsNullOrWhiteSpace(youtubeTitle) && youtubeTitle.Length > 2 && titleLower.Contains(youtubeTitle))
-        {
-            score += 150;
-        }
-
-        if (!string.IsNullOrWhiteSpace(track) && track.Length > 2 && titleLower.Contains(track))
-        {
-            score += 140;
-        }
-
-        if (!string.IsNullOrWhiteSpace(artist) && artist.Length > 2 &&
-            artist is not YouTubeToken and not BrowserToken and not SpotifyToken and not SoundCloudToken &&
-            titleLower.Contains(artist))
-        {
-            score += 70;
-        }
-
-        score += ScorePlatformKeywords(titleLower, helpLower, info.Platform);
+        vn_mediaactivator_score_tab_item(
+            tTitle, tTitle.Length,
+            tHelp, tHelp.Length,
+            track, track.Length,
+            artist, artist.Length,
+            ytTitle, ytTitle.Length,
+            ytVid, ytVid.Length,
+            mSrc, mSrc.Length,
+            (int)info.Platform,
+            out int score);
         return score;
-    }
-
-    private static int ScorePlatformKeywords(string titleLower, string helpLower, MediaPlatform platform)
-    {
-        bool Match(string token) => titleLower.Contains(token) || helpLower.Contains(token);
-
-        return platform switch
-        {
-            MediaPlatform.YouTube when Match(YouTubeToken) => 50,
-            MediaPlatform.Twitch when Match("twitch") => 50,
-            MediaPlatform.Discord when Match("discord") || titleLower.Contains("vesktop") => 50,
-            MediaPlatform.SoundCloud when Match(SoundCloudToken) => 50,
-            MediaPlatform.Spotify when Match(SpotifyToken) => 50,
-            MediaPlatform.Tidal when Match("tidal") => 50,
-            MediaPlatform.Deezer when Match("deezer") => 50,
-            MediaPlatform.Bandcamp when Match("bandcamp") => 50,
-            MediaPlatform.Netflix when Match("netflix") => 50,
-            MediaPlatform.Bilibili when titleLower.Contains("bilibili") || titleLower.Contains("哔哩哔哩") => 50,
-            MediaPlatform.Vimeo when Match("vimeo") => 50,
-            MediaPlatform.Instagram when Match("instagram") => 50,
-            MediaPlatform.Twitter when titleLower.Contains("twitter") || titleLower.Contains("x.com") ||
-                titleLower.Contains(" / x") || titleLower.StartsWith("/ x", StringComparison.Ordinal) => 50,
-            _ => 0
-        };
     }
 
     public static IEnumerable<string> GetProcessCandidates(MediaInfo info)
@@ -600,16 +593,15 @@ internal static class MediaWindowActivator
 
     public static bool TryActivateWindow(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero) return false;
-
-        if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
-        else ShowWindow(hwnd, SW_SHOW);
-
-        return SetForegroundWindow(hwnd);
+        return vn_mediaactivator_try_activate_window(hwnd, out byte act) == 0 && act != 0;
     }
 
     public static bool IsBrowserProcess(string processName)
-        => !string.IsNullOrEmpty(processName) && KnownBrowserProcesses.Contains(processName);
+    {
+        if (string.IsNullOrEmpty(processName)) return false;
+        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(processName.AsSpan());
+        return vn_mediaactivator_is_browser_process(sp, sp.Length, out byte isBrowser) == 0 && isBrowser != 0;
+    }
 
     private static string GetWindowTitle(IntPtr hwnd)
     {
@@ -623,67 +615,54 @@ internal static class MediaWindowActivator
 
     private static int ScoreWindow(string title, string processName, MediaInfo info)
     {
-        int score = 0;
-        string source = info.MediaSource ?? string.Empty;
-        string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
-        string artist = NormalizeTitle(info.CurrentArtist);
-        string window = NormalizeTitle(title);
+        ReadOnlySpan<ushort> t = MemoryMarshal.Cast<char, ushort>(title != null ? title.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> p = MemoryMarshal.Cast<char, ushort>(processName != null ? processName.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> tr = MemoryMarshal.Cast<char, ushort>(info.CurrentTrack != null ? info.CurrentTrack.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> ar = MemoryMarshal.Cast<char, ushort>(info.CurrentArtist != null ? info.CurrentArtist.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> ms = MemoryMarshal.Cast<char, ushort>(info.MediaSource != null ? info.MediaSource.AsSpan() : ReadOnlySpan<char>.Empty);
 
-        if (!string.IsNullOrWhiteSpace(source) && title.Contains(source, StringComparison.OrdinalIgnoreCase)) score += 80;
-        if (!string.IsNullOrWhiteSpace(track) && window.Contains(track, StringComparison.OrdinalIgnoreCase)) score += 140;
-        if (!string.IsNullOrWhiteSpace(artist) &&
-            artist is not YouTubeToken and not BrowserToken and not SpotifyToken and not SoundCloudToken &&
-            window.Contains(artist, StringComparison.OrdinalIgnoreCase))
-        {
-            score += 70;
-        }
-
-        if (PipDetector.IsPipTitle(title)) score += 220;
-
-        score += ScoreWindowPlatform(title, info.Platform);
-
-        if ((info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud) && IsBrowserProcess(processName)) score += 25;
-
+        vn_mediaactivator_score_window(
+            t, t.Length,
+            p, p.Length,
+            tr, tr.Length,
+            ar, ar.Length,
+            ms, ms.Length,
+            (int)info.Platform,
+            info.IsVideoSource ? (byte)1 : (byte)0,
+            PipDetector.IsPipTitle(title ?? string.Empty) ? (byte)1 : (byte)0,
+            out int score);
         return score;
-    }
-
-    private static int ScoreWindowPlatform(string title, MediaPlatform platform)
-    {
-        bool Match(string token) => title.Contains(token, StringComparison.OrdinalIgnoreCase);
-
-        return platform switch
-        {
-            MediaPlatform.YouTube when Match("YouTube") => 90,
-            MediaPlatform.Twitch when Match("Twitch") => 90,
-            MediaPlatform.Discord when Match("Discord") || Match("Vesktop") => 90,
-            MediaPlatform.SoundCloud when Match("SoundCloud") => 90,
-            MediaPlatform.Tidal when Match("TIDAL") => 90,
-            MediaPlatform.Deezer when Match("Deezer") => 90,
-            MediaPlatform.Bandcamp when Match("Bandcamp") => 90,
-            MediaPlatform.Netflix when Match("Netflix") => 90,
-            MediaPlatform.Bilibili when Match("bilibili") || title.Contains("哔哩哔哩") => 90,
-            MediaPlatform.Vimeo when Match("Vimeo") => 90,
-            MediaPlatform.Instagram when Match("Instagram") => 90,
-            MediaPlatform.Twitter when Match("Twitter") || Match(" / X") => 90,
-            _ => 0
-        };
     }
 
     private static string NormalizeTitle(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-        return Regex.Replace(value, @"\s+", " ").Trim().ToLowerInvariant();
+        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(value.AsSpan());
+        Span<char> buf = stackalloc char[256];
+        int rc = vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
+        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
+        if (rc == -2 && outLen > 0)
+        {
+            char[] arr = new char[outLen];
+            if (vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
+                return new string(arr, 0, actual);
+        }
+        return string.Empty;
     }
 
     private static string NormalizeMediaTitle(string? value, string? source)
     {
-        string title = NormalizeTitle(value);
-        string platform = NormalizeTitle(source);
-        // Strip only the session's exact platform suffix from metadata. Window
-        // titles keep their content; substring matching tolerates any browser suffix.
-        string suffix = " - " + platform;
-        return platform.Length > 0 && title.EndsWith(suffix, StringComparison.Ordinal)
-            ? title[..^suffix.Length]
-            : title;
+        ReadOnlySpan<ushort> v = MemoryMarshal.Cast<char, ushort>(value != null ? value.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> s = MemoryMarshal.Cast<char, ushort>(source != null ? source.AsSpan() : ReadOnlySpan<char>.Empty);
+        Span<char> buf = stackalloc char[256];
+        int rc = vn_mediaactivator_normalize_media_title(v, v.Length, s, s.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
+        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
+        if (rc == -2 && outLen > 0)
+        {
+            char[] arr = new char[outLen];
+            if (vn_mediaactivator_normalize_media_title(v, v.Length, s, s.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
+                return new string(arr, 0, actual);
+        }
+        return string.Empty;
     }
 }

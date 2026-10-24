@@ -766,6 +766,7 @@ public partial class MainWindow
         void FinishHoverMotion()
         {
             safetyTimer.Stop();
+            safetyTimer.Dispose();
             if (gen != _glassHoverGen) return;
             _glassHoverMotion = false;
             UpdateGlassMotionState();
@@ -798,6 +799,7 @@ public partial class MainWindow
         void FinishSnapBackMotion()
         {
             safetyTimer.Stop();
+            safetyTimer.Dispose();
             if (gen != _glassGestureSnapBackGen) return;
             _glassGestureSnapBackMotion = false;
             UpdateGlassMotionState();

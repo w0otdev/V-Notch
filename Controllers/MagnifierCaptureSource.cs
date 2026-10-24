@@ -143,6 +143,11 @@ public sealed class MagnifierCaptureSource : IDisposable
         // Other holders still use this instance: stop its pump thread but keep its
         // event handles alive so their CaptureInto calls fail softly instead of throwing.
         old.StopPumpThread();
+        if (_retiredInstances.Count >= 4)
+        {
+            DisposeQuietly(_retiredInstances[0]);
+            _retiredInstances.RemoveAt(0);
+        }
         _retiredInstances.Add(old);
     }
 
@@ -798,6 +803,12 @@ public sealed class MagnifierCaptureSource : IDisposable
     private void Cleanup()
     {
         IsReady = false;
+        lock (_frameLock)
+        {
+            _hasCompletedFrame = false;
+            _hasUnfilteredFrame = false;
+            _completedBuffer = Array.Empty<byte>();
+        }
         try
         {
             if (_magWnd != IntPtr.Zero) { DestroyWindow(_magWnd); _magWnd = IntPtr.Zero; }
@@ -839,6 +850,12 @@ public sealed class MagnifierCaptureSource : IDisposable
 
         if (!exited) return false;
 
+        lock (_frameLock)
+        {
+            _hasCompletedFrame = false;
+            _hasUnfilteredFrame = false;
+            _completedBuffer = Array.Empty<byte>();
+        }
         _thread = null;
         _callback = null;
         _wndProc = null;

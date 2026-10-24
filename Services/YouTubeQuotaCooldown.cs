@@ -1,11 +1,11 @@
-using System.Security.Cryptography;
-using System.Text;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-// Quota belongs to the credential that received the error, including late responses
-// from requests that were started before the user replaced that credential.
-internal sealed class YouTubeQuotaCooldown
+internal sealed partial class YouTubeQuotaCooldown
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, DateTime> _blockedKeys = new(StringComparer.Ordinal);
@@ -30,9 +30,28 @@ internal sealed class YouTubeQuotaCooldown
                 _blockedKeys.Remove(expired);
             if (_blockedKeys.Count >= 32 && !_blockedKeys.ContainsKey(hash))
                 _blockedKeys.Remove(_blockedKeys.Keys.First());
-            _blockedKeys[hash] = now.Date.AddDays(1).AddHours(8);
+            vn_youtube_quota_compute_until_ticks(now.Ticks, out long untilTicks);
+            _blockedKeys[hash] = new DateTime(untilTicks, now.Kind);
         }
     }
 
-    private static string Hash(string key) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key.Trim())));
+    private static unsafe string Hash(string key)
+    {
+        string safeKey = key ?? string.Empty;
+        Span<char> hex = stackalloc char[64];
+        fixed (char* pKey = safeKey)
+        fixed (char* pHex = hex)
+        {
+            vn_youtube_quota_hash_key(pKey, safeKey.Length, pHex);
+        }
+        return new string(hex);
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_youtube_quota_hash_key(
+        char* key_ptr, int key_len, char* out_hex64);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_youtube_quota_compute_until_ticks(
+        long now_ticks, out long out_until_ticks);
 }

@@ -544,6 +544,7 @@ public partial class SettingsWindow
                     timer.Tick += (s, args) =>
                     {
                         timer.Stop();
+                        timer.Dispose();
                         BackupStatusText.Visibility = Visibility.Collapsed;
                     };
                     timer.Start();
@@ -594,6 +595,7 @@ public partial class SettingsWindow
                     timer.Tick += (s, args) =>
                     {
                         timer.Stop();
+                        timer.Dispose();
                         BackupStatusText.Visibility = Visibility.Collapsed;
                     };
                     timer.Start();

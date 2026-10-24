@@ -290,6 +290,11 @@
           "System.Linq.AsyncEnumerable": "10.0.0"
         }
       },
+      "System.IO.Hashing": {
+        "type": "Transitive",
+        "resolved": "8.0.0",
+        "contentHash": "ne1843evDugl0md7Fjzy6QjJrzsjh46ZKbhf8GwBXb5f/gw97J4bxMs0NQKifDuThh/f0bZ0e62NPl1jzTuRqA=="
+      },
       "System.IO.Pipelines": {
         "type": "Transitive",
         "resolved": "10.0.4",
@@ -435,6 +440,7 @@
           "Microsoft.Web.WebView2": "[1.0.4078.44, )",
           "NAudio": "[2.2.1, )",
           "System.Data.OleDb": "[8.0.1, )",
+          "System.IO.Hashing": "[8.0.0, )",
           "Vortice.DXGI": "[3.8.3, )",
           "Vortice.Direct2D1": "[3.8.3, )",
           "Vortice.Direct3D11": "[3.8.3, )",

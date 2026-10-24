@@ -1,50 +1,32 @@
-using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-internal static class RecordingFileOwnership
+internal static partial class RecordingFileOwnership
 {
     internal static bool MatchesRecorder(UniqueProcess owner, int processId, long startFileTime)
-        => owner.ProcessId == (uint)processId &&
-           (((long)owner.StartTime.dwHighDateTime << 32) | (uint)owner.StartTime.dwLowDateTime) == startFileTime;
-
-    internal static bool IsFileOwnedBy(string path, Process process)
     {
-        long start = process.StartTime.ToUniversalTime().ToFileTimeUtc();
-        foreach (var owner in GetFileOwners(path))
-            if (MatchesRecorder(owner.Process, process.Id, start) && !process.HasExited)
-                return true;
-        return false;
+        vn_recording_matches_recorder(
+            owner.ProcessId,
+            owner.StartTime.dwHighDateTime,
+            (uint)owner.StartTime.dwLowDateTime,
+            processId,
+            startFileTime,
+            out byte matches);
+        return matches != 0;
     }
 
-    private static ProcessInfo[] GetFileOwners(string path)
+    internal static unsafe bool IsFileOwnedBy(string path, Process process)
     {
-        if (RmStartSession(out uint session, 0, Guid.NewGuid().ToString("N")) != 0)
-            return Array.Empty<ProcessInfo>();
-        try
+        if (string.IsNullOrEmpty(path)) return false;
+        long start = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+        byte owned;
+        fixed (char* ptr = path)
         {
-            if (RmRegisterResources(session, 1, new[] { path }, 0, IntPtr.Zero, 0, IntPtr.Zero) != 0)
-                return Array.Empty<ProcessInfo>();
-
-            uint count = 16, reason = 0;
-            var owners = new ProcessInfo[count];
-            int result = RmGetList(session, out uint needed, ref count, owners, ref reason);
-            if (result == 234 && needed <= 128) // ERROR_MORE_DATA; bounded retry for changing owners.
-            {
-                count = needed;
-                owners = new ProcessInfo[count];
-                result = RmGetList(session, out _, ref count, owners, ref reason);
-            }
-            if (result != 0) return Array.Empty<ProcessInfo>();
-            Array.Resize(ref owners, (int)count);
-            return owners;
+            vn_recording_is_file_owned_by_process(ptr, path.Length, process.Id, start, out owned);
         }
-        finally
-        {
-            RmEndSession(session);
-        }
+        return owned != 0 && !process.HasExited;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -54,25 +36,18 @@ internal static class RecordingFileOwnership
         public System.Runtime.InteropServices.ComTypes.FILETIME StartTime;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct ProcessInfo
-    {
-        public UniqueProcess Process;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string AppName;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string ServiceName;
-        public uint AppType, AppStatus, SessionId;
-        [MarshalAs(UnmanagedType.Bool)] public bool Restartable;
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_recording_matches_recorder(
+        uint owner_pid,
+        int high_date_time,
+        uint low_date_time,
+        int process_id,
+        long start_file_time,
+        out byte out_matches);
 
-    // Restart Manager is used only to query owners. Never stop or restart applications.
-    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
-    private static extern int RmStartSession(out uint session, int flags, string key);
-    [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
-    private static extern int RmRegisterResources(uint session, uint fileCount, string[] files,
-        uint appCount, IntPtr apps, uint serviceCount, IntPtr services);
-    [DllImport("rstrtmgr.dll")]
-    private static extern int RmGetList(uint session, out uint needed, ref uint count,
-        [In, Out] ProcessInfo[] info, ref uint reason);
-    [DllImport("rstrtmgr.dll")]
-    private static extern int RmEndSession(uint session);
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_recording_is_file_owned_by_process(
+        char* path_ptr, int path_len,
+        int process_id, long start_file_time,
+        out byte out_owned);
 }

@@ -1,12 +1,26 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services.Clipboard;
 
-internal static class ClipboardImportPaths
+internal static partial class ClipboardImportPaths
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_is_cloud_placeholder(uint tag, out byte outIsCloud);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_validate_reparse_point(
+        ReadOnlySpan<char> pathPtr,
+        int pathLen,
+        uint fileAttributes,
+        out int outErrorKind,
+        out int outWin32Error);
+
     internal static bool IsLocal(string path) => !LocalPathPolicy.IsUncPath(path)
         && !string.IsNullOrWhiteSpace(path) && !path.Contains('\0')
         && !path.StartsWith(@"\??\", StringComparison.Ordinal);
@@ -34,33 +48,27 @@ internal static class ClipboardImportPaths
         if (!IsLocal(path)) throw new IOException("Network paths cannot be saved in history.");
         var attributes = File.GetAttributes(path);
         if ((attributes & FileAttributes.ReparsePoint) == 0) return attributes;
-        using var handle = CreateFile(path, 0, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero,
-            3, 0x02200000, IntPtr.Zero); // OPEN_EXISTING, OPEN_REPARSE_POINT | BACKUP_SEMANTICS
-        if (handle.IsInvalid || !GetFileInformationByHandleEx(handle, 9, out var info, 8))
-            throw new IOException("Cannot inspect the selected linked path.", new Win32Exception(Marshal.GetLastWin32Error()));
-        if (!IsCloudPlaceholder(info.Tag)) throw new IOException("Symbolic links and junctions cannot be archived.");
-        const uint DehydratedMask = 0x00441000; // OFFLINE (0x1000) | RECALL_ON_OPEN (0x40000) | RECALL_ON_DATA_ACCESS (0x400000)
-        if ((info.Attributes & DehydratedMask) != 0 || ((uint)attributes & DehydratedMask) != 0)
-            throw new IOException("Cloud files not available locally cannot be archived without downloading.");
-        return attributes;
+
+        ReadOnlySpan<char> span = path.AsSpan();
+        vn_clipboard_validate_reparse_point(span, span.Length, (uint)attributes, out int errKind, out int win32Err);
+        return errKind switch
+        {
+            1 => throw new IOException("Cannot inspect the selected linked path.", new Win32Exception(win32Err)),
+            2 => throw new IOException("Symbolic links and junctions cannot be archived."),
+            3 => throw new IOException("Cloud files not available locally cannot be archived without downloading."),
+            _ => attributes
+        };
     }
 
-    internal static bool IsCloudPlaceholder(uint tag) => (tag & 0xFFFF0FFF) == 0x9000001A
-        || tag is 0x80000021 or 0x80000015; // CLOUD[_1..F], ONEDRIVE, FILE_PLACEHOLDER
+    internal static bool IsCloudPlaceholder(uint tag)
+    {
+        vn_clipboard_is_cloud_placeholder(tag, out byte isCloud);
+        return isCloud != 0;
+    }
 
     internal static string DisplayName(string path)
     {
         string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
         return !string.IsNullOrWhiteSpace(name) ? name : "Drive_" + Path.GetPathRoot(path)![0];
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct AttributeTag { internal uint Attributes; internal uint Tag; }
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "CreateFileW")]
-    private static extern SafeFileHandle CreateFile(string name, uint access, FileShare share, IntPtr security,
-        uint creation, uint flags, IntPtr template);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int informationClass,
-        out AttributeTag information, uint size);
 }

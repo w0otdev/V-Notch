@@ -1,12 +1,56 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services;
 
-internal static class BrowserMediaTransitionPolicy
+internal static partial class BrowserMediaTransitionPolicy
 {
     internal static readonly TimeSpan LikelyAdMaximumDuration = TimeSpan.FromMinutes(2);
     internal static readonly TimeSpan LikelyAdQuarantineWindow = TimeSpan.FromSeconds(45);
 
-#pragma warning disable S107 // Comprehensive state evaluation for browser ad transitions requires these domain parameters
-    public static BrowserAdTransitionDecision EvaluateLikelyYouTubeAd(
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnBrowserAdTransitionDecision
+    {
+        public byte ShouldHold;
+        public long TransitionStartedUtcTicks;
+        public byte WasTransitionActive;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_browser_media_eval_likely_youtube_ad(
+        byte isBrowserSession,
+        byte hasStableTrack,
+        char* lastSourcePtr, int lastSourceLen,
+        char* lastSessionKeyPtr, int lastSessionKeyLen,
+        char* curSessionKeyPtr, int curSessionKeyLen,
+        char* curTrackPtr, int curTrackLen,
+        long curDurationTicks,
+        byte hasYouTubeWindow,
+        byte curTrackMatchesYouTubeWindow,
+        long transitionStartedUtcTicks,
+        long nowUtcTicks,
+        out VnBrowserAdTransitionDecision outDecision);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_browser_media_eval_youtube_junk_metadata(
+        byte isBrowserSession,
+        byte hasStableTrack,
+        char* lastSourcePtr, int lastSourceLen,
+        byte hasYouTubeWindow,
+        long transitionStartedUtcTicks,
+        long nowUtcTicks,
+        out VnBrowserAdTransitionDecision outDecision);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_browser_media_should_carry_youtube_source(
+        byte isBrowserSession,
+        char* hintPtr, int hintLen,
+        char* lastSourcePtr, int lastSourceLen,
+        char* stableSourcePtr, int stableSourceLen,
+        byte isCompletingAdTransition,
+        out byte outCarry);
+
+#pragma warning disable S107
+    public static unsafe BrowserAdTransitionDecision EvaluateLikelyYouTubeAd(
         bool isBrowserSession,
         bool hasStableTrack,
         string? lastSource,
@@ -19,55 +63,39 @@ internal static class BrowserMediaTransitionPolicy
         DateTime transitionStartedUtc,
         DateTime nowUtc)
     {
-        bool wasTransitionActive = transitionStartedUtc != DateTime.MinValue;
-        bool isRecoverableSource = MediaPlatformExtensions.ParsePlatform(lastSource) is
-            MediaPlatform.Browser or
-            MediaPlatform.YouTube;
-        bool sessionChanged =
-            !string.IsNullOrWhiteSpace(lastPublishedSessionInstanceKey) &&
-            !string.IsNullOrWhiteSpace(currentSessionInstanceKey) &&
-            !string.Equals(
-                lastPublishedSessionInstanceKey,
-                currentSessionInstanceKey,
-                StringComparison.Ordinal);
-        bool hasAdSizedTimeline =
-            currentDuration <= TimeSpan.Zero ||
-            currentDuration <= LikelyAdMaximumDuration;
+        string lSrc = lastSource ?? string.Empty;
+        string lKey = lastPublishedSessionInstanceKey ?? string.Empty;
+        string cKey = currentSessionInstanceKey ?? string.Empty;
+        string cTr = currentTrack ?? string.Empty;
 
-        bool isCandidate =
-            isBrowserSession &&
-            hasStableTrack &&
-            isRecoverableSource &&
-            sessionChanged &&
-            !string.IsNullOrWhiteSpace(currentTrack) &&
-            hasYouTubeWindow &&
-            !currentTrackMatchesYouTubeWindow &&
-            hasAdSizedTimeline;
-
-        if (!isCandidate)
+        fixed (char* pLSrc = lSrc)
+        fixed (char* pLKey = lKey)
+        fixed (char* pCKey = cKey)
+        fixed (char* pCTr = cTr)
         {
-            return new BrowserAdTransitionDecision(
-                ShouldHold: false,
-                TransitionStartedUtc: DateTime.MinValue,
-                WasTransitionActive: wasTransitionActive);
+            _ = vn_browser_media_eval_likely_youtube_ad(
+                isBrowserSession ? (byte)1 : (byte)0,
+                hasStableTrack ? (byte)1 : (byte)0,
+                pLSrc, lSrc.Length,
+                pLKey, lKey.Length,
+                pCKey, cKey.Length,
+                pCTr, cTr.Length,
+                currentDuration.Ticks,
+                hasYouTubeWindow ? (byte)1 : (byte)0,
+                currentTrackMatchesYouTubeWindow ? (byte)1 : (byte)0,
+                transitionStartedUtc == DateTime.MinValue ? 0 : transitionStartedUtc.Ticks,
+                nowUtc.Ticks,
+                out VnBrowserAdTransitionDecision dec);
+
+            DateTime started = dec.TransitionStartedUtcTicks == 0
+                ? DateTime.MinValue
+                : new DateTime(dec.TransitionStartedUtcTicks, transitionStartedUtc.Kind);
+            return new BrowserAdTransitionDecision(dec.ShouldHold != 0, started, dec.WasTransitionActive != 0);
         }
-
-        if (transitionStartedUtc == DateTime.MinValue || nowUtc < transitionStartedUtc)
-        {
-            transitionStartedUtc = nowUtc;
-        }
-
-        bool shouldHold =
-            nowUtc - transitionStartedUtc < LikelyAdQuarantineWindow;
-
-        return new BrowserAdTransitionDecision(
-            shouldHold,
-            transitionStartedUtc,
-            wasTransitionActive);
     }
 #pragma warning restore S107
 
-    public static BrowserAdTransitionDecision EvaluateYouTubeJunkMetadata(
+    public static unsafe BrowserAdTransitionDecision EvaluateYouTubeJunkMetadata(
         bool isBrowserSession,
         bool hasStableTrack,
         string? lastSource,
@@ -75,54 +103,49 @@ internal static class BrowserMediaTransitionPolicy
         DateTime transitionStartedUtc,
         DateTime nowUtc)
     {
-        bool wasTransitionActive = transitionStartedUtc != DateTime.MinValue;
-        bool isRecoverableSource = MediaPlatformExtensions.ParsePlatform(lastSource) is
-            MediaPlatform.Browser or
-            MediaPlatform.YouTube;
-        bool isCandidate =
-            isBrowserSession &&
-            hasStableTrack &&
-            isRecoverableSource &&
-            hasYouTubeWindow;
-
-        if (!isCandidate)
+        string lSrc = lastSource ?? string.Empty;
+        fixed (char* pLSrc = lSrc)
         {
-            return new BrowserAdTransitionDecision(
-                ShouldHold: false,
-                TransitionStartedUtc: DateTime.MinValue,
-                WasTransitionActive: wasTransitionActive);
-        }
+            _ = vn_browser_media_eval_youtube_junk_metadata(
+                isBrowserSession ? (byte)1 : (byte)0,
+                hasStableTrack ? (byte)1 : (byte)0,
+                pLSrc, lSrc.Length,
+                hasYouTubeWindow ? (byte)1 : (byte)0,
+                transitionStartedUtc == DateTime.MinValue ? 0 : transitionStartedUtc.Ticks,
+                nowUtc.Ticks,
+                out VnBrowserAdTransitionDecision dec);
 
-        if (transitionStartedUtc == DateTime.MinValue || nowUtc < transitionStartedUtc)
-        {
-            transitionStartedUtc = nowUtc;
+            DateTime started = dec.TransitionStartedUtcTicks == 0
+                ? DateTime.MinValue
+                : new DateTime(dec.TransitionStartedUtcTicks, transitionStartedUtc.Kind);
+            return new BrowserAdTransitionDecision(dec.ShouldHold != 0, started, dec.WasTransitionActive != 0);
         }
-
-        return new BrowserAdTransitionDecision(
-            ShouldHold: nowUtc - transitionStartedUtc < LikelyAdQuarantineWindow,
-            TransitionStartedUtc: transitionStartedUtc,
-            WasTransitionActive: wasTransitionActive);
     }
 
-    public static bool ShouldCarryYouTubeSource(
+    public static unsafe bool ShouldCarryYouTubeSource(
         bool isBrowserSession,
         string? currentBrowserPlatformHint,
         string? lastSource,
         string? stableSource,
         bool isCompletingAdTransition)
     {
-        if (!isBrowserSession ||
-            !string.Equals(
-                currentBrowserPlatformHint,
-                MediaPlatform.YouTube.ToDisplayString(),
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
+        string hint = currentBrowserPlatformHint ?? string.Empty;
+        string lSrc = lastSource ?? string.Empty;
+        string sSrc = stableSource ?? string.Empty;
 
-        return isCompletingAdTransition ||
-               MediaPlatformExtensions.ParsePlatform(lastSource) == MediaPlatform.YouTube ||
-               MediaPlatformExtensions.ParsePlatform(stableSource) == MediaPlatform.YouTube;
+        fixed (char* pH = hint)
+        fixed (char* pL = lSrc)
+        fixed (char* pS = sSrc)
+        {
+            _ = vn_browser_media_should_carry_youtube_source(
+                isBrowserSession ? (byte)1 : (byte)0,
+                pH, hint.Length,
+                pL, lSrc.Length,
+                pS, sSrc.Length,
+                isCompletingAdTransition ? (byte)1 : (byte)0,
+                out byte carry);
+            return carry != 0;
+        }
     }
 }
 

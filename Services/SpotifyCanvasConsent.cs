@@ -1,14 +1,18 @@
+using System;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-// A feature preference or imported configuration is not acknowledgement of the notice.
-internal static class SpotifyCanvasConsent
+internal static partial class SpotifyCanvasConsent
 {
     internal const int CurrentNoticeVersion = 1;
 
-    internal static bool HasAccepted(NotchSettings settings) =>
-        settings.SpotifyCanvasConsentVersion == CurrentNoticeVersion;
+    internal static bool HasAccepted(NotchSettings settings)
+    {
+        vn_spotify_canvas_consent_has_accepted(settings.SpotifyCanvasConsentVersion, out byte accepted);
+        return accepted != 0;
+    }
 
     internal static bool TryEnable(NotchSettings settings, Func<bool> confirm)
     {
@@ -30,4 +34,8 @@ internal static class SpotifyCanvasConsent
         settings.EnableSpotifyCanvas = false;
         settings.AllowOnlineCanvas = false;
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotify_canvas_consent_has_accepted(
+        int consent_version, out byte out_accepted);
 }

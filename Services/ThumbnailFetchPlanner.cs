@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services;
 
 internal readonly struct ThumbnailSourceInputs
@@ -36,47 +38,103 @@ internal readonly struct YouTubeFetchInputs
     public bool RetryIntervalElapsed { get; init; }
 }
 
-internal static class ThumbnailFetchPlanner
+internal static partial class ThumbnailFetchPlanner
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnThumbnailSourceInputs
+    {
+        public byte PlatformIsYouTube;
+        public byte PlatformIsBrowser;
+        public byte PlatformIsSoundCloud;
+        public byte HasSourceApp;
+        public byte IsLikelyYouTube;
+        public byte HasSoundCloudSessionOverride;
+        public byte BrowserHasYouTubeTabOpen;
+        public byte HasTrack;
+        public byte ThumbnailIsNullOrPlaceholder;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnThumbnailSourcePlan
+    {
+        public byte IsPotentialYouTube;
+        public byte IsPotentialSoundCloud;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSoundCloudFetchInputs
+    {
+        public byte IsNewSoundCloudTrack;
+        public byte SameTrackFetchRunning;
+        public byte ThumbnailIsNullOrPlaceholder;
+        public byte HasMismatchedThumbSource;
+        public byte RetryIntervalElapsed;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnYouTubeFetchInputs
+    {
+        public byte IsNewTrack;
+        public byte SameTrackFetchRunning;
+        public byte NeedsBetterThumbnail;
+        public byte RetryIntervalElapsed;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_thumbnail_classify_sources(in VnThumbnailSourceInputs x, out VnThumbnailSourcePlan outPlan);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_thumbnail_should_start_soundcloud(in VnSoundCloudFetchInputs x, out byte outShouldStart);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_thumbnail_should_start_youtube(in VnYouTubeFetchInputs x, out byte outShouldStart);
+
     public static ThumbnailSourcePlan ClassifySources(in ThumbnailSourceInputs x)
     {
-        bool isPotentialYouTube = x.PlatformIsYouTube || (x.PlatformIsBrowser && x.IsLikelyYouTube);
-
-        bool shouldProbeSoundCloudFromBrowser = x.PlatformIsBrowser &&
-                                                !x.IsLikelyYouTube &&
-                                                !x.BrowserHasYouTubeTabOpen &&
-                                                x.HasTrack &&
-                                                (x.ThumbnailIsNullOrPlaceholder || x.HasSoundCloudSessionOverride);
-
-        bool isPotentialSoundCloud = x.PlatformIsSoundCloud || shouldProbeSoundCloudFromBrowser;
-
+        var nativeIn = new VnThumbnailSourceInputs
+        {
+            PlatformIsYouTube = x.PlatformIsYouTube ? (byte)1 : (byte)0,
+            PlatformIsBrowser = x.PlatformIsBrowser ? (byte)1 : (byte)0,
+            PlatformIsSoundCloud = x.PlatformIsSoundCloud ? (byte)1 : (byte)0,
+            HasSourceApp = x.HasSourceApp ? (byte)1 : (byte)0,
+            IsLikelyYouTube = x.IsLikelyYouTube ? (byte)1 : (byte)0,
+            HasSoundCloudSessionOverride = x.HasSoundCloudSessionOverride ? (byte)1 : (byte)0,
+            BrowserHasYouTubeTabOpen = x.BrowserHasYouTubeTabOpen ? (byte)1 : (byte)0,
+            HasTrack = x.HasTrack ? (byte)1 : (byte)0,
+            ThumbnailIsNullOrPlaceholder = x.ThumbnailIsNullOrPlaceholder ? (byte)1 : (byte)0,
+        };
+        _ = vn_thumbnail_classify_sources(in nativeIn, out VnThumbnailSourcePlan nativeOut);
         return new ThumbnailSourcePlan
         {
-            IsPotentialYouTube = isPotentialYouTube,
-            IsPotentialSoundCloud = isPotentialSoundCloud,
+            IsPotentialYouTube = nativeOut.IsPotentialYouTube != 0,
+            IsPotentialSoundCloud = nativeOut.IsPotentialSoundCloud != 0,
         };
     }
 
     public static bool ShouldStartSoundCloudFetch(in SoundCloudFetchInputs x)
     {
-        if (!x.IsNewSoundCloudTrack && x.SameTrackFetchRunning)
+        var nativeIn = new VnSoundCloudFetchInputs
         {
-            return false;
-        }
-
-        bool shouldRetryPlaceholder = (x.ThumbnailIsNullOrPlaceholder || x.HasMismatchedThumbSource) &&
-                                      x.RetryIntervalElapsed;
-
-        return x.IsNewSoundCloudTrack || shouldRetryPlaceholder;
+            IsNewSoundCloudTrack = x.IsNewSoundCloudTrack ? (byte)1 : (byte)0,
+            SameTrackFetchRunning = x.SameTrackFetchRunning ? (byte)1 : (byte)0,
+            ThumbnailIsNullOrPlaceholder = x.ThumbnailIsNullOrPlaceholder ? (byte)1 : (byte)0,
+            HasMismatchedThumbSource = x.HasMismatchedThumbSource ? (byte)1 : (byte)0,
+            RetryIntervalElapsed = x.RetryIntervalElapsed ? (byte)1 : (byte)0,
+        };
+        _ = vn_thumbnail_should_start_soundcloud(in nativeIn, out byte shouldStart);
+        return shouldStart != 0;
     }
 
     public static bool ShouldStartYouTubeFetch(in YouTubeFetchInputs x)
     {
-        if (!x.IsNewTrack && x.SameTrackFetchRunning)
+        var nativeIn = new VnYouTubeFetchInputs
         {
-            return false;
-        }
-
-        return x.IsNewTrack || (x.NeedsBetterThumbnail && x.RetryIntervalElapsed);
+            IsNewTrack = x.IsNewTrack ? (byte)1 : (byte)0,
+            SameTrackFetchRunning = x.SameTrackFetchRunning ? (byte)1 : (byte)0,
+            NeedsBetterThumbnail = x.NeedsBetterThumbnail ? (byte)1 : (byte)0,
+            RetryIntervalElapsed = x.RetryIntervalElapsed ? (byte)1 : (byte)0,
+        };
+        _ = vn_thumbnail_should_start_youtube(in nativeIn, out byte shouldStart);
+        return shouldStart != 0;
     }
 }

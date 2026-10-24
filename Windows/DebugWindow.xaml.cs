@@ -56,24 +56,31 @@ public partial class DebugWindow : Window
     private readonly ObservableCollection<DiagnosticLogViewModel> _diagnosticLogs = new();
     private readonly ObservableCollection<DiagnosticLogViewModel> _serviceLogs = new();
 
-    // Brushes for health levels
-    private static readonly SolidColorBrush NominalBg = new(Color.FromArgb(0xFF, 0x1B, 0x33, 0x20));
-    private static readonly SolidColorBrush NominalBorder = new(Color.FromArgb(0xFF, 0x2E, 0x7D, 0x32));
-    private static readonly SolidColorBrush WarningBg = new(Color.FromArgb(0xFF, 0x3E, 0x2B, 0x14));
-    private static readonly SolidColorBrush WarningBorder = new(Color.FromArgb(0xFF, 0xF5, 0x7C, 0x00));
-    private static readonly SolidColorBrush CriticalBg = new(Color.FromArgb(0xFF, 0x42, 0x14, 0x14));
-    private static readonly SolidColorBrush CriticalBorder = new(Color.FromArgb(0xFF, 0xD3, 0x2F, 0x2F));
+    private static SolidColorBrush CreateFrozenBrush(byte a, byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
-    private static readonly SolidColorBrush TagNominalBg = new(Color.FromArgb(0x44, 0x2E, 0x7D, 0x32));
-    private static readonly SolidColorBrush TagNominalFg = new(Color.FromArgb(0xFF, 0x81, 0xC7, 0x84));
-    private static readonly SolidColorBrush TagWarningBg = new(Color.FromArgb(0x44, 0xF5, 0x7C, 0x00));
-    private static readonly SolidColorBrush TagWarningFg = new(Color.FromArgb(0xFF, 0xFF, 0xB7, 0x4D));
-    private static readonly SolidColorBrush TagCriticalBg = new(Color.FromArgb(0x55, 0xD3, 0x2F, 0x2F));
-    private static readonly SolidColorBrush TagCriticalFg = new(Color.FromArgb(0xFF, 0xE5, 0x73, 0x73));
-    private static readonly SolidColorBrush TagServiceBg = new(Color.FromArgb(0x44, 0x1E, 0x88, 0xE5));
-    private static readonly SolidColorBrush TagServiceFg = new(Color.FromArgb(0xFF, 0x64, 0xD2, 0xFF));
-    private static readonly SolidColorBrush TagMemoryBg = new(Color.FromArgb(0x44, 0x8E, 0x24, 0xAA));
-    private static readonly SolidColorBrush TagMemoryFg = new(Color.FromArgb(0xFF, 0xCE, 0x93, 0xD8));
+    // Brushes for health levels
+    private static readonly SolidColorBrush NominalBg = CreateFrozenBrush(0xFF, 0x1B, 0x33, 0x20);
+    private static readonly SolidColorBrush NominalBorder = CreateFrozenBrush(0xFF, 0x2E, 0x7D, 0x32);
+    private static readonly SolidColorBrush WarningBg = CreateFrozenBrush(0xFF, 0x3E, 0x2B, 0x14);
+    private static readonly SolidColorBrush WarningBorder = CreateFrozenBrush(0xFF, 0xF5, 0x7C, 0x00);
+    private static readonly SolidColorBrush CriticalBg = CreateFrozenBrush(0xFF, 0x42, 0x14, 0x14);
+    private static readonly SolidColorBrush CriticalBorder = CreateFrozenBrush(0xFF, 0xD3, 0x2F, 0x2F);
+
+    private static readonly SolidColorBrush TagNominalBg = CreateFrozenBrush(0x44, 0x2E, 0x7D, 0x32);
+    private static readonly SolidColorBrush TagNominalFg = CreateFrozenBrush(0xFF, 0x81, 0xC7, 0x84);
+    private static readonly SolidColorBrush TagWarningBg = CreateFrozenBrush(0x44, 0xF5, 0x7C, 0x00);
+    private static readonly SolidColorBrush TagWarningFg = CreateFrozenBrush(0xFF, 0xFF, 0xB7, 0x4D);
+    private static readonly SolidColorBrush TagCriticalBg = CreateFrozenBrush(0x55, 0xD3, 0x2F, 0x2F);
+    private static readonly SolidColorBrush TagCriticalFg = CreateFrozenBrush(0xFF, 0xE5, 0x73, 0x73);
+    private static readonly SolidColorBrush TagServiceBg = CreateFrozenBrush(0x44, 0x1E, 0x88, 0xE5);
+    private static readonly SolidColorBrush TagServiceFg = CreateFrozenBrush(0xFF, 0x64, 0xD2, 0xFF);
+    private static readonly SolidColorBrush TagMemoryBg = CreateFrozenBrush(0x44, 0x8E, 0x24, 0xAA);
+    private static readonly SolidColorBrush TagMemoryFg = CreateFrozenBrush(0xFF, 0xCE, 0x93, 0xD8);
 
     // Compare metric values before allocating their display strings.
     // Nullable caches force the first sample to populate every field, including zero.
@@ -117,6 +124,12 @@ public partial class DebugWindow : Window
         IsVisibleChanged += DebugWindow_IsVisibleChanged;
         Closed += (_, _) =>
         {
+            if (_updateTimer != null)
+            {
+                _updateTimer.Stop();
+                _updateTimer.Tick -= UpdateTimer_Tick;
+                _updateTimer.Dispose();
+            }
             _serviceLogCapture?.Dispose();
             _serviceLogCapture = null;
         };
@@ -705,6 +718,7 @@ public partial class DebugWindow : Window
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();
+                timer.Dispose();
                 if (CopyAllLogsBtn != null) CopyAllLogsBtn.Content = "Copy";
             };
             timer.Start();
@@ -735,6 +749,7 @@ public partial class DebugWindow : Window
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();
+                timer.Dispose();
                 if (CopyServiceLogsBtn != null) CopyServiceLogsBtn.Content = "Copy All";
             };
             timer.Start();

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -6,8 +7,23 @@ using System.Windows.Media.Imaging;
 
 namespace VNotch.Services;
 
-public static class SubjectAwareBlurService
+public static partial class SubjectAwareBlurService
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_subject_blur_brighten(byte* pixels, int bufLen, float factor);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_subject_blur_composite(
+        byte* background,
+        byte* subjectLayer,
+        float centerX,
+        float centerY,
+        float subWidth,
+        float subHeight,
+        int width,
+        int height,
+        int stride);
+
     public static async Task<BitmapSource?> GetSubjectBlurredAsync(
         BitmapSource source,
         SubjectBounds? subject,
@@ -105,7 +121,7 @@ public static class SubjectAwareBlurService
         FastBlurService.DarkenPixels(background, width, height, 0.78f);
     }
 
-    private static void RenderSubjectLayer(
+    private static unsafe void RenderSubjectLayer(
         byte[] subjectLayer,
         byte[] tmp,
         int width,
@@ -118,10 +134,13 @@ public static class SubjectAwareBlurService
             FastBlurService.BoxBlurHorizontal(subjectLayer, tmp, width, height, subjectBlurRadius);
             FastBlurService.BoxBlurVertical(tmp, subjectLayer, width, height, subjectBlurRadius);
         }
-        Brighten(subjectLayer, bufLen, 1.04f);
+        fixed (byte* p = subjectLayer)
+        {
+            _ = vn_subject_blur_brighten(p, Math.Min(subjectLayer.Length, bufLen), 1.04f);
+        }
     }
 
-    private static void CompositeLayers(
+    private static unsafe void CompositeLayers(
         byte[] background,
         byte[] subjectLayer,
         SubjectBounds s,
@@ -129,58 +148,10 @@ public static class SubjectAwareBlurService
         int height,
         int stride)
     {
-        float cx = Math.Clamp(s.CenterX, 0f, 1f) * width;
-        float cy = Math.Clamp(s.CenterY, 0f, 1f) * height;
-        float rx = MathF.Max(width * 0.18f, s.Width * width * 0.55f);
-        float ry = MathF.Max(height * 0.22f, s.Height * height * 0.55f);
-        const float feather = 0.40f;
-
-        for (int y = 0; y < height; y++)
+        fixed (byte* pBg = background)
+        fixed (byte* pSub = subjectLayer)
         {
-            int row = y * stride;
-            float dy = (y - cy) / ry;
-            float dySquared = dy * dy;
-            for (int x = 0; x < width; x++)
-            {
-                float dx = (x - cx) / rx;
-                float t = ComputeBlendWeight(dx * dx + dySquared, feather);
-
-                int p = row + x * 4;
-                byte bb = background[p];
-                byte gb = background[p + 1];
-                byte rb = background[p + 2];
-                byte bs = subjectLayer[p];
-                byte gs = subjectLayer[p + 1];
-                byte rs = subjectLayer[p + 2];
-
-                background[p] = (byte)(bb + (bs - bb) * t);
-                background[p + 1] = (byte)(gb + (gs - gb) * t);
-                background[p + 2] = (byte)(rb + (rs - rb) * t);
-                background[p + 3] = 255;
-            }
-        }
-    }
-
-    private static float ComputeBlendWeight(float distanceSquared, float feather)
-    {
-        if (distanceSquared <= 1f)
-            return 1f;
-        if (distanceSquared >= (1f + feather) * (1f + feather))
-            return 0f;
-
-        float dist = MathF.Sqrt(distanceSquared);
-        float u = (dist - 1f) / feather;
-        return 1f - u * u * (3f - 2f * u);
-    }
-
-    private static void Brighten(byte[] pixels, int bufLen, float factor)
-    {
-        int limit = Math.Min(pixels.Length, bufLen);
-        for (int i = 0; i < limit; i += 4)
-        {
-            pixels[i] = (byte)Math.Min(255, pixels[i] * factor);
-            pixels[i + 1] = (byte)Math.Min(255, pixels[i + 1] * factor);
-            pixels[i + 2] = (byte)Math.Min(255, pixels[i + 2] * factor);
+            _ = vn_subject_blur_composite(pBg, pSub, s.CenterX, s.CenterY, s.Width, s.Height, width, height, stride);
         }
     }
 }

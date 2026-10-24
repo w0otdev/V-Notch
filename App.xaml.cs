@@ -99,7 +99,7 @@ public partial class App : Application
 
             System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
 
-            AppPaths.MigrateLegacyLocalData();
+            if (!specialStartup) AppPaths.MigrateLegacyLocalData();
             _ = MediaProtocolConfiguration.Current;
             var services = new ServiceCollection();
             ServiceConfigurator.ConfigureServices(services);

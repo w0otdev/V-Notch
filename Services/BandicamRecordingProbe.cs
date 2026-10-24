@@ -1,13 +1,11 @@
 using System;
-using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace VNotch.Services;
 
-// Bandicam's legacy capture path need not appear in Windows ConsentStore.
-// Its last output path alone is historical: require a live recorder holding that file.
-internal static class BandicamRecordingProbe
+internal static partial class BandicamRecordingProbe
 {
     internal static bool IsRecording(PrivacyProcessSnapshot snapshot)
     {
@@ -31,7 +29,6 @@ internal static class BandicamRecordingProbe
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            // Missing/inaccessible app settings or output are not recording evidence.
         }
         finally
         {
@@ -40,16 +37,17 @@ internal static class BandicamRecordingProbe
         return false;
     }
 
-    internal static bool IsSupportedOutputPath(string path)
+    internal static unsafe bool IsSupportedOutputPath(string path)
     {
-        // Avoid network filesystem probes in the privacy worker.
-        if (string.IsNullOrWhiteSpace(path) || path.Length < 3 ||
-            !char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] != '\\') return false;
-        string extension = Path.GetExtension(path);
-        return extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".avi", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".wav", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        fixed (char* ptr = path)
+        {
+            vn_bandicam_is_supported_output_path(ptr, path.Length, out byte supported);
+            return supported != 0;
+        }
     }
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_bandicam_is_supported_output_path(
+        char* path_ptr, int path_len, out byte out_supported);
 }

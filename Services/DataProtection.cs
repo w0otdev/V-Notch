@@ -1,14 +1,61 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace VNotch.Services;
 
-public static class DataProtection
+public static partial class DataProtection
 {
     private const string Prefix = "enc:";
-    internal static Func<byte[], byte[]> ProtectBytes { get; set; } = data =>
-        ProtectedData.Protect(data, optionalEntropy: null, scope: DataProtectionScope.CurrentUser);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_dpapi_protect_bytes(
+        byte* plainPtr, int plainLen, byte* outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_dpapi_unprotect_bytes(
+        byte* encPtr, int encLen, byte* outBuf, int outCap, out int outLen);
+
+    internal static Func<byte[], byte[]> ProtectBytes { get; set; } = DefaultProtectBytes;
+
+    private static unsafe byte[] DefaultProtectBytes(byte[] data)
+    {
+        fixed (byte* pIn = data)
+        {
+            int status = vn_dpapi_protect_bytes(pIn, data.Length, null, 0, out int reqLen);
+            if (status != 0 && status != -2)
+                throw new CryptographicException("DPAPI encryption failed.");
+
+            byte[] outBuf = new byte[reqLen];
+            fixed (byte* pOut = outBuf)
+            {
+                status = vn_dpapi_protect_bytes(pIn, data.Length, pOut, reqLen, out _);
+                if (status != 0)
+                    throw new CryptographicException("DPAPI encryption failed.");
+            }
+            return outBuf;
+        }
+    }
+
+    private static unsafe byte[] UnprotectBytesNative(byte[] encrypted)
+    {
+        fixed (byte* pIn = encrypted)
+        {
+            int status = vn_dpapi_unprotect_bytes(pIn, encrypted.Length, null, 0, out int reqLen);
+            if (status != 0 && status != -2)
+                throw new CryptographicException("DPAPI decryption failed.");
+
+            byte[] outBuf = new byte[reqLen];
+            fixed (byte* pOut = outBuf)
+            {
+                status = vn_dpapi_unprotect_bytes(pIn, encrypted.Length, pOut, reqLen, out _);
+                if (status != 0)
+                    throw new CryptographicException("DPAPI decryption failed.");
+            }
+            return outBuf;
+        }
+    }
 
     public static string Protect(string? plaintext)
     {
@@ -21,7 +68,6 @@ public static class DataProtection
         }
         catch (Exception)
         {
-            // Never log the value that was submitted for protection.
             RuntimeLog.Warn("DPAPI", "Protect failed.");
             throw new CryptographicException("DPAPI encryption failed.");
         }
@@ -37,7 +83,7 @@ public static class DataProtection
         try
         {
             byte[] encrypted = Convert.FromBase64String(stored.Substring(Prefix.Length));
-            byte[] data = ProtectedData.Unprotect(encrypted, optionalEntropy: null, scope: DataProtectionScope.CurrentUser);
+            byte[] data = UnprotectBytesNative(encrypted);
             try { return Encoding.UTF8.GetString(data); }
             finally { CryptographicOperations.ZeroMemory(data); }
         }

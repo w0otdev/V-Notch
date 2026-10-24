@@ -122,8 +122,12 @@ internal sealed class SpotlightController : ISpotlightController
         {
             handled = true;
             // Leave the native message callback before activation/layout work.
+            int generation = _hostGeneration;
             _source?.Dispatcher.BeginInvoke(
-                System.Windows.Threading.DispatcherPriority.Input, (Action)ToggleSpotlight);
+                System.Windows.Threading.DispatcherPriority.Input, (Action)(() =>
+                {
+                    if (generation == _hostGeneration) ToggleSpotlight();
+                }));
         }
         return IntPtr.Zero;
     }
@@ -209,7 +213,7 @@ internal sealed class SpotlightController : ISpotlightController
     internal void ToggleSpotlight()
     {
         if (_host is MainWindow { IsGreetingInteractionBlocked: true }) return;
-        if (_disposed || _settings?.EnableSpotlight != true) return;
+        if (_disposed || _host == null || _settings?.EnableSpotlight != true) return;
         if (_window == null)
         {
             _window = CreateWindow();
@@ -261,11 +265,18 @@ internal sealed class SpotlightController : ISpotlightController
         ++_hostGeneration;
         _preparationQueued = false;
         DisableHotkey();
-        _source?.RemoveHook(WndProc);
+        if (_source is { IsDisposed: false }) _source.RemoveHook(WndProc);
         _source = null;
         if (_host != null) _host.Closed -= Host_Closed;
         _host = null;
         _hwnd = IntPtr.Zero;
+        if (_window != null)
+        {
+            _window.OpenStateChanged -= Window_OpenStateChanged;
+            _window.IsVisibleChanged -= Window_IsVisibleChanged;
+            _window.Shutdown();
+            _window = null;
+        }
     }
 
     public void Dispose()
@@ -273,12 +284,5 @@ internal sealed class SpotlightController : ISpotlightController
         if (_disposed) return;
         _disposed = true;
         DetachHost();
-        if (_window != null)
-        {
-            _window.OpenStateChanged -= Window_OpenStateChanged;
-            _window.IsVisibleChanged -= Window_IsVisibleChanged;
-        }
-        _window?.Shutdown();
-        _window = null;
     }
 }

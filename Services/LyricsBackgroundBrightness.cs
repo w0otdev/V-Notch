@@ -1,18 +1,22 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace VNotch.Services;
 
-internal static class LyricsBackgroundBrightness
+internal static partial class LyricsBackgroundBrightness
 {
     private static readonly ConditionalWeakTable<BitmapSource, BitmapSource> Cache = new();
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_lyrics_brightness_apply(byte* pixels, int byteCount, out byte outModified);
 
     internal static ImageSource? Apply(ImageSource? source, bool enabled) =>
         enabled && source is BitmapSource bitmap ? Cache.GetValue(bitmap, Brighten) : source;
 
-    private static BitmapSource Brighten(BitmapSource source)
+    private static unsafe BitmapSource Brighten(BitmapSource source)
     {
         double scale = Math.Min(1, 512.0 / Math.Max(source.PixelWidth, source.PixelHeight));
         BitmapSource sample = scale < 1
@@ -25,24 +29,12 @@ internal static class LyricsBackgroundBrightness
         try
         {
             converted.CopyPixels(pixels, stride, 0);
-            double luminance = 0, weight = 0;
-            for (int i = 0; i < byteCount; i += 4)
+            fixed (byte* p = pixels)
             {
-                double alpha = pixels[i + 3] / 255.0;
-                luminance += (.0722 * pixels[i] + .7152 * pixels[i + 1] + .2126 * pixels[i + 2]) * alpha;
-                weight += alpha;
+                _ = vn_lyrics_brightness_apply(p, byteCount, out byte modified);
+                if (modified == 0)
+                    return source;
             }
-            if (weight == 0 || luminance / weight >= 150) return source;
-
-            // Aim for visible midtones even under the lyrics opacity mask. Limit the
-            // lift to retain contrast in very dark artwork; black and white stay fixed.
-            double average = Math.Max(1, luminance / weight);
-            double gamma = Math.Clamp(Math.Log(150.0 / 255) / Math.Log(average / 255), .45, 1);
-            Span<byte> lookup = stackalloc byte[256];
-            for (int i = 0; i < lookup.Length; i++)
-                lookup[i] = (byte)Math.Round(255 * Math.Pow(i / 255.0, gamma));
-            for (int i = 0; i < byteCount; i += 4)
-                for (int channel = 0; channel < 3; channel++) pixels[i + channel] = lookup[pixels[i + channel]];
             var result = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
             result.Freeze();
             return result;

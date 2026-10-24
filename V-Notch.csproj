@@ -119,6 +119,7 @@
   <ItemGroup>
     <None Remove="Fonts\SF-Pro-Display-*.otf" />
     <Content Include="Fonts\SF-Pro-Display-*.otf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="Native\out\VNotch.Native.dll" Link="VNotch.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Resource Include="Fonts\segmdl2.ttf" />
     <Resource Include="Services\icons\browser.svg" />
     <Resource Include="Services\icons\discord.svg" />
@@ -184,6 +185,26 @@
       <Output TaskParameter="ExitCode" PropertyName="_ShaderCompileExitCode" />
     </Exec>
     <Warning Condition="'$(_ShaderCompileExitCode)' != '0'" Code="VNOTCH001" Text="LiquidGlass shader compile failed with exit code $(_ShaderCompileExitCode). The committed Shaders\LiquidGlassRefraction.ps was kept and may be stale." />
+  </Target>
+
+  <PropertyGroup>
+    <_VNotchNativeDll>$(MSBuildThisFileDirectory)Native\out\VNotch.Native.dll</_VNotchNativeDll>
+    <_VNotchNativeObjDir>$(MSBuildThisFileDirectory)obj\native</_VNotchNativeObjDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <_VNotchNativeHeaders Include="$(MSBuildThisFileDirectory)Native\**\*.h" />
+    <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\Services\**\*.cpp" />
+  </ItemGroup>
+  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
+    <ItemGroup Condition="'$(VcVars64Path)' == ''">
+      <_VcVarsCandidate Include="$(MSBuildProgramFiles32)\Microsoft Visual Studio\2022\*\VC\Auxiliary\Build\vcvars64.bat" />
+      <_VcVarsCandidate Include="C:\Program Files\Microsoft Visual Studio\2022\*\VC\Auxiliary\Build\vcvars64.bat" />
+    </ItemGroup>
+    <PropertyGroup Condition="'$(VcVars64Path)' == ''">
+      <VcVars64Path Condition="'@(_VcVarsCandidate)' != ''">%(_VcVarsCandidate.FullPath)</VcVars64Path>
+    </PropertyGroup>
+    <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
+    <Exec Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /std:c++20 /O2 /MT /EHsc /LD /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @(_VNotchNativeSources -> '&quot;%(FullPath)&quot;', ' ') /link /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot;" IgnoreStandardErrorWarningFormat="true" />
   </Target>
 
   <Target Name="SetPackageManifestVersion" BeforeTargets="Build">

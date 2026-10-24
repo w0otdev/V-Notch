@@ -1,15 +1,14 @@
-using System.Buffers.Binary;
-using System.Globalization;
 using System.Net.Http;
-using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using static VNotch.Services.SpotifyHttpResponseReader;
 using static VNotch.Services.SpotifyJson;
 
 namespace VNotch.Services;
 
-internal sealed class SpotifyTokenProvider : IDisposable
+internal sealed partial class SpotifyTokenProvider : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
     private const string LogCategory = "SPOTIFY-CANVAS";
     private const string SpotifyWebOrigin = "https://open.spotify.com";
     private static readonly Uri SpotifyWebUri = new("https://open.spotify.com/");
@@ -18,6 +17,15 @@ internal sealed class SpotifyTokenProvider : IDisposable
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _authLock = new(1, 1);
     private AccessTokenCache? _accessToken;
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_generate_totp(
+        ReadOnlySpan<byte> secretPtr,
+        int secretLen,
+        long timestampMs,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
 
     internal SpotifyTokenProvider(HttpClient http) => _http = http;
     internal void ClearCache() => _accessToken = null;
@@ -131,20 +139,9 @@ internal sealed class SpotifyTokenProvider : IDisposable
 
     internal static string GenerateTotp(ReadOnlySpan<byte> secret, long timestampMs)
     {
-        long counter = timestampMs / 1000 / 30;
-        Span<byte> counterBytes = stackalloc byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(counterBytes, counter);
-
-#pragma warning disable S4790 // Spotify mobile-web-player token generation protocol specifically mandates RFC 6238 HMAC-SHA1
-        Span<byte> hash = stackalloc byte[20];
-        HMACSHA1.HashData(secret, counterBytes, hash);
-#pragma warning restore S4790
-        int offset = hash[^1] & 0x0F;
-        int binary = ((hash[offset] & 0x7F) << 24) |
-                     ((hash[offset + 1] & 0xFF) << 16) |
-                     ((hash[offset + 2] & 0xFF) << 8) |
-                     (hash[offset + 3] & 0xFF);
-        return (binary % 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
+        Span<char> buf = stackalloc char[16];
+        vn_spotify_generate_totp(secret, secret.Length, timestampMs, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : "000000";
     }
 
     public void Dispose() => _authLock.Dispose();

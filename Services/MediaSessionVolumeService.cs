@@ -6,7 +6,7 @@ using NAudio.CoreAudioApi;
 
 namespace VNotch.Services;
 
-public sealed class MediaSessionVolumeService
+public sealed class MediaSessionVolumeService : IDisposable
 {
     private readonly Func<MediaAudioSessions> _getAudioSessions;
     private readonly Func<IEnumerable<string>, HashSet<uint>> _getProcessIds;
@@ -105,6 +105,8 @@ public sealed class MediaSessionVolumeService
             InvalidateVolumeSessionCacheLocked();
         }
     }
+
+    public void Dispose() => InvalidateVolumeSessionCache();
 
     private void InvalidateVolumeSessionCacheLocked()
     {

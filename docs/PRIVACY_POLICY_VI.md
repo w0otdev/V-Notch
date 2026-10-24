@@ -1,10 +1,10 @@
 # Chính Sách Bảo Mật — V-Notch
 
-**Ngày hiệu lực:** 9 tháng 10 năm 2026
+**Ngày hiệu lực:** 24 tháng 10 năm 2026
 
-**Bản công bố trước:** 2 tháng 10 năm 2026
+**Bản công bố trước:** 9 tháng 10 năm 2026
 
-**Phạm vi:** Mã nguồn hiện tại ngày 9 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
+**Phạm vi:** Mã nguồn hiện tại ngày 24 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
 
 **Nhà phát triển:** rainaku  
 **Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
@@ -74,9 +74,11 @@ Dữ liệu này được đọc liên tục khi đang phát, dùng để hiển
 - **Quét tiêu đề cửa sổ** — Liệt kê tiêu đề của các cửa sổ cấp cao đang hiển thị và chỉ giữ lại những tiêu đề chứa một trong các từ khóa nền tảng cố định: `spotify`, `youtube`, `soundcloud`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. Các từ khóa nền tảng mạng xã hội và phát trực tuyến mở rộng dùng để hỗ trợ phát hiện việc phát video/âm thanh bên trong các tab hoặc ứng dụng đó — chúng chỉ được so khớp với văn bản tiêu đề cửa sổ, hoàn toàn không đọc nội dung trang. Các tiêu đề cửa sổ không khớp sẽ bị loại bỏ ngay lập tức và không bao giờ được giữ lại.
 - **Đọc URL trình duyệt** — Với các trình duyệt được hỗ trợ (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, Zen, Arc, Thorium, Floorp, Waterfox, và các trình duyệt nền Chromium/Gecko khác), ứng dụng dùng API trợ năng UI Automation của Windows để đọc thanh địa chỉ và các tab đang mở nhằm tìm một URL media. Chỉ những URL là liên kết media mới được xử lý.
 
+Việc đọc URL trình duyệt bị chặn cho đến khi cài đặt đã nạp cho phép. Bộ quét đọc quyền từ bộ nhớ, không đọc lại hay theo dõi tệp cài đặt. Tắt **Đọc URL trình duyệt để nhận diện phương tiện** ngăn trả về URL đã cache hoặc kết quả từ lần quét trước đang chạy. Lệnh gọi trợ năng đã bắt đầu có thể hoàn tất, nhưng không có lần đọc mới bắt đầu khi quyền đang tắt. Công tắc này điều khiển việc đọc trợ năng trình duyệt; quét tiêu đề cửa sổ là hoạt động riêng.
+
 Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, có thể xuất hiện trong nhật ký chẩn đoán cục bộ khi người dùng bật ghi log (§5.4); ứng dụng không được thiết kế để tải lên tiêu đề cửa sổ thô hoặc URL đầy đủ. (Một giá trị suy ra — tên bài/nghệ sĩ — có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.)
 
-**Lưu ý về tiêu đề cửa sổ nhạy cảm:** Vì tính năng này kiểm tra văn bản tiêu đề của các cửa sổ đang hiển thị có chứa một trong các từ khóa khớp, nó có thể vô tình đọc phải một tiêu đề cửa sổ tiết lộ ngữ cảnh không liên quan đến việc phát media — ví dụ: tiêu đề tab trình duyệt hoặc cửa sổ ứng dụng vô tình chứa tên nền tảng khớp (như "Discord" hoặc "Instagram") đi kèm với văn bản riêng tư khác. Các tiêu đề không khớp bị loại bỏ ngay lập tức, và các tiêu đề khớp chỉ được dùng tạm thời như mô tả ở trên và không bao giờ được truyền đi dưới dạng văn bản thô — nhưng nếu đây là điều bạn lo ngại, bạn có thể tắt **Đọc URL trình duyệt để nhận diện phương tiện** bất kỳ lúc nào trong cài đặt Quyền riêng tư được mô tả tại Mục 8.
+**Lưu ý về tiêu đề cửa sổ nhạy cảm:** Vì tính năng này kiểm tra văn bản tiêu đề của các cửa sổ đang hiển thị có chứa một trong các từ khóa khớp, nó có thể vô tình đọc phải một tiêu đề cửa sổ tiết lộ ngữ cảnh không liên quan đến việc phát media — ví dụ: tiêu đề tab trình duyệt hoặc cửa sổ ứng dụng vô tình chứa tên nền tảng khớp (như "Discord" hoặc "Instagram") đi kèm với văn bản riêng tư khác. Các tiêu đề không khớp bị loại bỏ ngay lập tức, và các tiêu đề khớp chỉ được dùng tạm thời như mô tả ở trên và không bao giờ được truyền đi dưới dạng văn bản thô. Công tắc **Đọc URL trình duyệt để nhận diện phương tiện** không tắt việc quét tiêu đề này.
 
 ### 3.3 Tìm kiếm Spotlight & Trình khởi chạy nhanh (`Alt + Space`)
 
@@ -119,6 +121,8 @@ V-Notch theo dõi các sự kiện kết nối/ngắt kết nối Bluetooth bằ
 ### 3.10 Lịch sử, Chỉ báo & Xem trước Clipboard
 
 V-Notch đăng ký trình lắng nghe định dạng Clipboard của Windows để hiển thị huy hiệu "Copied", xem trước và lưu lịch sử Clipboard. Khi thu thập đang hoạt động (thu thập văn bản, ảnh và tệp được bật mặc định), ứng dụng đọc các định dạng được hỗ trợ và lưu bản sao cục bộ: văn bản thuần, HTML/RTF, ảnh và nội dung tệp/thư mục đã sao chép, kèm thời gian và tên/đường dẫn tệp thực thi của ứng dụng nguồn. Lịch sử vẫn còn sau khi khởi động lại ứng dụng. Bạn cũng có thể nhập mục bằng kéo thả.
+
+Kéo thả ảnh được biểu diễn bằng URL HTTP(S) có thể tải ảnh từ máy chủ nguồn; máy chủ nhận URL được yêu cầu, địa chỉ IP và metadata kết nối thông thường. Việc nhập chủ động này dùng cùng quyền mạng với tra cứu ảnh bìa trực tuyến: chế độ hoàn toàn ngoại tuyến hoặc tắt tra cứu ảnh bìa sẽ chặn yêu cầu; thu hồi quyền sẽ hủy việc đọc phản hồi đang diễn ra. Mỗi lượt tải bị giới hạn 20 MiB, kể cả khi máy chủ không khai báo kích thước. Dữ liệu ảnh nhúng được xử lý cục bộ.
 
 Trước khi đọc nội dung để lưu lịch sử, V-Notch bỏ qua mục có cờ `ExcludeClipboardContentFromMonitorProcessing` hoặc `Clipboard Viewer Ignore`, hoặc DWORD `CanIncludeInClipboardHistory` bằng 0. Cờ lịch sử không đọc được cũng khiến mục bị bỏ qua. Cơ chế này phụ thuộc ứng dụng nguồn cung cấp cờ; không thể nhận diện mọi mật khẩu hay nội dung nhạy cảm. Lịch sử Clipboard không tự động tải nội dung lên. Nội dung bạn dán vào tin nhắn AI trực tuyến rồi gửi sẽ được truyền theo §4.8.
 
@@ -197,7 +201,7 @@ Canvas và quyền truy cập mạng/đăng nhập của tính năng **mặc đ�
 
 Khi bạn chọn **Kết nối Spotify**, V-Notch mở trang đăng nhập chính thức của Spotify trong một hồ sơ Microsoft Edge WebView2 tạm thời. Sau khi đăng nhập, ứng dụng chỉ đọc cookie phiên `sp_dc`, xóa hoàn toàn hồ sơ trình duyệt tạm và lưu cookie đã mã hóa bằng Windows DPAPI cho tài khoản người dùng Windows hiện tại. Cookie này không bao giờ được gửi đến bất kỳ máy chủ nào của V-Notch hay máy chủ thu thập dữ liệu nào.
 
-Khi Canvas được bật, phiên được gửi đến Spotify (`open.spotify.com`) để lấy access token ngắn hạn. V-Notch gửi tên bài và nghệ sĩ cùng token đó tới dịch vụ danh mục của Spotify (`api-partner.spotify.com`) để tìm Spotify track ID. Nếu tra cứu này không khả dụng, ứng dụng gửi tên bài, nghệ sĩ và thời lượng tới Musixmatch (`apic-desktop.musixmatch.com`) làm phương án dự phòng. Sau đó, ứng dụng yêu cầu metadata Canvas từ Spotify (`spclient.wg.spotify.com`) và phát video trực tiếp từ mạng phân phối nội dung `*.scdn.co` của Spotify. Các tài nguyên web player Spotify công khai (`open.spotify.com`, `open.spotifycdn.com`) có thể được tải để duy trì tính tương thích của truy vấn; các yêu cầu này không chứa phiên hay metadata bài hát. Secret luân phiên dùng bởi Spotify web player được tải từ kho lưu trữ GitHub công khai `xyloflake/spot-secrets-go`; yêu cầu này không kèm theo dữ liệu người dùng.
+Khi Canvas được bật, phiên được gửi đến Spotify (`open.spotify.com`) để lấy access token ngắn hạn. V-Notch gửi tên bài và nghệ sĩ cùng token đó tới dịch vụ danh mục của Spotify (`api-partner.spotify.com`) để tìm Spotify track ID. Nếu tra cứu này không khả dụng, ứng dụng gửi tên bài, nghệ sĩ và thời lượng tới Musixmatch (`apic-desktop.musixmatch.com`) làm phương án dự phòng. Sau đó, ứng dụng yêu cầu metadata Canvas từ Spotify (`spclient.wg.spotify.com`) và phát video trực tiếp từ mạng phân phối nội dung `*.scdn.co` của Spotify. Các tài nguyên web player Spotify công khai (`open.spotify.com`, `open.spotifycdn.com`) có thể được tải để duy trì tính tương thích của truy vấn; các yêu cầu này không chứa phiên hay metadata bài hát. Giá trị tương thích để tạo token và hash truy vấn ban đầu đi kèm ứng dụng trong `Assets/MediaProtocols.json`, với giá trị dự phòng nhúng sẵn. Chúng được duy trì qua bản cập nhật ứng dụng, không yêu cầu người dùng sửa cấu hình; ứng dụng không kết nối tới máy chủ secret/cấu hình riêng. Cơ chế tự tìm hash truy vấn từ tài nguyên web player Spotify công khai vẫn được giữ.
 
 Bạn có thể ngắt kết nối Spotify bất kỳ lúc nào trong Cài đặt. Thao tác này sẽ xóa vĩnh viễn phiên đã lưu khỏi V-Notch. Nếu xác thực thất bại hoặc bài hát không có Canvas, ứng dụng tự động chuyển về hình nền lời bài hát thông thường.
 
@@ -244,6 +248,10 @@ Thanh usage giữ số liệu do nhà cung cấp trả về trong bộ nhớ: to
 
 Toàn bộ dữ liệu lưu trữ lâu dài do V-Notch tạo ra chỉ nằm duy nhất trên thiết bị của bạn.
 
+Thư mục dữ liệu cục bộ chính là `%LOCALAPPDATA%\V-Notch\`. Khi khởi động, ứng dụng thử chuyển dữ liệu cũ từ `%LOCALAPPDATA%\VNotch\` sang đây trước khi mở các kho dữ liệu. Tệp đã có tại đích được giữ nguyên; dữ liệu cũ bị xung đột được giữ trong `legacy-migration-conflicts` dưới thư mục chính. Tệp chưa chuyển được vẫn ở thư mục cũ để thử lại sau. Các bản phục hồi không tự hết hạn.
+
+Việc dọn tệp tạm định kỳ giữ nguyên lịch sử chat, lịch sử cách ly `.corrupt`, bản xung đột di chuyển, cài đặt/bản sao lưu, model dịch đã cài và phần tải model có thể tiếp tục. Lịch sử Clipboard có quy tắc lưu riêng (§5.7). Trình gỡ cài đặt thử xóa cả hai thư mục cục bộ và thư mục roaming; tệp bị khóa hoặc lỗi xóa có thể để lại dữ liệu, vì vậy hãy kiểm tra các vị trí này khi cần xóa hết dữ liệu cục bộ.
+
 ### 5.1 Cài đặt (`%APPDATA%\V-Notch\settings.json`)
 
 Lưu các tùy chọn của bạn: kích thước và vị trí notch, kiểu giao diện và tùy chỉnh Liquid Glass, bật/tắt thông báo, ngôn ngữ, hành vi khởi động cùng Windows, đường dẫn tệp trong File Shelf và các cờ tính năng. Tệp cài đặt có thể chứa YouTube API key nếu bạn tự cung cấp và phiên Spotify nếu bạn chọn Kết nối Spotify. Các thông tin xác thực này, bao gồm khóa nhà cung cấp AI tùy chọn (§5.6), được mã hóa bằng Windows DPAPI (Data Protection API) trước khi ghi xuống đĩa cho tài khoản Windows hiện tại, phụ thuộc bảo mật tài khoản và hệ điều hành. Nếu DPAPI không khả dụng, các giá trị nhạy cảm này sẽ không được lưu.
@@ -264,7 +272,7 @@ Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi l
 
 Nếu có, tệp mô hình cắt ảnh thông minh (`yolo11n.onnx`) được lưu cục bộ cùng với ứng dụng và chỉ dùng cho mục đích phân tích nhận diện hình ảnh trực tiếp trên thiết bị.
 
-Để xóa dữ liệu do ứng dụng quản lý, hãy thoát V-Notch trước, rồi kiểm tra và xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\`, kho lịch sử AI tại §5.6 và thư mục cài đặt. Cần kiểm tra riêng cache, bản sao lưu và dữ liệu đã xuất; xóa thư mục ứng dụng không xóa các bản sao này.
+Để xóa dữ liệu do ứng dụng quản lý, hãy ngắt kết nối Spotify trong Cài đặt nếu có, thoát V-Notch, rồi kiểm tra và xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, thư mục cũ `%LOCALAPPDATA%\VNotch\` nếu còn và thư mục cài đặt. Hai thư mục cục bộ chứa cả lịch sử Clipboard, lịch sử/bản phục hồi AI và model dịch. Cần kiểm tra riêng cache, bản sao lưu và dữ liệu đã xuất; xóa thư mục ứng dụng không xóa các bản sao này.
 
 ---
 
@@ -272,9 +280,9 @@ Nếu có, tệp mô hình cắt ảnh thông minh (`yolo11n.onnx`) được lư
 
 Khóa API được lưu trong `%APPDATA%\V-Notch\settings.json`, mã hóa bằng Windows DPAPI cho tài khoản Windows hiện tại. Khóa được loại khỏi bản xuất cài đặt; nhập cài đặt không thay thế khóa AI đang lưu trên máy. Cài đặt cũng lưu nhà cung cấp/model, chế độ Spotlight mặc định và tốc độ hiện chữ. Bản sao lưu cài đặt luân phiên có thể giữ khóa mã hóa cũ; xóa khóa khỏi cài đặt hiện tại không thu hồi khóa hoặc xóa các bản sao này. Hãy thu hồi khóa không còn dùng hoặc bị lộ tại bảng điều khiển nhà cung cấp.
 
-Lịch sử AI được lưu riêng tại `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`. Tệp mã hóa chứa hội thoại, nhà cung cấp/model, bản nháp, thời gian cập nhật, nội dung tin nhắn, trạng thái phản hồi chưa hoàn tất và metadata Gemini đã lưu nếu có. Trong lúc lưu có thể tồn tại tệp tạm đã mã hóa. Windows DPAPI mã hóa lịch sử cho tài khoản Windows hiện tại; nếu không giải mã được lịch sử cũ, ứng dụng giữ lại thay vì ghi đè. Không có thời hạn tự động xóa theo tuổi dữ liệu.
+Lịch sử AI được lưu riêng tại `%LOCALAPPDATA%\V-Notch\spotlight-chats.enc`. Tệp mã hóa chứa hội thoại, nhà cung cấp/model, bản nháp, thời gian cập nhật, nội dung tin nhắn, trạng thái phản hồi chưa hoàn tất và metadata Gemini đã lưu nếu có. Trong lúc lưu có thể tồn tại tệp tạm đã mã hóa. Windows DPAPI mã hóa lịch sử cho tài khoản Windows hiện tại. Nếu không giải mã được hoặc nội dung không hợp lệ, ứng dụng thử đổi tên tệp mã hóa gốc thành `spotlight-chats.enc.<id>.corrupt`, rồi cho phép lưu lịch sử mới. Nếu việc đọc hoặc cách ly thất bại, ứng dụng giữ nguyên tệp gốc và chặn lưu cho đến khi thử lại thành công. Lịch sử đã lưu và tệp cách ly không có thời hạn tự động xóa theo tuổi dữ liệu.
 
-Xóa hội thoại sẽ ghi lại lịch sử cục bộ khi thao tác lưu thành công. Tạo chat mới không xóa chat cũ; xóa lịch sử khởi chạy Spotlight không xóa hội thoại AI. Xóa cục bộ không phải xóa an toàn và không xóa bản sao lưu hệ điều hành hoặc dữ liệu phía nhà cung cấp. Sau khi đóng ứng dụng, bạn có thể xóa tệp lịch sử và bản tạm liên quan để dọn kho dữ liệu này. Khi kiểm tra dữ liệu theo Mục 11, hãy kiểm tra cả thư mục riêng này.
+Xóa hội thoại sẽ ghi lại lịch sử cục bộ khi thao tác lưu thành công. Tạo chat mới không xóa chat cũ; xóa lịch sử khởi chạy Spotlight không xóa hội thoại AI. Xóa hội thoại không xóa bản cách ly hoặc bản giữ lại do xung đột di chuyển dữ liệu. Xóa cục bộ không phải xóa an toàn và không xóa bản sao lưu hệ điều hành hoặc dữ liệu phía nhà cung cấp. Sau khi đóng ứng dụng, bạn có thể xóa tệp lịch sử, các tệp tạm/cách ly liên quan và bản phục hồi cũ để dọn kho dữ liệu này. Khi kiểm tra dữ liệu theo Mục 11, hãy kiểm tra cả hai thư mục cục bộ.
 
 DPAPI bảo vệ dữ liệu khi lưu trên đĩa, không bảo vệ trước phần mềm chạy dưới tài khoản của bạn hoặc thiết bị/tài khoản đã bị xâm nhập. Khóa và nội dung chat phải có trong bộ nhớ khi sử dụng. Đây không phải mã hóa đầu cuối đối với nhà cung cấp AI. Nhật ký AI được thiết kế để ghi nhà cung cấp, trạng thái và loại lỗi thay vì câu hỏi hay toàn bộ nội dung lỗi từ nhà cung cấp; che thông tin xác thực là biện pháp giảm rủi ro, không đảm bảo mọi nhật ký đều không có dữ liệu nhạy cảm.
 
@@ -359,7 +367,7 @@ Vì V-Notch ưu tiên xử lý cục bộ và không yêu cầu tài khoản V-N
 
 - Để **xem dữ liệu nào đang được lưu**, hãy xem Mục 5 (Lưu trữ dữ liệu cục bộ) và Mục 2 (Bảng tổng quan).
 - Để **xóa dữ liệu cục bộ cụ thể**, dùng các công cụ xóa một chạm tại Mục 8 (lịch sử Spotlight, nhật ký chẩn đoán) hoặc chỉnh sửa/xóa từng mục trong `settings.json`.
-- Để **xóa dữ liệu cục bộ do ứng dụng quản lý**, hãy thoát V-Notch, ngắt kết nối Spotify trong Cài đặt (nếu có), rồi xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\Clipboard\` và thư mục cài đặt. Cần kiểm tra riêng thư mục tạm Windows, cache WebView/trình duyệt, bản sao lưu và dữ liệu đã đăng trên GitHub; thao tác này không bảo đảm xóa các bản sao bên ngoài. Thao tác xóa sẽ làm mất cấu hình.
+- Để **xóa dữ liệu cục bộ do ứng dụng quản lý**, hãy ngắt kết nối Spotify trong Cài đặt (nếu có), thoát V-Notch, rồi xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, thư mục cũ `%LOCALAPPDATA%\VNotch\` nếu còn và thư mục cài đặt. Bao gồm cả lịch sử chat cách ly và các bản giữ lại do xung đột di chuyển dữ liệu (Mục 5). Cần kiểm tra riêng thư mục tạm Windows, cache WebView/trình duyệt, bản sao lưu và dữ liệu đã đăng trên GitHub; thao tác này không bảo đảm xóa các bản sao bên ngoài. Thao tác xóa sẽ làm mất cấu hình.
 
 Đối với phần dữ liệu giới hạn rời khỏi thiết bị của bạn để thực hiện một tính năng bạn đã bật (mô tả tại Mục 4), vai trò pháp lý của nhà phát triển và nhà cung cấp phải được xác định theo thực tế xử lý và luật áp dụng, không thể mặc nhiên kết luận mọi bên thứ ba là bên kiểm soát độc lập. Để thực hiện quyền đối với dữ liệu do các dịch vụ đó nắm giữ (ví dụ: một truy vấn tìm kiếm được cache bởi một instance front-end YouTube, hoặc một tra cứu dựa trên IP do `ipwho.is` thực hiện), vui lòng liên hệ trực tiếp với dịch vụ đó qua các liên kết tại Mục 4 ở trên.
 
@@ -398,7 +406,7 @@ Dịch trực tiếp và Auto mặc định tắt. Khi bật và đã cài model
 
 Nhận diện ngôn ngữ và dịch dùng model đã cài riêng và được chọn trong Settings. Văn bản gốc/bản dịch không gửi đến API AI, ghi vào nhật ký hay lưu thành lịch sử dịch. Mặc định cache tối đa 128 kết quả trong RAM trong 30 phút; model được giải phóng sau 5 phút không dịch. Cài đặt nâng cao cho phép thay đổi giới hạn, tắt cache hoặc giữ model trong RAM. Chuyển model xóa cache dịch. Đóng popup xóa văn bản đang hiển thị. Bộ nhớ hoán đổi, crash dump của hệ điều hành và lưu trữ của app khác nằm ngoài kiểm soát của tính năng.
 
-Model không nằm trong bộ cài. Chỉ khi bấm **Tải model**, app mới kết nối HTTPS đến Hugging Face và các miền phân phối tệp của họ. Nhà cung cấp nhận IP và metadata yêu cầu mạng thông thường, không nhận vùng văn bản bạn chọn. Phiên bản, kích thước và SHA-256 của tệp được cố định. Chế độ chỉ nội bộ chặn tải; vẫn có thể nhập tệp offline. Model và phần tải dở lưu tại `%LOCALAPPDATA%\VNotch\translation-models\<model-id>\`. **Xóa model** xóa các tệp model/phần tải dở đã biết.
+Model không nằm trong bộ cài. Chỉ khi bấm **Tải model**, app mới kết nối HTTPS đến Hugging Face và các miền phân phối tệp của họ. Nhà cung cấp nhận IP và metadata yêu cầu mạng thông thường, không nhận vùng văn bản bạn chọn. Phiên bản, kích thước và SHA-256 của tệp được cố định. Chế độ chỉ nội bộ chặn tải; vẫn có thể nhập tệp offline. Model và phần tải dở lưu tại `%LOCALAPPDATA%\V-Notch\translation-models\<model-id>\`. **Xóa model** xóa các tệp model/phần tải dở đã biết.
 
 **Copy** ghi bản dịch được yêu cầu vào clipboard Windows, kèm các cờ loại trừ khỏi theo dõi, lịch sử và đồng bộ cloud. Lịch sử Clipboard của V-Notch tôn trọng các cờ này; app khác có thể bỏ qua chúng và đọc/lưu văn bản. Lựa chọn ngôn ngữ và trạng thái bật/Auto được lưu cùng cấu hình thông thường.
 

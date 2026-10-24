@@ -338,11 +338,13 @@ public partial class MainWindow
     private void ScheduleGreetingDismiss(TimeSpan delay)
     {
         _greetingDismissTimer?.Stop();
+        _greetingDismissTimer?.Dispose();
         int generation = _greetingGeneration;
         var timer = new UiScheduledTimer { Interval = delay };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
+            timer.Dispose();
             if (ReferenceEquals(_greetingDismissTimer, timer)) _greetingDismissTimer = null;
             if (IsGreetingCurrent(generation)) DismissGreeting();
         };
@@ -355,6 +357,7 @@ public partial class MainWindow
         System.Windows.Input.InputManager.Current.PreProcessInput -= BlockGreetingInput;
         ++_greetingGeneration;
         _greetingDismissTimer?.Stop();
+        _greetingDismissTimer?.Dispose();
         _greetingDismissTimer = null;
         _isGreetingActive = false;
         GreetingOverlay.BeginAnimation(OpacityProperty, null);

@@ -1,148 +1,82 @@
-using System.Globalization;
-using System.Text;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public static class PlatformDetector
+public static partial class PlatformDetector
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_detect_from_app_id(char* appPtr, int appLen, out int outPlatform);
 
-    private static readonly (string Pattern, MediaPlatform Platform)[] AppIdRules =
-    {
-        ("Spotify", MediaPlatform.Spotify),
-        ("Discord", MediaPlatform.Discord),
-        ("Vesktop", MediaPlatform.Discord),
-        ("Twitch", MediaPlatform.Twitch),
-        ("TIDAL", MediaPlatform.Tidal),
-        ("Deezer", MediaPlatform.Deezer),
-    };
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_is_browser_app(char* appPtr, int appLen, out byte outIsBrowser);
 
-    private static readonly (string Pattern, MediaPlatform Platform)[] BrowserAppIdPatterns =
-    {
-        ("Chrome", MediaPlatform.Browser),
-        ("Edge", MediaPlatform.Browser),
-        ("Firefox", MediaPlatform.Browser),
-        ("MS-Edge", MediaPlatform.Browser),
-        ("msedge", MediaPlatform.Browser),
-        ("Opera", MediaPlatform.Browser),
-        ("Brave", MediaPlatform.Browser),
-        ("Vivaldi", MediaPlatform.Browser),
-        ("Coccoc", MediaPlatform.Browser),
-        ("Arc", MediaPlatform.Browser),
-        ("Sidekick", MediaPlatform.Browser),
-        ("Zen", MediaPlatform.Browser),
-        ("Thorium", MediaPlatform.Browser),
-        ("Waterfox", MediaPlatform.Browser),
-        ("Floorp", MediaPlatform.Browser),
-        ("Librewolf", MediaPlatform.Browser),
-        ("Chromium", MediaPlatform.Browser),
-        ("Whale", MediaPlatform.Browser),
-        ("Yandex", MediaPlatform.Browser),
-        ("Wavebox", MediaPlatform.Browser),
-        ("Helium", MediaPlatform.Browser),
-        ("Supermium", MediaPlatform.Browser),
-        ("Browser", MediaPlatform.Browser),
-    };
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_detect_single_window_title(char* titlePtr, int titleLen, out int outImmediate, out int outFallback);
 
-    private static readonly string[] TitleSeparators =
-    {
-        " - YouTube", " – YouTube",
-        " | Listen online for free on SoundCloud", " | Free Listening on SoundCloud", " | Stream on SoundCloud",
-        " on SoundCloud", " - SoundCloud", " – SoundCloud", " | SoundCloud",
-        " / X", " • Instagram",
-        " - Apple Music", " – Apple Music",
-        " - Twitch", " – Twitch", " | Twitch", " • Twitch",
-        " - Discord", " – Discord", " | Discord", " • Discord",
-        " - TIDAL", " – TIDAL", " - Deezer", " – Deezer",
-        " | Bandcamp", " - Netflix", " – Netflix",
-        " _哔哩哔哩_bilibili", " - 哔哩哔哩", " - bilibili",
-        " on Vimeo", " - Crunchyroll", " – Crunchyroll",
-        " - Google Chrome", " - Microsoft\u200B Edge", " - Microsoft Edge",
-        " - Mozilla Firefox", " - Opera", " - Brave", " - Vivaldi",
-        " - Cốc Cốc", " - Arc", " - Sidekick", " - Zen Browser", " - Zen",
-        " - Thorium", " - Waterfox", " - Floorp", " - Yandex",
-        " - Browser", " – Current browser"
-    };
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_extract_title_from_window(char* titlePtr, int titleLen, char* fallbackPtr, int fallbackLen, char* outBuf, int outCap, out int outLen);
 
-    public static MediaPlatform DetectFromAppId(string? sourceAppId)
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_parse_spotify_title(char* titlePtr, int titleLen, char* outArtistBuf, int outArtistCap, out int outArtistLen, char* outTrackBuf, int outTrackCap, out int outTrackLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_parse_soundcloud_title(char* titlePtr, int titleLen, char* outArtistBuf, int outArtistCap, out int outArtistLen, char* outTrackBuf, int outTrackCap, out int outTrackLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_normalize_for_loose_match(char* valPtr, int valLen, char* outBuf, int outCap, out int outLen);
+
+    public static unsafe MediaPlatform DetectFromAppId(string? sourceAppId)
     {
         if (string.IsNullOrEmpty(sourceAppId))
             return MediaPlatform.Unknown;
 
-        foreach (var (pattern, platform) in AppIdRules)
+        fixed (char* ptr = sourceAppId)
         {
-            if (sourceAppId.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                return platform;
+            _ = vn_platform_detect_from_app_id(ptr, sourceAppId.Length, out int p);
+            return (MediaPlatform)p;
         }
-
-        return MediaPlatform.Unknown;
     }
-    public static bool IsBrowserApp(string? sourceAppId)
+
+    public static unsafe bool IsBrowserApp(string? sourceAppId)
     {
         if (string.IsNullOrEmpty(sourceAppId))
             return false;
 
-        foreach (var (pattern, _) in BrowserAppIdPatterns)
+        fixed (char* ptr = sourceAppId)
         {
-            if (sourceAppId.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-                return true;
+            _ = vn_platform_is_browser_app(ptr, sourceAppId.Length, out byte b);
+            return b != 0;
         }
-
-        return false;
     }
-    public static MediaPlatform DetectFromWindowTitles(IEnumerable<string> windowTitles)
+
+    public static unsafe MediaPlatform DetectFromWindowTitles(IEnumerable<string> windowTitles)
     {
         MediaPlatform fallback = MediaPlatform.Unknown;
 
         foreach (var title in windowTitles)
         {
-            var lower = title.ToLowerInvariant();
+            if (string.IsNullOrEmpty(title))
+                continue;
 
-            if (lower.Contains("youtube") && !lower.StartsWith("youtube -") && lower != "youtube")
-                return MediaPlatform.YouTube;
-
-            if (lower.Contains("twitch") && !lower.StartsWith("twitch -") && lower != "twitch")
-                return MediaPlatform.Twitch;
-
-            if (fallback == MediaPlatform.Unknown)
+            fixed (char* ptr = title)
             {
-                fallback = MatchFallbackPlatform(lower);
+                _ = vn_platform_detect_single_window_title(ptr, title.Length, out int imm, out int fb);
+                if ((MediaPlatform)imm != MediaPlatform.Unknown)
+                    return (MediaPlatform)imm;
+                if (fallback == MediaPlatform.Unknown && (MediaPlatform)fb != MediaPlatform.Unknown)
+                    fallback = (MediaPlatform)fb;
             }
         }
 
         return fallback;
     }
 
-    private static readonly (Func<string, bool> Matcher, MediaPlatform Platform)[] FallbackMatchers =
-    {
-        (s => (s.Contains("discord") || s.Contains("vesktop")) && !s.StartsWith("discord -") && s != "discord" && s != "vesktop", MediaPlatform.Discord),
-        (s => s.Contains("soundcloud"), MediaPlatform.SoundCloud),
-        (s => s.Contains("apple music") || s.Contains("music.apple.com"), MediaPlatform.AppleMusic),
-        (s => s.Contains("tidal") && (s.Contains("listen.tidal.com") || s.Contains(" - tidal") || s.Contains(" – tidal")), MediaPlatform.Tidal),
-        (s => s.Contains("deezer"), MediaPlatform.Deezer),
-        (s => s.Contains("bandcamp"), MediaPlatform.Bandcamp),
-        (s => s.Contains("netflix"), MediaPlatform.Netflix),
-        (s => s.Contains("bilibili") || s.Contains("哔哩哔哩"), MediaPlatform.Bilibili),
-        (s => s.Contains("vimeo"), MediaPlatform.Vimeo),
-        (s => s.Contains("instagram") && (s.Contains("reel") || s.Contains("video")), MediaPlatform.Instagram),
-        (s => (s.Contains("twitter") || s.Contains(" / x")) && (s.Contains("video") || s.Contains("watch")), MediaPlatform.Twitter),
-    };
-
-    private static MediaPlatform MatchFallbackPlatform(string lower)
-    {
-        foreach (var (matcher, platform) in FallbackMatchers)
-        {
-            if (matcher(lower))
-                return platform;
-        }
-
-        return MediaPlatform.Unknown;
-    }
     public static string DetectPlatformHint(IEnumerable<string> windowTitles)
     {
         var platform = DetectFromWindowTitles(windowTitles);
         return platform.ToDisplayString();
     }
+
     public static bool HasReliableWindowMatch(IEnumerable<string> windowTitles, string track, MediaPlatform platform)
     {
         if (string.IsNullOrWhiteSpace(track))
@@ -152,22 +86,9 @@ public static class PlatformDetector
         if (string.IsNullOrEmpty(platformName))
             return false;
 
-        string normalizedTrack = NormalizeForLooseMatch(track);
-        if (string.IsNullOrEmpty(normalizedTrack))
-            return false;
-
-        foreach (var title in windowTitles)
-        {
-            if (!title.Contains(platformName, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            string normalizedTitle = NormalizeForLooseMatch(title);
-            if (normalizedTitle.Contains(normalizedTrack, StringComparison.Ordinal))
-                return true;
-        }
-
-        return false;
+        return HasReliableWindowMatch(windowTitles, track, platformName);
     }
+
     public static bool HasReliableWindowMatch(IEnumerable<string> windowTitles, string track, string platformName)
     {
         if (string.IsNullOrWhiteSpace(track) || string.IsNullOrWhiteSpace(platformName))
@@ -189,124 +110,72 @@ public static class PlatformDetector
 
         return false;
     }
+
     public static string ExtractTitleFromWindow(string windowTitle, MediaPlatform platform)
     {
         return ExtractTitleFromWindow(windowTitle, platform.ToDisplayString());
     }
-    public static string ExtractTitleFromWindow(string windowTitle, string platformFallback)
+
+    public static unsafe string ExtractTitleFromWindow(string windowTitle, string platformFallback)
     {
-        var title = windowTitle;
-
-        title = Regex.Replace(title, @"^\(\d+\+?\)\s*", "");
-        title = Regex.Replace(title, @"^[▶⏸▶️⏸️\s]*", "");
-        title = Regex.Replace(title, @"^[▶⏸\s\d:]+\|", "").Trim();
-
-        foreach (var sep in TitleSeparators)
+        string t = windowTitle ?? string.Empty;
+        string fb = platformFallback ?? string.Empty;
+        int cap = Math.Max(64, Math.Max(t.Length, fb.Length) + 16);
+        char[] buf = new char[cap];
+        fixed (char* pT = t)
+        fixed (char* pFb = fb)
+        fixed (char* pOut = buf)
         {
-            int idx = title.IndexOf(sep, StringComparison.OrdinalIgnoreCase);
-            if (idx > 0)
-            {
-                title = title.Substring(0, idx);
-            }
+            _ = vn_platform_extract_title_from_window(pT, t.Length, pFb, fb.Length, pOut, cap, out int outLen);
+            return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
         }
-
-        title = title.Trim();
-
-        title = Regex.Replace(title, @"\s+[\-\|–•]\s*$", "");
-
-        return string.IsNullOrEmpty(title) ? platformFallback : title;
     }
-    public static (string Artist, string Track) ParseSpotifyTitle(string title)
+
+    public static unsafe (string Artist, string Track) ParseSpotifyTitle(string title)
     {
-        int firstSep = title.IndexOf(" - ", StringComparison.Ordinal);
-        if (firstSep > 0)
+        string t = title ?? string.Empty;
+        int cap = Math.Max(32, t.Length + 8);
+        char[] artistBuf = new char[cap];
+        char[] trackBuf = new char[cap];
+        fixed (char* pT = t)
+        fixed (char* pA = artistBuf)
+        fixed (char* pTr = trackBuf)
         {
-            string artist = title.Substring(0, firstSep).Trim();
-            string track = title.Substring(firstSep + 3).Trim();
-            if (!string.IsNullOrEmpty(track))
-            {
-                return (artist, track);
-            }
+            _ = vn_platform_parse_spotify_title(pT, t.Length, pA, cap, out int aLen, pTr, cap, out int trLen);
+            return (aLen > 0 ? new string(artistBuf, 0, aLen) : string.Empty,
+                    trLen > 0 ? new string(trackBuf, 0, trLen) : string.Empty);
         }
-
-        return ("Spotify", title.Trim());
     }
-    public static (string Artist, string Track) ParseSoundCloudTitle(string extractedTitle)
+
+    public static unsafe (string Artist, string Track) ParseSoundCloudTitle(string extractedTitle)
     {
-        if (string.IsNullOrWhiteSpace(extractedTitle))
-            return ("SoundCloud", "SoundCloud");
-
-        string cleaned = extractedTitle.Trim();
-        if (cleaned.StartsWith("Stream ", StringComparison.OrdinalIgnoreCase) && cleaned.Length > 7)
+        string t = extractedTitle ?? string.Empty;
+        int cap = Math.Max(32, t.Length + 8);
+        char[] artistBuf = new char[cap];
+        char[] trackBuf = new char[cap];
+        fixed (char* pT = t)
+        fixed (char* pA = artistBuf)
+        fixed (char* pTr = trackBuf)
         {
-            cleaned = cleaned.Substring(7).Trim();
+            _ = vn_platform_parse_soundcloud_title(pT, t.Length, pA, cap, out int aLen, pTr, cap, out int trLen);
+            return (aLen > 0 ? new string(artistBuf, 0, aLen) : string.Empty,
+                    trLen > 0 ? new string(trackBuf, 0, trLen) : string.Empty);
         }
-
-        string? byArtist = null;
-        int byIdx = cleaned.LastIndexOf(" by ", StringComparison.OrdinalIgnoreCase);
-        if (byIdx > 0 && byIdx + 4 < cleaned.Length)
-        {
-            string candidateArtist = cleaned.Substring(byIdx + 4).Trim();
-            string candidateTrack = cleaned.Substring(0, byIdx).Trim();
-            if (!string.IsNullOrEmpty(candidateTrack) && !string.IsNullOrEmpty(candidateArtist))
-            {
-                byArtist = candidateArtist;
-                cleaned = candidateTrack;
-            }
-        }
-
-        string[] dashSeparators = { " - ", " – ", " — " };
-        foreach (var sep in dashSeparators)
-        {
-            int sepIdx = cleaned.IndexOf(sep, StringComparison.Ordinal);
-            if (sepIdx > 0 && sepIdx + sep.Length < cleaned.Length)
-            {
-                string dashArtist = cleaned.Substring(0, sepIdx).Trim();
-                string dashTrack = cleaned.Substring(sepIdx + sep.Length).Trim();
-                if (!string.IsNullOrEmpty(dashArtist) && !string.IsNullOrEmpty(dashTrack))
-                {
-                    return (dashArtist, dashTrack);
-                }
-            }
-        }
-
-        if (!string.IsNullOrEmpty(byArtist))
-        {
-            return (byArtist, cleaned);
-        }
-
-        return ("SoundCloud", cleaned);
     }
-    public static string NormalizeForLooseMatch(string value)
+
+    public static unsafe string NormalizeForLooseMatch(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
 
-        string folded = value.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(folded.Length);
-        bool lastWasSpace = false;
-
-        foreach (var ch in folded)
+        int cap = value.Length + 8;
+        char[] buf = new char[cap];
+        fixed (char* pIn = value)
+        fixed (char* pOut = buf)
         {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
-                continue;
-
-            if (char.IsLetterOrDigit(ch))
-            {
-                sb.Append(char.ToLowerInvariant(ch));
-                lastWasSpace = false;
-            }
-            else if (!lastWasSpace)
-            {
-                sb.Append(' ');
-                lastWasSpace = true;
-            }
+            _ = vn_platform_normalize_for_loose_match(pIn, value.Length, pOut, cap, out int outLen);
+            return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
         }
-
-        if (sb.Length > 0 && sb[sb.Length - 1] == ' ')
-            sb.Length--;
-
-        return sb.ToString();
     }
 }
 
@@ -329,50 +198,31 @@ public enum MediaPlatform
     Bilibili,
     Vimeo
 }
-public static class MediaPlatformExtensions
-{
-    public static string ToDisplayString(this MediaPlatform platform) => platform switch
-    {
-        MediaPlatform.Spotify => "Spotify",
-        MediaPlatform.YouTube => "YouTube",
-        MediaPlatform.SoundCloud => "SoundCloud",
-        MediaPlatform.AppleMusic => "Apple Music",
-        MediaPlatform.Browser => "Browser",
-        MediaPlatform.Instagram => "Instagram",
-        MediaPlatform.Twitter => "Twitter",
-        MediaPlatform.Twitch => "Twitch",
-        MediaPlatform.Discord => "Discord",
-        MediaPlatform.Netflix => "Netflix",
-        MediaPlatform.Tidal => "TIDAL",
-        MediaPlatform.Deezer => "Deezer",
-        MediaPlatform.Bandcamp => "Bandcamp",
-        MediaPlatform.Bilibili => "Bilibili",
-        MediaPlatform.Vimeo => "Vimeo",
-        _ => ""
-    };
-    public static MediaPlatform ParsePlatform(string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return MediaPlatform.Unknown;
 
-        return value.ToLowerInvariant() switch
+public static partial class MediaPlatformExtensions
+{
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_parse(char* valPtr, int valLen, out int outPlatform);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_platform_to_display_string(int platform, char* outBuf, int outCap, out int outLen);
+
+    public static unsafe string ToDisplayString(this MediaPlatform platform)
+    {
+        char* buf = stackalloc char[32];
+        _ = vn_platform_to_display_string((int)platform, buf, 32, out int len);
+        return len > 0 ? new string(buf, 0, len) : string.Empty;
+    }
+
+    public static unsafe MediaPlatform ParsePlatform(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return MediaPlatform.Unknown;
+
+        fixed (char* ptr = value)
         {
-            "spotify" => MediaPlatform.Spotify,
-            "youtube" => MediaPlatform.YouTube,
-            "soundcloud" => MediaPlatform.SoundCloud,
-            "apple music" => MediaPlatform.AppleMusic,
-            "browser" => MediaPlatform.Browser,
-            "instagram" => MediaPlatform.Instagram,
-            "twitter" => MediaPlatform.Twitter,
-            "twitch" => MediaPlatform.Twitch,
-            "discord" => MediaPlatform.Discord,
-            "vesktop" => MediaPlatform.Discord,
-            "netflix" => MediaPlatform.Netflix,
-            "tidal" => MediaPlatform.Tidal,
-            "deezer" => MediaPlatform.Deezer,
-            "bandcamp" => MediaPlatform.Bandcamp,
-            "bilibili" => MediaPlatform.Bilibili,
-            "vimeo" => MediaPlatform.Vimeo,
-            _ => MediaPlatform.Unknown
-        };
+            _ = vn_platform_parse(ptr, value.Length, out int p);
+            return (MediaPlatform)p;
+        }
     }
 }

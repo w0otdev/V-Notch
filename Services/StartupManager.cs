@@ -1,43 +1,35 @@
+using System.ComponentModel;
 using System.IO;
-using Microsoft.Win32;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public static class StartupManager
+public static partial class StartupManager
 {
-    private const string RegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "V-Notch";
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_startup_is_enabled(out byte outEnabled);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_startup_set_enabled(
+        byte enable, ReadOnlySpan<ushort> exePath, int exePathLen, out int outWin32Error);
 
     public static bool IsAutoStartEnabled()
     {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, false);
-            return key?.GetValue(AppName) != null;
-        }
-        catch (Exception)
-        {
-            // Registry key might not exist or user lacks read permissions; treat as disabled.
-            return false;
-        }
+        return vn_startup_is_enabled(out byte enabled) == 0 && enabled != 0;
     }
 
     public static void SetAutoStart(bool enable)
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            if (key == null) return;
-
-            if (enable)
+            string exePath = enable
+                ? (Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "V-Notch.exe"))
+                : string.Empty;
+            ReadOnlySpan<ushort> pathSpan = MemoryMarshal.Cast<char, ushort>(exePath.AsSpan());
+            if (vn_startup_set_enabled(enable ? (byte)1 : (byte)0, pathSpan, pathSpan.Length, out int win32Err) == 0 &&
+                win32Err != 0 && win32Err != 2)
             {
-                var exePath = Environment.ProcessPath ??
-                    Path.Combine(AppContext.BaseDirectory, "V-Notch.exe");
-                key.SetValue(AppName, $"\"{exePath}\"");
-            }
-            else
-            {
-                key.DeleteValue(AppName, false);
+                throw new Win32Exception(win32Err);
             }
         }
         catch (Exception ex)

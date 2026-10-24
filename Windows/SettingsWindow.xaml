@@ -2973,6 +2973,38 @@
                                                 </Grid.ColumnDefinitions>
 
                                                 <StackPanel Margin="0,0,12,0">
+                                                    <TextBlock x:Name="DiscussionLabel" Text="Discussions"
+                                                               Style="{StaticResource SettingTitleText}"/>
+                                                    <TextBlock x:Name="DiscussionHint" Text="Join community discussions and ask questions on GitHub."
+                                                               Style="{StaticResource SettingHintText}"
+                                                               Margin="0,4,0,0"/>
+                                                </StackPanel>
+
+                                                <Button x:Name="DiscussionButton"
+                                                        Grid.Column="1"
+                                                        Width="40"
+                                                        Height="40"
+                                                        Click="Discussion_Click"
+                                                        ToolTip="Open GitHub Discussions"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Cursor="Hand">
+                                                    <Viewbox Width="36" Height="36" Stretch="Uniform">
+                                                        <Path Data="M4 3C2.895 3 2 3.895 2 5V14C2 15.105 2.895 16 4 16H6V20L10.5 16H16C17.105 16 18 15.105 18 14V5C18 3.895 17.105 3 16 3H4ZM20 7V15C20 16.657 18.657 18 17 18H11.25L8.75 20.222C9.076 20.7 9.626 21 10.25 21H15.5L19.5 24V21H21C22.105 21 23 20.105 23 19V9C23 7.895 22.105 7 21 7H20Z"
+                                                              Fill="#C8C8C8"/>
+                                                    </Viewbox>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,12,0,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Margin="0,0,12,0">
                                                     <TextBlock x:Name="ClearCacheLabel" Text="Clear cache"
                                                                Style="{StaticResource SettingTitleText}"/>
                                                     <TextBlock x:Name="ClearCacheHint" Text="Remove cached data and logs. Settings are preserved."

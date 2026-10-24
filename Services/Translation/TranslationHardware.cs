@@ -2,24 +2,36 @@ using System.Runtime.InteropServices;
 
 namespace VNotch.Services.Translation;
 
-internal sealed record TranslationHardware(double RamGiB, double VramGiB, int LogicalProcessors, string GpuName)
+internal sealed partial record TranslationHardware(double RamGiB, double VramGiB, int LogicalProcessors, string GpuName)
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transhardware_detect_ram_gib(out double outRamGiB);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transhardware_fits(
+        double ramGiB, int minRamGiB, out byte outFits);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_transhardware_recommended_id(
+        double ramGiB, double vramGiB, int logicalProcessors,
+        Span<ushort> outBuf, int outCap, out int outLen);
+
     internal static TranslationHardware Detect()
     {
-        var memory = new Win32Interop.MEMORYSTATUSEX_METRICS { dwLength = (uint)Marshal.SizeOf<Win32Interop.MEMORYSTATUSEX_METRICS>() };
-        double ram = Win32Interop.GlobalMemoryStatusEx(ref memory) ? memory.ullTotalPhys / 1073741824d : 0;
+        vn_transhardware_detect_ram_gib(out double ram);
         var gpu = GpuMonitorService.Instance.GetGpuInfo();
         return new(ram, gpu.DedicatedVramBytes / 1073741824d, Environment.ProcessorCount, gpu.GpuName);
     }
+
     // Capacity estimates for quantized weights + context + OS headroom, not speed benchmarks.
-    internal bool Fits(TranslationModelProfile model) => RamGiB + .5 >= model.MinimumRamGiB;
+    internal bool Fits(TranslationModelProfile model) =>
+        vn_transhardware_fits(RamGiB, model.MinimumRamGiB, out byte fits) == 0 && fits != 0;
+
     internal TranslationModelProfile? Recommended()
     {
-        if (RamGiB < 7.5) return null;
-        string id = RamGiB >= 47.5 && VramGiB >= 23.5 ? "gemma4-31b" :
-            RamGiB >= 31.5 && VramGiB >= 19.5 ? "gemma4-26b" :
-            RamGiB >= 23.5 && VramGiB >= 11.5 && LogicalProcessors >= 8 ? "translategemma-12b" :
-            RamGiB >= 15.5 && VramGiB >= 7.5 && LogicalProcessors >= 8 ? "hunyuan-mt-7b" : "translategemma-4b";
-        return TranslationModelCatalog.Find(id);
+        Span<char> buf = stackalloc char[32];
+        if (vn_transhardware_recommended_id(RamGiB, VramGiB, LogicalProcessors, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int len) != 0 || len <= 0)
+            return null;
+        return TranslationModelCatalog.Find(new string(buf[..len]));
     }
 }

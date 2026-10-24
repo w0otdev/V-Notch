@@ -79,6 +79,14 @@ replit.md
 update_loc.py
 update_settings.ps1
 /docs
+!/docs/
+/docs/*
+!/docs/MEDIA_PROTOCOL_CONFIGURATION.md
+!/docs/NOTIFYICON_REPLACEMENT_PLAN.md
+!/docs/TRANSLATION_MODEL_RATINGS.md
+!/docs/licenses/
+/docs/licenses/*
+!/docs/licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt
 /.agents
 # Ignore ad-hoc tools, retaining the reproducible benchmark/stress runners
 /Tools/*

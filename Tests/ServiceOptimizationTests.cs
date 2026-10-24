@@ -23,29 +23,38 @@ public sealed class ServiceOptimizationTests
         }
     }
 
-    [Fact]
-    public void DarkeningPreservesEveryByteValueAndAlpha()
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.78f)]
+    [InlineData(0.96f)]
+    [InlineData(1f)]
+    public void DarkeningPreservesEveryByteValueAndAlpha(float factor)
     {
         byte[] pixels = Enumerable.Range(0, 1024).Select(i => (byte)(i / 4)).ToArray();
         byte[] expected = (byte[])pixels.Clone();
-        BaselineFastBlurService.DarkenPixels(expected, expected.Length, 0.96f);
-        FastBlurService.DarkenPixels(pixels, pixels.Length);
+        BaselineFastBlurService.DarkenPixels(expected, expected.Length, factor);
+        FastBlurService.DarkenPixels(pixels, pixels.Length, factor);
         Assert.Equal(expected, pixels);
     }
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(3)]
-    [InlineData(4)]
-    [InlineData(5)]
-    [InlineData(17)]
-    public void DarkeningHandlesVectorTailsWithoutTouchingBufferRemainder(int pixelCount)
+    [InlineData(1, 0.96f)]
+    [InlineData(3, 0.96f)]
+    [InlineData(4, 0.96f)]
+    [InlineData(5, 0.96f)]
+    [InlineData(17, 0.96f)]
+    [InlineData(1, 0.78f)]
+    [InlineData(3, 0.78f)]
+    [InlineData(4, 0.78f)]
+    [InlineData(5, 0.78f)]
+    [InlineData(17, 0.78f)]
+    public void DarkeningHandlesVectorTailsWithoutTouchingBufferRemainder(int pixelCount, float factor)
     {
         byte[] pixels = new byte[(pixelCount + 4) * 4];
         new Random(42).NextBytes(pixels);
         byte[] expected = (byte[])pixels.Clone();
-        BaselineFastBlurService.DarkenPixels(expected, pixelCount * 4, 0.96f);
-        FastBlurService.DarkenPixels(pixels, pixelCount * 4);
+        BaselineFastBlurService.DarkenPixels(expected, pixelCount * 4, factor);
+        FastBlurService.DarkenPixels(pixels, pixelCount * 4, factor);
         Assert.Equal(expected, pixels);
     }
 

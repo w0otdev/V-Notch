@@ -1,177 +1,133 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
+using System.Buffers;
 using System.Runtime.InteropServices;
-using System.Text;
-using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
 
-public static class PipDetector
+public static partial class PipDetector
 {
-    private static readonly string[] MultilingualPipKeywords =
-    {
-        "picture in picture",
-        "picture-in-picture",
-        "hình trong hình",
-        "hinh trong hinh",
-        "bild-in-bild",
-        "image dans l'image",
-        "pantalla en pantalla",
-        "cuadro en cuadro",
-        "画中画",
-        "畫中畫",
-        "子母画面",
-        "子母畫面",
-        "ピクチャー イン ピクチャー",
-        "ピクチャーインピクチャー",
-        "картинка в картинке",
-        "imagem na imagem",
-        "imagem sobre imagem",
-        "finestra mobile",
-        "gambar dalam gambar",
-        "resim içinde resim",
-        "화면 속 화면"
-    };
+    private const int ErrBufferTooSmall = -2;
 
-    private static readonly HashSet<string> KnownBrowserProcesses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "zen",
-        "arc", "coccoc", "sidekick", "thorium", "waterfox", "floorp", "librewolf",
-        "chromium", "whale", "yandex", "wavebox", "helium", "supermium", "browser"
-    };
-
-    public static bool IsPipTitle(string? title)
+    public static unsafe bool IsPipTitle(string? title)
     {
         if (string.IsNullOrWhiteSpace(title))
             return false;
 
-        string normalized = title.Trim();
-
-        if (MultilingualPipKeywords.Any(keyword => normalized.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        // Accept explicit window labels, not a word inside a video/page title
-        // such as "How to install packages with pip on Windows".
-        return normalized.Equals("PiP", StringComparison.OrdinalIgnoreCase)
-            || HasEdgeLabel(normalized, "(PiP)")
-            || HasEdgeLabel(normalized, "[PiP]")
-            || normalized.EndsWith(" - PiP", StringComparison.OrdinalIgnoreCase);
+        fixed (char* ptr = title)
+        {
+            vn_pip_is_pip_title(ptr, title.Length, out byte isPip);
+            return isPip != 0;
+        }
     }
 
-    private static bool HasEdgeLabel(string title, string label)
-    {
-        if (title.Equals(label, StringComparison.OrdinalIgnoreCase)) return true;
-
-        return (title.StartsWith(label, StringComparison.OrdinalIgnoreCase) && char.IsWhiteSpace(title[label.Length]))
-            || (title.EndsWith(label, StringComparison.OrdinalIgnoreCase) && char.IsWhiteSpace(title[title.Length - label.Length - 1]));
-    }
-
-    public static bool IsKnownBrowserProcess(string? processName)
+    public static unsafe bool IsKnownBrowserProcess(string? processName)
     {
         if (string.IsNullOrWhiteSpace(processName))
             return false;
 
-        string cleaned = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? processName[..^4]
-            : processName;
-
-        return KnownBrowserProcesses.Contains(cleaned);
+        fixed (char* ptr = processName)
+        {
+            vn_pip_is_known_browser_process(ptr, processName.Length, out byte isBrowser);
+            return isBrowser != 0;
+        }
     }
 
-    public static bool IsPipWindow(IntPtr hWnd, string? targetProcessName = null, string? currentTrack = null) =>
-        IsPipWindow(hWnd, out _, targetProcessName, currentTrack);
-
-    private static bool IsPipWindow(IntPtr hWnd, out string windowTitle, string? targetProcessName = null, string? currentTrack = null)
+    public static unsafe bool IsPipWindow(IntPtr hWnd, string? targetProcessName = null, string? currentTrack = null)
     {
-        windowTitle = string.Empty;
-        if (hWnd == IntPtr.Zero || !IsWindowVisible(hWnd) || IsIconic(hWnd))
+        if (hWnd == IntPtr.Zero)
             return false;
 
-        int exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
-        if ((exStyle & WS_EX_TOPMOST) == 0)
-            return false;
-
-        GetWindowThreadProcessId(hWnd, out uint pid);
-        if (pid == 0)
-            return false;
-
-        string? procName = TryGetProcessName((int)pid);
-        if (string.IsNullOrEmpty(procName))
-            return false;
-
-        bool procMatches = !string.IsNullOrEmpty(targetProcessName) &&
-                           (string.Equals(procName, targetProcessName, StringComparison.OrdinalIgnoreCase) ||
-                            targetProcessName.Contains(procName, StringComparison.OrdinalIgnoreCase));
-
-        if (!procMatches && !IsKnownBrowserProcess(procName))
-            return false;
-
-        string title = GetWindowTitle(hWnd);
-        if (IsPipTitle(title))
+        string proc = targetProcessName ?? string.Empty;
+        string track = currentTrack ?? string.Empty;
+        fixed (char* pProc = proc)
+        fixed (char* pTrack = track)
         {
-            windowTitle = title;
-            return true;
+            vn_pip_is_pip_window(hWnd, pProc, proc.Length, pTrack, track.Length, out byte isPip);
+            return isPip != 0;
         }
-
-        // If current track is provided and title contains track title in a topmost browser window
-        if (!string.IsNullOrWhiteSpace(currentTrack) &&
-            !string.IsNullOrWhiteSpace(title) &&
-            title.Contains(currentTrack.Trim(), StringComparison.OrdinalIgnoreCase))
-        {
-            windowTitle = title;
-            return true;
-        }
-
-        // Browser window classes and dimensions also match ordinary topmost windows.
-        // Require a PiP title or the active media title instead of guessing from size.
-        return false;
     }
 
-    public static bool TryFindPipWindow(
+    public static unsafe bool TryFindPipWindow(
         out IntPtr pipHwnd,
         out string pipTitle,
         string? targetProcessName = null,
         string? currentTrack = null)
     {
-        IntPtr foundHwnd = IntPtr.Zero;
-        string foundTitle = string.Empty;
+        pipHwnd = IntPtr.Zero;
+        pipTitle = string.Empty;
 
+        string proc = targetProcessName ?? string.Empty;
+        string track = currentTrack ?? string.Empty;
+        Span<char> stackTitle = stackalloc char[512];
+        int titleLen;
+        byte found;
+        int rc;
+
+        fixed (char* pProc = proc)
+        fixed (char* pTrack = track)
+        fixed (char* pTitle = stackTitle)
+        {
+            rc = vn_pip_try_find_pip_window(
+                pProc, proc.Length,
+                pTrack, track.Length,
+                out pipHwnd,
+                pTitle, stackTitle.Length, out titleLen,
+                out found);
+        }
+
+        if (rc == 0)
+        {
+            if (found == 0 || pipHwnd == IntPtr.Zero) return false;
+            pipTitle = titleLen > 0 ? new string(stackTitle[..titleLen]) : string.Empty;
+            return true;
+        }
+
+        if (rc != ErrBufferTooSmall || titleLen <= 0) return false;
+
+        char[] rented = ArrayPool<char>.Shared.Rent(titleLen);
         try
         {
-            EnumWindows((hWnd, _) =>
+            fixed (char* pProc = proc)
+            fixed (char* pTrack = track)
+            fixed (char* pTitle = rented)
             {
-                if (IsPipWindow(hWnd, out string title, targetProcessName, currentTrack))
-                {
-                    foundHwnd = hWnd;
-                    foundTitle = title;
-                    return false; // Stop enumeration
-                }
-                return true;
-            }, IntPtr.Zero);
+                rc = vn_pip_try_find_pip_window(
+                    pProc, proc.Length,
+                    pTrack, track.Length,
+                    out pipHwnd,
+                    pTitle, rented.Length, out titleLen,
+                    out found);
+            }
+            if (rc != 0 || found == 0 || pipHwnd == IntPtr.Zero) return false;
+            pipTitle = titleLen > 0 ? new string(rented, 0, titleLen) : string.Empty;
+            return true;
         }
-        catch (Exception ex)
+        finally
         {
-            RuntimeLog.Error("PIP-DETECTOR", $"EnumWindows failed: {ex.Message}");
+            ArrayPool<char>.Shared.Return(rented);
         }
-
-        pipHwnd = foundHwnd;
-        pipTitle = foundTitle;
-        return foundHwnd != IntPtr.Zero;
     }
 
-    private static string? TryGetProcessName(int pid) =>
-        pid > 0 ? ProcessNameResolver.TryGetName((uint)pid)?.ToLowerInvariant() : null;
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_pip_is_pip_title(
+        char* title_ptr, int title_len, out byte out_is_pip);
 
-    private static string GetWindowTitle(IntPtr hwnd)
-    {
-        int length = GetWindowTextLength(hwnd);
-        if (length <= 0)
-            return string.Empty;
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_pip_is_known_browser_process(
+        char* proc_ptr, int proc_len, out byte out_is_browser);
 
-        var sb = new StringBuilder(length + 1);
-        GetWindowText(hwnd, sb, sb.Capacity);
-        return sb.ToString();
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_pip_is_pip_window(
+        IntPtr hwnd,
+        char* target_proc_ptr, int target_proc_len,
+        char* current_track_ptr, int current_track_len,
+        out byte out_is_pip);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_pip_try_find_pip_window(
+        char* target_proc_ptr, int target_proc_len,
+        char* current_track_ptr, int current_track_len,
+        out IntPtr out_hwnd,
+        char* title_buf, int title_cap, out int out_title_len,
+        out byte out_found);
 }

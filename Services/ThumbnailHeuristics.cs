@@ -1,11 +1,11 @@
 using System;
-using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace VNotch.Services;
 
-internal static class ThumbnailHeuristics
+internal static partial class ThumbnailHeuristics
 {
     public static bool IsLikelyPlaceholderThumbnail(BitmapSource? thumbnail)
     {
@@ -43,8 +43,6 @@ internal static class ThumbnailHeuristics
             return false;
         }
 
-        // Browser media sessions can supply real covers at only 150x150.
-        // Inspect their content instead of discarding every small square image.
         return thumbnail.PixelWidth >= 120 &&
                thumbnail.PixelHeight >= 120 &&
                !HasPlaceholderProfile(thumbnail, rejectSimpleColorIcons: thumbnail.PixelWidth <= 320 || thumbnail.PixelHeight <= 320);
@@ -83,50 +81,18 @@ internal static class ThumbnailHeuristics
             {
                 formatted.CopyPixels(pixels, stride, 0);
 
-                Span<ulong> bins = stackalloc ulong[8];
-                ulong lumBins = 0;
-                double saturationSum = 0;
-                int nearGrayCount = 0;
-                int brightCount = 0;
-                int pixelCount = width * height;
-
-                for (int i = 0; i < bufLen; i += 4)
+                byte hasProfile;
+                unsafe
                 {
-                    byte b = pixels[i];
-                    byte g = pixels[i + 1];
-                    byte r = pixels[i + 2];
-
-                    int max = Math.Max(r, Math.Max(g, b));
-                    int min = Math.Min(r, Math.Min(g, b));
-                    int delta = max - min;
-
-                    if (delta <= 12) nearGrayCount++;
-                    if (max >= 220 && min >= 220) brightCount++;
-
-                    int bin = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
-                    bins[bin >> 6] |= 1UL << (bin & 63);
-                    int lum = (r * 77 + g * 150 + b * 29) >> 10;
-                    lumBins |= 1UL << (lum & 63);
-                    saturationSum += max == 0 ? 0 : (double)delta / max;
+                    fixed (byte* p = pixels)
+                    {
+                        vn_thumbnail_has_placeholder_profile(
+                            p, bufLen, width * height,
+                            rejectSimpleColorIcons ? (byte)1 : (byte)0,
+                            out hasProfile);
+                    }
                 }
-
-                int uniqueBinCount = 0;
-                for (int i = 0; i < bins.Length; i++)
-                {
-                    uniqueBinCount += System.Numerics.BitOperations.PopCount(bins[i]);
-                }
-
-                int uniqueLumBins = System.Numerics.BitOperations.PopCount(lumBins);
-                double avgSaturation = saturationSum / pixelCount;
-                double grayRatio = (double)nearGrayCount / pixelCount;
-                double brightRatio = (double)brightCount / pixelCount;
-
-                return (rejectSimpleColorIcons && uniqueBinCount <= 18) ||
-                       (uniqueBinCount <= 18 &&
-                       uniqueLumBins <= 12 &&
-                       avgSaturation <= 0.08 &&
-                       grayRatio >= 0.84 &&
-                       brightRatio >= 0.02);
+                return hasProfile != 0;
             }
             finally
             {
@@ -135,7 +101,6 @@ internal static class ThumbnailHeuristics
         }
         catch (Exception)
         {
-            // Corrupt bitmap or conversion failure; treat as not low-entropy monochrome.
             return false;
         }
     }
@@ -166,69 +131,49 @@ internal static class ThumbnailHeuristics
 
     public static SmtcThumbnailDecision DecideSmtcThumbnail(in SmtcThumbnailInputs x)
     {
-        double aspect = x.PixelHeight == 0 ? 0 : (double)x.PixelWidth / x.PixelHeight;
-        if (ShouldRejectSmtcThumbnail(in x, aspect))
+        var nInputs = new VnSmtcThumbnailInputs
         {
-            return SmtcThumbnailDecision.Reject;
-        }
-
-        bool isSquare = Math.Abs(aspect - 1.0) < 0.05;
-        bool shouldPreferVerifiedYouTubeLookup = x.IsYouTubeLikeSource &&
-                                                 !x.HasVerifiedYouTubeThumb &&
-                                                 !x.TrackChanged;
-
-        if (!IsGenericOrPlaceholderIcon(in x, isSquare) && !shouldPreferVerifiedYouTubeLookup)
-        {
-            return SmtcThumbnailDecision.Accept;
-        }
-
-        return SmtcThumbnailDecision.Skip;
+            IsYouTubeLikeSource = x.IsYouTubeLikeSource ? (byte)1 : (byte)0,
+            IsSoundCloudSource = x.IsSoundCloudSource ? (byte)1 : (byte)0,
+            IsBrowserOrYouTubePlatform = x.IsBrowserOrYouTubePlatform ? (byte)1 : (byte)0,
+            IsBrowserSession = x.IsBrowserSession ? (byte)1 : (byte)0,
+            TrackChanged = x.TrackChanged ? (byte)1 : (byte)0,
+            BrowserSessionChanged = x.BrowserSessionChanged ? (byte)1 : (byte)0,
+            HasVerifiedYouTubeThumb = x.HasVerifiedYouTubeThumb ? (byte)1 : (byte)0,
+            HasVerifiedSoundCloudThumb = x.HasVerifiedSoundCloudThumb ? (byte)1 : (byte)0,
+            LikelySoundCloudArtwork = x.LikelySoundCloudArtwork ? (byte)1 : (byte)0,
+            RecentTrackChange = x.RecentTrackChange ? (byte)1 : (byte)0,
+            CachedThumbnailIsNull = x.CachedThumbnailIsNull ? (byte)1 : (byte)0,
+            PixelWidth = x.PixelWidth,
+            PixelHeight = x.PixelHeight,
+        };
+        vn_thumbnail_decide_smtc(in nInputs, out int decision);
+        return (SmtcThumbnailDecision)decision;
     }
 
-    private static bool ShouldRejectSmtcThumbnail(in SmtcThumbnailInputs x, double aspect)
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSmtcThumbnailInputs
     {
-        if (x.IsSoundCloudSource &&
-            !x.HasVerifiedSoundCloudThumb &&
-            !x.LikelySoundCloudArtwork &&
-            (x.TrackChanged || (x.RecentTrackChange && x.CachedThumbnailIsNull)))
-        {
-            return true;
-        }
-
-        if (x.IsYouTubeLikeSource && x.BrowserSessionChanged && x.TrackChanged && !x.HasVerifiedYouTubeThumb)
-        {
-            return true;
-        }
-
-        bool isWideVideoFrame = aspect > 1.3;
-        return x.IsYouTubeLikeSource &&
-               isWideVideoFrame &&
-               (x.TrackChanged || (x.RecentTrackChange && x.CachedThumbnailIsNull));
+        public byte IsYouTubeLikeSource;
+        public byte IsSoundCloudSource;
+        public byte IsBrowserOrYouTubePlatform;
+        public byte IsBrowserSession;
+        public byte TrackChanged;
+        public byte BrowserSessionChanged;
+        public byte HasVerifiedYouTubeThumb;
+        public byte HasVerifiedSoundCloudThumb;
+        public byte LikelySoundCloudArtwork;
+        public byte RecentTrackChange;
+        public byte CachedThumbnailIsNull;
+        public int PixelWidth;
+        public int PixelHeight;
     }
 
-    private static bool IsGenericOrPlaceholderIcon(in SmtcThumbnailInputs x, bool isSquare)
-    {
-        if (x.LikelySoundCloudArtwork && !x.IsYouTubeLikeSource)
-            return false;
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_thumbnail_has_placeholder_profile(
+        byte* pixels, int buf_len, int pixel_count, byte reject_simple_color_icons, out byte out_has_profile);
 
-        if (!isSquare)
-        {
-            return false;
-        }
-
-        bool isLikelySoundCloudPlaceholder = x.IsSoundCloudSource &&
-                                             !x.HasVerifiedSoundCloudThumb &&
-                                             !x.LikelySoundCloudArtwork;
-        if (isLikelySoundCloudPlaceholder)
-        {
-            return true;
-        }
-
-        bool isUnverifiedBrowserIcon = x.IsBrowserSession &&
-                                       x.IsBrowserOrYouTubePlatform &&
-                                       !x.HasVerifiedYouTubeThumb;
-
-        return x.IsBrowserOrYouTubePlatform &&
-               (x.PixelWidth <= 300 || isUnverifiedBrowserIcon);
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_thumbnail_decide_smtc(
+        in VnSmtcThumbnailInputs inputs, out int out_decision);
 }

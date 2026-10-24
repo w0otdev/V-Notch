@@ -1,26 +1,18 @@
-using System.Threading;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-internal sealed class DiagnosticLogCapturePolicy
+internal sealed partial class DiagnosticLogCapturePolicy
 {
     internal const int MaxEntriesPerSecond = 32;
     private long _windowAndCount = -1;
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_diagnostic_log_try_capture(ref long stateWindowAndCount, long tickCountMs, out byte outCaptured);
+
     internal bool TryCapture(long tickCountMs)
     {
-        long window = (tickCountMs / 1000) << 32;
-        for (int attempt = 0; attempt < 4; attempt++)
-        {
-            long previous = Volatile.Read(ref _windowAndCount);
-            uint count = (previous & ~0xFFFFFFFFL) == window ? (uint)previous : 0;
-            if (count >= MaxEntriesPerSecond) return false;
-            long next = window | (count + 1);
-            if (Interlocked.CompareExchange(ref _windowAndCount, next, previous) == previous)
-                return true;
-        }
-        // Contention is itself a reason to skip diagnostic capture. RuntimeLog's
-        // file writer still retains the original operational entry.
-        return false;
+        _ = vn_diagnostic_log_try_capture(ref _windowAndCount, tickCountMs, out byte captured);
+        return captured != 0;
     }
 }

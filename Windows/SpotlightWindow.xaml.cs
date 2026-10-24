@@ -573,6 +573,10 @@ public partial class SpotlightWindow : Window
         SaveAiHistory();
         StopAiActivity();
         CancelSearchDebounce();
+        ClearLaunchFailure();
+        CancelSearchingGrace();
+        _glassResourceExpiry?.Dispose();
+        _glassResourceExpiry = null;
         CancelPendingFreshEntrance();
         ClearMorphAnimations();
         ReleaseMorphSession();
@@ -612,6 +616,10 @@ public partial class SpotlightWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        ClearLaunchFailure();
+        CancelSearchingGrace();
+        _glassResourceExpiry?.Dispose();
+        _glassResourceExpiry = null;
         CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
         _liquidGlass?.Stop();
         DetachGpuRefraction();
@@ -1164,6 +1172,7 @@ public partial class SpotlightWindow : Window
         timer.Tick += (_, _) =>
         {
             timer.Stop();
+            timer.Dispose();
             if (generation != _failureGeneration || !ReferenceEquals(timer, _failureTimer)) return;
             _failureTimer = null;
             FailureBar.Visibility = Visibility.Collapsed;
@@ -1176,6 +1185,7 @@ public partial class SpotlightWindow : Window
     {
         ++_failureGeneration;
         _failureTimer?.Stop();
+        _failureTimer?.Dispose();
         _failureTimer = null;
         if (FailureBar.Visibility != Visibility.Visible) return;
         FailureBar.Visibility = Visibility.Collapsed;
@@ -1770,6 +1780,7 @@ public partial class SpotlightWindow : Window
         timer.Tick += (_, _) =>
         {
             timer.Stop();
+            timer.Dispose();
             if (generation != _searchingGraceGeneration
                 || !ReferenceEquals(timer, _searchingGraceTimer))
             {
@@ -1796,6 +1807,7 @@ public partial class SpotlightWindow : Window
     {
         ++_searchingGraceGeneration;
         _searchingGraceTimer?.Stop();
+        _searchingGraceTimer?.Dispose();
         _searchingGraceTimer = null;
         _searchingPanelArmed = false;
     }

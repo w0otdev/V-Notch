@@ -694,6 +694,7 @@ public partial class MainWindow : Window
         InputMonitorService.MouseActionTriggered -= GlobalMouseHook_MouseLeftButtonDown;
 
         _clipboardTrayView?.Dispose();
+        if (_clipboardHistory != null) _clipboardHistory.DropImported -= PlayClipboardDropFeedback;
         _clipboardShutdown = _clipboardHistory?.DisposeAsync().AsTask() ?? Task.CompletedTask;
         _clipboardShutdown.SafeFireAndForget("CLIPBOARD-SHUTDOWN");
         DisposeClipboardHotkey();
@@ -705,9 +706,11 @@ public partial class MainWindow : Window
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
         StopTitleGradientShift();
+        StopChargingNotificationDismissTimer();
+        StopClipboardRevertTimer();
         MediaPlayback.Dispose();
-        _lyricsTimer?.Stop();
-        _volumeSyncTimer?.Stop();
+        _lyricsTimer?.Dispose();
+        _volumeSyncTimer?.Dispose();
         _lyricsService?.Dispose();
         DisposeSpotifyCanvasLifecycle();
         _notchManager?.Dispose();
@@ -715,19 +718,24 @@ public partial class MainWindow : Window
         TrayIcon?.Dispose();
         _ownedTrayIcon?.Dispose();
         _ownedTrayIcon = null;
-        _updateTimer?.Stop();
-        _updateCheckTimer?.Stop();
+        _updateTimer?.Dispose();
+        _updateCheckTimer?.Dispose();
         if (_updateService != null)
         {
             _updateService.UpdateCheckCompleted -= OnUpdateCheckCompleted;
         }
-        _hoverCollapseTimer?.Stop();
-        _hoverThumbnailDelayTimer?.Stop();
-        _compactThumbnailHoverLeaveTimer?.Stop();
-        _startupHoldTimer?.Stop();
+        _hoverCollapseTimer?.Dispose();
+        _hoverThumbnailDelayTimer?.Dispose();
+        _compactThumbnailHoverLeaveTimer?.Dispose();
+        _startupHoldTimer?.Dispose();
         _startupHoldTimer = null;
-        _desktopDemotionDelayTimer?.Stop();
-        _fullscreenRecheckTimer?.Stop();
+        _desktopDemotionDelayTimer?.Dispose();
+        _fullscreenRecheckTimer?.Dispose();
+        _volumeIndicatorHideTimer?.Dispose();
+        _musicCompactExitDebounceTimer?.Dispose();
+        _blurDissolveDebounce?.Dispose();
+        _scrollSessionResetTimer?.Dispose();
+        _glassGpuRetryTimer?.Dispose();
         // No-op when the debug FPS overlay never subscribed.
         CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
         DetachDesktopTransparentFrameHandler();

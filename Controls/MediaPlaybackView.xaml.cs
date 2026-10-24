@@ -236,7 +236,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         CancelRewindForNavigation();
         StopRewindTextAnimation();
         IndeterminateProgress.BeginAnimation(OpacityProperty, null);
-        _marqueeController?.Stop();
+        _marqueeController?.Dispose();
         if (ProgressBarContainer.IsMouseCaptured) ProgressBarContainer.ReleaseMouseCapture();
         BufferingChanged = null;
     }

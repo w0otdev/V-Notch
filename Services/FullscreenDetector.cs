@@ -11,36 +11,8 @@ internal enum FullscreenType
     WindowedFullscreen
 }
 
-internal static class FullscreenDetector
+internal static partial class FullscreenDetector
 {
-    private static readonly string[] BlockedClassNamesExact = new[]
-    {
-        "Progman",
-        "WorkerW",
-        "Shell_TrayWnd",
-        "Shell_SecondaryTrayWnd",
-        "NotifyIconOverflowWindow",
-        "TaskListThumbnailWnd",
-        "MultitaskingViewFrame",
-        "ForegroundStaging",
-        "XamlExplorerHostIslandWindow",
-        "Windows.UI.Input.InputSite.WindowClass",
-        "Search_app",
-        "Tooltips_Class32",
-        "TaskSwitcherWnd",
-        "TaskSwitcherOverlayWnd",
-        "Windows.Internal.Shell.TabProxyWindow",
-        "Microsoft.UI.Content.DesktopChildSiteBridge"
-    };
-
-    private static readonly string[] BlockedClassNamePrefixes = new[]
-    {
-        "Windows.UI.Core",
-        "ImmersiveLauncher",
-        "TaskListOverlay",
-        "MSCTFIME"
-    };
-
     public static FullscreenType DetectFullscreenType(IntPtr hwnd, IntPtr notchHwnd)
     {
         return DetectFullscreenType(hwnd, notchHwnd, IntPtr.Zero);
@@ -48,102 +20,8 @@ internal static class FullscreenDetector
 
     public static FullscreenType DetectFullscreenType(IntPtr hwnd, IntPtr notchHwnd, IntPtr notchMonitor)
     {
-        if (!IsCandidateWindow(hwnd, notchHwnd, out var windowRect))
-        {
-            return FullscreenType.None;
-        }
-
-        if (!TryGetTargetMonitorInfo(hwnd, notchMonitor, out var monitorInfo))
-        {
-            return FullscreenType.None;
-        }
-
-        return ClassifyFullscreenStyle(hwnd, windowRect, monitorInfo);
-    }
-
-    private static bool IsCandidateWindow(IntPtr hwnd, IntPtr notchHwnd, out RECT windowRect)
-    {
-        windowRect = default;
-        if (hwnd == IntPtr.Zero || hwnd == notchHwnd)
-        {
-            return false;
-        }
-
-        if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || IsWindowCloaked(hwnd))
-        {
-            return false;
-        }
-
-        if (!TryGetWindowBounds(hwnd, out windowRect))
-        {
-            return false;
-        }
-
-        int width = windowRect.Right - windowRect.Left;
-        int height = windowRect.Bottom - windowRect.Top;
-        if (width < 480 || height < 320)
-        {
-            return false;
-        }
-
-        return !IsBlockedClass(hwnd);
-    }
-
-    private static bool TryGetTargetMonitorInfo(IntPtr hwnd, IntPtr notchMonitor, out MONITORINFO monitorInfo)
-    {
-        monitorInfo = new MONITORINFO
-        {
-            cbSize = Marshal.SizeOf<MONITORINFO>()
-        };
-
-        IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        if (monitor == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        if (notchMonitor != IntPtr.Zero && monitor != notchMonitor)
-        {
-            return false;
-        }
-
-        return GetMonitorInfo(monitor, ref monitorInfo);
-    }
-
-    private static FullscreenType ClassifyFullscreenStyle(IntPtr hwnd, RECT windowRect, in MONITORINFO monitorInfo)
-    {
-        const int fullscreenTolerancePx = 6;
-
-        var placement = new WINDOWPLACEMENT
-        {
-            length = Marshal.SizeOf<WINDOWPLACEMENT>()
-        };
-        bool isMaximized = GetWindowPlacement(hwnd, ref placement) && placement.showCmd == SW_SHOWMAXIMIZED;
-
-        int style = GetWindowLong(hwnd, GWL_STYLE);
-        bool hasCaption = (style & WS_CAPTION) == WS_CAPTION;
-        bool hasResizeFrame = (style & WS_THICKFRAME) != 0;
-
-        if (RectCoversArea(windowRect, monitorInfo.rcMonitor, fullscreenTolerancePx))
-        {
-            if (hasCaption || hasResizeFrame)
-            {
-                if (isMaximized)
-                {
-                    return FullscreenType.None;
-                }
-
-                return FullscreenType.WindowedFullscreen;
-            }
-            return FullscreenType.ExclusiveFullscreen;
-        }
-
-        const int workAreaTolerancePx = 8;
-        bool matchesWorkArea = RectMatchesArea(windowRect, monitorInfo.rcWork, workAreaTolerancePx);
-        bool isBorderless = !hasCaption && !hasResizeFrame;
-        bool isWindowedFullscreen = matchesWorkArea && (isBorderless || (isMaximized && !hasCaption));
-
-        return isWindowedFullscreen ? FullscreenType.WindowedFullscreen : FullscreenType.None;
+        vn_fullscreen_detect_type(hwnd, notchHwnd, notchMonitor, out int type);
+        return (FullscreenType)type;
     }
 
     public static bool IsForegroundWindowFullscreen(IntPtr hwnd, IntPtr notchHwnd)
@@ -153,9 +31,8 @@ internal static class FullscreenDetector
 
     public static IntPtr GetWindowMonitor(IntPtr hwnd)
     {
-        return hwnd == IntPtr.Zero
-            ? IntPtr.Zero
-            : MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        vn_fullscreen_get_window_monitor(hwnd, out IntPtr monitor);
+        return monitor;
     }
 
     public static string TryGetProcessName(IntPtr hwnd)
@@ -174,73 +51,71 @@ internal static class FullscreenDetector
         return ProcessNameResolver.TryGetName(processId) ?? string.Empty;
     }
 
-    internal static unsafe bool IsBlockedClass(IntPtr hwnd)
+    internal static bool IsBlockedClass(IntPtr hwnd)
     {
-        Span<char> buffer = stackalloc char[160];
-        int length;
-        fixed (char* className = buffer)
-            length = GetClassName(hwnd, className, buffer.Length);
-        return length > 0 && IsBlockedClassName(buffer[..length]);
+        vn_fullscreen_is_blocked_class(hwnd, out byte blocked);
+        return blocked != 0;
     }
 
-    internal static bool IsBlockedClassName(ReadOnlySpan<char> className)
+    internal static unsafe bool IsBlockedClassName(ReadOnlySpan<char> className)
     {
-        for (int i = 0; i < BlockedClassNamesExact.Length; i++)
+        if (className.IsEmpty) return false;
+        fixed (char* ptr = className)
         {
-            if (className.Equals(BlockedClassNamesExact[i], StringComparison.Ordinal))
-            {
-                return true;
-            }
+            vn_fullscreen_is_blocked_class_name(ptr, className.Length, out byte blocked);
+            return blocked != 0;
         }
-
-        for (int i = 0; i < BlockedClassNamePrefixes.Length; i++)
-        {
-            if (className.StartsWith(BlockedClassNamePrefixes[i], StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     internal static bool TryGetWindowBounds(IntPtr hwnd, out RECT rect)
     {
-        if (DwmGetWindowAttributeRect(
-                hwnd,
-                DWMWA_EXTENDED_FRAME_BOUNDS,
-                out rect,
-                Marshal.SizeOf<RECT>()) == 0)
+        vn_fullscreen_try_get_window_bounds(hwnd, out VnRect nRect, out byte ok);
+        rect = new RECT
         {
-            return true;
-        }
-
-        return GetWindowRect(hwnd, out rect);
+            Left = nRect.Left,
+            Top = nRect.Top,
+            Right = nRect.Right,
+            Bottom = nRect.Bottom
+        };
+        return ok != 0;
     }
 
     internal static bool IsWindowCloaked(IntPtr hwnd)
     {
-        return DwmGetWindowAttributeInt(
-                   hwnd,
-                   DWMWA_CLOAKED,
-                   out int cloaked,
-                   sizeof(int)) == 0 &&
-               cloaked != 0;
+        vn_fullscreen_is_window_cloaked(hwnd, out byte cloaked);
+        return cloaked != 0;
     }
 
-    private static bool RectCoversArea(RECT rect, RECT area, int tolerancePx)
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnRect
     {
-        return rect.Left <= area.Left + tolerancePx &&
-               rect.Top <= area.Top + tolerancePx &&
-               rect.Right >= area.Right - tolerancePx &&
-               rect.Bottom >= area.Bottom - tolerancePx;
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
-    private static bool RectMatchesArea(RECT rect, RECT area, int tolerancePx)
-    {
-        return Math.Abs(rect.Left - area.Left) <= tolerancePx &&
-               Math.Abs(rect.Top - area.Top) <= tolerancePx &&
-               Math.Abs(rect.Right - area.Right) <= tolerancePx &&
-               Math.Abs(rect.Bottom - area.Bottom) <= tolerancePx;
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fullscreen_detect_type(
+        IntPtr hwnd, IntPtr notch_hwnd, IntPtr notch_monitor, out int out_type);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fullscreen_get_window_monitor(
+        IntPtr hwnd, out IntPtr out_monitor);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fullscreen_is_blocked_class(
+        IntPtr hwnd, out byte out_blocked);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_fullscreen_is_blocked_class_name(
+        char* name_ptr, int name_len, out byte out_blocked);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fullscreen_try_get_window_bounds(
+        IntPtr hwnd, out VnRect out_rect, out byte out_ok);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fullscreen_is_window_cloaked(
+        IntPtr hwnd, out byte out_cloaked);
 }

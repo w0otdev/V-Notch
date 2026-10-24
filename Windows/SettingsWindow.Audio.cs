@@ -46,8 +46,14 @@ public partial class SettingsWindow
                 using var enumerator = new MMDeviceEnumerator();
                 foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
                 {
-                    found.Add((device.ID, device.FriendlyName));
-                    device.Dispose();
+                    try
+                    {
+                        found.Add((device.ID, device.FriendlyName));
+                    }
+                    finally
+                    {
+                        device.Dispose();
+                    }
                 }
                 return found;
             });

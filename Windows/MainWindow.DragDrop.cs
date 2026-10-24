@@ -14,6 +14,7 @@ public partial class MainWindow
     internal void CancelDragDropTimers()
     {
         _clipboardDragTimer?.Stop();
+        _clipboardDragTimer?.Dispose();
         _clipboardDragTimer = null;
     }
     private void NotchWrapper_DragEnter(object sender, DragEventArgs e)

@@ -3844,6 +3844,7 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         // 3. Unsubscribe from session & session manager
         Interlocked.Exchange(ref _pinnedSession, null);
         _pinReconnect.Reset();
+        _volumeService.InvalidateVolumeSessionCache();
         UnsubscribeFromSession();
         if (sessionManagerToUnsub != null)
         {
@@ -3892,7 +3893,11 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         finally
         {
             cts?.Dispose();
-            if (isDisposing) _updateLock.Dispose();
+            if (isDisposing)
+            {
+                _volumeService.Dispose();
+                _updateLock.Dispose();
+            }
         }
     }
 

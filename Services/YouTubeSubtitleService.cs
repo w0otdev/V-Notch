@@ -302,7 +302,7 @@ internal sealed class YouTubeSubtitleService : IDisposable
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, candidate.BaseUrl);
-            req.Headers.TryAddWithoutValidation("User-Agent", "com.google.android.youtube/20.10.38 (Linux; U; Android 14)");
+            req.Headers.TryAddWithoutValidation("User-Agent", $"com.google.android.youtube/{MediaProtocolConfiguration.Current.YouTubeAndroidClientVersion} (Linux; U; Android 14)");
             using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
             if (!resp.IsSuccessStatusCode) return null;
 

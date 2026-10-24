@@ -1,4 +1,7 @@
-using System.Globalization;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using VNotch.Models;
 
@@ -7,16 +10,27 @@ namespace VNotch.Services.Clipboard;
 /// <summary>Offline keyword and syntax heuristics; no model or semantic inference is used.</summary>
 public static partial class ClipboardClassifier
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
     public static readonly string[] GroupNames = ["Work", "Ideas", "Email", "Shopping", "Receipts", "Important"];
-    private static readonly (string Group, string[] Strong, string[] Context)[] Rules =
-    [
-        ("Work", ["project", "meeting", "deadline", "pull request", "dự án", "công việc", "cuộc họp"], ["agenda", "task", "commit"]),
-        ("Ideas", ["idea", "brainstorm", "inspiration", "sketch", "ý tưởng", "cảm hứng"], ["concept", "palette"]),
-        ("Email", ["subject:", "mailto:", "kính gửi"], ["from:", "to:", "dear ", "regards", "trân trọng"]),
-        ("Shopping", ["shopping", "add to cart", "amazon.", "shopee.", "lazada.", "mua hàng", "giỏ hàng"], ["checkout", "product"]),
-        ("Receipts", ["receipt", "invoice", "total paid", "hóa đơn", "hoá đơn"], ["subtotal", "order total", "thanh toán"]),
-        ("Important", ["important", "urgent", "critical", "asap", "quan trọng", "khẩn cấp"], [])
-    ];
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_is_image_path(ReadOnlySpan<char> pathPtr, int pathLen, out byte outIsImage);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_try_parse_color(ReadOnlySpan<char> valPtr, int valLen, out uint outArgb, out byte outOk);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_try_extract_hex_color(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen,
+        out byte outOk);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_classify_groups(ReadOnlySpan<char> textPtr, int textLen, out uint outGroupMask);
 
     public static ClipboardKind Detect(ClipboardCapture capture)
     {
@@ -34,30 +48,26 @@ public static partial class ClipboardClassifier
 
     private static bool IsImagePath(string path)
     {
-        ReadOnlySpan<char> ext = System.IO.Path.GetExtension(path.AsSpan());
-        return ext.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".tif", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".webp", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".ico", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(path)) return false;
+        ReadOnlySpan<char> span = path.AsSpan();
+        vn_clipboard_is_image_path(span, span.Length, out byte isImage);
+        return isImage != 0;
     }
 
     public static string[] Classify(string text, ClipboardKind kind)
     {
         if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
 
-        // A strong keyword, or two different context keywords, assigns a suggested group.
+        ReadOnlySpan<char> span = text.AsSpan();
+        vn_clipboard_classify_groups(span, span.Length, out uint mask);
+
         List<string>? groups = null;
-        foreach (var (group, strong, context) in Rules)
+        for (int i = 0; i < GroupNames.Length; i++)
         {
-            if (MatchesRule(text, strong, context))
+            if ((mask & (1u << i)) != 0)
             {
                 groups ??= new List<string>(2);
-                groups.Add(group);
+                groups.Add(GroupNames[i]);
             }
         }
 
@@ -70,72 +80,27 @@ public static partial class ClipboardClassifier
         return groups?.ToArray() ?? Array.Empty<string>();
     }
 
-    private static bool MatchesRule(string text, string[] strong, string[] context)
-    {
-        for (int i = 0; i < strong.Length; i++)
-        {
-            if (ContainsPhrase(text, strong[i])) return true;
-        }
-        int contextCount = 0;
-        for (int i = 0; i < context.Length; i++)
-        {
-            if (ContainsPhrase(text, context[i]) && ++contextCount >= 2)
-                return true;
-        }
-        return false;
-    }
-
-    private static bool ContainsPhrase(string text, string phrase)
-    {
-        int offset = 0;
-        while (offset < text.Length)
-        {
-            int index = text.IndexOf(phrase, offset, StringComparison.OrdinalIgnoreCase);
-            if (index < 0) return false;
-            int end = index + phrase.Length;
-            if ((index == 0 || !char.IsLetterOrDigit(text[index - 1])) &&
-                (!char.IsLetterOrDigit(phrase[^1]) || end == text.Length || !char.IsLetterOrDigit(text[end]))) return true;
-            offset = end;
-        }
-        return false;
-    }
-
     public static bool TryParseColor(string value, out uint argb)
     {
         argb = 0;
-        string text = value.Trim();
-        if (!ColorPattern().IsMatch(text)) return false;
-        if (text[0] == '#')
-        {
-            string hex = text[1..];
-            if (hex.Length is 3 or 4) hex = string.Concat(hex.Select(c => new string(c, 2)));
-            if (!uint.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint color)) return false;
-            argb = hex.Length == 6 ? 0xFF000000 | color : (color >> 8) | ((color & 0xFF) << 24);
-            return true;
-        }
-        string[] parts = text[(text.IndexOf('(') + 1)..^1].Split(',', StringSplitOptions.TrimEntries);
-        if (!byte.TryParse(parts[0], out byte red) || !byte.TryParse(parts[1], out byte green) ||
-            !byte.TryParse(parts[2], out byte blue)) return false;
-        double alpha = 1;
-        if (parts.Length == 4 && (!double.TryParse(parts[3], NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out alpha) || alpha is < 0 or > 1)) return false;
-        argb = ((uint)Math.Round(alpha * 255) << 24) | ((uint)red << 16) | ((uint)green << 8) | blue;
-        return true;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        ReadOnlySpan<char> span = value.AsSpan();
+        vn_clipboard_try_parse_color(span, span.Length, out argb, out byte ok);
+        return ok != 0;
     }
 
     public static bool TryExtractHexColor(string text, out string hex)
     {
         hex = "";
-        var match = HexTokenPattern().Match(text);
-        if (!match.Success || match.NextMatch().Success) return false;
-        hex = match.Value.ToUpperInvariant();
+        if (string.IsNullOrEmpty(text)) return false;
+        ReadOnlySpan<char> span = text.AsSpan();
+        Span<char> buf = stackalloc char[16];
+        vn_clipboard_try_extract_hex_color(span, span.Length, buf, buf.Length, out int len, out byte ok);
+        if (ok == 0 || len <= 0) return false;
+        hex = new string(buf[..len]);
         return true;
     }
 
-    [GeneratedRegex(@"(?<![\w#])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![\w#])", RegexOptions.CultureInvariant)]
-    private static partial Regex HexTokenPattern();
-
-    [GeneratedRegex(@"^(#[0-9a-fA-F]{3,4}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(?:\s*,\s*[\d.]+)?\s*\))$", RegexOptions.CultureInvariant)]
-    private static partial Regex ColorPattern();
     // Punctuation alone is common in prose. Require a declaration, a call or another syntax signal.
     [GeneratedRegex("""
         (?m)(

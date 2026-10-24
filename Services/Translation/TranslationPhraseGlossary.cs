@@ -1,26 +1,43 @@
-using System.Text;
-using System.Text.RegularExpressions;
+using System;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services.Translation;
 
-// Source-side disambiguation is shared by every model and target language.
-// Entries describe meaning; the model still produces the target translation.
-internal static class TranslationPhraseGlossary
+internal static partial class TranslationPhraseGlossary
 {
     internal sealed record Entry(string Source, string Meaning);
 
-    private static readonly Dictionary<string, Entry> Entries = new(StringComparer.OrdinalIgnoreCase)
+    internal static unsafe Entry? Find(string text, string source = "auto")
     {
-        ["yêu xa"] = new("vi", "This expression means being in a romantic relationship while living far apart (a long-distance relationship). Preserve the geographic separation in the target language. It does not mean 'I love you' or 'I miss you'.")
-    };
+        if (string.IsNullOrEmpty(text)) return null;
+        string src = source ?? "auto";
 
-    internal static Entry? Find(string text, string source = "auto")
-    {
-        string key = text.Normalize(NormalizationForm.FormC).Trim();
-        int start = 0, end = key.Length;
-        while (start < end && (char.IsPunctuation(key[start]) || char.IsWhiteSpace(key[start]))) start++;
-        while (end > start && (char.IsPunctuation(key[end - 1]) || char.IsWhiteSpace(key[end - 1]))) end--;
-        key = Regex.Replace(key[start..end], @"\s+", " ");
-        return Entries.TryGetValue(key, out var entry) && (source == "auto" || source == entry.Source) ? entry : null;
+        Span<char> srcBuf = stackalloc char[16];
+        Span<char> meaningBuf = stackalloc char[512];
+        fixed (char* pText = text)
+        fixed (char* pSrc = src)
+        fixed (char* pOutSrc = srcBuf)
+        fixed (char* pOutMeaning = meaningBuf)
+        {
+            int rc = vn_translation_glossary_find(
+                pText, text.Length,
+                pSrc, src.Length,
+                pOutSrc, srcBuf.Length, out int outSrcLen,
+                pOutMeaning, meaningBuf.Length, out int outMeaningLen,
+                out byte found);
+            if (rc == 0 && found != 0 && outSrcLen > 0 && outMeaningLen > 0)
+            {
+                return new Entry(new string(srcBuf[..outSrcLen]), new string(meaningBuf[..outMeaningLen]));
+            }
+        }
+        return null;
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_translation_glossary_find(
+        char* text_ptr, int text_len,
+        char* src_ptr, int src_len,
+        char* out_src_buf, int out_src_cap, out int out_src_len,
+        char* out_meaning_buf, int out_meaning_cap, out int out_meaning_len,
+        out byte out_found);
 }

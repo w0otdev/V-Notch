@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services;
@@ -9,25 +10,43 @@ internal enum NetworkFeature { Updates, Artwork, Lyrics, Subtitles, Canvas, Weat
 
 // One policy for production HTTP clients and out-of-process network features.
 // Deny until startup has loaded the user's persisted settings.
-internal sealed class NetworkPrivacy
+internal sealed partial class NetworkPrivacy
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_netprivacy_allows(
+        byte enableLocalOnlyMode,
+        int feature,
+        byte enableOnlineArtworkLookup,
+        byte enableOnlineLyrics,
+        byte allowOnlineSubtitles,
+        byte allowOnlineCanvas,
+        byte enableSpotifyCanvas,
+        byte canvasConsentAccepted,
+        byte allowOnlineWeather,
+        byte allowOnlineAi,
+        byte enableCurrencyConversion,
+        out byte outAllowed);
+
     internal static NetworkPrivacy Current { get; } = new();
     private readonly object _gate = new();
     private NotchSettings _settings = new() { EnableLocalOnlyMode = true };
     private readonly Dictionary<NetworkFeature, CancellationTokenSource> _lifetimes =
         Enum.GetValues<NetworkFeature>().ToDictionary(f => f, _ => new CancellationTokenSource());
 
-    internal static bool Allows(NotchSettings s, NetworkFeature feature) => !s.EnableLocalOnlyMode && feature switch
-    {
-        NetworkFeature.Artwork => s.EnableOnlineArtworkLookup,
-        NetworkFeature.Lyrics => s.EnableOnlineLyrics,
-        NetworkFeature.Subtitles => s.AllowOnlineSubtitles,
-        NetworkFeature.Canvas => s.AllowOnlineCanvas && s.EnableSpotifyCanvas && SpotifyCanvasConsent.HasAccepted(s),
-        NetworkFeature.Weather => s.AllowOnlineWeather,
-        NetworkFeature.Ai => s.AllowOnlineAi,
-        NetworkFeature.CurrencyRates => s.EnableCurrencyConversion,
-        _ => true
-    };
+    internal static bool Allows(NotchSettings s, NetworkFeature feature) =>
+        vn_netprivacy_allows(
+            s.EnableLocalOnlyMode ? (byte)1 : (byte)0,
+            (int)feature,
+            s.EnableOnlineArtworkLookup ? (byte)1 : (byte)0,
+            s.EnableOnlineLyrics ? (byte)1 : (byte)0,
+            s.AllowOnlineSubtitles ? (byte)1 : (byte)0,
+            s.AllowOnlineCanvas ? (byte)1 : (byte)0,
+            s.EnableSpotifyCanvas ? (byte)1 : (byte)0,
+            SpotifyCanvasConsent.HasAccepted(s) ? (byte)1 : (byte)0,
+            s.AllowOnlineWeather ? (byte)1 : (byte)0,
+            s.AllowOnlineAi ? (byte)1 : (byte)0,
+            s.EnableCurrencyConversion ? (byte)1 : (byte)0,
+            out byte allowed) == 0 && allowed != 0;
 
     internal bool IsAllowed(NetworkFeature feature) { lock (_gate) return Allows(_settings, feature); }
 

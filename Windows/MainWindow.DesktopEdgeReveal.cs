@@ -181,9 +181,11 @@ public partial class MainWindow
 
         _startupHoldUntilUtc = DateTime.UtcNow + duration;
         _startupHoldTimer?.Stop();
+        _startupHoldTimer?.Dispose();
         _startupHoldTimer = new UiScheduledTimer(duration, DispatcherPriority.Background, (_, _) =>
         {
             _startupHoldTimer?.Stop();
+            _startupHoldTimer?.Dispose();
             _startupHoldTimer = null;
             if (_settings.StayBehindWindows && _isDesktopEdgePromoted && !IsDesktopNotchInteractionActive())
             {

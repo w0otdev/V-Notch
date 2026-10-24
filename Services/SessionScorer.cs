@@ -1,4 +1,4 @@
-using System;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
@@ -27,89 +27,64 @@ internal readonly struct SessionScoreInputs
     public bool TimelinePenalty { get; init; }
 }
 
-internal static class SessionScorer
+internal static partial class SessionScorer
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSessionScoreInputs
+    {
+        public byte HasTitle;
+        public byte HasArtist;
+        public byte HasThumbnail;
+        public byte ArtistIsNonGeneric;
+        public byte IsSpotify;
+        public byte IsMusic;
+        public byte IsYouTube;
+        public byte IsBrowser;
+        public byte IsOsCurrent;
+        public byte DedicatedMusicAppPlaying;
+        public byte IsActive;
+        public byte HasPlayStartAge;
+        public double PlayStartAgeSeconds;
+        public byte HasLatestPlayingAge;
+        public double LatestPlayingAgeSeconds;
+        public byte HasLastPlayingIdle;
+        public double LastPlayingIdleSeconds;
+        public byte HasTimelineAge;
+        public double TimelineAgeSeconds;
+        public byte TimelineBoost;
+        public byte TimelinePenalty;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_session_scorer_score(in VnSessionScoreInputs x, out int outScore);
+
     public static int Score(in SessionScoreInputs x)
     {
-        return ScoreMetadata(in x)
-             + ScoreSourceKind(in x)
-             + ScoreOsAndActive(in x)
-             + ScoreTimeDecay(in x)
-             + ScoreTimelineModifiers(in x);
-    }
-
-    private static int ScoreMetadata(in SessionScoreInputs x)
-    {
-        if (!x.HasTitle) return 0;
-
-        int score = 1550;
-        if (x.HasArtist) score += 20;
-        if (x.HasThumbnail) score += 10;
-        if (x.ArtistIsNonGeneric) score += 200;
+        var native = new VnSessionScoreInputs
+        {
+            HasTitle = x.HasTitle ? (byte)1 : (byte)0,
+            HasArtist = x.HasArtist ? (byte)1 : (byte)0,
+            HasThumbnail = x.HasThumbnail ? (byte)1 : (byte)0,
+            ArtistIsNonGeneric = x.ArtistIsNonGeneric ? (byte)1 : (byte)0,
+            IsSpotify = x.IsSpotify ? (byte)1 : (byte)0,
+            IsMusic = x.IsMusic ? (byte)1 : (byte)0,
+            IsYouTube = x.IsYouTube ? (byte)1 : (byte)0,
+            IsBrowser = x.IsBrowser ? (byte)1 : (byte)0,
+            IsOsCurrent = x.IsOsCurrent ? (byte)1 : (byte)0,
+            DedicatedMusicAppPlaying = x.DedicatedMusicAppPlaying ? (byte)1 : (byte)0,
+            IsActive = x.IsActive ? (byte)1 : (byte)0,
+            HasPlayStartAge = x.PlayStartAgeSeconds.HasValue ? (byte)1 : (byte)0,
+            PlayStartAgeSeconds = x.PlayStartAgeSeconds ?? 0.0,
+            HasLatestPlayingAge = x.LatestPlayingAgeSeconds.HasValue ? (byte)1 : (byte)0,
+            LatestPlayingAgeSeconds = x.LatestPlayingAgeSeconds ?? 0.0,
+            HasLastPlayingIdle = x.LastPlayingIdleSeconds.HasValue ? (byte)1 : (byte)0,
+            LastPlayingIdleSeconds = x.LastPlayingIdleSeconds ?? 0.0,
+            HasTimelineAge = x.TimelineAgeSeconds.HasValue ? (byte)1 : (byte)0,
+            TimelineAgeSeconds = x.TimelineAgeSeconds ?? 0.0,
+            TimelineBoost = x.TimelineBoost ? (byte)1 : (byte)0,
+            TimelinePenalty = x.TimelinePenalty ? (byte)1 : (byte)0,
+        };
+        _ = vn_session_scorer_score(in native, out int score);
         return score;
-    }
-
-    private static int ScoreSourceKind(in SessionScoreInputs x)
-    {
-        if (x.IsSpotify) return 400;
-        if (x.IsMusic) return 400;
-        if (x.IsYouTube) return 350;
-        if (x.IsBrowser) return 100;
-        return 0;
-    }
-
-    private static int ScoreOsAndActive(in SessionScoreInputs x)
-    {
-        int score = 0;
-
-        if (x.IsOsCurrent)
-        {
-            score += x.DedicatedMusicAppPlaying ? 200 : 1000;
-        }
-
-        if (x.IsActive)
-        {
-            score += 500;
-            if (x.IsOsCurrent && !(x.IsBrowser || x.IsYouTube))
-            {
-                score += 1000;
-            }
-        }
-
-        return score;
-    }
-
-    private static int ScoreTimeDecay(in SessionScoreInputs x)
-    {
-        int score = 0;
-
-        if (x.PlayStartAgeSeconds is double playStartAge && playStartAge >= 0 && playStartAge < 45)
-        {
-            score += (int)Math.Max(0, 2600 - (playStartAge * 45));
-        }
-
-        if (x.LatestPlayingAgeSeconds is double latestAge && latestAge >= 0 && latestAge < 30)
-        {
-            score += (int)Math.Max(0, 2200 - (latestAge * 60));
-        }
-
-        if (x.LastPlayingIdleSeconds is double idleSeconds && idleSeconds < 30)
-        {
-            score += (int)((30 - idleSeconds) * 10);
-        }
-
-        if (x.TimelineAgeSeconds is double timelineAge && timelineAge >= 0 && timelineAge < 20)
-        {
-            score += (int)Math.Max(0, 200 - (timelineAge * 8));
-        }
-
-        return score;
-    }
-
-    private static int ScoreTimelineModifiers(in SessionScoreInputs x)
-    {
-        if (x.TimelineBoost) return 3000;
-        if (x.TimelinePenalty) return -3000;
-        return 0;
     }
 }

@@ -1,92 +1,113 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 using AngleSharp.Html.Parser;
 
 namespace VNotch.Services;
 
-internal static class SoundCloudMatching
+internal static partial class SoundCloudMatching
 {
-    private static readonly HashSet<string> ReservedUsers = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "search", "charts", "discover", "stream", "you", "terms", "privacy", "mobile", "upload", "signin",
-        "login", "settings", "jobs", "blog", "developers", "pages", "playlists", "stations", "likes", "messages",
-        "pro", "for-artists", "popular", "tracks", "explore", "featured"
-    };
+    private const string NativeDll = "VNotch.Native.dll";
 
-    private static readonly HashSet<string> ReservedTrackSlugs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "sets", "tracks", "likes", "reposts", "spotlight", "albums", "following", "followers",
-        "popular-tracks", "recommended", "comments", "related", "stats", "stations"
-    };
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_is_valid_track_candidate(
+        ReadOnlySpan<char> userPtr,
+        int userLen,
+        ReadOnlySpan<char> slugPtr,
+        int slugLen,
+        out byte outValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_extract_track_url(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen,
+        out byte outFound);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_sanitize_search_text(
+        ReadOnlySpan<char> valPtr,
+        int valLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_score_candidate(
+        ReadOnlySpan<char> userPtr,
+        int userLen,
+        ReadOnlySpan<char> slugPtr,
+        int slugLen,
+        ReadOnlySpan<char> normTitlePtr,
+        int normTitleLen,
+        ReadOnlySpan<char> normArtistPtr,
+        int normArtistLen,
+        out int outScore);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_is_oembed_match(
+        ReadOnlySpan<char> expTitlePtr,
+        int expTitleLen,
+        ReadOnlySpan<char> expArtistPtr,
+        int expArtistLen,
+        ReadOnlySpan<char> candTitlePtr,
+        int candTitleLen,
+        ReadOnlySpan<char> candAuthorPtr,
+        int candAuthorLen,
+        int candScore,
+        byte strictMode,
+        out byte outMatch);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_normalize_artwork_url(
+        ReadOnlySpan<char> urlPtr,
+        int urlLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
 
     public static bool IsValidTrackCandidate(string user, string slug)
     {
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(slug))
-        {
             return false;
-        }
 
-        if (user.Contains('.') || slug.Length < 2)
-        {
-            return false;
-        }
-
-        return !ReservedUsers.Contains(user) && !ReservedTrackSlugs.Contains(slug);
+        ReadOnlySpan<char> u = user.AsSpan();
+        ReadOnlySpan<char> s = slug.AsSpan();
+        vn_soundcloud_is_valid_track_candidate(u, u.Length, s, s.Length, out byte valid);
+        return valid != 0;
     }
 
     public static string? ExtractTrackUrl(string rawText)
     {
         if (string.IsNullOrWhiteSpace(rawText))
-        {
             return null;
-        }
 
-        var match = Regex.Match(
-            rawText,
-            @"https?://(?:(?:www|m)\.)?soundcloud\.com/(?<user>[^/\s?#]+)/(?<slug>[^/\s?#]+)(?:/?(?:[?#\s]|$))",
-            RegexOptions.IgnoreCase);
-
-        if (!match.Success)
-        {
-            return null;
-        }
-
-        string user = match.Groups["user"].Value;
-        string slug = match.Groups["slug"].Value;
-        if (!IsValidTrackCandidate(user, slug))
-        {
-            return null;
-        }
-
-        return $"https://soundcloud.com/{user}/{slug}";
+        ReadOnlySpan<char> span = rawText.AsSpan();
+        int cap = span.Length + 32;
+        Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
+        vn_soundcloud_extract_track_url(span, span.Length, buf, buf.Length, out int len, out byte found);
+        return found != 0 && len > 0 ? new string(buf[..len]) : null;
     }
 
     public static string SanitizeSearchText(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-        {
             return string.Empty;
-        }
 
-        string normalized = value.Replace('\u2013', '-').Replace('\u2014', '-').Trim();
-        normalized = Regex.Replace(
-            normalized,
-            @"[\(\[]\s*(?:official\s+(?:audio|video|music\s+video|lyric\s+video)|prod\.?\s+by\s+[^\)\]]+|prod\.?\s+[^\)\]]+|free\s+(?:dl|download))\s*[\)\]]",
-            " ",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        normalized = Regex.Replace(normalized, @"[\[\]\(\)""']", " ");
-        normalized = Regex.Replace(normalized, @"\s+", " ");
-        return normalized.Trim();
+        ReadOnlySpan<char> span = value.AsSpan();
+        int cap = span.Length + 16;
+        Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
+        vn_soundcloud_sanitize_search_text(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
     public static List<(string Url, int Score)> ExtractTrackUrlsFromSearchHtml(string html, string title, string artist)
     {
         var result = new List<(string Url, int Score)>();
         if (string.IsNullOrWhiteSpace(html))
-        {
             return result;
-        }
 
         string normalizedTitle = PlatformDetector.NormalizeForLooseMatch(SanitizeSearchText(title));
         string normalizedArtist = PlatformDetector.NormalizeForLooseMatch((artist ?? "").ToLowerInvariant());
@@ -133,18 +154,14 @@ internal static class SoundCloudMatching
         int orderIndex)
     {
         if (!IsValidTrackCandidate(user, slug))
-        {
             return;
-        }
 
         string url = $"https://soundcloud.com/{user}/{slug}";
         int score = ScoreCandidate(user, slug, normalizedTitle, normalizedArtist);
         if (scoreMap.TryGetValue(url, out var existing))
         {
             if (score > existing.Score)
-            {
                 scoreMap[url] = (score, existing.FirstIndex);
-            }
         }
         else
         {
@@ -154,148 +171,40 @@ internal static class SoundCloudMatching
 
     public static int ScoreCandidate(string user, string slug, string normalizedTitle, string normalizedArtist)
     {
-        string normalizedSlug = PlatformDetector.NormalizeForLooseMatch(slug.ToLowerInvariant());
-        string normalizedUser = PlatformDetector.NormalizeForLooseMatch(user.ToLowerInvariant());
-
-        return ScoreTitleMatch(normalizedTitle, normalizedSlug) + ScoreArtistMatch(normalizedArtist, normalizedUser);
-    }
-
-    private static int ScoreTitleMatch(string normalizedTitle, string normalizedSlug)
-    {
-        if (string.IsNullOrEmpty(normalizedTitle) || string.IsNullOrEmpty(normalizedSlug))
-        {
-            return 0;
-        }
-
-        if (normalizedSlug.Equals(normalizedTitle, StringComparison.Ordinal))
-            return 8;
-
-        if ((normalizedTitle.Length >= 3 && normalizedSlug.Contains(normalizedTitle, StringComparison.Ordinal)) ||
-            (normalizedSlug.Length >= 4 &&
-             (normalizedSlug.Contains(' ') || normalizedSlug.Length * 2 >= normalizedTitle.Length) &&
-             normalizedTitle.Contains(normalizedSlug, StringComparison.Ordinal)))
-        {
-            return 5;
-        }
-
-        int score = 0;
-        var titleTokens = normalizedTitle.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var token in titleTokens)
-        {
-            if (token.Length >= 3 && normalizedSlug.Contains(token, StringComparison.Ordinal))
-            {
-                score += 1;
-            }
-        }
-
+        ReadOnlySpan<char> u = (user ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> s = (slug ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> t = (normalizedTitle ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> a = (normalizedArtist ?? string.Empty).AsSpan();
+        vn_soundcloud_score_candidate(u, u.Length, s, s.Length, t, t.Length, a, a.Length, out int score);
         return score;
-    }
-
-    private static int ScoreArtistMatch(string normalizedArtist, string normalizedUser)
-    {
-        if (!HasMeaningfulArtist(normalizedArtist) || string.IsNullOrEmpty(normalizedUser) || normalizedUser.Length < 2)
-        {
-            return 0;
-        }
-
-        if (normalizedUser.Equals(normalizedArtist, StringComparison.Ordinal) ||
-            (normalizedArtist.Length >= 2 && normalizedUser.Contains(normalizedArtist, StringComparison.Ordinal)) ||
-            (normalizedUser.Length >= 3 && normalizedArtist.Contains(normalizedUser, StringComparison.Ordinal)))
-        {
-            return 3;
-        }
-
-        return 0;
     }
 
     public static bool IsOEmbedMatch(string expectedTitle, string expectedArtist, string? candidateTitle, string? candidateAuthor, int candidateScore, bool strictMode = false)
     {
-        string normalizedExpectedTitle = PlatformDetector.NormalizeForLooseMatch(SanitizeSearchText(expectedTitle ?? ""));
-        string normalizedExpectedArtist = PlatformDetector.NormalizeForLooseMatch((expectedArtist ?? "").ToLowerInvariant());
-        string normalizedCandidateTitle = PlatformDetector.NormalizeForLooseMatch(SanitizeSearchText(candidateTitle ?? ""));
-        string normalizedCandidateAuthor = PlatformDetector.NormalizeForLooseMatch((candidateAuthor ?? "").ToLowerInvariant());
-
-        if (string.IsNullOrEmpty(normalizedExpectedTitle) || string.IsNullOrEmpty(normalizedCandidateTitle))
-        {
-            return false;
-        }
-
-        string strippedCandidateTitle = StripTrailingByAuthor(normalizedCandidateTitle, normalizedCandidateAuthor);
-        string coreExpectedTitle = ExtractCoreTitle(normalizedExpectedTitle, normalizedExpectedArtist);
-        string coreCandidateTitle = ExtractCoreTitle(strippedCandidateTitle, normalizedCandidateAuthor);
-
-        // Shared words and title prefixes cannot identify a particular upload/version.
-        bool titleMatches = CheckTitleMatch(normalizedExpectedTitle, strippedCandidateTitle) ||
-                            CheckTitleMatch(coreExpectedTitle, coreCandidateTitle);
-        if (!titleMatches)
-            return false;
-
-        if (HasMeaningfulArtist(normalizedExpectedArtist))
-            return CheckPositiveArtistMatch(normalizedExpectedArtist, normalizedCandidateAuthor, normalizedCandidateTitle);
-
-        return !strictMode || candidateScore >= 3;
-    }
-
-    private static bool HasMeaningfulArtist(string normalizedArtist)
-        => !string.IsNullOrEmpty(normalizedArtist) &&
-           normalizedArtist != "soundcloud" &&
-           normalizedArtist != "browser" &&
-           normalizedArtist != "unknown";
-
-    private static string StripTrailingByAuthor(string normalizedCandidateTitle, string normalizedCandidateAuthor)
-    {
-        if (string.IsNullOrEmpty(normalizedCandidateTitle) || string.IsNullOrEmpty(normalizedCandidateAuthor))
-        {
-            return normalizedCandidateTitle;
-        }
-
-        string suffix = " by " + normalizedCandidateAuthor;
-        if (normalizedCandidateTitle.EndsWith(suffix, StringComparison.Ordinal) &&
-            normalizedCandidateTitle.Length > suffix.Length)
-        {
-            return normalizedCandidateTitle[..^suffix.Length].TrimEnd();
-        }
-
-        return normalizedCandidateTitle;
-    }
-
-    private static string ExtractCoreTitle(string normalizedTitle, string normalizedArtist)
-    {
-        if (HasMeaningfulArtist(normalizedArtist) &&
-            normalizedTitle.StartsWith(normalizedArtist + " ", StringComparison.Ordinal) &&
-            normalizedTitle.Length > normalizedArtist.Length + 1)
-        {
-            return normalizedTitle[(normalizedArtist.Length + 1)..].TrimStart();
-        }
-
-        return normalizedTitle;
-    }
-
-    private static bool CheckTitleMatch(string expectedTitle, string candidateTitle)
-    {
-        if (string.IsNullOrEmpty(expectedTitle) || string.IsNullOrEmpty(candidateTitle))
-        {
-            return false;
-        }
-
-        return expectedTitle.Equals(candidateTitle, StringComparison.Ordinal);
-    }
-
-    private static bool CheckPositiveArtistMatch(string expectedArtist, string candidateAuthor, string candidateTitle)
-    {
-        if (!string.IsNullOrEmpty(candidateAuthor))
-        {
-            return candidateAuthor.Equals(expectedArtist, StringComparison.Ordinal);
-        }
-
-        return expectedArtist.Length >= 3 &&
-               (candidateTitle.StartsWith(expectedArtist + " ", StringComparison.Ordinal) ||
-                candidateTitle.EndsWith(" by " + expectedArtist, StringComparison.Ordinal));
+        ReadOnlySpan<char> et = (expectedTitle ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> ea = (expectedArtist ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> ct = (candidateTitle ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> ca = (candidateAuthor ?? string.Empty).AsSpan();
+        vn_soundcloud_is_oembed_match(
+            et, et.Length,
+            ea, ea.Length,
+            ct, ct.Length,
+            ca, ca.Length,
+            candidateScore,
+            strictMode ? (byte)1 : (byte)0,
+            out byte match);
+        return match != 0;
     }
 
     public static string NormalizeArtworkUrl(string url)
     {
-        // Preserve the URL supplied by oEmbed, including its size and any signature.
-        return url.Replace("\\u0026", "&").Replace("\\/", "/");
+        if (string.IsNullOrEmpty(url))
+            return string.Empty;
+
+        ReadOnlySpan<char> span = url.AsSpan();
+        int cap = span.Length + 8;
+        Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
+        vn_soundcloud_normalize_artwork_url(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 }

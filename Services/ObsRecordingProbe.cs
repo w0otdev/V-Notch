@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace VNotch.Services;
 
-internal sealed class ObsRecordingProbe
+internal sealed partial class ObsRecordingProbe
 {
     private readonly Dictionary<string, LogState> _logs = new(StringComparer.OrdinalIgnoreCase);
 
@@ -29,7 +29,6 @@ internal sealed class ObsRecordingProbe
                     string? executable = process.MainModule?.FileName;
                     if (executable != null)
                     {
-                        // OBS portable layout: bin/64bit/obs64.exe + config/obs-studio/logs.
                         var root = Directory.GetParent(executable)?.Parent?.Parent;
                         if (root != null) folders.Add(Path.Combine(root.FullName, "config", "obs-studio", "logs"));
                     }
@@ -39,7 +38,6 @@ internal sealed class ObsRecordingProbe
                         foreach (var file in new DirectoryInfo(folder).EnumerateFiles("*.txt")
                             .OrderByDescending(f => f.LastWriteTimeUtc).Take(4))
                         {
-                            // Historical/crashed sessions must not light the indicator.
                             if (!RecordingFileOwnership.IsFileOwnedBy(file.FullName, process)) continue;
                             string key = $"{process.Id}:{process.StartTime.ToFileTimeUtc()}:{file.FullName}";
                             seen.Add(key);
@@ -52,7 +50,6 @@ internal sealed class ObsRecordingProbe
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                     System.ComponentModel.Win32Exception or InvalidOperationException or System.Security.SecurityException)
                 {
-                    // A failed provider must not prevent other recording or sensor probes.
                 }
             }
         }
@@ -78,7 +75,6 @@ internal sealed class ObsRecordingProbe
             long length = stream.Length;
             if (length < _position || length - _position > maxRead)
             {
-                // Bounded initial read/backlog. Unknown earlier activity stays false.
                 _recording = _streaming = _replay = false;
                 _partialLine = "";
                 _position = Math.Max(0, length - maxRead);
@@ -98,28 +94,38 @@ internal sealed class ObsRecordingProbe
             Feed(Encoding.UTF8.GetString(bytes, 0, read));
         }
 
-        internal void Feed(string text)
+        internal unsafe void Feed(string text)
         {
             if (text.Length == 0) return;
-            ReadOnlySpan<char> remaining = _partialLine.Length == 0 ? text : _partialLine + text;
-            int newline;
-            while ((newline = remaining.IndexOf('\n')) >= 0)
-            {
-                var line = remaining[..newline];
-                Apply(line, ": ==== Recording Start ===", ": ==== Recording Stop ===", ref _recording);
-                Apply(line, ": ==== Streaming Start ===", ": ==== Streaming Stop ===", ref _streaming);
-                Apply(line, ": ==== Replay Buffer Start ===", ": ==== Replay Buffer Stop ===", ref _replay);
-                remaining = remaining[(newline + 1)..];
-            }
-            _partialLine = remaining.Length <= 4096 ? remaining.ToString() : "";
-        }
 
-        private static void Apply(ReadOnlySpan<char> line, ReadOnlySpan<char> startMarker,
-            ReadOnlySpan<char> stopMarker, ref bool active)
-        {
-            // Exact logger marker, not arbitrary mentions of recording in configuration.
-            if (line.Contains(startMarker, StringComparison.Ordinal)) active = true;
-            if (line.Contains(stopMarker, StringComparison.Ordinal)) active = false;
+            byte rec = _recording ? (byte)1 : (byte)0;
+            byte str = _streaming ? (byte)1 : (byte)0;
+            byte rep = _replay ? (byte)1 : (byte)0;
+            Span<char> outPartial = stackalloc char[4096];
+            int outLen;
+
+            fixed (char* pPartial = _partialLine)
+            fixed (char* pText = text)
+            fixed (char* pOut = outPartial)
+            {
+                vn_obs_feed_log_chunk(
+                    pPartial, _partialLine.Length,
+                    pText, text.Length,
+                    ref rec, ref str, ref rep,
+                    pOut, outPartial.Length, out outLen);
+            }
+
+            _recording = rec != 0;
+            _streaming = str != 0;
+            _replay = rep != 0;
+            _partialLine = outLen > 0 ? new string(outPartial[..outLen]) : "";
         }
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_obs_feed_log_chunk(
+        char* partial_ptr, int partial_len,
+        char* text_ptr, int text_len,
+        ref byte io_recording, ref byte io_streaming, ref byte io_replay,
+        char* out_partial_buf, int out_partial_cap, out int out_partial_len);
 }

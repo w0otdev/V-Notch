@@ -248,24 +248,26 @@ public partial class ConfirmationDialog : Window
         Timeline.SetDesiredFrameRate(transY, fps);
         Timeline.SetDesiredFrameRate(opacity, fps);
 
+        var fallbackTimer = new UiScheduledTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+
         bool closed = false;
         void SafeClose()
         {
             if (closed) return;
             closed = true;
+            fallbackTimer.Stop();
+            fallbackTimer.Dispose();
             Close();
         }
 
         opacity.Completed += (s, e) => SafeClose();
 
         // Safety fallback in case WPF animation clock doesn't tick (e.g. headless CI)
-        var fallbackTimer = new UiScheduledTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
         fallbackTimer.Tick += (_, _) =>
         {
-            fallbackTimer.Stop();
             SafeClose();
         };
         fallbackTimer.Start();

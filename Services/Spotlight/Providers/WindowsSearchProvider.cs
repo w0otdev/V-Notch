@@ -1,13 +1,19 @@
+using System;
+using System.Collections.Generic;
 using System.Data.OleDb;
 using System.IO;
-using System.Text;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using VNotch.Models;
-using VNotch.Services;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-internal sealed class WindowsSearchProvider : ISpotlightProvider
+internal sealed partial class WindowsSearchProvider : ISpotlightProvider
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const int QueryTimeoutMilliseconds = 1500;
@@ -18,6 +24,30 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
     private volatile bool _isAvailable = true;
     private long _lastFailureTicks = DateTime.MinValue.Ticks;
     private int _loggedUnavailable;
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_windows_search_sanitize_query(
+        ReadOnlySpan<char> queryPtr,
+        int queryLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_windows_search_escape_like_pattern(
+        ReadOnlySpan<char> queryPtr,
+        int queryLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_windows_search_build_name_predicate(
+        ReadOnlySpan<char> sanitizedPtr,
+        int sanitizedLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
 
     public bool IsAvailable
     {
@@ -191,29 +221,28 @@ internal sealed class WindowsSearchProvider : ISpotlightProvider
 
     private static string BuildNamePredicate(string sanitizedQuery)
     {
-        string like = EscapeLikePattern(sanitizedQuery);
-        string[] terms = sanitizedQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        string contains = string.Join(" AND ", terms.Select(term => $"\"{term}*\""));
-        return $"System.FileName LIKE '%{like}%' OR CONTAINS(System.FileName, '{contains}')";
+        ReadOnlySpan<char> span = (sanitizedQuery ?? string.Empty).AsSpan();
+        int cap = span.Length * 4 + 128;
+        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
+        vn_windows_search_build_name_predicate(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
     private static string EscapeLikePattern(string sanitizedQuery)
     {
-        var builder = new StringBuilder(sanitizedQuery.Length);
-        foreach (char character in sanitizedQuery)
-        {
-            switch (character)
-            {
-                case '%': builder.Append("[%]"); break;
-                case '_': builder.Append("[_]"); break;
-                case '[': builder.Append("[[]"); break;
-                default: builder.Append(character); break;
-            }
-        }
-        return builder.ToString();
+        ReadOnlySpan<char> span = (sanitizedQuery ?? string.Empty).AsSpan();
+        int cap = span.Length * 3 + 16;
+        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
+        vn_windows_search_escape_like_pattern(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
-    internal static string SanitizeQuery(string query) =>
-        new string(query.Where(character => character is not ('"' or '\'' or '\\' or '(' or ')' or ':' or '*'))
-            .Take(256).ToArray()).Trim();
+    internal static string SanitizeQuery(string query)
+    {
+        if (string.IsNullOrEmpty(query)) return string.Empty;
+        ReadOnlySpan<char> span = query.AsSpan();
+        Span<char> buf = stackalloc char[260];
+        vn_windows_search_sanitize_query(span, span.Length, buf, buf.Length, out int len);
+        return len > 0 ? new string(buf[..len]) : string.Empty;
+    }
 }

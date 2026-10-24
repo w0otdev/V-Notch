@@ -1,20 +1,38 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace VNotch.Services.Spotlight;
 
-internal static class SpotlightLayoutMetrics
+internal static partial class SpotlightLayoutMetrics
 {
-    internal static double ResolveMeasureWidth(double actualWidth, double configuredWidth) =>
-        IsPositiveFinite(actualWidth) ? actualWidth : IsPositiveFinite(configuredWidth) ? configuredWidth : 768;
+    internal static double ResolveMeasureWidth(double actualWidth, double configuredWidth)
+    {
+        vn_spotlight_layout_resolve_measure_width(actualWidth, configuredWidth, out double width);
+        return width;
+    }
 
     internal static Size CalculateEntranceSize(double measureWidth, double desiredHeight, double actualHeight, Thickness margin)
     {
-        // The HWND reserves horizontal shake space that is outside the shell.
-        double width = Math.Max(1, measureWidth - margin.Left - margin.Right);
-        double height = desiredHeight - margin.Top - margin.Bottom;
-        if (!IsPositiveFinite(height)) height = IsPositiveFinite(actualHeight) ? Math.Max(1, actualHeight) : 1;
+        vn_spotlight_layout_calculate_entrance_size(
+            measureWidth, desiredHeight, actualHeight,
+            margin.Left, margin.Top, margin.Right, margin.Bottom,
+            out double width, out double height);
         return new Size(width, height);
     }
 
-    private static bool IsPositiveFinite(double value) => double.IsFinite(value) && value > 0;
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_layout_resolve_measure_width(
+        double actual_width, double configured_width, out double out_width);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_layout_calculate_entrance_size(
+        double measure_width,
+        double desired_height,
+        double actual_height,
+        double margin_left,
+        double margin_top,
+        double margin_right,
+        double margin_bottom,
+        out double out_width,
+        out double out_height);
 }

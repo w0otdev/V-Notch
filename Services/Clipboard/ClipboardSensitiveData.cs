@@ -1,4 +1,6 @@
-using System.IO;
+using System;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -21,12 +23,42 @@ internal readonly record struct ClipboardSensitivityResult(
 }
 
 /// <summary>Evidence-based clipboard classification, not a password-strength estimator.</summary>
-internal static class ClipboardSensitiveData
+internal static partial class ClipboardSensitiveData
 {
+    private const string NativeDll = "VNotch.Native.dll";
     internal const int DetectorVersion = 2;
     internal const string Mask = "••••••••";
     private const int MaxInspectionCharacters = 1_000_000;
     internal static string CreateLayoutMask(string text) => Mask;
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_sensitive_is_from_password_manager(
+        ReadOnlySpan<char> appPtr,
+        int appLen,
+        ReadOnlySpan<char> exePtr,
+        int exeLen,
+        out byte outIsPm);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_sensitive_is_credential_value(
+        ReadOnlySpan<char> valPtr,
+        int valLen,
+        out byte outIsCred);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_sensitive_luhn_check(
+        ReadOnlySpan<char> matchPtr,
+        int matchLen,
+        out byte outValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_sensitive_analyze_standalone(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        byte isGuidOrEmailOrVersion,
+        byte isIdentifier,
+        out int outReason,
+        out int outConfidence);
 
     private static Regex Pattern(string pattern) => new(pattern,
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
@@ -71,23 +103,6 @@ internal static class ClipboardSensitiveData
     private static readonly Regex Email = Pattern(@"^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$");
     private static readonly Regex Version = Pattern(@"^v?\d+(?:\.\d+){1,3}(?:[-+][\w.-]+)?$");
     private static readonly Regex Identifier = Pattern(@"^[\p{L}_][\p{L}\p{N}_]*$");
-    private static readonly HashSet<string> NonValues = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "null", "undefined", "true", "false", "none", "required", "optional", "missing", "invalid",
-        "incorrect", "expired", "string", "redacted",
-        "your_password", "your_api_key"
-    };
-    private static readonly HashSet<string> PasswordManagers = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "1password", "bitwarden", "keepass", "keepassxc", "lastpass", "enpass", "dashlane",
-        "nordpass", "protonpass", "proton pass", "roboform", "authpass", "keeper", "safeincloud"
-    };
-    private static readonly HashSet<string> FileExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".cs", ".xaml", ".json", ".png", ".jpg", ".jpeg", ".exe", ".dll", ".md", ".html", ".txt",
-        ".ts", ".tsx", ".js", ".jsx", ".py", ".zip", ".pdf", ".docx", ".xlsx", ".csv", ".xml",
-        ".yaml", ".yml", ".log", ".sql", ".css", ".svg", ".mp4", ".mp3"
-    };
 
     internal static bool IsSensitive(string text) => Analyze(text).ShouldMask;
     internal static bool IsSensitive(string text, string sourceApp, string sourceExecutable) =>
@@ -124,21 +139,17 @@ internal static class ClipboardSensitiveData
 
     private static bool IsCredentialValue(string value)
     {
-        value = value.Trim();
-        if (value.Length == 0 || NonValues.Contains(value)) return false;
-        if (value.All(c => c is '*' or '•' or '●')) return false;
-        if (value.StartsWith("${", StringComparison.Ordinal) || value.StartsWith("{{", StringComparison.Ordinal)
-            || value.StartsWith("process.env.", StringComparison.Ordinal) || value.StartsWith("os.environ", StringComparison.Ordinal)
-            || value.StartsWith("Environment.", StringComparison.Ordinal)) return false;
-        return true;
+        ReadOnlySpan<char> span = (value ?? string.Empty).AsSpan();
+        vn_clipboard_sensitive_is_credential_value(span, span.Length, out byte isCred);
+        return isCred != 0;
     }
 
     private static bool IsFromPasswordManager(string app, string executable)
     {
-        // An executable is stronger identity evidence than a friendly window/application label.
-        if (!string.IsNullOrWhiteSpace(executable))
-            return PasswordManagers.Contains(Path.GetFileNameWithoutExtension(executable));
-        return PasswordManagers.Contains(app.Trim());
+        ReadOnlySpan<char> a = (app ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> e = (executable ?? string.Empty).AsSpan();
+        vn_clipboard_sensitive_is_from_password_manager(a, a.Length, e, e.Length, out byte isPm);
+        return isPm != 0;
     }
 
     private static bool ContainsJwt(string text)
@@ -165,75 +176,28 @@ internal static class ClipboardSensitiveData
 
     private static bool IsPaymentCard(string text)
     {
-        Span<int> digits = stackalloc int[19];
         foreach (Match match in Cards.Matches(text))
         {
-            int count = 0;
-            foreach (char c in match.ValueSpan) if (char.IsAsciiDigit(c)) digits[count++] = c - '0';
-            bool repeated = true;
-            int sum = 0;
-            for (int i = count - 1, position = 0; i >= 0; i--, position++)
-            {
-                repeated &= digits[i] == digits[0];
-                int n = digits[i];
-                if (position % 2 == 1) { n *= 2; if (n > 9) n -= 9; }
-                sum += n;
-            }
-            if (!repeated && sum % 10 == 0) return true;
+            ReadOnlySpan<char> span = match.ValueSpan;
+            vn_clipboard_sensitive_luhn_check(span, span.Length, out byte valid);
+            if (valid != 0) return true;
         }
         return false;
     }
 
     private static ClipboardSensitivityResult AnalyzeStandalone(string text)
     {
-        if (text.Length < 8 || text.Length > 256 || text.Any(char.IsWhiteSpace)) return default;
-        // Exclusions apply only to weak standalone evidence, never to labelled/structured credentials.
-        if (Guid.TryParse(text, out _) || Email.IsMatch(text) || Version.IsMatch(text)) return default;
-        if (text.Contains("://", StringComparison.Ordinal) || text.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
-            || text.StartsWith('/') || text.StartsWith("\\", StringComparison.Ordinal)
-            || text.StartsWith("~/", StringComparison.Ordinal) || text.StartsWith("./", StringComparison.Ordinal)
-            || text.StartsWith("../", StringComparison.Ordinal)
-            || (text.Length > 2 && char.IsAsciiLetter(text[0]) && text[1] == ':' && text[2] is '\\' or '/')) return default;
-        if (FileExtensions.Contains(Path.GetExtension(text))) return default;
-        if ((text.StartsWith('#') && text.Length is 4 or 7 or 9 && text.AsSpan(1).ContainsAnyExcept("0123456789abcdefABCDEF") == false)
-            || (text.Length is 32 or 40 or 64 && text.All(char.IsAsciiHexDigit))) return default;
-        // Common code expressions are not passwords merely because they mix case, numbers and punctuation.
-        if (text.Contains("=>", StringComparison.Ordinal) || text.Contains("==", StringComparison.Ordinal)
-            || text.Contains("!=", StringComparison.Ordinal) || text.Contains("::", StringComparison.Ordinal)
-            || (text.IndexOf('=') is int assignment && assignment >= 0 && assignment < text.Length - 2)
-            || text.Contains('(') || text.Contains(')') || text.Contains('{') || text.Contains('}') || text.Contains(';'))
-            return new(ClipboardSensitivityReason.Ambiguous, ClipboardSensitivityConfidence.Possible);
-
-        int lower = 0, upper = 0, digits = 0, symbols = 0, transitions = 0, previous = -1;
-        bool strongSymbol = false;
-        var frequencies = new Dictionary<char, int>();
-        foreach (char c in text)
-        {
-            int category;
-            if (char.IsLower(c)) { lower++; category = 0; }
-            else if (char.IsUpper(c)) { upper++; category = 1; }
-            else if (char.IsDigit(c)) { digits++; category = 2; }
-            else if (char.IsLetter(c)) { lower++; category = 0; }
-            else { symbols++; category = 3; strongSymbol |= "@#$%!^&*?~+=".Contains(c); }
-            if (previous >= 0 && previous != category) transitions++;
-            previous = category;
-            frequencies[c] = frequencies.GetValueOrDefault(c) + 1;
-        }
-        double entropy = 0;
-        foreach (int count in frequencies.Values)
-        {
-            double probability = (double)count / text.Length;
-            entropy -= probability * Math.Log2(probability);
-        }
-        // Mixed symbols plus letters/numbers are useful evidence even for weak human passwords.
-        bool decorated = strongSymbol && lower + upper > 0 && (digits > 0 || lower > 0 && upper > 0);
-        // Entropy alone also scores identifiers highly: require frequent class changes and multiple digits/cases.
-        bool generated = symbols == 0 && lower >= 2 && upper >= 2 && digits >= 2 && text.Length >= 10
-            && transitions >= 5 && (double)transitions / (text.Length - 1) >= 0.45 && entropy >= 3.0;
-        if (decorated || generated)
-            return new(ClipboardSensitivityReason.StandalonePassword, ClipboardSensitivityConfidence.Likely);
-        if (symbols > 0 || digits > 0 || Identifier.IsMatch(text))
-            return new(ClipboardSensitivityReason.Ambiguous, ClipboardSensitivityConfidence.Possible);
-        return default;
+        if (text.Length < 8 || text.Length > 256) return default;
+        bool isGuidEmailVer = Guid.TryParse(text, out _) || Email.IsMatch(text) || Version.IsMatch(text);
+        bool isIdent = !isGuidEmailVer && Identifier.IsMatch(text);
+        ReadOnlySpan<char> span = text.AsSpan();
+        vn_clipboard_sensitive_analyze_standalone(
+            span,
+            span.Length,
+            isGuidEmailVer ? (byte)1 : (byte)0,
+            isIdent ? (byte)1 : (byte)0,
+            out int reason,
+            out int confidence);
+        return new((ClipboardSensitivityReason)reason, (ClipboardSensitivityConfidence)confidence);
     }
 }
