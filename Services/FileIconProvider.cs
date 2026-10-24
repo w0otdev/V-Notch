@@ -14,8 +14,42 @@ using Windows.Storage.FileProperties;
 
 namespace VNotch.Services;
 
-internal static class FileIconProvider
+internal static partial class FileIconProvider
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnFileIconExtensionFlags
+    {
+        public byte IsImage;
+        public byte IsVideo;
+        public byte IsSvg;
+        public byte IsExeOrLnk;
+        public byte IsMsc;
+        public byte IsLnk;
+    }
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_file_icon_provider_classify_extension(
+        ReadOnlySpan<char> ext,
+        int extLen,
+        out VnFileIconExtensionFlags outFlags);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_file_icon_provider_parse_msc_icon_xml(
+        ReadOnlySpan<char> xml,
+        int xmlLen,
+        out int outIndex,
+        out int outFileStart,
+        out int outFileLen,
+        out byte outMatched);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_file_icon_provider_compute_evict_count(
+        int currentCount,
+        int maxCacheSize,
+        out int outRemoveCount);
+
     private sealed class CacheEntry
     {
         public ImageSource? Icon;
@@ -37,85 +71,22 @@ internal static class FileIconProvider
 
     public static void ClearCache() => _iconCache.Clear();
 
-    #region Native interop
+    private static bool DeleteObject(IntPtr handle) => Win32Interop.DeleteObject(handle);
 
-    [DllImport("gdi32.dll")]
-    private static extern bool DeleteObject(IntPtr hObject);
+    private static bool DestroyIcon(IntPtr handle) => Win32Interop.DestroyIcon(handle);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
-    private static extern void SHCreateItemFromParsingName(
-        [In, MarshalAs(UnmanagedType.LPWStr)] string pszPath,
-        [In] IntPtr pbc,
-        [In, MarshalAs(UnmanagedType.LPStruct)] Guid riid,
-        [Out, MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory ppv);
-
-    [ComImport]
-    [Guid("bcc18b79-ba16-442f-80c4-8746c1f01a3b")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IShellItemImageFactory
-    {
-        [PreserveSig]
-        int GetImage([In, MarshalAs(UnmanagedType.Struct)] NativeSize size, [In] int flags, [Out] out IntPtr phbm);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeSize
-    {
-        public int cx;
-        public int cy;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct ShFileInfo
-    {
-        public IntPtr hIcon;
-        public int iIcon;
-        public uint dwAttributes;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        public string szDisplayName;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
-        public string szTypeName;
-    }
-
-    private static readonly uint ShFileInfoSize = (uint)Marshal.SizeOf<ShFileInfo>();
-
-    private const uint SHGFI_ICON = 0x000000100;
-    private const uint SHGFI_LARGEICON = 0x000000000;
-    private const uint SHGFI_SMALLICON = 0x000000001;
-    private const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
-    private const uint SHGFI_SYSICONINDEX = 0x000004000;
-    private const uint FILE_ATTRIBUTE_NORMAL = 0x000000080;
-
-    [DllImport("comctl32.dll")]
-    private static extern IntPtr ImageList_GetIcon(IntPtr imageList, int index, uint flags);
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr SHGetFileInfo(
-        string pszPath,
-        uint dwFileAttributes,
-        ref ShFileInfo psfi,
-        uint cbFileInfo,
-        uint uFlags);
-
-    private static readonly Guid _shellItemImageFactoryIid = new Guid("bcc18b79-ba16-442f-80c4-8746c1f01a3b");
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern uint ExtractIconEx(string lpszFile, int nIconIndex, IntPtr[]? phiconLarge, IntPtr[]? phiconSmall, uint nIcons);
-
-    #endregion
-
-    private static readonly System.Text.RegularExpressions.Regex MscIconPattern = new(
-        "<Icon\\s+Index=\"(-?\\d+)\"\\s+File=\"([^\"]+)\"",
-        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private const uint SHGFI_LARGEICON = Win32Interop.SHGFI_LARGEICON;
+    private const uint SHGFI_SMALLICON = Win32Interop.SHGFI_SMALLICON;
+    private const uint SHGFI_USEFILEATTRIBUTES = Win32Interop.SHGFI_USEFILEATTRIBUTES;
+    private const uint FILE_ATTRIBUTE_NORMAL = Win32Interop.FILE_ATTRIBUTE_NORMAL;
 
     // The Shell associates every .msc with a generic document icon. Each MMC
     // console declares its real artwork in its XML (<Icon Index File>).
     private static ImageSource? TryGetMscIcon(string mscPath, bool small)
     {
-        if (!Path.GetExtension(mscPath).Equals(".msc", StringComparison.OrdinalIgnoreCase)) return null;
+        ReadOnlySpan<char> extSpan = Path.GetExtension(mscPath.AsSpan());
+        if (vn_file_icon_provider_classify_extension(extSpan, extSpan.Length, out var extFlags) != 0 || extFlags.IsMsc == 0)
+            return null;
         try
         {
             string? file = null;
@@ -128,11 +99,11 @@ internal static class FileIconProvider
                 try
                 {
                     int read = reader.ReadBlock(buffer, 0, maxChars);
-                    var match = MscIconPattern.Match(new string(buffer, 0, read));
-                    if (match.Success)
+                    ReadOnlySpan<char> xmlSpan = buffer.AsSpan(0, read);
+                    if (vn_file_icon_provider_parse_msc_icon_xml(xmlSpan, xmlSpan.Length, out int parsedIdx, out int fileStart, out int fileLen, out byte matched) == 0 && matched != 0)
                     {
-                        index = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                        file = Environment.ExpandEnvironmentVariables(match.Groups[2].Value);
+                        index = parsedIdx;
+                        file = Environment.ExpandEnvironmentVariables(new string(xmlSpan.Slice(fileStart, fileLen)));
                         // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
                         if (!File.Exists(file)) file = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
                     }
@@ -147,17 +118,16 @@ internal static class FileIconProvider
                 file = Path.Combine(Environment.SystemDirectory, "mmc.exe");
                 index = 0;
             }
-            var handles = new IntPtr[1];
-            uint count = small ? ExtractIconEx(file, index, null, handles, 1) : ExtractIconEx(file, index, handles, null, 1);
-            if (count == 0 || handles[0] == IntPtr.Zero) return null;
+            IntPtr handle = Win32Interop.ExtractShellIcon(file, index, small);
+            if (handle == IntPtr.Zero) return null;
             try
             {
                 var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
-                    handles[0], Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                 source.Freeze();
                 return source;
             }
-            finally { DestroyIcon(handles[0]); }
+            finally { DestroyIcon(handle); }
         }
         catch (Exception)
         {
@@ -240,9 +210,10 @@ internal static class FileIconProvider
         {
             if (!File.Exists(filePath) && !Directory.Exists(filePath)) return null;
 
-            string ext = Path.GetExtension(filePath).ToLowerInvariant();
-            bool isImage = ext is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif" or ".svg" or ".webp" or ".ico";
-            bool isVideo = ext is ".mp4" or ".mkv" or ".avi" or ".mov" or ".wmv" or ".flv" or ".webm";
+            ReadOnlySpan<char> extSpan = Path.GetExtension(filePath.AsSpan());
+            _ = vn_file_icon_provider_classify_extension(extSpan, extSpan.Length, out var flags);
+            bool isImage = flags.IsImage != 0;
+            bool isVideo = flags.IsVideo != 0;
 
             ImageSource? result = null;
 
@@ -250,13 +221,13 @@ internal static class FileIconProvider
             {
                 result ??= TryGetShellThumbnail(filePath, 64);
 
-                if (result == null && isImage && ext is not ".svg")
+                if (result == null && isImage && flags.IsSvg == 0)
                 {
                     result = TryGetDirectImage(filePath);
                 }
             }
 
-            if (ext == ".exe" || ext == ".lnk")
+            if (flags.IsExeOrLnk != 0)
             {
                 result ??= TryGetShellFileIcon(filePath, small: false);
             }
@@ -288,9 +259,9 @@ internal static class FileIconProvider
     {
         lock (_evictLock)
         {
-            if (_iconCache.Count < MaxCacheSize) return;
+            if (vn_file_icon_provider_compute_evict_count(_iconCache.Count, MaxCacheSize, out int removeCount) != 0 || removeCount <= 0)
+                return;
 
-            int removeCount = Math.Max(1, MaxCacheSize / 4);
             var oldest = _iconCache
                 .OrderBy(kvp => kvp.Value.LastAccess)
                 .Take(removeCount)
@@ -304,12 +275,10 @@ internal static class FileIconProvider
 
     private static ImageSource? TryGetShellThumbnail(string filePath, int size)
     {
-        IShellItemImageFactory? factory = null;
         try
         {
-            SHCreateItemFromParsingName(filePath, IntPtr.Zero, _shellItemImageFactoryIid, out factory);
-            int hr = factory.GetImage(new NativeSize { cx = size, cy = size }, 0x01, out IntPtr hBitmap);
-            if (hr != 0 || hBitmap == IntPtr.Zero) return null;
+            IntPtr hBitmap = Win32Interop.GetShellThumbnailBitmap(filePath, size, Win32Interop.SIIGBF_BIGGERSIZEOK);
+            if (hBitmap == IntPtr.Zero) return null;
 
             try
             {
@@ -326,13 +295,6 @@ internal static class FileIconProvider
         catch (Exception)
         {
             return null;
-        }
-        finally
-        {
-            if (factory != null && Marshal.IsComObject(factory))
-            {
-                try { Marshal.ReleaseComObject(factory); } catch { }
-            }
         }
     }
 
@@ -378,15 +340,13 @@ internal static class FileIconProvider
     {
         try
         {
-            var shinfo = new ShFileInfo();
-            uint flags = SHGFI_ICON | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON);
+            uint flags = small ? SHGFI_SMALLICON : SHGFI_LARGEICON;
             // Extract the base image without the Shell's tiny shortcut overlay;
             // Spotlight draws its own larger vector arrow above the artwork.
-            if (Path.GetExtension(filePath).Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> lnkExtSpan = Path.GetExtension(filePath.AsSpan());
+            if (vn_file_icon_provider_classify_extension(lnkExtSpan, lnkExtSpan.Length, out var lnkFlags) == 0 && lnkFlags.IsLnk != 0)
             {
-                IntPtr imageList = SHGetFileInfo(filePath, 0, ref shinfo,
-                    ShFileInfoSize, SHGFI_SYSICONINDEX | (small ? SHGFI_SMALLICON : SHGFI_LARGEICON));
-                IntPtr baseIcon = imageList == IntPtr.Zero ? IntPtr.Zero : ImageList_GetIcon(imageList, shinfo.iIcon, 1);
+                IntPtr baseIcon = Win32Interop.GetShellBaseIcon(filePath, small);
                 if (baseIcon != IntPtr.Zero)
                 {
                     try
@@ -399,32 +359,22 @@ internal static class FileIconProvider
                     finally { DestroyIcon(baseIcon); }
                 }
             }
-            IntPtr res = SHGetFileInfo(
-                filePath,
-                0,
-                ref shinfo,
-                ShFileInfoSize,
-                flags);
+            IntPtr hIcon = Win32Interop.GetShellFileInfoIcon(filePath, 0, flags);
 
-            if (res == IntPtr.Zero || shinfo.hIcon == IntPtr.Zero)
+            if (hIcon == IntPtr.Zero)
             {
                 string ext = Path.GetExtension(filePath);
                 if (string.IsNullOrEmpty(ext)) return null;
 
-                SHGetFileInfo(
-                    ext,
-                    FILE_ATTRIBUTE_NORMAL,
-                    ref shinfo,
-                    ShFileInfoSize,
-                    flags | SHGFI_USEFILEATTRIBUTES);
+                hIcon = Win32Interop.GetShellFileInfoIcon(ext, FILE_ATTRIBUTE_NORMAL, flags | SHGFI_USEFILEATTRIBUTES);
             }
 
-            if (shinfo.hIcon == IntPtr.Zero) return null;
+            if (hIcon == IntPtr.Zero) return null;
 
             try
             {
                 var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
-                    shinfo.hIcon,
+                    hIcon,
                     Int32Rect.Empty,
                     BitmapSizeOptions.FromEmptyOptions());
                 source.Freeze();
@@ -432,7 +382,7 @@ internal static class FileIconProvider
             }
             finally
             {
-                DestroyIcon(shinfo.hIcon);
+                DestroyIcon(hIcon);
             }
         }
         catch (Exception)

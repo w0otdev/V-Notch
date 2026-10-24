@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Gedetecteerde geheimen worden altijd afgeschermd. Verwijdert opgeslagen items, ook vastgezette en gearchiveerde; het Windows-klembord wordt niet gewist. Wachtwoorden zonder label worden mogelijk niet herkend.",
   "settings.trayCaptureFiles": "Gekopieerde bestanden en mappen automatisch opslaan",
   "settings.trayCaptureDelay": "Opnamevertraging",
-  "settings.trayCaptureDelay.hint": "Wacht na het kopiëren 100 tot 2000 ms voordat het item wordt opgeslagen. Een langere wachttijd slaat items over die snel achter elkaar worden gekopieerd."
+  "settings.trayCaptureDelay.hint": "Wacht na het kopiëren 100 tot 2000 ms voordat het item wordt opgeslagen. Een langere wachttijd slaat items over die snel achter elkaar worden gekopieerd.",
+  "settings.cpp26Banner.title": "Overstap naar C++26",
+  "settings.cpp26Banner.message": "V-Notch stapt in een toekomstige update over op C++26. Lees de details op GitHub Discussions.",
+  "settings.cpp26Banner.details": "Details",
+  "settings.cpp26Banner.dismiss": "Sluiten"
 }

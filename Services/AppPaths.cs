@@ -1,10 +1,25 @@
+using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-internal static class AppPaths
+internal static partial class AppPaths
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_app_paths_is_reparse_point(
+        int attributes,
+        out byte outIsReparse);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_app_paths_is_directory(
+        int attributes,
+        out byte outIsDir);
+
     internal const string DirectoryName = "V-Notch";
     internal const string LegacyDirectoryName = "VNotch";
     internal static string LocalAppDataRoot => Path.Combine(
@@ -47,10 +62,10 @@ internal static class AppPaths
             {
                 // Never follow a junction or symbolic link out of either owned root.
                 var attributes = File.GetAttributes(entry);
-                if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
+                if (vn_app_paths_is_reparse_point((int)attributes, out byte isReparse) == 0 && isReparse != 0) continue;
                 string relative = Path.Combine(relativePath, Path.GetFileName(entry));
                 string target = Path.Combine(destination, Path.GetFileName(entry));
-                if ((attributes & FileAttributes.Directory) != 0)
+                if (vn_app_paths_is_directory((int)attributes, out byte isDir) == 0 && isDir != 0)
                     MoveDirectory(entry, target, canonicalRoot, relative);
                 else
                 {
@@ -82,7 +97,7 @@ internal static class AppPaths
         for (string? current = Path.GetFullPath(path); current != null; current = Path.GetDirectoryName(current))
         {
             if ((File.Exists(current) || Directory.Exists(current)) &&
-                (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                vn_app_paths_is_reparse_point((int)File.GetAttributes(current), out byte isRep) == 0 && isRep != 0)
                 throw new IOException("App data migration does not follow reparse points.");
         }
     }

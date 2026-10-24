@@ -1,15 +1,10 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
 public static class IconGenerator
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
-
     public static Icon CreateNotchIcon(int size = 16)
     {
         using var bitmap = new Bitmap(size, size);
@@ -48,7 +43,7 @@ public static class IconGenerator
         }
         finally
         {
-            DestroyIcon(hIcon);
+            Win32Interop.DestroyIcon(hIcon);
         }
     }
 }

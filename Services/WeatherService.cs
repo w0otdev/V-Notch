@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,8 +10,29 @@ using VNotch.Models;
 namespace VNotch.Services;
 
 #pragma warning disable S1075 // Public Weather and Geolocation API endpoints
-public sealed class WeatherService : IWeatherService, IDisposable
+public sealed partial class WeatherService : IWeatherService, IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_weather_service_clean_city(
+        ReadOnlySpan<char> cityPtr,
+        int cityLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen,
+        out byte outHasValue);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_weather_service_describe_code(
+        int code,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_weather_service_round_temperature(
+        double value,
+        out int outRounded);
+
     private const string LogCategory = "WEATHER";
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
@@ -116,16 +138,15 @@ public sealed class WeatherService : IWeatherService, IDisposable
     internal static string? CleanCity(string? city)
     {
         if (string.IsNullOrWhiteSpace(city)) return null;
+        ReadOnlySpan<char> inSpan = city.AsSpan();
         Span<char> buffer = city.Length <= 256
             ? stackalloc char[city.Length]
             : new char[city.Length];
-        int count = 0;
-        foreach (char c in city)
+        if (vn_weather_service_clean_city(inSpan, inSpan.Length, buffer, buffer.Length, out int outLen, out byte hasVal) == 0 && hasVal != 0)
         {
-            if (char.IsControl(c)) continue;
-            buffer[count++] = c;
+            return new string(buffer[..outLen]);
         }
-        return new string(buffer[..count].Trim());
+        return null;
     }
 
     private async Task<(double lat, double lon, string city)?> ResolveLocationAsync(string? manualCity, CancellationToken token)
@@ -290,28 +311,21 @@ public sealed class WeatherService : IWeatherService, IDisposable
         }
     }
 
-    public static string DescribeWeatherCode(int code) => code switch
+    public static string DescribeWeatherCode(int code)
     {
-        0 => "Clear",
-        1 => "Mainly clear",
-        2 => "Partly cloudy",
-        3 => "Cloudy",
-        45 or 48 => "Fog",
-        51 or 53 or 55 => "Drizzle",
-        56 or 57 => "Freezing drizzle",
-        61 or 63 or 65 => "Rain",
-        66 or 67 => "Freezing rain",
-        71 or 73 or 75 => "Snow",
-        77 => "Snow grains",
-        80 or 81 or 82 => "Rain showers",
-        85 or 86 => "Snow showers",
-        95 => "Thunderstorm",
-        96 or 99 => "Thunderstorm",
-        _ => "—"
-    };
+        Span<char> buf = stackalloc char[32];
+        if (vn_weather_service_describe_code(code, buf, buf.Length, out int len) == 0 && len > 0)
+        {
+            return new string(buf[..len]);
+        }
+        return "—";
+    }
 
-    private static int RoundTemperature(double value) =>
-        (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    private static int RoundTemperature(double value)
+    {
+        vn_weather_service_round_temperature(value, out int rounded);
+        return rounded;
+    }
 
     private static HttpClient CreateHttpClient()
     {

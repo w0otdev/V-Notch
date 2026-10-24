@@ -1,4 +1,3 @@
-using System.Reflection;
 using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Services;
@@ -22,8 +21,6 @@ public sealed class SystemMonitorSamplingTests
         // Measure the gap with the same clock rather than trusting Task.Delay granularity.
         await WaitForSamplingIntervalAsync(ct);
         module.Tick();
-        typeof(SystemMonitorModule).GetMethod("OnNetworkTopologyChanged", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(module, new object?[] { null, EventArgs.Empty });
         await WaitForSamplingIntervalAsync(ct);
         module.Tick();
         Assert.True(samples.Count >= 3);

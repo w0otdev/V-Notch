@@ -1,13 +1,28 @@
 using System.Net.Http;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 using static VNotch.Services.SpotifyHttpResponseReader;
 
 namespace VNotch.Services;
 
 internal enum SpotifyQuery { FindTracks, Canvas }
 
-internal sealed class SpotifyQueryMetadataProvider : IDisposable
+internal sealed partial class SpotifyQueryMetadataProvider : IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_query_meta_find_script_url(
+        ReadOnlySpan<char> htmlPtr,
+        int htmlLen,
+        byte preferMobile,
+        out byte outFound,
+        out int outStart,
+        out int outLen);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_query_meta_contains_not_found(
+        ReadOnlySpan<char> jsonPtr,
+        int jsonLen,
+        out byte outContains);
+
     private const string LogCategory = "SPOTIFY-CANVAS";
     private const int MaxWebPlayerScriptBytes = 8 * 1024 * 1024;
     private const int MaxCachedScripts = 4;
@@ -18,12 +33,6 @@ internal sealed class SpotifyQueryMetadataProvider : IDisposable
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36";
     private static readonly Uri SpotifyWebUri = new("https://open.spotify.com/");
-    private static readonly Regex MobileScriptPattern = new(
-        "https://open\\.spotifycdn\\.com/cdn/build/mobile-web-player/mobile-web-player\\.[a-f0-9]+\\.(?:js|mjs)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex DesktopScriptPattern = new(
-        "https://open\\.spotifycdn\\.com/cdn/build/web-player/web-player\\.[a-f0-9]+\\.(?:js|mjs)",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -52,12 +61,10 @@ internal sealed class SpotifyQueryMetadataProvider : IDisposable
             if (html == null)
                 return null;
 
-            Regex preferred = query == SpotifyQuery.FindTracks ? MobileScriptPattern : DesktopScriptPattern;
-            Regex alternate = query == SpotifyQuery.FindTracks ? DesktopScriptPattern : MobileScriptPattern;
-            Match match = preferred.Match(html);
-            if (!match.Success)
-                match = alternate.Match(html);
-            if (!match.Success || !Uri.TryCreate(match.Value, UriKind.Absolute, out var scriptUri) ||
+            byte preferMobile = query == SpotifyQuery.FindTracks ? (byte)1 : (byte)0;
+            if (vn_spotify_query_meta_find_script_url(html.AsSpan(), html.Length, preferMobile, out byte found, out int start, out int len) != 0 ||
+                found == 0 ||
+                !Uri.TryCreate(html.Substring(start, len), UriKind.Absolute, out var scriptUri) ||
                 scriptUri.Scheme != Uri.UriSchemeHttps ||
                 !scriptUri.Host.Equals("open.spotifycdn.com", StringComparison.OrdinalIgnoreCase))
             {
@@ -110,7 +117,9 @@ internal sealed class SpotifyQueryMetadataProvider : IDisposable
     }
 
     internal static bool ContainsPersistedQueryNotFound(string json) =>
-        json.Contains("PersistedQueryNotFound", StringComparison.OrdinalIgnoreCase);
+        json != null &&
+        vn_spotify_query_meta_contains_not_found(json.AsSpan(), json.Length, out byte contains) == 0 &&
+        contains != 0;
 
     public void Dispose() => _refreshLock.Dispose();
 }

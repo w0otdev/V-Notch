@@ -1,25 +1,69 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using VNotch.Contracts;
 using VNotch.Services;
 
 namespace VNotch.Modules;
 
-public abstract class NotchModuleBase : INotchModule
+/// <summary>
+/// Module host. The initialize/start/stop/tick/dispose transition rules are the native lifecycle
+/// state machine (Native/Modules/ModuleLifecycle.cpp); this class wires the UI timer and hooks.
+/// </summary>
+public abstract partial class NotchModuleBase : INotchModule
 {
+    private const string LifecycleDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnModuleLifecycle
+    {
+        public byte Initialized;
+        public byte Running;
+        public byte Disposed;
+    }
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_begin_initialize")]
+    private static partial int NativeBeginInitialize(ref VnModuleLifecycle state, out byte proceed);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_complete_initialize")]
+    private static partial int NativeCompleteInitialize(ref VnModuleLifecycle state);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_plan_start")]
+    private static partial int NativePlanStart(ref VnModuleLifecycle state, out byte needsInitialize, out byte proceed);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_commit_start")]
+    private static partial int NativeCommitStart(ref VnModuleLifecycle state);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_fail_start")]
+    private static partial int NativeFailStart(ref VnModuleLifecycle state);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_begin_stop")]
+    private static partial int NativeBeginStop(ref VnModuleLifecycle state, out byte proceed);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_complete_stop")]
+    private static partial int NativeCompleteStop(ref VnModuleLifecycle state);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_can_tick")]
+    private static partial int NativeCanTick(ref VnModuleLifecycle state, out byte canTick);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_begin_dispose")]
+    private static partial int NativeBeginDispose(ref VnModuleLifecycle state, out byte proceed);
+
+    [LibraryImport(LifecycleDll, EntryPoint = "vn_module_complete_dispose")]
+    private static partial int NativeCompleteDispose(ref VnModuleLifecycle state);
+
     private UiScheduledTimer? _timer;
-    private bool _initialized;
-    private bool _disposed;
+    private VnModuleLifecycle _state;
 
     public abstract string ModuleName { get; }
 
     public abstract TimeSpan? TickInterval { get; }
 
-    public bool IsRunning { get; private set; }
+    public bool IsRunning => _state.Running != 0;
 
     public void Initialize()
     {
-        if (_initialized || _disposed) return;
+        if (NativeBeginInitialize(ref _state, out byte proceed) != 0 || proceed == 0) return;
 
         try
         {
@@ -34,7 +78,7 @@ public abstract class NotchModuleBase : INotchModule
                 _timer.Tick += TimerOnTick;
             }
 
-            _initialized = true;
+            NativeCompleteInitialize(ref _state);
         }
         catch (Exception ex)
         {
@@ -44,11 +88,11 @@ public abstract class NotchModuleBase : INotchModule
 
     public void Start()
     {
-        if (_disposed) return;
-        if (!_initialized) Initialize();
-        if (IsRunning) return;
+        if (NativePlanStart(ref _state, out byte needsInitialize, out byte proceed) != 0) return;
+        if (needsInitialize != 0) Initialize();
+        if (proceed == 0) return;
 
-        IsRunning = true;
+        NativeCommitStart(ref _state);
         try
         {
             OnStart();
@@ -61,7 +105,7 @@ public abstract class NotchModuleBase : INotchModule
         }
         catch (Exception ex)
         {
-            IsRunning = false;
+            NativeFailStart(ref _state);
             try { OnStop(); } catch { }
             RuntimeLog.Log($"MODULE-{ModuleName}", $"Start failed: {ex}");
         }
@@ -69,7 +113,7 @@ public abstract class NotchModuleBase : INotchModule
 
     public void Stop()
     {
-        if (!IsRunning) return;
+        if (NativeBeginStop(ref _state, out byte proceed) != 0 || proceed == 0) return;
 
         try
         {
@@ -82,13 +126,13 @@ public abstract class NotchModuleBase : INotchModule
         }
         finally
         {
-            IsRunning = false;
+            NativeCompleteStop(ref _state);
         }
     }
 
     public void Tick()
     {
-        if (!IsRunning || _disposed) return;
+        if (NativeCanTick(ref _state, out byte canTick) != 0 || canTick == 0) return;
         TickSafe();
     }
 
@@ -108,7 +152,7 @@ public abstract class NotchModuleBase : INotchModule
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (NativeBeginDispose(ref _state, out byte proceed) != 0 || proceed == 0) return;
 
         try
         {
@@ -129,7 +173,7 @@ public abstract class NotchModuleBase : INotchModule
         }
         finally
         {
-            _disposed = true;
+            NativeCompleteDispose(ref _state);
             GC.SuppressFinalize(this);
         }
     }

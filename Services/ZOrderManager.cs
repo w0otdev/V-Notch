@@ -1,10 +1,35 @@
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services;
 
-public sealed class ZOrderManager : IDisposable
+public sealed partial class ZOrderManager : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_zorder_manager_should_throttle_assert(
+        byte force,
+        long nowTick,
+        long lastTick,
+        long throttleMs,
+        out byte outThrottle);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_zorder_manager_compute_burst_delays(
+        long durationMs,
+        byte aggressive,
+        out long outFirstDelayMs,
+        out long outRemainingMs);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_zorder_manager_should_process_foreground(
+        uint eventType,
+        long hwnd,
+        long selfHwnd,
+        out byte outProcess);
+
     private static IntPtr _currentForegroundWindow;
     private static int _activeForegroundHooks;
 
@@ -19,8 +44,7 @@ public sealed class ZOrderManager : IDisposable
 
     private readonly Dispatcher _dispatcher;
 
-    private IntPtr _foregroundWinEventHook = IntPtr.Zero;
-    private WinEventDelegate? _foregroundWinEventProc;
+    private WinEventHook? _foregroundHook;
     private IntPtr _pendingForegroundWindow;
     private int _foregroundDispatchQueued;
 
@@ -77,7 +101,7 @@ public sealed class ZOrderManager : IDisposable
 
         long nowTick = Environment.TickCount64;
         long lastTick = Interlocked.Read(ref _lastTopmostAssertTick);
-        if (!force && lastTick != long.MinValue && (nowTick - lastTick) < TopmostThrottleMs)
+        if (vn_zorder_manager_should_throttle_assert(force ? (byte)1 : (byte)0, nowTick, lastTick, TopmostThrottleMs, out byte throttle) == 0 && throttle != 0)
             return;
 
         if (force || Win32Interop.GetWindow(hwnd, GW_HWNDPREV) != IntPtr.Zero)
@@ -88,18 +112,11 @@ public sealed class ZOrderManager : IDisposable
         }
     }
 
-    private void ForegroundWindowChanged(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint idEventThread,
-        uint dwmsEventTime)
+    private void ForegroundWindowChanged(uint eventType, IntPtr hwnd)
     {
         if (eventType == EVENT_SYSTEM_FOREGROUND)
             Interlocked.Exchange(ref _currentForegroundWindow, hwnd);
-        if (eventType != EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero || hwnd == _getHwnd())
+        if (vn_zorder_manager_should_process_foreground(eventType, hwnd.ToInt64(), _getHwnd().ToInt64(), out byte shouldProcess) == 0 && shouldProcess == 0)
             return;
 
         var dispatcher = _dispatcher;
@@ -121,16 +138,15 @@ public sealed class ZOrderManager : IDisposable
     {
         try
         {
-            TimeSpan firstDelay = aggressive && duration > TimeSpan.FromMilliseconds(250)
-                ? TimeSpan.FromMilliseconds(250)
-                : duration;
+            long durationMs = (long)duration.TotalMilliseconds;
+            _ = vn_zorder_manager_compute_burst_delays(durationMs, aggressive ? (byte)1 : (byte)0, out long firstMs, out long remMs);
+            TimeSpan firstDelay = TimeSpan.FromMilliseconds(firstMs);
             await Task.Delay(firstDelay, cancellationToken).ConfigureAwait(false);
             await ReassertOnDispatcherAsync(cancellationToken).ConfigureAwait(false);
 
-            TimeSpan remaining = duration - firstDelay;
-            if (remaining > TimeSpan.Zero)
+            if (remMs > 0)
             {
-                await Task.Delay(remaining, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(remMs), cancellationToken).ConfigureAwait(false);
                 await ReassertOnDispatcherAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -162,15 +178,12 @@ public sealed class ZOrderManager : IDisposable
     public void Start()
     {
         if (_disposed) return;
-        if (_foregroundWinEventHook == IntPtr.Zero)
+        if (_foregroundHook == null)
         {
-            _foregroundWinEventProc = ForegroundWindowChanged;
-            _foregroundWinEventHook = SetWinEventHook(
-                EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
-                IntPtr.Zero, _foregroundWinEventProc,
-                0, 0, WINEVENT_OUTOFCONTEXT);
-            if (_foregroundWinEventHook != IntPtr.Zero)
+            var hook = new WinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, ForegroundWindowChanged);
+            if (hook.Install())
             {
+                _foregroundHook = hook;
                 Interlocked.Exchange(ref _currentForegroundWindow, GetForegroundWindow());
                 Interlocked.Increment(ref _activeForegroundHooks);
             }
@@ -184,13 +197,13 @@ public sealed class ZOrderManager : IDisposable
         cancellation?.Cancel();
         cancellation?.Dispose();
 
-        if (_foregroundWinEventHook != IntPtr.Zero)
+        var foregroundHook = _foregroundHook;
+        if (foregroundHook != null)
         {
-            UnhookWinEvent(_foregroundWinEventHook);
-            _foregroundWinEventHook = IntPtr.Zero;
+            _foregroundHook = null;
+            foregroundHook.Dispose();
             Interlocked.Decrement(ref _activeForegroundHooks);
         }
-        _foregroundWinEventProc = null;
     }
 
     public void AssertNow()

@@ -1,9 +1,43 @@
+using System;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services;
 
-internal static class SpotifyJson
+internal static partial class SpotifyJson
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_spotify_json_is_depth_within_limit(
+        int depth,
+        out byte outWithinLimit);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_json_matches_property_icase(
+        ReadOnlySpan<char> propName,
+        int propLen,
+        ReadOnlySpan<char> targetName,
+        int targetLen,
+        out byte outMatches);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_json_is_non_whitespace(
+        ReadOnlySpan<char> value,
+        int valueLen,
+        out byte outNonWs);
+
+    private static bool IsDepthValid(int depth) =>
+        vn_spotify_json_is_depth_within_limit(depth, out byte within) == 0 ? within != 0 : depth <= 16;
+
+    private static bool MatchesNameIgnoreCase(string propName, string targetName) =>
+        vn_spotify_json_matches_property_icase(propName.AsSpan(), propName.Length, targetName.AsSpan(), targetName.Length, out byte m) == 0
+            ? m != 0
+            : propName.Equals(targetName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasNonWhitespace(string? s) =>
+        s is not null && vn_spotify_json_is_non_whitespace(s.AsSpan(), s.Length, out byte nonWs) == 0 && nonWs != 0;
+
     internal static string? GetDirectString(JsonElement element, params string[] names)
     {
         foreach (string name in names)
@@ -16,7 +50,7 @@ internal static class SpotifyJson
 
     internal static string? FindStringProperty(JsonElement element, string name, int depth)
     {
-        if (depth > 16)
+        if (!IsDepthValid(depth))
             return null;
 
         return element.ValueKind switch
@@ -42,14 +76,14 @@ internal static class SpotifyJson
         foreach (var property in element.EnumerateObject())
         {
             if (property.Value.ValueKind == JsonValueKind.String &&
-                property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                MatchesNameIgnoreCase(property.Name, name))
                 return property.Value.GetString();
         }
 
         foreach (var property in element.EnumerateObject())
         {
             string? nested = FindStringProperty(property.Value, name, depth + 1);
-            if (!string.IsNullOrWhiteSpace(nested))
+            if (HasNonWhitespace(nested))
                 return nested;
         }
 
@@ -61,7 +95,7 @@ internal static class SpotifyJson
         foreach (var item in element.EnumerateArray())
         {
             string? nested = FindStringProperty(item, name, depth + 1);
-            if (!string.IsNullOrWhiteSpace(nested))
+            if (HasNonWhitespace(nested))
                 return nested;
         }
 
@@ -70,7 +104,7 @@ internal static class SpotifyJson
 
     internal static double? FindNumberProperty(JsonElement element, string name, int depth)
     {
-        if (depth > 16)
+        if (!IsDepthValid(depth))
             return null;
 
         return element.ValueKind switch
@@ -96,7 +130,7 @@ internal static class SpotifyJson
         foreach (var property in element.EnumerateObject())
         {
             if (property.Value.ValueKind == JsonValueKind.Number &&
-                property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                MatchesNameIgnoreCase(property.Name, name) &&
                 property.Value.TryGetDouble(out double value))
                 return value;
         }
@@ -140,7 +174,7 @@ internal static class SpotifyJson
             while (enumerator.MoveNext())
             {
                 var property = enumerator.Current;
-                if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                if (MatchesNameIgnoreCase(property.Name, name))
                 {
                     value = property.Value;
                     return true;

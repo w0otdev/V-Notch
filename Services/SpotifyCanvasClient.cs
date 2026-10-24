@@ -1,8 +1,12 @@
+using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using static VNotch.Services.SpotifyCanvasProtocol;
 using static VNotch.Services.SpotifyHttpResponseReader;
 using static VNotch.Services.SpotifyJson;
@@ -10,8 +14,22 @@ using static VNotch.Services.SpotifyQueryMetadataProvider;
 
 namespace VNotch.Services;
 
-internal sealed class SpotifyCanvasClient
+internal sealed partial class SpotifyCanvasClient
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_spotify_canvas_client_is_metadata_rejected_status(
+        int statusCode,
+        out byte outRejected);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_spotify_canvas_client_should_refresh_metadata(
+        byte queryMetadataRejected,
+        byte hasJson,
+        byte persistedQueryNotFound,
+        out byte outRefresh);
+
     private const string LogCategory = "SPOTIFY-CANVAS";
     private const string JsonContentType = "application/json";
     private static readonly Uri CanvasPathfinderUri = new("https://api-partner.spotify.com/pathfinder/v1/query");
@@ -46,8 +64,14 @@ internal sealed class SpotifyCanvasClient
                 trackId, accessToken, hash, token)
             .ConfigureAwait(false);
 
-        if (queryResult.QueryMetadataRejected ||
-            (queryResult.Json != null && ContainsPersistedQueryNotFound(queryResult.Json)))
+        bool notFound = queryResult.Json != null && ContainsPersistedQueryNotFound(queryResult.Json);
+        bool shouldRefresh = vn_spotify_canvas_client_should_refresh_metadata(
+            queryResult.QueryMetadataRejected ? (byte)1 : (byte)0,
+            queryResult.Json != null ? (byte)1 : (byte)0,
+            notFound ? (byte)1 : (byte)0,
+            out byte outRefresh) == 0 && outRefresh != 0;
+
+        if (shouldRefresh)
         {
             string? refreshedHash = await _metadata.RefreshAsync(SpotifyQuery.Canvas, hash, token).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(refreshedHash))
@@ -96,8 +120,9 @@ internal sealed class SpotifyCanvasClient
 
         using var response = await _http.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        bool queryMetadataRejected = response.StatusCode is HttpStatusCode.BadRequest or
-            HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed;
+        bool queryMetadataRejected = vn_spotify_canvas_client_is_metadata_rejected_status((int)response.StatusCode, out byte outRejected) == 0
+            ? outRejected != 0
+            : response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed;
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Debug(LogCategory, () =>

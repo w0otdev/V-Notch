@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media.Imaging;
@@ -10,6 +11,29 @@ namespace VNotch.Services.Clipboard;
 
 internal static partial class ClipboardDropReader
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_drop_extract_download_url_image(
+        ReadOnlySpan<char> downloadPtr,
+        int downloadLen,
+        out byte outFound,
+        out int outStartIndex);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_drop_validate_data_uri_image(
+        ReadOnlySpan<char> uriPtr,
+        int uriLen,
+        int maxImageBytes,
+        out byte outValid,
+        out int outCommaIndex);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_drop_strip_html_fragment_tags(
+        ReadOnlySpan<char> htmlPtr,
+        int htmlLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
     internal sealed record Payload(ClipboardCapture Capture, Uri? ImageUrl = null)
     {
         internal ClipboardKind Kind => ImageUrl != null ? ClipboardKind.Image : ClipboardClassifier.Detect(Capture);
@@ -19,7 +43,7 @@ internal static partial class ClipboardDropReader
 
     internal static HttpClient CreateClient(HttpMessageHandler? transport = null, NetworkPrivacy? privacy = null) =>
         new(new NetworkPrivacy.PrivacyHandler(privacy ?? NetworkPrivacy.Current, NetworkFeature.Artwork,
-            transport ?? new HttpClientHandler()))
+            transport ?? new NativeWinHttpHandler()))
         { Timeout = TimeSpan.FromSeconds(20) };
 
     internal static bool Supports(IDataObject data)
@@ -55,9 +79,8 @@ internal static partial class ClipboardDropReader
         string? image = null;
         if (ReadText(data, "DownloadURL") is string download)
         {
-            int first = download.IndexOf(':');
-            int second = first < 0 ? -1 : download.IndexOf(':', first + 1);
-            if (second > first && download.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) image = download[(second + 1)..];
+            if (vn_clipboard_drop_extract_download_url_image(download.AsSpan(), download.Length, out byte found, out int startIdx) == 0 && found != 0)
+                image = download[startIdx..];
         }
         if (image == null && (string.IsNullOrWhiteSpace(text) || Uri.TryCreate(text.Trim(), UriKind.Absolute, out _)))
         {
@@ -77,10 +100,9 @@ internal static partial class ClipboardDropReader
         if (string.IsNullOrWhiteSpace(text)) text = ReadText(data, "text/uri-list") ?? "";
         if (string.IsNullOrWhiteSpace(text) && html.Length > 0)
         {
-            int start = html.IndexOf("<!--StartFragment-->", StringComparison.Ordinal);
-            int end = html.IndexOf("<!--EndFragment-->", StringComparison.Ordinal);
-            string fragment = start >= 0 && end > start ? html[(start + 20)..end] : html;
-            text = WebUtility.HtmlDecode(Regex.Replace(fragment, "<[^>]+>", " ")).Trim();
+            char[] buf = new char[html.Length];
+            if (vn_clipboard_drop_strip_html_fragment_tags(html.AsSpan(), html.Length, buf, buf.Length, out int strippedLen) == 0)
+                text = WebUtility.HtmlDecode(new string(buf, 0, strippedLen)).Trim();
         }
         return string.IsNullOrWhiteSpace(text) ? null : new(capture with { Text = text });
     }
@@ -96,9 +118,7 @@ internal static partial class ClipboardDropReader
         if (uri.Scheme == "data")
         {
             string value = uri.OriginalString;
-            int comma = value.IndexOf(',');
-            if (comma < 0 || !value[..comma].StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) ||
-                !value[..comma].EndsWith(";base64", StringComparison.OrdinalIgnoreCase) || value.Length - comma > MaxImageBytes * 4 / 3 + 4)
+            if (vn_clipboard_drop_validate_data_uri_image(value.AsSpan(), value.Length, MaxImageBytes, out byte valid, out int comma) != 0 || valid == 0)
                 throw new InvalidDataException("Unsupported image data.");
             bytes = Convert.FromBase64String(value[(comma + 1)..]);
         }

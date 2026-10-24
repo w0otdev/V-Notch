@@ -1,18 +1,34 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
 // Launch targets are fixed here; search text and saved history never become commands.
-internal static class SpotlightSystemCatalog
+internal static partial class SpotlightSystemCatalog
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_system_catalog_extract_fallback_len(
+        ReadOnlySpan<char> keywordsPtr,
+        int keywordsLen,
+        out int outLen);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_system_catalog_should_use_fallback(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        ReadOnlySpan<char> keyPtr,
+        int keyLen,
+        out byte outUseFallback);
+
     internal sealed record Entry(string Key, SpotlightResultKind Kind, string Target,
         string Glyph, string Keywords, bool RequiresConfirmation = false)
     {
         public SpotlightSearchItem CreateItem()
         {
-            int sep = Keywords.IndexOf(';');
-            string fallback = sep >= 0 ? Keywords[..sep] : Keywords;
+            ReadOnlySpan<char> kwSpan = Keywords.AsSpan();
+            vn_spotlight_system_catalog_extract_fallback_len(kwSpan, kwSpan.Length, out int len);
+            string fallback = len < Keywords.Length ? Keywords[..len] : Keywords;
             return new($"system:{Key}", Kind,
                 GetLabel($"spotlight.system.{Key}", fallback), Kind switch
                 {
@@ -75,8 +91,11 @@ internal static class SpotlightSystemCatalog
 
     private static string GetLabel(string key, string fallback)
     {
-        string text = Loc.Get(key);
-        return string.IsNullOrWhiteSpace(text) || text == key ? fallback : text;
+        string text = Loc.Get(key) ?? string.Empty;
+        ReadOnlySpan<char> tSpan = text.AsSpan();
+        ReadOnlySpan<char> kSpan = key.AsSpan();
+        vn_spotlight_system_catalog_should_use_fallback(tSpan, tSpan.Length, kSpan, kSpan.Length, out byte useFallback);
+        return useFallback != 0 ? fallback : text;
     }
 
     internal static bool IsKnownTarget(SpotlightSearchItem item) => Find(item.Target)?.Kind == item.Kind;

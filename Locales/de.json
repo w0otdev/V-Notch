@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Erkannte Geheimnisse werden immer maskiert. Löscht gespeicherte Einträge, auch angeheftete und archivierte; die Windows-Zwischenablage bleibt unverändert. Unbeschriftete Passwörter werden möglicherweise nicht erkannt.",
   "settings.trayCaptureFiles": "Kopierte Dateien und Ordner automatisch speichern",
   "settings.trayCaptureDelay": "Erfassungsverzögerung",
-  "settings.trayCaptureDelay.hint": "Wartet nach dem Kopieren 100 bis 2000 ms vor dem Speichern. Eine längere Wartezeit überspringt Inhalte, die kurz hintereinander kopiert werden."
+  "settings.trayCaptureDelay.hint": "Wartet nach dem Kopieren 100 bis 2000 ms vor dem Speichern. Eine längere Wartezeit überspringt Inhalte, die kurz hintereinander kopiert werden.",
+  "settings.cpp26Banner.title": "Wechsel zu C++26",
+  "settings.cpp26Banner.message": "V-Notch wird in einem zukünftigen Update auf C++26 umgestellt. Details finden Sie in den GitHub Discussions.",
+  "settings.cpp26Banner.details": "Details",
+  "settings.cpp26Banner.dismiss": "Schließen"
 }

@@ -1,14 +1,35 @@
 using System.Buffers.Binary;
 using System.Buffers.Text;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text.Json;
 using VNotch.Models;
 
 namespace VNotch.Services.Clipboard;
-internal sealed class ClipboardVault : IDisposable
+internal sealed partial class ClipboardVault : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_vault_compute_lockout_backoff_seconds(
+        int failedAttempts,
+        out double outSeconds);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_vault_classify_pepper_prefix(
+        ReadOnlySpan<char> pepper,
+        int pepperLen,
+        out int outPrefixType);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_vault_validate_encrypted_attachment_length(
+        long plainLength,
+        long streamLength,
+        int chunkSize,
+        out byte outValid);
+
     private const int Iterations = 600_000;
     private const int ChunkSize = 1024 * 1024;
     private const int TagSize = 16;
@@ -91,7 +112,8 @@ internal sealed class ClipboardVault : IDisposable
         catch (Exception ex) when (ex is CryptographicException or JsonException or FormatException)
         {
             _failedAttempts++;
-            _retryAfterUtc = _utcNow().AddSeconds(Math.Min(60, Math.Pow(2, Math.Min(6, _failedAttempts - 1))));
+            _ = vn_clipboard_vault_compute_lockout_backoff_seconds(_failedAttempts, out double backoffSec);
+            _retryAfterUtc = _utcNow().AddSeconds(backoffSec);
             return new(ClipboardUnlockStatus.InvalidPin, _retryAfterUtc);
         }
         finally { if (candidate != null) CryptographicOperations.ZeroMemory(candidate); }
@@ -117,9 +139,10 @@ internal sealed class ClipboardVault : IDisposable
     /// </summary>
     private static byte[] DecodePepper(string pepper)
     {
-        if (pepper.StartsWith("enc:", StringComparison.Ordinal))
+        _ = vn_clipboard_vault_classify_pepper_prefix(pepper.AsSpan(), pepper.Length, out int prefixType);
+        if (prefixType == 1)
             return ProtectedData.Unprotect(Convert.FromBase64String(pepper[4..]), null, DataProtectionScope.CurrentUser);
-        if (pepper.StartsWith("raw:", StringComparison.Ordinal))
+        if (prefixType == 2)
             return Convert.FromBase64String(pepper[4..]);
         throw new CryptographicException("Unrecognised pepper format. Expected 'enc:' or 'raw:' prefix.");
     }
@@ -275,7 +298,7 @@ internal sealed class ClipboardVault : IDisposable
             input.ReadExactly(header);
             if (!header[..4].SequenceEqual("VNC1"u8)) throw new CryptographicException("Invalid encrypted attachment.");
             length = BinaryPrimitives.ReadInt64LittleEndian(header[8..]);
-            if (length < 0 || length > input.Length || input.Length != 16 + length + Math.Max(1, (length + ChunkSize - 1) / ChunkSize) * 28)
+            if (vn_clipboard_vault_validate_encrypted_attachment_length(length, input.Length, ChunkSize, out byte validLen) != 0 || validLen == 0)
                 throw new CryptographicException("Invalid encrypted attachment length.");
         }
         Span<byte> associated = stackalloc byte[24];

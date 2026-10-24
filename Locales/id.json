@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Rahasia yang terdeteksi selalu disamarkan. Menghapus item tersimpan, termasuk yang disematkan dan diarsipkan; tidak mengosongkan papan klip Windows. Kata sandi tanpa label mungkin tidak terdeteksi.",
   "settings.trayCaptureFiles": "Simpan berkas dan folder yang disalin secara otomatis",
   "settings.trayCaptureDelay": "Jeda perekaman",
-  "settings.trayCaptureDelay.hint": "Tunggu 100 hingga 2000 ms setelah menyalin sebelum menyimpan. Jeda yang lebih lama melewati item yang disalin dengan cepat secara berurutan."
+  "settings.trayCaptureDelay.hint": "Tunggu 100 hingga 2000 ms setelah menyalin sebelum menyimpan. Jeda yang lebih lama melewati item yang disalin dengan cepat secara berurutan.",
+  "settings.cpp26Banner.title": "Beralih ke C++26",
+  "settings.cpp26Banner.message": "V-Notch akan beralih ke C++26 pada pembaruan mendatang. Baca detailnya di GitHub Discussions.",
+  "settings.cpp26Banner.details": "Detail",
+  "settings.cpp26Banner.dismiss": "Tutup"
 }

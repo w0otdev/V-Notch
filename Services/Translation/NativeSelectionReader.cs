@@ -1,11 +1,48 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using static VNotch.Services.Win32Interop;
+using NativePoint = VNotch.Services.Win32Interop.POINT;
 
 namespace VNotch.Services.Translation;
 
-internal static class NativeSelectionReader
+internal static partial class NativeSelectionReader
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_native_selection_is_edit(
+        ReadOnlySpan<char> name,
+        int nameLen,
+        out byte outRes);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_native_selection_is_scintilla(
+        ReadOnlySpan<char> name,
+        int nameLen,
+        out byte outRes);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_native_selection_is_combobox(
+        ReadOnlySpan<char> name,
+        int nameLen,
+        out byte outRes);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_native_selection_is_listbox(
+        ReadOnlySpan<char> name,
+        int nameLen,
+        out byte outRes);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_native_selection_resolve_range(
+        int rawStart,
+        int rawEnd,
+        long packedSelection,
+        out int outStart,
+        out int outEnd,
+        out byte outValid);
+
     private const uint EmGetSel = 0x00B0;
     private const uint CbGetEditSel = 0x0140;
     private const uint CbGetCurSel = 0x0147;
@@ -29,9 +66,7 @@ internal static class NativeSelectionReader
 
     internal static IntPtr FocusedControl(IntPtr window)
     {
-        uint thread = GetWindowThreadProcessId(window, out _);
-        var info = new GuiThreadInfo { Size = Marshal.SizeOf<GuiThreadInfo>() };
-        return thread != 0 && GetGUIThreadInfo(thread, ref info) ? info.Focus : IntPtr.Zero;
+        return GetFocusedControl(window);
     }
 
     internal static string ClassName(IntPtr handle)
@@ -52,35 +87,16 @@ internal static class NativeSelectionReader
     }
 
     internal static bool IsEdit(string name) =>
-        name.Equals("Edit", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("RICHEDIT", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("WindowsForms10.EDIT.", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("WindowsForms10.RichEdit", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains(".EDIT.", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains("RichEdit", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("TEdit", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("TMemo", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("TRichEdit", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("TSynEdit", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("ThunderRT6TextBox", StringComparison.OrdinalIgnoreCase);
+        name != null && vn_native_selection_is_edit(name.AsSpan(), name.Length, out byte res) == 0 && res != 0;
 
     internal static bool IsScintilla(string name) =>
-        name.Equals("Scintilla", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains("Scintilla", StringComparison.OrdinalIgnoreCase);
+        name != null && vn_native_selection_is_scintilla(name.AsSpan(), name.Length, out byte res) == 0 && res != 0;
 
     internal static bool IsComboBox(string name) =>
-        name.Equals("ComboBox", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("ComboBoxEx32", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("WindowsForms10.COMBOBOX.", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains(".COMBOBOX.", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("TComboBox", StringComparison.OrdinalIgnoreCase);
+        name != null && vn_native_selection_is_combobox(name.AsSpan(), name.Length, out byte res) == 0 && res != 0;
 
     internal static bool IsListBox(string name) =>
-        name.Equals("ListBox", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("WindowsForms10.LISTBOX.", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains(".LISTBOX.", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("TListBox", StringComparison.OrdinalIgnoreCase);
+        name != null && vn_native_selection_is_listbox(name.AsSpan(), name.Length, out byte res) == 0 && res != 0;
 
     private static bool IsEditOrCombo(string name) => IsEdit(name) || IsComboBox(name);
     private static bool IsSupportedNativeControl(string name) => IsEdit(name) || IsComboBox(name) || IsListBox(name) || IsScintilla(name);
@@ -155,14 +171,8 @@ internal static class NativeSelectionReader
         if (SendMessageSelectionTimeout(control, selMsg, out int start, out int end, 2, 100, out var selection) == IntPtr.Zero)
             return isCombo ? ReadComboBoxSelectedItem(control) : null;
 
-        if (end <= start || start < 0)
-        {
-            uint packed = unchecked((uint)selection.ToInt64());
-            if (packed == uint.MaxValue) return isCombo ? ReadComboBoxSelectedItem(control) : null;
-            start = (int)(packed & 0xffff);
-            end = (int)(packed >> 16);
-        }
-        if (end <= start || start < 0) return isCombo ? ReadComboBoxSelectedItem(control) : null;
+        if (vn_native_selection_resolve_range(start, end, selection.ToInt64(), out start, out end, out byte validRange) != 0 || validRange == 0)
+            return isCombo ? ReadComboBoxSelectedItem(control) : null;
 
         bool isRichEdit = className.Contains("RichEdit", StringComparison.OrdinalIgnoreCase);
         int selectionLength = end - start;
@@ -173,7 +183,7 @@ internal static class NativeSelectionReader
             if (controlPid == Environment.ProcessId)
             {
                 var selBuf = new StringBuilder(selectionLength + 4);
-                if (GetTextTimeout(control, EmGetSelText, IntPtr.Zero, selBuf, 2, 100, out var copied) != IntPtr.Zero && copied != IntPtr.Zero)
+                if (SendMessageTextTimeout(control, EmGetSelText, IntPtr.Zero, selBuf, 2, 100, out var copied) != IntPtr.Zero && copied != IntPtr.Zero)
                 {
                     string direct = selBuf.ToString();
                     if (!string.IsNullOrWhiteSpace(direct))
@@ -188,7 +198,7 @@ internal static class NativeSelectionReader
 
         int bufferCapacity = isRichEdit ? Math.Min(65536, capturedEnd * 2 + 64) : capturedEnd + 1;
         var buffer = new StringBuilder(bufferCapacity);
-        if (GetTextTimeout(control, WmGetText, new IntPtr(buffer.Capacity), buffer, 2, 100, out _) == IntPtr.Zero) return null;
+        if (SendMessageTextTimeout(control, WmGetText, new IntPtr(buffer.Capacity), buffer, 2, 100, out _) == IntPtr.Zero) return null;
         if (SendMessageSelectionTimeout(control, selMsg, out int afterStart, out int afterEnd, 2, 100, out var after) == IntPtr.Zero) return null;
         if (after != selection && (afterStart != start || afterEnd != end)) return null;
 
@@ -244,7 +254,7 @@ internal static class NativeSelectionReader
         int len = (int)lenResult.ToInt64();
         if (len <= 0 || len > TranslationInput.MaxCharacters + 256) return null;
         var buffer = new StringBuilder(len + 2);
-        if (GetTextTimeout(control, CbGetLbText, new IntPtr(index), buffer, 2, 100, out _) == IntPtr.Zero) return null;
+        if (SendMessageTextTimeout(control, CbGetLbText, new IntPtr(index), buffer, 2, 100, out _) == IntPtr.Zero) return null;
         return SelectionTextReader.JoinSelection([buffer.ToString()]);
     }
 
@@ -284,7 +294,7 @@ internal static class NativeSelectionReader
         int len = (int)lenRes.ToInt64();
         if (len <= 0 || len > TranslationInput.MaxCharacters + 256) return null;
         var buffer = new StringBuilder(len + 2);
-        return GetTextTimeout(control, LbGetText, new IntPtr(index), buffer, 2, 100, out _) != IntPtr.Zero ? buffer.ToString() : null;
+        return SendMessageTextTimeout(control, LbGetText, new IntPtr(index), buffer, 2, 100, out _) != IntPtr.Zero ? buffer.ToString() : null;
     }
 
     internal static string? Slice(string text, int start, int end)
@@ -294,27 +304,4 @@ internal static class NativeSelectionReader
         ReadOnlySpan<char> span = text.AsSpan(start, cappedEnd - start);
         return span.IsWhiteSpace() ? null : SelectionTextReader.SanitizeSelectionPart(span.ToString());
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint { public int X, Y; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct GuiThreadInfo
-    {
-        public int Size, Flags;
-        public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
-        public int Left, Top, Right, Bottom;
-    }
-    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
-    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
-    [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int count);
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong(IntPtr hwnd, int index);
-    [DllImport("user32.dll")] private static extern bool IsChild(IntPtr parent, IntPtr child);
-    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
-    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
-    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam, uint flags, uint timeout, out IntPtr result);
-    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageSelectionTimeout(IntPtr hwnd, uint message, out int wparam, out int lparam, uint flags, uint timeout, out IntPtr result);
-    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode)] private static extern IntPtr GetTextTimeout(IntPtr hwnd, uint message, IntPtr wparam, StringBuilder text, uint flags, uint timeout, out IntPtr result);
 }

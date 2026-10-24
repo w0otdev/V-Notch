@@ -1,35 +1,55 @@
+using System;
+using System.Collections.Generic;
 using System.Globalization;
-using System.Text.RegularExpressions;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace VNotch.Services.Translation;
 
 // Check named weekdays in commonly used languages. This catches observable date changes;
 // absence of a mismatch does not certify the rest of a sentence's meaning.
-internal static class TranslationDateIntegrity
+internal static partial class TranslationDateIntegrity
 {
-    // Sunday first, matching the DayOfWeek enum. Patterns include common inflected forms.
-    private static readonly Dictionary<string, string[]> Weekdays = new()
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnWeekdaySpan
     {
-        ["en"] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
-        ["vi"] = ["chủ nhật", "thứ hai", "thứ ba", "thứ tư", "thứ năm", "thứ sáu", "thứ bảy"],
-        ["zh"] = ["(?:周|星期|礼拜)[日天]", "(?:周|星期|礼拜)一", "(?:周|星期|礼拜)二", "(?:周|星期|礼拜)三", "(?:周|星期|礼拜)四", "(?:周|星期|礼拜)五", "(?:周|星期|礼拜)六"],
-        ["ja"] = ["日曜(?:日)?", "月曜(?:日)?", "火曜(?:日)?", "水曜(?:日)?", "木曜(?:日)?", "金曜(?:日)?", "土曜(?:日)?"],
-        ["ko"] = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
-        ["fr"] = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
-        ["es"] = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
-        ["de"] = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"],
-        ["ru"] = ["воскресень[еяю]", "понедельник(?:а|у|ом)?", "вторник(?:а|у|ом)?", "сред[ауы]", "четверг(?:а|у|ом)?", "пятниц[ауы]", "суббот[ауы]"],
-        ["th"] = ["วันอาทิตย์", "วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์"]
-    };
+        public int Index;
+        public int Length;
+        public int Day;
+    }
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_date_preserves_weekdays(
+        ReadOnlySpan<char> origPtr, int origLen,
+        ReadOnlySpan<char> srcPtr, int srcLen,
+        ReadOnlySpan<char> transPtr, int transLen,
+        ReadOnlySpan<char> tgtPtr, int tgtLen,
+        out byte outPreserved);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_date_extract_weekdays(
+        ReadOnlySpan<char> textPtr, int textLen,
+        ReadOnlySpan<char> langPtr, int langLen,
+        byte sortByIndex,
+        Span<VnWeekdaySpan> outSpans,
+        int outCap,
+        out int outCount);
 
     internal static bool PreservesWeekdays(string original, string source, string translated, string target)
     {
-        if (!Weekdays.ContainsKey(source) || !Weekdays.ContainsKey(target)) return true;
-        return Extract(original, source).SequenceEqual(Extract(translated, target));
+        return vn_translation_date_preserves_weekdays(
+            original.AsSpan(), original.Length,
+            source.AsSpan(), source.Length,
+            translated.AsSpan(), translated.Length,
+            target.AsSpan(), target.Length,
+            out byte preserved) == 0 && preserved != 0;
     }
 
-    internal static string[] DescribeWeekdays(string original, string source) => Weekdays.ContainsKey(source)
-        ? Extract(original, source).Select(day => ((DayOfWeek)day).ToString()).ToArray() : [];
+    internal static string[] DescribeWeekdays(string original, string source)
+    {
+        return Extract(original, source).Select(day => ((DayOfWeek)day).ToString()).ToArray();
+    }
 
     internal sealed record ProtectedWeekdays(string Text, Dictionary<string, string> Values, string Original, string Source, string Target)
     {
@@ -51,37 +71,95 @@ internal static class TranslationDateIntegrity
         var values = new Dictionary<string, string>();
         // English/Vietnamese names do not require case inflection. Other target languages
         // retain model phrasing and use the post-translation weekday check instead.
-        if (target is not ("en" or "vi") || !Weekdays.TryGetValue(source, out var patterns)) return new(text, values, text, source, target);
+        if (target is not ("en" or "vi")) return new(text, values, text, source, target);
+
+        Span<VnWeekdaySpan> initial = stackalloc VnWeekdaySpan[32];
+        int status = vn_translation_date_extract_weekdays(
+            text.AsSpan(), text.Length,
+            source.AsSpan(), source.Length,
+            0, initial, initial.Length, out int count);
+        if (count <= 0) return new(text, values, text, source, target);
+
+        VnWeekdaySpan[]? rented = null;
+        Span<VnWeekdaySpan> spans = status == 0 ? initial[..count] : (rented = new VnWeekdaySpan[count]);
+        if (status != 0)
+        {
+            vn_translation_date_extract_weekdays(
+                text.AsSpan(), text.Length,
+                source.AsSpan(), source.Length,
+                0, spans, spans.Length, out count);
+            spans = spans[..count];
+        }
+
         string original = text, prefix = "__VNT_WEEKDAY";
         while (text.Contains(prefix, StringComparison.Ordinal)) prefix += "X";
-        for (int day = 0; day < patterns.Length; day++)
+
+        var culture = CultureInfo.GetCultureInfo(target).DateTimeFormat;
+        Span<VnWeekdaySpan> dayBuf = stackalloc VnWeekdaySpan[32];
+        for (int day = 0; day < 7; day++)
         {
-            string pattern = Pattern(patterns[day], source);
-            string value = CultureInfo.GetCultureInfo(target).DateTimeFormat.GetDayName((DayOfWeek)day);
-            text = Regex.Replace(text, pattern, _ =>
+            bool hasDay = false;
+            for (int i = 0; i < spans.Length; i++)
             {
+                if (spans[i].Day == day) { hasDay = true; break; }
+            }
+            if (!hasDay) continue;
+
+            // Re-extract on current text so offsets match sequential per-day replacement order.
+            int dayStatus = vn_translation_date_extract_weekdays(
+                text.AsSpan(), text.Length,
+                source.AsSpan(), source.Length,
+                1, dayBuf, dayBuf.Length, out int curCount);
+            Span<VnWeekdaySpan> curSpans = dayStatus == 0 ? dayBuf[..curCount] : new VnWeekdaySpan[curCount];
+            if (dayStatus != 0)
+            {
+                vn_translation_date_extract_weekdays(
+                    text.AsSpan(), text.Length,
+                    source.AsSpan(), source.Length,
+                    1, curSpans, curSpans.Length, out curCount);
+                curSpans = curSpans[..curCount];
+            }
+
+            string value = culture.GetDayName((DayOfWeek)day);
+            var sb = new StringBuilder(text.Length + 32);
+            int cursor = 0;
+            for (int i = 0; i < curSpans.Length; i++)
+            {
+                if (curSpans[i].Day != day || curSpans[i].Index < cursor) continue;
+                sb.Append(text, cursor, curSpans[i].Index - cursor);
                 string token = $"{prefix}{values.Count}__";
                 values.Add(token, value);
-                return token;
-            }, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+                sb.Append(token);
+                cursor = curSpans[i].Index + curSpans[i].Length;
+            }
+            if (cursor > 0)
+            {
+                sb.Append(text, cursor, text.Length - cursor);
+                text = sb.ToString();
+            }
         }
         return new(text, values, original, source, target);
     }
 
-    private static string Pattern(string pattern, string language) => language is "zh" or "ja" or "ko" or "th"
-        ? pattern : $@"(?<!\p{{L}})(?:{pattern})(?!\p{{L}})";
-
     private static int[] Extract(string text, string language)
     {
-        var result = new List<(int Index, int Day)>();
-        var patterns = Weekdays[language];
-        for (int day = 0; day < patterns.Length; day++)
+        Span<VnWeekdaySpan> buf = stackalloc VnWeekdaySpan[32];
+        int status = vn_translation_date_extract_weekdays(
+            text.AsSpan(), text.Length,
+            language.AsSpan(), language.Length,
+            1, buf, buf.Length, out int count);
+        if (count <= 0) return [];
+        Span<VnWeekdaySpan> spans = status == 0 ? buf[..count] : new VnWeekdaySpan[count];
+        if (status != 0)
         {
-            string pattern = Pattern(patterns[day], language);
-            var matches = Regex.Matches(text, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-            foreach (Match match in matches)
-                result.Add((match.Index, day));
+            vn_translation_date_extract_weekdays(
+                text.AsSpan(), text.Length,
+                language.AsSpan(), language.Length,
+                1, spans, spans.Length, out count);
+            spans = spans[..count];
         }
-        return result.OrderBy(x => x.Index).Select(x => x.Day).ToArray();
+        int[] result = new int[spans.Length];
+        for (int i = 0; i < spans.Length; i++) result[i] = spans[i].Day;
+        return result;
     }
 }

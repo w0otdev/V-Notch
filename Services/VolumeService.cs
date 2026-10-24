@@ -16,8 +16,21 @@ internal interface IVolumeEndpointSource : IDisposable
     IVolumeEndpoint OpenDefault();
 }
 
-public sealed class VolumeService : IVolumeService
+public sealed partial class VolumeService : IVolumeService
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_service_clamp_scalar(
+        float volume,
+        out float outClamped);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_service_is_target_endpoint(
+        int dataFlow,
+        int role,
+        out byte outIsTarget);
+
     private const string LogCategory = "VOLUME";
     private readonly object _sync = new();
     private readonly IVolumeEndpointSource _source;
@@ -92,7 +105,9 @@ public sealed class VolumeService : IVolumeService
             if (!EnsureInitializedLocked()) return false;
             try
             {
-                _endpoint!.Volume = Math.Clamp(volume, 0f, 1f);
+                _endpoint!.Volume = vn_volume_service_clamp_scalar(volume, out float clamped) == 0
+                    ? clamped
+                    : Math.Clamp(volume, 0f, 1f);
                 return true;
             }
             catch (Exception ex)
@@ -194,7 +209,10 @@ public sealed class VolumeService : IVolumeService
 
         public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
         {
-            if (flow == DataFlow.Render && role == Role.Multimedia) DefaultDeviceChanged?.Invoke();
+            bool isTarget = vn_volume_service_is_target_endpoint((int)flow, (int)role, out byte outTarget) == 0
+                ? outTarget != 0
+                : (flow == DataFlow.Render && role == Role.Multimedia);
+            if (isTarget) DefaultDeviceChanged?.Invoke();
         }
 
         public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }

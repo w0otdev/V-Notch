@@ -215,10 +215,8 @@ public sealed class OverlayWindowController : IDisposable
     {
         if (_state.Hwnd != IntPtr.Zero)
         {
-            IntPtr hMonitor = MonitorFromWindow(_state.Hwnd, MONITOR_DEFAULTTONEAREST);
-            if (hMonitor != IntPtr.Zero &&
-                GetDpiForMonitor(hMonitor, 0, out uint dpiX, out _) == 0 &&
-                dpiX > 0)
+            uint dpiX = GetMonitorDpiForWindow(_state.Hwnd);
+            if (dpiX > 0)
             {
                 return dpiX / 96.0;
             }

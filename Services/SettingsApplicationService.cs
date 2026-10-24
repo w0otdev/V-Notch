@@ -1,12 +1,25 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed class SettingsApplicationService : ISettingsApplicationService
+public sealed partial class SettingsApplicationService : ISettingsApplicationService
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_settings_application_service_is_valid_file_path", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeIsValidFilePath(ReadOnlySpan<char> path, int pathLen, out byte outValid);
+
+    private static bool IsValidFilePath(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return false;
+        NativeIsValidFilePath(filePath.AsSpan(), filePath.Length, out byte valid);
+        return valid != 0;
+    }
+
     private readonly ISettingsService _settingsService;
     private readonly IStartupManager _startupManager;
 
@@ -35,7 +48,7 @@ public sealed class SettingsApplicationService : ISettingsApplicationService
         NotchSettings? currentSettings = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(filePath))
+        if (!IsValidFilePath(filePath))
             throw new ArgumentException("File path cannot be empty", nameof(filePath));
         ct.ThrowIfCancellationRequested();
 
@@ -46,7 +59,7 @@ public sealed class SettingsApplicationService : ISettingsApplicationService
 
     public void Export(string filePath, NotchSettings settings)
     {
-        if (string.IsNullOrWhiteSpace(filePath))
+        if (!IsValidFilePath(filePath))
             throw new ArgumentException("File path cannot be empty", nameof(filePath));
         if (settings == null)
             throw new ArgumentNullException(nameof(settings));

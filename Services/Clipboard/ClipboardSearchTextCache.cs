@@ -1,8 +1,28 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services.Clipboard;
 
 /// <summary>Used only on the store's serialized worker; never persists decrypted Personal text.</summary>
-internal sealed class ClipboardSearchTextCache(int maxCharacters = 8 * 1024 * 1024, int maxEntries = 2048)
+internal sealed partial class ClipboardSearchTextCache(int maxCharacters = 8 * 1024 * 1024, int maxEntries = 2048)
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_search_cache_can_store(
+        int textLength,
+        int maxCharacters,
+        int maxEntries,
+        out byte outCanStore);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_search_cache_should_evict_oldest(
+        int currentCharacters,
+        int currentEntries,
+        int textLength,
+        int maxCharacters,
+        int maxEntries,
+        out byte outShouldEvict);
+
     private readonly Dictionary<Guid, (string Text, LinkedListNode<Guid> Node)> _items = [];
     private readonly LinkedList<Guid> _recent = [];
     private int _characters;
@@ -20,9 +40,10 @@ internal sealed class ClipboardSearchTextCache(int maxCharacters = 8 * 1024 * 10
     {
         Remove(id);
         text ??= string.Empty;
-        if (text.Length > maxCharacters || maxEntries <= 0) return;
+        if (vn_clipboard_search_cache_can_store(text.Length, maxCharacters, maxEntries, out byte canStore) != 0 || canStore == 0) return;
         while (_recent.First is { } first &&
-            (_characters > maxCharacters - text.Length || _items.Count >= maxEntries))
+            vn_clipboard_search_cache_should_evict_oldest(_characters, _items.Count, text.Length, maxCharacters, maxEntries, out byte shouldEvict) == 0 &&
+            shouldEvict != 0)
             Remove(first.Value);
         _items[id] = (text, _recent.AddLast(id));
         _characters += text.Length;

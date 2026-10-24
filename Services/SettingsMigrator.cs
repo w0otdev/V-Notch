@@ -1,13 +1,41 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-public static class SettingsMigrator
+public static partial class SettingsMigrator
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_settings_migrator_compute_dynamic_island_width_v3(
+        int width,
+        out int outWidth);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_settings_migrator_clamp_animation_fps(
+        int parsedFps,
+        int minFps,
+        int maxFps,
+        out int outFps);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_settings_migrator_is_supported_version(
+        int version,
+        int currentVersion,
+        out byte outSupported);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_settings_migrator_should_revoke_canvas_consent(
+        byte hasAccepted,
+        byte enableCanvas,
+        byte allowOnline,
+        int consentVersion,
+        out byte outRevoke);
 
     public const int CurrentVersion = 14;
 
@@ -68,7 +96,9 @@ public static class SettingsMigrator
                 width = parsedWidth;
             }
 
-            root[nameof(NotchSettings.DynamicIslandWidth)] = (int)Math.Round(width * 1.12 / 10.0) * 10;
+            root[nameof(NotchSettings.DynamicIslandWidth)] = vn_settings_migrator_compute_dynamic_island_width_v3(width, out int diWidth) == 0
+                ? diWidth
+                : (int)Math.Round(width * 1.12 / 10.0) * 10;
         }
         return root;
     }
@@ -114,7 +144,9 @@ public static class SettingsMigrator
             && fpsNode is JsonValue fpsValue
             && fpsValue.TryGetValue(out int parsedFps))
         {
-            animationFps = Math.Clamp(parsedFps, AnimationConfig.MinFps, AnimationConfig.MaxFps);
+            animationFps = vn_settings_migrator_clamp_animation_fps(parsedFps, AnimationConfig.MinFps, AnimationConfig.MaxFps, out int clampedFps) == 0
+                ? clampedFps
+                : Math.Clamp(parsedFps, AnimationConfig.MinFps, AnimationConfig.MaxFps);
         }
 
         root[nameof(NotchSettings.AnimationFps)] = animationFps;
@@ -170,7 +202,10 @@ public static class SettingsMigrator
             startVersion = parsed;
         }
 
-        if (startVersion < 0 || startVersion > CurrentVersion)
+        bool versionSupported = vn_settings_migrator_is_supported_version(startVersion, CurrentVersion, out byte outSupported) == 0
+            ? outSupported != 0
+            : (startVersion >= 0 && startVersion <= CurrentVersion);
+        if (!versionSupported)
             throw new JsonException(
                 $"Unsupported settings version: {startVersion}");
 
@@ -218,8 +253,17 @@ public static class SettingsMigrator
         var settings = JsonSerializer.Deserialize<NotchSettings>(normalizedJson) ?? new NotchSettings();
         settings.SettingsVersion = CurrentVersion;
 
-        if (!SpotifyCanvasConsent.HasAccepted(settings) &&
-            (settings.EnableSpotifyCanvas || settings.AllowOnlineCanvas || settings.SpotifyCanvasConsentVersion != 0))
+        bool hasAccepted = SpotifyCanvasConsent.HasAccepted(settings);
+        bool shouldRevoke = vn_settings_migrator_should_revoke_canvas_consent(
+            hasAccepted ? (byte)1 : (byte)0,
+            settings.EnableSpotifyCanvas ? (byte)1 : (byte)0,
+            settings.AllowOnlineCanvas ? (byte)1 : (byte)0,
+            settings.SpotifyCanvasConsentVersion,
+            out byte outRevoke) == 0
+            ? outRevoke != 0
+            : (!hasAccepted && (settings.EnableSpotifyCanvas || settings.AllowOnlineCanvas || settings.SpotifyCanvasConsentVersion != 0));
+
+        if (shouldRevoke)
         {
             SpotifyCanvasConsent.Revoke(settings);
             migrated = true;

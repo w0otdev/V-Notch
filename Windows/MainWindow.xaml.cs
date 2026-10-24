@@ -17,12 +17,8 @@ using VNotch.Services;
 using VNotch.ViewModels;
 using static VNotch.Services.AnimationPrimitives;
 using static VNotch.Services.Win32Interop;
-using EnumWindowsProc = VNotch.Services.Win32Interop.EnumWindowsProc;
-using MONITORINFO = VNotch.Services.Win32Interop.MONITORINFO;
 using POINT = VNotch.Services.Win32Interop.POINT;
 using RECT = VNotch.Services.Win32Interop.RECT;
-using WINDOWPLACEMENT = VNotch.Services.Win32Interop.WINDOWPLACEMENT;
-using WinEventDelegate = VNotch.Services.Win32Interop.WinEventDelegate;
 namespace VNotch;
 
 public partial class MainWindow : Window

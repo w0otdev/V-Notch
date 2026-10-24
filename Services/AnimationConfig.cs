@@ -66,12 +66,7 @@ internal static class AnimationConfig
     {
         try
         {
-            var dm = new Win32Interop.DEVMODE { dmSize = (ushort)Marshal.SizeOf<Win32Interop.DEVMODE>() };
-            if (Win32Interop.EnumDisplaySettings(deviceName, Win32Interop.ENUM_CURRENT_SETTINGS, ref dm) &&
-                dm.dmDisplayFrequency > 1)
-            {
-                return (int)dm.dmDisplayFrequency;
-            }
+            return Win32Interop.GetDisplayRefreshHz(deviceName);
         }
         catch (Exception)
         {

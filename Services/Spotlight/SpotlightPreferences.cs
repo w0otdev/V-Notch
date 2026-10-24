@@ -1,12 +1,37 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed class SpotlightPreferences
+internal sealed partial class SpotlightPreferences
 {
     public const int MaxPinnedApps = 10;
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_prefs_has_valid_folder_syntax(
+        ReadOnlySpan<char> folderPtr,
+        int folderLen,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_prefs_is_path_under_folder(
+        ReadOnlySpan<char> pathPtr,
+        int pathLen,
+        ReadOnlySpan<char> folderPtr,
+        int folderLen,
+        out byte outIsUnder);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_prefs_compute_score(
+        double baseScore,
+        ReadOnlySpan<char> queryPtr,
+        int queryLen,
+        ReadOnlySpan<char> aliasPtr,
+        int aliasLen,
+        byte isPinned,
+        out double outScore);
 
     private readonly object _gate = new();
     private readonly string _path;
@@ -56,15 +81,19 @@ internal sealed class SpotlightPreferences
                 .Select(folder =>
                 {
                     try { return NormalizeFolder(folder); }
-                    catch (Exception) { return ""; }
-                }).Where(folder => folder.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    catch (Exception) { return null; }
+                })
+                .Where(folder => folder != null)
+                .Select(folder => folder!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
             return _state;
         }
     }
 
     public bool IsPinned(string target)
     {
-        lock (_gate) return Data.Apps.Any(a => a.Target.Equals(target, StringComparison.OrdinalIgnoreCase) && a.Pinned);
+        lock (_gate) return Data.Apps.Any(a => a.Pinned && a.Target.Equals(target, StringComparison.OrdinalIgnoreCase));
     }
 
     public string GetAlias(string target)
@@ -115,8 +144,10 @@ internal sealed class SpotlightPreferences
     private static string NormalizeFolder(string folder)
     {
         folder = Environment.ExpandEnvironmentVariables(folder.Trim());
-        if (!Path.IsPathFullyQualified(folder) || folder.IndexOfAny(Path.GetInvalidPathChars()) >= 0
-            || folder.Contains('*') || folder.Contains('?')) throw new ArgumentException("Invalid folder path");
+        if (!Path.IsPathFullyQualified(folder) ||
+            vn_spotlight_prefs_has_valid_folder_syntax(folder.AsSpan(), folder.Length, out byte valid) != 0 ||
+            valid == 0)
+            throw new ArgumentException("Invalid folder path");
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
     }
 
@@ -126,10 +157,16 @@ internal sealed class SpotlightPreferences
         string path;
         try { path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(target)); }
         catch (Exception) { return false; }
-        lock (_gate) return Data.ExcludedFolders.Any(folder =>
-            path.Equals(folder, StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith(Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase));
+        lock (_gate)
+        {
+            ReadOnlySpan<char> pathSpan = path.AsSpan();
+            foreach (string folder in Data.ExcludedFolders)
+            {
+                if (vn_spotlight_prefs_is_path_under_folder(pathSpan, pathSpan.Length, folder.AsSpan(), folder.Length, out byte isUnder) == 0 && isUnder != 0)
+                    return true;
+            }
+            return false;
+        }
     }
 
     public SpotlightSearchItem Decorate(SpotlightSearchItem item) => item with { IsPinned = IsPinned(item.Target) };
@@ -145,10 +182,14 @@ internal sealed class SpotlightPreferences
                 Loc.Get("spotlight.kind.application"), app.Target, app.IconPath)
             { IsPinned = app.Pinned };
             string alias = SettingsSearchMatcher.Normalize(app.Alias);
-            double score = normalized.Length == 0 ? (app.Pinned ? 1000 : 0) : SpotlightRanker.Score(item, query);
-            if (normalized.Length > 0 && alias.Length > 0 && alias.StartsWith(normalized, StringComparison.Ordinal))
-                score = Math.Max(score, alias == normalized ? 2000 : 1100);
-            return item with { Score = score > 0 && app.Pinned ? score + 150 : score };
+            double baseScore = normalized.Length == 0 ? 0 : SpotlightRanker.Score(item, query);
+            _ = vn_spotlight_prefs_compute_score(
+                baseScore,
+                normalized.AsSpan(), normalized.Length,
+                alias.AsSpan(), alias.Length,
+                app.Pinned ? (byte)1 : (byte)0,
+                out double finalScore);
+            return item with { Score = finalScore };
         }).Where(item => item.Score > 0 && !IsExcluded(item.Target) && SpotlightLauncher.IsValidTarget(item)).ToArray();
     }
 

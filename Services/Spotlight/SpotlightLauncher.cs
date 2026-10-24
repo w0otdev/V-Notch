@@ -6,8 +6,28 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed class SpotlightLauncher
+internal sealed partial class SpotlightLauncher
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_launcher_classify_system_action(
+        ReadOnlySpan<char> target,
+        int targetLen,
+        out int outAction,
+        out int outWaitMs);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_launcher_is_target_string_safe(
+        ReadOnlySpan<char> target,
+        int targetLen,
+        out byte outSafe);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_launcher_is_apps_folder_target(
+        ReadOnlySpan<char> target,
+        int targetLen,
+        out byte outIsAppsFolder);
     public async Task<bool> TryLaunchAsync(SpotlightSearchItem item, bool systemActionConfirmed = false)
     {
         if (!IsValidTarget(item)) return false;
@@ -32,8 +52,9 @@ internal sealed class SpotlightLauncher
 
     private static async Task<bool> TryRunSystemActionAsync(string target)
     {
-        if (target == "vnotch-action:lock") return LockWorkStation();
-        if (target == "shell:RecycleBinFolder")
+        _ = vn_spotlight_launcher_classify_system_action(target.AsSpan(), target.Length, out int actionCode, out int waitMs);
+        if (actionCode == 1) return LockWorkStation();
+        if (actionCode == 2)
         {
             using var explorer = Process.Start(new ProcessStartInfo(
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"))
@@ -44,13 +65,13 @@ internal sealed class SpotlightLauncher
             return true;
         }
 
-        string[]? arguments = target switch
+        string[]? arguments = actionCode switch
         {
-            "vnotch-action:restart" => ["/r", "/t", "0"],
-            "vnotch-action:shutdown" => ["/s", "/t", "0"],
-            "vnotch-action:signOut" => ["/l"],
-            "vnotch-action:hibernate" => ["/h"],
-            "vnotch-action:advancedRestart" => ["/r", "/o", "/t", "0"],
+            3 => ["/r", "/t", "0"],
+            4 => ["/s", "/t", "0"],
+            5 => ["/l"],
+            6 => ["/h"],
+            7 => ["/r", "/o", "/t", "0"],
             _ => null
         };
         if (arguments == null) return false;
@@ -65,7 +86,6 @@ internal sealed class SpotlightLauncher
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start);
         if (process == null) return false;
-        int waitMs = target == "vnotch-action:hibernate" ? 250 : 3000;
         using var cts = new CancellationTokenSource(waitMs);
         try
         {
@@ -80,9 +100,7 @@ internal sealed class SpotlightLauncher
         }
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool LockWorkStation();
+    private static bool LockWorkStation() => Win32Interop.LockWorkStation();
 
     public bool TryRevealInExplorer(SpotlightSearchItem item)
     {
@@ -159,8 +177,9 @@ internal sealed class SpotlightLauncher
 
     internal static bool IsValidTarget(SpotlightSearchItem item)
     {
-        if (string.IsNullOrWhiteSpace(item.Target)
-            || item.Target.IndexOfAny(['\0', '\r', '\n']) >= 0
+        if (item.Target == null
+            || vn_spotlight_launcher_is_target_string_safe(item.Target.AsSpan(), item.Target.Length, out byte isSafe) != 0
+            || isSafe == 0
             || LocalPathPolicy.IsUncPath(item.Target))
         {
             return false;
@@ -171,8 +190,7 @@ internal sealed class SpotlightLauncher
             SpotlightResultKind.Settings or SpotlightResultKind.SystemAction =>
                 SpotlightSystemCatalog.IsKnownTarget(item),
             SpotlightResultKind.Application =>
-                item.Target.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase)
-                    && item.Target.Length > "shell:AppsFolder\\".Length
+                (vn_spotlight_launcher_is_apps_folder_target(item.Target.AsSpan(), item.Target.Length, out byte isApps) == 0 && isApps != 0)
                 || File.Exists(item.Target)
                 || Directory.Exists(item.Target),
             SpotlightResultKind.File => File.Exists(item.Target),

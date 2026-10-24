@@ -1,12 +1,37 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using VNotch.Models;
 using Windows.Media.Control;
 
 namespace VNotch.Services;
 
-public sealed class MediaTransportControlService
+public sealed partial class MediaTransportControlService
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_transport_should_rewind_track(
+        long currentPosTicks,
+        long startTimeTicks,
+        long endTimeTicks,
+        byte hasTimeline,
+        long nowUtcTicks,
+        long lastRewindUtcTicks,
+        ReadOnlySpan<char> lastSessionId,
+        int lastSessionLen,
+        ReadOnlySpan<char> currentSessionId,
+        int currentSessionLen,
+        out long outStartTargetTicks,
+        out double outRelativeSeconds,
+        out byte outShouldRewind);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_transport_clamp_seek_target(
+        long targetTicks,
+        long endTimeTicks,
+        out long outClampedTicks);
+
     private const string LogTag = "MEDIA-CTRL";
 
     private readonly Func<IMediaTransportSession?> _getActiveSession;
@@ -104,24 +129,34 @@ public sealed class MediaTransportControlService
                 // LastUpdatedTime can carry over from the previous video, so
                 // extrapolating it can turn the first seconds into a restart.
                 TimeSpan currentPos = timeline?.Position ?? TimeSpan.Zero;
-                TimeSpan relativePos = timeline != null && currentPos >= timeline.StartTime
-                    ? currentPos - timeline.StartTime
-                    : currentPos;
+                DateTime nowUtc = _utcNow();
 
-                bool isConsecutive = (_utcNow() - _lastRewindUtc).TotalSeconds < ConsecutiveClickWindowSeconds
-                    && string.Equals(_lastRewindSessionId, sessionId, StringComparison.OrdinalIgnoreCase);
+                bool shouldRewind = vn_media_transport_should_rewind_track(
+                    currentPos.Ticks,
+                    timeline?.StartTime.Ticks ?? 0L,
+                    timeline?.EndTime.Ticks ?? 0L,
+                    timeline != null ? (byte)1 : (byte)0,
+                    nowUtc.Ticks,
+                    _lastRewindUtc.Ticks,
+                    _lastRewindSessionId.AsSpan(),
+                    _lastRewindSessionId.Length,
+                    sessionId.AsSpan(),
+                    sessionId.Length,
+                    out long startTargetTicks,
+                    out double relativeSeconds,
+                    out byte outRewind) == 0 && outRewind != 0;
 
                 // If playing past the 3-second threshold and not a rapid consecutive click,
                 // rewind / restart the track to the beginning.
-                if (!isConsecutive && timeline != null && timeline.EndTime > TimeSpan.Zero && relativePos.TotalSeconds > RestartThresholdSeconds)
+                if (shouldRewind)
                 {
-                    _lastRewindUtc = _utcNow();
+                    _lastRewindUtc = nowUtc;
                     _lastRewindSessionId = sessionId;
 
-                    TimeSpan startTarget = timeline.StartTime > TimeSpan.Zero ? timeline.StartTime : TimeSpan.Zero;
+                    TimeSpan startTarget = TimeSpan.FromTicks(startTargetTicks);
                     if (await session.TryChangePlaybackPositionAsync(startTarget.Ticks))
                     {
-                        RuntimeLog.Log(LogTag, $"Previous: rewound track to {startTarget.TotalSeconds:F1}s (was at {relativePos.TotalSeconds:F1}s)");
+                        RuntimeLog.Log(LogTag, $"Previous: rewound track to {startTarget.TotalSeconds:F1}s (was at {relativeSeconds:F1}s)");
                         return;
                     }
 
@@ -203,8 +238,7 @@ public sealed class MediaTransportControlService
 
     private static void SendMediaKey(byte key)
     {
-        Win32Interop.keybd_event(key, 0, Win32Interop.KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
-        Win32Interop.keybd_event(key, 0, Win32Interop.KEYEVENTF_EXTENDEDKEY | Win32Interop.KEYEVENTF_KEYUP, UIntPtr.Zero);
+        Win32Interop.SendExtendedKeyTap(key);
     }
 
     public async Task SeekAsync(TimeSpan position)
@@ -235,13 +269,11 @@ public sealed class MediaTransportControlService
                 {
                     var current = timeline.Position;
                     var target = current + TimeSpan.FromSeconds(seconds);
+                    long clampedTicks = vn_media_transport_clamp_seek_target(target.Ticks, timeline.EndTime.Ticks, out long outClamped) == 0
+                        ? outClamped
+                        : Math.Clamp(target.Ticks, 0L, timeline.EndTime > TimeSpan.Zero ? timeline.EndTime.Ticks : long.MaxValue);
 
-                    if (target < TimeSpan.Zero)
-                        target = TimeSpan.Zero;
-                    if (timeline.EndTime > TimeSpan.Zero && target > timeline.EndTime)
-                        target = timeline.EndTime;
-
-                    await session.TryChangePlaybackPositionAsync(target.Ticks);
+                    await session.TryChangePlaybackPositionAsync(clampedTicks);
                 }
             }
         }
@@ -261,13 +293,11 @@ public sealed class MediaTransportControlService
                 var timeline = session.GetTimelineProperties();
                 if (timeline != null)
                 {
-                    var target = position;
-                    if (target < TimeSpan.Zero)
-                        target = TimeSpan.Zero;
-                    if (timeline.EndTime > TimeSpan.Zero && target > timeline.EndTime)
-                        target = timeline.EndTime;
+                    long clampedTicks = vn_media_transport_clamp_seek_target(position.Ticks, timeline.EndTime.Ticks, out long outClamped) == 0
+                        ? outClamped
+                        : Math.Clamp(position.Ticks, 0L, timeline.EndTime > TimeSpan.Zero ? timeline.EndTime.Ticks : long.MaxValue);
 
-                    await session.TryChangePlaybackPositionAsync(target.Ticks);
+                    await session.TryChangePlaybackPositionAsync(clampedTicks);
                 }
             }
         }

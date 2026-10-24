@@ -1,13 +1,39 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 using NAudio.CoreAudioApi;
 
 namespace VNotch.Services;
 
-public sealed class MediaSessionVolumeService : IDisposable
+public sealed partial class MediaSessionVolumeService : IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_session_volume_matches_source(
+        ReadOnlySpan<char> displayPtr, int displayLen,
+        ReadOnlySpan<char> sessionIdPtr, int sessionIdLen,
+        ReadOnlySpan<char> instanceIdPtr, int instanceIdLen,
+        ReadOnlySpan<char> sourceAppPtr, int sourceAppLen,
+        out byte outMatches);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_media_session_volume_compute_base_score(
+        byte matchedByProcess,
+        byte matchedByMetadata,
+        byte sourceMatchesLast,
+        uint processId,
+        uint lastProcessId,
+        byte sessionIdMatchesLast,
+        out double outScore);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_session_volume_extract_candidates(
+        ReadOnlySpan<char> sourceAppPtr,
+        int sourceAppLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
     private readonly Func<MediaAudioSessions> _getAudioSessions;
     private readonly Func<IEnumerable<string>, HashSet<uint>> _getProcessIds;
     private readonly Func<DateTime> _utcNow;
@@ -198,15 +224,16 @@ public sealed class MediaSessionVolumeService : IDisposable
         if (!matchedByProcess && !matchedByMetadata)
             return double.MinValue;
 
-        double score = 0;
-        if (matchedByProcess) score += 1000;
-        if (matchedByMetadata) score += 200;
-
-        if (string.Equals(sourceAppId, _lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase))
-        {
-            if (processId != 0 && processId == _lastMatchedProcessId) score += 300;
-            if (string.Equals(session.GetSessionIdentifier, _lastMatchedSessionId, StringComparison.OrdinalIgnoreCase)) score += 400;
-        }
+        bool sourceMatchesLast = string.Equals(sourceAppId, _lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase);
+        bool sessionIdMatchesLast = string.Equals(session.GetSessionIdentifier, _lastMatchedSessionId, StringComparison.OrdinalIgnoreCase);
+        vn_media_session_volume_compute_base_score(
+            matchedByProcess ? (byte)1 : (byte)0,
+            matchedByMetadata ? (byte)1 : (byte)0,
+            sourceMatchesLast ? (byte)1 : (byte)0,
+            processId,
+            _lastMatchedProcessId,
+            sessionIdMatchesLast ? (byte)1 : (byte)0,
+            out double score);
 
         try
         {
@@ -226,35 +253,26 @@ public sealed class MediaSessionVolumeService : IDisposable
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return candidates;
 
-        foreach (Match match in Regex.Matches(sourceAppId, @"([A-Za-z0-9_\-]+)\.exe", RegexOptions.IgnoreCase))
+        ReadOnlySpan<char> srcSpan = sourceAppId.AsSpan();
+        Span<char> buf = stackalloc char[512];
+        if (vn_media_session_volume_extract_candidates(srcSpan, srcSpan.Length, buf, buf.Length, out int outLen) == 0 && outLen > 0)
         {
-            string processName = match.Groups[1].Value.Trim();
-            if (!string.IsNullOrWhiteSpace(processName))
-                candidates.Add(processName);
+            ReadOnlySpan<char> list = buf[..outLen];
+            int start = 0;
+            while (start < list.Length)
+            {
+                int sep = list[start..].IndexOf(';');
+                ReadOnlySpan<char> item = sep < 0 ? list[start..] : list.Slice(start, sep);
+                if (!item.IsEmpty)
+                {
+                    candidates.Add(new string(item));
+                }
+                if (sep < 0) break;
+                start += sep + 1;
+            }
         }
 
-        AddAlias(sourceAppId, candidates, "spotify", "Spotify");
-        AddAlias(sourceAppId, candidates, "msedge", "msedge");
-        AddAlias(sourceAppId, candidates, "edge", "msedge");
-        AddAlias(sourceAppId, candidates, "chrome", "chrome");
-        AddAlias(sourceAppId, candidates, "firefox", "firefox");
-        AddAlias(sourceAppId, candidates, "opera", "opera");
-        AddAlias(sourceAppId, candidates, "brave", "brave");
-        AddAlias(sourceAppId, candidates, "vivaldi", "vivaldi");
-        AddAlias(sourceAppId, candidates, "coccoc", "browser");
-        AddAlias(sourceAppId, candidates, "arc", "arc");
-        AddAlias(sourceAppId, candidates, "sidekick", "sidekick");
-        AddAlias(sourceAppId, candidates, "zen", "zen");
-        AddAlias(sourceAppId, candidates, "applemusic", "AppleMusic");
-        AddAlias(sourceAppId, candidates, "apple music", "AppleMusic");
-
         return candidates;
-    }
-
-    private static void AddAlias(string sourceAppId, ISet<string> candidates, string token, string processName)
-    {
-        if (sourceAppId.Contains(token, StringComparison.OrdinalIgnoreCase))
-            candidates.Add(processName);
     }
 
     private HashSet<uint> GetCachedProcessIdsForSourceApp(string sourceAppId, IEnumerable<string> processNames)
@@ -317,17 +335,15 @@ public sealed class MediaSessionVolumeService : IDisposable
         if (string.IsNullOrWhiteSpace(sourceAppId))
             return false;
 
-        return ContainsEitherWay(session.DisplayName, sourceAppId) ||
-               ContainsEitherWay(session.GetSessionIdentifier, sourceAppId) ||
-               ContainsEitherWay(session.GetSessionInstanceIdentifier, sourceAppId);
-    }
-
-    private static bool ContainsEitherWay(string? left, string? right)
-    {
-        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
-            return false;
-
-        return left.Contains(right, StringComparison.OrdinalIgnoreCase) ||
-               right.Contains(left, StringComparison.OrdinalIgnoreCase);
+        ReadOnlySpan<char> disp = (session.DisplayName ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> sid = (session.GetSessionIdentifier ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> iid = (session.GetSessionInstanceIdentifier ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> src = sourceAppId.AsSpan();
+        return vn_media_session_volume_matches_source(
+            disp, disp.Length,
+            sid, sid.Length,
+            iid, iid.Length,
+            src, src.Length,
+            out byte matches) == 0 && matches != 0;
     }
 }

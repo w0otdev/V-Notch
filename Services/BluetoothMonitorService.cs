@@ -1,15 +1,27 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using Windows.Devices.Enumeration;
 
 namespace VNotch.Services;
 
-public sealed class BluetoothMonitorService : IDisposable
+public sealed partial class BluetoothMonitorService : IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_bluetooth_monitor_detect_device_type(
+        ReadOnlySpan<char> namePtr,
+        int nameLen,
+        out int outType);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_bluetooth_monitor_extract_name_start(
+        ReadOnlySpan<char> idPtr,
+        int idLen,
+        out int outStart);
+
     private const string LogTag = "BLUETOOTH";
-    private static readonly char[] IdSeparators = { '#', '\\' };
 
     private DeviceWatcher? _watcher;
     private readonly ConcurrentDictionary<string, BluetoothDeviceInfo> _knownDevices = new();
@@ -202,47 +214,21 @@ public sealed class BluetoothMonitorService : IDisposable
             DeviceType = deviceType
         };
     }
+
     public static BluetoothDeviceType DetectDeviceType(string name)
     {
-        var lower = name.ToLowerInvariant();
-
-        if (lower.Contains("airpods") || lower.Contains("buds") || lower.Contains("earbuds") ||
-            lower.Contains("earpods") || lower.Contains("wf-") || lower.Contains("wh-") ||
-            lower.Contains("headphone") || lower.Contains("earphone") || lower.Contains("airdots") ||
-            lower.Contains("freebuds") || lower.Contains("galaxy buds") || lower.Contains("jabra") ||
-            lower.Contains("beats") || lower.Contains("bose") || lower.Contains("sennheiser") ||
-            lower.Contains("sony wf") || lower.Contains("sony wh"))
-            return BluetoothDeviceType.Headphones;
-
-        if (lower.Contains("speaker") || lower.Contains("soundbar") || lower.Contains("jbl") ||
-            lower.Contains("marshall") || lower.Contains("harman") || lower.Contains("sonos") ||
-            lower.Contains("ue boom") || lower.Contains("flip"))
-            return BluetoothDeviceType.Speaker;
-
-        if (lower.Contains("keyboard") || lower.Contains("keychron") || lower.Contains("k380") ||
-            lower.Contains("mx keys"))
-            return BluetoothDeviceType.Keyboard;
-
-        if (lower.Contains("mouse") || lower.Contains("mx master") || lower.Contains("mx anywhere") ||
-            lower.Contains("trackpad") || lower.Contains("magic mouse"))
-            return BluetoothDeviceType.Mouse;
-
-        if (lower.Contains("controller") || lower.Contains("gamepad") || lower.Contains("xbox") ||
-            lower.Contains("dualsense") || lower.Contains("dualshock") || lower.Contains("pro controller") ||
-            lower.Contains("joy-con"))
-            return BluetoothDeviceType.GameController;
-
-        if (lower.Contains("iphone") || lower.Contains("galaxy") || lower.Contains("pixel") ||
-            lower.Contains("phone") || lower.Contains("oneplus") || lower.Contains("xiaomi"))
-            return BluetoothDeviceType.Phone;
-
-        return BluetoothDeviceType.Unknown;
+        if (string.IsNullOrEmpty(name)) return BluetoothDeviceType.Unknown;
+        ReadOnlySpan<char> span = name.AsSpan();
+        vn_bluetooth_monitor_detect_device_type(span, span.Length, out int type);
+        return (BluetoothDeviceType)type;
     }
 
     private static string ExtractNameFromId(string id)
     {
-        int sep = id.LastIndexOfAny(IdSeparators);
-        return sep >= 0 ? id[(sep + 1)..] : id;
+        if (string.IsNullOrEmpty(id)) return string.Empty;
+        ReadOnlySpan<char> span = id.AsSpan();
+        vn_bluetooth_monitor_extract_name_start(span, span.Length, out int start);
+        return start > 0 && start <= id.Length ? id[start..] : id;
     }
 
     public void Dispose()

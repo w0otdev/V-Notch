@@ -99,6 +99,7 @@ public partial class SettingsWindow
         _firstShowState = FirstShowState.Shown;
         var firstOpenProbe = Stopwatch.StartNew();
         PlayEntranceAnimation();
+        ShowCpp26BannerIfNeeded();
         FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings entrance {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
         {

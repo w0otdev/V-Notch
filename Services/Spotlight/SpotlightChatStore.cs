@@ -1,10 +1,17 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed class SpotlightSavedChat
+internal sealed partial class SpotlightSavedChat
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_chat_compute_title_length(
+        ReadOnlySpan<char> content,
+        int contentLen,
+        out int outTitleLen);
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Provider { get; set; } = "";
     public string Model { get; set; } = "";
@@ -16,8 +23,7 @@ internal sealed class SpotlightSavedChat
         get
         {
             if (Messages.FirstOrDefault(m => m.Role == "user")?.Content is not { } content) return "…";
-            int lineEnd = content.AsSpan().IndexOfAny('\r', '\n');
-            int length = Math.Min(64, lineEnd >= 0 ? lineEnd : content.Length);
+            _ = vn_spotlight_chat_compute_title_length(content.AsSpan(), content.Length, out int length);
             return content[..length];
         }
     }

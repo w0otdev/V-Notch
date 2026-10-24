@@ -1,36 +1,65 @@
 using System;
-using System.Diagnostics;
-using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using VNotch.Models;
 using VNotch.Services;
 
 namespace VNotch.Modules;
 
-public sealed class SystemMonitorModule : NotchModuleBase
+/// <summary>
+/// Tick scheduler for the system monitor. CPU, RAM and network sampling (including the smoothing
+/// and delta state) run in VNotch.Native; this class only forwards the sampled numbers.
+/// </summary>
+public sealed partial class SystemMonitorModule : NotchModuleBase
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSystemMonitorState
+    {
+        public ulong LastIdle;
+        public ulong LastKernel;
+        public ulong LastUser;
+        public long LastCpuQpc;
+        public double SmoothedCpu;
+        public byte HasCpuMeasurement;
+        public ulong LastRecvBytes;
+        public ulong LastSentBytes;
+        public long LastNetQpc;
+        public double DownBytesPerSec;
+        public double UpBytesPerSec;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSystemMemory
+    {
+        public ulong TotalPhysical;
+        public ulong AvailablePhysical;
+        public uint MemoryLoadPercent;
+        public ulong InstalledPhysical;
+    }
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_sysmon_reset")]
+    private static partial int NativeReset(ref VnSystemMonitorState state);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_sysmon_sample_cpu")]
+    private static partial int NativeSampleCpu(ref VnSystemMonitorState state, out double cpuPercent);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_sysmon_sample_network")]
+    private static partial int NativeSampleNetwork(ref VnSystemMonitorState state, out double downBytesPerSec, out double upBytesPerSec);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_sysmon_read_memory")]
+    private static partial int NativeReadMemory(int includeInstalled, out VnSystemMemory memory);
+
     public override string ModuleName => "SystemMonitor";
 
     public override TimeSpan? TickInterval => TimeSpan.FromSeconds(1);
 
-    // CPU Tracking via GetSystemTimes (0 allocations, < 0.001ms)
-    private ulong _lastSysIdle = 0;
-    private ulong _lastSysKernel = 0;
-    private ulong _lastSysUser = 0;
-    private long _lastCpuTicks = 0;
-    private double _smoothedCpu = 0;
-    private bool _hasCpuMeasurement;
-
-    // Network Tracking via NetworkInterface IPStatistics
-    private long _lastNetRecvBytes = 0;
-    private long _lastNetSentBytes = 0;
-    private long _lastNetTicks = 0;
+    private VnSystemMonitorState _cpuState;
+    private VnSystemMonitorState _netState;
 
     private int _isNetworkSampling = 0;
     private double _latestDownBytesPerSec = 0;
     private double _latestUpBytesPerSec = 0;
-    private NetworkInterface[]? _cachedInterfaces;
-    private readonly object _interfaceLock = new();
     private readonly object _netStatsLock = new();
 
     private ulong _usablePhysicalBytes;
@@ -40,8 +69,14 @@ public sealed class SystemMonitorModule : NotchModuleBase
 
     protected override void OnInitialize()
     {
-        _usablePhysicalBytes = ReadUsablePhysicalMemory();
-        _installedPhysicalBytes = ReadInstalledPhysicalMemory();
+        NativeReset(ref _cpuState);
+        NativeReset(ref _netState);
+
+        if (NativeReadMemory(1, out var memory) == 0)
+        {
+            _usablePhysicalBytes = memory.TotalPhysical;
+            _installedPhysicalBytes = memory.InstalledPhysical;
+        }
         if (_installedPhysicalBytes == 0) _installedPhysicalBytes = _usablePhysicalBytes;
 
         // Initialize baselines
@@ -52,74 +87,18 @@ public sealed class SystemMonitorModule : NotchModuleBase
         }
     }
 
-    protected override void OnStart()
-    {
-        try
-        {
-            NetworkChange.NetworkAddressChanged -= OnNetworkTopologyChanged;
-            NetworkChange.NetworkAvailabilityChanged -= OnNetworkTopologyChanged;
-            NetworkChange.NetworkAddressChanged += OnNetworkTopologyChanged;
-            NetworkChange.NetworkAvailabilityChanged += OnNetworkTopologyChanged;
-        }
-        catch { }
-    }
-
-    protected override void OnStop()
-    {
-        try
-        {
-            NetworkChange.NetworkAddressChanged -= OnNetworkTopologyChanged;
-            NetworkChange.NetworkAvailabilityChanged -= OnNetworkTopologyChanged;
-        }
-        catch { }
-    }
-
-    private void OnNetworkTopologyChanged(object? sender, EventArgs e)
-    {
-        InvalidateNetworkInterfaces();
-    }
-
-    private void InvalidateNetworkInterfaces()
-    {
-        lock (_interfaceLock)
-        {
-            _cachedInterfaces = null;
-        }
-    }
-
-    private NetworkInterface[] GetOrRefreshNetworkInterfaces()
-    {
-        lock (_interfaceLock)
-        {
-            if (_cachedInterfaces == null)
-            {
-                try
-                {
-                    _cachedInterfaces = NetworkInterface.GetAllNetworkInterfaces();
-                }
-                catch
-                {
-                    _cachedInterfaces = Array.Empty<NetworkInterface>();
-                }
-            }
-            return _cachedInterfaces;
-        }
-    }
-
     protected override void OnTick()
     {
         double cpu = SampleCpuUsage();
 
         ulong used = 0;
         double ramPercent = 0;
-        var memStatus = new Win32Interop.MEMORYSTATUSEX_METRICS();
-        memStatus.dwLength = (uint)Marshal.SizeOf<Win32Interop.MEMORYSTATUSEX_METRICS>();
-        if (Win32Interop.GlobalMemoryStatusEx(ref memStatus))
+        if (NativeReadMemory(0, out var memory) == 0)
         {
-            ulong usable = memStatus.ullTotalPhys > 0 ? memStatus.ullTotalPhys : _usablePhysicalBytes;
-            ulong available = memStatus.ullAvailPhys;
+            ulong usable = memory.TotalPhysical > 0 ? memory.TotalPhysical : _usablePhysicalBytes;
+            ulong available = memory.AvailablePhysical;
             used = available >= usable ? usable : usable - available;
-            ramPercent = Math.Clamp(memStatus.dwMemoryLoad, 0, 100);
+            ramPercent = memory.MemoryLoadPercent;
         }
 
         if (Interlocked.CompareExchange(ref _isNetworkSampling, 1, 0) == 0)
@@ -145,126 +124,20 @@ public sealed class SystemMonitorModule : NotchModuleBase
         });
     }
 
-    private double SampleCpuUsage()
-    {
-        try
-        {
-            long nowTicks = Stopwatch.GetTimestamp();
-            if (_lastCpuTicks > 0)
-            {
-                double elapsedMs = (double)(nowTicks - _lastCpuTicks) * 1000.0 / Stopwatch.Frequency;
-                if (elapsedMs < 50.0)
-                {
-                    return Math.Clamp(_smoothedCpu, 0, 100);
-                }
-            }
-
-            if (Win32Interop.GetSystemTimes(out var sysIdle, out var sysKernel, out var sysUser))
-            {
-                ulong idle = sysIdle.ToUInt64();
-                ulong kernel = sysKernel.ToUInt64();
-                ulong user = sysUser.ToUInt64();
-
-                if (_lastSysIdle > 0)
-                {
-                    ulong deltaIdle = idle > _lastSysIdle ? idle - _lastSysIdle : 0;
-                    ulong deltaKernel = kernel > _lastSysKernel ? kernel - _lastSysKernel : 0;
-                    ulong deltaUser = user > _lastSysUser ? user - _lastSysUser : 0;
-                    ulong deltaTotal = deltaKernel + deltaUser;
-
-                    if (deltaTotal > 0)
-                    {
-                        double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
-                        double rawCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
-                        _smoothedCpu = _hasCpuMeasurement
-                            ? _smoothedCpu * 0.85 + rawCpu * 0.15
-                            : rawCpu;
-                        _hasCpuMeasurement = true;
-                    }
-                }
-
-                _lastSysIdle = idle;
-                _lastSysKernel = kernel;
-                _lastSysUser = user;
-                _lastCpuTicks = nowTicks;
-                return Math.Clamp(_smoothedCpu, 0, 100);
-            }
-        }
-        catch { }
-
-        return Math.Clamp(_smoothedCpu, 0, 100);
-    }
+    private double SampleCpuUsage() =>
+        NativeSampleCpu(ref _cpuState, out double cpu) == 0 ? cpu : 0;
 
     private void SampleNetworkUsageBackground()
     {
         try
         {
-            long nowTicks = Stopwatch.GetTimestamp();
-            long lastNetTicks = Interlocked.Read(ref _lastNetTicks);
-            if (lastNetTicks > 0)
+            int status = NativeSampleNetwork(ref _netState, out double down, out double up);
+            lock (_netStatsLock)
             {
-                double checkElapsed = (double)(nowTicks - lastNetTicks) / Stopwatch.Frequency;
-                if (checkElapsed <= 0.1) return;
+                _latestDownBytesPerSec = down;
+                _latestUpBytesPerSec = up;
             }
-
-            long totalRecv = 0;
-            long totalSent = 0;
-            bool anyUp = false;
-
-            var interfaces = GetOrRefreshNetworkInterfaces();
-            foreach (var nic in interfaces)
-            {
-                try
-                {
-                    if (nic.OperationalStatus != OperationalStatus.Up ||
-                        nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
-                        nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
-                        continue;
-
-                    anyUp = true;
-                    var stats = nic.GetIPStatistics();
-                    totalRecv += stats.BytesReceived;
-                    totalSent += stats.BytesSent;
-                }
-                catch
-                {
-                    // Interface might have gone down during enumeration
-                }
-            }
-
-            if (!anyUp)
-            {
-                lock (_netStatsLock)
-                {
-                    _latestDownBytesPerSec = 0;
-                    _latestUpBytesPerSec = 0;
-                }
-                Interlocked.Exchange(ref _lastNetRecvBytes, 0);
-                Interlocked.Exchange(ref _lastNetSentBytes, 0);
-                Interlocked.Exchange(ref _lastNetTicks, nowTicks);
-                return;
-            }
-
-            long prevRecv = Interlocked.Read(ref _lastNetRecvBytes);
-            long prevSent = Interlocked.Read(ref _lastNetSentBytes);
-            if (lastNetTicks > 0)
-            {
-                double elapsedSec = (double)(nowTicks - lastNetTicks) / Stopwatch.Frequency;
-                if (elapsedSec > 0.1)
-                {
-                    long deltaRecv = totalRecv > prevRecv ? totalRecv - prevRecv : 0;
-                    long deltaSent = totalSent > prevSent ? totalSent - prevSent : 0;
-                    lock (_netStatsLock)
-                    {
-                        _latestDownBytesPerSec = deltaRecv / elapsedSec;
-                        _latestUpBytesPerSec = deltaSent / elapsedSec;
-                    }
-                }
-            }
-
-            Interlocked.Exchange(ref _lastNetRecvBytes, totalRecv);
-            Interlocked.Exchange(ref _lastNetSentBytes, totalSent);
-            Interlocked.Exchange(ref _lastNetTicks, nowTicks);
+            if (status != 0) RuntimeLog.Log("SYSTEM-MONITOR-NET", $"native network sampling failed ({status})");
         }
         catch (Exception ex)
         {
@@ -280,44 +153,4 @@ public sealed class SystemMonitorModule : NotchModuleBase
             Interlocked.Exchange(ref _isNetworkSampling, 0);
         }
     }
-
-    protected override void OnDispose()
-    {
-        OnStop();
-        InvalidateNetworkInterfaces();
-    }
-
-    #region Physical memory
-
-    private static ulong ReadUsablePhysicalMemory()
-    {
-        var memStatus = new Win32Interop.MEMORYSTATUSEX_METRICS();
-        memStatus.dwLength = (uint)Marshal.SizeOf<Win32Interop.MEMORYSTATUSEX_METRICS>();
-        if (Win32Interop.GlobalMemoryStatusEx(ref memStatus))
-        {
-            return memStatus.ullTotalPhys;
-        }
-        return 0;
-    }
-
-    private static ulong ReadInstalledPhysicalMemory()
-    {
-        try
-        {
-            if (GetPhysicallyInstalledSystemMemory(out ulong totalKb) && totalKb > 0)
-                return totalKb * 1024UL;
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("MODULE-SystemMonitor", $"GetPhysicallyInstalledSystemMemory failed: {ex.Message}");
-        }
-        return 0;
-    }
-
-    [return: MarshalAs(UnmanagedType.Bool)]
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetPhysicallyInstalledSystemMemory(out ulong totalMemoryInKilobytes);
-
-    #endregion
 }
-

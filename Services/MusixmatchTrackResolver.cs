@@ -1,15 +1,34 @@
+using System;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using static VNotch.Services.SpotifyHttpResponseReader;
 using static VNotch.Services.SpotifyJson;
 using static VNotch.Services.SpotifyTrackMatcher;
 
 namespace VNotch.Services;
 
-internal sealed class MusixmatchTrackResolver : IDisposable
+internal sealed partial class MusixmatchTrackResolver : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_musixmatch_resolver_compute_duration_seconds(
+        double totalSeconds,
+        out int outSeconds);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_musixmatch_resolver_is_token_valid(
+        ReadOnlySpan<char> token,
+        int tokenLen,
+        long expiresAtUtcTicks,
+        long nowUtcTicks,
+        out byte outValid);
+
     private const string LogCategory = "SPOTIFY-CANVAS";
     private const string JsonContentType = "application/json";
     private static readonly Uri MusixmatchBaseUri = new("https://apic-desktop.musixmatch.com/");
@@ -30,7 +49,9 @@ internal sealed class MusixmatchTrackResolver : IDisposable
         if (string.IsNullOrEmpty(userToken))
             return null;
 
-        int durationSeconds = Math.Max(1, (int)Math.Round(duration.TotalSeconds));
+        int durationSeconds = vn_musixmatch_resolver_compute_duration_seconds(duration.TotalSeconds, out int outDur) == 0
+            ? outDur
+            : Math.Max(1, (int)Math.Round(duration.TotalSeconds));
         string path = "ws/1.1/macro.subtitles.get?format=json" +
                       "&namespace=lyrics_richsynched&subtitle_format=mxm" +
                       "&app_id=web-desktop-app-v1.0" +
@@ -52,10 +73,15 @@ internal sealed class MusixmatchTrackResolver : IDisposable
         return trackId;
     }
 
+    private bool IsCachedTokenValid()
+    {
+        ReadOnlySpan<char> tokSpan = _musixmatchToken is not null ? _musixmatchToken.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_musixmatch_resolver_is_token_valid(tokSpan, tokSpan.Length, _musixmatchTokenExpiresAtUtc.UtcTicks, DateTimeOffset.UtcNow.UtcTicks, out byte valid) == 0 && valid != 0;
+    }
+
     private async Task<string?> GetMusixmatchTokenAsync(CancellationToken token)
     {
-        if (!string.IsNullOrEmpty(_musixmatchToken) &&
-            _musixmatchTokenExpiresAtUtc > DateTimeOffset.UtcNow)
+        if (IsCachedTokenValid())
         {
             return _musixmatchToken;
         }
@@ -63,8 +89,7 @@ internal sealed class MusixmatchTrackResolver : IDisposable
         await _musixmatchTokenLock.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            if (!string.IsNullOrEmpty(_musixmatchToken) &&
-                _musixmatchTokenExpiresAtUtc > DateTimeOffset.UtcNow)
+            if (IsCachedTokenValid())
             {
                 return _musixmatchToken;
             }

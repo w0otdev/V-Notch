@@ -118,6 +118,28 @@ awesome-codex-skills/
 # WPF temporary projects left behind by interrupted builds
 /*_wpftmp.csproj
 GEMINI.md
+AGENTS.md
+CLAUDE.md
+/.agent
+/_agents
+/_agent
 [Bb]in-test/
 [Bb]in_test/
 .artifacts/
+
+# C++ / MSVC intermediate build outputs
+*.obj
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.iobj
+*.ipdb
+*.idb
+*.pch
+*.tlog
+
+# Context-mode MCP local session stats & caches
+.github/context-mode/
+.context-mode/
+/.github/context-mode

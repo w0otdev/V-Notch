@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "检测到的敏感信息始终隐藏。删除已保存的项目，包括固定和归档项目；不会清空 Windows 剪贴板。可能无法识别没有标签的密码。",
   "settings.trayCaptureFiles": "自动保存复制的文件和文件夹",
   "settings.trayCaptureDelay": "捕获延迟",
-  "settings.trayCaptureDelay.hint": "复制后等待 100 至 2000 毫秒再保存。延迟越长，越容易跳过快速连续复制时的中间内容。"
+  "settings.trayCaptureDelay.hint": "复制后等待 100 至 2000 毫秒再保存。延迟越长，越容易跳过快速连续复制时的中间内容。",
+  "settings.cpp26Banner.title": "迁移至 C++26",
+  "settings.cpp26Banner.message": "V-Notch 将在未来的更新中迁移至 C++26。前往 GitHub Discussions 查看详情。",
+  "settings.cpp26Banner.details": "详情",
+  "settings.cpp26Banner.dismiss": "关闭"
 }

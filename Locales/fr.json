@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Les secrets détectés sont toujours masqués. Supprime les éléments enregistrés, même épinglés ou archivés, sans vider le presse-papiers Windows. Les mots de passe sans libellé peuvent ne pas être détectés.",
   "settings.trayCaptureFiles": "Enregistrer automatiquement les fichiers et dossiers copiés",
   "settings.trayCaptureDelay": "Délai de capture",
-  "settings.trayCaptureDelay.hint": "Attendre de 100 à 2000 ms après la copie avant d'enregistrer. Un délai plus long ignore les éléments copiés rapidement à la suite."
+  "settings.trayCaptureDelay.hint": "Attendre de 100 à 2000 ms après la copie avant d'enregistrer. Un délai plus long ignore les éléments copiés rapidement à la suite.",
+  "settings.cpp26Banner.title": "Passage à C++26",
+  "settings.cpp26Banner.message": "V-Notch passera à C++26 dans une prochaine mise à jour. Consultez les détails sur GitHub Discussions.",
+  "settings.cpp26Banner.details": "Détails",
+  "settings.cpp26Banner.dismiss": "Fermer"
 }

@@ -14,8 +14,41 @@ using NAudio.CoreAudioApi.Interfaces;
 
 namespace VNotch.Services;
 
-public sealed class PrivacyIndicatorService : IDisposable
+public sealed partial class PrivacyIndicatorService : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_privacy_indicator_has_min_active_duration(
+        long startFileTime,
+        long utcNowTicks,
+        long minimumTicks,
+        out byte outActive);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_privacy_indicator_is_ignored_mic_process(
+        ReadOnlySpan<char> processName,
+        int processNameLen,
+        out byte outIgnored);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_privacy_indicator_normalize_app_name_slice(
+        ReadOnlySpan<char> raw,
+        int rawLen,
+        out int outStart,
+        out int outLen);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_privacy_indicator_evaluate_mic_gate(
+        byte hasCandidate,
+        byte hasActiveSession,
+        float peakLevel,
+        float signalThreshold,
+        long holdDurationTicks,
+        long utcNowTicks,
+        ref long inoutLastSignalUtcTicks,
+        out byte outActive);
+
     private const string ConsentRoot =
         @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore";
 
@@ -660,6 +693,8 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     internal static bool HasMinimumActiveDuration(long startFileTime, DateTime utcNow, TimeSpan minimum)
     {
+        if (vn_privacy_indicator_has_min_active_duration(startFileTime, utcNow.Ticks, minimum.Ticks, out byte active) == 0)
+            return active != 0;
         if (startFileTime <= 0 || minimum < TimeSpan.Zero) return false;
         try
         {
@@ -681,9 +716,8 @@ public sealed class PrivacyIndicatorService : IDisposable
             ? NormalizeAppName(rawConsumer)
             : Path.GetFileNameWithoutExtension(executablePath);
 
-        if (IgnoredMicrophoneProcessNames.Contains(processName)) return true;
-        if (IgnoredMicrophoneProcessSuffixes.Any(suffix =>
-            processName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
+        ReadOnlySpan<char> procSpan = processName is not null ? processName.AsSpan() : ReadOnlySpan<char>.Empty;
+        if (vn_privacy_indicator_is_ignored_mic_process(procSpan, procSpan.Length, out byte ignored) == 0 && ignored != 0)
             return true;
 
         if (executablePath == null) return false;
@@ -773,23 +807,6 @@ public sealed class PrivacyIndicatorService : IDisposable
 
     internal sealed class ConsumerProcessProbe : IDisposable
     {
-        private const uint ProcessQueryLimitedInformation = 0x1000;
-        private const int ErrorInsufficientBuffer = 122;
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, uint processId);
-
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool CloseHandle(IntPtr handle);
-
-        [DllImport("kernel32.dll")]
-        private static extern int GetPackageFamilyName(IntPtr process, ref uint packageFamilyNameLength, IntPtr packageFamilyName);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern unsafe bool QueryFullProcessImageName(
-            IntPtr process, uint flags, char* path, ref uint size);
 
         private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, bool> _processMatchCache = new(StringComparer.OrdinalIgnoreCase);
@@ -834,36 +851,8 @@ public sealed class PrivacyIndicatorService : IDisposable
             return false;
         }
 
-        internal static unsafe bool IsDesktopExecutableProcess(string executablePath, uint processId)
-        {
-            IntPtr handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
-            if (handle == IntPtr.Zero) return false;
-            try
-            {
-                char* path = stackalloc char[1024];
-                uint length = 1024;
-                if (QueryFullProcessImageName(handle, 0, path, ref length))
-                    return new ReadOnlySpan<char>(path, (int)length).Equals(executablePath.AsSpan(),
-                        StringComparison.OrdinalIgnoreCase);
-
-                if (Marshal.GetLastWin32Error() != ErrorInsufficientBuffer) return false;
-                char[] largePath = System.Buffers.ArrayPool<char>.Shared.Rent(32768);
-                try
-                {
-                    length = 32768;
-                    fixed (char* buffer = largePath)
-                        return QueryFullProcessImageName(handle, 0, buffer, ref length) &&
-                            new ReadOnlySpan<char>(buffer, (int)length).Equals(executablePath.AsSpan(),
-                                StringComparison.OrdinalIgnoreCase);
-                }
-                finally { System.Buffers.ArrayPool<char>.Shared.Return(largePath); }
-            }
-            finally
-            {
-                CloseHandle(handle);
-            }
-        }
-
+        internal static bool IsDesktopExecutableProcess(string executablePath, uint processId) =>
+            Win32Interop.ProcessImagePathEquals(processId, executablePath);
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)> _packageFamilyByPidCache = new();
         private const int MaxPackageFamilyPidCacheEntries = 256;
 
@@ -910,53 +899,25 @@ public sealed class PrivacyIndicatorService : IDisposable
                        string.Equals(cached.Family, packageFamily, StringComparison.OrdinalIgnoreCase);
             }
 
-            IntPtr handle = IntPtr.Zero;
             try
             {
-                handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
-                if (handle == IntPtr.Zero)
+                string? family = Win32Interop.GetProcessPackageFamilyName(processId, out int failure);
+                if (family != null)
                 {
-                    CachePackageFamilyForPid(processId, string.Empty, now + 15000, now);
-                    return false;
+                    CachePackageFamilyForPid(processId, family, now + 60000, now);
+                    return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
                 }
 
-                unsafe
-                {
-                    uint chars = 128;
-                    char* buffer = stackalloc char[128];
-                    int result = GetPackageFamilyName(handle, ref chars, (IntPtr)buffer);
-                    if (result == 0 && chars > 1)
-                    {
-                        string family = new string(buffer, 0, (int)chars - 1);
-                        CachePackageFamilyForPid(processId, family, now + 60000, now);
-                        return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
-                    }
-                    if (result == ErrorInsufficientBuffer && chars > 128 && chars <= 1024)
-                    {
-                        char* bigBuffer = stackalloc char[(int)chars];
-                        if (GetPackageFamilyName(handle, ref chars, (IntPtr)bigBuffer) == 0 && chars > 1)
-                        {
-                            string family = new string(bigBuffer, 0, (int)chars - 1);
-                            CachePackageFamilyForPid(processId, family, now + 60000, now);
-                            return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
-                        }
-                    }
-                }
-
-                CachePackageFamilyForPid(processId, string.Empty, now + 30000, now);
+                bool openFailed = failure == Win32Interop.ProcessPackageFamilyOpenFailed;
+                CachePackageFamilyForPid(processId, string.Empty, now + (openFailed ? 15000 : 30000), now);
                 return false;
             }
             catch
             {
                 return false;
             }
-            finally
-            {
-                if (handle != IntPtr.Zero) CloseHandle(handle);
-            }
         }
     }
-
     private sealed class CachedSessionMeter : IDisposable
     {
         public MMDevice Device { get; }
@@ -1314,6 +1275,21 @@ public sealed class PrivacyIndicatorService : IDisposable
             float peakLevel,
             DateTime utcNow)
         {
+            long lastTicks = _lastSignalUtc.Ticks;
+            if (vn_privacy_indicator_evaluate_mic_gate(
+                    hasCandidate ? (byte)1 : (byte)0,
+                    hasActiveSession ? (byte)1 : (byte)0,
+                    peakLevel,
+                    _signalThreshold,
+                    _holdDuration.Ticks,
+                    utcNow.Ticks,
+                    ref lastTicks,
+                    out byte active) == 0)
+            {
+                _lastSignalUtc = new DateTime(lastTicks, DateTimeKind.Utc);
+                return active != 0;
+            }
+
             if (!hasCandidate || !hasActiveSession)
             {
                 Reset();
@@ -1335,6 +1311,11 @@ public sealed class PrivacyIndicatorService : IDisposable
     private static string NormalizeAppName(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return raw;
+        ReadOnlySpan<char> rawSpan = raw.AsSpan();
+        if (vn_privacy_indicator_normalize_app_name_slice(rawSpan, rawSpan.Length, out int start, out int len) == 0)
+        {
+            return raw.Substring(start, len);
+        }
 
         if (raw.Contains('#'))
         {

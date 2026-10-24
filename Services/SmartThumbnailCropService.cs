@@ -29,12 +29,53 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     private bool _modelExistsChecked;
     private InferenceSession? _cachedSession;
 
-    private const int MaxInferenceCacheEntries = 64;
+    private const int MaxInferenceCacheEntries = 24;
     private readonly Dictionary<ArtworkFingerprint, InferenceCacheEntry> _inferenceCache = new();
     private readonly ConditionalWeakTable<BitmapSource, FingerprintHolder> _fingerprintCache = new();
     private long _inferenceCacheAccess;
 
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
+
+    [LibraryImport("ucrtbase.dll")]
+    private static partial int _heapmin();
+
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr GetCurrentProcess();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool K32EmptyWorkingSet(IntPtr hProcess);
+
+    private static long _lastWorkingSetTrimTicks;
+
+    internal static void TryMinimizeNativeHeap(bool trimWorkingSet = false)
+    {
+        try
+        {
+            _ = _heapmin();
+        }
+        catch
+        {
+        }
+
+        if (!trimWorkingSet)
+            return;
+
+        long now = Environment.TickCount64;
+        long last = System.Threading.Interlocked.Read(ref _lastWorkingSetTrimTicks);
+        if (now - last < 30_000 || System.Threading.Interlocked.CompareExchange(ref _lastWorkingSetTrimTicks, now, last) != last)
+            return;
+
+        try
+        {
+            GC.Collect(2, GCCollectionMode.Optimized, blocking: false, compacting: false);
+            _ = _heapmin();
+            _ = K32EmptyWorkingSet(GetCurrentProcess());
+        }
+        catch
+        {
+        }
+    }
     private DateTime _lastUsedUtc;
     private System.Threading.Timer? _idleTimer;
 
@@ -167,6 +208,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
                 _idleTimer?.Dispose();
                 _idleTimer = null;
                 VNotch.Services.RuntimeLog.Log(LogCategory, "Session unloaded after idle timeout");
+                TryMinimizeNativeHeap(trimWorkingSet: true);
             }
         }
     }
@@ -380,6 +422,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         {
             if (tensorBuffer != null)
                 ArrayPool<float>.Shared.Return(tensorBuffer);
+            TryMinimizeNativeHeap();
         }
     }
 
@@ -394,7 +437,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
             InterOpNumThreads = 1,
             IntraOpNumThreads = 2,
-            EnableMemoryPattern = true,
+            EnableMemoryPattern = false,
             EnableCpuMemArena = false
         };
 

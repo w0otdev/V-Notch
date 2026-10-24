@@ -1,8 +1,19 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services;
 
 /// <summary>Serializes blocking device writes, retaining only the latest pending value per control.</summary>
-internal sealed class CoalescingActionQueue
+internal sealed partial class CoalescingActionQueue
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_coalescing_action_queue_evaluate_post")]
+    private static partial int NativeEvaluatePost(
+        byte keyAlreadyPending,
+        byte isRunning,
+        out byte outShouldEnqueueKey,
+        out byte outShouldStartWorker);
+
     private readonly object _gate = new();
     private readonly Dictionary<string, Action> _pending = new();
     private readonly Queue<string> _keys = new();
@@ -12,9 +23,14 @@ internal sealed class CoalescingActionQueue
     {
         lock (_gate)
         {
-            if (!_pending.ContainsKey(key)) _keys.Enqueue(key);
+            NativeEvaluatePost(
+                _pending.ContainsKey(key) ? (byte)1 : (byte)0,
+                _running ? (byte)1 : (byte)0,
+                out byte shouldEnqueueKey,
+                out byte shouldStartWorker);
+            if (shouldEnqueueKey != 0) _keys.Enqueue(key);
             _pending[key] = action;
-            if (_running) return;
+            if (shouldStartWorker == 0) return;
             _running = true;
         }
         ThreadPool.QueueUserWorkItem(_ => Drain());

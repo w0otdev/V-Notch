@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using VNotch.Models;
@@ -21,7 +22,36 @@ internal sealed class SpotlightAiException(string resourceKey, string? diagnosti
 
 internal sealed partial class SpotlightAiService
 {
-    private static readonly HttpClient SharedClient = new(NetworkPrivacy.Handler(NetworkFeature.Ai, new HttpClientHandler { AllowAutoRedirect = false }))
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_ai_validate_api_key(
+        ReadOnlySpan<char> keyPtr,
+        int keyLen,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_ai_resolve_provider_error(
+        int code,
+        byte streaming,
+        Span<char> outKeyBuf,
+        int keyCap,
+        out int outKeyLen,
+        Span<char> outDiagBuf,
+        int diagCap,
+        out int outDiagLen);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_ai_resolve_stream_error(
+        ReadOnlySpan<char> labelPtr,
+        int labelLen,
+        int code,
+        Span<char> outKeyBuf,
+        int keyCap,
+        out int outKeyLen,
+        Span<char> outDiagBuf,
+        int diagCap,
+        out int outDiagLen);
+
+    private static readonly HttpClient SharedClient = new(NetworkPrivacy.Handler(NetworkFeature.Ai, new NativeWinHttpHandler { AllowAutoRedirect = false }))
     { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
     private readonly HttpClient _client;
     internal SpotlightAiService(HttpClient? client = null) => _client = client ?? SharedClient;
@@ -62,7 +92,7 @@ internal sealed partial class SpotlightAiService
             throw new SpotlightAiException("spotlight.ai.configure");
         key = key.Trim();
         // Reject invalid header values before HTTP code can include them in an exception.
-        if (key.Length > 4096 || key.Any(c => c < '!' || c > '~'))
+        if (vn_spotlight_ai_validate_api_key(key.AsSpan(), key.Length, out byte validKey) != 0 || validKey == 0)
             throw new SpotlightAiException("spotlight.ai.authError");
         object body;
         string url;
@@ -185,19 +215,17 @@ internal sealed partial class SpotlightAiService
         }
     }
 
-    private static SpotlightAiException ProviderError(int code, bool streaming = false) => new(code switch
+    private static SpotlightAiException ProviderError(int code, bool streaming = false)
     {
-        401 => "spotlight.ai.authError",
-        403 => "spotlight.ai.permissionError",
-        402 => "spotlight.ai.billingError",
-        408 or 504 => "spotlight.ai.requestTimeout",
-        413 => "spotlight.ai.contextError",
-        429 => "spotlight.ai.rateError",
-        400 or 422 => "spotlight.ai.requestError",
-        404 => "spotlight.ai.modelError",
-        >= 500 => "spotlight.ai.serverError",
-        _ => "spotlight.ai.providerError"
-    }, code > 0 ? $"{(streaming ? "API" : "HTTP")} {code}" : "API stream error");
+        Span<char> keyBuf = stackalloc char[64];
+        Span<char> diagBuf = stackalloc char[64];
+        vn_spotlight_ai_resolve_provider_error(
+            code,
+            streaming ? (byte)1 : (byte)0,
+            keyBuf, keyBuf.Length, out int keyLen,
+            diagBuf, diagBuf.Length, out int diagLen);
+        return new SpotlightAiException(new string(keyBuf[..keyLen]), new string(diagBuf[..diagLen]));
+    }
 
     // Only fixed labels and numeric status codes may cross into UI/log diagnostics.
     // Never include provider messages, request URLs, headers, model IDs or chat text.
@@ -211,27 +239,14 @@ internal sealed partial class SpotlightAiService
             label = type.GetString();
         if (label == null && error.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String)
             label = status.GetString();
-        string? key = label switch
-        {
-            "insufficient_quota" => "spotlight.ai.billingError",
-            "context_length_exceeded" => "spotlight.ai.contextError",
-            _ => null
-        };
-        if (key != null) return new SpotlightAiException(key, "API " + label);
-        if (code == 0) code = label switch
-        {
-            "overloaded_error" or "UNAVAILABLE" => 503,
-            "rate_limit_error" or "rate_limit_exceeded" or "RESOURCE_EXHAUSTED" => 429,
-            "authentication_error" or "invalid_api_key" or "UNAUTHENTICATED" => 401,
-            "permission_error" or "PERMISSION_DENIED" => 403,
-            "invalid_request_error" or "INVALID_ARGUMENT" => 400,
-            "not_found_error" or "model_not_found" or "NOT_FOUND" => 404,
-            "request_too_large" => 413,
-            "DEADLINE_EXCEEDED" => 504,
-            "api_error" or "INTERNAL" => 500,
-            _ => 0
-        };
-        return ProviderError(code, true);
+        ReadOnlySpan<char> labelSpan = (label ?? string.Empty).AsSpan();
+        Span<char> keyBuf = stackalloc char[64];
+        Span<char> diagBuf = stackalloc char[64];
+        vn_spotlight_ai_resolve_stream_error(
+            labelSpan, labelSpan.Length, code,
+            keyBuf, keyBuf.Length, out int keyLen,
+            diagBuf, diagBuf.Length, out int diagLen);
+        return new SpotlightAiException(new string(keyBuf[..keyLen]), new string(diagBuf[..diagLen]));
     }
 
     private static string ReadDelta(JsonElement root, string provider)

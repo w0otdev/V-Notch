@@ -9,8 +9,34 @@ using System.Text.RegularExpressions;
 namespace VNotch.Services.Translation;
 
 // App-owned hardlinks avoid duplicate storage; removal never deletes the original path.
-internal sealed class CustomTranslationModels
+internal sealed partial class CustomTranslationModels
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_custom_translation_models_is_valid_id(
+        ReadOnlySpan<char> id,
+        int idLen,
+        out byte outValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_custom_translation_models_is_valid_sha256_hex(
+        ReadOnlySpan<char> hash,
+        int hashLen,
+        out byte outValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_custom_translation_models_is_split_gguf_file_name(
+        ReadOnlySpan<char> fileName,
+        int fileNameLen,
+        out byte outIsSplit);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_custom_translation_models_validate_gguf_header(
+        ReadOnlySpan<byte> header,
+        int headerLen,
+        out byte outValid);
+
     internal static CustomTranslationModels Shared { get; } = new(Path.Combine(AppPaths.LocalAppDataRoot, "translation-models"));
     private readonly string _root;
     private readonly object _sync = new();
@@ -27,14 +53,16 @@ internal sealed class CustomTranslationModels
         foreach (string directory in Directory.EnumerateDirectories(_root, "custom-*"))
         {
             string id = Path.GetFileName(directory);
-            if (!Regex.IsMatch(id, "^custom-[a-f0-9]{32}$")) continue;
+            if (vn_custom_translation_models_is_valid_id(id.AsSpan(), id.Length, out byte validId) != 0 || validId == 0) continue;
             try
             {
                 string path = Path.Combine(directory, "custom.json");
                 if (!File.Exists(path) || new FileInfo(path).Length > 8192) continue;
                 var manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllText(path));
+                string manifestHash = manifest?.Hash ?? "";
                 if (manifest == null || string.IsNullOrWhiteSpace(manifest.Name) || manifest.Name.Length > 128 ||
-                    manifest.Size <= 24 || !Regex.IsMatch(manifest.Hash ?? "", "^[A-Fa-f0-9]{64}$") ||
+                    manifest.Size <= 24 ||
+                    vn_custom_translation_models_is_valid_sha256_hex(manifestHash.AsSpan(), manifestHash.Length, out byte validHash) != 0 || validHash == 0 ||
                     !Enum.IsDefined(manifest.PromptKind) ||
                     (manifest.ModelPath != null && (!Path.IsPathFullyQualified(manifest.ModelPath) ||
                         !Path.GetExtension(manifest.ModelPath).Equals(".gguf", StringComparison.OrdinalIgnoreCase)))) continue;
@@ -56,12 +84,8 @@ internal sealed class CustomTranslationModels
         TranslationRating = 0
     };
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreateHardLink(string fileName, string existingFileName, IntPtr securityAttributes);
-
     private static bool TryCreateHardLink(string destination, string source) =>
-        CreateHardLink(destination, source, IntPtr.Zero);
+        Win32Interop.CreateHardLink(destination, source);
 
     internal void Forget(string id) { lock (_sync) _profiles.Remove(id); }
 
@@ -69,17 +93,16 @@ internal sealed class CustomTranslationModels
         CancellationToken ct, IProgress<double>? progress = null)
     {
         ct.ThrowIfCancellationRequested();
+        string fileName = Path.GetFileName(source);
         if (!Enum.IsDefined(kind) || !Path.GetExtension(source).Equals(".gguf", StringComparison.OrdinalIgnoreCase) ||
-            Regex.IsMatch(Path.GetFileName(source), @"-\d{5}-of-\d{5}\.gguf$", RegexOptions.IgnoreCase))
+            (vn_custom_translation_models_is_split_gguf_file_name(fileName.AsSpan(), fileName.Length, out byte isSplit) == 0 && isSplit != 0))
             throw new TranslationException("translation.customInvalid");
         await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 131072,
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         byte[] header = new byte[24];
         if (input.Length <= header.Length) throw new TranslationException("translation.customInvalid");
         await input.ReadExactlyAsync(header, ct).ConfigureAwait(false);
-        if (!header.AsSpan(0, 4).SequenceEqual("GGUF"u8) ||
-            BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4)) is not (2 or 3) ||
-            BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(8)) == 0)
+        if (vn_custom_translation_models_validate_gguf_header(header, header.Length, out byte validHdr) != 0 || validHdr == 0)
             throw new TranslationException("translation.customInvalid");
         input.Position = 0;
         string id = "custom-" + Guid.NewGuid().ToString("N");

@@ -34,7 +34,7 @@ public enum SpatialAudioMode
     DolbyAtmos
 }
 
-public sealed class AudioMixerService : IDisposable
+public sealed partial class AudioMixerService : IDisposable
 {
     private sealed class CachedSessionVolume : IDisposable
     {
@@ -725,13 +725,11 @@ public sealed class AudioMixerService : IDisposable
     private static bool SetDefaultEndpointInternal(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;
-        IPolicyConfig? policyConfig = null;
         try
         {
-            policyConfig = (IPolicyConfig)new PolicyConfigClient();
-            int consoleHr = policyConfig.SetDefaultEndpoint(deviceId, ERole.eConsole);
-            int multimediaHr = policyConfig.SetDefaultEndpoint(deviceId, ERole.eMultimedia);
-            int communicationsHr = policyConfig.SetDefaultEndpoint(deviceId, ERole.eCommunications);
+            // The native layer owns the COM call; the per-role HRESULTs come back for logging.
+            _ = vn_audio_set_default_endpoint(deviceId.AsSpan(), deviceId.Length,
+                out int consoleHr, out int multimediaHr, out int communicationsHr);
 
             if (multimediaHr < 0)
             {
@@ -753,14 +751,6 @@ public sealed class AudioMixerService : IDisposable
             RuntimeLog.Log("AUDIOMIXER-SETDEFAULT", ex.Message);
             return false;
         }
-        finally
-        {
-            if (policyConfig != null)
-            {
-                try { Marshal.ReleaseComObject(policyConfig); }
-                catch (Exception) { /* Best-effort COM cleanup */ }
-            }
-        }
     }
 
     public static SpatialAudioMode GetSpatialAudioMode()
@@ -779,13 +769,13 @@ public sealed class AudioMixerService : IDisposable
             if (string.IsNullOrWhiteSpace(value))
                 return SpatialAudioMode.Off;
 
-            if (value.Contains("a44d5fd2", StringComparison.OrdinalIgnoreCase))
-                return SpatialAudioMode.WindowsSonic;
-            if (value.Contains("265d4a5e", StringComparison.OrdinalIgnoreCase) ||
-                value.Contains("dolby", StringComparison.OrdinalIgnoreCase))
-                return SpatialAudioMode.DolbyAtmos;
-
-            return SpatialAudioMode.Off;
+            _ = vn_audio_mixer_classify_spatial_audio_value(value.AsSpan(), value.Length, out int mode);
+            return mode switch
+            {
+                1 => SpatialAudioMode.WindowsSonic,
+                2 => SpatialAudioMode.DolbyAtmos,
+                _ => SpatialAudioMode.Off
+            };
         }
         catch (Exception ex)
         {
@@ -794,12 +784,38 @@ public sealed class AudioMixerService : IDisposable
         }
     }
 
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_audio_mixer_extract_endpoint_guid(
+        ReadOnlySpan<char> deviceId,
+        int deviceIdLen,
+        out int outStart,
+        out int outLength,
+        out byte outFound);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_audio_mixer_classify_spatial_audio_value(
+        ReadOnlySpan<char> value,
+        int valueLen,
+        out int outMode);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_audio_set_default_endpoint(
+        ReadOnlySpan<char> deviceId,
+        int deviceIdLen,
+        out int outConsoleHr,
+        out int outMultimediaHr,
+        out int outCommunicationsHr);
+
     private static string ExtractEndpointGuid(string deviceId)
     {
-        int idx = deviceId.LastIndexOf('}');
-        int open = deviceId.LastIndexOf('{');
-        if (open >= 0 && idx > open)
-            return deviceId.Substring(open, idx - open + 1);
+        if (string.IsNullOrEmpty(deviceId)) return "";
+        if (vn_audio_mixer_extract_endpoint_guid(deviceId.AsSpan(), deviceId.Length, out int start, out int length, out byte found) == 0 &&
+            found != 0 && start >= 0 && start + length <= deviceId.Length)
+        {
+            return deviceId.Substring(start, length);
+        }
         return "";
     }
 
@@ -828,37 +844,5 @@ public sealed class AudioMixerService : IDisposable
         }
     }
 
-    #region IPolicyConfig COM interop
 
-#pragma warning disable S3260 // COM coclass imported without interface implementation requires non-sealed declaration for runtime QueryInterface
-    [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
-    private class PolicyConfigClient { }
-#pragma warning restore S3260
-
-    [ComImport, Guid("f8679f50-850a-41cf-9c72-430f290290c8"),
-     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IPolicyConfig
-    {
-        [PreserveSig] int GetMixFormat(string deviceId, IntPtr format);
-        [PreserveSig] int GetDeviceFormat(string deviceId, bool def, IntPtr format);
-        [PreserveSig] int ResetDeviceFormat(string deviceId);
-        [PreserveSig] int SetDeviceFormat(string deviceId, IntPtr endpointFormat, IntPtr mixFormat);
-        [PreserveSig] int GetProcessingPeriod(string deviceId, bool def, IntPtr defaultPeriod, IntPtr minimumPeriod);
-        [PreserveSig] int SetProcessingPeriod(string deviceId, IntPtr period);
-        [PreserveSig] int GetShareMode(string deviceId, IntPtr mode);
-        [PreserveSig] int SetShareMode(string deviceId, IntPtr mode);
-        [PreserveSig] int GetPropertyValue(string deviceId, bool store, IntPtr key, IntPtr value);
-        [PreserveSig] int SetPropertyValue(string deviceId, bool store, IntPtr key, IntPtr value);
-        [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string deviceId, ERole role);
-        [PreserveSig] int SetEndpointVisibility(string deviceId, bool visible);
-    }
-
-    private enum ERole
-    {
-        eConsole = 0,
-        eMultimedia = 1,
-        eCommunications = 2
-    }
-
-    #endregion
 }

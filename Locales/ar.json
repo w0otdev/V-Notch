@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "تُخفى الأسرار المكتشفة دائمًا. تُحذف العناصر المحفوظة، بما فيها المثبتة والمؤرشفة، دون مسح حافظة Windows. قد لا تُكتشف كلمات المرور غير المعلّمة.",
   "settings.trayCaptureFiles": "حفظ الملفات والمجلدات المنسوخة تلقائيًا",
   "settings.trayCaptureDelay": "تأخير الالتقاط",
-  "settings.trayCaptureDelay.hint": "الانتظار من 100 إلى 2000 مللي ثانية بعد النسخ قبل الحفظ. يؤدي الانتظار مدة أطول إلى تجاوز العناصر الوسيطة عند النسخ السريع المتتابع."
+  "settings.trayCaptureDelay.hint": "الانتظار من 100 إلى 2000 مللي ثانية بعد النسخ قبل الحفظ. يؤدي الانتظار مدة أطول إلى تجاوز العناصر الوسيطة عند النسخ السريع المتتابع.",
+  "settings.cpp26Banner.title": "الانتقال إلى C++26",
+  "settings.cpp26Banner.message": "سينتقل V-Notch إلى C++26 في تحديث مستقبلي. اقرأ التفاصيل على GitHub Discussions.",
+  "settings.cpp26Banner.details": "التفاصيل",
+  "settings.cpp26Banner.dismiss": "إغلاق"
 }

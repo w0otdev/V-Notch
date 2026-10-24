@@ -31,8 +31,6 @@ public partial class HoverDetectionService : IDisposable
     public event EventHandler? HoverLeave;
     public event EventHandler<Point>? MousePositionChanged;
 
-    [DllImport("user32.dll")]
-    private static extern bool GetCursorPos(out POINT lpPoint);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_hover_is_in_top_edge_reveal_zone(
@@ -46,12 +44,6 @@ public partial class HoverDetectionService : IDisposable
         double px, double py,
         out double outDist);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct POINT
-    {
-        public int X;
-        public int Y;
-    }
 
     public bool IsHovering => _isHovering;
 
@@ -109,7 +101,7 @@ public partial class HoverDetectionService : IDisposable
 
     private void PollTimer_Tick(object? sender, EventArgs e)
     {
-        if (!GetCursorPos(out POINT point)) return;
+        if (!Win32Interop.GetCursorPos(out Win32Interop.POINT point)) return;
 
         ProcessMousePosition(new Point(point.X, point.Y), Stopwatch.GetTimestamp());
     }

@@ -11,8 +11,26 @@ using System.Threading.Tasks;
 
 namespace VNotch.Services;
 
-public static class CrashReporter
+public static partial class CrashReporter
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_crash_reporter_should_rotate(
+        long currentSizeBytes,
+        out byte outRotate);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_crash_reporter_format_duration(
+        double totalDays,
+        double totalHours,
+        double totalMinutes,
+        double totalSeconds,
+        int hours,
+        int minutes,
+        int seconds,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
     private static readonly object _crashLock = new();
     private static readonly UTF8Encoding _utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly DateTime _processStartTime = DateTime.UtcNow;
@@ -341,7 +359,8 @@ public static class CrashReporter
             if (!File.Exists(filePath)) return;
 
             var info = new FileInfo(filePath);
-            if (info.Length <= MaxCrashLogSizeBytes) return;
+            vn_crash_reporter_should_rotate(info.Length, out byte rotate);
+            if (rotate == 0) return;
 
             var backupPath = filePath + ".old";
             if (File.Exists(backupPath))
@@ -384,12 +403,19 @@ public static class CrashReporter
 
     private static string FormatDuration(TimeSpan duration)
     {
-        if (duration.TotalDays >= 1)
-            return $"{(int)duration.TotalDays}d {duration.Hours}h {duration.Minutes}m {duration.Seconds}s";
-        if (duration.TotalHours >= 1)
-            return $"{(int)duration.TotalHours}h {duration.Minutes}m {duration.Seconds}s";
-        if (duration.TotalMinutes >= 1)
-            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
+        Span<char> buf = stackalloc char[64];
+        if (vn_crash_reporter_format_duration(
+                duration.TotalDays,
+                duration.TotalHours,
+                duration.TotalMinutes,
+                duration.TotalSeconds,
+                duration.Hours,
+                duration.Minutes,
+                duration.Seconds,
+                buf, buf.Length, out int len) == 0 && len > 0)
+        {
+            return new string(buf[..len]);
+        }
         return $"{duration.TotalSeconds:F1}s";
     }
 

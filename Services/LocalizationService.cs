@@ -4,14 +4,42 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services;
 
 public sealed record LocaleMetadata(string Code, string Name, string Culture);
 
-public static class Loc
+public static partial class Loc
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_localization_resolve_default_culture(
+        ReadOnlySpan<char> lang,
+        int langLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_localization_extract_resource_code(
+        ReadOnlySpan<char> resourceName,
+        int resourceNameLen,
+        out int outStart,
+        out int outLen,
+        out byte outMatched);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_localization_should_store_entry(
+        ReadOnlySpan<char> propName,
+        int propNameLen,
+        ReadOnlySpan<char> text,
+        int textLen,
+        byte keyExists,
+        out byte outShouldStore);
+
     private static string _currentLanguage = "en";
     private static readonly Dictionary<string, Dictionary<string, string>> _strings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, LocaleMetadata> _metadata = new(StringComparer.OrdinalIgnoreCase);
@@ -37,26 +65,14 @@ public static class Loc
             catch { /* fallback to switch */ }
         }
 
-        return CultureInfo.GetCultureInfo(_currentLanguage switch
+        Span<char> cultureBuf = stackalloc char[16];
+        ReadOnlySpan<char> langSpan = _currentLanguage.AsSpan();
+        if (vn_localization_resolve_default_culture(langSpan, langSpan.Length, cultureBuf, cultureBuf.Length, out int cultureLen) == 0 && cultureLen > 0)
         {
-            "vi" => "vi-VN",
-            "zh" => "zh-CN",
-            "pt" => "pt-BR",
-            "ru" => "ru-RU",
-            "ar" => "ar-SA",
-            "ko" => "ko-KR",
-            "es" => "es-ES",
-            "fr" => "fr-FR",
-            "de" => "de-DE",
-            "ja" => "ja-JP",
-            "hi" => "hi-IN",
-            "it" => "it-IT",
-            "tr" => "tr-TR",
-            "pl" => "pl-PL",
-            "nl" => "nl-NL",
-            "id" => "id-ID",
-            _ => "en-US"
-        });
+            return CultureInfo.GetCultureInfo(new string(cultureBuf[..cultureLen]));
+        }
+
+        return CultureInfo.GetCultureInfo("en-US");
     }
 
     internal static IReadOnlyCollection<string> GetKeys(string language) =>
@@ -133,18 +149,16 @@ public static class Loc
     private static void LoadEmbeddedLocales()
     {
         var assembly = typeof(Loc).Assembly;
-        string prefix = "VNotch.Locales.";
-        string suffix = ".json";
 
         foreach (string resourceName in assembly.GetManifestResourceNames())
         {
-            if (!resourceName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-                !resourceName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> resSpan = resourceName.AsSpan();
+            if (vn_localization_extract_resource_code(resSpan, resSpan.Length, out int start, out int len, out byte matched) != 0 || matched == 0)
             {
                 continue;
             }
 
-            string code = resourceName.Substring(prefix.Length, resourceName.Length - prefix.Length - suffix.Length);
+            string code = resourceName.Substring(start, len);
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream != null)
             {
@@ -219,11 +233,14 @@ public static class Loc
                 else if (!prop.Name.StartsWith('_') && prop.Value.ValueKind == JsonValueKind.String)
                 {
                     string? text = prop.Value.GetString();
-                    // An incomplete external locale must not overwrite bundled
-                    // translations with blanks or untranslated key placeholders.
-                    // Some bundled labels are intentionally empty (e.g. a
-                    // language that has no o'clock suffix). Keep their keys.
-                    if (text != prop.Name && (!string.IsNullOrWhiteSpace(text) || !dict.ContainsKey(prop.Name)))
+                    ReadOnlySpan<char> propSpan = prop.Name.AsSpan();
+                    ReadOnlySpan<char> textSpan = text is not null ? text.AsSpan() : ReadOnlySpan<char>.Empty;
+                    bool keyExists = dict.ContainsKey(prop.Name);
+                    bool shouldStore = vn_localization_should_store_entry(
+                        propSpan, propSpan.Length, textSpan, textSpan.Length, keyExists ? (byte)1 : (byte)0, out byte outStore) == 0
+                        ? outStore != 0
+                        : (text != prop.Name && (!string.IsNullOrWhiteSpace(text) || !keyExists));
+                    if (shouldStore)
                         dict[prop.Name] = text ?? string.Empty;
                 }
             }

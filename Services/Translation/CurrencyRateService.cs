@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services.Translation;
@@ -8,10 +9,22 @@ namespace VNotch.Services.Translation;
 internal sealed record CurrencyRate(string Base, string Quote, decimal Rate, DateOnly Date, DateOnly Checked);
 internal sealed record CurrencyConversion(SelectedPrice Price, string Target, decimal Amount, CurrencyRate? Rate, bool Cached);
 
-internal sealed class CurrencyRateService
+internal sealed partial class CurrencyRateService
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_currency_rate_validate(
+        ReadOnlySpan<char> basePtr, int baseLen,
+        ReadOnlySpan<char> quotePtr, int quoteLen,
+        ReadOnlySpan<char> srcPtr, int srcLen,
+        ReadOnlySpan<char> tgtPtr, int tgtLen,
+        byte rateInBounds,
+        int rateDateDayNumber,
+        int rateCheckedDayNumber,
+        int todayDayNumber,
+        out byte outValid);
+
     private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.CurrencyRates,
-        new HttpClientHandler { AllowAutoRedirect = false }))
+        new NativeWinHttpHandler { AllowAutoRedirect = false }))
     { Timeout = TimeSpan.FromSeconds(8), MaxResponseContentBufferSize = 16384 };
     internal static CurrencyRateService Shared { get; } = new();
     private readonly HttpClient _client;
@@ -72,9 +85,20 @@ internal sealed class CurrencyRateService
         finally { _gate.Release(); }
     }
 
-    private static bool Valid(CurrencyRate rate, string source, string target, DateOnly today) =>
-        rate.Base == source && rate.Quote == target && rate.Rate > 0 && rate.Rate <= 1_000_000_000m &&
-        rate.Checked <= today && rate.Date <= today.AddDays(1) && rate.Date >= today.AddDays(-7) && rate.Date <= rate.Checked.AddDays(1);
+    private static bool Valid(CurrencyRate rate, string source, string target, DateOnly today)
+    {
+        byte inBounds = rate.Rate > 0 && rate.Rate <= 1_000_000_000m ? (byte)1 : (byte)0;
+        return vn_currency_rate_validate(
+            rate.Base.AsSpan(), rate.Base.Length,
+            rate.Quote.AsSpan(), rate.Quote.Length,
+            source.AsSpan(), source.Length,
+            target.AsSpan(), target.Length,
+            inBounds,
+            rate.Date.DayNumber,
+            rate.Checked.DayNumber,
+            today.DayNumber,
+            out byte valid) == 0 && valid != 0;
+    }
 
     private static CurrencyConversion Convert(SelectedPrice price, string target, CurrencyRate rate, bool cached) =>
         new(price, target, decimal.Round(price.Amount * rate.Rate, TranslationCurrencies.DecimalPlaces(target), MidpointRounding.AwayFromZero), rate, cached);

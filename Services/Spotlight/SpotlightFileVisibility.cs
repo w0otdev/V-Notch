@@ -93,6 +93,7 @@ internal static partial class SpotlightFileVisibility
     internal static bool ShouldInclude(SpotlightSearchItem item, string query)
     {
         string rawTarget = item.Target ?? string.Empty;
+        if (LocalPathPolicy.IsUncPath(rawTarget)) return false;
         string normalizedPath = rawTarget.Replace('/', '\\');
         bool underHiddenRoot = false;
         for (int i = 0; i < HiddenRoots.Count; i++)

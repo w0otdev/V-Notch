@@ -1,10 +1,12 @@
+using System;
+using System.Runtime.InteropServices;
 using NAudio.Dsp;
 
 namespace VNotch.Services;
 
 // Owned by the capture callback under MusicVisualizer's capture lock.
 // Reuse each bin's exact original power across overlapping instrument bands.
-internal sealed class VisualizerSpectrumBands
+internal sealed partial class VisualizerSpectrumBands
 {
     private static readonly (int From, int To)[] Bands =
     [
@@ -22,6 +24,26 @@ internal sealed class VisualizerSpectrumBands
     private int _sampleRate;
     private int _lastBin;
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_visualizer_spectrum_compute(
+        Complex* fft,
+        int fftLength,
+        int* starts,
+        int* ends,
+        int lastBin,
+        double powerScale,
+        double* powersScratch,
+        double* outEnergies);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_visualizer_spectrum_update_ranges(
+        int sampleRate,
+        int fftLength,
+        int powersLength,
+        int* outStarts,
+        int* outEnds,
+        out int outLastBin);
+
     internal VisualizerSpectrumBands(int fftLength)
     {
         if (fftLength < 4 || !System.Numerics.BitOperations.IsPow2((uint)fftLength))
@@ -32,7 +54,7 @@ internal sealed class VisualizerSpectrumBands
         _powers = new double[fftLength / 2];
     }
 
-    internal ReadOnlySpan<double> Compute(Complex[] fft, int sampleRate)
+    internal unsafe ReadOnlySpan<double> Compute(Complex[] fft, int sampleRate)
     {
         if (fft.Length < _fftLength) throw new ArgumentException("Incomplete FFT frame", nameof(fft));
         if (sampleRate <= 0 || _powers.Length <= 2)
@@ -42,32 +64,23 @@ internal sealed class VisualizerSpectrumBands
         }
         if (_sampleRate != sampleRate) UpdateRanges(sampleRate);
 
-        for (int i = 1; i <= _lastBin; i++)
+        fixed (Complex* pFft = fft)
+        fixed (int* pStarts = _starts, pEnds = _ends)
+        fixed (double* pPowers = _powers, pEnergies = _energies)
         {
-            _powers[i] = ((fft[i].X * fft[i].X) + (fft[i].Y * fft[i].Y)) * _powerScale;
-        }
-        for (int band = 0; band < Bands.Length; band++)
-        {
-            double sum = 0;
-            for (int i = _starts[band]; i <= _ends[band]; i++) sum += _powers[i];
-            _energies[band] = Math.Sqrt(sum / (_ends[band] - _starts[band] + 1));
+            _ = vn_visualizer_spectrum_compute(
+                pFft, _fftLength, pStarts, pEnds, _lastBin, _powerScale, pPowers, pEnergies);
         }
         return _energies;
     }
 
-    private void UpdateRanges(int sampleRate)
+    private unsafe void UpdateRanges(int sampleRate)
     {
         _sampleRate = sampleRate;
-        _lastBin = 0;
-        int maximum = _powers.Length - 1;
-        for (int band = 0; band < Bands.Length; band++)
+        fixed (int* pStarts = _starts, pEnds = _ends)
         {
-            int start = (int)Math.Round(Bands[band].From / (double)sampleRate * _fftLength);
-            int end = (int)Math.Round(Bands[band].To / (double)sampleRate * _fftLength);
-            if (end < start) (start, end) = (end, start);
-            _starts[band] = Math.Clamp(start, 1, maximum);
-            _ends[band] = Math.Clamp(end, _starts[band], maximum);
-            _lastBin = Math.Max(_lastBin, _ends[band]);
+            _ = vn_visualizer_spectrum_update_ranges(
+                sampleRate, _fftLength, _powers.Length, pStarts, pEnds, out _lastBin);
         }
     }
 }

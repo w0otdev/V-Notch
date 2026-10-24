@@ -81,7 +81,7 @@ internal sealed partial class NetworkPrivacy
     }
 
     internal static HttpMessageHandler Handler(NetworkFeature feature, HttpMessageHandler? inner = null) =>
-        new PrivacyHandler(Current, feature, inner ?? new HttpClientHandler());
+        new PrivacyHandler(Current, feature, inner ?? new NativeWinHttpHandler());
 
     internal sealed class PrivacyHandler(NetworkPrivacy policy, NetworkFeature feature, HttpMessageHandler inner) : DelegatingHandler(inner)
     {

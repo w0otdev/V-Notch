@@ -1,10 +1,36 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services;
 
-public class MediaSourceCache
+public partial class MediaSourceCache
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_source_cache_resolve_capacity(
+        int capacity,
+        int defaultCapacity,
+        out int outCapacity);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_source_cache_matches_source(
+        ReadOnlySpan<char> cachedSource,
+        int cachedLen,
+        ReadOnlySpan<char> expectedSource,
+        int expectedLen,
+        out byte outMatches);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_source_cache_should_evict(
+        int currentCount,
+        int capacity,
+        byte hasLast,
+        out byte outEvict);
+
     private const int DefaultCapacity = 500;
 
     private readonly string _cachePath;
@@ -19,7 +45,7 @@ public class MediaSourceCache
 
     public MediaSourceCache(int capacity = DefaultCapacity)
     {
-        _capacity = capacity > 0 ? capacity : DefaultCapacity;
+        _capacity = vn_media_source_cache_resolve_capacity(capacity, DefaultCapacity, out int resolved) == 0 ? resolved : (capacity > 0 ? capacity : DefaultCapacity);
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var dir = Path.Combine(appData, "V-Notch");
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
@@ -28,7 +54,7 @@ public class MediaSourceCache
 
     public MediaSourceCache(string cachePath, int capacity = DefaultCapacity)
     {
-        _capacity = capacity > 0 ? capacity : DefaultCapacity;
+        _capacity = vn_media_source_cache_resolve_capacity(capacity, DefaultCapacity, out int resolved) == 0 ? resolved : (capacity > 0 ? capacity : DefaultCapacity);
         _cachePath = cachePath;
         var dir = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -61,9 +87,11 @@ public class MediaSourceCache
     {
         lock (_lock)
         {
+            ReadOnlySpan<char> expectedSpan = expectedSource is not null ? expectedSource.AsSpan() : ReadOnlySpan<char>.Empty;
             if (!string.IsNullOrEmpty(fullIdentity) &&
                 _cache.TryGetValue(fullIdentity, out var s1) &&
-                string.Equals(s1, expectedSource, StringComparison.OrdinalIgnoreCase))
+                vn_media_source_cache_matches_source(s1.AsSpan(), s1.Length, expectedSpan, expectedSpan.Length, out byte m1) == 0 &&
+                m1 != 0)
             {
                 Touch(fullIdentity);
                 return true;
@@ -71,7 +99,8 @@ public class MediaSourceCache
 
             if (!string.IsNullOrEmpty(trackOnlyIdentity) &&
                 _cache.TryGetValue(trackOnlyIdentity, out var s2) &&
-                string.Equals(s2, expectedSource, StringComparison.OrdinalIgnoreCase))
+                vn_media_source_cache_matches_source(s2.AsSpan(), s2.Length, expectedSpan, expectedSpan.Length, out byte m2) == 0 &&
+                m2 != 0)
             {
                 Touch(trackOnlyIdentity);
                 return true;
@@ -184,7 +213,7 @@ public class MediaSourceCache
 
     private void Evict()
     {
-        while (_cache.Count > _capacity && _lru.Last is { } last)
+        while (vn_media_source_cache_should_evict(_cache.Count, _capacity, _lru.Last is not null ? (byte)1 : (byte)0, out byte evict) == 0 && evict != 0 && _lru.Last is { } last)
         {
             _lru.RemoveLast();
             _nodes.Remove(last.Value);

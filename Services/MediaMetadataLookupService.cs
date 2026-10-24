@@ -1,15 +1,43 @@
+using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
+public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupService
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_metadata_is_valid_api_key_format(
+        ReadOnlySpan<char> key,
+        int keyLen,
+        out byte outValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_metadata_is_direct_video_id(
+        ReadOnlySpan<char> title,
+        int titleLen,
+        out byte outIsVideoId);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_metadata_extract_yt_initial_data_slice(
+        ReadOnlySpan<char> html,
+        int htmlLen,
+        out int outStart,
+        out int outLen,
+        out byte outFound);
+
     private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
     private const string YouTubeApiLogTag = "META-YOUTUBE-API";
     private const string ItemsPropertyName = "items";
@@ -18,7 +46,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
     private const string DurationPropertyName = "duration";
 
     private static readonly HttpClient SharedHttpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
-    private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork, new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }));
+    private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork, new NativeWinHttpHandler { AllowAutoRedirect = false, UseCookies = false }));
     private readonly HttpClient _httpClient;
     private readonly HttpClient _keyClient;
     private readonly Func<bool> _artworkAllowed;
@@ -41,7 +69,11 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
             uri.UserInfo.Length != 0 || !uri.AbsolutePath.StartsWith("/youtube/v3/", StringComparison.Ordinal))
             throw new ArgumentException("Invalid YouTube API endpoint.");
         apiKey = apiKey.Trim();
-        if (apiKey.Length == 0 || apiKey.Length > 4096 || apiKey.Any(c => c < '!' || c > '~'))
+        ReadOnlySpan<char> keySpan = apiKey.AsSpan();
+        bool validKey = vn_media_metadata_is_valid_api_key_format(keySpan, keySpan.Length, out byte outValid) == 0
+            ? outValid != 0
+            : (apiKey.Length > 0 && apiKey.Length <= 4096 && !apiKey.Any(c => c < '!' || c > '~'));
+        if (!validKey)
             throw new ArgumentException("Invalid API key format.");
         var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.Add("x-goog-api-key", apiKey);
@@ -68,7 +100,7 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
 
             string cleanTitle = title.Trim();
 
-            if (cleanTitle.Length == 11 && Regex.IsMatch(cleanTitle, "^[a-zA-Z0-9_-]{11}$"))
+            if (vn_media_metadata_is_direct_video_id(cleanTitle.AsSpan(), cleanTitle.Length, out byte isDirectId) == 0 && isDirectId != 0)
             {
                 var validated = await ResolveVideoIdAsync(cleanTitle, ct);
                 if (validated != null)
@@ -368,30 +400,10 @@ public sealed class MediaMetadataLookupService : IMediaMetadataLookupService
                 return null;
 
             string html = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-
-            const string marker = "var ytInitialData = ";
-            int startIdx = html.IndexOf(marker, StringComparison.Ordinal);
-            if (startIdx < 0)
-            {
-                const string altMarker = "window[\"ytInitialData\"] = ";
-                startIdx = html.IndexOf(altMarker, StringComparison.Ordinal);
-                if (startIdx < 0)
-                    return null;
-                startIdx += altMarker.Length;
-            }
-            else
-            {
-                startIdx += marker.Length;
-            }
-
-            int endIdx = html.IndexOf(";</script>", startIdx, StringComparison.Ordinal);
-            if (endIdx < 0)
-                endIdx = html.IndexOf("};\n", startIdx, StringComparison.Ordinal);
-            if (endIdx < 0)
+            if (vn_media_metadata_extract_yt_initial_data_slice(html.AsSpan(), html.Length, out int jsonStart, out int jsonLen, out byte foundSlice) != 0 || foundSlice == 0)
                 return null;
 
-            string jsonStr = html[startIdx..endIdx];
-            jsonStr = jsonStr.TrimEnd(';');
+            string jsonStr = html.Substring(jsonStart, jsonLen);
 
             var videoIds = new List<(string id, string? title, string? channel)>();
             var videoIdPattern = new Regex(@"""videoId""\s*:\s*""([a-zA-Z0-9_-]{11})""");

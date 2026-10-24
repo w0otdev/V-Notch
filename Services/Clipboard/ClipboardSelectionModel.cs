@@ -1,4 +1,31 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services.Clipboard;
+
+internal static partial class ClipboardSelectionModelNative
+{
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    internal static partial int vn_clipboard_selection_clamp_range(
+        int itemCount,
+        int first,
+        int last,
+        out int outStart,
+        out int outEnd);
+
+    [LibraryImport(NativeDll)]
+    internal static partial int vn_clipboard_selection_resolve_action(
+        byte shift,
+        byte hasAnchor,
+        int anchorIndex,
+        int itemIndex,
+        byte control,
+        byte alreadyInTargets,
+        out int outAction,
+        out int outStart,
+        out int outEnd);
+}
 
 /// <summary>Selection policy independent of realized WPF card containers.</summary>
 internal sealed class ClipboardSelectionModel<T> where T : class
@@ -24,7 +51,8 @@ internal sealed class ClipboardSelectionModel<T> where T : class
 
     internal void IncludeRange(IList<T> items, int first, int last)
     {
-        for (int i = Math.Max(0, first); i <= Math.Min(items.Count - 1, last); i++) _targets.Add(items[i]);
+        _ = ClipboardSelectionModelNative.vn_clipboard_selection_clamp_range(items.Count, first, last, out int start, out int end);
+        for (int i = start; i <= end; i++) _targets.Add(items[i]);
     }
 
     internal IReadOnlySet<T> Select(IList<T> items, IEnumerable<T> selected, T item,
@@ -33,16 +61,27 @@ internal sealed class ClipboardSelectionModel<T> where T : class
         _targets.Clear();
         _targets.UnionWith(selected);
         Modified = anyModifier || _targets.Count > 1;
-        if (shift && Anchor != null)
+        int anchorIdx = (shift && Anchor != null) ? items.IndexOf(Anchor) : -1;
+        int itemIdx = (shift && Anchor != null) ? items.IndexOf(item) : -1;
+        _ = ClipboardSelectionModelNative.vn_clipboard_selection_resolve_action(
+            shift ? (byte)1 : (byte)0,
+            Anchor != null ? (byte)1 : (byte)0,
+            anchorIdx,
+            itemIdx,
+            control ? (byte)1 : (byte)0,
+            _targets.Contains(item) ? (byte)1 : (byte)0,
+            out int action,
+            out int rangeStart,
+            out int rangeEnd);
+        if (action == 1)
         {
-            int start = items.IndexOf(Anchor), end = items.IndexOf(item);
-            if (start >= 0 && end >= 0) IncludeRange(items, Math.Min(start, end), Math.Max(start, end));
+            IncludeRange(items, rangeStart, rangeEnd);
         }
-        else if (control)
+        else if (action == 2)
         {
             if (!_targets.Remove(item)) _targets.Add(item);
         }
-        else if (!_targets.Contains(item))
+        else if (action == 3)
         {
             _targets.Clear();
             _targets.Add(item);

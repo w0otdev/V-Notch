@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Los secretos detectados siempre se ocultan. Elimina los elementos guardados, incluidos los fijados y archivados; no vacía el portapapeles de Windows. Puede omitir contraseñas sin etiqueta.",
   "settings.trayCaptureFiles": "Guardar automáticamente archivos y carpetas copiados",
   "settings.trayCaptureDelay": "Retardo de captura",
-  "settings.trayCaptureDelay.hint": "Espera de 100 a 2000 ms tras copiar antes de guardar. Un retraso mayor omite los elementos copiados rápidamente uno tras otro."
+  "settings.trayCaptureDelay.hint": "Espera de 100 a 2000 ms tras copiar antes de guardar. Un retraso mayor omite los elementos copiados rápidamente uno tras otro.",
+  "settings.cpp26Banner.title": "Transición a C++26",
+  "settings.cpp26Banner.message": "V-Notch pasará a C++26 en una futura actualización. Consulta los detalles en GitHub Discussions.",
+  "settings.cpp26Banner.details": "Detalles",
+  "settings.cpp26Banner.dismiss": "Cerrar"
 }

@@ -1,9 +1,28 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+
 namespace VNotch.Services;
 
 // Players can remove an SMTC session while creating the next one. This is a
 // bounded source-retention policy, not a wait for an operation to finish.
-internal sealed class MediaPinReconnectWindow : IDisposable
+internal sealed partial class MediaPinReconnectWindow : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_pin_reconnect_has_expired(
+        byte waiting,
+        long elapsedTicks,
+        long gracePeriodTicks,
+        out byte outExpired);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_pin_reconnect_remaining_ticks(
+        long elapsedTicks,
+        long gracePeriodTicks,
+        out long outRemainingTicks);
+
     internal static readonly TimeSpan GracePeriod = TimeSpan.FromSeconds(4);
 
     private readonly object _gate = new();
@@ -24,7 +43,16 @@ internal sealed class MediaPinReconnectWindow : IDisposable
 
     internal bool HasExpired
     {
-        get { lock (_gate) return _waiting && _clock.GetElapsedTime(_started) >= GracePeriod; }
+        get
+        {
+            lock (_gate)
+            {
+                long elapsedTicks = _waiting ? _clock.GetElapsedTime(_started).Ticks : 0L;
+                return vn_media_pin_reconnect_has_expired(_waiting ? (byte)1 : (byte)0, elapsedTicks, GracePeriod.Ticks, out byte expired) == 0
+                    ? expired != 0
+                    : (_waiting && _clock.GetElapsedTime(_started) >= GracePeriod);
+            }
+        }
     }
 
     internal void Start()
@@ -44,10 +72,13 @@ internal sealed class MediaPinReconnectWindow : IDisposable
         lock (_gate)
         {
             if (_disposed || !_waiting || generation != _generation || _timer == null) return;
-            var remaining = GracePeriod - _clock.GetElapsedTime(_started);
-            if (remaining > TimeSpan.Zero)
+            long elapsedTicks = _clock.GetElapsedTime(_started).Ticks;
+            long remTicks = vn_media_pin_reconnect_remaining_ticks(elapsedTicks, GracePeriod.Ticks, out long outRem) == 0
+                ? outRem
+                : (GracePeriod.Ticks - elapsedTicks);
+            if (remTicks > 0)
             {
-                _timer?.Change(remaining, Timeout.InfiniteTimeSpan);
+                _timer?.Change(TimeSpan.FromTicks(remTicks), Timeout.InfiniteTimeSpan);
                 return;
             }
             _timer?.Dispose();

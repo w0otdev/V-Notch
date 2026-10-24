@@ -9,6 +9,9 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class LiquidGlassRecoveryTests
 {
+    private const int FrameWidth = 8;
+    private const int FrameHeight = 4;
+
     [Theory]
     [InlineData("missing")]
     [InlineData("stale")]
@@ -21,10 +24,10 @@ public sealed class LiquidGlassRecoveryTests
             using var source = CreateSource();
             switch (failure)
             {
-                case "missing": Set(source, "_hasCompletedFrame", false); break;
-                case "stale": Set(source, "_completedFrameTicks", Environment.TickCount64 - 1000); break;
-                case "unfiltered": Set(source, "_filterVersion", 1); break;
-                case "black": Set(source, "_completedBuffer", new byte[8 * 4 * 4]); break;
+                case "missing": Install(source, Array.Empty<byte>(), 0, frame: false); break;
+                case "stale": Install(source, Pixels(128), 1000); break;
+                case "unfiltered": source.AddExcludeHwnd(new IntPtr(0x1234)); break;
+                case "black": Install(source, new byte[FrameWidth * FrameHeight * 4], 0); break;
             }
 
             var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null);
@@ -45,16 +48,16 @@ public sealed class LiquidGlassRecoveryTests
         SharedStaTestRunner.Run(() =>
         {
             using var source = CreateSource();
-            var pixels = Get<byte[]>(source, "_completedBuffer");
+            var pixels = Pixels(128);
             for (int y = 0; y < 4; y++)
-                Array.Clear(pixels, y * 8 * 4, 4 * 4);
+                Array.Clear(pixels, y * FrameWidth * 4, 4 * 4);
+            Install(source, pixels, 0);
             var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null);
             Set(controller, "_mag", source);
             Set(controller, "_magFailStreak", 60);
 
             Assert.False(controller.TryRestoreMagnifier(0, 0, 4, 4));
-            Array.Fill(pixels, (byte)128);
-            Set(source, "_completedFrameTicks", Environment.TickCount64);
+            Install(source, Pixels(128), 0);
             Assert.True(controller.TryRestoreMagnifier(0, 0, 4, 4));
             Assert.True(Get<bool>(controller, "_magReady"));
             Assert.Equal(0, Get<int>(controller, "_magFailStreak"));
@@ -73,18 +76,17 @@ public sealed class LiquidGlassRecoveryTests
     public void CaptureRejectsStalledCallbacksAndAcceptsFreshOpaqueBlackFrames()
     {
         using var source = CreateSource();
-        var pixels = Get<byte[]>(source, "_completedBuffer");
-        Array.Clear(pixels);
+        var pixels = new byte[FrameWidth * FrameHeight * 4];
         for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
         IntPtr destination = Marshal.AllocHGlobal(4 * 4 * 4);
         try
         {
-            Set(source, "_completedFrameTicks", Environment.TickCount64 - 1000);
+            Install(source, pixels, 1000);
             Assert.False(source.CaptureInto(0, 0, 4, 4, destination));
             Assert.False(source.HasUsableFrame(0, 0, 4, 4));
 
             // Freshness comes from callback delivery, not a change in pixel values.
-            Set(source, "_completedFrameTicks", Environment.TickCount64);
+            Install(source, pixels, 0);
             Assert.True(source.CaptureInto(0, 0, 4, 4, destination));
             Assert.True(source.HasUsableFrame(0, 0, 4, 4));
             Assert.Equal(0, Marshal.ReadByte(destination));
@@ -93,16 +95,16 @@ public sealed class LiquidGlassRecoveryTests
         finally { Marshal.FreeHGlobal(destination); }
     }
 
+    private static byte[] Pixels(byte value) => Enumerable.Repeat(value, FrameWidth * FrameHeight * 4).ToArray();
+
+    private static void Install(MagnifierCaptureSource source, byte[] pixels, long ageMs, bool frame = true) =>
+        source.InstallFrameForTest(true, true, frame ? FrameWidth : 0, frame ? FrameHeight : 0, pixels, ageMs);
+
+    // The native source owns frame state; the test seam installs a ready source without a pump thread.
     private static MagnifierCaptureSource CreateSource()
     {
         var source = new MagnifierCaptureSource();
-        Set(source, "<IsReady>k__BackingField", true);
-        Set(source, "_running", true);
-        Set(source, "_hasCompletedFrame", true);
-        Set(source, "_completedWidth", 8);
-        Set(source, "_completedHeight", 4);
-        Set(source, "_completedBuffer", Enumerable.Repeat((byte)128, 8 * 4 * 4).ToArray());
-        Set(source, "_completedFrameTicks", Environment.TickCount64);
+        Install(source, Pixels(128), 0);
         return source;
     }
 

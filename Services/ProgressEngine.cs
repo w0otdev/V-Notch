@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services;
@@ -36,8 +37,58 @@ public struct UiProgressFrame
     public bool DurationJustChanged { get; set; }
 }
 
-public class ProgressEngine
+public partial class ProgressEngine
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_engine_normalize_playback_rate(
+        double reportedRate,
+        byte isYouTube,
+        out double outRate);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_engine_effective_snapshot_position(
+        long posTicks,
+        long durTicks,
+        byte isPlaying,
+        byte isYouTube,
+        byte isIndeterminateEffective,
+        double playbackRate,
+        long snapshotTsTicks,
+        long nowUtcTicks,
+        out long outEffectiveTicks);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_engine_predict_position(
+        long basePosTicks,
+        long baseTimeTicks,
+        long nowUtcTicks,
+        double playbackRate,
+        byte isIndeterminate,
+        byte isPlaying,
+        int state,
+        out long outPredictedTicks);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_engine_clamp_position(
+        long posTicks,
+        long durTicks,
+        out long outClampedTicks);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_engine_did_duration_change(
+        long prevTicks,
+        long currTicks,
+        byte isYouTube,
+        out byte outChanged);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_engine_smooth_correction(
+        long diffTicks,
+        long predictedNowTicks,
+        long durTicks,
+        byte isYouTube,
+        out long outCorrectedTicks);
+
     private const string LogReject = "PROGRESS-ENGINE-REJECT";
     private const string LogCorrect = "PROGRESS-ENGINE-CORRECT";
 
@@ -277,19 +328,7 @@ public class ProgressEngine
         _isSeekEnabled = snapshot.IsSeekEnabled;
         _isYouTube = snapshot.IsYouTube;
 
-        var reportedRate = snapshot.PlaybackRate;
-        if (double.IsNaN(reportedRate) || double.IsInfinity(reportedRate) || reportedRate <= 0)
-        {
-            reportedRate = 1.0;
-        }
-
-        reportedRate = Math.Clamp(reportedRate, 0.5, 2.5);
-        if (snapshot.IsYouTube && Math.Abs(reportedRate - 1.0) <= 0.12)
-        {
-            reportedRate = 1.0;
-        }
-
-        _playbackRate = Math.Abs(reportedRate - 1.0) <= 0.035 ? 1.0 : reportedRate;
+        vn_progress_engine_normalize_playback_rate(snapshot.PlaybackRate, snapshot.IsYouTube ? (byte)1 : (byte)0, out _playbackRate);
 
         if (snapshot.IsPlaying && _pendingPauseConfirmation)
         {
@@ -488,44 +527,13 @@ public class ProgressEngine
 
     private void ApplySmoothCorrection(TimeSpan diff, TimeSpan observedPos, TimeSpan predictedNow, DateTime nowUtc)
     {
-        if (!_isYouTube && diff < TimeSpan.Zero)
-        {
-            double slowdownFactor = 0.15;
-            double nudge = diff.TotalSeconds * slowdownFactor;
-            double correctedSeconds = predictedNow.TotalSeconds + nudge;
-            double minAllowed = predictedNow.TotalSeconds - 0.05;
-            if (correctedSeconds < minAllowed)
-                correctedSeconds = minAllowed;
-            RuntimeLog.Log(LogCorrect,
-                $"smooth-native-backward: predicted={predictedNow.TotalSeconds:F2}s observed={observedPos.TotalSeconds:F2}s " +
-                $"diff={diff.TotalSeconds:F2}s corrected={correctedSeconds:F2}s (slowdown)");
-            _basePosition = ClampPosition(TimeSpan.FromSeconds(correctedSeconds));
-            _baseTimeUtc = nowUtc;
-            return;
-        }
-
-        const double correctionFactor = 0.9;
-        double correctedSeconds2 = predictedNow.TotalSeconds + (diff.TotalSeconds * correctionFactor);
-
-        if (diff < TimeSpan.Zero)
-        {
-            double minAllowedBackward = predictedNow.TotalSeconds - SmoothBackwardCap.TotalSeconds;
-            if (correctedSeconds2 < minAllowedBackward)
-            {
-                correctedSeconds2 = minAllowedBackward;
-            }
-            RuntimeLog.Log(LogCorrect,
-                $"smooth-browser-backward: predicted={predictedNow.TotalSeconds:F2}s observed={observedPos.TotalSeconds:F2}s " +
-                $"diff={diff.TotalSeconds:F2}s corrected={correctedSeconds2:F2}s cap={SmoothBackwardCap.TotalMilliseconds}ms");
-        }
-        else
-        {
-            RuntimeLog.Log(LogCorrect,
-                $"smooth-forward: predicted={predictedNow.TotalSeconds:F2}s observed={observedPos.TotalSeconds:F2}s " +
-                $"diff={diff.TotalSeconds:F2}s corrected={correctedSeconds2:F2}s");
-        }
-
-        _basePosition = ClampPosition(TimeSpan.FromSeconds(correctedSeconds2));
+        vn_progress_engine_smooth_correction(
+            diff.Ticks,
+            predictedNow.Ticks,
+            _duration.Ticks,
+            _isYouTube ? (byte)1 : (byte)0,
+            out long correctedTicks);
+        _basePosition = TimeSpan.FromTicks(correctedTicks);
         _baseTimeUtc = nowUtc;
     }
 
@@ -584,88 +592,20 @@ public class ProgressEngine
         }
     }
 
-    private static TimeSpan CalculateMaxCompensationWindow(ProgressSnapshot snapshot)
-    {
-        if (!snapshot.IsYouTube)
-        {
-            return TimeSpan.FromSeconds(10);
-        }
-
-        if (snapshot.Duration > TimeSpan.Zero)
-        {
-            TimeSpan durationWindow = snapshot.Duration + TimeSpan.FromSeconds(5);
-            return durationWindow < TimeSpan.FromHours(4)
-                ? durationWindow
-                : TimeSpan.FromHours(4);
-        }
-
-        return TimeSpan.FromMinutes(2);
-    }
-
-    private static double NormalizePlaybackRate(double reportedRate)
-    {
-        if (double.IsNaN(reportedRate) || double.IsInfinity(reportedRate) || reportedRate <= 0)
-        {
-            return 1.0;
-        }
-
-        return Math.Clamp(reportedRate, 0.5, 2.5);
-    }
-
     private static TimeSpan GetEffectiveSnapshotPosition(ProgressSnapshot snapshot, DateTime snapshotTsUtc, DateTime nowUtc)
     {
-        TimeSpan effectivePosition = snapshot.Position;
-
-        if (MediaTimelinePolicy.IsIndeterminate(snapshot.Duration, snapshot.IsIndeterminate) ||
-            !snapshot.IsPlaying || snapshotTsUtc == DateTime.MinValue || snapshotTsUtc > nowUtc.AddMilliseconds(250))
-        {
-            return effectivePosition;
-        }
-
-        TimeSpan snapshotAge = nowUtc - snapshotTsUtc;
-        if (snapshotAge <= TimeSpan.FromMilliseconds(100))
-        {
-            return effectivePosition;
-        }
-
-        TimeSpan maxCompensationWindow = CalculateMaxCompensationWindow(snapshot);
-        if (snapshotAge > maxCompensationWindow)
-        {
-            RuntimeLog.Log("PROGRESS-ENGINE-COMP",
-                $"compensation-skipped: snapshotAge={snapshotAge.TotalSeconds:F2}s > maxWindow={maxCompensationWindow.TotalSeconds:F1}s " +
-                $"rawPos={snapshot.Position.TotalSeconds:F2}s isBrowser={snapshot.IsYouTube}");
-            return effectivePosition;
-        }
-
-        double playbackRate = NormalizePlaybackRate(snapshot.PlaybackRate);
-        effectivePosition += TimeSpan.FromSeconds(snapshotAge.TotalSeconds * playbackRate);
-
-        if (snapshot.Duration > TimeSpan.Zero && effectivePosition > snapshot.Duration)
-        {
-            effectivePosition = snapshot.Duration;
-        }
-
-        if (snapshot.Duration > TimeSpan.Zero &&
-            snapshot.Position.TotalSeconds < 5.0 &&
-            effectivePosition.TotalSeconds > snapshot.Duration.TotalSeconds * 0.9)
-        {
-            RuntimeLog.Log("PROGRESS-ENGINE-COMP",
-                $"compensation-rejected-stale: rawPos={snapshot.Position.TotalSeconds:F2}s " +
-                $"compensated={effectivePosition.TotalSeconds:F2}s > 90% of dur={snapshot.Duration.TotalSeconds:F1}s " +
-                $"snapshotAge={snapshotAge.TotalSeconds:F2}s");
-            return snapshot.Position;
-        }
-
-        double compensationAmount = (effectivePosition - snapshot.Position).TotalSeconds;
-        if (compensationAmount > 3.0)
-        {
-            RuntimeLog.Log("PROGRESS-ENGINE-COMP",
-                $"large-compensation: rawPos={snapshot.Position.TotalSeconds:F2}s -> effective={effectivePosition.TotalSeconds:F2}s " +
-                $"added={compensationAmount:F2}s snapshotAge={snapshotAge.TotalSeconds:F2}s rate={playbackRate:F2} " +
-                $"isBrowser={snapshot.IsYouTube}");
-        }
-
-        return effectivePosition;
+        bool indeterminateEffective = MediaTimelinePolicy.IsIndeterminate(snapshot.Duration, snapshot.IsIndeterminate);
+        vn_progress_engine_effective_snapshot_position(
+            snapshot.Position.Ticks,
+            snapshot.Duration.Ticks,
+            snapshot.IsPlaying ? (byte)1 : (byte)0,
+            snapshot.IsYouTube ? (byte)1 : (byte)0,
+            indeterminateEffective ? (byte)1 : (byte)0,
+            snapshot.PlaybackRate,
+            snapshotTsUtc == DateTime.MinValue ? 0 : snapshotTsUtc.Ticks,
+            nowUtc.Ticks,
+            out long effectiveTicks);
+        return TimeSpan.FromTicks(effectiveTicks);
     }
 
     public void Reset()
@@ -739,38 +679,26 @@ public class ProgressEngine
 
     private TimeSpan PredictPosition(DateTime nowUtc)
     {
-        if (_isIndeterminate || !_isPlaying || (_state != ProgressState.Playing && _state != ProgressState.Seeking))
-        {
-            return _basePosition;
-        }
-
-        if (_baseTimeUtc == DateTime.MinValue)
-        {
-            return _basePosition;
-        }
-
-        TimeSpan elapsed = nowUtc - _baseTimeUtc;
-        if (elapsed < TimeSpan.Zero)
-        {
-            elapsed = TimeSpan.Zero;
-        }
-
-        return _basePosition + TimeSpan.FromSeconds(elapsed.TotalSeconds * _playbackRate);
+        vn_progress_engine_predict_position(
+            _basePosition.Ticks,
+            _baseTimeUtc == DateTime.MinValue ? 0 : _baseTimeUtc.Ticks,
+            nowUtc.Ticks,
+            _playbackRate,
+            _isIndeterminate ? (byte)1 : (byte)0,
+            _isPlaying ? (byte)1 : (byte)0,
+            (int)_state,
+            out long predictedTicks);
+        return TimeSpan.FromTicks(predictedTicks);
     }
 
     private bool DidDurationChange(TimeSpan previous, TimeSpan current)
     {
-        if (previous <= TimeSpan.Zero || current <= TimeSpan.Zero)
-        {
-            return (previous > TimeSpan.Zero) != (current > TimeSpan.Zero);
-        }
-
-        double diffSec = Math.Abs((current - previous).TotalSeconds);
-        double percentThreshold = _isYouTube ? 0.05 : 0.02;
-        double absoluteThreshold = _isYouTube ? 3.0 : 1.0;
-
-        double minMeaningfulDelta = Math.Max(absoluteThreshold, previous.TotalSeconds * percentThreshold);
-        return diffSec >= minMeaningfulDelta;
+        vn_progress_engine_did_duration_change(
+            previous.Ticks,
+            current.Ticks,
+            _isYouTube ? (byte)1 : (byte)0,
+            out byte changed);
+        return changed != 0;
     }
 
     private bool HasTimelineModeChanged(ProgressSnapshot snapshot) =>
@@ -779,16 +707,7 @@ public class ProgressEngine
 
     private TimeSpan ClampPosition(TimeSpan pos)
     {
-        if (pos < TimeSpan.Zero)
-        {
-            return TimeSpan.Zero;
-        }
-
-        if (_duration > TimeSpan.Zero && pos > _duration)
-        {
-            return _duration;
-        }
-
-        return pos;
+        vn_progress_engine_clamp_position(pos.Ticks, _duration.Ticks, out long clampedTicks);
+        return TimeSpan.FromTicks(clampedTicks);
     }
 }

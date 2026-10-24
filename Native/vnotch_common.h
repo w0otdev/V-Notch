@@ -739,6 +739,92 @@ constexpr char16_t to_upper_ascii(char16_t ch) noexcept
     return (ch >= u'a' && ch <= u'z') ? static_cast<char16_t>(ch - 32) : ch;
 }
 
+constexpr char16_t to_lower_ascii(char16_t ch) noexcept
+{
+    return (ch >= u'A' && ch <= u'Z') ? static_cast<char16_t>(ch + 32) : ch;
+}
+
+constexpr bool is_ascii_hex(char16_t ch) noexcept
+{
+    return (ch >= u'0' && ch <= u'9') || (ch >= u'a' && ch <= u'f') || (ch >= u'A' && ch <= u'F');
+}
+
+constexpr bool equals_icase_ascii(std::u16string_view a, std::u16string_view b) noexcept
+{
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        if (to_lower_ascii(a[i]) != to_lower_ascii(b[i])) return false;
+    }
+    return true;
+}
+
+constexpr bool starts_with_icase_ascii(std::u16string_view s, std::u16string_view prefix) noexcept
+{
+    return s.size() >= prefix.size() && equals_icase_ascii(s.substr(0, prefix.size()), prefix);
+}
+
+constexpr bool ends_with_icase_ascii(std::u16string_view s, std::u16string_view suffix) noexcept
+{
+    return s.size() >= suffix.size() && equals_icase_ascii(s.substr(s.size() - suffix.size()), suffix);
+}
+
+constexpr bool contains_icase_ascii(std::u16string_view haystack, std::u16string_view needle) noexcept
+{
+    if (needle.empty()) return true;
+    if (haystack.size() < needle.size()) return false;
+    const size_t limit = haystack.size() - needle.size();
+    for (size_t i = 0; i <= limit; ++i)
+    {
+        if (equals_icase_ascii(haystack.substr(i, needle.size()), needle)) return true;
+    }
+    return false;
+}
+
+inline bool equals_icase_win(std::u16string_view a, std::u16string_view b) noexcept
+{
+    return equals_ignore_case(a, b);
+}
+
+inline bool contains_icase_win(std::u16string_view haystack, std::u16string_view needle) noexcept
+{
+    return contains_ignore_case(haystack, needle);
+}
+
+constexpr std::u16string_view vn_trim(std::u16string_view sv) noexcept
+{
+    return trim_view(sv);
+}
+
+constexpr bool vn_is_whitespace(char16_t ch) noexcept
+{
+    return is_unicode_whitespace(ch);
+}
+
+constexpr bool vn_equals_icase_ascii(std::u16string_view a, std::u16string_view b) noexcept
+{
+    return equals_icase_ascii(a, b);
+}
+
+constexpr bool vn_starts_with_icase_ascii(std::u16string_view s, std::u16string_view prefix) noexcept
+{
+    return starts_with_icase_ascii(s, prefix);
+}
+
+constexpr bool vn_ends_with_icase_ascii(std::u16string_view s, std::u16string_view suffix) noexcept
+{
+    return ends_with_icase_ascii(s, suffix);
+}
+
+constexpr bool vn_contains_icase_ascii(std::u16string_view haystack, std::u16string_view needle) noexcept
+{
+    return contains_icase_ascii(haystack, needle);
+}
+
+#ifndef VN_E_INVALID_ARG
+#define VN_E_INVALID_ARG VN_ERR_INVALID_ARG
+#endif
+
 constexpr std::u16string_view trim(std::u16string_view sv) noexcept
 {
     return trim_view(sv);

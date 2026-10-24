@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 
 namespace VNotch.Services;
@@ -8,8 +9,24 @@ namespace VNotch.Services;
 /// A dispatcher-bound schedule. All schedules on one dispatcher share one wake-up
 /// timer, which sleeps until the next deadline and stops when no work is due.
 /// </summary>
-public sealed class UiScheduledTimer : IDisposable
+public sealed partial class UiScheduledTimer : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_ui_scheduled_timer_compute_due_timestamp")]
+    private static partial int NativeComputeDueTimestamp(
+        long nowTimestamp,
+        double intervalSeconds,
+        long stopwatchFrequency,
+        out long outDueTimestamp);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_ui_scheduled_timer_compute_wakeup_delay_ms")]
+    private static partial int NativeComputeWakeUpDelayMs(
+        long nextTimestamp,
+        long nowTimestamp,
+        long stopwatchFrequency,
+        out double outDelayMs);
+
     private readonly DispatcherScheduler _scheduler;
     private readonly DispatcherPriority _priority;
     private TimeSpan _interval;
@@ -86,8 +103,12 @@ public sealed class UiScheduledTimer : IDisposable
     {
         ++_version;
         IsPending = false;
-        DueTimestamp = Stopwatch.GetTimestamp() +
-            (long)(Math.Max(1, _interval.TotalSeconds * 1000) / 1000 * Stopwatch.Frequency);
+        NativeComputeDueTimestamp(
+            Stopwatch.GetTimestamp(),
+            _interval.TotalSeconds,
+            Stopwatch.Frequency,
+            out long dueTimestamp);
+        DueTimestamp = dueTimestamp;
         _scheduler.Add(this);
     }
 
@@ -165,8 +186,8 @@ public sealed class UiScheduledTimer : IDisposable
             foreach (var schedule in _schedules)
                 if (!schedule.IsPending) next = Math.Min(next, schedule.DueTimestamp);
             if (next == long.MaxValue || _wakeUp.Dispatcher.HasShutdownStarted) return;
-            double milliseconds = (next - Stopwatch.GetTimestamp()) * 1000.0 / Stopwatch.Frequency;
-            _wakeUp.Interval = TimeSpan.FromMilliseconds(Math.Clamp(Math.Ceiling(milliseconds), 1, int.MaxValue));
+            NativeComputeWakeUpDelayMs(next, Stopwatch.GetTimestamp(), Stopwatch.Frequency, out double delayMs);
+            _wakeUp.Interval = TimeSpan.FromMilliseconds(delayMs);
             _wakeUp.Start();
         }
     }

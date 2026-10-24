@@ -65,7 +65,7 @@ public sealed class ServiceOptimizationTests
     {
         byte[] source = new byte[width * 31 * 4], target = new byte[source.Length];
         Array.Fill(source, (byte)255);
-        for (int i = 0; i < 10; i++) FastBlurService.BoxBlurVertical(source, target, width, 31, 20);
+        for (int i = 0; i < 10; i++) { FastBlurService.BoxBlurHorizontal(source, target, width, 31, 20); FastBlurService.BoxBlurVertical(target, source, width, 31, 20); }
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10; i++)
         {

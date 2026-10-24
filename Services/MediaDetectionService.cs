@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -12,8 +13,48 @@ using Windows.Media.Control;
 
 namespace VNotch.Services;
 
-public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
+public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnMediaPublishParams
+    {
+        public byte ForceRefresh;
+        public byte MetadataChanged;
+        public byte ThumbnailChanged;
+        public byte PlaybackChanged;
+        public byte TimelineChanged;
+        public byte SourceChanged;
+        public byte SeekCapabilityChanged;
+        public byte PipChanged;
+        public byte ThrottleChanged;
+        public byte IsThrottled;
+        public byte IsPlaying;
+        public long PositionTicks;
+        public long LastPositionTicks;
+        public long DurationTicks;
+        public long NowUtcTicks;
+        public long StartupSyncUntilUtcTicks;
+    }
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_detection_resolve_heartbeat_interval_ms(
+        int detectionMode,
+        out int outIntervalMs);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_detection_should_skip_heartbeat(
+        int detectionMode,
+        long lastEventTicks,
+        long nowUtcTicks,
+        out byte outSkip);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_media_detection_evaluate_should_publish(
+        in VnMediaPublishParams @params,
+        out byte outShouldPublish);
+
     private enum ServiceLifecycleState
     {
         Stopped,
@@ -537,14 +578,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
     {
         while (!ct.IsCancellationRequested)
         {
-            var interval = _currentMode switch
-            {
-                DetectionMode.Idle => TimeSpan.FromSeconds(5),
-                DetectionMode.AwaitingMetadata => TimeSpan.FromSeconds(3),
-                DetectionMode.EventDriven => TimeSpan.FromSeconds(3),
-                DetectionMode.ThrottledMedia => TimeSpan.FromMilliseconds(1500),
-                _ => TimeSpan.FromSeconds(3)
-            };
+            int intervalMs = vn_media_detection_resolve_heartbeat_interval_ms((int)_currentMode, out int outMs) == 0 ? outMs : 3000;
+            var interval = TimeSpan.FromMilliseconds(intervalMs);
 
             try
             {
@@ -552,15 +587,8 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
             }
             catch (OperationCanceledException) { break; }
 
-            if (_currentMode == DetectionMode.AwaitingMetadata)
-            {
-                continue;
-            }
-
             var lastEvtTicks = Interlocked.Read(ref _lastEventTimeTicks);
-            if (_currentMode == DetectionMode.Idle
-                && lastEvtTicks > 0
-                && (DateTime.UtcNow - new DateTime(lastEvtTicks, DateTimeKind.Utc)).TotalSeconds > 10)
+            if (vn_media_detection_should_skip_heartbeat((int)_currentMode, lastEvtTicks, DateTime.UtcNow.Ticks, out byte skip) == 0 && skip != 0)
             {
                 continue;
             }
@@ -814,15 +842,29 @@ public sealed class MediaDetectionService : IMediaDetectionService, IAsyncDispos
         bool sourceChanged = info.MediaSource != _lastSource;
         bool seekCapabilityChanged = info.IsSeekEnabled != _lastSeekEnabled;
         bool pipChanged = info.IsPictureInPicture != _lastIsPictureInPicture;
-        bool significantJump = Math.Abs((info.Position - _lastPosition).TotalSeconds) >= (info.IsThrottled ? 5.0 : 1.5);
         bool throttleChanged = info.IsThrottled != _lastIsThrottled;
-        bool inStartupSyncWindow = DateTime.UtcNow <= _startupProgressSyncUntilUtc;
-        bool startupTimelineSync = inStartupSyncWindow &&
-                                   info.IsPlaying &&
-                                   (info.Duration.TotalSeconds > 0 || info.Position.TotalSeconds > 0) &&
-                                   Math.Abs((info.Position - _lastPosition).TotalSeconds) >= 0.2;
 
-        if (!(forceRefresh || metadataChanged || thumbnailChanged || playbackChanged || timelineChanged || sourceChanged || pipChanged || (significantJump && !info.IsThrottled) || seekCapabilityChanged || throttleChanged || startupTimelineSync))
+        var publishParams = new VnMediaPublishParams
+        {
+            ForceRefresh = forceRefresh ? (byte)1 : (byte)0,
+            MetadataChanged = metadataChanged ? (byte)1 : (byte)0,
+            ThumbnailChanged = thumbnailChanged ? (byte)1 : (byte)0,
+            PlaybackChanged = playbackChanged ? (byte)1 : (byte)0,
+            TimelineChanged = timelineChanged ? (byte)1 : (byte)0,
+            SourceChanged = sourceChanged ? (byte)1 : (byte)0,
+            SeekCapabilityChanged = seekCapabilityChanged ? (byte)1 : (byte)0,
+            PipChanged = pipChanged ? (byte)1 : (byte)0,
+            ThrottleChanged = throttleChanged ? (byte)1 : (byte)0,
+            IsThrottled = info.IsThrottled ? (byte)1 : (byte)0,
+            IsPlaying = info.IsPlaying ? (byte)1 : (byte)0,
+            PositionTicks = info.Position.Ticks,
+            LastPositionTicks = _lastPosition.Ticks,
+            DurationTicks = info.Duration.Ticks,
+            NowUtcTicks = DateTime.UtcNow.Ticks,
+            StartupSyncUntilUtcTicks = _startupProgressSyncUntilUtc.Ticks
+        };
+
+        if (vn_media_detection_evaluate_should_publish(in publishParams, out byte shouldPublish) == 0 && shouldPublish == 0)
         {
             return true;
         }

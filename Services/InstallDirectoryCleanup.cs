@@ -2,13 +2,27 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace VNotch.Services;
 
-internal static class InstallDirectoryCleanup
+internal static partial class InstallDirectoryCleanup
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_install_cleanup_has_valid_input_syntax(
+        ReadOnlySpan<char> dirPtr,
+        int dirLen,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_install_cleanup_has_valid_full_path_segments(
+        ReadOnlySpan<char> fullPtr,
+        int fullLen,
+        ReadOnlySpan<char> rootPtr,
+        int rootLen,
+        out byte outValid);
+
     // Paths are passed as environment data, never inserted into executable script text.
     private const string CleanupCommand = """
         $ErrorActionPreference = 'Stop'
@@ -33,16 +47,18 @@ internal static class InstallDirectoryCleanup
 
     internal static string ValidateDirectory(string directory)
     {
-        if (string.IsNullOrWhiteSpace(directory) || directory.Any(char.IsControl) ||
-            !Path.IsPathFullyQualified(directory) || directory.StartsWith(@"\\") || directory.StartsWith("//"))
+        if (directory == null ||
+            vn_install_cleanup_has_valid_input_syntax(directory.AsSpan(), directory.Length, out byte inputOk) != 0 ||
+            inputOk == 0 ||
+            !Path.IsPathFullyQualified(directory))
             throw new ArgumentException("Cleanup requires a fully qualified local installation directory.", nameof(directory));
 
         var fullPath = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var root = Path.GetPathRoot(fullPath);
-        if (root == null || root.Length != 3 || !char.IsAsciiLetter(root[0]) || root[1] != ':' ||
-            fullPath.Equals(root.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase) ||
-            new DriveInfo(root).DriveType == DriveType.Network ||
-            fullPath[3..].Split('\\', '/').Any(part => part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
+        if (root == null ||
+            vn_install_cleanup_has_valid_full_path_segments(fullPath.AsSpan(), fullPath.Length, root.AsSpan(), root.Length, out byte segOk) != 0 ||
+            segOk == 0 ||
+            new DriveInfo(root).DriveType == DriveType.Network)
             throw new ArgumentException("Invalid installation directory for cleanup.", nameof(directory));
 
         for (var ancestor = new DirectoryInfo(fullPath); ancestor != null; ancestor = ancestor.Parent)

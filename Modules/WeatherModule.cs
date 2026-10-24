@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using VNotch.Models;
 using VNotch.Services;
@@ -10,8 +11,39 @@ public class WeatherUpdateEventArgs : EventArgs
     public WeatherInfo? Weather { get; init; }
 }
 
-public class WeatherModule : NotchModuleBase
+public partial class WeatherModule : NotchModuleBase
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    private const int ActionDisable = 1;
+    private const int ActionStart = 2;
+    private const int ActionRefresh = 3;
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnWeatherSettingsInput
+    {
+        public byte PreviousEnableWeather;
+        public byte PreviousLocalOnly;
+        public byte PreviousAllowOnline;
+        public byte EnableWeather;
+        public byte LocalOnly;
+        public byte AllowOnline;
+        public byte IsRunning;
+        public byte IsFetching;
+    }
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_weather_can_refresh")]
+    private static partial int NativeCanRefresh(byte enableWeather, byte localOnly, byte allowOnline, byte isFetching, out byte canRefresh);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_weather_decide_settings_change", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeDecideSettingsChange(
+        ref VnWeatherSettingsInput input,
+        ReadOnlySpan<char> previousCity, int previousCityLength,
+        ReadOnlySpan<char> newCity, int newCityLength,
+        out int action, out byte shouldClear);
+
+    private static byte Flag(bool value) => value ? (byte)1 : (byte)0;
+
     private readonly IWeatherService _weatherService;
     private NotchSettings _settings;
     private bool _isFetching;
@@ -41,40 +73,48 @@ public class WeatherModule : NotchModuleBase
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        bool wasEnabled = _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather;
-        string previousCity = NormalizeCity(_settings.ManualCity);
-        string newCity = NormalizeCity(settings.ManualCity);
+        var previous = _settings;
+        string previousCity = previous.ManualCity ?? string.Empty;
+        string newCity = settings.ManualCity ?? string.Empty;
         _settings = settings.Clone();
 
-        if (!settings.EnableWeather || settings.EnableLocalOnlyMode || !settings.AllowOnlineWeather)
+        var input = new VnWeatherSettingsInput
         {
-            bool shouldClear = wasEnabled || IsRunning || _isFetching;
-            Stop();
-            CancelPendingRequest();
-            if (shouldClear)
-            {
-                ClearWeatherData();
-            }
-
+            PreviousEnableWeather = Flag(previous.EnableWeather),
+            PreviousLocalOnly = Flag(previous.EnableLocalOnlyMode),
+            PreviousAllowOnline = Flag(previous.AllowOnlineWeather),
+            EnableWeather = Flag(settings.EnableWeather),
+            LocalOnly = Flag(settings.EnableLocalOnlyMode),
+            AllowOnline = Flag(settings.AllowOnlineWeather),
+            IsRunning = Flag(IsRunning),
+            IsFetching = Flag(_isFetching),
+        };
+        if (NativeDecideSettingsChange(ref input, previousCity, previousCity.Length, newCity, newCity.Length,
+                out int action, out byte shouldClear) != 0)
             return;
-        }
 
-        if (!IsRunning)
+        switch (action)
         {
-            // Start() performs an immediate tick before starting the timer.
-            Start();
-            return;
-        }
+            case ActionDisable:
+                Stop();
+                CancelPendingRequest();
+                if (shouldClear != 0)
+                {
+                    ClearWeatherData();
+                }
 
-        if (!wasEnabled || !string.Equals(previousCity, newCity, StringComparison.OrdinalIgnoreCase))
-        {
-            // The host may already have started this module while weather was disabled.
-            // Refresh explicitly when it is enabled, and whenever the city changes.
-            CancelPendingRequest();
-            _ = RefreshAsync();
+                break;
+            case ActionStart:
+                // Start() performs an immediate tick before starting the timer.
+                Start();
+                break;
+            case ActionRefresh:
+                // Weather was just enabled or the city changed: drop the stale request and refresh explicitly.
+                CancelPendingRequest();
+                _ = RefreshAsync();
+                break;
         }
     }
-
     private static string NormalizeCity(string? city) => city?.Trim() ?? string.Empty;
 
     private void CancelPendingRequest()
@@ -122,7 +162,8 @@ public class WeatherModule : NotchModuleBase
     private async System.Threading.Tasks.Task RefreshAsync()
     {
         var settings = _settings;
-        if (!settings.EnableWeather || settings.EnableLocalOnlyMode || !settings.AllowOnlineWeather || _isFetching)
+        if (NativeCanRefresh(Flag(settings.EnableWeather), Flag(settings.EnableLocalOnlyMode), Flag(settings.AllowOnlineWeather),
+                Flag(_isFetching), out byte canRefresh) != 0 || canRefresh == 0)
         {
             return;
         }

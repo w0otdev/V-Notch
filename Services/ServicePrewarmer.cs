@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Models;
@@ -6,9 +7,19 @@ using VNotch.Services.Spotlight;
 
 namespace VNotch.Services;
 
-internal static class ServicePrewarmer
+internal static partial class ServicePrewarmer
 {
+    private const string NativeDll = "VNotch.Native.dll";
     private const string LogCategory = "PREWARM";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_service_prewarmer_get_initial_delay_ms")]
+    private static partial int NativeGetInitialDelayMs(out int outDelayMs);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_service_prewarmer_should_warmup_spotlight")]
+    private static partial int NativeShouldWarmupSpotlight(
+        byte hasSettings,
+        byte enableSpotlight,
+        out byte outShouldWarmup);
 
     public static Task Prewarm(IServiceProvider provider)
     {
@@ -19,7 +30,8 @@ internal static class ServicePrewarmer
             try
             {
                 // Give MainWindow time to finish its first frame layout and render before background warmups
-                await Task.Delay(1200).ConfigureAwait(false);
+                NativeGetInitialDelayMs(out int delayMs);
+                await Task.Delay(delayMs).ConfigureAwait(false);
                 var currentThread = System.Threading.Thread.CurrentThread;
                 var previousPriority = currentThread.Priority;
                 try
@@ -48,6 +60,7 @@ internal static class ServicePrewarmer
         WarmupWindowTitleScanner(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
+        SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true);
     }
 
     private static NotchSettings? WarmupSettings(IServiceProvider provider)
@@ -78,7 +91,11 @@ internal static class ServicePrewarmer
     {
         // Skip Start Menu and apps indexing if Spotlight is disabled to avoid
         // unnecessary launch overhead.
-        if (settings?.EnableSpotlight ?? true)
+        NativeShouldWarmupSpotlight(
+            settings != null ? (byte)1 : (byte)0,
+            settings?.EnableSpotlight == true ? (byte)1 : (byte)0,
+            out byte shouldWarmup);
+        if (shouldWarmup != 0)
         {
             try
             {

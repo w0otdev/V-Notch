@@ -1,11 +1,27 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed class SpotlightUsageStore
+internal sealed partial class SpotlightUsageStore
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_usage_compute_boost(
+        int count,
+        long lastLaunchedUtcTicks,
+        long nowUtcTicks,
+        byte remembered,
+        out double outBoost);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_usage_is_allowed_app_history_target(
+        ReadOnlySpan<char> targetPtr, int targetLen,
+        ReadOnlySpan<char> startMenuPtr, int startMenuLen,
+        ReadOnlySpan<char> commonStartMenuPtr, int commonStartMenuLen,
+        out byte outAllowed);
+
     public SpotlightPreferences Preferences { get; }
     private volatile bool _enabled = true;
     public bool Enabled { get => _enabled; set => _enabled = value; }
@@ -144,17 +160,13 @@ internal sealed class SpotlightUsageStore
         }
         if (entry == null) return 0;
 
-        double countBoost = Math.Min(CountBoostCap, CountBoostFactor * Math.Log2(1 + entry.Count));
-        double ageDays = Math.Max(0, (_utcNow() - entry.LastLaunchedUtc).TotalDays);
-        double recencyBoost = ageDays switch
-        {
-            < 1 => 35,
-            < 3 => 25,
-            < 7 => 15,
-            < 30 => 5,
-            _ => 0
-        };
-        return countBoost + recencyBoost + (remembered ? 350 : 0);
+        _ = vn_spotlight_usage_compute_boost(
+            entry.Count,
+            entry.LastLaunchedUtc.Ticks,
+            _utcNow().Ticks,
+            remembered ? (byte)1 : (byte)0,
+            out double boost);
+        return boost;
     }
 
     public IReadOnlyList<SpotlightSearchItem> GetRememberedItems(string query)
@@ -211,12 +223,15 @@ internal sealed class SpotlightUsageStore
             || !string.IsNullOrWhiteSpace(Preferences.GetAlias(item.Target))) return true;
         if (item.Kind == SpotlightResultKind.Application)
         {
-            if (item.Target.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase)) return true;
-            foreach (var location in new[] { Environment.SpecialFolder.StartMenu, Environment.SpecialFolder.CommonStartMenu })
+            string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
+            string commonStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
+            if (vn_spotlight_usage_is_allowed_app_history_target(
+                item.Target.AsSpan(), item.Target.Length,
+                startMenu.AsSpan(), startMenu.Length,
+                commonStartMenu.AsSpan(), commonStartMenu.Length,
+                out byte allowed) == 0 && allowed != 0)
             {
-                string root = Environment.GetFolderPath(location);
-                if (root.Length > 0 && item.Target.StartsWith(root + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase)) return true;
+                return true;
             }
         }
         return SpotlightFileVisibility.ShouldInclude(item, query);

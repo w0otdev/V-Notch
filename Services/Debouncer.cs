@@ -1,9 +1,20 @@
+using System;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 
 namespace VNotch.Services;
 
-public sealed class Debouncer : IDisposable
+public sealed partial class Debouncer : IDisposable
 {
+    internal const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    internal static partial int vn_debouncer_should_execute_throttle_immediately(
+        long nowUtcTicks,
+        long lastExecutionUtcTicks,
+        long intervalTicks,
+        out byte outImmediate);
+
     private readonly UiScheduledTimer _timer;
     private readonly Dispatcher _dispatcher;
     private Action? _pendingAction;
@@ -102,7 +113,10 @@ public sealed class Throttler : IDisposable
     public void Throttle(Action action)
     {
         var now = DateTime.UtcNow;
-        if ((now - _lastExecutionUtc) >= _interval)
+        bool immediate = Debouncer.vn_debouncer_should_execute_throttle_immediately(now.Ticks, _lastExecutionUtc.Ticks, _interval.Ticks, out byte outImm) == 0
+            ? outImm != 0
+            : (now - _lastExecutionUtc) >= _interval;
+        if (immediate)
         {
             _lastExecutionUtc = now;
             _timer.Stop();

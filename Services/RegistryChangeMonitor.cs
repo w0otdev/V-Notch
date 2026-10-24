@@ -12,10 +12,6 @@ internal sealed class RegistryChangeMonitor(RegistryKey hive, string path, Func<
     private RegistryKey? _key;
     private long _nextRetry;
 
-    [DllImport("advapi32.dll")]
-    private static extern int RegNotifyChangeKeyValue(SafeRegistryHandle key,
-        [MarshalAs(UnmanagedType.Bool)] bool subtree, uint filter, SafeWaitHandle signal,
-        [MarshalAs(UnmanagedType.Bool)] bool asynchronous);
 
     internal bool ConsumeChange()
     {
@@ -27,8 +23,8 @@ internal sealed class RegistryChangeMonitor(RegistryKey hive, string path, Func<
             if (_key == null)
                 _key = hive.OpenSubKey(path, RegistryKeyPermissionCheck.ReadSubTree, RegistryRights.Notify);
             // Rearm before reading the registry so changes during a scan are not lost.
-            if (_key != null && RegNotifyChangeKeyValue(_key.Handle, true,
-                    0x10000000 | 0x1 | 0x4 | 0x8, _changed.SafeWaitHandle, true) == 0)
+            if (_key != null && Win32Interop.RegistryNotifyChange(_key.Handle.DangerousGetHandle(), true,
+                    0x10000000 | 0x1 | 0x4 | 0x8, _changed.SafeWaitHandle.DangerousGetHandle()))
                 return true;
         }
         catch (Exception)

@@ -3,11 +3,37 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Text;
+using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Services.Translation;
 
-internal static class SelectionTextReader
+internal static partial class SelectionTextReader
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_selection_text_reader_needs_sanitization(
+        ReadOnlySpan<char> part,
+        int partLen,
+        out byte outNeeds);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_selection_text_reader_sanitize(
+        ReadOnlySpan<char> part,
+        int partLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_selection_text_reader_valid_bounds(
+        byte isEmpty,
+        double x,
+        double y,
+        double width,
+        double height,
+        out byte outValid);
+
     internal sealed record Result(string Text, Rect Bounds, AutomationElement Element, TextPatternRange? Range, bool Editable)
     {
         internal bool InputTruncated { get; init; }
@@ -298,13 +324,15 @@ internal static class SelectionTextReader
     internal static string SanitizeSelectionPart(string? part)
     {
         if (string.IsNullOrEmpty(part)) return "";
-        // Strip embedded object replacement chars (U+FFFC) and null chars emitted by RichEdit / Chromium / PDF providers.
-        if (part.IndexOfAny(['\0', '\uFFFC', '\uFFFD']) < 0) return part;
-        return string.Concat(part.Where(c => c is not ('\0' or '\uFFFC')));
+        if (vn_selection_text_reader_needs_sanitization(part.AsSpan(), part.Length, out byte needs) != 0 || needs == 0)
+            return part;
+        char[] buf = new char[part.Length];
+        _ = vn_selection_text_reader_sanitize(part.AsSpan(), part.Length, buf, buf.Length, out int len);
+        return new string(buf, 0, Math.Clamp(len, 0, buf.Length));
     }
 
-    internal static bool ValidBounds(Rect r) => !r.IsEmpty && double.IsFinite(r.X) && double.IsFinite(r.Y) &&
-        double.IsFinite(r.Width) && double.IsFinite(r.Height) && r.Width > 0 && r.Height > 0;
+    internal static bool ValidBounds(Rect r) =>
+        vn_selection_text_reader_valid_bounds(r.IsEmpty ? (byte)1 : (byte)0, r.X, r.Y, r.Width, r.Height, out byte valid) == 0 && valid != 0;
 
     private static bool WithinWindow(AutomationElement element, IntPtr window, uint windowPid, Stopwatch clock)
     {
@@ -346,8 +374,4 @@ internal static class SelectionTextReader
         try { return read(); }
         catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException or ArgumentException or NotSupportedException) { return default; }
     }
-
-    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
-    [DllImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsChild(IntPtr parent, IntPtr child);
-    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
 }

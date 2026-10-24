@@ -1,11 +1,16 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Markup;
 
 namespace VNotch.Services;
 
-internal static class LocalizedPresentation
+internal static partial class LocalizedPresentation
 {
+    private const string NativeDll = "VNotch.Native.dll";
     private static bool _initialized;
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_localized_presentation_resolve_flow_direction")]
+    private static partial int NativeResolveFlowDirection(byte isRightToLeft, out int outFlowDirection);
 
     internal static void Initialize()
     {
@@ -32,7 +37,7 @@ internal static class LocalizedPresentation
     {
         var culture = Loc.GetCulture();
         element.SetCurrentValue(FrameworkElement.LanguageProperty, XmlLanguage.GetLanguage(culture.IetfLanguageTag));
-        element.SetCurrentValue(FrameworkElement.FlowDirectionProperty,
-            culture.TextInfo.IsRightToLeft ? FlowDirection.RightToLeft : FlowDirection.LeftToRight);
+        NativeResolveFlowDirection(culture.TextInfo.IsRightToLeft ? (byte)1 : (byte)0, out int flowDir);
+        element.SetCurrentValue(FrameworkElement.FlowDirectionProperty, (FlowDirection)flowDir);
     }
 }

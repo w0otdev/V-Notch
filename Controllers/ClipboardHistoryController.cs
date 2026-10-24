@@ -53,8 +53,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     public event Action? PersonalLocked;
     public event Action<double>? ImportProgress;
 
-    [DllImport("user32.dll")] private static extern uint GetClipboardSequenceNumber();
-    [DllImport("user32.dll")] private static extern IntPtr GetClipboardOwner();
+    private static uint GetClipboardSequenceNumber() => Win32Interop.GetClipboardSequenceNumber();
+    private static IntPtr GetClipboardOwner() => Win32Interop.GetClipboardOwner();
 
     public ClipboardHistoryController(Dispatcher dispatcher, ClipboardHistoryStore? store = null)
     {

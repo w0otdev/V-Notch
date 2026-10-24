@@ -1,364 +1,718 @@
-using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
+/// <summary>
+/// Thin shell over the native Win32 layer (Native/Services/Win32Interop.cpp).
+/// Public names and signatures are kept for UI callers; every call lands in VNotch.Native
+/// instead of user32/kernel32/psapi/dwmapi directly.
+/// </summary>
 #pragma warning disable S101, CA1707, CA1708, IDE1006 // Native Win32 API struct and naming conventions
-internal static class Win32Interop
+internal static unsafe partial class Win32Interop
 {
-    #region user32.dll
+    private const string NativeDll = "VNotch.Native.dll";
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetParent(IntPtr hWnd);
+    #region Native exports
 
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_foreground_window")]
+    private static partial int NativeGetForegroundWindow(out long hwnd);
 
-    [DllImport("user32.dll")]
-    public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_set_foreground_window")]
+    private static partial int NativeSetForegroundWindow(long hwnd);
 
-    [DllImport("user32.dll")]
-    public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_window")]
+    private static partial int NativeGetWindow(long hwnd, uint command, out long result);
 
-    [DllImport("user32.dll")]
-    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_window_from_point")]
+    private static partial int NativeWindowFromPoint(int x, int y, out long hwnd);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetForegroundWindow();
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_window_long")]
+    private static partial int NativeGetWindowLong(long hwnd, int index, out int value);
 
-    [DllImport("user32.dll")]
-    public static extern short GetAsyncKeyState(int vKey);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_set_window_long")]
+    private static partial int NativeSetWindowLong(long hwnd, int index, int value, out int previous);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetCursorPos(out POINT lpPoint);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_set_window_pos")]
+    private static partial int NativeSetWindowPos(long hwnd, long insertAfter, int x, int y, int cx, int cy, uint flags);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr WindowFromPoint(POINT point);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_window_rect")]
+    private static partial int NativeGetWindowRect(long hwnd, out RECT rect);
 
-    [DllImport("user32.dll")]
-    public static extern uint GetDoubleClickTime();
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_window_thread_process_id")]
+    private static partial int NativeGetWindowThreadProcessId(long hwnd, out uint processId, out uint threadId);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_dpi_for_window")]
+    private static partial int NativeGetDpiForWindow(long hwnd, out uint dpi);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr FindWindowEx(
-        IntPtr hWndParent,
-        IntPtr hWndChildAfter,
-        string? lpszClass,
-        string? lpszWindow);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_cursor_pos")]
+    private static partial int NativeGetCursorPos(out POINT point);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr SetWinEventHook(
-        uint eventMin,
-        uint eventMax,
-        IntPtr hmodWinEventProc,
-        WinEventDelegate lpfnWinEventProc,
-        uint idProcess,
-        uint idThread,
-        uint dwFlags);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_system_metrics")]
+    private static partial int NativeGetSystemMetrics(int index, out int value);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_async_key_state")]
+    private static partial int NativeGetAsyncKeyState(int vk, out short state);
 
-    [DllImport("user32.dll")]
-    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_send_extended_key_tap")]
+    private static partial int NativeSendExtendedKeyTap(byte vk);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_register_hotkey")]
+    private static partial int NativeRegisterHotKey(long hwnd, int id, uint modifiers, uint vk, out int lastError);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool IsWindowVisible(IntPtr hWnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_unregister_hotkey")]
+    private static partial int NativeUnregisterHotKey(long hwnd, int id);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool IsWindow(IntPtr hWnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_set_window_display_affinity")]
+    private static partial int NativeSetWindowDisplayAffinity(long hwnd, uint affinity, out int lastError);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool IsIconic(IntPtr hWnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_dwm_set_window_attribute_int")]
+    private static partial int NativeDwmSetWindowAttributeInt(long hwnd, int attribute, int value, out int hresult);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_delete_gdi_object")]
+    private static partial int NativeDeleteGdiObject(long handle);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool fAttach);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_destroy_icon")]
+    private static partial int NativeDestroyIcon(long handle);
 
-    [DllImport("kernel32.dll")]
-    public static extern uint GetCurrentThreadId();
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_display_frequency", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeGetDisplayFrequency(ReadOnlySpan<char> deviceName, int deviceNameLength, out uint hz);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool BringWindowToTop(IntPtr hWnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_invalidate_desktop_host_cache")]
+    private static partial int NativeInvalidateDesktopHostCache();
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_is_window_directly_above_desktop")]
+    private static partial int NativeIsWindowDirectlyAboveDesktop(long window, out byte isAbove, out long requiredAnchor);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_desktop_layer_insert_after")]
+    private static partial int NativeGetDesktopLayerInsertAfter(long window, out long insertAfter);
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_keyboard_hook_install")]
+    private static partial int NativeKeyboardHookInstall(nint callback, long context, out int slot, out int lastError);
 
-    [DllImport("user32.dll")]
-    public static extern int GetWindowTextLength(IntPtr hWnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_keyboard_hook_uninstall")]
+    private static partial int NativeKeyboardHookUninstall(int slot);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_current_process")]
+    private static partial int NativeGetCurrentProcess(out long handle);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_system_times")]
+    private static partial int NativeGetSystemTimes(out FILETIME_METRICS idle, out FILETIME_METRICS kernel, out FILETIME_METRICS user);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_process_times")]
+    private static partial int NativeGetProcessTimes(long process, out FILETIME_METRICS kernel, out FILETIME_METRICS user);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_current_thread_times")]
+    private static partial int NativeGetCurrentThreadTimes(out FILETIME_METRICS kernel, out FILETIME_METRICS user);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_process_handle_count")]
+    private static partial int NativeGetProcessHandleCount(long process, out uint count);
 
-    [DllImport("user32.dll", EntryPoint = "GetClassNameW", ExactSpelling = true)]
-    public static extern unsafe int GetClassName(IntPtr hWnd, char* lpClassName, int nMaxCount);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_process_memory_info")]
+    private static partial int NativeGetProcessMemoryInfo(long process, out PROCESS_MEMORY_COUNTERS_EX counters);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool AddClipboardFormatListener(IntPtr hwnd);
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_global_memory_status")]
+    private static partial int NativeGlobalMemoryStatus(out MEMORYSTATUSEX_METRICS status);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+    #endregion
 
-    [DllImport("user32.dll")]
-    public static extern uint GetDpiForWindow(IntPtr hwnd);
+    #region Windows
 
-    [DllImport("shcore.dll")]
-    public static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+    public static IntPtr GetForegroundWindow() =>
+        NativeGetForegroundWindow(out long hwnd) == 0 ? (IntPtr)hwnd : IntPtr.Zero;
 
-    [DllImport("user32.dll")]
-    public static extern int GetSystemMetrics(int nIndex);
+    public static bool SetForegroundWindow(IntPtr hWnd) => NativeSetForegroundWindow(hWnd) == 0;
+
+    public static IntPtr GetWindow(IntPtr hWnd, uint uCmd) =>
+        NativeGetWindow(hWnd, uCmd, out long result) == 0 ? (IntPtr)result : IntPtr.Zero;
+
+    public static IntPtr WindowFromPoint(POINT point) =>
+        NativeWindowFromPoint(point.X, point.Y, out long hwnd) == 0 ? (IntPtr)hwnd : IntPtr.Zero;
+
+    public static int GetWindowLong(IntPtr hWnd, int nIndex) =>
+        NativeGetWindowLong(hWnd, nIndex, out int value) == 0 ? value : 0;
+
+    public static int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong) =>
+        NativeSetWindowLong(hWnd, nIndex, dwNewLong, out int previous) == 0 ? previous : 0;
+
+    public static bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags) =>
+        NativeSetWindowPos(hWnd, hWndInsertAfter, X, Y, cx, cy, uFlags) == 0;
+
+    public static bool GetWindowRect(IntPtr hWnd, out RECT lpRect) =>
+        NativeGetWindowRect(hWnd, out lpRect) == 0;
+
+    public static uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId)
+    {
+        NativeGetWindowThreadProcessId(hWnd, out lpdwProcessId, out uint threadId);
+        return threadId;
+    }
+
+    public static uint GetDpiForWindow(IntPtr hwnd) =>
+        NativeGetDpiForWindow(hwnd, out uint dpi) == 0 ? dpi : 0;
+
+    public static bool GetCursorPos(out POINT lpPoint) => NativeGetCursorPos(out lpPoint) == 0;
+
+    public static int GetSystemMetrics(int nIndex) =>
+        NativeGetSystemMetrics(nIndex, out int value) == 0 ? value : 0;
+
+    public static short GetAsyncKeyState(int vKey) =>
+        NativeGetAsyncKeyState(vKey, out short state) == 0 ? state : (short)0;
+
+    /// <summary>Presses and releases an extended virtual key (media keys).</summary>
+    public static void SendExtendedKeyTap(byte virtualKey) => NativeSendExtendedKeyTap(virtualKey);
+
+    public static bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk)
+    {
+        if (NativeRegisterHotKey(hWnd, id, fsModifiers, vk, out int lastError) == 0) return true;
+        Marshal.SetLastPInvokeError(lastError);
+        return false;
+    }
+
+    public static bool UnregisterHotKey(IntPtr hWnd, int id) => NativeUnregisterHotKey(hWnd, id) == 0;
+
+    internal static bool SetWindowDisplayAffinityNative(IntPtr hWnd, uint dwAffinity)
+    {
+        if (NativeSetWindowDisplayAffinity(hWnd, dwAffinity, out int lastError) == 0) return true;
+        Marshal.SetLastPInvokeError(lastError);
+        return false;
+    }
+
+    public static bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity) =>
+        WindowAnimationPolicy.SetCaptureAffinity(hWnd, dwAffinity);
+
+    public static int DwmSetWindowAttributeInt(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute)
+    {
+        NativeDwmSetWindowAttributeInt(hwnd, dwAttribute, pvAttribute, out int hresult);
+        return hresult;
+    }
+
+    public static bool DeleteObject(IntPtr hObject) => NativeDeleteGdiObject(hObject) == 0;
+
+    public static bool DestroyIcon(IntPtr hIcon) => NativeDestroyIcon(hIcon) == 0;
+
+    /// <summary>Current refresh rate of the named display device (null = primary), or null when unknown.</summary>
+    public static int? GetDisplayRefreshHz(string? deviceName)
+    {
+        ReadOnlySpan<char> name = deviceName.AsSpan();
+        return NativeGetDisplayFrequency(name, name.Length, out uint hz) == 0 && hz > 1 ? (int)hz : null;
+    }
+
+    #endregion
+
+    #region Windows (visibility, clipboard listener, DPI, capture-tool detection)
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_is_window_visible")]
+    private static partial int NativeIsWindowVisible(long hwnd, out byte visible);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_is_iconic")]
+    private static partial int NativeIsIconic(long hwnd, out byte iconic);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_add_clipboard_format_listener")]
+    private static partial int NativeAddClipboardFormatListener(long hwnd, out int lastError);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_remove_clipboard_format_listener")]
+    private static partial int NativeRemoveClipboardFormatListener(long hwnd);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_monitor_dpi_for_window")]
+    private static partial int NativeGetMonitorDpiForWindow(long hwnd, uint monitorFlags, out uint dpiX, out uint dpiY);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_window_class_contains", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeWindowClassContains(long hwnd, ReadOnlySpan<char> needle, int needleLength, out byte matches);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_enum_large_visible_windows", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeEnumLargeVisibleWindows(
+        int minSize, ReadOnlySpan<char> classNeedle, int classNeedleLength,
+        VnLargeWindow* buffer, int capacity, out int written);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnLargeWindow
+    {
+        public long Hwnd;
+        public uint ProcessId;
+        public byte ClassMatches;
+    }
+
+    public static bool IsWindowVisible(IntPtr hWnd) => NativeIsWindowVisible(hWnd, out byte visible) == 0 && visible != 0;
+
+    public static bool IsIconic(IntPtr hWnd) => NativeIsIconic(hWnd, out byte iconic) == 0 && iconic != 0;
+
+    public static bool AddClipboardFormatListener(IntPtr hwnd)
+    {
+        if (NativeAddClipboardFormatListener(hwnd, out int lastError) == 0) return true;
+        Marshal.SetLastPInvokeError(lastError);
+        return false;
+    }
+
+    public static bool RemoveClipboardFormatListener(IntPtr hwnd) => NativeRemoveClipboardFormatListener(hwnd) == 0;
+
+    /// <summary>Effective horizontal DPI of the monitor nearest to the window, or 0 when unavailable.</summary>
+    public static uint GetMonitorDpiForWindow(IntPtr hwnd, uint monitorFlags = MONITOR_DEFAULTTONEAREST) =>
+        NativeGetMonitorDpiForWindow(hwnd, monitorFlags, out uint dpiX, out _) == 0 ? dpiX : 0;
+
+    /// <summary>True when the window class name contains <paramref name="needle"/> (ordinal, ignore case).</summary>
+    public static bool WindowClassContains(IntPtr hwnd, string needle) =>
+        NativeWindowClassContains(hwnd, needle, needle.Length, out byte matches) == 0 && matches != 0;
+
+    /// <summary>
+    /// Visible top-level windows at least <paramref name="minSize"/> pixels in both dimensions.
+    /// Returns the number of entries written to <paramref name="buffer"/>.
+    /// </summary>
+    internal static int EnumLargeVisibleWindows(int minSize, string classNeedle, Span<VnLargeWindow> buffer)
+    {
+        if (buffer.IsEmpty) return 0;
+        fixed (VnLargeWindow* pinned = buffer)
+        {
+            return NativeEnumLargeVisibleWindows(minSize, classNeedle, classNeedle.Length, pinned, buffer.Length, out int written) == 0
+                ? written
+                : 0;
+        }
+    }
+
+    #endregion
+
+    #region Timers, DWM and GDI capture
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_time_begin_period")]
+    private static partial int NativeTimeBeginPeriod(uint periodMs, out uint result);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_time_end_period")]
+    private static partial int NativeTimeEndPeriod(uint periodMs);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_dwm_flush")]
+    private static partial int NativeDwmFlush(out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_create_high_resolution_timer")]
+    private static partial int NativeCreateHighResolutionTimer(out long handle);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_set_waitable_timer")]
+    private static partial int NativeSetWaitableTimer(long timer, long due100ns);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_cancel_waitable_timer")]
+    private static partial int NativeCancelWaitableTimer(long timer);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_wait_for_any_of_two")]
+    private static partial int NativeWaitForAnyOfTwo(long first, long second, uint timeoutMs, out int result);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_screen_dc")]
+    private static partial int NativeGetScreenDc(out long dc);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_release_screen_dc")]
+    private static partial int NativeReleaseScreenDc(long dc);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_capture_screen_rect")]
+    private static partial int NativeCaptureScreenRect(long destDc, int width, int height, long sourceDc, int srcX, int srcY);
+
+    public const int WAIT_OBJECT_0 = 0;
+    public const int WAIT_TIMEOUT = 0x102;
+
+    public static uint TimeBeginPeriod(uint period)
+    {
+        NativeTimeBeginPeriod(period, out uint result);
+        return result;
+    }
+
+    public static uint TimeEndPeriod(uint period) => NativeTimeEndPeriod(period) == 0 ? 0u : 1u;
+
+    public static int DwmFlush()
+    {
+        NativeDwmFlush(out int hresult);
+        return hresult;
+    }
+
+    /// <summary>High-resolution waitable timer, or null when the OS cannot create one.</summary>
+    public static SafeWaitHandle? CreateHighResolutionTimer() =>
+        NativeCreateHighResolutionTimer(out long handle) == 0 ? new SafeWaitHandle((IntPtr)handle, ownsHandle: true) : null;
+
+    /// <summary>Arms the timer to fire once after <paramref name="milliseconds"/>.</summary>
+    public static bool SetWaitableTimerRelative(SafeWaitHandle timer, double milliseconds) =>
+        NativeSetWaitableTimer(timer.DangerousGetHandle(), -Math.Max(1L, (long)(milliseconds * 10_000.0))) == 0;
+
+    public static bool CancelWaitableTimer(SafeWaitHandle timer) =>
+        NativeCancelWaitableTimer(timer.DangerousGetHandle()) == 0;
+
+    /// <summary>Waits on two handles; returns 0 or 1 for the signaled one, <see cref="WAIT_TIMEOUT"/>, or -1 on failure.</summary>
+    public static int WaitForAnyOfTwo(IntPtr first, IntPtr second, uint timeoutMs) =>
+        NativeWaitForAnyOfTwo(first, second, timeoutMs, out int result) == 0 ? result : -1;
+
+    public static IntPtr GetScreenDc() => NativeGetScreenDc(out long dc) == 0 ? (IntPtr)dc : IntPtr.Zero;
+
+    public static void ReleaseScreenDc(IntPtr dc) => NativeReleaseScreenDc(dc);
+
+    /// <summary>Copies a screen rectangle into <paramref name="destDc"/> and flushes GDI so the DIB is readable.</summary>
+    public static bool CaptureScreenRect(IntPtr destDc, int width, int height, IntPtr sourceDc, int srcX, int srcY) =>
+        NativeCaptureScreenRect(destDc, width, height, sourceDc, srcX, srcY) == 0;
+
+    #endregion
+
+    #region Threads, monitors, window enumeration and text
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_current_thread_id")]
+    private static partial int NativeGetCurrentThreadId(out uint threadId);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_attach_thread_input")]
+    private static partial int NativeAttachThreadInput(uint attachId, uint attachTo, byte attach);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_bring_window_to_top")]
+    private static partial int NativeBringWindowToTop(long hwnd);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_show_window")]
+    private static partial int NativeShowWindow(long hwnd, int command);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_monitor_from_point")]
+    private static partial int NativeMonitorFromPoint(int x, int y, uint flags, out long monitor);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_monitor_from_window")]
+    private static partial int NativeMonitorFromWindow(long hwnd, uint flags, out long monitor);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_monitor_info")]
+    private static partial int NativeGetMonitorInfo(long monitor, out MONITORINFO info);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_dpi_for_monitor")]
+    private static partial int NativeGetDpiForMonitor(long monitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_enum_top_level_windows")]
+    private static partial int NativeEnumTopLevelWindows(long* buffer, int capacity, out int written);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_window_text_length")]
+    private static partial int NativeGetWindowTextLength(long hwnd, out int length);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_window_text")]
+    private static partial int NativeGetWindowText(long hwnd, char* buffer, int capacity, out int written);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_class_name")]
+    private static partial int NativeGetClassName(long hwnd, char* buffer, int capacity, out int written);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    private const int EnumWindowsCapacity = 2048;
+
+    public static uint GetCurrentThreadId() =>
+        NativeGetCurrentThreadId(out uint threadId) == 0 ? threadId : 0;
+
+    public static bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach) =>
+        NativeAttachThreadInput(idAttach, idAttachTo, fAttach ? (byte)1 : (byte)0) == 0;
+
+    public static bool BringWindowToTop(IntPtr hWnd) => NativeBringWindowToTop(hWnd) == 0;
+
+    public static bool ShowWindow(IntPtr hWnd, int nCmdShow) => NativeShowWindow(hWnd, nCmdShow) == 0;
+
+    public static IntPtr MonitorFromPoint(POINT pt, uint dwFlags) =>
+        NativeMonitorFromPoint(pt.X, pt.Y, dwFlags, out long monitor) == 0 ? (IntPtr)monitor : IntPtr.Zero;
+
+    public static IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags) =>
+        NativeMonitorFromWindow(hwnd, dwFlags, out long monitor) == 0 ? (IntPtr)monitor : IntPtr.Zero;
+
+    public static bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi)
+    {
+        if (NativeGetMonitorInfo(hMonitor, out var info) != 0) return false;
+        lpmi = info;
+        return true;
+    }
+
+    public static int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY) =>
+        NativeGetDpiForMonitor(hmonitor, dpiType, out dpiX, out dpiY);
+
+    /// <summary>
+    /// Walks a native snapshot of the top-level windows (topmost first) until <paramref name="enumProc"/> returns false.
+    /// </summary>
+    public static bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam)
+    {
+        long* windows = stackalloc long[EnumWindowsCapacity];
+        if (NativeEnumTopLevelWindows(windows, EnumWindowsCapacity, out int count) != 0) return false;
+        for (int i = 0; i < count; i++)
+        {
+            if (!enumProc((IntPtr)windows[i], lParam)) break;
+        }
+
+        return true;
+    }
+
+    public static int GetWindowTextLength(IntPtr hWnd) =>
+        NativeGetWindowTextLength(hWnd, out int length) == 0 ? length : 0;
+
+    public static int GetWindowText(IntPtr hWnd, char* lpString, int nMaxCount) =>
+        nMaxCount > 0 && NativeGetWindowText(hWnd, lpString, nMaxCount, out int written) == 0 ? written : 0;
+
+    public static int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount)
+    {
+        if (nMaxCount <= 0) return 0;
+        char* buffer = stackalloc char[Math.Min(nMaxCount, 1024)];
+        if (NativeGetWindowText(hWnd, buffer, Math.Min(nMaxCount, 1024), out int written) != 0 || written <= 0) return 0;
+        lpString.Clear();
+        lpString.Append(buffer, written);
+        return written;
+    }
+
+    public static int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount)
+    {
+        if (nMaxCount <= 0) return 0;
+        char* buffer = stackalloc char[Math.Min(nMaxCount, 1024)];
+        if (NativeGetClassName(hWnd, buffer, Math.Min(nMaxCount, 1024), out int written) != 0 || written <= 0) return 0;
+        lpClassName.Clear();
+        lpClassName.Append(buffer, written);
+        return written;
+    }
+
+    #endregion
+
+    #region GDI DIB surface
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnDibSurface
+    {
+        public long MemoryDc;
+        public long Bitmap;
+        public long PreviousBitmap;
+        public long Bits;
+        public int Width;
+        public int Height;
+    }
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_gdi_create_dib_surface")]
+    private static partial int NativeCreateDibSurface(long screenDc, int width, int height, out VnDibSurface surface);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_gdi_destroy_dib_surface")]
+    private static partial int NativeDestroyDibSurface(ref VnDibSurface surface);
+
+    /// <summary>Top-down 32-bit DIB selected into a compatible memory DC; release with <see cref="DestroyDibSurface"/>.</summary>
+    internal static bool CreateDibSurface(IntPtr screenDc, int width, int height, out VnDibSurface surface) =>
+        NativeCreateDibSurface(screenDc, width, height, out surface) == 0;
+
+    internal static void DestroyDibSurface(ref VnDibSurface surface) => NativeDestroyDibSurface(ref surface);
+
+    #endregion
+
+    #region Shell, clipboard and files
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_clipboard_sequence_number")]
+    private static partial int NativeGetClipboardSequenceNumber(out uint sequence);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_clipboard_owner")]
+    private static partial int NativeGetClipboardOwner(out long hwnd);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_lock_workstation")]
+    private static partial int NativeLockWorkStation(out int lastError);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_set_rounded_window_region")]
+    private static partial int NativeSetRoundedWindowRegion(
+        long hwnd, int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_create_hard_link", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeCreateHardLink(
+        string destination, int destinationLength, string existing, int existingLength, out int lastError);
+
+    public static uint GetClipboardSequenceNumber() =>
+        NativeGetClipboardSequenceNumber(out uint sequence) == 0 ? sequence : 0;
+
+    public static IntPtr GetClipboardOwner() =>
+        NativeGetClipboardOwner(out long hwnd) == 0 ? (IntPtr)hwnd : IntPtr.Zero;
+
+    public static bool LockWorkStation()
+    {
+        if (NativeLockWorkStation(out int lastError) == 0) return true;
+        Marshal.SetLastPInvokeError(lastError);
+        return false;
+    }
+
+    /// <summary>Clips the window to a rounded rectangle; the window owns the region on success.</summary>
+    public static bool SetRoundedWindowRegion(IntPtr hwnd, int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight) =>
+        NativeSetRoundedWindowRegion(hwnd, left, top, right, bottom, ellipseWidth, ellipseHeight) == 0;
+
+    public static bool CreateHardLink(string destination, string existing)
+    {
+        if (NativeCreateHardLink(destination, destination.Length, existing, existing.Length, out int lastError) == 0) return true;
+        Marshal.SetLastPInvokeError(lastError);
+        return false;
+    }
+
+    #endregion
+
+    #region Desktop layer
+
+    static Win32Interop()
+    {
+        try
+        {
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => InvalidateDesktopHostCache();
+        }
+        catch
+        {
+            // SystemEvents may be unavailable in some hosting environments
+        }
+    }
+
+    public static void InvalidateDesktopHostCache() => NativeInvalidateDesktopHostCache();
+
+    public static bool IsWindowDirectlyAboveDesktop(IntPtr window, out IntPtr requiredAnchor)
+    {
+        if (NativeIsWindowDirectlyAboveDesktop(window, out byte isAbove, out long anchor) != 0)
+        {
+            requiredAnchor = HWND_NOTOPMOST;
+            return false;
+        }
+
+        requiredAnchor = (IntPtr)anchor;
+        return isAbove != 0;
+    }
+
+    public static IntPtr GetDesktopLayerInsertAfter(IntPtr window) =>
+        NativeGetDesktopLayerInsertAfter(window, out long insertAfter) == 0 ? (IntPtr)insertAfter : HWND_NOTOPMOST;
+
+    #endregion
+
+    #region Low-level keyboard hook
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct KeyboardHookEvent
+    {
+        public uint VkCode;
+        public uint ScanCode;
+        public uint Flags;
+        public uint Time;
+        public long ExtraInfo;
+        public int Message;
+    }
+
+    /// <summary>
+    /// WH_KEYBOARD_LL hook whose procedure lives in the native layer. Install and dispose on a thread
+    /// that pumps messages; the handler runs on that thread and returns true to swallow the key.
+    /// </summary>
+    internal sealed class LowLevelKeyboardHook(Func<KBDLLHOOKSTRUCT, int, bool> handler) : IDisposable
+    {
+        private GCHandle _self;
+        private int _slot = -1;
+
+        internal int InstallationError { get; private set; }
+        internal bool IsInstalled => Volatile.Read(ref _slot) >= 0;
+
+        internal bool Install()
+        {
+            if (_slot >= 0) return true;
+            _self = GCHandle.Alloc(this);
+            delegate* unmanaged[Stdcall]<long, KeyboardHookEvent*, int> callback = &OnKey;
+            if (NativeKeyboardHookInstall((nint)callback, GCHandle.ToIntPtr(_self), out int slot, out int lastError) != 0)
+            {
+                InstallationError = lastError;
+                _self.Free();
+                return false;
+            }
+
+            Volatile.Write(ref _slot, slot);
+            return true;
+        }
+
+        public void Dispose()
+        {
+            int slot = Interlocked.Exchange(ref _slot, -1);
+            if (slot < 0) return;
+            NativeKeyboardHookUninstall(slot);
+            if (_self.IsAllocated) _self.Free();
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+        private static int OnKey(long context, KeyboardHookEvent* data)
+        {
+            try
+            {
+                if (GCHandle.FromIntPtr((IntPtr)context).Target is not LowLevelKeyboardHook hook) return 0;
+                var key = new KBDLLHOOKSTRUCT
+                {
+                    vkCode = data->VkCode,
+                    scanCode = data->ScanCode,
+                    flags = data->Flags,
+                    time = data->Time,
+                    dwExtraInfo = (IntPtr)data->ExtraInfo,
+                };
+                return hook.Handle(key, data->Message) ? 1 : 0;
+            }
+            catch
+            {
+                // Exceptions must never unwind through user32 or delay the keyboard chain.
+                return 0;
+            }
+        }
+
+        private bool Handle(KBDLLHOOKSTRUCT key, int message) => handler(key, message);
+    }
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_win_event_hook_install")]
+    private static partial int NativeWinEventHookInstall(uint eventMin, uint eventMax, nint callback, long context, out int slot);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_win32_win_event_hook_uninstall")]
+    private static partial int NativeWinEventHookUninstall(int slot);
+
+    /// <summary>
+    /// Out-of-context WinEvent hook for an event range, owned by the native layer. Install and dispose on a
+    /// thread that pumps messages; the handler (event type, window) runs on that thread.
+    /// </summary>
+    internal sealed class WinEventHook(uint eventMin, uint eventMax, Action<uint, IntPtr> handler) : IDisposable
+    {
+        private readonly Action<uint, IntPtr> _handler = handler;
+        private GCHandle _self;
+        private int _slot = -1;
+
+        internal bool IsInstalled => Volatile.Read(ref _slot) >= 0;
+
+        internal bool Install()
+        {
+            if (_slot >= 0) return true;
+            _self = GCHandle.Alloc(this);
+            delegate* unmanaged[Stdcall]<long, uint, long, void> callback = &OnEvent;
+            if (NativeWinEventHookInstall(eventMin, eventMax, (nint)callback, GCHandle.ToIntPtr(_self), out int slot) != 0)
+            {
+                _self.Free();
+                return false;
+            }
+
+            Volatile.Write(ref _slot, slot);
+            return true;
+        }
+
+        public void Dispose()
+        {
+            int slot = Interlocked.Exchange(ref _slot, -1);
+            if (slot < 0) return;
+            NativeWinEventHookUninstall(slot);
+            if (_self.IsAllocated) _self.Free();
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+        private static void OnEvent(long context, uint eventType, long hwnd)
+        {
+            try
+            {
+                if (GCHandle.FromIntPtr((IntPtr)context).Target is WinEventHook hook)
+                    hook._handler(eventType, (IntPtr)hwnd);
+            }
+            catch
+            {
+                // Exceptions must never unwind into the native event thunk.
+            }
+        }
+    }
+
+    #endregion
+
+    #region Constants
 
     public const int SM_XVIRTUALSCREEN = 76;
     public const int SM_YVIRTUALSCREEN = 77;
     public const int SM_CXVIRTUALSCREEN = 78;
     public const int SM_CYVIRTUALSCREEN = 79;
 
-    [DllImport("user32.dll", EntryPoint = "SetWindowDisplayAffinity", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool SetWindowDisplayAffinityNative(IntPtr hWnd, uint dwAffinity);
-
-    public static bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity) =>
-        WindowAnimationPolicy.SetCaptureAffinity(hWnd, dwAffinity);
-
     public const uint WDA_NONE = 0x00000000;
     public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
-
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetDC(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    public static extern IntPtr SetWindowsHookEx(
-        int idHook,
-        LowLevelKeyboardProc lpfn,
-        IntPtr hMod,
-        uint dwThreadId);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-    [DllImport("user32.dll")]
-    public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    public static extern IntPtr GetModuleHandle(string? lpModuleName);
-
-    #endregion
-
-    #region winmm.dll
-
-    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
-    public static extern uint TimeBeginPeriod(uint period);
-
-    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
-    public static extern uint TimeEndPeriod(uint period);
-
-    #endregion
-
-    #region kernel32.dll waitable timer & synchronization
-
-    public const uint CREATE_WAITABLE_TIMER_MANUAL_RESET = 0x00000001;
-    public const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
-    public const uint TIMER_ALL_ACCESS = 0x001F0003;
-    public const uint WAIT_OBJECT_0 = 0x00000000;
-    public const uint WAIT_TIMEOUT = 0x00000102;
-    public const uint WAIT_FAILED = 0xFFFFFFFF;
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    public static extern SafeWaitHandle CreateWaitableTimerEx(
-        IntPtr lpTimerAttributes,
-        string? lpTimerName,
-        uint dwFlags,
-        uint dwDesiredAccess);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetWaitableTimer(
-        SafeWaitHandle hTimer,
-        in long lpDueTime,
-        int lPeriod,
-        IntPtr pfnCompletionRoutine,
-        IntPtr lpArgToCompletionRoutine,
-        [MarshalAs(UnmanagedType.Bool)] bool fResume);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool CancelWaitableTimer(SafeWaitHandle hTimer);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern uint WaitForMultipleObjects(
-        uint nCount,
-        [In] IntPtr[] lpHandles,
-        [MarshalAs(UnmanagedType.Bool)] bool bWaitAll,
-        uint dwMilliseconds);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern uint WaitForSingleObject(
-        SafeWaitHandle hHandle,
-        uint dwMilliseconds);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetThreadTimes(
-        IntPtr hThread,
-        out FILETIME_METRICS lpCreationTime,
-        out FILETIME_METRICS lpExitTime,
-        out FILETIME_METRICS lpKernelTime,
-        out FILETIME_METRICS lpUserTime);
-
-    [DllImport("kernel32.dll")]
-    public static extern IntPtr GetCurrentThread();
-
-    #endregion
-
-    #region gdi32.dll (screen capture for Liquid Glass backdrop)
-
-    public const int SRCCOPY = 0x00CC0020;
-    public const int CAPTUREBLT = 0x40000000;
-    public const int BI_RGB = 0;
-    public const int DIB_RGB_COLORS = 0;
-
-    [DllImport("gdi32.dll")]
-    public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-
-    [DllImport("gdi32.dll")]
-    public static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
-
-    [DllImport("gdi32.dll")]
-    public static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
-
-    [DllImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool DeleteObject(IntPtr hObject);
-
-    [DllImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool DeleteDC(IntPtr hdc);
-
-    [DllImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight,
-        IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
-
-    [DllImport("gdi32.dll")]
-    public static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint uStartScan, uint cScanLines,
-        byte[] lpvBits, ref BITMAPINFO lpbi, uint uUsage);
-
-    [DllImport("gdi32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool StretchBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidthDest, int nHeightDest,
-        IntPtr hdcSrc, int nXSrc, int nYSrc, int nWidthSrc, int nHeightSrc, int dwRop);
-
-    [DllImport("gdi32.dll")]
-    public static extern int SetStretchBltMode(IntPtr hdc, int iStretchMode);
-
-    public const int HALFTONE = 4;
-    public const int STRETCH_HALFTONE = 4;
-
-    [DllImport("gdi32.dll")]
-    public static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO pbmi, uint usage,
-        out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
-
-    [DllImport("gdi32.dll")]
-    public static extern bool GdiFlush();
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct BITMAPINFOHEADER
-    {
-        public uint biSize;
-        public int biWidth;
-        public int biHeight;
-        public ushort biPlanes;
-        public ushort biBitCount;
-        public uint biCompression;
-        public uint biSizeImage;
-        public int biXPelsPerMeter;
-        public int biYPelsPerMeter;
-        public uint biClrUsed;
-        public uint biClrImportant;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct BITMAPINFO
-    {
-        public BITMAPINFOHEADER bmiHeader;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 256)]
-        public uint[] bmiColors;
-    }
-
-    #endregion
-
-    #region dwmapi.dll
-
-    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
-    public static extern int DwmGetWindowAttributeRect(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
-
-    [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
-    public static extern int DwmGetWindowAttributeInt(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
-
-    [DllImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
-    public static extern int DwmSetWindowAttributeInt(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
-
-    [DllImport("dwmapi.dll")]
-    public static extern int DwmFlush();
-
-    #endregion
-
-    #region Constants
 
     public const uint GW_HWNDPREV = 3;
     public const uint GW_HWNDNEXT = 2;
@@ -422,95 +776,7 @@ internal static class Win32Interop
 
     #endregion
 
-    private static IntPtr _cachedDesktopHost = IntPtr.Zero;
-    private static readonly object _desktopHostLock = new();
-
-    static Win32Interop()
-    {
-        try
-        {
-            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => InvalidateDesktopHostCache();
-        }
-        catch
-        {
-            // SystemEvents may be unavailable in some hosting environments
-        }
-    }
-
-    public static void InvalidateDesktopHostCache()
-    {
-        lock (_desktopHostLock)
-        {
-            _cachedDesktopHost = IntPtr.Zero;
-        }
-    }
-
-    public static IntPtr GetCachedDesktopHost()
-    {
-        lock (_desktopHostLock)
-        {
-            if (_cachedDesktopHost != IntPtr.Zero &&
-                IsWindow(_cachedDesktopHost) &&
-                FindWindowEx(_cachedDesktopHost, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
-            {
-                return _cachedDesktopHost;
-            }
-
-            IntPtr found = IntPtr.Zero;
-            EnumWindows((topLevel, _) =>
-            {
-                if (FindWindowEx(topLevel, IntPtr.Zero, "SHELLDLL_DefView", null) == IntPtr.Zero)
-                    return true;
-
-                found = topLevel;
-                return false;
-            }, IntPtr.Zero);
-
-            _cachedDesktopHost = found;
-            return found;
-        }
-    }
-
-    public static bool IsWindowDirectlyAboveDesktop(IntPtr window, out IntPtr requiredAnchor)
-    {
-        requiredAnchor = HWND_NOTOPMOST;
-        var desktopHost = GetCachedDesktopHost();
-        if (desktopHost == IntPtr.Zero)
-            return false;
-
-        IntPtr anchor = GetWindow(desktopHost, GW_HWNDPREV);
-        if (anchor == window)
-        {
-            requiredAnchor = window;
-            return true;
-        }
-
-        requiredAnchor = anchor != IntPtr.Zero ? anchor : HWND_NOTOPMOST;
-        return false;
-    }
-
-    public static IntPtr GetDesktopLayerInsertAfter(IntPtr window)
-    {
-        var desktopHost = GetCachedDesktopHost();
-
-        // Fall back to NOTOPMOST during Explorer hierarchy rebuilds to avoid
-        // placing the notch underneath desktop icons.
-        if (desktopHost == IntPtr.Zero)
-            return HWND_NOTOPMOST;
-
-        IntPtr anchor = GetWindow(desktopHost, GW_HWNDPREV);
-        if (anchor != window)
-            return anchor != IntPtr.Zero ? anchor : HWND_NOTOPMOST;
-
-        // The notch is already directly above the desktop. Use the window above
-        // it as the insertion anchor so SetWindowPos preserves that relationship.
-        anchor = GetWindow(window, GW_HWNDPREV);
-        return anchor != IntPtr.Zero ? anchor : HWND_NOTOPMOST;
-    }
-
-    #region Structs & Delegates
-
-    public delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    #region Structs
 
     [StructLayout(LayoutKind.Sequential)]
     public struct KBDLLHOOKSTRUCT
@@ -534,14 +800,14 @@ internal static class Win32Interop
         public uint flags;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct POINT
     {
         public int X;
         public int Y;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct RECT
     {
         public int Left;
@@ -550,85 +816,11 @@ internal static class Win32Interop
         public int Bottom;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct MONITORINFO
-    {
-        public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
-        public uint dwFlags;
-    }
+    #endregion
 
-    [StructLayout(LayoutKind.Sequential)]
-    public struct WINDOWPLACEMENT
-    {
-        public int length;
-        public int flags;
-        public int showCmd;
-        public POINT ptMinPosition;
-        public POINT ptMaxPosition;
-        public RECT rcNormalPosition;
-    }
+    #region Performance & system metrics
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern bool EnumDisplaySettings(string? lpszDeviceName, int iModeNum, ref DEVMODE lpDevMode);
-
-    public const int ENUM_CURRENT_SETTINGS = -1;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct DEVMODE
-    {
-        private const int CCHDEVICENAME = 32;
-        private const int CCHFORMNAME = 32;
-
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCHDEVICENAME)]
-        public string dmDeviceName;
-        public ushort dmSpecVersion;
-        public ushort dmDriverVersion;
-        public ushort dmSize;
-        public ushort dmDriverExtra;
-        public uint dmFields;
-        public int dmPositionX;
-        public int dmPositionY;
-        public uint dmDisplayOrientation;
-        public uint dmDisplayFixedOutput;
-        public short dmColor;
-        public short dmDuplex;
-        public short dmYResolution;
-        public short dmTTOption;
-        public short dmCollate;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = CCHFORMNAME)]
-        public string dmFormName;
-        public ushort dmLogPixels;
-        public uint dmBitsPerPel;
-        public uint dmPelsWidth;
-        public uint dmPelsHeight;
-        public uint dmDisplayFlags;
-        public uint dmDisplayFrequency;
-        public uint dmICMMethod;
-        public uint dmICMIntent;
-        public uint dmMediaType;
-        public uint dmDitherType;
-        public uint dmReserved1;
-        public uint dmReserved2;
-        public uint dmPanningWidth;
-        public uint dmPanningHeight;
-    }
-
-    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-    public delegate void WinEventDelegate(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint idEventThread,
-        uint dwmsEventTime);
-
-    #region Performance & System Metrics Win32
-
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct FILETIME_METRICS
     {
         public uint dwLowDateTime;
@@ -637,50 +829,46 @@ internal static class Win32Interop
         public ulong ToUInt64() => ((ulong)dwHighDateTime << 32) | dwLowDateTime;
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetSystemTimes(out FILETIME_METRICS lpIdleTime, out FILETIME_METRICS lpKernelTime, out FILETIME_METRICS lpUserTime);
+    public static bool GetSystemTimes(out FILETIME_METRICS lpIdleTime, out FILETIME_METRICS lpKernelTime, out FILETIME_METRICS lpUserTime) =>
+        NativeGetSystemTimes(out lpIdleTime, out lpKernelTime, out lpUserTime) == 0;
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetProcessTimes(IntPtr hProcess, out FILETIME_METRICS lpCreationTime, out FILETIME_METRICS lpExitTime, out FILETIME_METRICS lpKernelTime, out FILETIME_METRICS lpUserTime);
+    public static bool GetProcessTimes(IntPtr hProcess, out FILETIME_METRICS lpCreationTime, out FILETIME_METRICS lpExitTime, out FILETIME_METRICS lpKernelTime, out FILETIME_METRICS lpUserTime)
+    {
+        lpCreationTime = default;
+        lpExitTime = default;
+        return NativeGetProcessTimes(hProcess, out lpKernelTime, out lpUserTime) == 0;
+    }
 
-    [DllImport("kernel32.dll")]
-    public static extern IntPtr GetCurrentProcess();
+    /// <summary>Kernel and user CPU time consumed by the calling thread (100 ns units).</summary>
+    public static bool GetCurrentThreadTimes(out FILETIME_METRICS kernel, out FILETIME_METRICS user) =>
+        NativeGetCurrentThreadTimes(out kernel, out user) == 0;
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetProcessHandleCount(IntPtr hProcess, out uint pdwHandleCount);
+    public static IntPtr GetCurrentProcess() =>
+        NativeGetCurrentProcess(out long handle) == 0 ? (IntPtr)handle : IntPtr.Zero;
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+    public static bool GetProcessHandleCount(IntPtr hProcess, out uint pdwHandleCount) =>
+        NativeGetProcessHandleCount(hProcess, out pdwHandleCount) == 0;
 
-    [DllImport("psapi.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool EmptyWorkingSet(IntPtr hProcess);
-
-    [StructLayout(LayoutKind.Sequential, Size = 72)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct PROCESS_MEMORY_COUNTERS_EX
     {
         public uint cb;
         public uint PageFaultCount;
-        public UIntPtr PeakWorkingSetSize;
-        public UIntPtr WorkingSetSize;
-        public UIntPtr QuotaPeakPagedPoolUsage;
-        public UIntPtr QuotaPagedPoolUsage;
-        public UIntPtr QuotaPeakNonPagedPoolUsage;
-        public UIntPtr QuotaNonPagedPoolUsage;
-        public UIntPtr PagefileUsage;
-        public UIntPtr PeakPagefileUsage;
-        public UIntPtr PrivateUsage;
+        public ulong PeakWorkingSetSize;
+        public ulong WorkingSetSize;
+        public ulong QuotaPeakPagedPoolUsage;
+        public ulong QuotaPagedPoolUsage;
+        public ulong QuotaPeakNonPagedPoolUsage;
+        public ulong QuotaNonPagedPoolUsage;
+        public ulong PagefileUsage;
+        public ulong PeakPagefileUsage;
+        public ulong PrivateUsage;
     }
 
-    [DllImport("psapi.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetProcessMemoryInfo(IntPtr hProcess, out PROCESS_MEMORY_COUNTERS_EX counters, uint cb);
+    public static bool GetProcessMemoryInfo(IntPtr hProcess, out PROCESS_MEMORY_COUNTERS_EX counters, uint cb) =>
+        NativeGetProcessMemoryInfo(hProcess, out counters) == 0;
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct MEMORYSTATUSEX_METRICS
     {
         public uint dwLength;
@@ -694,11 +882,8 @@ internal static class Win32Interop
         public ulong ullAvailExtendedVirtual;
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX_METRICS lpBuffer);
-
-    #endregion
+    public static bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX_METRICS lpBuffer) =>
+        NativeGlobalMemoryStatus(out lpBuffer) == 0;
 
     #endregion
 }

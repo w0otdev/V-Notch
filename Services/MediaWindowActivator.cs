@@ -166,12 +166,6 @@ internal static partial class MediaWindowActivator
     private static bool TryActivateByProcessCandidates(IEnumerable<string> candidates)
         => candidates.Any(TryActivateProcessWindows);
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetApplicationUserModelId(IntPtr process, ref uint length, StringBuilder? appId);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam,
-        IntPtr lParam, uint flags, uint timeout, out IntPtr result);
 
     private static bool IsChromiumWindow(IntPtr hwnd)
     {
@@ -192,13 +186,7 @@ internal static partial class MediaWindowActivator
                 @"(?:$|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 return true;
 
-            uint length = 0;
-            const int insufficientBuffer = 122;
-            if (GetApplicationUserModelId(process.Handle, ref length, null) != insufficientBuffer ||
-                length == 0 || length > 32768) return false;
-            var appId = new StringBuilder((int)length);
-            return GetApplicationUserModelId(process.Handle, ref length, appId) == 0 &&
-                string.Equals(appId.ToString(), sourceAppId, StringComparison.OrdinalIgnoreCase);
+            return ProcessAppUserModelIdEquals(process.Handle, sourceAppId);
         }
         catch
         {

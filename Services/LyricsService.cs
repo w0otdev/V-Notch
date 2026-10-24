@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -15,6 +16,51 @@ namespace VNotch.Services;
 
 internal sealed partial class LyricsService : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_try_parse_timestamp(
+        ReadOnlySpan<char> ts,
+        int tsLen,
+        out long outTicks,
+        out byte outOk);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_try_parse_lrc_line(
+        ReadOnlySpan<char> rawLine,
+        int rawLineLen,
+        out long outTicks,
+        out int outTextStart,
+        out int outTextLength,
+        out byte outOk);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_contains_whole_phrase(
+        ReadOnlySpan<char> text,
+        int textLen,
+        ReadOnlySpan<char> phrase,
+        int phraseLen,
+        out byte outContains);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_is_generic_platform_name(
+        ReadOnlySpan<char> artist,
+        int artistLen,
+        out byte outIsGeneric);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_is_valid_sync_level(
+        ReadOnlySpan<char> syncLevel,
+        int syncLevelLen,
+        out byte outIsValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_clean_artist_span(
+        ReadOnlySpan<char> artist,
+        int artistLen,
+        out int outStart,
+        out int outLength);
+
     private const string LogTag = "LYRICS";
     private static readonly string[] GenericPlatformNames = { "YouTube", "Browser", "Google Chrome", "Microsoft Edge" };
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
@@ -186,11 +232,9 @@ internal sealed partial class LyricsService : IDisposable
             if (string.IsNullOrWhiteSpace(cleanT)) return;
 
             // Strip browser/generic platform names from artist
-            foreach (string platform in GenericPlatformNames)
+            if (vn_lyrics_is_generic_platform_name(cleanA.AsSpan(), cleanA.Length, out byte isGeneric) == 0 && isGeneric != 0)
             {
-                if (!cleanA.Equals(platform, StringComparison.OrdinalIgnoreCase)) continue;
                 cleanA = "";
-                break;
             }
 
             foreach (var candidate in candidates)
@@ -360,19 +404,7 @@ internal sealed partial class LyricsService : IDisposable
 
     private static bool ContainsWholePhrase(ReadOnlySpan<char> text, ReadOnlySpan<char> phrase)
     {
-        if (phrase.Length < 3) return false;
-        int start = 0;
-        while (start <= text.Length - phrase.Length)
-        {
-            int relativeIndex = text[start..].IndexOf(phrase, StringComparison.Ordinal);
-            if (relativeIndex < 0) return false;
-            int index = start + relativeIndex;
-            int end = index + phrase.Length;
-            if ((index == 0 || text[index - 1] == ' ') && (end == text.Length || text[end] == ' '))
-                return true;
-            start = index + 1;
-        }
-        return false;
+        return vn_lyrics_contains_whole_phrase(text, text.Length, phrase, phrase.Length, out byte contains) == 0 && contains != 0;
     }
 
     internal static string NormalizeForMatching(string text)
@@ -486,8 +518,7 @@ internal sealed partial class LyricsService : IDisposable
         string syncLevel = meta.TryGetProperty("level", out var levelProp)
             ? levelProp.GetString() ?? ""
             : "";
-        return syncLevel.Equals("word", StringComparison.OrdinalIgnoreCase) ||
-               syncLevel.Equals("line", StringComparison.OrdinalIgnoreCase);
+        return vn_lyrics_is_valid_sync_level(syncLevel.AsSpan(), syncLevel.Length, out byte valid) == 0 && valid != 0;
     }
 
     private static string ResolveProviderName(JsonElement meta)
@@ -563,15 +594,12 @@ internal sealed partial class LyricsService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(artist)) return artist;
 
-        // Use only the primary artist (before "feat.", "&", "," , "x").
-        string s = artist;
-        foreach (var sep in ArtistSeparators)
+        if (vn_lyrics_clean_artist_span(artist.AsSpan(), artist.Length, out int start, out int length) == 0 &&
+            start >= 0 && start + length <= artist.Length)
         {
-            int idx = s.IndexOf(sep, StringComparison.OrdinalIgnoreCase);
-            if (idx > 0) s = s[..idx];
+            return artist.Substring(start, length);
         }
-        s = s.Trim();
-        return s.Length == 0 ? artist.Trim() : s;
+        return artist.Trim();
     }
 
     public void Reset()
@@ -584,20 +612,10 @@ internal sealed partial class LyricsService : IDisposable
         var lines = new List<LyricLine>();
         foreach (var rawLine in lrc.AsSpan().EnumerateLines())
         {
-            var line = rawLine.Trim();
-            if (line.Length < 10 || line[0] != '[') continue;
-
-            int closeBracket = line.IndexOf(']');
-            if (closeBracket < 5) continue;
-
-            ReadOnlySpan<char> timestamp = line[1..closeBracket];
-            ReadOnlySpan<char> text = line[(closeBracket + 1)..].Trim();
-
-            if (text.IsEmpty) continue;
-
-            if (TryParseTimestamp(timestamp, out var time))
+            if (vn_lyrics_try_parse_lrc_line(rawLine, rawLine.Length, out long ticks, out int textStart, out int textLength, out byte ok) == 0 &&
+                ok != 0 && textStart >= 0 && textStart + textLength <= rawLine.Length)
             {
-                lines.Add(new LyricLine(time, new string(text)));
+                lines.Add(new LyricLine(TimeSpan.FromTicks(ticks), new string(rawLine.Slice(textStart, textLength))));
             }
         }
 
@@ -607,33 +625,13 @@ internal sealed partial class LyricsService : IDisposable
 
     private static bool TryParseTimestamp(ReadOnlySpan<char> ts, out TimeSpan result)
     {
-        result = TimeSpan.Zero;
-
-        int colonIdx = ts.IndexOf(':');
-        int dotIdx = ts.IndexOf('.');
-        if (colonIdx < 1 || dotIdx < colonIdx) return false;
-
-        if (!int.TryParse(ts[..colonIdx], NumberStyles.Integer, CultureInfo.InvariantCulture, out int minutes))
-            return false;
-        if (!int.TryParse(ts[(colonIdx + 1)..dotIdx], NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds))
-            return false;
-
-        ReadOnlySpan<char> fracStr = ts[(dotIdx + 1)..];
-        if (fracStr.Length > 3)
-            fracStr = fracStr[..3];
-
-        if (!int.TryParse(fracStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frac))
-            return false;
-
-        int ms = fracStr.Length switch
+        if (vn_lyrics_try_parse_timestamp(ts, ts.Length, out long ticks, out byte ok) == 0 && ok != 0)
         {
-            1 => frac * 100,
-            2 => frac * 10,
-            _ => frac
-        };
-
-        result = new TimeSpan(0, 0, minutes, seconds, ms);
-        return true;
+            result = TimeSpan.FromTicks(ticks);
+            return true;
+        }
+        result = TimeSpan.Zero;
+        return false;
     }
 
     public void Dispose()

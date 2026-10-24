@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -10,8 +11,38 @@ namespace VNotch.Services.Clipboard;
 
 /// <summary>Owns immutable local copies, retention, deduplication and the Personal vault.
 /// Disk work is serialized off the UI thread; full-text search uses a bounded memory cache.</summary>
-public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
+public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_matches_category_core(
+        byte isPersonal,
+        byte isArchived,
+        byte isPinned,
+        int kind,
+        byte includeArchived,
+        ReadOnlySpan<char> category,
+        int categoryLen,
+        out int outResult);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_is_screenshot_file_name(
+        ReadOnlySpan<char> name,
+        int nameLen,
+        out byte outIsScreenshot);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_is_screenshot_source_app(
+        ReadOnlySpan<char> sourceApp,
+        int sourceAppLen,
+        out byte outIsScreenshotApp);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_store_is_sharing_violation_hresult(
+        int hresult,
+        out byte outIsSharingViolation);
+
     public const long ApprovalThreshold = 50L * 1024 * 1024;
     public const int MaxImportItems = 512;
     public const int MaxImportContents = 100_000;
@@ -355,20 +386,25 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         return result;
     });
 
-    public static bool MatchesCategory(ClipboardEntry entry, string category, bool includeArchived = false) => category.ToLowerInvariant() switch
+    public static bool MatchesCategory(ClipboardEntry entry, string category, bool includeArchived = false)
     {
-        "all" or "" => !entry.IsPersonal && !entry.IsArchived,
-        "archive" => entry.IsArchived && !entry.IsPersonal,
-        "pin" or "pinned" => entry.IsPinned && !entry.IsPersonal,
-        "personal" => entry.IsPersonal,
-        "text" => (includeArchived || !entry.IsArchived) && entry.Kind == ClipboardKind.Text,
-        "code" => (includeArchived || !entry.IsArchived) && entry.Kind == ClipboardKind.Code,
-        "link" or "links" => (includeArchived || !entry.IsArchived) && entry.Kind == ClipboardKind.Link,
-        "image" or "images" => (includeArchived || !entry.IsArchived) && entry.Kind == ClipboardKind.Image,
-        "color" or "colors" => (includeArchived || !entry.IsArchived) && entry.Kind == ClipboardKind.Color,
-        "file" or "files" => (includeArchived || !entry.IsArchived) && entry.Kind == ClipboardKind.File,
-        _ => (includeArchived || !entry.IsArchived) && entry.Groups.Contains(category, StringComparer.OrdinalIgnoreCase)
-    };
+        category ??= "";
+        _ = vn_clipboard_store_matches_category_core(
+            entry.IsPersonal ? (byte)1 : (byte)0,
+            entry.IsArchived ? (byte)1 : (byte)0,
+            entry.IsPinned ? (byte)1 : (byte)0,
+            (int)entry.Kind,
+            includeArchived ? (byte)1 : (byte)0,
+            category.AsSpan(),
+            category.Length,
+            out int res);
+        return res switch
+        {
+            1 => true,
+            0 => false,
+            _ => entry.Groups.Contains(category, StringComparer.OrdinalIgnoreCase)
+        };
+    }
 
     public Task<ClipboardContent> GetContentAsync(Guid id) => Run(() => ReadContent(Find(id)));
 
@@ -912,7 +948,9 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
     }
 
     private static bool IsScreenshotFileName(string name) =>
-        name.StartsWith('{') && name.EndsWith("}.png", StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrEmpty(name) &&
+        vn_clipboard_store_is_screenshot_file_name(name.AsSpan(), name.Length, out byte isSs) == 0 &&
+        isSs != 0;
 
     private ClipboardEntry? FindProbableDuplicateImage(string staging, ClipboardCapture capture)
     {
@@ -930,9 +968,8 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
         bool isScreenshotRelated = (capture.FilePaths.Length == 1 && IsScreenshotFileName(Path.GetFileName(capture.FilePaths[0])))
             || recent.Title == "Screenshot"
             || (recent.SourceApp.Length > 0 && recent.SourceApp == capture.SourceApp &&
-                (recent.SourceApp.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
-                 recent.SourceApp.Equals("SnippingTool", StringComparison.OrdinalIgnoreCase) ||
-                 recent.SourceApp.Equals("ScreenClippingHost", StringComparison.OrdinalIgnoreCase)));
+                vn_clipboard_store_is_screenshot_source_app(recent.SourceApp.AsSpan(), recent.SourceApp.Length, out byte isSsApp) == 0 &&
+                isSsApp != 0);
 
         if (!isScreenshotRelated) return null;
 
@@ -1067,8 +1104,7 @@ public sealed class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 
     private static bool IsSharingViolation(IOException ex)
     {
-        int hr = ex.HResult & 0xFFFF;
-        return hr is 32 or 33; // ERROR_SHARING_VIOLATION or ERROR_LOCK_VIOLATION
+        return vn_clipboard_store_is_sharing_violation_hresult(ex.HResult, out byte isSv) == 0 && isSv != 0;
     }
 
     // UI owners use DisposeAsync to drain queued work. Synchronous disposal waits a

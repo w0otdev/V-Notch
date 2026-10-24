@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Luôn che dữ liệu nhạy cảm được nhận diện. Xóa mục đã lưu, kể cả mục ghim và lưu trữ; không xóa clipboard Windows. Có thể bỏ sót mật khẩu không có nhãn.",
   "settings.trayCaptureFiles": "Tự động lưu tệp và thư mục đã sao chép",
   "settings.trayCaptureDelay": "Thời gian chờ trước khi lưu",
-  "settings.trayCaptureDelay.hint": "Chờ từ 100 đến 2000 ms sau khi sao chép rồi mới lưu. Tăng thời gian chờ để bỏ qua các lần sao chép liên tiếp quá nhanh."
+  "settings.trayCaptureDelay.hint": "Chờ từ 100 đến 2000 ms sau khi sao chép rồi mới lưu. Tăng thời gian chờ để bỏ qua các lần sao chép liên tiếp quá nhanh.",
+  "settings.cpp26Banner.title": "Chuyển sang C++26",
+  "settings.cpp26Banner.message": "V-Notch sẽ chuyển sang C++26 trong bản cập nhật tới. Xem chi tiết tại GitHub Discussions.",
+  "settings.cpp26Banner.details": "Chi tiết",
+  "settings.cpp26Banner.dismiss": "Đóng"
 }

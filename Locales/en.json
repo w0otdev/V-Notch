@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Detected secrets are always masked. Deletes saved items, including pinned and archived items; does not clear the Windows clipboard. Detection may miss unlabelled passwords.",
   "settings.trayCaptureFiles": "Automatically save copied files and folders",
   "settings.trayCaptureDelay": "Capture delay",
-  "settings.trayCaptureDelay.hint": "Wait 100 to 2000 ms after copying before saving. A longer delay skips items copied in quick succession."
+  "settings.trayCaptureDelay.hint": "Wait 100 to 2000 ms after copying before saving. A longer delay skips items copied in quick succession.",
+  "settings.cpp26Banner.title": "Moving to C++26",
+  "settings.cpp26Banner.message": "V-Notch will move to C++26 in a future update. Read the details on GitHub Discussions.",
+  "settings.cpp26Banner.details": "Details",
+  "settings.cpp26Banner.dismiss": "Dismiss"
 }

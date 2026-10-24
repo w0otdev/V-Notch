@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -9,8 +10,55 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
+public sealed partial class SettingsService : ISettingsService, IAsyncDisposable, IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSettingsNormalizationParams
+    {
+        public int Width;
+        public int Height;
+        public int CornerRadius;
+        public int DynamicIslandWidth;
+        public int DynamicIslandHeight;
+        public int NotificationDuration;
+        public int AnimationFps;
+        public int MinFps;
+        public int MaxFps;
+        public double SpotifyCanvasBrightness;
+        public double Opacity;
+    }
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_settings_service_normalize_numeric(
+        ref VnSettingsNormalizationParams inoutParams,
+        out byte outChanged);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_settings_service_is_language_valid(
+        ReadOnlySpan<char> lang,
+        int langLen,
+        out byte outValid);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_settings_service_clean_manual_city(
+        ReadOnlySpan<char> city,
+        int cityLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_settings_service_check_requires_restart(
+        int importedGpu,
+        int currentGpu,
+        ReadOnlySpan<char> importedPriority,
+        int importedPriorityLen,
+        ReadOnlySpan<char> currentPriority,
+        int currentPriorityLen,
+        out byte outRequiresRestart);
+
     private const string LogCategoryLoad = "SETTINGS-LOAD";
     private const string LogCategorySave = "SETTINGS-SAVE";
 
@@ -505,46 +553,36 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     {
         bool changed = false;
 
-        int clampedWidth = Math.Clamp(settings.Width, 100, 4000);
-        if (clampedWidth != settings.Width) { settings.Width = clampedWidth; changed = true; }
-
-        int clampedHeight = Math.Clamp(settings.Height, 20, 200);
-        if (clampedHeight != settings.Height) { settings.Height = clampedHeight; changed = true; }
-
-        int clampedRadius = Math.Clamp(settings.CornerRadius, 0, 50);
-        if (clampedRadius != settings.CornerRadius) { settings.CornerRadius = clampedRadius; changed = true; }
-
-        if (settings.DynamicIslandWidth < 100 || settings.DynamicIslandWidth > 4000)
+        var normParams = new VnSettingsNormalizationParams
         {
-            settings.DynamicIslandWidth = Math.Clamp((int)Math.Round(settings.Width * 1.12 / 10.0) * 10, 100, 4000);
-            changed = true;
-        }
+            Width = settings.Width,
+            Height = settings.Height,
+            CornerRadius = settings.CornerRadius,
+            DynamicIslandWidth = settings.DynamicIslandWidth,
+            DynamicIslandHeight = settings.DynamicIslandHeight,
+            NotificationDuration = settings.NotificationDuration,
+            AnimationFps = settings.AnimationFps,
+            MinFps = AnimationConfig.MinFps,
+            MaxFps = AnimationConfig.MaxFps,
+            SpotifyCanvasBrightness = settings.SpotifyCanvasBrightness,
+            Opacity = settings.Opacity
+        };
 
-        if (settings.DynamicIslandHeight < 24 || settings.DynamicIslandHeight > 300)
+        if (vn_settings_service_normalize_numeric(ref normParams, out byte numericChanged) == 0)
         {
-            settings.DynamicIslandHeight = 40;
-            changed = true;
-        }
-
-
-        int clampedNotif = Math.Clamp(settings.NotificationDuration, 1000, 30000);
-        if (clampedNotif != settings.NotificationDuration) { settings.NotificationDuration = clampedNotif; changed = true; }
-
-        int clampedFps = Math.Clamp(settings.AnimationFps, AnimationConfig.MinFps, AnimationConfig.MaxFps);
-        if (clampedFps != settings.AnimationFps) { settings.AnimationFps = clampedFps; changed = true; }
-
-        double canvasBrightness = Math.Clamp(settings.SpotifyCanvasBrightness, 0.2, 1.0);
-        if (Math.Abs(canvasBrightness - settings.SpotifyCanvasBrightness) > double.Epsilon)
-        {
-            settings.SpotifyCanvasBrightness = canvasBrightness;
-            changed = true;
-        }
-
-        double clampedOpacity = Math.Clamp(settings.Opacity, 0.1, 1.0);
-        if (Math.Abs(clampedOpacity - settings.Opacity) > double.Epsilon)
-        {
-            settings.Opacity = clampedOpacity;
-            changed = true;
+            if (numericChanged != 0)
+            {
+                settings.Width = normParams.Width;
+                settings.Height = normParams.Height;
+                settings.CornerRadius = normParams.CornerRadius;
+                settings.DynamicIslandWidth = normParams.DynamicIslandWidth;
+                settings.DynamicIslandHeight = normParams.DynamicIslandHeight;
+                settings.NotificationDuration = normParams.NotificationDuration;
+                settings.AnimationFps = normParams.AnimationFps;
+                settings.SpotifyCanvasBrightness = normParams.SpotifyCanvasBrightness;
+                settings.Opacity = normParams.Opacity;
+                changed = true;
+            }
         }
 
         string normalizedPriority = ProcessPriorityPolicy.Normalize(settings.ProcessPriority);
@@ -554,7 +592,10 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
             changed = true;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.Language) || settings.Language.Length > 10 || settings.Language.IndexOfAny(['\0', '\r', '\n', '/', '\\']) >= 0)
+        ReadOnlySpan<char> langSpan = settings.Language is not null ? settings.Language.AsSpan() : ReadOnlySpan<char>.Empty;
+        bool langValid = vn_settings_service_is_language_valid(langSpan, langSpan.Length, out byte outLangValid) == 0
+            && outLangValid != 0;
+        if (!langValid)
         {
             settings.Language = "en";
             changed = true;
@@ -562,11 +603,16 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
 
         if (settings.ManualCity != null)
         {
-            var cleanCity = new string(settings.ManualCity.Where(c => !char.IsControl(c)).Take(100).ToArray()).Trim();
-            if (cleanCity != settings.ManualCity)
+            Span<char> cityBuf = stackalloc char[100];
+            ReadOnlySpan<char> citySpan = settings.ManualCity.AsSpan();
+            if (vn_settings_service_clean_manual_city(citySpan, citySpan.Length, cityBuf, cityBuf.Length, out int cleanLen) == 0)
             {
-                settings.ManualCity = cleanCity;
-                changed = true;
+                ReadOnlySpan<char> cleanSpan = cityBuf[..cleanLen];
+                if (!cleanSpan.SequenceEqual(citySpan))
+                {
+                    settings.ManualCity = new string(cleanSpan);
+                    changed = true;
+                }
             }
         }
 
@@ -687,11 +733,24 @@ public sealed class SettingsService : ISettingsService, IAsyncDisposable, IDispo
     {
         if (current == null) return false;
 
-        // GPU Preference requires restart because DXGI device adapter is bound on launch
+        ReadOnlySpan<char> impPri = imported.ProcessPriority is not null ? imported.ProcessPriority.AsSpan() : ReadOnlySpan<char>.Empty;
+        ReadOnlySpan<char> curPri = current.ProcessPriority is not null ? current.ProcessPriority.AsSpan() : ReadOnlySpan<char>.Empty;
+
+        if (vn_settings_service_check_requires_restart(
+                (int)imported.GpuPreference,
+                (int)current.GpuPreference,
+                impPri,
+                impPri.Length,
+                curPri,
+                curPri.Length,
+                out byte outRestart) == 0)
+        {
+            return outRestart != 0;
+        }
+
         if (imported.GpuPreference != current.GpuPreference)
             return true;
 
-        // Process Priority applies at startup
         if (!string.Equals(imported.ProcessPriority, current.ProcessPriority, StringComparison.OrdinalIgnoreCase))
             return true;
 

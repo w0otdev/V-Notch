@@ -6,22 +6,20 @@ namespace VNotch.Services.Translation;
 // The hook has its own message loop: inference/UI stalls cannot time it out.
 internal sealed class TranslationShiftShortcut : IDisposable
 {
-    private readonly Win32Interop.LowLevelKeyboardProc _callback;
+    private readonly Win32Interop.LowLevelKeyboardHook _hook;
     private readonly ShiftTapDetector _detector = new();
     private readonly Thread _thread;
     private Dispatcher? _dispatcher;
-    private IntPtr _hook;
     private volatile bool _disposed;
     internal TranslationShiftShortcut(Action requested, Func<IntPtr, bool>? isBlocked = null)
     {
-        _callback = (code, message, data) =>
+        _hook = new Win32Interop.LowLevelKeyboardHook((key, message) =>
         {
-            if (!_disposed && code >= 0 && message.ToInt64() is 0x100 or 0x101 or 0x104 or 0x105)
+            if (!_disposed && message is 0x100 or 0x101 or 0x104 or 0x105)
             {
-                var key = Marshal.PtrToStructure<Win32Interop.KBDLLHOOKSTRUCT>(data);
                 bool otherModifier = IsDown(0x11) || IsDown(0x12) || IsDown(0x5B) || IsDown(0x5C);
                 var foreground = Win32Interop.GetForegroundWindow();
-                if (_detector.Process(key.vkCode, message.ToInt64() is 0x100 or 0x104,
+                if (_detector.Process(key.vkCode, message is 0x100 or 0x104,
                     key.time, foreground, otherModifier || (key.flags & 0x12) != 0))
                     _dispatcher!.BeginInvoke(() =>
                     {
@@ -29,8 +27,9 @@ internal sealed class TranslationShiftShortcut : IDisposable
                         if (!_disposed && foreground == Win32Interop.GetForegroundWindow() && isBlocked?.Invoke(foreground) != true) requested();
                     });
             }
-            return Win32Interop.CallNextHookEx(_hook, code, message, data);
-        };
+            // Never swallow: the native thunk forwards to the next hook in the chain.
+            return false;
+        });
         _thread = new Thread(Watch) { IsBackground = true, Name = "VNotch translation shortcut" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
@@ -43,8 +42,7 @@ internal sealed class TranslationShiftShortcut : IDisposable
         try
         {
             if (_disposed) return;
-            _hook = Win32Interop.SetWindowsHookEx(13, _callback, Win32Interop.GetModuleHandle(null), 0);
-            if (_hook == IntPtr.Zero) { RuntimeLog.Warn("TRANSLATION", "Could not register double-Shift shortcut."); return; }
+            if (!_hook.Install()) { RuntimeLog.Warn("TRANSLATION", "Could not register double-Shift shortcut."); return; }
             if (_disposed) return;
             dispatcher.BeginInvoke(() =>
             {
@@ -55,8 +53,7 @@ internal sealed class TranslationShiftShortcut : IDisposable
         }
         finally
         {
-            if (_hook != IntPtr.Zero) Win32Interop.UnhookWindowsHookEx(_hook);
-            _hook = IntPtr.Zero;
+            _hook.Dispose();
             _detector.Reset();
         }
     }
@@ -67,7 +64,6 @@ internal sealed class TranslationShiftShortcut : IDisposable
         if (dispatcher != null && !dispatcher.HasShutdownStarted) dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
     }
 }
-
 internal sealed partial class ShiftTapDetector
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
@@ -9,8 +10,28 @@ using System.Windows;
 namespace VNotch.Services;
 
 #pragma warning disable S1075 // Public GitHub Releases API endpoints
-public class UpdateService : IUpdateService, IDisposable
+public partial class UpdateService : IUpdateService, IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_update_service_try_parse_release_version(
+        ReadOnlySpan<char> valuePtr,
+        int valueLen,
+        out int outMajor,
+        out int outMinor,
+        out int outBuild,
+        out int outRevision,
+        out int outPreStart,
+        out int outPreLen,
+        out byte outOk);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_update_service_compare_versions(
+        ReadOnlySpan<char> leftPtr,
+        int leftLen,
+        ReadOnlySpan<char> rightPtr,
+        int rightLen,
+        out int outCmp);
+
     private const string LogCategory = "UPDATER";
     private static readonly Uri GithubLatestReleaseUri = new("https://api.github.com/repos/rainaku/V-Notch/releases/latest");
     private static readonly Uri GithubAllReleasesUri = new("https://api.github.com/repos/rainaku/V-Notch/releases");
@@ -463,40 +484,15 @@ public class UpdateService : IUpdateService, IDisposable
             bufferSize: 81920, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
         return Convert.ToHexString(await SHA256.HashDataAsync(file, token).ConfigureAwait(false));
     }
-    private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
+    private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new NativeWinHttpHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
     private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
+
     internal static int CompareVersions(string left, string right)
     {
-        if (!TryParseReleaseVersion(left, out var a, out var aPre) ||
-            !TryParseReleaseVersion(right, out var b, out var bPre))
-            return 0;
-        int comparison = a.CompareTo(b);
-        if (comparison != 0) return comparison;
-        if (aPre.Length == 0 || bPre.Length == 0)
-            return aPre.Length == bPre.Length ? 0 : aPre.Length == 0 ? 1 : -1;
-        for (int i = 0; i < Math.Min(aPre.Length, bPre.Length); i++)
-        {
-            bool aNumeric = IsAllAsciiDigits(aPre[i]);
-            bool bNumeric = IsAllAsciiDigits(bPre[i]);
-            if (aNumeric && bNumeric)
-            {
-                comparison = aPre[i].Length.CompareTo(bPre[i].Length);
-                if (comparison == 0) comparison = string.CompareOrdinal(aPre[i], bPre[i]);
-            }
-            else if (aNumeric != bNumeric) comparison = aNumeric ? -1 : 1;
-            else comparison = string.CompareOrdinal(aPre[i], bPre[i]);
-            if (comparison != 0) return comparison;
-        }
-        return aPre.Length.CompareTo(bPre.Length);
-    }
-
-    private static bool IsAllAsciiDigits(ReadOnlySpan<char> value)
-    {
-        foreach (char c in value)
-        {
-            if (!char.IsAsciiDigit(c)) return false;
-        }
-        return !value.IsEmpty;
+        if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right)) return 0;
+        ReadOnlySpan<char> lSpan = left.AsSpan();
+        ReadOnlySpan<char> rSpan = right.AsSpan();
+        return vn_update_service_compare_versions(lSpan, lSpan.Length, rSpan, rSpan.Length, out int cmp) == 0 ? cmp : 0;
     }
 
     internal static bool TryParseReleaseVersion(string value, out Version version, out string[] prerelease)
@@ -504,24 +500,21 @@ public class UpdateService : IUpdateService, IDisposable
         version = new Version(0, 0, 0, 0);
         prerelease = [];
         if (string.IsNullOrWhiteSpace(value)) return false;
-        value = value.Trim();
-        if (value.StartsWith('v') || value.StartsWith('V')) value = value[1..];
-        int metadata = value.IndexOf('+');
-        if (metadata >= 0)
+
+        ReadOnlySpan<char> span = value.AsSpan();
+        if (vn_update_service_try_parse_release_version(
+                span, span.Length,
+                out int major, out int minor, out int build, out int revision,
+                out int preStart, out int preLen, out byte ok) != 0 || ok == 0)
         {
-            if (!ValidIdentifiers(value[(metadata + 1)..], numericLeadingZerosAllowed: true)) return false;
-            value = value[..metadata];
+            return false;
         }
-        int suffix = value.IndexOf('-');
-        if (suffix >= 0)
+
+        version = new Version(major, minor, build, revision);
+        if (preStart >= 0 && preLen > 0)
         {
-            string pre = value[(suffix + 1)..];
-            if (!ValidIdentifiers(pre, numericLeadingZerosAllowed: false)) return false;
-            prerelease = pre.Split('.');
-            value = value[..suffix];
+            prerelease = value.Substring(preStart, preLen).Split('.');
         }
-        if (!Version.TryParse(value, out var parsed)) return false;
-        version = new Version(parsed.Major, parsed.Minor, Math.Max(0, parsed.Build), Math.Max(0, parsed.Revision));
         return true;
     }
 
@@ -549,8 +542,5 @@ public class UpdateService : IUpdateService, IDisposable
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
     }
 
-    private static bool ValidIdentifiers(string value, bool numericLeadingZerosAllowed) => value.Split('.').All(part =>
-        part.Length > 0 && part.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') &&
-        (numericLeadingZerosAllowed || part.Length == 1 || part[0] != '0' || !part.All(char.IsAsciiDigit)));
     private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion, IsPrerelease = source.IsPrerelease };
 }

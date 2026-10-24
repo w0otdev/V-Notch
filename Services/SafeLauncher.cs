@@ -1,39 +1,46 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public static class SafeLauncher
+public static partial class SafeLauncher
 {
     private const string LogCategory = "SAFE-LAUNCHER";
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_safe_launcher_classify_url_prefix(
+        ReadOnlySpan<char> urlPtr,
+        int urlLen,
+        out int outClass);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_safe_launcher_is_allowed_scheme(
+        ReadOnlySpan<char> schemePtr,
+        int schemeLen,
+        ReadOnlySpan<char> origPtr,
+        int origLen,
+        out byte outAllowed);
 
     public static bool IsSafeUrl(string? url, out Uri? uri)
     {
         uri = null;
-        if (string.IsNullOrWhiteSpace(url))
+        if (url == null)
             return false;
 
-        if (url.StartsWith("ms-settings:", StringComparison.OrdinalIgnoreCase))
-        {
-            if (url.Equals("ms-settings:batterysaver", StringComparison.OrdinalIgnoreCase))
-            {
-                if (Uri.TryCreate(url, UriKind.Absolute, out uri))
-                    return true;
-            }
+        ReadOnlySpan<char> urlSpan = url.AsSpan();
+        _ = vn_safe_launcher_classify_url_prefix(urlSpan, urlSpan.Length, out int cls);
+        if (cls == 0)
             return false;
-        }
+        if (cls == 1)
+            return Uri.TryCreate(url, UriKind.Absolute, out uri);
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out uri))
             return false;
 
-        if (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-            uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
-            uri.Scheme.Equals(Uri.UriSchemeMailto, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
+        ReadOnlySpan<char> schemeSpan = uri.Scheme.AsSpan();
+        _ = vn_safe_launcher_is_allowed_scheme(schemeSpan, schemeSpan.Length, ReadOnlySpan<char>.Empty, 0, out byte allowed);
+        return allowed != 0;
     }
 
     public static bool TryOpenUrl(string? url)
@@ -58,12 +65,13 @@ public static class SafeLauncher
         return LaunchValidatedUri(uri!);
     }
 
-    internal static bool IsSafeUri(Uri? uri) =>
-        uri is { IsAbsoluteUri: true } &&
-        (uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-         uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
-         uri.Scheme.Equals(Uri.UriSchemeMailto, StringComparison.OrdinalIgnoreCase) ||
-         uri.OriginalString.Equals("ms-settings:batterysaver", StringComparison.OrdinalIgnoreCase));
+    internal static bool IsSafeUri(Uri? uri)
+    {
+        if (uri is not { IsAbsoluteUri: true }) return false;
+        ReadOnlySpan<char> schemeSpan = uri.Scheme.AsSpan();
+        ReadOnlySpan<char> origSpan = uri.OriginalString.AsSpan();
+        return vn_safe_launcher_is_allowed_scheme(schemeSpan, schemeSpan.Length, origSpan, origSpan.Length, out byte allowed) == 0 && allowed != 0;
+    }
 
     private static bool LaunchValidatedUri(Uri uri)
     {

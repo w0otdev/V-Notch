@@ -292,6 +292,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         _currentUri = null;
 
         ReleaseVideo(_refs.Video);
+        _ = System.Threading.Tasks.Task.Run(() => SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: false));
         if (_refs.VideoAlt != null)
         {
             ReleaseVideo(_refs.VideoAlt);

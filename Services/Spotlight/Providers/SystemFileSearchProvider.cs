@@ -1,13 +1,25 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-internal sealed class SystemFileSearchProvider : ISpotlightProvider
+internal sealed partial class SystemFileSearchProvider : ISpotlightProvider
 {
-    private static readonly HashSet<string> LaunchableExtensions = new(
-        [".cpl", ".msc", ".exe", ".com", ".cmd", ".bat"],
-        StringComparer.OrdinalIgnoreCase);
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_system_file_search_is_launchable_ext(
+        ReadOnlySpan<char> extPtr,
+        int extLen,
+        out byte outLaunchable);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_system_file_search_score(
+        int kind,
+        ReadOnlySpan<char> targetPtr,
+        int targetLen,
+        ReadOnlySpan<char> reqPtr,
+        int reqLen,
+        out double outScore);
 
     private readonly IReadOnlyList<string> _roots;
     private readonly Lazy<Task<IReadOnlyList<SpotlightSearchItem>>> _index;
@@ -75,15 +87,8 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
     {
         if (file.Kind != SpotlightResultKind.Application) return 0;
         ReadOnlySpan<char> target = file.Target.AsSpan();
-        ReadOnlySpan<char> name = Path.GetFileName(target);
-        ReadOnlySpan<char> stem = Path.GetFileNameWithoutExtension(name);
-        // Exact command names remain discoverable without Everything or WSearch.
-        // Generic partial matches stay below ordinary apps and documents.
-        if (name.Equals(requested, StringComparison.OrdinalIgnoreCase)
-            || stem.Equals(requested, StringComparison.OrdinalIgnoreCase)
-            || target.Equals(requested, StringComparison.OrdinalIgnoreCase)) return 1200;
-        if (stem.StartsWith(requested, StringComparison.OrdinalIgnoreCase)) return 140;
-        return requested.Length >= 3 && stem.Contains(requested, StringComparison.OrdinalIgnoreCase) ? 80 : 0;
+        _ = vn_system_file_search_score(0, target, target.Length, requested, requested.Length, out double score);
+        return score;
     }
 
     private IReadOnlyList<SpotlightSearchItem> BuildIndex()
@@ -123,8 +128,8 @@ internal sealed class SystemFileSearchProvider : ISpotlightProvider
                 ReturnSpecialDirectories = false
             }))
             {
-                string extension = Path.GetExtension(path);
-                if (!LaunchableExtensions.Contains(extension)) continue;
+                ReadOnlySpan<char> extension = Path.GetExtension(path.AsSpan());
+                if (vn_system_file_search_is_launchable_ext(extension, extension.Length, out byte launchable) != 0 || launchable == 0) continue;
 
                 string title = Path.GetFileName(path);
                 if (title.Length == 0 || files.ContainsKey(title)) continue;

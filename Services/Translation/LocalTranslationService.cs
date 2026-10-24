@@ -1,7 +1,24 @@
+using System.Runtime.InteropServices;
+
 namespace VNotch.Services.Translation;
 
-internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : IDisposable
+internal sealed partial class LocalTranslationService(ILocalTranslationEngine engine) : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_local_translation_should_cache_result(
+        byte literalsPreserved,
+        byte weekdaysPreserved,
+        int cacheEntries,
+        out byte outShouldCache);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_local_translation_is_cache_entry_expired(
+        long expiresUtcTicks,
+        long nowUtcTicks,
+        out byte outExpired);
+
     private sealed record CacheEntry((string Text, string Source, string Target) Key, TranslationResult Result, DateTime ExpiresUtc);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _cacheLock = new();
@@ -89,7 +106,11 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
             var result = new TranslationResult(translated, source, target, literalsPreserved,
                 TranslationDateIntegrity.PreservesWeekdays(text, hintSource, translated, target))
             { InputTruncated = tokenTruncated };
-            if (literalsPreserved && result.WeekdaysPreserved && _options.CacheEntries > 0)
+            if (vn_local_translation_should_cache_result(
+                literalsPreserved ? (byte)1 : (byte)0,
+                result.WeekdaysPreserved ? (byte)1 : (byte)0,
+                _options.CacheEntries,
+                out byte shouldCache) == 0 && shouldCache != 0)
             {
                 lock (_cacheLock)
                 {
@@ -143,7 +164,7 @@ internal sealed class LocalTranslationService(ILocalTranslationEngine engine) : 
             if (!Volatile.Read(ref _requestedOptions).CanReuseCachedResults(_options) ||
                 !_cache.TryGetValue(key, out var node)) return null;
             _order.Remove(node);
-            if (node.Value.ExpiresUtc <= DateTime.UtcNow)
+            if (vn_local_translation_is_cache_entry_expired(node.Value.ExpiresUtc.Ticks, DateTime.UtcNow.Ticks, out byte expired) == 0 && expired != 0)
             {
                 _cache.Remove(key);
                 return null;

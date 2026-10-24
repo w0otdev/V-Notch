@@ -1,16 +1,37 @@
+using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using static VNotch.Services.SpotifyHttpResponseReader;
 using static VNotch.Services.SpotifyQueryMetadataProvider;
 using static VNotch.Services.SpotifyTrackMatcher;
 
 namespace VNotch.Services;
 
-internal sealed class SpotifyCatalogClient
+internal sealed partial class SpotifyCatalogClient
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_catalog_client_build_query(
+        ReadOnlySpan<char> trackName,
+        int trackLen,
+        ReadOnlySpan<char> artistName,
+        int artistLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_spotify_catalog_client_is_metadata_rejected_status(
+        int statusCode,
+        out byte outRejected);
+
     private const string LogCategory = "SPOTIFY-CANVAS";
     private const string JsonContentType = "application/json";
     private const string SpotifyWebOrigin = "https://open.spotify.com";
@@ -67,9 +88,7 @@ internal sealed class SpotifyCatalogClient
         string hash,
         CancellationToken token)
     {
-        string query = string.IsNullOrWhiteSpace(artistName)
-            ? trackName.Trim()
-            : $"{trackName.Trim()} {artistName.Trim()}";
+        string query = BuildQuery(trackName, artistName);
         string payload = JsonSerializer.Serialize(new
         {
             variables = new { query, limit = 5, offset = 0 },
@@ -91,8 +110,9 @@ internal sealed class SpotifyCatalogClient
 
         using var response = await _http.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        bool queryMetadataRejected = response.StatusCode is HttpStatusCode.BadRequest or
-            HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed;
+        bool queryMetadataRejected = vn_spotify_catalog_client_is_metadata_rejected_status((int)response.StatusCode, out byte outRejected) == 0
+            ? outRejected != 0
+            : response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed;
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Debug(LogCategory, () =>
@@ -103,6 +123,24 @@ internal sealed class SpotifyCatalogClient
         byte[]? bytes = await ReadLimitedBytesAsync(response, token).ConfigureAwait(false);
         string? json = bytes == null ? null : Encoding.UTF8.GetString(bytes);
         return new PathfinderQueryResult(json, queryMetadataRejected);
+    }
+
+    private static string BuildQuery(string? trackName, string? artistName)
+    {
+        ReadOnlySpan<char> tSpan = trackName is not null ? trackName.AsSpan() : ReadOnlySpan<char>.Empty;
+        ReadOnlySpan<char> aSpan = artistName is not null ? artistName.AsSpan() : ReadOnlySpan<char>.Empty;
+        int maxLen = tSpan.Length + aSpan.Length + 2;
+        if (maxLen <= 512)
+        {
+            Span<char> buf = stackalloc char[512];
+            if (vn_spotify_catalog_client_build_query(tSpan, tSpan.Length, aSpan, aSpan.Length, buf, buf.Length, out int outLen) == 0)
+            {
+                return new string(buf[..outLen]);
+            }
+        }
+        string t = (trackName ?? string.Empty).Trim();
+        string a = (artistName ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(a) ? t : $"{t} {a}";
     }
 
     private sealed record PathfinderQueryResult(string? Json, bool QueryMetadataRejected);

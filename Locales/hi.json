@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "पहचानी गई गोपनीय जानकारी हमेशा छिपाई जाती है। सहेजे गए आइटम, पिन किए गए और संग्रहित आइटम सहित, हटते हैं; Windows क्लिपबोर्ड साफ़ नहीं होता। बिना लेबल वाले पासवर्ड छूट सकते हैं।",
   "settings.trayCaptureFiles": "कॉपी की गई फ़ाइलें और फ़ोल्डर अपने आप सहेजें",
   "settings.trayCaptureDelay": "सहेजने से पहले विलंब",
-  "settings.trayCaptureDelay.hint": "कॉपी करने के बाद सहेजने से पहले 100 से 2000 ms तक इंतज़ार करें। ज़्यादा इंतज़ार रखने पर तेज़ी से लगातार कॉपी किए गए बीच के आइटम सहेजे नहीं जाएँगे।"
+  "settings.trayCaptureDelay.hint": "कॉपी करने के बाद सहेजने से पहले 100 से 2000 ms तक इंतज़ार करें। ज़्यादा इंतज़ार रखने पर तेज़ी से लगातार कॉपी किए गए बीच के आइटम सहेजे नहीं जाएँगे।",
+  "settings.cpp26Banner.title": "C++26 में बदलाव",
+  "settings.cpp26Banner.message": "V-Notch भविष्य के अपडेट में C++26 पर शिफ्ट होगा। GitHub Discussions पर विवरण पढ़ें।",
+  "settings.cpp26Banner.details": "विवरण",
+  "settings.cpp26Banner.dismiss": "बंद करें"
 }

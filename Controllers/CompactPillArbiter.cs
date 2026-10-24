@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Controllers;
 
@@ -12,13 +13,24 @@ public enum CompactPillSlot
     Greeting = 5
 }
 
-public sealed class CompactPillArbiter
+public sealed partial class CompactPillArbiter
 {
     private readonly object _gate = new();
     private CompactPillSlot _activeSlot = CompactPillSlot.None;
     private int _activeToken = 0;
     private int _nextToken = 1;
     private long _revision;
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_compact_pill_try_acquire(
+        int requestedSlot,
+        ref int ioActiveSlot,
+        ref int ioActiveToken,
+        ref int ioNextToken,
+        ref long ioRevision,
+        out byte outWon,
+        out int outPreempted,
+        out int outToken);
 
     public long Revision { get { lock (_gate) return _revision; } }
 
@@ -54,26 +66,20 @@ public sealed class CompactPillArbiter
 
     public AcquireResult TryAcquire(CompactPillSlot slot)
     {
-        if (slot == CompactPillSlot.None)
-        {
-            return new AcquireResult(false, CompactPillSlot.None, 0);
-        }
-
         lock (_gate)
         {
-            if (_activeSlot != CompactPillSlot.None && (int)slot < (int)_activeSlot)
-            {
-                return new AcquireResult(false, _activeSlot, 0);
-            }
-
-            var preempted = (_activeSlot != CompactPillSlot.None && _activeSlot != slot)
-                ? _activeSlot
-                : CompactPillSlot.None;
-
-            _activeSlot = slot;
-            _activeToken = _nextToken++;
-            _revision++;
-            return new AcquireResult(true, preempted, _activeToken);
+            int activeSlot = (int)_activeSlot;
+            _ = vn_compact_pill_try_acquire(
+                (int)slot,
+                ref activeSlot,
+                ref _activeToken,
+                ref _nextToken,
+                ref _revision,
+                out byte won,
+                out int preempted,
+                out int token);
+            _activeSlot = (CompactPillSlot)activeSlot;
+            return new AcquireResult(won != 0, (CompactPillSlot)preempted, token);
         }
     }
 

@@ -5,8 +5,38 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
+internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_everything_provider_compute_search_params(
+        ReadOnlySpan<char> query,
+        int queryLen,
+        int limit,
+        out int outMaxResults,
+        out uint outSearchFlags);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_everything_provider_classify_item_kind(
+        byte isFolder,
+        ReadOnlySpan<char> ext,
+        int extLen,
+        out int outKind);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_everything_provider_compute_final_score(
+        double rankerScore,
+        int titleLen,
+        out double outScore);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_everything_provider_parse_bounded_utf16_len(
+        IntPtr basePtr,
+        int offset,
+        int totalBytes,
+        out int outCharLen);
+
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const string EverythingIpcWindowClass = "EVERYTHING_TASKBAR_NOTIFICATION";
@@ -37,7 +67,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private long _lastFailureTicks = DateTime.MinValue.Ticks;
     private readonly Func<IntPtr> _findWindow;
 
-    public EverythingSearchProvider() : this(() => FindWindowW(EverythingIpcWindowClass, null)) { }
+    public EverythingSearchProvider() : this(() => Win32Interop.FindWindow(EverythingIpcWindowClass)) { }
 
     internal EverythingSearchProvider(Func<IntPtr> findWindow) => _findWindow = findWindow;
 
@@ -106,10 +136,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 
             try
             {
-                int maxResults = Math.Clamp(limit * 8, 100, MaxParsedItems);
-                // Matching the path too lets "docs\report" style queries work,
-                // mirroring Flow Launcher's Everything plugin behavior.
-                uint searchFlags = query.Contains('\\') || query.Contains('/') ? MatchPath : 0;
+                _ = vn_everything_provider_compute_search_params(query.AsSpan(), query.Length, limit, out int maxResults, out uint searchFlags);
                 string scopedQuery = SpotlightFileVisibility.BuildEverythingQuery(query);
                 if (!SendQuery(everythingWindow, replyHwnd, id, scopedQuery, searchFlags, maxResults))
                 {
@@ -163,17 +190,9 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private static double ScoreItem(SpotlightSearchItem item, string query)
     {
         double score = SpotlightRanker.Score(item, query);
-        if (score > 0) return score;
-
-        // Everything matched the item (possibly on its path); keep it visible
-        // below lexical title matches instead of dropping it.
-        return Math.Max(120, 260 - item.Title.Length);
+        _ = vn_everything_provider_compute_final_score(score, item.Title.Length, out double finalScore);
+        return finalScore;
     }
-
-    private static readonly HashSet<string> ExecutableExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".appref-ms", ".lnk"
-    };
 
     private static SpotlightSearchItem? ToSearchItem(string name, string parent, bool isFolder)
     {
@@ -189,21 +208,8 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
         }
 
         string ext = Path.GetExtension(name);
-        bool isExec = !isFolder && ExecutableExtensions.Contains(ext);
-
-        SpotlightResultKind kind;
-        if (isFolder)
-        {
-            kind = SpotlightResultKind.Folder;
-        }
-        else if (isExec)
-        {
-            kind = SpotlightResultKind.Application;
-        }
-        else
-        {
-            kind = SpotlightResultKind.File;
-        }
+        _ = vn_everything_provider_classify_item_kind(isFolder ? (byte)1 : (byte)0, ext.AsSpan(), ext.Length, out int kindInt);
+        var kind = (SpotlightResultKind)kindInt;
 
         string typePrefix = kind switch
         {
@@ -325,14 +331,9 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
 
     private static unsafe string ReadBoundedUniString(IntPtr basePtr, int offset, int totalBytes)
     {
-        if (offset < 0 || offset >= totalBytes) return string.Empty;
-        int maxChars = (totalBytes - offset) / sizeof(char);
-        if (maxChars <= 0) return string.Empty;
-
-        ReadOnlySpan<char> span = new((char*)(basePtr + offset), maxChars);
-        int nullIndex = span.IndexOf('\0');
-        if (nullIndex >= 0) span = span[..nullIndex];
-        return span.IsEmpty ? string.Empty : new string(span);
+        if (vn_everything_provider_parse_bounded_utf16_len(basePtr, offset, totalBytes, out int charLen) != 0 || charLen <= 0)
+            return string.Empty;
+        return new string((char*)(basePtr + offset), 0, charLen);
     }
 
     private static bool SendQuery(
@@ -370,7 +371,7 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
             try
             {
                 Marshal.StructureToPtr(copyData, copyDataBuffer, fDeleteOld: false);
-                IntPtr sendResult = SendMessageTimeoutW(
+                IntPtr sendResult = Win32Interop.SendMessageTimeout(
                     everythingWindow,
                     WmCopyData,
                     replyWindow,
@@ -436,16 +437,4 @@ internal sealed class EverythingSearchProvider : ISpotlightProvider, IDisposable
     private const uint SMTO_BLOCK = 0x0001;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr FindWindowW(string lpClassName, string? lpWindowName);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr SendMessageTimeoutW(
-        IntPtr hWnd,
-        uint msg,
-        IntPtr wParam,
-        IntPtr lParam,
-        uint fuFlags,
-        uint uTimeout,
-        out IntPtr lpdwResult);
 }

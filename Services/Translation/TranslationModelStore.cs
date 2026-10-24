@@ -4,18 +4,27 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace VNotch.Services.Translation;
 
-internal sealed class TranslationModelStore
+internal sealed partial class TranslationModelStore
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_model_store_is_allowed_uri(
+        ReadOnlySpan<char> schemePtr, int schemeLen,
+        int userInfoLen,
+        byte isDefaultPort,
+        ReadOnlySpan<char> hostPtr, int hostLen,
+        out byte outAllowed);
+
     internal sealed record Asset(string Name, string RemotePath, long Size, string Sha256);
     internal TranslationModelProfile Profile { get; }
     private Asset[] Assets => Profile.Assets;
     internal long TotalBytes => Assets.Sum(a => a.Size);
     private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.TranslationModels,
-        new HttpClientHandler { AllowAutoRedirect = false }))
+        new NativeWinHttpHandler { AllowAutoRedirect = false }))
     { Timeout = Timeout.InfiniteTimeSpan };
     // The singleton constructor captures Client; initialize the transport first.
     internal static TranslationModelStore Shared { get; } = new();
@@ -215,9 +224,13 @@ internal sealed class TranslationModelStore
         throw new TranslationException("translation.downloadFailed");
     }
 
-    internal static bool IsAllowedDownloadUri(Uri uri) => uri.Scheme == "https" && uri.UserInfo.Length == 0 && uri.IsDefaultPort &&
-        (uri.Host == "huggingface.co" || uri.Host.EndsWith(".huggingface.co", StringComparison.OrdinalIgnoreCase) ||
-         uri.Host.EndsWith(".hf.co", StringComparison.OrdinalIgnoreCase));
+    internal static bool IsAllowedDownloadUri(Uri uri) =>
+        vn_translation_model_store_is_allowed_uri(
+            uri.Scheme.AsSpan(), uri.Scheme.Length,
+            uri.UserInfo.Length,
+            uri.IsDefaultPort ? (byte)1 : (byte)0,
+            uri.Host.AsSpan(), uri.Host.Length,
+            out byte allowed) == 0 && allowed != 0;
 
     internal async Task ImportAsync(string folder, CancellationToken ct)
     {

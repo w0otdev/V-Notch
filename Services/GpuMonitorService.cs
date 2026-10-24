@@ -8,8 +8,45 @@ using Vortice.DXGI;
 
 namespace VNotch.Services;
 
-public sealed class GpuMonitorService : IDisposable, IAsyncDisposable
+public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_gpu_monitor_score_adapter(
+        ReadOnlySpan<char> name,
+        int nameLen,
+        ulong vramBytes,
+        out long outScore);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_gpu_monitor_compute_process_cpu_delta(
+        ulong procTotalTime,
+        ulong lastProcTime,
+        long nowTicks,
+        long lastProcTicks,
+        long stopwatchFreq,
+        int processorCount,
+        double smoothedProcCpu,
+        out double outCpu);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_gpu_monitor_compute_global_cpu_delta(
+        ulong idle,
+        ulong lastSysIdle,
+        ulong kernel,
+        ulong lastSysKernel,
+        ulong user,
+        ulong lastSysUser,
+        double smoothedGlobalCpu,
+        out double outCpu);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_gpu_monitor_is_target_engine_instance(
+        ReadOnlySpan<char> inst,
+        int instLen,
+        out byte outIsTarget);
+
     private static readonly Lazy<GpuMonitorService> SharedInstance = new(() => new GpuMonitorService());
     public static GpuMonitorService Instance => SharedInstance.Value;
     internal static ValueTask DisposeSharedAsync() => SharedInstance.IsValueCreated ? SharedInstance.Value.DisposeAsync() : ValueTask.CompletedTask;
@@ -167,16 +204,7 @@ public sealed class GpuMonitorService : IDisposable, IAsyncDisposable
                         ulong vram = (ulong)desc.DedicatedVideoMemory;
 
                         // Score GPUs by dedicated VRAM (MB) with discrete high-performance bonuses.
-                        long score = (long)(vram / (1024 * 1024));
-                        if (name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("RTX", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("GTX", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("Radeon RX", StringComparison.OrdinalIgnoreCase) ||
-                            name.Contains("Arc", StringComparison.OrdinalIgnoreCase))
-                        {
-                            score += 100_000;
-                        }
+                        _ = vn_gpu_monitor_score_adapter(name.AsSpan(), name.Length, vram, out long score);
 
                         if (score > bestScore)
                         {
@@ -257,21 +285,16 @@ public sealed class GpuMonitorService : IDisposable, IAsyncDisposable
 
     private double ComputeProcessCpuDelta(ulong procTotalTime, long nowTicks)
     {
-        if (_lastProcTicks == 0)
-        {
-            return 0.0;
-        }
-
-        ulong deltaProc = procTotalTime > _lastProcTime ? procTotalTime - _lastProcTime : 0;
-        double deltaWallSec = (double)(nowTicks - _lastProcTicks) / Stopwatch.Frequency;
-        if (deltaWallSec <= 0.005)
-        {
-            return _smoothedProcCpu;
-        }
-
-        double procSec = (double)deltaProc / 10_000_000.0;
-        double rawProcCpu = Math.Clamp((procSec / (deltaWallSec * _processorCount)) * 100.0, 0, 100);
-        return _lastProcTime == 0 ? rawProcCpu : (_smoothedProcCpu * 0.88 + rawProcCpu * 0.12);
+        _ = vn_gpu_monitor_compute_process_cpu_delta(
+            procTotalTime,
+            _lastProcTime,
+            nowTicks,
+            _lastProcTicks,
+            Stopwatch.Frequency,
+            _processorCount,
+            _smoothedProcCpu,
+            out double cpu);
+        return cpu;
     }
 
     private ulong SampleProcessRam()
@@ -320,24 +343,16 @@ public sealed class GpuMonitorService : IDisposable, IAsyncDisposable
 
     private double ComputeGlobalCpuDelta(ulong idle, ulong kernel, ulong user)
     {
-        if (_lastSysIdle == 0)
-        {
-            return 0.0;
-        }
-
-        ulong deltaIdle = idle > _lastSysIdle ? idle - _lastSysIdle : 0;
-        ulong deltaKernel = kernel > _lastSysKernel ? kernel - _lastSysKernel : 0;
-        ulong deltaUser = user > _lastSysUser ? user - _lastSysUser : 0;
-        ulong deltaTotal = deltaKernel + deltaUser;
-
-        if (deltaTotal == 0)
-        {
-            return _smoothedGlobalCpu;
-        }
-
-        double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
-        double rawGlobalCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
-        return _smoothedGlobalCpu * 0.88 + rawGlobalCpu * 0.12;
+        _ = vn_gpu_monitor_compute_global_cpu_delta(
+            idle,
+            _lastSysIdle,
+            kernel,
+            _lastSysKernel,
+            user,
+            _lastSysUser,
+            _smoothedGlobalCpu,
+            out double cpu);
+        return cpu;
     }
 
     private static (ulong UsedBytes, ulong TotalBytes, double Percent) SampleGlobalRam()
@@ -454,9 +469,9 @@ public sealed class GpuMonitorService : IDisposable, IAsyncDisposable
             var cat = new PerformanceCounterCategory("GPU Engine");
             var insts = cat.GetInstanceNames();
             var targetInstances = insts.Where(inst =>
-                inst.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase) ||
-                inst.Contains("engtype_Compute", StringComparison.OrdinalIgnoreCase) ||
-                inst.Contains("engtype_VR", StringComparison.OrdinalIgnoreCase));
+                inst != null &&
+                vn_gpu_monitor_is_target_engine_instance(inst.AsSpan(), inst.Length, out byte isTarget) == 0 &&
+                isTarget != 0);
 
             const int maxOtherCounters = 32;
             int otherCount = 0;

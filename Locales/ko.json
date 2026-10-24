@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "감지된 비밀 정보는 항상 가려집니다. 고정 및 보관된 항목을 포함한 저장 항목을 삭제하며 Windows 클립보드는 비우지 않습니다. 레이블이 없는 암호는 감지되지 않을 수 있습니다.",
   "settings.trayCaptureFiles": "복사한 파일과 폴더 자동 저장",
   "settings.trayCaptureDelay": "캡처 지연",
-  "settings.trayCaptureDelay.hint": "복사한 뒤 저장하기까지 100~2000ms 동안 기다립니다. 대기 시간이 길면 빠르게 연속해서 복사한 중간 항목은 저장하지 않습니다."
+  "settings.trayCaptureDelay.hint": "복사한 뒤 저장하기까지 100~2000ms 동안 기다립니다. 대기 시간이 길면 빠르게 연속해서 복사한 중간 항목은 저장하지 않습니다.",
+  "settings.cpp26Banner.title": "C++26 전환 안내",
+  "settings.cpp26Banner.message": "V-Notch는 향후 업데이트에서 C++26으로 전환됩니다. 자세한 내용은 GitHub Discussions에서 확인하세요.",
+  "settings.cpp26Banner.details": "자세히 보기",
+  "settings.cpp26Banner.dismiss": "닫기"
 }

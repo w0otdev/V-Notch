@@ -1,10 +1,19 @@
 using System;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
 // Supplemental providers for recorders which bypass Windows ConsentStore.
-internal sealed class ScreenRecordingProbe
+internal sealed partial class ScreenRecordingProbe
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_screen_recording_probe_should_capture_owned_snapshot")]
+    private static partial int NativeShouldCaptureOwnedSnapshot(
+        int processProviderCount,
+        byte hasGetSnapshotDelegate,
+        out byte outShouldCapture);
+
     private readonly Func<bool>[] _providers = Array.Empty<Func<bool>>();
     private readonly Func<PrivacyProcessSnapshot, bool>[] _processProviders = Array.Empty<Func<PrivacyProcessSnapshot, bool>>();
 
@@ -24,7 +33,11 @@ internal sealed class ScreenRecordingProbe
         // process separately for Bandicam, both OBS variants and FFmpeg.
         try
         {
-            using var ownedSnapshot = _processProviders.Length > 0 && getSnapshot == null
+            NativeShouldCaptureOwnedSnapshot(
+                _processProviders.Length,
+                getSnapshot != null ? (byte)1 : (byte)0,
+                out byte shouldCapture);
+            using var ownedSnapshot = shouldCapture != 0
                 ? PrivacyProcessSnapshot.Capture() : null;
             if (_processProviders.Length > 0)
             {

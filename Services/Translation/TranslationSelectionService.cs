@@ -7,8 +7,25 @@ using System.Windows.Threading;
 
 namespace VNotch.Services.Translation;
 
-internal sealed class TranslationSelectionService : IDisposable
+internal sealed partial class TranslationSelectionService : IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_selection_can_send_unicode_input(
+        ReadOnlySpan<char> text,
+        int textLen,
+        out byte outCanSend);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_translation_selection_can_preserve_recent_snapshot(
+        byte manual,
+        byte protectedInput,
+        byte sameWindow,
+        long nowTick,
+        long lastValidTick,
+        out byte outCanPreserve);
+
     private readonly Thread _thread;
     private Dispatcher? _dispatcher;
     private readonly TaskCompletionSource<Dispatcher> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -22,9 +39,10 @@ internal sealed class TranslationSelectionService : IDisposable
     private IntPtr _watchedWindow;
     private volatile bool _disposed;
     private int _queued;
-    private readonly WinEventCallback _foregroundChanged;
-    private readonly WinEventCallback _objectEventChanged;
-    private IntPtr _foregroundHook, _focusHook, _selectionHook, _lastExternalWindow;
+    private readonly Action<uint, IntPtr> _foregroundChanged;
+    private readonly Action<uint, IntPtr> _objectEventChanged;
+    private Win32Interop.WinEventHook? _foregroundHook, _focusHook, _selectionHook;
+    private IntPtr _lastExternalWindow;
     private readonly Func<IntPtr, bool>? _isBlocked;
     internal event Action<TranslationSelection?>? SelectionChanged;
     internal event Action<TranslationSelection?>? ManualTranslationRequested;
@@ -51,7 +69,7 @@ internal sealed class TranslationSelectionService : IDisposable
                     !IsOwnWindow(foreground) && foreground == Win32Interop.GetForegroundWindow() && _isBlocked?.Invoke(foreground) != true,
                 () =>
                 {
-                    if ((GetAsyncKeyState(1) & 0x8000) != 0) return null;
+                    if ((Win32Interop.GetAsyncKeyState(1) & 0x8000) != 0) return null;
                     _debounce?.Stop();
                     Capture(manual: true);
                     return _snapshot?.Window == foreground ? _snapshot : null;
@@ -93,14 +111,14 @@ internal sealed class TranslationSelectionService : IDisposable
     {
         _isBlocked = isBlocked;
         _selectionChanged = (sender, _) => { _eventElement = sender as AutomationElement; QueueCapture(); };
-        _foregroundChanged = (_, _, hwnd, _, _, _, _) =>
+        _foregroundChanged = (_, hwnd) =>
         {
             if (hwnd == IntPtr.Zero || IsOwnWindow(hwnd)) return;
             _lastExternalWindow = hwnd;
             if (_snapshot != null && _snapshot.Window != hwnd) Publish(null);
             QueueCapture();
         };
-        _objectEventChanged = (_, _, hwnd, _, _, _, _) =>
+        _objectEventChanged = (_, hwnd) =>
         {
             if (hwnd == IntPtr.Zero || IsOwnWindow(hwnd)) return;
             QueueCapture();
@@ -124,9 +142,13 @@ internal sealed class TranslationSelectionService : IDisposable
         try
         {
             if (_disposed) return;
-            _foregroundHook = SetWinEventHook(3, 3, IntPtr.Zero, _foregroundChanged, 0, 0, 2);
-            _focusHook = SetWinEventHook(0x8005, 0x8005, IntPtr.Zero, _objectEventChanged, 0, 0, 2);
-            _selectionHook = SetWinEventHook(0x8014, 0x8014, IntPtr.Zero, _objectEventChanged, 0, 0, 2);
+            // EVENT_SYSTEM_FOREGROUND, EVENT_OBJECT_FOCUS, EVENT_OBJECT_TEXTSELECTIONCHANGED
+            _foregroundHook = new Win32Interop.WinEventHook(3, 3, _foregroundChanged);
+            _focusHook = new Win32Interop.WinEventHook(0x8005, 0x8005, _objectEventChanged);
+            _selectionHook = new Win32Interop.WinEventHook(0x8014, 0x8014, _objectEventChanged);
+            _foregroundHook.Install();
+            _focusHook.Install();
+            _selectionHook.Install();
             if (_disposed) return;
             _ready.TrySetResult(dispatcher);
             QueueCapture();
@@ -142,9 +164,9 @@ internal sealed class TranslationSelectionService : IDisposable
         {
             _ready.TrySetCanceled();
             _debounce.Stop();
-            if (_foregroundHook != IntPtr.Zero) UnhookWinEvent(_foregroundHook);
-            if (_focusHook != IntPtr.Zero) UnhookWinEvent(_focusHook);
-            if (_selectionHook != IntPtr.Zero) UnhookWinEvent(_selectionHook);
+            _foregroundHook?.Dispose();
+            _focusHook?.Dispose();
+            _selectionHook?.Dispose();
             DetachSelection();
             _element = null; _range = null; _snapshot = null;
         }
@@ -176,7 +198,7 @@ internal sealed class TranslationSelectionService : IDisposable
                 DetachSelection(); _lastValidSnapshot = null; Publish(null, !manual); return;
             }
             _lastExternalWindow = window;
-            if ((GetAsyncKeyState(1) & 0x8000) != 0) { _debounce!.Start(); return; }
+            if ((Win32Interop.GetAsyncKeyState(1) & 0x8000) != 0) { _debounce!.Start(); return; }
             if (window != _watchedWindow)
             {
                 DetachSelection();
@@ -193,8 +215,14 @@ internal sealed class TranslationSelectionService : IDisposable
             {
                 var native = protectedInput ? null : NativeSelectionReader.Read(window);
                 if (Win32Interop.GetForegroundWindow() != window) return;
-                if (native == null && manual && !protectedInput && _lastValidSnapshot?.Window == window &&
-                    Environment.TickCount64 - _lastValidTick <= 5000)
+                if (native == null &&
+                    vn_translation_selection_can_preserve_recent_snapshot(
+                        manual ? (byte)1 : (byte)0,
+                        protectedInput ? (byte)1 : (byte)0,
+                        _lastValidSnapshot?.Window == window ? (byte)1 : (byte)0,
+                        Environment.TickCount64,
+                        _lastValidTick,
+                        out byte canPreserve) == 0 && canPreserve != 0)
                 {
                     // Preserve a selection captured moments before Shift key-down cleared or unfocused the provider.
                     native = _lastValidSnapshot;
@@ -260,8 +288,8 @@ internal sealed class TranslationSelectionService : IDisposable
             if (current.Length != 1 || !SameRange(_range, current[0]) || current[0].GetText(2001) != selection.Text) return false;
             var foreground = Win32Interop.GetForegroundWindow();
             if (foreground != selection.Window && !IsOwnWindow(foreground)) return false;
-            if (new[] { 0x10, 0x11, 0x12, 0x5B }.Any(key => (GetAsyncKeyState(key) & 0x8000) != 0) ||
-                (GetAsyncKeyState(0x5C) & 0x8000) != 0) return false;
+            if (new[] { 0x10, 0x11, 0x12, 0x5B }.Any(key => (Win32Interop.GetAsyncKeyState(key) & 0x8000) != 0) ||
+                (Win32Interop.GetAsyncKeyState(0x5C) & 0x8000) != 0) return false;
             if (!Win32Interop.SetForegroundWindow(selection.Window)) return false;
             _element.SetFocus();
             if (Win32Interop.GetForegroundWindow() != selection.Window) return false;
@@ -289,16 +317,11 @@ internal sealed class TranslationSelectionService : IDisposable
             }
             // Unicode insertion leaves the clipboard untouched. Newlines require a reliable ValuePattern;
             // sending Enter to an unknown chat control could submit the message.
-            if (text.Contains('\n') || text.Contains('\r') || text.Length > 4000) return false;
+            if (vn_translation_selection_can_send_unicode_input(text.AsSpan(), text.Length, out byte canSend) != 0 || canSend == 0) return false;
             _range.Select();
             if (Win32Interop.GetForegroundWindow() != selection.Window) return false;
-            var inputs = text.SelectMany(character => new[]
-            {
-                new Input { Type = 1, Keyboard = new KeyboardInput { Scan = character, Flags = 4 } },
-                new Input { Type = 1, Keyboard = new KeyboardInput { Scan = character, Flags = 6 } }
-            }).ToArray();
             ct.ThrowIfCancellationRequested();
-            bool inserted = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == inputs.Length;
+            bool inserted = Win32Interop.SendUnicodeText(text);
             Publish(null);
             return inserted;
         }
@@ -314,7 +337,7 @@ internal sealed class TranslationSelectionService : IDisposable
 
     private static bool IsOwnWindow(IntPtr hwnd)
     {
-        GetWindowThreadProcessId(hwnd, out uint pid);
+        Win32Interop.GetWindowThreadProcessId(hwnd, out uint pid);
         return pid == Environment.ProcessId;
     }
 
@@ -326,24 +349,4 @@ internal sealed class TranslationSelectionService : IDisposable
         var dispatcher = Volatile.Read(ref _dispatcher);
         if (dispatcher != null && !dispatcher.HasShutdownStarted) dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
     }
-
-    [StructLayout(LayoutKind.Explicit, Size = 40)]
-    private struct Input
-    {
-        [FieldOffset(0)] public uint Type;
-        [FieldOffset(8)] public KeyboardInput Keyboard;
-    }
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KeyboardInput
-    {
-        public ushort Key, Scan;
-        public uint Flags, Time;
-        public UIntPtr ExtraInfo;
-    }
-    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
-    private delegate void WinEventCallback(IntPtr hook, uint eventType, IntPtr hwnd, int objectId, int childId, uint thread, uint time);
-    [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr module, WinEventCallback callback, uint process, uint thread, uint flags);
-    [DllImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static extern bool UnhookWinEvent(IntPtr hook);
-    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
-    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, Input[] inputs, int size);
 }

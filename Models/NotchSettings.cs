@@ -204,6 +204,7 @@ public class NotchSettings
     public int GpuPreference { get; set; } = 0;
 
     public bool HasSeenSpotlightIntro { get; set; } = false;
+    public bool HasSeenCpp26Notice { get; set; } = false;
 
     public bool EnableLocalOnlyMode { get; set; } = false;
     public bool AllowOnlineAi { get; set; } = true;

@@ -8,8 +8,45 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed class PerformanceDiagnosticService
+public sealed partial class PerformanceDiagnosticService
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_perf_diag_compute_process_cpu(
+        ulong procTotalTime,
+        ulong lastProcTime,
+        long nowTicks,
+        long lastProcTicks,
+        long stopwatchFreq,
+        int processorCount,
+        double smoothedProcCpu,
+        out double outSmoothedProcCpu);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_perf_diag_compute_global_cpu(
+        ulong idle,
+        ulong lastSysIdle,
+        ulong kernel,
+        ulong lastSysKernel,
+        ulong user,
+        ulong lastSysUser,
+        byte hasGlobalCpuMeasurement,
+        double smoothedGlobalCpu,
+        out double outSmoothedGlobalCpu,
+        out byte outHasGlobalCpuMeasurement);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_perf_diag_compute_smoothed_alloc_rate(
+        long currentTotalAlloc,
+        long lastAllocatedBytes,
+        long nowTicks,
+        long lastAllocSampleTicks,
+        long stopwatchFreq,
+        double smoothedAllocBytesPerSec,
+        out double outSmoothedAllocBytesPerSec,
+        out byte outUpdated);
+
     private static readonly Lazy<PerformanceDiagnosticService> _lazy =
         new(() => new PerformanceDiagnosticService());
 
@@ -219,14 +256,15 @@ public sealed class PerformanceDiagnosticService
             ulong procTotalTime = procKernel.ToUInt64() + procUser.ToUInt64();
             if (_lastProcTicks > 0)
             {
-                ulong deltaProc = SafeDelta(procTotalTime, _lastProcTime);
-                double deltaWallSec = (double)(nowTicks - _lastProcTicks) / Stopwatch.Frequency;
-                if (deltaWallSec > 0.005)
-                {
-                    double procSec = (double)deltaProc / 10_000_000.0;
-                    double rawProcCpu = Math.Clamp((procSec / (deltaWallSec * _processorCount)) * 100.0, 0, 100);
-                    _smoothedProcCpu = _lastProcTime == 0 ? rawProcCpu : (_smoothedProcCpu * 0.88 + rawProcCpu * 0.12);
-                }
+                _ = vn_perf_diag_compute_process_cpu(
+                    procTotalTime,
+                    _lastProcTime,
+                    nowTicks,
+                    _lastProcTicks,
+                    Stopwatch.Frequency,
+                    _processorCount,
+                    _smoothedProcCpu,
+                    out _smoothedProcCpu);
             }
 
             _lastProcTime = procTotalTime;
@@ -255,18 +293,18 @@ public sealed class PerformanceDiagnosticService
 
             if (_lastSysIdle > 0)
             {
-                ulong deltaIdle = SafeDelta(idle, _lastSysIdle);
-                ulong deltaTotal = SafeDelta(kernel, _lastSysKernel) + SafeDelta(user, _lastSysUser);
-
-                if (deltaTotal > 0)
-                {
-                    double busy = deltaTotal > deltaIdle ? (double)(deltaTotal - deltaIdle) : 0;
-                    double rawGlobalCpu = Math.Clamp((busy / deltaTotal) * 100.0, 0, 100);
-                    _smoothedGlobalCpu = _hasGlobalCpuMeasurement
-                        ? _smoothedGlobalCpu * 0.88 + rawGlobalCpu * 0.12
-                        : rawGlobalCpu;
-                    _hasGlobalCpuMeasurement = true;
-                }
+                _ = vn_perf_diag_compute_global_cpu(
+                    idle,
+                    _lastSysIdle,
+                    kernel,
+                    _lastSysKernel,
+                    user,
+                    _lastSysUser,
+                    _hasGlobalCpuMeasurement ? (byte)1 : (byte)0,
+                    _smoothedGlobalCpu,
+                    out _smoothedGlobalCpu,
+                    out byte hasMeas);
+                _hasGlobalCpuMeasurement = hasMeas != 0;
             }
 
             _lastSysIdle = idle;
@@ -308,12 +346,17 @@ public sealed class PerformanceDiagnosticService
     {
         managedHeapBytes = GC.GetTotalMemory(false);
         long currentTotalAlloc = GC.GetTotalAllocatedBytes();
-        double allocDeltaSec = (double)(nowTicks - _lastAllocSampleTicks) / Stopwatch.Frequency;
-        if (allocDeltaSec >= 0.2)
+        if (vn_perf_diag_compute_smoothed_alloc_rate(
+            currentTotalAlloc,
+            _lastAllocatedBytes,
+            nowTicks,
+            _lastAllocSampleTicks,
+            Stopwatch.Frequency,
+            _smoothedAllocBytesPerSec,
+            out double smoothedAlloc,
+            out byte updated) == 0 && updated != 0)
         {
-            long allocDeltaBytes = currentTotalAlloc - _lastAllocatedBytes;
-            double rate = allocDeltaBytes > 0 ? allocDeltaBytes / allocDeltaSec : 0;
-            _smoothedAllocBytesPerSec = _smoothedAllocBytesPerSec * 0.7 + rate * 0.3;
+            _smoothedAllocBytesPerSec = smoothedAlloc;
             _lastAllocatedBytes = currentTotalAlloc;
             _lastAllocSampleTicks = nowTicks;
         }

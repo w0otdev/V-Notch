@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
 using VNotch.Contracts;
@@ -6,8 +7,34 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed class NotchManager : INotchManager
+public sealed partial class NotchManager : INotchManager
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnNotchGeometryOut
+    {
+        public double NotchLeft;
+        public double NotchTop;
+        public double NotchWidth;
+        public double NotchHeight;
+        public double SafeLeft;
+        public double SafeTop;
+        public double SafeWidth;
+        public double SafeHeight;
+    }
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_notch_manager_compute_geometry")]
+    private static partial int NativeComputeGeometry(
+        int screenLeft,
+        int screenTop,
+        int screenWidth,
+        double settingsWidth,
+        double settingsHeight,
+        double scale,
+        double margin,
+        out VnNotchGeometryOut outGeom);
+
     private NotchSettings _settings;
     private readonly HoverDetectionService _hoverService;
 
@@ -47,9 +74,16 @@ public sealed class NotchManager : INotchManager
         AnimationConfig.Refresh(_currentScreen.DeviceName);
 
         double scale = MonitorSelection.GetScale(_currentScreen);
-        double width = _settings.Width * scale;
-        double notchLeft = workingArea.Left + (workingArea.Width - width) / 2;
-        _hoverService.UpdateNotchBounds(notchLeft, workingArea.Top, width, _settings.Height * scale);
+        NativeComputeGeometry(
+            workingArea.Left,
+            workingArea.Top,
+            workingArea.Width,
+            _settings.Width,
+            _settings.Height,
+            scale,
+            4.0,
+            out var geom);
+        _hoverService.UpdateNotchBounds(geom.NotchLeft, geom.NotchTop, geom.NotchWidth, geom.NotchHeight);
 
         UpdateSafeArea();
 
@@ -62,17 +96,21 @@ public sealed class NotchManager : INotchManager
 
         var workingArea = _currentScreen.Bounds;
         double scale = MonitorSelection.GetScale(_currentScreen);
-        double notchWidth = _settings.Width * scale;
-        double notchHeight = _settings.Height * scale;
-
-        double margin = 4;
-        double notchLeft = workingArea.Left + (workingArea.Width - notchWidth) / 2;
+        NativeComputeGeometry(
+            workingArea.Left,
+            workingArea.Top,
+            workingArea.Width,
+            _settings.Width,
+            _settings.Height,
+            scale,
+            4.0,
+            out var geom);
 
         _safeArea = new Rect(
-            notchLeft - margin,
-            workingArea.Top,
-            notchWidth + margin * 2,
-            notchHeight + margin
+            geom.SafeLeft,
+            geom.SafeTop,
+            geom.SafeWidth,
+            geom.SafeHeight
         );
 
         SafeAreaChanged?.Invoke(this, _safeArea);

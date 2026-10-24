@@ -1,13 +1,22 @@
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed record AiUsageSnapshot(long? Tokens = null, long? Remaining = null, long? Limit = null,
+internal sealed partial record AiUsageSnapshot(long? Tokens = null, long? Remaining = null, long? Limit = null,
     string? Reset = null, DateTimeOffset? Updated = null)
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_ai_usage_sum_claude_tokens(
+        long input,
+        long output,
+        long cacheRead,
+        long cacheCreated,
+        out long outTotal);
+
     internal static AiUsageSnapshot FromHeaders(HttpResponseMessage response, string provider)
     {
         string prefix = provider == "Claude" ? "anthropic-ratelimit-tokens-" : "x-ratelimit-";
@@ -36,13 +45,14 @@ internal sealed record AiUsageSnapshot(long? Tokens = null, long? Remaining = nu
         var output = Number(claude, "output_tokens") ?? Output;
         var cache = Number(claude, "cache_read_input_tokens") ?? CacheRead;
         var created = Number(claude, "cache_creation_input_tokens") ?? CacheCreated;
+        _ = vn_ai_usage_sum_claude_tokens(input, output, cache, created, out long total);
         return this with
         {
             Input = input,
             Output = output,
             CacheRead = cache,
             CacheCreated = created,
-            Tokens = input + output + cache + created
+            Tokens = total
         };
     }
 
@@ -54,10 +64,16 @@ internal sealed record AiUsageSnapshot(long? Tokens = null, long? Remaining = nu
 
 internal sealed partial class SpotlightAiService
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_ai_usage_validate_credential_key(
+        ReadOnlySpan<char> keyPtr,
+        int keyLen,
+        out byte outValid);
+
     internal async Task<string> GetBalanceAsync(string key, CancellationToken token)
     {
         key = key.Trim();
-        if (key.Length == 0 || key.Length > 4096 || key.Any(c => c < '!' || c > '~'))
+        if (vn_ai_usage_validate_credential_key(key.AsSpan(), key.Length, out byte valid) != 0 || valid == 0)
             throw new InvalidOperationException("Invalid credential format.");
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.deepseek.com/user/balance");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);

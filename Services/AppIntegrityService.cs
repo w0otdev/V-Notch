@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
@@ -21,8 +22,72 @@ public enum IntegrityCheckStatus
     Skipped
 }
 
-public static class AppIntegrityService
+public static partial class AppIntegrityService
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_parse_zone_identifier(
+        ReadOnlySpan<char> contentPtr,
+        int contentLen,
+        out int outHostStart,
+        out int outHostLen,
+        out int outRefStart,
+        out int outRefLen);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_is_trusted_download_uri(
+        byte isAbsolute,
+        ReadOnlySpan<char> schemePtr,
+        int schemeLen,
+        int port,
+        ReadOnlySpan<char> userInfoPtr,
+        int userInfoLen,
+        ReadOnlySpan<char> hostPtr,
+        int hostLen,
+        ReadOnlySpan<char> absPathPtr,
+        int absPathLen,
+        out byte outTrusted);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_is_official_release_url(
+        byte isAbsolute,
+        ReadOnlySpan<char> schemePtr,
+        int schemeLen,
+        int port,
+        ReadOnlySpan<char> userInfoPtr,
+        int userInfoLen,
+        ReadOnlySpan<char> hostPtr,
+        int hostLen,
+        ReadOnlySpan<char> absPathPtr,
+        int absPathLen,
+        out byte outOfficial);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_is_release_asset_host(
+        ReadOnlySpan<char> hostPtr,
+        int hostLen,
+        out byte outAssetHost);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_is_trusted_release_redirect(
+        byte isAbsolute,
+        ReadOnlySpan<char> schemePtr,
+        int schemeLen,
+        int port,
+        ReadOnlySpan<char> userInfoPtr,
+        int userInfoLen,
+        ReadOnlySpan<char> hostPtr,
+        int hostLen,
+        ReadOnlySpan<char> absPathPtr,
+        int absPathLen,
+        out byte outTrusted);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_is_applicable_checksum_asset(
+        ReadOnlySpan<char> assetNamePtr,
+        int assetNameLen,
+        byte isInstaller,
+        out byte outApplicable);
+
     private const string LogCategory = "INTEGRITY";
     private const string OfficialRepoOwner = "rainaku";
     private const string OfficialRepoName = "V-Notch";
@@ -35,7 +100,7 @@ public static class AppIntegrityService
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Updates, new HttpClientHandler { AllowAutoRedirect = true }))
+        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Updates, new NativeWinHttpHandler { AllowAutoRedirect = true }))
         {
             Timeout = TimeSpan.FromSeconds(15)
         };
@@ -91,24 +156,14 @@ public static class AppIntegrityService
         if (string.IsNullOrWhiteSpace(content))
             return (null, null);
 
-        string? hostUrl = null;
-        string? referrerUrl = null;
+        ReadOnlySpan<char> span = content.AsSpan();
+        vn_app_integrity_parse_zone_identifier(
+            span, span.Length,
+            out int hostStart, out int hostLen,
+            out int refStart, out int refLen);
 
-        using var reader = new StringReader(content);
-        string? line;
-        while ((line = reader.ReadLine()) != null)
-        {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith("HostUrl=", StringComparison.OrdinalIgnoreCase))
-            {
-                hostUrl = trimmed.Substring("HostUrl=".Length).Trim();
-            }
-            else if (trimmed.StartsWith("ReferrerUrl=", StringComparison.OrdinalIgnoreCase))
-            {
-                referrerUrl = trimmed.Substring("ReferrerUrl=".Length).Trim();
-            }
-        }
-
+        string? hostUrl = hostStart >= 0 ? content.Substring(hostStart, hostLen) : null;
+        string? referrerUrl = refStart >= 0 ? content.Substring(refStart, refLen) : null;
         return (hostUrl, referrerUrl);
     }
 
@@ -124,45 +179,63 @@ public static class AppIntegrityService
         if (url.Equals("about:internet", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-            uri.Scheme != Uri.UriSchemeHttps || uri.Port != 443 || !string.IsNullOrEmpty(uri.UserInfo))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return false;
 
-        var host = uri.Host;
-
-        // Official GitHub repository and releases
-        if (host.Equals("github.com", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("www.github.com", StringComparison.OrdinalIgnoreCase))
-        {
-            return IsOfficialRepositoryPath(uri.AbsolutePath);
-        }
-
-        if (host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
-            host.Equals("media.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
-            return IsOfficialRepositoryPath(uri.AbsolutePath);
-
-        // CDN paths do not identify a repository. Signed manifests establish artifact ownership.
-        return IsReleaseAssetHost(host);
+        ReadOnlySpan<char> scheme = uri.Scheme.AsSpan();
+        ReadOnlySpan<char> userInfo = uri.UserInfo.AsSpan();
+        ReadOnlySpan<char> host = uri.Host.AsSpan();
+        ReadOnlySpan<char> absPath = uri.AbsolutePath.AsSpan();
+        return vn_app_integrity_is_trusted_download_uri(
+            uri.IsAbsoluteUri ? (byte)1 : (byte)0,
+            scheme, scheme.Length,
+            uri.Port,
+            userInfo, userInfo.Length,
+            host, host.Length,
+            absPath, absPath.Length,
+            out byte trusted) == 0 && trusted != 0;
     }
 
-    private static bool IsOfficialRepositoryPath(string path) =>
-        path.Equals($"/{OfficialRepoOwner}/{OfficialRepoName}", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith($"/{OfficialRepoOwner}/{OfficialRepoName}/", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsOfficialReleaseUrl(Uri uri)
+    {
+        if (!uri.IsAbsoluteUri) return false;
+        ReadOnlySpan<char> scheme = uri.Scheme.AsSpan();
+        ReadOnlySpan<char> userInfo = uri.UserInfo.AsSpan();
+        ReadOnlySpan<char> host = uri.Host.AsSpan();
+        ReadOnlySpan<char> absPath = uri.AbsolutePath.AsSpan();
+        return vn_app_integrity_is_official_release_url(
+            1,
+            scheme, scheme.Length,
+            uri.Port,
+            userInfo, userInfo.Length,
+            host, host.Length,
+            absPath, absPath.Length,
+            out byte official) == 0 && official != 0;
+    }
 
-    internal static bool IsOfficialReleaseUrl(Uri uri) =>
-        uri.IsAbsoluteUri && uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443 &&
-        string.IsNullOrEmpty(uri.UserInfo) &&
-        uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) &&
-        uri.AbsolutePath.StartsWith($"/{OfficialRepoOwner}/{OfficialRepoName}/releases/download/", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsReleaseAssetHost(string host)
+    {
+        if (string.IsNullOrEmpty(host)) return false;
+        ReadOnlySpan<char> span = host.AsSpan();
+        return vn_app_integrity_is_release_asset_host(span, span.Length, out byte assetHost) == 0 && assetHost != 0;
+    }
 
-    internal static bool IsReleaseAssetHost(string host) =>
-        host.Equals("objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
-        host.Equals("release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
-
-    internal static bool IsTrustedReleaseRedirect(Uri uri) =>
-        IsOfficialReleaseUrl(uri) ||
-        (uri.IsAbsoluteUri && uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443 &&
-         string.IsNullOrEmpty(uri.UserInfo) && IsReleaseAssetHost(uri.Host));
+    internal static bool IsTrustedReleaseRedirect(Uri uri)
+    {
+        if (!uri.IsAbsoluteUri) return false;
+        ReadOnlySpan<char> scheme = uri.Scheme.AsSpan();
+        ReadOnlySpan<char> userInfo = uri.UserInfo.AsSpan();
+        ReadOnlySpan<char> host = uri.Host.AsSpan();
+        ReadOnlySpan<char> absPath = uri.AbsolutePath.AsSpan();
+        return vn_app_integrity_is_trusted_release_redirect(
+            1,
+            scheme, scheme.Length,
+            uri.Port,
+            userInfo, userInfo.Length,
+            host, host.Length,
+            absPath, absPath.Length,
+            out byte trusted) == 0 && trusted != 0;
+    }
 
     /// <summary>
     /// Determines whether a release asset is an applicable checksum source for the target binary.
@@ -172,37 +245,9 @@ public static class AppIntegrityService
         if (string.IsNullOrWhiteSpace(assetName))
             return false;
 
-        bool isShaFile = assetName.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase);
-        bool isChecksumList = assetName.Equals("checksums.txt", StringComparison.OrdinalIgnoreCase) ||
-                              assetName.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase);
-        bool isManifest = assetName.EndsWith(".manifest.json", StringComparison.OrdinalIgnoreCase);
-
-        if (!isShaFile && !isChecksumList && !isManifest)
-            return false;
-
-        bool isSetupAsset = assetName.Contains("Setup", StringComparison.OrdinalIgnoreCase) || isManifest;
-
-        if (isInstaller)
-        {
-            // Installer should not check against binary-only checksum assets
-            if (assetName.Equals("V-Notch.exe.sha256", StringComparison.OrdinalIgnoreCase) ||
-                assetName.Equals("V-Notch-SelfContained.exe.sha256", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return true;
-        }
-        else
-        {
-            // Installed application binary must not check against installer-specific checksums
-            if (isSetupAsset)
-            {
-                return false;
-            }
-
-            return true;
-        }
+        ReadOnlySpan<char> span = assetName.AsSpan();
+        return vn_app_integrity_is_applicable_checksum_asset(
+            span, span.Length, isInstaller ? (byte)1 : (byte)0, out byte applicable) == 0 && applicable != 0;
     }
 
     /// <summary>

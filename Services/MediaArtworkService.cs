@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -18,8 +19,33 @@ public interface IMediaArtworkService
     SubjectBounds? GetDominantSubjectBounds(BitmapSource source);
 }
 
-public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
+public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposable
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_media_artwork_detect_content_bounds(
+        ReadOnlySpan<byte> pixels,
+        int pixelsLen,
+        int stride,
+        int sw,
+        int sh,
+        int width,
+        int height,
+        double scaleX,
+        double scaleY,
+        out int outX,
+        out int outY,
+        out int outW,
+        out int outH);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_media_artwork_compute_square_crop_metrics(
+        int width,
+        int height,
+        out double outAspect,
+        out int outSquareSize,
+        out int outCenterX,
+        out int outCenterY);
+
     private const string ArtworkLogTag = "ARTWORK";
     private const string CropPathLogTag = "CROP-PATH";
     private const long MaxArtworkDownloadSizeBytes = 8 * 1024 * 1024; // 8 MiB
@@ -201,9 +227,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
                 height = trimmed.PixelHeight;
             }
 
-            double aspect = (double)width / height;
-            double zoom = aspect >= 0.9 && aspect <= 1.1 ? 1.0 : 0.97;
-            int squareSize = (int)(Math.Min(width, height) * zoom);
+            vn_media_artwork_compute_square_crop_metrics(width, height, out double aspect, out int squareSize, out _, out _);
 
             Int32Rect rect = DetermineCropRect(workingSource, width, height, squareSize, aspect, forceCenterCrop, smartCropEnabled);
 
@@ -272,7 +296,7 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         }
         else if (forceCenterCrop)
         {
-            var centerRect = new Int32Rect((width - squareSize) / 2, (height - squareSize) / 2, squareSize, squareSize);
+            var centerRect = GetFallbackCropRect(width, height, squareSize);
             RuntimeLog.Log(CropPathLogTag, $"force-center rect=({centerRect.X},{centerRect.Y},{centerRect.Width}x{centerRect.Height})");
             return centerRect;
         }
@@ -380,7 +404,8 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
         if (sw < 4 || sh < 4) return new Int32Rect(0, 0, width, height);
 
         int stride = sw * 4;
-        byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(sh * stride);
+        int byteLen = sh * stride;
+        byte[] pixels = System.Buffers.ArrayPool<byte>.Shared.Rent(byteLen);
         try
         {
             BitmapSource src = small;
@@ -392,109 +417,19 @@ public sealed class MediaArtworkService : IMediaArtworkService, IDisposable
             }
             src.CopyPixels(pixels, stride, 0);
 
-            const int blackThreshold = 25;
+            if (vn_media_artwork_detect_content_bounds(
+                    pixels.AsSpan(0, byteLen), byteLen, stride, sw, sh, width, height, scaleX, scaleY,
+                    out int contentX, out int contentY, out int contentW, out int contentH) == 0)
+            {
+                return new Int32Rect(contentX, contentY, contentW, contentH);
+            }
 
-            int topBar = DetectTopDarkBar(pixels, stride, sw, sh, blackThreshold);
-            int bottomBar = DetectBottomDarkBar(pixels, stride, sw, sh, blackThreshold);
-            int leftBar = DetectLeftDarkBar(pixels, stride, sw, sh, blackThreshold);
-            int rightBar = DetectRightDarkBar(pixels, stride, sw, sh, blackThreshold);
-
-            int contentX = (int)(leftBar / scaleX);
-            int contentY = (int)(topBar / scaleY);
-            int contentW = width - contentX - (int)(rightBar / scaleX);
-            int contentH = height - contentY - (int)(bottomBar / scaleY);
-
-            if (contentW < width / 2 || contentH < height / 2)
-                return new Int32Rect(0, 0, width, height);
-
-            return new Int32Rect(contentX, contentY, contentW, contentH);
+            return new Int32Rect(0, 0, width, height);
         }
         finally
         {
             System.Buffers.ArrayPool<byte>.Shared.Return(pixels);
         }
-    }
-
-    private static int DetectTopDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
-    {
-        int topBar = 0;
-        for (int y = 0; y < sh / 3; y++)
-        {
-            if (IsRowDark(pixels, y * stride, sw / 4, sw * 3 / 4, blackThreshold))
-                topBar = y + 1;
-            else
-                break;
-        }
-        return topBar;
-    }
-
-    private static int DetectBottomDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
-    {
-        int bottomBar = 0;
-        for (int y = sh - 1; y >= sh * 2 / 3; y--)
-        {
-            if (IsRowDark(pixels, y * stride, sw / 4, sw * 3 / 4, blackThreshold))
-                bottomBar++;
-            else
-                break;
-        }
-        return bottomBar;
-    }
-
-    private static int DetectLeftDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
-    {
-        int leftBar = 0;
-        for (int x = 0; x < sw / 3; x++)
-        {
-            if (IsColumnDark(pixels, x, stride, sh / 4, sh * 3 / 4, blackThreshold))
-                leftBar = x + 1;
-            else
-                break;
-        }
-        return leftBar;
-    }
-
-    private static int DetectRightDarkBar(byte[] pixels, int stride, int sw, int sh, int blackThreshold)
-    {
-        int rightBar = 0;
-        for (int x = sw - 1; x >= sw * 2 / 3; x--)
-        {
-            if (IsColumnDark(pixels, x, stride, sh / 4, sh * 3 / 4, blackThreshold))
-                rightBar++;
-            else
-                break;
-        }
-        return rightBar;
-    }
-
-    private static bool IsRowDark(byte[] pixels, int rowOffset, int startX, int endX, int blackThreshold)
-    {
-        int darkPixels = 0;
-        int total = endX - startX;
-        if (total <= 0) return false;
-
-        for (int x = startX; x < endX; x++)
-        {
-            int i = rowOffset + x * 4;
-            if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
-                darkPixels++;
-        }
-        return (double)darkPixels / total > 0.85;
-    }
-
-    private static bool IsColumnDark(byte[] pixels, int colX, int stride, int startY, int endY, int blackThreshold)
-    {
-        int darkPixels = 0;
-        int total = endY - startY;
-        if (total <= 0) return false;
-
-        for (int y = startY; y < endY; y++)
-        {
-            int i = y * stride + colX * 4;
-            if (pixels[i] < blackThreshold && pixels[i + 1] < blackThreshold && pixels[i + 2] < blackThreshold)
-                darkPixels++;
-        }
-        return (double)darkPixels / total > 0.85;
     }
 
     public void Dispose()

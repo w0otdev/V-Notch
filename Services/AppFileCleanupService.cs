@@ -1,13 +1,45 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using VNotch.Services.Translation;
 
 namespace VNotch.Services;
 
 /// <summary>Reclaims only disposable artifacts owned by this app, off the UI thread.</summary>
-public sealed class AppFileCleanupService : IDisposable, IAsyncDisposable
+public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_file_cleanup_is_guid_name(
+        ReadOnlySpan<char> namePtr,
+        int nameLen,
+        out byte outIsGuid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_file_cleanup_is_atomic_temporary(
+        ReadOnlySpan<char> namePtr,
+        int nameLen,
+        ReadOnlySpan<char> destPtr,
+        int destLen,
+        out byte outIsTemp);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_app_file_cleanup_should_delete_candidate(
+        long ageTicks,
+        long minAgeTicks,
+        long retentionTicks,
+        long totalBytes,
+        long maxBytes,
+        out byte outShouldDelete);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_file_cleanup_is_path_relation_protected(
+        ReadOnlySpan<char> pathPtr,
+        int pathLen,
+        ReadOnlySpan<char> activePtr,
+        int activeLen,
+        out byte outProtected);
+
     private static readonly ConcurrentDictionary<string, int> ActivePaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
@@ -108,12 +140,20 @@ public sealed class AppFileCleanupService : IDisposable, IAsyncDisposable
         return policies.ToArray();
     }
 
-    private static bool IsGuidName(string name) => Guid.TryParseExact(name, "N", out _);
-    private static bool IsAtomicTemporary(string name, string destination) =>
-        name.Length == destination.Length + 1 + 32 + 4 &&
-        name.StartsWith(destination + ".", StringComparison.OrdinalIgnoreCase) &&
-        name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) &&
-        IsGuidName(name[(destination.Length + 1)..^4]);
+    private static bool IsGuidName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        ReadOnlySpan<char> span = name.AsSpan();
+        return vn_app_file_cleanup_is_guid_name(span, span.Length, out byte isGuid) == 0 && isGuid != 0;
+    }
+
+    private static bool IsAtomicTemporary(string name, string destination)
+    {
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(destination)) return false;
+        ReadOnlySpan<char> nSpan = name.AsSpan();
+        ReadOnlySpan<char> dSpan = destination.AsSpan();
+        return vn_app_file_cleanup_is_atomic_temporary(nSpan, nSpan.Length, dSpan, dSpan.Length, out byte isTemp) == 0 && isTemp != 0;
+    }
 
     internal static Result Clean(IEnumerable<Policy> policies, DateTime nowUtc, CancellationToken ct = default,
         int entryLimit = 10_000, TimeSpan? timeLimit = null)
@@ -142,12 +182,15 @@ public sealed class AppFileCleanupService : IDisposable, IAsyncDisposable
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
 
             long total = candidates.Sum(candidate => candidate.Bytes);
+            long minAgeTicks = (policy.MinimumAge ?? policy.Retention).Ticks;
+            long retentionTicks = policy.Retention.Ticks;
             foreach (var candidate in candidates.OrderBy(candidate => candidate.LastActivity))
             {
                 if (!budget.Available) break;
                 var age = nowUtc - candidate.LastActivity;
-                if (age < (policy.MinimumAge ?? policy.Retention) ||
-                    (age < policy.Retention && total <= policy.MaxBytes) || IsProtected(candidate.Path)) continue;
+                vn_app_file_cleanup_should_delete_candidate(
+                    age.Ticks, minAgeTicks, retentionTicks, total, policy.MaxBytes, out byte shouldDelete);
+                if (shouldDelete == 0 || IsProtected(candidate.Path)) continue;
                 // Recheck before deleting: a producer may have touched an artifact since enumeration.
                 if (candidate.Files.Any(file => !Unchanged(root, file)) ||
                     candidate.Directories.Any(dir => !IsSafePath(root, dir))) continue;
@@ -232,9 +275,11 @@ public sealed class AppFileCleanupService : IDisposable, IAsyncDisposable
     }
 
     private static bool IsProtected(string path) => ActivePaths.Keys.Any(active =>
-        path.Equals(active, StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith(active + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-        active.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+    {
+        ReadOnlySpan<char> pSpan = path.AsSpan();
+        ReadOnlySpan<char> aSpan = active.AsSpan();
+        return vn_app_file_cleanup_is_path_relation_protected(pSpan, pSpan.Length, aSpan, aSpan.Length, out byte prot) == 0 && prot != 0;
+    });
 
     internal static bool IsSafePath(string root, string path)
     {

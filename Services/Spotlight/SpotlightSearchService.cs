@@ -1,12 +1,30 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services.Spotlight.Providers;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed class SpotlightSearchService
+internal sealed partial class SpotlightSearchService
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_search_try_normalize_input(
+        ReadOnlySpan<char> queryPtr,
+        int queryLen,
+        int limit,
+        out byte outValid,
+        out int outStart,
+        out int outLen,
+        out int outLimit);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_search_compute_boosted_score(
+        double baseScore,
+        double usageBoost,
+        byte isPinned,
+        out double outScore);
+
     private const int MaxQueryLength = 256;
     private const int MaxResults = 50;
     private readonly IReadOnlyList<ISpotlightProvider> _providers;
@@ -71,10 +89,12 @@ internal sealed class SpotlightSearchService
             .Select(item =>
             {
                 bool pinned = _usage.Preferences.IsPinned(item.Target);
+                _ = vn_spotlight_search_compute_boosted_score(
+                    item.Score, _usage.GetBoost(item.Id, query), pinned ? (byte)1 : (byte)0, out double boosted);
                 return item with
                 {
                     IsPinned = pinned,
-                    Score = item.Score + _usage.GetBoost(item.Id, query) + (pinned ? 150 : 0)
+                    Score = boosted
                 };
             })
             .ToArray();
@@ -125,10 +145,17 @@ internal sealed class SpotlightSearchService
         out string normalizedQuery,
         out int normalizedLimit)
     {
-        normalizedQuery = query?.Trim() ?? string.Empty;
-        if (normalizedQuery.Length > MaxQueryLength) normalizedQuery = normalizedQuery[..MaxQueryLength];
-        normalizedLimit = Math.Clamp(limit, 0, MaxResults);
-        return normalizedQuery.Length > 0 && normalizedLimit > 0;
+        if (query == null)
+        {
+            normalizedQuery = string.Empty;
+            normalizedLimit = Math.Clamp(limit, 0, MaxResults);
+            return false;
+        }
+        _ = vn_spotlight_search_try_normalize_input(
+            query.AsSpan(), query.Length, limit,
+            out byte valid, out int start, out int len, out normalizedLimit);
+        normalizedQuery = len > 0 ? query.Substring(start, len) : string.Empty;
+        return valid != 0;
     }
 
     private static async Task<IReadOnlyList<SpotlightSearchItem>> SearchProviderAsync(

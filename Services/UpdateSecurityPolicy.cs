@@ -1,10 +1,29 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 
 namespace VNotch.Services;
 
-public sealed class UpdateSecurityPolicy
+public sealed partial class UpdateSecurityPolicy
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_update_security_policy_evaluate_allowlist(
+        int publisherCount,
+        int thumbprintCount,
+        out int outState);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_update_security_policy_normalize_thumbprint(
+        ReadOnlySpan<char> value,
+        int valueLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
     public const long MaximumInstallerBytes = 500L * 1024 * 1024;
 
     private readonly IReadOnlySet<string> _allowedPublisherNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -38,13 +57,22 @@ public sealed class UpdateSecurityPolicy
 
     public bool IsTrustedSignature(string installerPath, out string reason)
     {
-        if (AllowedPublisherNames.Count == 0 && AllowedCertificateThumbprints.Count == 0)
+        int state = vn_update_security_policy_evaluate_allowlist(
+            AllowedPublisherNames.Count,
+            AllowedCertificateThumbprints.Count,
+            out int outState) == 0
+            ? outState
+            : (AllowedPublisherNames.Count == 0 && AllowedCertificateThumbprints.Count == 0
+                ? 0
+                : (AllowedPublisherNames.Count == 0 || AllowedCertificateThumbprints.Count == 0 ? 1 : 2));
+
+        if (state == 0)
         {
             reason = "No additional Authenticode policy configured; signed manifest verification is still required.";
             return true;
         }
 
-        if (AllowedPublisherNames.Count == 0 || AllowedCertificateThumbprints.Count == 0)
+        if (state == 1)
         {
             reason = "Authenticode allowlist is incomplete (needs both publisher and thumbprint).";
             return false;
@@ -109,52 +137,21 @@ public sealed class UpdateSecurityPolicy
             .ToHashSet(StringComparer.OrdinalIgnoreCase)
         ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    private static string NormalizeThumbprint(string? value) => (value ?? string.Empty).Replace(" ", string.Empty).ToUpperInvariant();
-
-    private static bool HasValidAuthenticodeSignature(string filePath)
+    private static string NormalizeThumbprint(string? value)
     {
-        if (!OperatingSystem.IsWindows()) return false;
-        var action = new Guid("00AAC56B-CD44-11D0-8CC2-00C04FC295EE");
-        using var file = new WinTrustFileInfo(filePath);
-        using var data = new WinTrustData(file);
-        return WinVerifyTrust(IntPtr.Zero, action, data) == 0;
-    }
-
-    [DllImport("wintrust.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
-    private static extern uint WinVerifyTrust(IntPtr hwnd, [MarshalAs(UnmanagedType.LPStruct)] Guid actionId, WinTrustData data);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private sealed class WinTrustFileInfo : IDisposable
-    {
-        public uint cbStruct = (uint)Marshal.SizeOf<WinTrustFileInfo>();
-        [MarshalAs(UnmanagedType.LPWStr)] public string pcwszFilePath;
-        public IntPtr hFile = IntPtr.Zero;
-        public IntPtr pgKnownSubject = IntPtr.Zero;
-        public WinTrustFileInfo(string path) => pcwszFilePath = path;
-        public void Dispose() { /* WinTrustData owns allocated native memory. */ }
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private sealed class WinTrustData : IDisposable
-    {
-        public uint cbStruct = (uint)Marshal.SizeOf<WinTrustData>();
-        public IntPtr pPolicyCallbackData = IntPtr.Zero;
-        public IntPtr pSIPClientData = IntPtr.Zero;
-        public uint dwUIChoice = 2; // WTD_UI_NONE
-        public uint fdwRevocationChecks = 0;
-        public uint dwUnionChoice = 1; // WTD_CHOICE_FILE
-        public IntPtr pFile;
-        public uint dwStateAction = 0; // WTD_STATEACTION_IGNORE
-        public IntPtr hWVTStateData = IntPtr.Zero;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? pwszURLReference = null;
-        public uint dwProvFlags = 0;
-        public uint dwUIContext = 0;
-        public IntPtr pSignatureSettings = IntPtr.Zero;
-        public WinTrustData(WinTrustFileInfo file)
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        ReadOnlySpan<char> span = value.AsSpan();
+        if (span.Length <= 256)
         {
-            pFile = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
-            Marshal.StructureToPtr(file, pFile, false);
+            Span<char> buf = stackalloc char[256];
+            if (vn_update_security_policy_normalize_thumbprint(span, span.Length, buf, buf.Length, out int outLen) == 0)
+            {
+                return new string(buf[..outLen]);
+            }
         }
-        public void Dispose() { if (pFile != IntPtr.Zero) { Marshal.DestroyStructure<WinTrustFileInfo>(pFile); Marshal.FreeHGlobal(pFile); } }
+        return value.Replace(" ", string.Empty).ToUpperInvariant();
     }
+
+    private static bool HasValidAuthenticodeSignature(string filePath) =>
+        OperatingSystem.IsWindows() && Win32Interop.HasValidAuthenticodeSignature(filePath);
 }

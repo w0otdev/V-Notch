@@ -1,16 +1,41 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services;
 
 // Maintainer-owned compatibility data ships with app updates. Reading it never
 // performs a network request or asks the user to edit technical configuration.
-internal sealed record MediaProtocolConfiguration(
+internal sealed partial record MediaProtocolConfiguration(
     string SpotifyTotpVersion, string SpotifyTotpSecretBase64,
     string SpotifyFindTracksHash, string SpotifyCanvasHash,
     string YouTubeInnertubeApiKey, string YouTubeAndroidClientVersion,
     IReadOnlyList<string> PipedInstances, IReadOnlyList<string> InvidiousInstances)
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_protocol_is_hash(
+        ReadOnlySpan<char> ptr,
+        int len,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_protocol_validate_scalars(
+        int schemaVersion,
+        ReadOnlySpan<char> totpVerPtr, int totpVerLen,
+        int secretB64Len,
+        int secretDecodedLen,
+        ReadOnlySpan<char> findHashPtr, int findHashLen,
+        ReadOnlySpan<char> canvasHashPtr, int canvasHashLen,
+        ReadOnlySpan<char> ytKeyPtr, int ytKeyLen,
+        ReadOnlySpan<char> ytVerPtr, int ytVerLen,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_protocol_is_allowed_host_basic(
+        ReadOnlySpan<char> hostPtr,
+        int hostLen,
+        out byte outValid);
+
     private const int MaxConfigurationBytes = 64 * 1024;
     private static readonly Lazy<MediaProtocolConfiguration> Configuration = new(() =>
     {
@@ -52,30 +77,45 @@ internal sealed record MediaProtocolConfiguration(
     {
         if (json.Length > MaxConfigurationBytes) throw new InvalidDataException("Protocol configuration is too large.");
         var data = JsonSerializer.Deserialize<ProtocolDocument>(json) ?? throw new JsonException("Missing protocol configuration.");
-        if (data.SchemaVersion != 1 || data.SpotifyTotpVersion is not { Length: > 0 and <= 8 } version ||
-            version.Any(c => c is < '0' or > '9') ||
+        if (data.SpotifyTotpVersion is not string version ||
             data.SpotifyTotpSecretBase64 is not { Length: > 0 and <= 512 } secret ||
-            Convert.FromBase64String(secret).Length is < 16 or > 256 ||
-            !IsHash(data.SpotifyFindTracksHash) || !IsHash(data.SpotifyCanvasHash) ||
-            data.YouTubeInnertubeApiKey is not { Length: > 0 and <= 256 } key ||
-            key.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '_' and not '-') ||
-            data.YouTubeAndroidClientVersion is not { Length: > 0 and <= 32 } clientVersion ||
-            clientVersion.Any(c => !char.IsAsciiDigit(c) && c != '.'))
+            data.SpotifyFindTracksHash is not string findHash ||
+            data.SpotifyCanvasHash is not string canvasHash ||
+            data.YouTubeInnertubeApiKey is not string key ||
+            data.YouTubeAndroidClientVersion is not string clientVersion)
             throw new JsonException("Invalid protocol configuration.");
 
-        return new(version, secret, data.SpotifyFindTracksHash!, data.SpotifyCanvasHash!, key, clientVersion,
+        int decodedLen = Convert.FromBase64String(secret).Length;
+        _ = vn_media_protocol_validate_scalars(
+            data.SchemaVersion,
+            version.AsSpan(), version.Length,
+            secret.Length, decodedLen,
+            findHash.AsSpan(), findHash.Length,
+            canvasHash.AsSpan(), canvasHash.Length,
+            key.AsSpan(), key.Length,
+            clientVersion.AsSpan(), clientVersion.Length,
+            out byte validScalars);
+        if (validScalars == 0)
+            throw new JsonException("Invalid protocol configuration.");
+
+        return new(version, secret, findHash, canvasHash, key, clientVersion,
             ValidateHosts(data.PipedInstances), ValidateHosts(data.InvidiousInstances));
     }
 
-    private static bool IsHash(string? value) => value is { Length: 64 } && value.All(char.IsAsciiHexDigit);
+    private static bool IsHash(string? value)
+    {
+        if (value == null) return false;
+        ReadOnlySpan<char> span = value.AsSpan();
+        return vn_media_protocol_is_hash(span, span.Length, out byte valid) == 0 && valid != 0;
+    }
 
     private static IReadOnlyList<string> ValidateHosts(string[]? hosts)
     {
         if (hosts == null || hosts.Length > 16 || hosts.Any(host =>
-            string.IsNullOrWhiteSpace(host) || host.Length > 253 || host != host.Trim() ||
-            !host.Contains('.') || host.EndsWith('.') || Uri.CheckHostName(host) != UriHostNameType.Dns ||
-            host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase) ||
-            host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)))
+            host == null ||
+            vn_media_protocol_is_allowed_host_basic(host.AsSpan(), host.Length, out byte basicOk) != 0 ||
+            basicOk == 0 ||
+            Uri.CheckHostName(host) != UriHostNameType.Dns))
             throw new JsonException("Invalid fallback hosts.");
         return Array.AsReadOnly(hosts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }

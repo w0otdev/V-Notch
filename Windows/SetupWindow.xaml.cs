@@ -73,11 +73,9 @@ public partial class SetupWindow : Window
     private bool _hasForcedForeground;
     public int ResultExitCode { get; private set; } = 1;
 
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    private static bool SetForegroundWindow(IntPtr hWnd) => Win32Interop.SetForegroundWindow(hWnd);
 
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private static bool ShowWindow(IntPtr hWnd, int nCmdShow) => Win32Interop.ShowWindow(hWnd, nCmdShow);
 
     public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en")
     {

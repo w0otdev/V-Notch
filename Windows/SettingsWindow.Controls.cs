@@ -686,6 +686,85 @@ public partial class SettingsWindow
         HideRestartBanner();
     }
 
+    private const string Cpp26DiscussionUrl = "https://github.com/rainaku/V-Notch/discussions/32";
+    private bool _isCpp26BannerVisible;
+
+    public void ShowCpp26BannerIfNeeded()
+    {
+        if (Cpp26PromptBanner == null || _settings.HasSeenCpp26Notice) return;
+        if (_isCpp26BannerVisible && Cpp26PromptBanner.Visibility == Visibility.Visible) return;
+
+        MarkCpp26NoticeSeen();
+        _isCpp26BannerVisible = true;
+        Cpp26PromptBanner.Visibility = Visibility.Visible;
+
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var ease = new ExponentialEase { EasingMode = EasingMode.EaseOut, Exponent = 6 };
+
+        Cpp26PromptBanner.BeginAnimation(OpacityProperty, null);
+        Cpp26PromptTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(350)) { EasingFunction = ease };
+        var slide = new DoubleAnimation(20, 0, TimeSpan.FromMilliseconds(350)) { EasingFunction = ease };
+
+        Timeline.SetDesiredFrameRate(fade, fps);
+        Timeline.SetDesiredFrameRate(slide, fps);
+
+        Cpp26PromptBanner.BeginAnimation(OpacityProperty, fade);
+        Cpp26PromptTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
+    }
+
+    private void MarkCpp26NoticeSeen()
+    {
+        if (_settings.HasSeenCpp26Notice) return;
+        _settings.HasSeenCpp26Notice = true;
+        var baseline = _editSession.CommitCpp26NoticeSeen();
+        SettingsChanged?.Invoke(this, _editSession.Applied);
+        _settingsAppService.ApplyAsync(baseline).SafeFireAndForget("SETTINGS-CPP26-NOTICE");
+    }
+
+    public void HideCpp26Banner(bool markSeen = true)
+    {
+        if (markSeen)
+        {
+            MarkCpp26NoticeSeen();
+        }
+
+        if (Cpp26PromptBanner == null || !_isCpp26BannerVisible) return;
+
+        _isCpp26BannerVisible = false;
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var ease = new ExponentialEase { EasingMode = EasingMode.EaseIn, Exponent = 5 };
+
+        var fade = new DoubleAnimation(Cpp26PromptBanner.Opacity, 0, TimeSpan.FromMilliseconds(250)) { EasingFunction = ease };
+        var slide = new DoubleAnimation(Cpp26PromptTranslate.Y, 20, TimeSpan.FromMilliseconds(250)) { EasingFunction = ease };
+
+        Timeline.SetDesiredFrameRate(fade, fps);
+        Timeline.SetDesiredFrameRate(slide, fps);
+
+        fade.Completed += (s, e) =>
+        {
+            if (!_isCpp26BannerVisible)
+            {
+                Cpp26PromptBanner.Visibility = Visibility.Collapsed;
+            }
+        };
+
+        Cpp26PromptBanner.BeginAnimation(OpacityProperty, fade);
+        Cpp26PromptTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
+    }
+
+    private void Cpp26Details_Click(object sender, RoutedEventArgs e)
+    {
+        HideCpp26Banner(markSeen: true);
+        SafeLauncher.TryOpenUrl(Cpp26DiscussionUrl);
+    }
+
+    private void Cpp26Dismiss_Click(object sender, RoutedEventArgs e)
+    {
+        HideCpp26Banner(markSeen: true);
+    }
+
     private static void ApplyGpuPreference(int preference)
     {
         try

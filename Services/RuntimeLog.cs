@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,8 +20,39 @@ public enum LogLevel
     None = 5
 }
 
-public static class RuntimeLog
+public static partial class RuntimeLog
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_runtime_log_is_level_enabled(
+        byte initialized,
+        int level,
+        int minimumLevel,
+        out byte outEnabled);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_runtime_log_resolve_queue_capacity(
+        int level,
+        int normalCap,
+        int criticalCap,
+        out int outCapacity);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_runtime_log_should_rotate(
+        byte forceSessionRotation,
+        long currentLength,
+        int incomingBytes,
+        long maxLogSizeBytes,
+        out byte outRotate);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_runtime_log_should_forward_crash(
+        byte initialized,
+        ReadOnlySpan<char> category,
+        int categoryLen,
+        out byte outForward);
+
     private static readonly object _lifecycleLock = new();
     private static readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private static Task? _shutdownCompletion;
@@ -49,7 +81,9 @@ public static class RuntimeLog
     public static string LogPath => _logPath;
 
     public static bool IsEnabled(LogLevel level) =>
-        _initialized && level >= (LogLevel)Volatile.Read(ref _minimumLevel);
+        vn_runtime_log_is_level_enabled(_initialized ? (byte)1 : (byte)0, (int)level, Volatile.Read(ref _minimumLevel), out byte enabled) == 0
+            ? enabled != 0
+            : (_initialized && level >= (LogLevel)Volatile.Read(ref _minimumLevel));
 
     public static async Task InitializeNewSessionAsync(string? fileName = null)
     {
@@ -171,7 +205,8 @@ public static class RuntimeLog
     public static void Error(string category, string message)
     {
         WriteEntry(LogLevel.Error, category, message);
-        if (!_initialized && !category.StartsWith("CRASH", StringComparison.OrdinalIgnoreCase))
+        ReadOnlySpan<char> catSpan = category is not null ? category.AsSpan() : ReadOnlySpan<char>.Empty;
+        if (vn_runtime_log_should_forward_crash(_initialized ? (byte)1 : (byte)0, catSpan, catSpan.Length, out byte forward) == 0 && forward != 0)
         {
             CrashReporter.LogCrash($"RuntimeLog.{category}", message);
         }
@@ -184,7 +219,8 @@ public static class RuntimeLog
             : $"{ex.GetType().Name}: {ex.Message}";
         WriteEntry(LogLevel.Error, category, $"{msg}{Environment.NewLine}{ex}");
 
-        if (!_initialized && !category.StartsWith("CRASH", StringComparison.OrdinalIgnoreCase))
+        ReadOnlySpan<char> catSpan = category is not null ? category.AsSpan() : ReadOnlySpan<char>.Empty;
+        if (vn_runtime_log_should_forward_crash(_initialized ? (byte)1 : (byte)0, catSpan, catSpan.Length, out byte forward) == 0 && forward != 0)
         {
             CrashReporter.LogCrash($"RuntimeLog.{category}", ex, context);
         }
@@ -315,8 +351,15 @@ public static class RuntimeLog
         {
             if (!File.Exists(path)) return true;
             var info = new FileInfo(path);
-            if (!forceSessionRotation && info.Length + incomingBytes <= MaxLogSizeBytes) return true;
-            if (info.Length == 0) return true;
+            bool shouldRotate = vn_runtime_log_should_rotate(
+                forceSessionRotation ? (byte)1 : (byte)0,
+                info.Length,
+                incomingBytes,
+                MaxLogSizeBytes,
+                out byte rotate) == 0
+                ? rotate != 0
+                : (info.Length > 0 && (forceSessionRotation || info.Length + incomingBytes > MaxLogSizeBytes));
+            if (!shouldRotate) return true;
 
             var backupPath = path + ".old";
             if (File.Exists(backupPath))
@@ -362,7 +405,9 @@ public static class RuntimeLog
             }
 
             int count = Interlocked.Increment(ref _queuedCount);
-            int capacity = level >= LogLevel.Warn ? CriticalQueueCapacity : NormalQueueCapacity;
+            int capacity = vn_runtime_log_resolve_queue_capacity((int)level, NormalQueueCapacity, CriticalQueueCapacity, out int outCap) == 0
+                ? outCap
+                : (level >= LogLevel.Warn ? CriticalQueueCapacity : NormalQueueCapacity);
             if (count > capacity)
             {
                 Interlocked.Decrement(ref _queuedCount);

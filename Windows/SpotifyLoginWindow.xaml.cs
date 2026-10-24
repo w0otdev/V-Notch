@@ -68,19 +68,15 @@ public partial class SpotifyLoginWindow : Window
         double dpiScale = dpi > 0 ? dpi / 96.0 : 1.0;
 
         var regionBounds = CalculateRoundedWindowRegion(widthDip, heightDip, dpiScale);
-        IntPtr region = CreateRoundRectRgn(
+        // The window owns the region after success; the native layer releases it on failure.
+        Win32Interop.SetRoundedWindowRegion(
+            hwnd,
             regionBounds.Left,
             regionBounds.Top,
             regionBounds.Right,
             regionBounds.Bottom,
             regionBounds.CornerDiameter,
             regionBounds.CornerDiameter);
-        if (region == IntPtr.Zero)
-            return;
-
-        // SetWindowRgn owns the region after success. On failure we must release it.
-        if (SetWindowRgn(hwnd, region, true) == 0)
-            Win32Interop.DeleteObject(region);
     }
 
     internal static RoundedWindowRegion CalculateRoundedWindowRegion(
@@ -108,17 +104,6 @@ public partial class SpotifyLoginWindow : Window
         int Bottom,
         int CornerDiameter);
 
-    [DllImport("gdi32.dll")]
-    private static extern IntPtr CreateRoundRectRgn(
-        int x1,
-        int y1,
-        int x2,
-        int y2,
-        int widthEllipse,
-        int heightEllipse);
-
-    [DllImport("user32.dll")]
-    private static extern int SetWindowRgn(IntPtr hwnd, IntPtr region, bool redraw);
 
     private CancellationTokenRegistration _privacyCancellation;
 

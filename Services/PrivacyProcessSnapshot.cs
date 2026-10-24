@@ -7,21 +7,9 @@ namespace VNotch.Services;
 
 internal sealed partial class PrivacyProcessSnapshot : IDisposable
 {
-    private ProcessEntry[]? _entries;
+    private Win32Interop.VnProcessEntry[]? _entries;
     internal int Count { get; private set; }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern SafeFileHandle CreateToolhelp32Snapshot(uint flags, uint processId);
-
-    [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode,
-        ExactSpelling = true, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool Process32First(SafeFileHandle snapshot, ref ProcessEntry entry);
-
-    [DllImport("kernel32.dll", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode,
-        ExactSpelling = true, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool Process32Next(SafeFileHandle snapshot, ref ProcessEntry entry);
 
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_privproc_matches_exe_name(
@@ -32,26 +20,19 @@ internal sealed partial class PrivacyProcessSnapshot : IDisposable
     internal static unsafe PrivacyProcessSnapshot Capture()
     {
         var processes = new PrivacyProcessSnapshot();
-        using var snapshot = CreateToolhelp32Snapshot(0x00000002, 0); // TH32CS_SNAPPROCESS
-        if (snapshot.IsInvalid) return processes;
-        ProcessEntry entry = default;
-        entry.Size = (uint)sizeof(ProcessEntry);
-        if (!Process32First(snapshot, ref entry)) return processes;
         try
         {
-            processes._entries = ArrayPool<ProcessEntry>.Shared.Rent(256);
-            do
+            // The native snapshot reports the live process count, so one retry always fits.
+            var entries = ArrayPool<Win32Interop.VnProcessEntry>.Shared.Rent(256);
+            int written = Win32Interop.CaptureProcessSnapshot(entries, out int total);
+            if (total > entries.Length)
             {
-                if (entry.ProcessId == 0) continue;
-                if (processes.Count == processes._entries.Length)
-                {
-                    var larger = ArrayPool<ProcessEntry>.Shared.Rent(processes.Count * 2);
-                    processes._entries.AsSpan(0, processes.Count).CopyTo(larger);
-                    ArrayPool<ProcessEntry>.Shared.Return(processes._entries);
-                    processes._entries = larger;
-                }
-                processes._entries[processes.Count++] = entry;
-            } while (Process32Next(snapshot, ref entry));
+                ArrayPool<Win32Interop.VnProcessEntry>.Shared.Return(entries);
+                entries = ArrayPool<Win32Interop.VnProcessEntry>.Shared.Rent(total + 64);
+                written = Win32Interop.CaptureProcessSnapshot(entries, out _);
+            }
+            processes._entries = entries;
+            processes.Count = written;
             return processes;
         }
         catch
@@ -99,24 +80,10 @@ internal sealed partial class PrivacyProcessSnapshot : IDisposable
     public void Dispose()
     {
         if (_entries == null) return;
-        ArrayPool<ProcessEntry>.Shared.Return(_entries);
+        ArrayPool<Win32Interop.VnProcessEntry>.Shared.Return(_entries);
         _entries = null;
         Count = 0;
     }
 
-    // PROCESSENTRY32W contains WCHAR[MAX_PATH]; ANSI marshalling corrupts the names.
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private unsafe struct ProcessEntry
-    {
-        public uint Size;
-        public uint Usage;
-        public uint ProcessId;
-        public UIntPtr DefaultHeapId;
-        public uint ModuleId;
-        public uint ThreadCount;
-        public uint ParentProcessId;
-        public int Priority;
-        public uint Flags;
-        public fixed char ExecutableFile[260];
-    }
+
 }

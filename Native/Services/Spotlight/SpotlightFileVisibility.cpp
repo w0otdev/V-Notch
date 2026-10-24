@@ -101,6 +101,14 @@ namespace vnotch::services
             {
                 std::u16string_view s = vnotch::trim(path);
                 if (s.size() < 2) return false;
+                if (vnotch::starts_with_icase(s, u"file://") || vnotch::starts_with_icase(s, u"file:\\\\"))
+                {
+                    std::u16string_view rest = s.substr(7);
+                    if (rest.empty() || rest[0] == u'/' || rest[0] == u'\\') return false;
+                    if (vnotch::starts_with_icase(rest, u"localhost/") || vnotch::starts_with_icase(rest, u"localhost\\")) return false;
+                    if (rest.size() >= 2 && vnotch::is_ascii_alpha(rest[0]) && (rest[1] == u':' || rest[1] == u'|')) return false;
+                    return true;
+                }
                 bool starts_bs = s[0] == u'\\' && s[1] == u'\\';
                 bool starts_fs = s[0] == u'/' && s[1] == u'/';
                 if (!starts_bs && !starts_fs) return false;

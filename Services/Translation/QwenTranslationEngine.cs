@@ -12,8 +12,38 @@ using LLama.Sampling;
 namespace VNotch.Services.Translation;
 
 // This engine only reads installed local GGUF files. It has no network transport.
-internal sealed class QwenTranslationEngine : ILocalTranslationEngine
+internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_qwen_engine_requires_new_context(
+        int beforeThreads,
+        int afterThreads,
+        int beforeBatchThreads,
+        int afterBatchThreads,
+        int beforeContextSize,
+        int afterContextSize,
+        int beforeBatchSize,
+        int afterBatchSize,
+        out byte outRequiresNew);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_qwen_engine_compute_output_budget(
+        int contextSize,
+        int usedTokens,
+        int reserveTokens,
+        int inputTokens,
+        int maxOutputTokens,
+        out int outBudget,
+        out byte outOk);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_qwen_engine_compute_trim_stop_sequence_end(
+        ReadOnlySpan<char> output,
+        int outputLen,
+        out int outEnd);
+
     private TranslationOptions _options = new();
     private int MaxOutputTokens => _options.OutputTokens;
     private TranslationOptions _requestedOptions = new();
@@ -37,8 +67,12 @@ internal sealed class QwenTranslationEngine : ILocalTranslationEngine
         _options = options;
     }
     internal static bool RequiresNewContext(TranslationOptions before, TranslationOptions after) =>
-        before.Threads != after.Threads || before.BatchThreads != after.BatchThreads ||
-        before.ContextSize != after.ContextSize || before.BatchSize != after.BatchSize;
+        vn_qwen_engine_requires_new_context(
+            before.Threads, after.Threads,
+            before.BatchThreads, after.BatchThreads,
+            before.ContextSize, after.ContextSize,
+            before.BatchSize, after.BatchSize,
+            out byte req) == 0 && req != 0;
     private static readonly Grammar OutputGrammar = new("""
         root ::= "{" ws "\"translation\"" ws ":" ws string ws "}" ws
         string ::= "\"" char* "\""
@@ -270,9 +304,15 @@ internal sealed class QwenTranslationEngine : ILocalTranslationEngine
             _cachedInstruction = instruction;
             _instructionTokens = _weights.Tokenize(instruction, false, false, Encoding.UTF8).Length;
         }
-        int availableOutput = _options.ContextSize - (serializedTokens + _instructionTokens) - 128;
-        if (availableOutput < 128) throw new TranslationException("translation.textTooLong");
-        int outputBudget = Math.Min(availableOutput, Math.Clamp(inputTokens * 4 + 96, 128, MaxOutputTokens));
+        if (vn_qwen_engine_compute_output_budget(
+            _options.ContextSize,
+            serializedTokens + _instructionTokens,
+            128,
+            inputTokens,
+            MaxOutputTokens,
+            out int outputBudget,
+            out byte budgetOk) != 0 || budgetOk == 0)
+            throw new TranslationException("translation.textTooLong");
         var executor = new StatelessExecutor(_weights, Parameters()) { ApplyTemplate = true, SystemMessage = instruction };
         using var executorContext = executor.Context;
         var output = new StringBuilder();
@@ -338,21 +378,8 @@ internal sealed class QwenTranslationEngine : ILocalTranslationEngine
 
     internal static string TrimStopSequence(string output)
     {
-        // AntiPrompts stops generation across chunks. Some executors already yielded
-        // part of that marker, so remove its buffered prefix from the final text too.
-        var span = output.AsSpan();
-        int end = output.Length;
-        foreach (string stop in SpecialistStopSequences)
-        {
-            int index = output.IndexOf(stop, StringComparison.Ordinal);
-            if (index >= 0) end = Math.Min(end, index);
-            for (int length = Math.Min(stop.Length - 1, output.Length); length > 0; length--)
-                if (span.EndsWith(stop.AsSpan(0, length), StringComparison.Ordinal))
-                {
-                    end = Math.Min(end, output.Length - length);
-                    break;
-                }
-        }
+        if (string.IsNullOrEmpty(output)) return "";
+        _ = vn_qwen_engine_compute_trim_stop_sequence_end(output.AsSpan(), output.Length, out int end);
         return output[..end];
     }
 

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 
@@ -5,8 +6,22 @@ namespace VNotch.Services;
 
 // Only the HWND origin and DPI are cached. TransformToAncestor still observes
 // animated translations, scales, margins and layout rounding on every frame.
-internal sealed class WindowScreenGeometry
+internal sealed partial class WindowScreenGeometry
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_window_screen_geometry_compute_position")]
+    private static partial int NativeComputePosition(
+        double originX,
+        double originY,
+        double localX,
+        double localY,
+        double dpiScaleX,
+        double dpiScaleY,
+        out double outX,
+        out double outY,
+        out byte outFinite);
+
     private readonly Window _window;
     private bool _valid;
     private Point _origin;
@@ -51,9 +66,17 @@ internal sealed class WindowScreenGeometry
         var local = visual.TransformToAncestor(_window).Transform(new Point());
         // PointToScreen rounds client coordinates before the native conversion.
         // Preserve its pixel placement, including half-pixel animation offsets.
-        position = new Point(
-            _origin.X + Math.Round(local.X * _dpi.DpiScaleX, MidpointRounding.AwayFromZero),
-            _origin.Y + Math.Round(local.Y * _dpi.DpiScaleY, MidpointRounding.AwayFromZero));
-        return double.IsFinite(position.X) && double.IsFinite(position.Y);
+        NativeComputePosition(
+            _origin.X,
+            _origin.Y,
+            local.X,
+            local.Y,
+            _dpi.DpiScaleX,
+            _dpi.DpiScaleY,
+            out double posX,
+            out double posY,
+            out byte finite);
+        position = new Point(posX, posY);
+        return finite != 0;
     }
 }

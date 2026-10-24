@@ -1022,5 +1022,9 @@
   "settings.trayDeleteSensitive.hint": "Algılanan gizli bilgiler her zaman maskelenir. Sabitlenen ve arşivlenenler dahil kayıtlı öğeleri siler; Windows panosunu temizlemez. Etiketsiz parolalar algılanmayabilir.",
   "settings.trayCaptureFiles": "Kopyalanan dosya ve klasörleri otomatik kaydet",
   "settings.trayCaptureDelay": "Yakalama gecikmesi",
-  "settings.trayCaptureDelay.hint": "Kopyaladıktan sonra kaydetmeden önce 100 ila 2000 ms bekler. Daha uzun gecikme, art arda hızla kopyalanan ara öğeleri atlar."
+  "settings.trayCaptureDelay.hint": "Kopyaladıktan sonra kaydetmeden önce 100 ila 2000 ms bekler. Daha uzun gecikme, art arda hızla kopyalanan ara öğeleri atlar.",
+  "settings.cpp26Banner.title": "C++26 Geçişi",
+  "settings.cpp26Banner.message": "V-Notch gelecekteki bir güncellemede C++26 sürümüne geçecek. Ayrıntıları GitHub Discussions üzerinde okuyun.",
+  "settings.cpp26Banner.details": "Ayrıntılar",
+  "settings.cpp26Banner.dismiss": "Kapat"
 }

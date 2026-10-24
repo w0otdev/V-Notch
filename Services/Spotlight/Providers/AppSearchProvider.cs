@@ -6,8 +6,16 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;
 
-internal sealed class AppSearchProvider : ISpotlightProvider
+internal sealed partial class AppSearchProvider : ISpotlightProvider
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_search_provider_classify_target(
+        ReadOnlySpan<char> pathPtr, int pathLen,
+        ReadOnlySpan<char> appIdPtr, int appIdLen,
+        byte isUnc,
+        byte existsOnDisk,
+        out int outMode);
+
     private readonly Lazy<Task<IReadOnlyList<SpotlightSearchItem>>> _index;
 
     public bool IsAvailable => true;
@@ -145,11 +153,22 @@ internal sealed class AppSearchProvider : ISpotlightProvider
 
     private static string ResolveTarget(string path, string appId)
     {
-        if (LocalPathPolicy.IsUncPath(path)) return string.Empty;
-        if (path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase)) return path;
-        if (File.Exists(path) || Directory.Exists(path)) return path;
-        string identity = appId.Length > 0 ? appId : path;
-        return identity.Length > 0 ? $"shell:AppsFolder\\{identity}" : string.Empty;
+        bool isUnc = LocalPathPolicy.IsUncPath(path);
+        bool exists = !isUnc && !path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase) &&
+                      (File.Exists(path) || Directory.Exists(path));
+        _ = vn_app_search_provider_classify_target(
+            path.AsSpan(), path.Length,
+            appId.AsSpan(), appId.Length,
+            isUnc ? (byte)1 : (byte)0,
+            exists ? (byte)1 : (byte)0,
+            out int mode);
+        return mode switch
+        {
+            1 => path,
+            2 => $"shell:AppsFolder\\{appId}",
+            3 => $"shell:AppsFolder\\{path}",
+            _ => string.Empty
+        };
     }
 
     private static string ReadString(Func<object?> getter)

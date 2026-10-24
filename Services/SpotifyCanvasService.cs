@@ -1,12 +1,21 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using static VNotch.Services.SpotifyTrackMatcher;
 
 namespace VNotch.Services;
 
-public sealed class SpotifyCanvasService : IDisposable
+public sealed partial class SpotifyCanvasService : IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_canvas_service_normalize_cookie(
+        ReadOnlySpan<char> valPtr,
+        int valLen,
+        out byte outValid,
+        out int outStart,
+        out int outLen);
+
     private const string LogCategory = "SPOTIFY-CANVAS";
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(12);
@@ -168,10 +177,10 @@ public sealed class SpotifyCanvasService : IDisposable
 
     private static string? NormalizeSessionCookie(string? value)
     {
-        string cookie = value?.Trim() ?? "";
-        if (cookie.Length is 0 or > 4096 || cookie.IndexOfAny([';', '\r', '\n']) >= 0)
-            return null;
-        return cookie;
+        if (value == null) return null;
+        if (vn_spotify_canvas_service_normalize_cookie(value.AsSpan(), value.Length, out byte valid, out int start, out int len) == 0 && valid != 0)
+            return value.Substring(start, len);
+        return null;
     }
 
     private void CacheCanvas(string key, Uri uri)
@@ -203,12 +212,9 @@ public sealed class SpotifyCanvasService : IDisposable
 
     private static HttpClient CreateHttpClient()
     {
-        var handler = new HttpClientHandler
+        var handler = new NativeWinHttpHandler
         {
-            AllowAutoRedirect = false,
-            AutomaticDecompression = DecompressionMethods.GZip |
-                                     DecompressionMethods.Deflate |
-                                     DecompressionMethods.Brotli
+            AllowAutoRedirect = false
         };
         var privacyHandler = NetworkPrivacy.Handler(NetworkFeature.Canvas, handler);
         var client = new HttpClient(privacyHandler) { Timeout = RequestTimeout };

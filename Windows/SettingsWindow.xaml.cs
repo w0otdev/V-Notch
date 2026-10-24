@@ -1188,6 +1188,11 @@ public partial class SettingsWindow : Window
         if (RestartPromptMessage != null) RestartPromptMessage.Text = Loc.Get("settings.restartBanner.message");
         if (RestartNowButton != null) RestartNowButton.Content = Loc.Get("settings.restartBanner.restartNow");
         if (RestartLaterButton != null) RestartLaterButton.Content = Loc.Get("settings.restartBanner.later");
+
+        if (Cpp26PromptTitle != null) Cpp26PromptTitle.Text = Loc.Get("settings.cpp26Banner.title");
+        if (Cpp26PromptMessage != null) Cpp26PromptMessage.Text = Loc.Get("settings.cpp26Banner.message");
+        if (Cpp26DetailsButton != null) Cpp26DetailsButton.Content = Loc.Get("settings.cpp26Banner.details");
+        if (Cpp26DismissButton != null) Cpp26DismissButton.Content = Loc.Get("settings.cpp26Banner.dismiss");
     }
 
     private void CheckUpdate_Click(object sender, RoutedEventArgs e)

@@ -1230,11 +1230,7 @@ public sealed class LiquidGlassController : IDisposable
 
         try
         {
-            _waitableTimer = CreateWaitableTimerEx(
-                IntPtr.Zero,
-                null,
-                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-                TIMER_ALL_ACCESS);
+            _waitableTimer = CreateHighResolutionTimer();
 
             if (_waitableTimer != null && !_waitableTimer.IsInvalid)
             {
@@ -1336,14 +1332,13 @@ public sealed class LiquidGlassController : IDisposable
 
         if (timer != null && !timer.IsInvalid && !timer.IsClosed && handles != null)
         {
-            // Negative value in 100-nanosecond units specifies relative time (1 ms = 10,000 units)
-            long dueTime = -Math.Max(1L, (long)(waitMs * 10_000.0));
-            if (SetWaitableTimer(timer, in dueTime, 0, IntPtr.Zero, IntPtr.Zero, false))
+            // One-shot relative due time derived from the requested wait.
+            if (SetWaitableTimerRelative(timer, waitMs))
             {
                 if (Volatile.Read(ref _renderTimerPeriodRequested) != 0)
                     ReleaseRenderTimerPeriod();
                 uint timeout = (uint)Math.Ceiling(waitMs) + 100;
-                uint waitResult = WaitForMultipleObjects(2, handles, false, timeout);
+                int waitResult = WaitForAnyOfTwo(handles[0], handles[1], timeout);
 
                 if (waitResult == WAIT_OBJECT_0)
                 {
@@ -1431,9 +1426,7 @@ public sealed class LiquidGlassController : IDisposable
         _fgProbeResult = false;
         try
         {
-            var sb = GetCaptureClassNameBuffer();
-            if (GetClassName(fg, sb, sb.Capacity) > 0 &&
-                sb.ToString().IndexOf("ScreenClipping", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (WindowClassContains(fg, "ScreenClipping"))
             {
                 _fgProbeResult = true;
                 return true;
@@ -1468,63 +1461,29 @@ public sealed class LiquidGlassController : IDisposable
         return false;
     }
 
-    private static bool DetectCaptureOverlay()
+    private static unsafe bool DetectCaptureOverlay()
     {
-        bool found = false;
-        var className = GetCaptureClassNameBuffer();
+        // The native layer walks the top-level windows; process names are resolved (and cached) only for candidates.
+        VnLargeWindow* windows = stackalloc VnLargeWindow[CaptureOverlayScanCapacity];
         try
         {
-            EnumWindows((hwnd, _) =>
+            int count = EnumLargeVisibleWindows(400, "ScreenClipping", new Span<VnLargeWindow>(windows, CaptureOverlayScanCapacity));
+            for (int i = 0; i < count; i++)
             {
-                if (IsCaptureOverlayWindow(hwnd, className))
-                {
-                    found = true;
-                    return false;
-                }
-                return true;
-            }, IntPtr.Zero);
+                if (windows[i].ClassMatches != 0) return true;
+                if (windows[i].ProcessId != 0 && IsCaptureProcess(SafeProcessName(windows[i].ProcessId))) return true;
+            }
         }
         catch
         {
             /* EnumWindows may fail during desktop switch */
         }
-        return found;
+        return false;
     }
 
-    private static bool IsCaptureOverlayWindow(IntPtr hwnd, StringBuilder sb)
-    {
-        if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, out var r))
-            return false;
-
-        int w = r.Right - r.Left;
-        int h = r.Bottom - r.Top;
-        if (w < 400 || h < 400)
-            return false;
-
-        sb.Clear();
-        if (GetClassName(hwnd, sb, sb.Capacity) > 0 &&
-            sb.ToString().IndexOf("ScreenClipping", StringComparison.OrdinalIgnoreCase) >= 0)
-        {
-            return true;
-        }
-
-        GetWindowThreadProcessId(hwnd, out uint pid);
-        if (pid == 0)
-            return false;
-
-        string name = SafeProcessName(pid);
-        return IsCaptureProcess(name);
-    }
+    private const int CaptureOverlayScanCapacity = 256;
 
     private long _nextCaptureHotkeyProbeTicks;
-    [ThreadStatic] private static StringBuilder? _captureClassNameBuffer;
-
-    private static StringBuilder GetCaptureClassNameBuffer()
-    {
-        var buffer = _captureClassNameBuffer ??= new StringBuilder(128);
-        buffer.Clear();
-        return buffer;
-    }
 
     private static readonly ConcurrentDictionary<uint, (string Name, long ExpireTicks)> _pidNameCache = new();
 
@@ -1786,7 +1745,7 @@ public sealed class LiquidGlassController : IDisposable
         GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, FrameRenderContext ctx)
     {
         bool needsGdi = !(_memDc != IntPtr.Zero && _dibBits != IntPtr.Zero && _dibW == dims.SrcW && _dibH == dims.SrcH);
-        IntPtr screenDc = needsGdi ? GetDC(IntPtr.Zero) : IntPtr.Zero;
+        IntPtr screenDc = needsGdi ? GetScreenDc() : IntPtr.Zero;
         try
         {
             if (needsGdi && !EnsureGdiResources(dims.SrcW, dims.SrcH, screenDc)) return false;
@@ -1817,7 +1776,7 @@ public sealed class LiquidGlassController : IDisposable
         finally
         {
             if (screenDc != IntPtr.Zero)
-                ReleaseDC(IntPtr.Zero, screenDc);
+                ReleaseScreenDc(screenDc);
         }
     }
 
@@ -1878,20 +1837,17 @@ public sealed class LiquidGlassController : IDisposable
         bool release = false;
         if (screenDc == IntPtr.Zero)
         {
-            screenDc = GetDC(IntPtr.Zero);
+            screenDc = GetScreenDc();
             release = true;
         }
         try
         {
-            if (!BitBlt(_memDc, 0, 0, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, cp.SrcY, SRCCOPY))
-                return false;
-            GdiFlush();
-            return true;
+            return CaptureScreenRect(_memDc, cp.SrcW, cp.SrcH, screenDc, cp.SrcX, cp.SrcY);
         }
         finally
         {
             if (release && screenDc != IntPtr.Zero)
-                ReleaseDC(IntPtr.Zero, screenDc);
+                ReleaseScreenDc(screenDc);
         }
     }
 
@@ -2292,42 +2248,31 @@ public sealed class LiquidGlassController : IDisposable
 
         ReleaseGdiResources();
 
-        _memDc = CreateCompatibleDC(screenDc);
-        if (_memDc == IntPtr.Zero) return false;
+        if (!CreateDibSurface(screenDc, srcW, srcH, out var surface)) return false;
 
-        SetStretchBltMode(_memDc, HALFTONE);
-
-        var bmi = new BITMAPINFO
-        {
-            bmiHeader = new BITMAPINFOHEADER
-            {
-                biSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<BITMAPINFOHEADER>(),
-                biWidth = srcW,
-                biHeight = -srcH,
-                biPlanes = 1,
-                biBitCount = 32,
-                biCompression = BI_RGB
-            },
-            bmiColors = new uint[256]
-        };
-
-        _dibBmp = CreateDIBSection(screenDc, ref bmi, DIB_RGB_COLORS, out _dibBits, IntPtr.Zero, 0);
-        if (_dibBmp == IntPtr.Zero || _dibBits == IntPtr.Zero)
-        {
-            ReleaseGdiResources();
-            return false;
-        }
-
-        _oldBmp = SelectObject(_memDc, _dibBmp);
+        _memDc = (IntPtr)surface.MemoryDc;
+        _dibBmp = (IntPtr)surface.Bitmap;
+        _oldBmp = (IntPtr)surface.PreviousBitmap;
+        _dibBits = (IntPtr)surface.Bits;
         _dibW = srcW; _dibH = srcH;
         return true;
     }
 
     private void ReleaseGdiResources()
     {
-        if (_memDc != IntPtr.Zero && _oldBmp != IntPtr.Zero) SelectObject(_memDc, _oldBmp);
-        if (_dibBmp != IntPtr.Zero) DeleteObject(_dibBmp);
-        if (_memDc != IntPtr.Zero) DeleteDC(_memDc);
+        if (_memDc != IntPtr.Zero)
+        {
+            var surface = new VnDibSurface
+            {
+                MemoryDc = _memDc,
+                Bitmap = _dibBmp,
+                PreviousBitmap = _oldBmp,
+                Bits = _dibBits,
+                Width = _dibW,
+                Height = _dibH,
+            };
+            DestroyDibSurface(ref surface);
+        }
         _memDc = _dibBmp = _dibBits = _oldBmp = IntPtr.Zero;
         _dibW = _dibH = 0;
     }

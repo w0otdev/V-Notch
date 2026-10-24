@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Automation;
 
+using static VNotch.Services.Win32Interop;
+
 namespace VNotch.Services;
 
 public interface IWindowTitleScanner
@@ -22,19 +24,6 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     private const string HttpsPrefix = "https://";
     private const string SpotifyWebPlayerHost = "open.spotify.com";
 
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowTextW", ExactSpelling = true)]
-    private static extern unsafe int GetWindowText(IntPtr hWnd, char* lpString, int nMaxCount);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowTextLength(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_wtscanner_matches_platform_title(
@@ -129,11 +118,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         return vn_wtscanner_matches_platform_title(MemoryMarshal.Cast<char, ushort>(title), title.Length, out byte matches) == 0 && matches != 0;
     }
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     private string? _cachedBrowserUrl;
     private DateTime _lastBrowserUrlTime = DateTime.MinValue;
