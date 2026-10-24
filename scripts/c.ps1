@@ -108,7 +108,7 @@ if ($Resume) {
         throw 'Resume requires the same repository and validation options as the original run.'
     }
     $startStep = [int]$checkpoint.NextStep
-    if ($startStep -lt 1 -or $startStep -gt 11) { throw 'Invalid checkpoint step.' }
+    if ($startStep -lt 1 -or $startStep -gt 9) { throw 'Invalid checkpoint step.' }
     $testResultsDir = $checkpoint.TestResultsDirectory
 } else {
     $runDirectory = Join-Path $artifactsDir ('local-ci-' + [guid]::NewGuid().ToString('N'))
@@ -210,6 +210,10 @@ if ($startStep -le 4) {
 
 if ($startStep -le 5) {
     Write-TreeStep "5/8" "Release Build (-warnaserror)"
+    if ($Resume -and $startStep -eq 5) {
+        $testResultsDir = Join-Path $runDirectory ('test-results-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
+    }
     $bldSw = [System.Diagnostics.Stopwatch]::StartNew()
     $bldOut = & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary 2>&1
     $bldSw.Stop()
@@ -224,19 +228,17 @@ if ($startStep -le 5) {
 }
 
 if ($startStep -le 6) {
-    Save-Checkpoint 7
-}
-
-if ($startStep -le 7) {
     Write-TreeStep "6/8" "Release Security Gates"
     $gateOut = & "$repository/Tests/ReleaseGateTests.ps1" 2>&1
-    Write-TreeItem "Coverage boundaries, XML safety & signing gates passed." -State "Success"
+    $cleanOut = & "$repository/Tests/PrepushCleanupTests.ps1" 2>&1
+    $resOut = & "$repository/Tests/LocalCiResumeTests.ps1" 2>&1
+    Write-TreeItem "Coverage boundaries, XML safety, signing & runner regression gates passed." -State "Success"
 
-    Save-Checkpoint 8
+    Save-Checkpoint 7
     Write-TreeSpacer
 }
 
-if ($startStep -le 8) {
+if ($startStep -le 7) {
     Write-TreeStep "7/8" "Update Compatibility & Promotion"
     $updOut1 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" 2>&1
     $projectPath = Join-Path $repository 'V-Notch.csproj'
@@ -249,20 +251,16 @@ if ($startStep -le 8) {
     $updOut2 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe" 2>&1
     Write-TreeItem "Verified 1.9.3 client & beta-to-stable v$version promotion." -State "Success"
 
-    Save-Checkpoint 9
+    Save-Checkpoint 8
     Write-TreeSpacer
 }
 
-if ($startStep -le 9) {
+if ($startStep -le 8) {
     Write-TreeStep "8/8" "NuGet Package Vulnerability Audit"
     $audOut = & "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json" 2>&1
     Write-TreeItem "0 known vulnerable packages found." -State "Success"
 
-    Save-Checkpoint 10
-}
-
-if ($startStep -le 10) {
-    Save-Checkpoint 11
+    Save-Checkpoint 9
 }
 
 $stopwatch.Stop()

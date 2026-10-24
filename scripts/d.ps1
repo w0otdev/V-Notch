@@ -241,6 +241,7 @@ try {
         'Locales',
         'Models',
         'Modules',
+        'Native',
         'Presenters',
         'Security',
         'Services',

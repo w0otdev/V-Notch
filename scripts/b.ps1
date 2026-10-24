@@ -156,9 +156,12 @@ $exeVersion = $publishedVersion.FileVersion
 if ($exeVersion -ne $installerVersion -or $publishedVersion.ProductVersion -cne $InformationalVersion) {
     throw 'Published application version does not match the installer release identity.'
 }
+if (-not (Test-Path -LiteralPath "$publishDir\VNotch.Native.dll")) {
+    throw 'Published VNotch.Native.dll is missing from the release output directory.'
+}
 $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
 Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
-Write-TreeItem ("Published V-Notch.exe (v$exeVersion) in {0:N1}s." -f $pubSw.Elapsed.TotalSeconds) -State "Success"
+Write-TreeItem ("Published V-Notch.exe & VNotch.Native.dll (v$exeVersion) in {0:N1}s." -f $pubSw.Elapsed.TotalSeconds) -State "Success"
 
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.
@@ -177,19 +180,19 @@ $modelCheckOut = & ./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir 2>&
 Write-TreeItem "Verified bundled ONNX model provenance & license." -State "Success"
 
 if ($CertificateThumbprint) {
-    & (Join-Path $scriptDir 'Sign-ReleaseBinary.ps1') -Path "$publishDir\V-Notch.exe", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
+    & (Join-Path $scriptDir 'Sign-ReleaseBinary.ps1') -Path "$publishDir\V-Notch.exe", "$publishDir\VNotch.Native.dll", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
     Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
-    Write-TreeItem "Signed V-Notch.exe and uninstall.exe (thumbprint)." -State "Success"
+    Write-TreeItem "Signed V-Notch.exe, VNotch.Native.dll and uninstall.exe (thumbprint)." -State "Success"
 }
 
 if ($CertificatePath -and -not $CertificateThumbprint) {
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if (-not $signtool) { Write-TreeItem "signtool.exe not found; cannot sign binaries." -State "Error"; exit 1 }
-    Write-TreeItem "Signing V-Notch.exe and uninstall.exe..." -State "Info"
-    & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "$publishDir\V-Notch.exe" "$publishDir\uninstall.exe"
+    Write-TreeItem "Signing V-Notch.exe, VNotch.Native.dll and uninstall.exe..." -State "Info"
+    & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 "$publishDir\V-Notch.exe" "$publishDir\VNotch.Native.dll" "$publishDir\uninstall.exe"
     if ($LASTEXITCODE -ne 0) { Write-TreeItem "Authenticode signing of binaries failed!" -State "Error"; exit 1 }
-    Write-TreeItem "V-Notch.exe and uninstall.exe signed successfully." -State "Success"
+    Write-TreeItem "V-Notch.exe, VNotch.Native.dll and uninstall.exe signed successfully." -State "Success"
 
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
     Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline

@@ -25,9 +25,13 @@
     <Reference Include="V-Notch">
       <HintPath>../../bin/Release/net8.0-windows10.0.19041.0/win-x64/V-Notch.dll</HintPath>
     </Reference>
+    <Content Include="../../Native/out/VNotch.Native.dll"
+             Link="VNotch.Native.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             Condition="Exists('$(MSBuildThisFileDirectory)../../Native/out/VNotch.Native.dll')" />
   </ItemGroup>
   <Target Name="RequireReleaseApplication" BeforeTargets="ResolveAssemblyReferences">
-    <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../bin/Release/net8.0-windows10.0.19041.0/win-x64/V-Notch.dll')"
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../bin/Release/net8.0-windows10.0.19041.0/win-x64/V-Notch.dll') or !Exists('$(MSBuildThisFileDirectory)../../Native/out/VNotch.Native.dll')"
            Text="Build V-Notch.csproj in Release first, or use Tools/VNotch.Benchmarks/run.ps1." />
   </Target>
 </Project>

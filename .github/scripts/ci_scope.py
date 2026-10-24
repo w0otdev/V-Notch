@@ -21,6 +21,7 @@ PACKAGED_DOCS = {
     "docs/TERMS_OF_SERVICE.md",
     "docs/TERMS_OF_SERVICE_VI.md",
     "docs/THIRD_PARTY_NOTICES.md",
+    "docs/licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt",
 }
 
 
@@ -29,7 +30,9 @@ def needs_windows(paths):
     # Packaged terms/notices and unknown inputs require the build. Do not
     # classify every Markdown file as documentation: some are embedded assets.
     return not paths or any(
-        path in PACKAGED_DOCS or (path not in DOCUMENTATION and not path.startswith("docs/"))
+        path in PACKAGED_DOCS
+        or path.startswith("docs/licenses/")
+        or (path not in DOCUMENTATION and not path.startswith("docs/"))
         for path in paths
     )
 

@@ -15,11 +15,13 @@ $env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\
 
 # --- Configuration ---------------------------------------------------------
 $repoRoot    = Split-Path $PSScriptRoot -Parent
-$processName = "V-Notch"
-$csprojPath  = Join-Path $repoRoot "V-Notch.csproj"
-$objPath     = Join-Path $repoRoot "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
-$binPath     = Join-Path $repoRoot "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
-$exePath     = Join-Path $binPath "V-Notch.exe"
+$processName   = "V-Notch"
+$csprojPath    = Join-Path $repoRoot "V-Notch.csproj"
+$objPath       = Join-Path $repoRoot "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
+$nativeObjPath = Join-Path $repoRoot "obj\native"
+$binPath       = Join-Path $repoRoot "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
+$exePath       = Join-Path $binPath "V-Notch.exe"
+$nativeDllPath = Join-Path $binPath "VNotch.Native.dll"
 
 $version = "dev"
 if (Test-Path $csprojPath) {
@@ -151,11 +153,12 @@ function Remove-Folder-Hard {
 if ($Clean) {
     Write-TreeSpacer
     Write-TreeStep (Next-StepTag) "Clean Cache"
-    $objClean = Remove-Folder-Hard $objPath
-    $binClean = Remove-Folder-Hard $binPath
+    $objClean       = Remove-Folder-Hard $objPath
+    $nativeObjClean = Remove-Folder-Hard $nativeObjPath
+    $binClean       = Remove-Folder-Hard $binPath
 
-    if ($objClean -and $binClean) {
-        Write-TreeItem "Cleared obj & bin directories (fresh BAML)." -State Success
+    if ($objClean -and $nativeObjClean -and $binClean) {
+        Write-TreeItem "Cleared obj, native obj & bin directories (fresh BAML & C++20)." -State Success
     } else {
         Write-TreeItem "Partial cleanup - some files were locked." -State Warn
     }
@@ -196,7 +199,12 @@ foreach ($line in $diagnosticLines) {
         Write-TreeItem $line.Trim() -State Warn
     }
 }
-Write-TreeItem ("Built V-Notch.dll in {0:N2}s." -f $buildSw.Elapsed.TotalSeconds) -State Success
+if (-not (Test-Path $nativeDllPath)) {
+    Write-TreeItem "VNotch.Native.dll missing from build output directory: $nativeDllPath" -State Error
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
+    exit 1
+}
+Write-TreeItem ("Built V-Notch.dll & VNotch.Native.dll in {0:N2}s." -f $buildSw.Elapsed.TotalSeconds) -State Success
 
 # --- 4. Launch --------------------------------------------------------------
 if (-not ("VNotchDesktopLauncher" -as [type])) {
