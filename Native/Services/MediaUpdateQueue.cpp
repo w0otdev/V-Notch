@@ -5,7 +5,7 @@ namespace vnotch::services {
 
 class MediaUpdateQueue final {
 public:
-    static constexpr bool SameTrack(
+    static bool SameTrack(
         std::u16string_view left_track,
         std::u16string_view right_track,
         std::u16string_view left_artist,
@@ -14,10 +14,28 @@ public:
         std::u16string_view right_source,
         std::u16string_view left_session_key,
         std::u16string_view right_session_key) noexcept {
-        return vnotch::vn_equals_icase_ascii(left_track, right_track) &&
-               vnotch::vn_equals_icase_ascii(left_artist, right_artist) &&
-               vnotch::vn_equals_icase_ascii(left_source, right_source) &&
-               left_session_key == right_session_key;
+        if (!vnotch::equals_ignore_case(left_track, right_track)) {
+            return false;
+        }
+        if (!left_session_key.empty() && !right_session_key.empty() && left_session_key != right_session_key) {
+            return false;
+        }
+        auto is_generic_source_or_artist = [](std::u16string_view sv) noexcept {
+            return sv.empty() ||
+                   vnotch::equals_icase_ascii(sv, u"Browser") ||
+                   vnotch::equals_icase_ascii(sv, u"YouTube") ||
+                   vnotch::equals_icase_ascii(sv, u"SoundCloud") ||
+                   vnotch::equals_icase_ascii(sv, u"Unknown Artist");
+        };
+        const bool artist_match = vnotch::equals_ignore_case(left_artist, right_artist) ||
+                                  is_generic_source_or_artist(left_artist) ||
+                                  is_generic_source_or_artist(right_artist);
+        const bool source_match = vnotch::equals_ignore_case(left_source, right_source) ||
+                                  vnotch::equals_icase_ascii(left_source, u"Browser") ||
+                                  vnotch::equals_icase_ascii(right_source, u"Browser") ||
+                                  left_source.empty() ||
+                                  right_source.empty();
+        return artist_match && source_match;
     }
 };
 

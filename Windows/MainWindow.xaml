@@ -2004,7 +2004,7 @@
 
                     </Grid>
 
-                        <Grid Grid.Column="2" Margin="0,20,-1,0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True" RenderOptions.ClearTypeHint="Enabled">
+                        <Grid x:Name="MediaRightColumn" Grid.Column="2" Margin="0,20,-1,0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True" RenderOptions.ClearTypeHint="Enabled">
                             <!-- Center each surface independently so collapsing lyrics after a fade
                                  cannot redistribute the calendar's Auto rows. -->
                             <Grid VerticalAlignment="Center">

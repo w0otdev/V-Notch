@@ -32,8 +32,10 @@ public sealed class MediaDisplayController
         if (info.IsThumbnailOnlyUpdate)
         {
             string incomingTrackId = $"{info.CurrentTrack}|{info.CurrentArtist}";
+            string incomingTitlePrefix = $"{info.CurrentTrack}|";
             if (string.IsNullOrEmpty(_lastAnimatedTrackSignature) ||
-                incomingTrackId != _lastAnimatedTrackSignature)
+                (incomingTrackId != _lastAnimatedTrackSignature &&
+                 !_lastAnimatedTrackSignature.StartsWith(incomingTitlePrefix, StringComparison.OrdinalIgnoreCase)))
             {
                 result.Action = MediaDisplayAction.Ignore;
                 return result;

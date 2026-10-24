@@ -852,7 +852,7 @@ public partial class MainWindow : Window
                 if (args.Reason == "CountdownDismiss")
                     AnimateCountdownDismissCollapse(args.TransitionId);
                 else
-                    CollapseNotch(args.TransitionId);
+                    CollapseNotch(args.TransitionId, args.FromView);
                 break;
 
             case VNotch.Models.NotchView.Media:

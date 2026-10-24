@@ -65,6 +65,14 @@ public partial class MainWindow
         ThumbnailOutBlur.Radius = 0;
         ThumbnailFallback.BeginAnimation(OpacityProperty, null);
         ThumbnailFallback.Opacity = 1;
+        if (ThumbnailImage.Source != null && ThumbnailImage.Visibility == Visibility.Visible)
+        {
+            ThumbnailFallback.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            ThumbnailFallback.Visibility = Visibility.Visible;
+        }
     }
 
     private void FinishEmptyThumbnailTransition()
@@ -73,6 +81,8 @@ public partial class MainWindow
         ThumbnailImageNext.Visibility = Visibility.Collapsed;
         ThumbnailImage.Source = null;
         ThumbnailImageNext.Source = null;
+        CompactThumbnail.Source = null;
+        CompactThumbnailNext.Source = null;
         _pendingFlipThumbnail = null;
         ResetEmptyThumbnailAnimation();
         ThumbnailFallback.Visibility = Visibility.Visible;
@@ -537,6 +547,8 @@ public partial class MainWindow
         {
             ThumbnailImage.Source = resolvedThumb;
             CompactThumbnail.Source = resolvedThumb;
+            ThumbnailImage.Visibility = Visibility.Visible;
+            ThumbnailFallback.Visibility = Visibility.Collapsed;
         }
 
         ThumbnailImageNext.Source = null;
@@ -601,6 +613,8 @@ public partial class MainWindow
         {
             ThumbnailImage.Source = resolvedThumb;
             CompactThumbnail.Source = resolvedThumb;
+            ThumbnailImage.Visibility = Visibility.Visible;
+            ThumbnailFallback.Visibility = Visibility.Collapsed;
         }
 
         ThumbnailImageNext.Source = null;
@@ -844,7 +858,7 @@ public partial class MainWindow
 
     #region Thumbnail Transition
 
-    private void PlayThumbnailRevealAnimation()
+    private void PlayThumbnailRevealAnimation(TimeSpan? delay = null)
     {
         int generation = ++_compactThumbnailAnimationGeneration;
 
@@ -854,6 +868,11 @@ public partial class MainWindow
             return;
         }
 
+        CompactThumbnailBorder.RenderTransformOrigin = new Point(0.5, 0.5);
+        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+
         CompactThumbnailScale.ScaleX = 0.0;
         CompactThumbnailScale.ScaleY = 0.0;
         CompactThumbnailBorder.Opacity = 0.0;
@@ -861,12 +880,12 @@ public partial class MainWindow
         var duration = TimeSpan.FromMilliseconds(450);
         var dur = new Duration(duration);
 
-        var scaleAnimX = MakeAnim(0.0, 1.0, dur, _easeSoftSpring);
-        var scaleAnimY = MakeAnim(0.0, 1.0, dur, _easeSoftSpring);
+        var scaleAnimX = MakeAnim(0.0, 1.0, dur, _easeSoftSpring, delay);
+        var scaleAnimY = MakeAnim(0.0, 1.0, dur, _easeSoftSpring, delay);
         Timeline.SetDesiredFrameRate(scaleAnimX, VNotch.Services.AnimationConfig.TargetFps);
         Timeline.SetDesiredFrameRate(scaleAnimY, VNotch.Services.AnimationConfig.TargetFps);
 
-        var opacityAnim = MakeAnim(0.0, 1.0, new Duration(TimeSpan.FromMilliseconds(250)), _easeQuadOut);
+        var opacityAnim = MakeAnim(0.0, 1.0, new Duration(TimeSpan.FromMilliseconds(250)), _easeQuadOut, delay);
         Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
 
         scaleAnimX.Completed += (s, e) =>

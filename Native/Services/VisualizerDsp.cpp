@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <immintrin.h>
 #include <numbers>
 
 // Music visualizer DSP: PCM/float sample decoding, Hamming-windowed forward FFT, AGC/beat/spectral shaping,
@@ -111,19 +112,47 @@ bool IsPowerOfTwo(int32_t value) noexcept {
 
 const double* HammingWindow(int32_t length) noexcept {
     static std::array<std::array<double, kMaxFftLength>, 11> tables{};
-    static std::array<bool, 11> ready{};
+    static std::array<std::atomic<bool>, 11> ready{};
     static SRWLOCK lock = SRWLOCK_INIT;
     const int slot = std::countr_zero(static_cast<uint32_t>(length)) - 2;
     if (slot < 0 || slot >= static_cast<int>(tables.size())) return nullptr;
-    AcquireSRWLockExclusive(&lock);
-    if (!ready[static_cast<size_t>(slot)]) {
-        auto& table = tables[static_cast<size_t>(slot)];
-        for (int32_t i = 0; i < length; ++i)
-            table[static_cast<size_t>(i)] = 0.54 - 0.46 * std::cos((2.0 * std::numbers::pi * i) / (length - 1));
-        ready[static_cast<size_t>(slot)] = true;
+    // Fast path is lock-free; the lock only serialises the one-time table fill.
+    if (!ready[static_cast<size_t>(slot)].load(std::memory_order_acquire)) {
+        AcquireSRWLockExclusive(&lock);
+        if (!ready[static_cast<size_t>(slot)].load(std::memory_order_relaxed)) {
+            auto& table = tables[static_cast<size_t>(slot)];
+            for (int32_t i = 0; i < length; ++i)
+                table[static_cast<size_t>(i)] = 0.54 - 0.46 * std::cos((2.0 * std::numbers::pi * i) / (length - 1));
+            ready[static_cast<size_t>(slot)].store(true, std::memory_order_release);
+        }
+        ReleaseSRWLockExclusive(&lock);
     }
-    ReleaseSRWLockExclusive(&lock);
     return tables[static_cast<size_t>(slot)].data();
+}
+
+// Per-stage twiddle factors exp(-i*pi*j/l1) for every butterfly half-size l1 = 1, 2, 4, ... kMaxFftLength / 2.
+// Stage l1 occupies entries [l1 - 1, 2 * l1 - 1), each stored as an interleaved (re, im) float pair, so the
+// butterfly loop reads them contiguously and they are computed in double instead of by float recurrence.
+const float* FftTwiddles() noexcept {
+    alignas(32) static float table[2 * kMaxFftLength];
+    static std::atomic<bool> ready{false};
+    static SRWLOCK lock = SRWLOCK_INIT;
+    if (!ready.load(std::memory_order_acquire)) {
+        AcquireSRWLockExclusive(&lock);
+        if (!ready.load(std::memory_order_relaxed)) {
+            for (int32_t l1 = 1; l1 < kMaxFftLength; l1 <<= 1) {
+                for (int32_t j = 0; j < l1; ++j) {
+                    const double angle = -std::numbers::pi * static_cast<double>(j) / static_cast<double>(l1);
+                    const size_t index = 2u * static_cast<size_t>(l1 - 1 + j);
+                    table[index] = static_cast<float>(std::cos(angle));
+                    table[index + 1] = static_cast<float>(std::sin(angle));
+                }
+            }
+            ready.store(true, std::memory_order_release);
+        }
+        ReleaseSRWLockExclusive(&lock);
+    }
+    return table;
 }
 
 void FftForward(VnSpectrumComplex* data, int32_t m) noexcept {
@@ -140,37 +169,47 @@ void FftForward(VnSpectrumComplex* data, int32_t m) noexcept {
         j += k;
     }
 
-    float c1 = -1.0f;
-    float c2 = 0.0f;
-    int32_t l2 = 1;
+    const float* twiddles = FftTwiddles();
+    float* const flat = reinterpret_cast<float*>(data);
     for (int32_t l = 0; l < m; ++l) {
-        const int32_t l1 = l2;
-        l2 <<= 1;
-        float u1 = 1.0f;
-        float u2 = 0.0f;
-        for (j = 0; j < l1; ++j) {
-            for (int32_t i = j; i < n; i += l2) {
-                const int32_t i1 = i + l1;
-                const float t1 = u1 * data[i1].x - u2 * data[i1].y;
-                const float t2 = u1 * data[i1].y + u2 * data[i1].x;
-                data[i1].x = data[i].x - t1;
-                data[i1].y = data[i].y - t2;
-                data[i].x += t1;
-                data[i].y += t2;
+        const int32_t l1 = 1 << l;
+        const int32_t l2 = l1 << 1;
+        const float* stage = twiddles + 2 * static_cast<size_t>(l1 - 1);
+        for (int32_t block = 0; block < n; block += l2) {
+            int32_t k = 0;
+            // Four butterflies per iteration: complex multiply with moveldup/movehdup/addsub.
+            for (; k + 4 <= l1; k += 4) {
+                float* pa = flat + 2 * static_cast<size_t>(block + k);
+                float* pb = pa + 2 * static_cast<size_t>(l1);
+                const __m256 a = _mm256_loadu_ps(pa);
+                const __m256 b = _mm256_loadu_ps(pb);
+                const __m256 w = _mm256_loadu_ps(stage + 2 * static_cast<size_t>(k));
+                const __m256 t = _mm256_addsub_ps(
+                    _mm256_mul_ps(b, _mm256_moveldup_ps(w)),
+                    _mm256_mul_ps(_mm256_permute_ps(b, 0xB1), _mm256_movehdup_ps(w)));
+                _mm256_storeu_ps(pa, _mm256_add_ps(a, t));
+                _mm256_storeu_ps(pb, _mm256_sub_ps(a, t));
             }
-            const float z = u1 * c1 - u2 * c2;
-            u2 = u1 * c2 + u2 * c1;
-            u1 = z;
+            for (; k < l1; ++k) {
+                VnSpectrumComplex& lo = data[block + k];
+                VnSpectrumComplex& hi = data[block + k + l1];
+                const float wr = stage[2 * static_cast<size_t>(k)];
+                const float wi = stage[2 * static_cast<size_t>(k) + 1];
+                const float t1 = wr * hi.x - wi * hi.y;
+                const float t2 = wr * hi.y + wi * hi.x;
+                hi.x = lo.x - t1;
+                hi.y = lo.y - t2;
+                lo.x += t1;
+                lo.y += t2;
+            }
         }
-        c2 = std::sqrt((1.0f - c1) / 2.0f);
-        c2 = -c2;
-        c1 = std::sqrt((1.0f + c1) / 2.0f);
     }
 
-    const float scale = static_cast<float>(n);
+    // n is a power of two, so multiplying by 1/n is bit-identical to dividing by n.
+    const float inv_scale = 1.0f / static_cast<float>(n);
     for (int32_t i = 0; i < n; ++i) {
-        data[i].x /= scale;
-        data[i].y /= scale;
+        data[i].x *= inv_scale;
+        data[i].y *= inv_scale;
     }
 }
 

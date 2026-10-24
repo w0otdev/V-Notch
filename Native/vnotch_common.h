@@ -2,6 +2,7 @@
 
 #include "vnotch_native.h"
 #include "vnotch_unicode_tables.h"
+#include <atomic>
 
 namespace vnotch
 {
@@ -24,6 +25,38 @@ constexpr bool is_unicode_whitespace(char16_t ch) noexcept
            ch == 0x205Fu || ch == 0x3000u;
 }
 
+inline char16_t to_lower_invariant_os(char16_t ch) noexcept
+{
+    wchar_t in_ch = static_cast<wchar_t>(ch);
+    wchar_t out_ch = in_ch;
+    if (LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, &in_ch, 1, &out_ch, 1, nullptr, nullptr, 0) == 1)
+    {
+        return static_cast<char16_t>(out_ch);
+    }
+    return ch;
+}
+
+// Non-ASCII lowercase results are cached in 256-entry pages that are filled on first use, so each BMP page
+// pays at most 256 LCMapStringEx calls for the lifetime of the process instead of one call per character.
+inline std::atomic<uint8_t> g_lower_page_ready[256]{};
+inline char16_t g_lower_pages[256][256];
+inline SRWLOCK g_lower_page_lock = SRWLOCK_INIT;
+
+inline void fill_lower_page(uint32_t page) noexcept
+{
+    AcquireSRWLockExclusive(&g_lower_page_lock);
+    if (g_lower_page_ready[page].load(std::memory_order_relaxed) == 0)
+    {
+        for (uint32_t lo = 0; lo < 256u; ++lo)
+        {
+            const char16_t ch = static_cast<char16_t>((page << 8) | lo);
+            g_lower_pages[page][lo] = ch < 0x80u ? ch : to_lower_invariant_os(ch);
+        }
+        g_lower_page_ready[page].store(1, std::memory_order_release);
+    }
+    ReleaseSRWLockExclusive(&g_lower_page_lock);
+}
+
 inline char16_t to_lower_invariant(char16_t ch) noexcept
 {
     if (ch >= u'A' && ch <= u'Z')
@@ -34,13 +67,12 @@ inline char16_t to_lower_invariant(char16_t ch) noexcept
     {
         return ch;
     }
-    wchar_t in_ch = static_cast<wchar_t>(ch);
-    wchar_t out_ch = in_ch;
-    if (LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, &in_ch, 1, &out_ch, 1, nullptr, nullptr, 0) == 1)
+    const uint32_t page = static_cast<uint32_t>(ch) >> 8;
+    if (g_lower_page_ready[page].load(std::memory_order_acquire) == 0)
     {
-        return static_cast<char16_t>(out_ch);
+        fill_lower_page(page);
     }
-    return ch;
+    return g_lower_pages[page][ch & 0xFFu];
 }
 
 inline std::u16string to_lower_string(std::u16string_view sv)
@@ -166,13 +198,30 @@ inline int32_t index_of_ignore_case(std::u16string_view haystack, std::u16string
     {
         return -1;
     }
+    // Fold the needle once (stack buffer for short needles) and reject on the first character before comparing the rest.
+    constexpr size_t kFoldedCapacity = 64;
+    char16_t folded[kFoldedCapacity];
+    const bool use_folded = needle.size() <= kFoldedCapacity;
+    if (use_folded)
+    {
+        for (size_t j = 0; j < needle.size(); ++j)
+        {
+            folded[j] = to_lower_invariant(needle[j]);
+        }
+    }
+    const char16_t first = use_folded ? folded[0] : to_lower_invariant(needle[0]);
     size_t limit = haystack.size() - needle.size();
     for (size_t i = 0; i <= limit; ++i)
     {
-        bool match = true;
-        for (size_t j = 0; j < needle.size(); ++j)
+        if (to_lower_invariant(haystack[i]) != first)
         {
-            if (to_lower_invariant(haystack[i + j]) != to_lower_invariant(needle[j]))
+            continue;
+        }
+        bool match = true;
+        for (size_t j = 1; j < needle.size(); ++j)
+        {
+            const char16_t expected = use_folded ? folded[j] : to_lower_invariant(needle[j]);
+            if (to_lower_invariant(haystack[i + j]) != expected)
             {
                 match = false;
                 break;
@@ -196,13 +245,24 @@ inline int32_t last_index_of_ignore_case(std::u16string_view haystack, std::u16s
     {
         return -1;
     }
+    constexpr size_t kFoldedCapacity = 64;
+    char16_t folded[kFoldedCapacity];
+    const bool use_folded = needle.size() <= kFoldedCapacity;
+    if (use_folded)
+    {
+        for (size_t j = 0; j < needle.size(); ++j)
+        {
+            folded[j] = to_lower_invariant(needle[j]);
+        }
+    }
     for (size_t i = haystack.size() - needle.size() + 1; i > 0; --i)
     {
         size_t idx = i - 1;
         bool match = true;
         for (size_t j = 0; j < needle.size(); ++j)
         {
-            if (to_lower_invariant(haystack[idx + j]) != to_lower_invariant(needle[j]))
+            const char16_t expected = use_folded ? folded[j] : to_lower_invariant(needle[j]);
+            if (to_lower_invariant(haystack[idx + j]) != expected)
             {
                 match = false;
                 break;

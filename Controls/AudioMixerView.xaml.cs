@@ -349,6 +349,18 @@ public partial class AudioMixerView : UserControl, IDisposable
     }
 
     private int _audioStaggerGeneration;
+    private static readonly ExponentialEase RowRevealEase = CreateFrozenRowRevealEase();
+    private static readonly Duration RowRevealDuration = new(TimeSpan.FromMilliseconds(280));
+    private static readonly TimeSpan RowStaggerInterval = TimeSpan.FromMilliseconds(20);
+    private static readonly TimeSpan MaxRowStaggerDelay = TimeSpan.FromMilliseconds(160);
+    private readonly List<FrameworkElement> _revealTargetsScratch = new(16);
+
+    private static ExponentialEase CreateFrozenRowRevealEase()
+    {
+        var ease = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        return ease;
+    }
 
     public void ResetRowAnimations()
     {
@@ -382,7 +394,8 @@ public partial class AudioMixerView : UserControl, IDisposable
         if (AudioRoot == null) return;
         int activeGen = ++_audioStaggerGeneration;
 
-        var targets = new List<FrameworkElement>();
+        var targets = _revealTargetsScratch;
+        targets.Clear();
         foreach (var child in AudioRoot.Children)
         {
             if (child is StackPanel rows)
@@ -391,7 +404,7 @@ public partial class AudioMixerView : UserControl, IDisposable
                 foreach (var row in rows.Children)
                     if (row is FrameworkElement rowEl) targets.Add(rowEl);
             }
-            else if (child is FrameworkElement el)
+            else if (child is FrameworkElement el && el.Visibility == Visibility.Visible)
             {
                 targets.Add(el);
             }
@@ -405,25 +418,30 @@ public partial class AudioMixerView : UserControl, IDisposable
         }
 
         int fps = AnimationConfig.TargetFps;
-        var ease = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
-        var dur = new Duration(TimeSpan.FromMilliseconds(300));
-        var stagger = TimeSpan.FromMilliseconds(24);
-        var maxStaggerDelay = TimeSpan.FromMilliseconds(180);
-
         for (int i = 0; i < targets.Count; i++)
         {
             var el = targets[i];
-            var itemStagger = TimeSpan.FromTicks(stagger.Ticks * i);
-            if (itemStagger > maxStaggerDelay) itemStagger = maxStaggerDelay;
+            var itemStagger = TimeSpan.FromTicks(RowStaggerInterval.Ticks * i);
+            if (itemStagger > MaxRowStaggerDelay) itemStagger = MaxRowStaggerDelay;
             var delay = baseDelay + itemStagger;
 
             el.BeginAnimation(OpacityProperty, null);
             el.Opacity = 0;
-            var translate = new TranslateTransform(0, 10);
-            el.RenderTransform = translate;
+            var translate = el.RenderTransform as TranslateTransform;
+            if (translate == null || translate.IsFrozen)
+            {
+                translate = new TranslateTransform(0, 10);
+                el.RenderTransform = translate;
+            }
+            else
+            {
+                translate.BeginAnimation(TranslateTransform.YProperty, null);
+                translate.X = 0;
+                translate.Y = 10;
+            }
 
-            var fade = new DoubleAnimation(0, 1, dur) { BeginTime = delay, EasingFunction = ease };
-            var slide = new DoubleAnimation(10, 0, dur) { BeginTime = delay, EasingFunction = ease };
+            var fade = new DoubleAnimation(0, 1, RowRevealDuration) { BeginTime = delay, EasingFunction = RowRevealEase };
+            var slide = new DoubleAnimation(10, 0, RowRevealDuration) { BeginTime = delay, EasingFunction = RowRevealEase };
             Timeline.SetDesiredFrameRate(fade, fps);
             Timeline.SetDesiredFrameRate(slide, fps);
 
@@ -434,10 +452,11 @@ public partial class AudioMixerView : UserControl, IDisposable
                 if (activeGen != _audioStaggerGeneration) return;
                 captured.BeginAnimation(OpacityProperty, null);
                 captured.Opacity = 1;
-                // Only detach the transform if the section toggle or a rebuild
-                // has not replaced it in the meantime.
                 if (ReferenceEquals(captured.RenderTransform, capturedTranslate))
-                    captured.RenderTransform = null;
+                {
+                    capturedTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                    capturedTranslate.Y = 0;
+                }
             };
 
             el.BeginAnimation(OpacityProperty, fade);

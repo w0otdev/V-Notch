@@ -184,66 +184,121 @@ public partial class MainWindow
         PlayClockViewUnfoldIn(inDelay);
     }
 
+    private int _clockViewUnfoldGeneration;
+
+    private void ResetClockViewUnfoldIn()
+    {
+        _clockViewUnfoldGeneration++;
+        if (ClockViewHeader != null)
+        {
+            ClockViewHeader.BeginAnimation(OpacityProperty, null);
+            ClockViewHeader.Opacity = 1;
+            ClockViewHeader.RenderTransform = null;
+        }
+        FrameworkElement[] clockWidgets = [ClockViewClock, ClockViewDigitalClock, ClockViewWordClock];
+        foreach (var w in clockWidgets)
+        {
+            if (w != null) w.RenderTransform = null;
+        }
+        if (CountdownWidget?.TimerControlBar != null)
+        {
+            CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, null);
+            CountdownWidget.TimerControlBar.Opacity = 1;
+            CountdownWidget.TimerControlBar.RenderTransform = null;
+        }
+    }
+
     private void PlayClockViewUnfoldIn(TimeSpan baseDelay)
     {
+        if (AnimationConfig.ReduceMotion)
+        {
+            ResetClockViewUnfoldIn();
+            return;
+        }
+
+        int gen = ++_clockViewUnfoldGeneration;
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
-        // Header (analog clock + calendar) falls in from the notch lip.
-        var headerTranslate = new TranslateTransform(0, -14);
+        // Header (clock + calendar) falls in from the notch lip.
+        var headerTranslate = ClockViewHeader.RenderTransform as TranslateTransform ?? new TranslateTransform(0, -14);
+        headerTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        headerTranslate.Y = -14;
         ClockViewHeader.RenderTransform = headerTranslate;
         ClockViewHeader.BeginAnimation(OpacityProperty, null);
         ClockViewHeader.Opacity = 0;
 
-        var headerDelay = baseDelay + TimeSpan.FromMilliseconds(50);
-        var headerFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(360)), _easeAppleOut, headerDelay);
-        var headerDrop = MakeAnim(-14, 0, new Duration(TimeSpan.FromMilliseconds(470)), _easeExpOut6, headerDelay);
+        var headerDelay = baseDelay + TimeSpan.FromMilliseconds(40);
+        var headerFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(340)), _easeAppleOut, headerDelay);
+        var headerDrop = MakeAnim(-14, 0, new Duration(TimeSpan.FromMilliseconds(440)), _easeExpOut6, headerDelay);
         Timeline.SetDesiredFrameRate(headerFade, fps);
         Timeline.SetDesiredFrameRate(headerDrop, fps);
 
         headerFade.Completed += (_, _) =>
         {
+            if (gen != _clockViewUnfoldGeneration) return;
             ClockViewHeader.BeginAnimation(OpacityProperty, null);
             ClockViewHeader.Opacity = 1;
             if (ReferenceEquals(ClockViewHeader.RenderTransform, headerTranslate))
-                ClockViewHeader.RenderTransform = null;
+            {
+                headerTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                headerTranslate.Y = 0;
+            }
         };
         ClockViewHeader.BeginAnimation(OpacityProperty, headerFade);
         headerTranslate.BeginAnimation(TranslateTransform.YProperty, headerDrop);
 
-        // Analog clock springs to full size on top of the header drop.
-        var clockScale = new ScaleTransform(0.84, 0.84);
-        ClockViewClock.RenderTransform = clockScale;
-        ClockViewClock.RenderTransformOrigin = new Point(0.5, 0.5);
+        // Active clock widget springs to full size on top of the header drop.
+        FrameworkElement activeClock = ClockViewDigitalClock.Visibility == Visibility.Visible ? ClockViewDigitalClock :
+            ClockViewWordClock.Visibility == Visibility.Visible ? ClockViewWordClock : ClockViewClock;
+        var clockScale = activeClock.RenderTransform as ScaleTransform ?? new ScaleTransform(0.86, 0.86);
+        clockScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        clockScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        clockScale.ScaleX = 0.86;
+        clockScale.ScaleY = 0.86;
+        activeClock.RenderTransform = clockScale;
+        activeClock.RenderTransformOrigin = new Point(0.5, 0.5);
 
-        var clockDelay = baseDelay + TimeSpan.FromMilliseconds(100);
-        var clockPop = MakeAnim(0.84, 1, new Duration(TimeSpan.FromMilliseconds(600)), _easeSoftSpring, clockDelay);
+        var clockDelay = baseDelay + TimeSpan.FromMilliseconds(85);
+        var clockPop = MakeAnim(0.86, 1, new Duration(TimeSpan.FromMilliseconds(540)), _easeSoftSpring, clockDelay);
         Timeline.SetDesiredFrameRate(clockPop, fps);
         clockPop.Completed += (_, _) =>
         {
-            if (ReferenceEquals(ClockViewClock.RenderTransform, clockScale))
-                ClockViewClock.RenderTransform = null;
+            if (gen != _clockViewUnfoldGeneration) return;
+            if (ReferenceEquals(activeClock.RenderTransform, clockScale))
+            {
+                clockScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                clockScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                clockScale.ScaleX = 1;
+                clockScale.ScaleY = 1;
+            }
         };
         clockScale.BeginAnimation(ScaleTransform.ScaleXProperty, clockPop);
         clockScale.BeginAnimation(ScaleTransform.ScaleYProperty, clockPop);
 
         // Control bar rises to meet the header from below.
-        var barTranslate = new TranslateTransform(0, 18);
+        var barTranslate = CountdownWidget.TimerControlBar.RenderTransform as TranslateTransform ?? new TranslateTransform(0, 16);
+        barTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        barTranslate.Y = 16;
         CountdownWidget.TimerControlBar.RenderTransform = barTranslate;
         CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, null);
         CountdownWidget.TimerControlBar.Opacity = 0;
 
-        var barDelay = baseDelay + TimeSpan.FromMilliseconds(140);
-        var barFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(340)), _easeAppleOut, barDelay);
-        var barRise = MakeAnim(18, 0, new Duration(TimeSpan.FromMilliseconds(460)), _easeExpOut6, barDelay);
+        var barDelay = baseDelay + TimeSpan.FromMilliseconds(115);
+        var barFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(320)), _easeAppleOut, barDelay);
+        var barRise = MakeAnim(16, 0, new Duration(TimeSpan.FromMilliseconds(420)), _easeExpOut6, barDelay);
         Timeline.SetDesiredFrameRate(barFade, fps);
         Timeline.SetDesiredFrameRate(barRise, fps);
 
         barFade.Completed += (_, _) =>
         {
+            if (gen != _clockViewUnfoldGeneration) return;
             CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, null);
             CountdownWidget.TimerControlBar.Opacity = 1;
             if (ReferenceEquals(CountdownWidget.TimerControlBar.RenderTransform, barTranslate))
-                CountdownWidget.TimerControlBar.RenderTransform = null;
+            {
+                barTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                barTranslate.Y = 0;
+            }
         };
         CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, barFade);
         barTranslate.BeginAnimation(TranslateTransform.YProperty, barRise);
@@ -365,6 +420,7 @@ public partial class MainWindow
 
         ExpandedContent.BeginAnimation(OpacityProperty, primaryFadeIn);
         primaryTranslate.BeginAnimation(TranslateTransform.YProperty, primarySlideDown);
+        PlayMediaContentReveal(inDelay);
     }
 
     private void UpdateTimerNavIconsState()

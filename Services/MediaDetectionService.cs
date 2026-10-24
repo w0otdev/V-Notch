@@ -1728,7 +1728,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                     if (!string.IsNullOrEmpty(_stableArtist) &&
                         _stableArtist != YouTubePlatformName &&
-                        IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch))
+                        (IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch) ||
+                         IsStillSamePublishedTrack(trackDuringFetch, info.CurrentArtist, sourceAppDuringFetch, sessionKeyDuringFetch)))
                     {
                         var dispatcher = System.Windows.Application.Current?.Dispatcher;
                         if (dispatcher != null)
@@ -2874,7 +2875,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 BitmapSource? newBitmap = await readArtwork();
                 if (newBitmap == null || generation != Volatile.Read(ref _thumbnailFetchGeneration)) return;
                 var fingerprint = ArtworkFingerprint.Create(newBitmap);
-                if (refreshSessionArtwork && _lastSessionArtworkFingerprint is { } previous && previous.Equals(fingerprint))
+                if ((refreshSessionArtwork || (isYouTubeLikeSource && trackChangedForThisPass)) &&
+                    _lastSessionArtworkFingerprint is { } previous && previous.Equals(fingerprint))
                 {
                     // Browsers can publish the new title before replacing the old artwork.
                     // Keep reading subsequent snapshots; never attach that old image to this track.

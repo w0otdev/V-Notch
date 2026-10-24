@@ -273,11 +273,8 @@ public class ElasticSlider : Slider
 
     private double ComputeTargetFillWidth(double width)
     {
-        double leftPad = 12;
-        double rightReserve = GetRightReserve();
-        double usableWidth = Math.Max(0, width - leftPad - rightReserve);
         double clampedFraction = Math.Clamp((Value - Minimum) / (Maximum - Minimum), 0, 1);
-        return Math.Clamp(leftPad + usableWidth * clampedFraction, 0, width);
+        return width * clampedFraction;
     }
 
     private void SetFillImmediate()

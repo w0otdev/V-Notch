@@ -482,6 +482,11 @@ public partial class MainWindow
 
             incoming.BeginAnimation(OpacityProperty, fadeIn);
             inTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
+
+            if (ReferenceEquals(incoming, ExpandedContent))
+                PlayMediaContentReveal(inDelay);
+            else if (ReferenceEquals(incoming, TimerContent))
+                PlayClockViewUnfoldIn(inDelay);
         }
     }
 
