@@ -54,7 +54,10 @@ public sealed class GlassBackdropAlignmentTests
             typeof(LiquidGlassController).GetField("_averageBackgroundColorRgb", Private)!.SetValue(controller, 0x203040);
             var captureType = typeof(LiquidGlassController).GetNestedType("BackdropCaptureParams", BindingFlags.NonPublic)!;
             var capture = Activator.CreateInstance(captureType, [100, 10, 8, 6, 8, 6, 10, 40, false, IntPtr.Zero]);
-            Assert.True((bool)typeof(LiquidGlassController).GetMethod("CaptureBackdrop", Private)!.Invoke(controller, [capture])!);
+            // CaptureBackdrop(BackdropCaptureParams, out bool isSyntheticBackdrop): the out argument is passed by reflection.
+            object?[] arguments = [capture, false];
+            Assert.True((bool)typeof(LiquidGlassController).GetMethod("CaptureBackdrop", Private)!.Invoke(controller, arguments)!);
+            Assert.True((bool)arguments[1]!);
             for (int i = 0; i < 8 * 6; i++)
                 Assert.Equal(unchecked((int)0xFF203040), Marshal.ReadInt32(bits, i * 4));
         }

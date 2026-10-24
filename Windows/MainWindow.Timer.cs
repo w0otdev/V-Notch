@@ -24,7 +24,7 @@ public partial class MainWindow
         get => _localTimerView;
         set => _localTimerView = value;
     }
-    private const double _timerViewHeight = 108;
+    private const double _timerViewHeight = 176;
     private const double _countdownCompleteWidthInset = 28;
     private double CountdownCompleteViewWidth => Math.Max(_collapsedWidth, _expandedWidth - _countdownCompleteWidthInset);
 
@@ -206,6 +206,12 @@ public partial class MainWindow
             CountdownWidget.TimerControlBar.Opacity = 1;
             CountdownWidget.TimerControlBar.RenderTransform = null;
         }
+        if (WhiteNoiseWidget != null)
+        {
+            WhiteNoiseWidget.BeginAnimation(OpacityProperty, null);
+            WhiteNoiseWidget.Opacity = 1;
+            WhiteNoiseWidget.RenderTransform = null;
+        }
     }
 
     private void PlayClockViewUnfoldIn(TimeSpan baseDelay)
@@ -302,6 +308,34 @@ public partial class MainWindow
         };
         CountdownWidget.TimerControlBar.BeginAnimation(OpacityProperty, barFade);
         barTranslate.BeginAnimation(TranslateTransform.YProperty, barRise);
+
+        // White noise strip follows the control bar with one more beat of delay.
+        var noiseTranslate = WhiteNoiseWidget.RenderTransform as TranslateTransform ?? new TranslateTransform(0, 20);
+        noiseTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        noiseTranslate.Y = 20;
+        WhiteNoiseWidget.RenderTransform = noiseTranslate;
+        WhiteNoiseWidget.BeginAnimation(OpacityProperty, null);
+        WhiteNoiseWidget.Opacity = 0;
+
+        var noiseDelay = baseDelay + TimeSpan.FromMilliseconds(150);
+        var noiseFade = MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(320)), _easeAppleOut, noiseDelay);
+        var noiseRise = MakeAnim(20, 0, new Duration(TimeSpan.FromMilliseconds(440)), _easeExpOut6, noiseDelay);
+        Timeline.SetDesiredFrameRate(noiseFade, fps);
+        Timeline.SetDesiredFrameRate(noiseRise, fps);
+
+        noiseFade.Completed += (_, _) =>
+        {
+            if (gen != _clockViewUnfoldGeneration) return;
+            WhiteNoiseWidget.BeginAnimation(OpacityProperty, null);
+            WhiteNoiseWidget.Opacity = 1;
+            if (ReferenceEquals(WhiteNoiseWidget.RenderTransform, noiseTranslate))
+            {
+                noiseTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                noiseTranslate.Y = 0;
+            }
+        };
+        WhiteNoiseWidget.BeginAnimation(OpacityProperty, noiseFade);
+        noiseTranslate.BeginAnimation(TranslateTransform.YProperty, noiseRise);
     }
 
     private void SwitchFromTimerToPrimaryView(long? transitionId = null)

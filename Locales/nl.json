@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "Overstap naar C++26",
   "settings.cpp26Banner.message": "V-Notch stapt in een toekomstige update over op C++26. Lees de details op GitHub Discussions.",
   "settings.cpp26Banner.details": "Details",
-  "settings.cpp26Banner.dismiss": "Sluiten"
+  "settings.cpp26Banner.dismiss": "Sluiten",
+  "whitenoise.rain": "Regen",
+  "whitenoise.ocean": "Oceaan",
+  "whitenoise.white": "Wit",
+  "whitenoise.wind": "Wind",
+  "whitenoise.brook": "Beek",
+  "whitenoise.pink": "Roze",
+  "whitenoise.brown": "Bruin",
+  "whitenoise.fan": "Ventilator",
+  "whitenoise.volume": "Volume",
+  "whitenoise.mute": "Dempen",
+  "whitenoise.sync": "Synchroniseren met timer",
+  "whitenoise.syncTip": "Vervaagt en stopt wanneer de timer afloopt"
 }

@@ -1,0 +1,22 @@
+<UserControl x:Class="VNotch.Controls.WhiteNoiseStrip"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel>
+        <UniformGrid x:Name="ChipHost" Rows="1"/>
+        <Grid x:Name="ControlRow" Height="26" Margin="2,8,2,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid x:Name="VolumeBar" Grid.Column="1" Height="26" Margin="6,0,14,0" Cursor="Hand" Background="Transparent"
+                  MouseLeftButtonDown="VolumeBar_MouseDown" MouseMove="VolumeBar_MouseMove" MouseLeftButtonUp="VolumeBar_MouseUp">
+                <Border Height="4" CornerRadius="2" Background="#22FFFFFF" VerticalAlignment="Center"/>
+                <Border x:Name="VolumeFill" Height="4" CornerRadius="2" Background="#FFFF8C1A" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0"/>
+            </Grid>
+        </Grid>
+    </StackPanel>
+</UserControl>

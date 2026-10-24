@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "الانتقال إلى C++26",
   "settings.cpp26Banner.message": "سينتقل V-Notch إلى C++26 في تحديث مستقبلي. اقرأ التفاصيل على GitHub Discussions.",
   "settings.cpp26Banner.details": "التفاصيل",
-  "settings.cpp26Banner.dismiss": "إغلاق"
+  "settings.cpp26Banner.dismiss": "إغلاق",
+  "whitenoise.rain": "مطر",
+  "whitenoise.ocean": "محيط",
+  "whitenoise.white": "أبيض",
+  "whitenoise.wind": "رياح",
+  "whitenoise.brook": "جدول",
+  "whitenoise.pink": "وردي",
+  "whitenoise.brown": "بني",
+  "whitenoise.fan": "مروحة",
+  "whitenoise.volume": "مستوى الصوت",
+  "whitenoise.mute": "كتم",
+  "whitenoise.sync": "مزامنة مع المؤقت",
+  "whitenoise.syncTip": "يتلاشى ويتوقف عند انتهاء المؤقت"
 }

@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "迁移至 C++26",
   "settings.cpp26Banner.message": "V-Notch 将在未来的更新中迁移至 C++26。前往 GitHub Discussions 查看详情。",
   "settings.cpp26Banner.details": "详情",
-  "settings.cpp26Banner.dismiss": "关闭"
+  "settings.cpp26Banner.dismiss": "关闭",
+  "whitenoise.rain": "雨声",
+  "whitenoise.ocean": "海浪",
+  "whitenoise.white": "白噪音",
+  "whitenoise.wind": "风声",
+  "whitenoise.brook": "溪流",
+  "whitenoise.pink": "粉噪音",
+  "whitenoise.brown": "棕噪音",
+  "whitenoise.fan": "风扇",
+  "whitenoise.volume": "音量",
+  "whitenoise.mute": "静音",
+  "whitenoise.sync": "与计时器同步",
+  "whitenoise.syncTip": "计时器结束时渐弱并停止"
 }

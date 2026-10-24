@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "C++26 में बदलाव",
   "settings.cpp26Banner.message": "V-Notch भविष्य के अपडेट में C++26 पर शिफ्ट होगा। GitHub Discussions पर विवरण पढ़ें।",
   "settings.cpp26Banner.details": "विवरण",
-  "settings.cpp26Banner.dismiss": "बंद करें"
+  "settings.cpp26Banner.dismiss": "बंद करें",
+  "whitenoise.rain": "बारिश",
+  "whitenoise.ocean": "समुद्र",
+  "whitenoise.white": "व्हाइट",
+  "whitenoise.wind": "हवा",
+  "whitenoise.brook": "झरना",
+  "whitenoise.pink": "पिंक",
+  "whitenoise.brown": "ब्राउन",
+  "whitenoise.fan": "पंखा",
+  "whitenoise.volume": "वॉल्यूम",
+  "whitenoise.mute": "म्यूट",
+  "whitenoise.sync": "टाइमर के साथ सिंक",
+  "whitenoise.syncTip": "टाइमर खत्म होने पर धीमा होकर बंद हो जाता है"
 }

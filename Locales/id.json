@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "Beralih ke C++26",
   "settings.cpp26Banner.message": "V-Notch akan beralih ke C++26 pada pembaruan mendatang. Baca detailnya di GitHub Discussions.",
   "settings.cpp26Banner.details": "Detail",
-  "settings.cpp26Banner.dismiss": "Tutup"
+  "settings.cpp26Banner.dismiss": "Tutup",
+  "whitenoise.rain": "Hujan",
+  "whitenoise.ocean": "Laut",
+  "whitenoise.white": "Putih",
+  "whitenoise.wind": "Angin",
+  "whitenoise.brook": "Anak sungai",
+  "whitenoise.pink": "Merah muda",
+  "whitenoise.brown": "Cokelat",
+  "whitenoise.fan": "Kipas",
+  "whitenoise.volume": "Volume",
+  "whitenoise.mute": "Bisukan",
+  "whitenoise.sync": "Sinkron dengan timer",
+  "whitenoise.syncTip": "Memudar lalu berhenti saat timer selesai"
 }

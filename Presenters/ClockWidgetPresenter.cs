@@ -341,7 +341,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     #region Clock View (analog clock + month calendar)
 
     private const double _clockViewWidth = 600;
-    private const double _clockViewHeight = 310;
+    private const double _clockViewHeight = 346;
 
     private static double ClockViewContentWidth => _clockViewWidth - 40.0;
     private static double ClockViewContentHeight => _clockViewHeight - 48.0;

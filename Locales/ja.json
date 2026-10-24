@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "C++26への移行",
   "settings.cpp26Banner.message": "V-Notchは今後のアップデートでC++26に移行します。詳細はGitHub Discussionsをご覧ください。",
   "settings.cpp26Banner.details": "詳細",
-  "settings.cpp26Banner.dismiss": "閉じる"
+  "settings.cpp26Banner.dismiss": "閉じる",
+  "whitenoise.rain": "雨",
+  "whitenoise.ocean": "海",
+  "whitenoise.white": "ホワイト",
+  "whitenoise.wind": "風",
+  "whitenoise.brook": "せせらぎ",
+  "whitenoise.pink": "ピンク",
+  "whitenoise.brown": "ブラウン",
+  "whitenoise.fan": "扇風機",
+  "whitenoise.volume": "音量",
+  "whitenoise.mute": "ミュート",
+  "whitenoise.sync": "タイマーと連動",
+  "whitenoise.syncTip": "タイマー終了時にフェードアウトして停止します"
 }

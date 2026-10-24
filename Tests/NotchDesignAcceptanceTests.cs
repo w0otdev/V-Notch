@@ -195,7 +195,7 @@ public sealed class NotchDesignAcceptanceTests
     private static T Field<T>(MainWindow window, string name) =>
         (T)typeof(MainWindow).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
     private static void Invoke(MainWindow window, string name, params object?[] args) =>
-        typeof(MainWindow).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, args);
+        ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!, args);
     private static void PumpUntil(Func<bool> ready)
     {
         var elapsed = Stopwatch.StartNew();

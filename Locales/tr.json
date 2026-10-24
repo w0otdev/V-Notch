@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "C++26 Geçişi",
   "settings.cpp26Banner.message": "V-Notch gelecekteki bir güncellemede C++26 sürümüne geçecek. Ayrıntıları GitHub Discussions üzerinde okuyun.",
   "settings.cpp26Banner.details": "Ayrıntılar",
-  "settings.cpp26Banner.dismiss": "Kapat"
+  "settings.cpp26Banner.dismiss": "Kapat",
+  "whitenoise.rain": "Yağmur",
+  "whitenoise.ocean": "Okyanus",
+  "whitenoise.white": "Beyaz",
+  "whitenoise.wind": "Rüzgar",
+  "whitenoise.brook": "Dere",
+  "whitenoise.pink": "Pembe",
+  "whitenoise.brown": "Kahve",
+  "whitenoise.fan": "Vantilatör",
+  "whitenoise.volume": "Ses düzeyi",
+  "whitenoise.mute": "Sessiz",
+  "whitenoise.sync": "Zamanlayıcıyla eşitle",
+  "whitenoise.syncTip": "Zamanlayıcı bitince kısılıp durur"
 }

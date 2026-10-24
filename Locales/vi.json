@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "Chuyển sang C++26",
   "settings.cpp26Banner.message": "V-Notch sẽ chuyển sang C++26 trong bản cập nhật tới. Xem chi tiết tại GitHub Discussions.",
   "settings.cpp26Banner.details": "Chi tiết",
-  "settings.cpp26Banner.dismiss": "Đóng"
+  "settings.cpp26Banner.dismiss": "Đóng",
+  "whitenoise.rain": "Mưa",
+  "whitenoise.ocean": "Biển",
+  "whitenoise.white": "Trắng",
+  "whitenoise.wind": "Gió",
+  "whitenoise.brook": "Suối",
+  "whitenoise.pink": "Hồng",
+  "whitenoise.brown": "Nâu",
+  "whitenoise.fan": "Quạt",
+  "whitenoise.volume": "Âm lượng",
+  "whitenoise.mute": "Tắt tiếng",
+  "whitenoise.sync": "Theo timer",
+  "whitenoise.syncTip": "Tự mờ dần và dừng khi timer kết thúc"
 }

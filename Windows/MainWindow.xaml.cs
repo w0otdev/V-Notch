@@ -280,7 +280,11 @@ public partial class MainWindow : Window
         _viewModel.Media.PlayPauseToggled += OnViewModelPlayPauseToggled;
         MediaPlayback.BufferingChanged += value => MusicViz.IsBuffering = value;
         CountdownWidget.Attach(_viewModel.Timer);
-        CountdownWidget.Completed += (_, _) => OnCountdownCompleted();
+        CountdownWidget.Completed += (_, _) =>
+        {
+            WhiteNoiseService.OnTimerCompleted();
+            OnCountdownCompleted();
+        };
         CountdownWidget.KeyboardInputRequested += enabled =>
         {
             if (enabled) EnableKeyboardInput();

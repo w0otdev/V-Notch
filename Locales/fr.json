@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "Passage à C++26",
   "settings.cpp26Banner.message": "V-Notch passera à C++26 dans une prochaine mise à jour. Consultez les détails sur GitHub Discussions.",
   "settings.cpp26Banner.details": "Détails",
-  "settings.cpp26Banner.dismiss": "Fermer"
+  "settings.cpp26Banner.dismiss": "Fermer",
+  "whitenoise.rain": "Pluie",
+  "whitenoise.ocean": "Océan",
+  "whitenoise.white": "Blanc",
+  "whitenoise.wind": "Vent",
+  "whitenoise.brook": "Ruisseau",
+  "whitenoise.pink": "Rose",
+  "whitenoise.brown": "Brun",
+  "whitenoise.fan": "Ventilateur",
+  "whitenoise.volume": "Volume",
+  "whitenoise.mute": "Muet",
+  "whitenoise.sync": "Synchroniser avec le minuteur",
+  "whitenoise.syncTip": "Fondu puis arrêt à la fin du minuteur"
 }

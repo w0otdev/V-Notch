@@ -2611,7 +2611,10 @@
                         </Grid>
 
                         <Grid Grid.Row="1" VerticalAlignment="Center">
-                            <ctrl:CountdownView x:Name="CountdownWidget"/>
+                            <StackPanel>
+                                <ctrl:CountdownView x:Name="CountdownWidget"/>
+                                <ctrl:WhiteNoiseStrip x:Name="WhiteNoiseWidget" Margin="0,8,0,0"/>
+                            </StackPanel>
                         </Grid>
 
                     </Grid>

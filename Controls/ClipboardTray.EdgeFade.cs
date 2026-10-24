@@ -167,11 +167,14 @@ public partial class ClipboardTray
         if (element.OpacityMask is not LinearGradientBrush mask || mask.IsFrozen)
         {
             mask = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
-            mask.GradientStops.Add(new GradientStop(left ? Colors.Transparent : Colors.Black, 0));
+            mask.GradientStops.Add(new GradientStop(Colors.Black, 0));
             mask.GradientStops.Add(new GradientStop(Colors.Black, edge));
             mask.GradientStops.Add(new GradientStop(Colors.Black, 1 - edge));
-            mask.GradientStops.Add(new GradientStop(right ? Colors.Transparent : Colors.Black, 1));
+            mask.GradientStops.Add(new GradientStop(Colors.Black, 1));
             element.OpacityMask = mask;
+            // Fade in from opaque so first appearance is not a hard pop.
+            if (left) AnimateMaskColor(mask.GradientStops[0], Colors.Transparent);
+            if (right) AnimateMaskColor(mask.GradientStops[3], Colors.Transparent);
             return;
         }
 

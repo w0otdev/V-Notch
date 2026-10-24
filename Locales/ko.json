@@ -1026,5 +1026,17 @@
   "settings.cpp26Banner.title": "C++26 전환 안내",
   "settings.cpp26Banner.message": "V-Notch는 향후 업데이트에서 C++26으로 전환됩니다. 자세한 내용은 GitHub Discussions에서 확인하세요.",
   "settings.cpp26Banner.details": "자세히 보기",
-  "settings.cpp26Banner.dismiss": "닫기"
+  "settings.cpp26Banner.dismiss": "닫기",
+  "whitenoise.rain": "비",
+  "whitenoise.ocean": "바다",
+  "whitenoise.white": "화이트",
+  "whitenoise.wind": "바람",
+  "whitenoise.brook": "시냇물",
+  "whitenoise.pink": "핑크",
+  "whitenoise.brown": "브라운",
+  "whitenoise.fan": "선풍기",
+  "whitenoise.volume": "볼륨",
+  "whitenoise.mute": "음소거",
+  "whitenoise.sync": "타이머와 동기화",
+  "whitenoise.syncTip": "타이머가 끝나면 서서히 줄어들며 멈춥니다"
 }
