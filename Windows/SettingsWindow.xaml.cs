@@ -159,6 +159,7 @@ public partial class SettingsWindow : Window
             firstOpenProbe.Restart();
         };
         ContentRendered += (_, _) => FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings loaded-to-rendered {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
+        Loc.PrewarmTranslationIndex();
         EnsureBackgroundInitializationStarted();
     }
 

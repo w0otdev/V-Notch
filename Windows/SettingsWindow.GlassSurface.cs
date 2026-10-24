@@ -123,6 +123,7 @@ public partial class SettingsWindow
         _livePreviewDebounce?.Dispose();
         _searchDebounce?.Dispose();
         _updatePresenter.Dispose();
+        Loc.ReleaseTranslationIndex();
         _monitorChoicesClosed = true;
         UnsubscribeDisplaySettingsChanged();
         base.OnClosed(e);

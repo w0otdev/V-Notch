@@ -2,6 +2,8 @@
 #include <immintrin.h>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <mdspan>
 
 namespace vnotch::controllers
 {
@@ -76,8 +78,27 @@ class GlassBoxBlur final
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst), ordered8);
     }
 
-public:
-    static int32_t Horizontal(
+    // Window limit shared with the vertical pass: sums stay below 2^24, so the
+    // float divide-and-truncate is exact for every byte average.
+    static constexpr int32_t kMaxFloatWindow = 4097;
+
+    // One BGRA pixel per 128-bit register: a single add/sub replaces four scalar updates.
+    static __forceinline __m128i load_px_i32x4(const uint8_t* ptr) noexcept
+    {
+        int32_t packed;
+        std::memcpy(&packed, ptr, sizeof(packed));
+        return _mm_cvtepu8_epi32(_mm_cvtsi32_si128(packed));
+    }
+
+    static __forceinline void store_px_i32x4(uint8_t* ptr, __m128i sum, __m128 divisor) noexcept
+    {
+        __m128i avg = _mm_cvttps_epi32(_mm_div_ps(_mm_cvtepi32_ps(sum), divisor));
+        __m128i words = _mm_packs_epi32(avg, avg);
+        int32_t packed = _mm_cvtsi128_si32(_mm_packus_epi16(words, words));
+        std::memcpy(ptr, &packed, sizeof(packed));
+    }
+
+    static int32_t HorizontalPacked(
         const uint8_t* src,
         uint8_t* dst,
         int32_t w,
@@ -85,11 +106,63 @@ public:
         int32_t y0,
         int32_t y1) noexcept
     {
-        if (src == nullptr || dst == nullptr || w <= 0 || radius < 0 || y0 < 0 || y1 < y0)
+        using Extents = std::dextents<int64_t, 3>;
+        const std::mdspan<const uint8_t, Extents> in(src, y1, w, 4);
+        const std::mdspan<uint8_t, Extents> out(dst, y1, w, 4);
+        // MSVC 19.44 lacks multidimensional operator[], so address pixels through the layout mapping.
+        const auto src_px = [&in](int32_t y, int32_t x) noexcept { return in.data_handle() + in.mapping()(y, x, 0); };
+        const auto dst_px = [&out](int32_t y, int32_t x) noexcept { return out.data_handle() + out.mapping()(y, x, 0); };
+
+        const __m128 divisor = _mm_set1_ps(static_cast<float>(2 * radius + 1));
+        const int32_t left_end = std::min(w, radius);
+        const int32_t right_start = std::max(left_end, w - radius - 1);
+
+        for (int32_t y = y0; y < y1; ++y)
         {
-            return VN_ERR_INVALID_ARG;
+            __m128i sum = _mm_setzero_si128();
+            for (int32_t dx = -radius; dx <= radius; ++dx)
+            {
+                sum = _mm_add_epi32(sum, load_px_i32x4(src_px(y, std::clamp(dx, 0, w - 1))));
+            }
+
+            const __m128i first = load_px_i32x4(src_px(y, 0));
+            int32_t x = 0;
+            for (; x < left_end; ++x)
+            {
+                store_px_i32x4(dst_px(y, x), sum, divisor);
+                sum = _mm_sub_epi32(
+                    _mm_add_epi32(sum, load_px_i32x4(src_px(y, std::min(w - 1, x + 1 + radius)))),
+                    first);
+            }
+            for (; x < right_start; ++x)
+            {
+                store_px_i32x4(dst_px(y, x), sum, divisor);
+                sum = _mm_sub_epi32(
+                    _mm_add_epi32(sum, load_px_i32x4(src_px(y, x + radius + 1))),
+                    load_px_i32x4(src_px(y, x - radius)));
+            }
+
+            const __m128i last = load_px_i32x4(src_px(y, w - 1));
+            for (; x < w; ++x)
+            {
+                store_px_i32x4(dst_px(y, x), sum, divisor);
+                sum = _mm_sub_epi32(
+                    _mm_add_epi32(sum, last),
+                    load_px_i32x4(src_px(y, std::max(0, x - radius))));
+            }
         }
 
+        return VN_OK;
+    }
+
+    static int32_t HorizontalScalar(
+        const uint8_t* src,
+        uint8_t* dst,
+        int32_t w,
+        int32_t radius,
+        int32_t y0,
+        int32_t y1) noexcept
+    {
         ExactByteAverage divisor(2 * radius + 1);
         int32_t left_end = std::min(w, radius);
         int32_t right_start = std::max(left_end, w - radius - 1);
@@ -164,6 +237,27 @@ public:
         return VN_OK;
     }
 
+public:
+    static int32_t Horizontal(
+        const uint8_t* src,
+        uint8_t* dst,
+        int32_t w,
+        int32_t radius,
+        int32_t y0,
+        int32_t y1) noexcept
+    {
+        if (src == nullptr || dst == nullptr || w <= 0 || radius < 0 || y0 < 0 || y1 < y0)
+        {
+            return VN_ERR_INVALID_ARG;
+        }
+
+        if (2 * static_cast<int64_t>(radius) + 1 <= kMaxFloatWindow)
+        {
+            return HorizontalPacked(src, dst, w, radius, y0, y1);
+        }
+        return HorizontalScalar(src, dst, w, radius, y0, y1);
+    }
+
     static int32_t Vertical(
         const uint8_t* src,
         uint8_t* dst,
@@ -186,7 +280,7 @@ public:
         int32_t bottom_start = std::max(top_end, h - radius - 1);
         int32_t last_row_offset = (h - 1) * stride;
 
-        if (window <= 4097)
+        if (window <= kMaxFloatWindow)
         {
             __m256 divisor = _mm256_set1_ps(static_cast<float>(window));
             for (; column <= end - 32; column += 32)

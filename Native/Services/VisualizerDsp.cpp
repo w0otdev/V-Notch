@@ -130,9 +130,10 @@ const double* HammingWindow(int32_t length) noexcept {
     return tables[static_cast<size_t>(slot)].data();
 }
 
-// Per-stage twiddle factors exp(-i*pi*j/l1) for every butterfly half-size l1 = 1, 2, 4, ... kMaxFftLength / 2.
+// Per-stage twiddle factors for every butterfly half-size l1 = 1, 2, 4, ... kMaxFftLength / 2.
 // Stage l1 occupies entries [l1 - 1, 2 * l1 - 1), each stored as an interleaved (re, im) float pair, so the
-// butterfly loop reads them contiguously and they are computed in double instead of by float recurrence.
+// butterfly loop reads them contiguously. The values come from the same float half-angle recurrence the
+// NAudio reference uses, because the band analysis is calibrated against that transform bin for bin.
 const float* FftTwiddles() noexcept {
     alignas(32) static float table[2 * kMaxFftLength];
     static std::atomic<bool> ready{false};
@@ -140,13 +141,21 @@ const float* FftTwiddles() noexcept {
     if (!ready.load(std::memory_order_acquire)) {
         AcquireSRWLockExclusive(&lock);
         if (!ready.load(std::memory_order_relaxed)) {
+            float c1 = -1.0f;
+            float c2 = 0.0f;
             for (int32_t l1 = 1; l1 < kMaxFftLength; l1 <<= 1) {
+                float u1 = 1.0f;
+                float u2 = 0.0f;
                 for (int32_t j = 0; j < l1; ++j) {
-                    const double angle = -std::numbers::pi * static_cast<double>(j) / static_cast<double>(l1);
                     const size_t index = 2u * static_cast<size_t>(l1 - 1 + j);
-                    table[index] = static_cast<float>(std::cos(angle));
-                    table[index + 1] = static_cast<float>(std::sin(angle));
+                    table[index] = u1;
+                    table[index + 1] = u2;
+                    const float z = u1 * c1 - u2 * c2;
+                    u2 = u1 * c2 + u2 * c1;
+                    u1 = z;
                 }
+                c2 = -std::sqrt((1.0f - c1) / 2.0f);
+                c1 = std::sqrt((1.0f + c1) / 2.0f);
             }
             ready.store(true, std::memory_order_release);
         }
